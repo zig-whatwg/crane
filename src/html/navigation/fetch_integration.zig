@@ -21,6 +21,8 @@ const fetch = @import("fetch");
 // Host platform IO, for file: URLs.
 const host = @import("host");
 
+const navigate_steps = @import("navigate_steps.zig");
+
 /// The response `resultFromResponse` takes, as Fetch hands it over.
 pub const InternalResponse = fetch.internal.InternalResponse;
 
@@ -793,30 +795,38 @@ pub fn networkErrorResult(allocator: Allocator, url: []const u8) NavigationFetch
     return result;
 }
 
-/// Handle about: URLs
+/// Fetch "scheme fetch", "about": "If request's current URL's path is the
+/// string "blank", then return a new response whose status message is `OK`,
+/// header list is « (`Content-Type`, `text/html;charset=utf-8`) », and body
+/// is the empty byte sequence as a body. URLs such as "about:config" are
+/// handled during navigation and result in a network error in the context
+/// of fetching top-level navigables."
+///
+/// about:srcdoc is such a URL: an iframe srcdoc document is made from the
+/// srcdoc attribute (the navigation's srcdoc resource, never this fetch),
+/// and a navigation to about:srcdoc by any other route - location, a link,
+/// window.open() - is a network error, whose document has an opaque origin
+/// (html/browsers/browsing-the-web/navigating-across-documents/about-srcdoc-
+/// navigation-blocked.window.js; wpt.fyi stable: Chrome 157 0/3, Firefox
+/// 160 3/3, Safari 27.2 0/3). Golden rule 2, the user's ruling (2026-11-12
+/// 01:01 UTC): the spec, which Firefox ships. Chrome and Safari lag rather
+/// than deviate: Chromium's own open bug 40165505 (crbug 1169736),
+/// "Navigation to about:srcdoc should fail per HTML Standard", wrote this
+/// WPT, and whatwg/html#6316 (annevk, 2021) confirms the network error;
+/// no engine declined. A 404 page for an unknown about: URL had no spec.
 fn handleAboutUrl(allocator: Allocator, url: []const u8) NavigationFetchError!NavigationFetchResult {
     var result = NavigationFetchResult.init(allocator);
+    errdefer result.deinit();
     result.final_url = try allocator.dupe(u8, url);
 
-    if (std.mem.eql(u8, url, "about:blank")) {
+    if (navigate_steps.matchesAboutBlank(url)) {
         result.status = 200;
         result.ok = true;
         result.is_network_error = false;
         result.content_type = try allocator.dupe(u8, "text/html;charset=utf-8");
         result.body = try allocator.dupe(u8, "");
-    } else if (std.mem.eql(u8, url, "about:srcdoc")) {
-        // about:srcdoc is handled by the iframe srcdoc attribute
-        result.status = 200;
-        result.ok = true;
-        result.is_network_error = false;
-        result.content_type = try allocator.dupe(u8, "text/html;charset=utf-8");
-    } else {
-        // Unknown about: URL
-        result.status = 404;
-        result.ok = false;
-        result.is_network_error = false;
     }
-
+    // Otherwise a network error, as init made it.
     return result;
 }
 
@@ -1073,6 +1083,23 @@ test "handleAboutUrl - about:blank" {
     try std.testing.expect(result.ok);
     try std.testing.expect(!result.is_network_error);
     try std.testing.expectEqualStrings("text/html;charset=utf-8", result.content_type.?);
+}
+
+test "handleAboutUrl - about:srcdoc and every about: URL but about:blank are network errors" {
+    // Fetch "scheme fetch", "about": a path "blank" is an empty response;
+    // anything else - about:srcdoc included - is a network error.
+    const allocator = std.testing.allocator;
+    for ([_][]const u8{ "about:srcdoc", "about:srcdoc?query", "about:srcdoc#x", "about:unknown" }) |url| {
+        var result = try handleAboutUrl(allocator, url);
+        defer result.deinit();
+        try std.testing.expect(result.is_network_error);
+        try std.testing.expect(!result.ok);
+        try std.testing.expect(result.body == null);
+    }
+    var blank = try handleAboutUrl(allocator, "about:blank?x#y");
+    defer blank.deinit();
+    try std.testing.expect(!blank.is_network_error);
+    try std.testing.expect(blank.ok);
 }
 
 test "handleDataUrl - text data" {

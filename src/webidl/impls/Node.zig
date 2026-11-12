@@ -1449,18 +1449,15 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // Step 3: "For each attribute of node's attribute list: let
             // copyAttribute be the result of cloning a single node given
             // attribute, document, and null; append copyAttribute to copy."
-            // Copied field for field through the list's own hook: going
-            // through setAttributeNS would validate and reject names the list
+            // Copied exactly through the list's own hook: going through
+            // setAttributeNS would validate and reject names the list
             // legitimately holds, and `attributes` makes an Attr node each.
-            // `by_cloning`: the style attribute's change steps skip their CSP
-            // check for a copied attribute, as all three browsers do (Element).
-            var index: usize = 0;
-            dom_module.element_attributes.reserve(copy, dom_module.element_attributes.count(node));
-            while (dom_module.element_attributes.at(node, index)) |attribute| : (index += 1) {
-                var copied = attribute;
-                copied.by_cloning = true;
-                try dom_module.element_attributes.append(copy, copied);
-            }
+            // The copy SHARES node's list until either writes it (lane nd2
+            // batch 4; Blink Element::CloneAttributesFrom, WebKit Element::
+            // cloneAttributesFromElement); each attribute's change steps run
+            // as a copied attribute's (the style attribute skips its CSP
+            // check, as all three browsers do: Element).
+            try dom_module.element_attributes.cloneFrom(copy, node);
 
             try setOwnerDocument(copy, owner);
             return copy;

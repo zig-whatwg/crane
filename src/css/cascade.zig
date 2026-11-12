@@ -112,6 +112,12 @@ pub const Source = struct {
     order: u32 = 0,
     /// A style attribute's declarations.
     element_attached: bool = false,
+    /// A block of the element's own - its style attribute's, a
+    /// presentational hint its element state keeps - rather than a rule's:
+    /// its owner rewrites it in place and a freed element's state hands its
+    /// memory on, so the matched-properties cache keys and compares it by
+    /// content, never by address (lane style1 b5).
+    per_element: bool = false,
     /// Shadow-including tree context depth (batch 2; 0 is the document).
     tree_depth: u16 = 0,
     /// Whether this declaration may use Values 5 tree-counting inputs.
@@ -417,6 +423,20 @@ fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
     return null;
 }
 
+/// Position 4 §3.4: "User agents must have the following rule in their UA
+/// stylesheet: `* { overlay: none !important; }`" - so "the overlay property
+/// cannot be set by authors or users", and the UA sets `overlay: auto` "via
+/// another UA-!important rule" while an element is in the top layer. Only
+/// that origin's important declarations, and the transition origin above
+/// every important one (Cascade 5 §6.2), can beat the universal rule: any
+/// other declaration of overlay is never a candidate, which is exactly that
+/// rule's effect without a declaration every element would match. (Blink
+/// dropped its universal rule too, OverlayGlobalRuleRemoval: html.css
+/// `dialog:modal, [popover]:popover-open { overlay: auto !important }`.)
+fn overlaySettable(origin: Origin, important: bool) bool {
+    return (origin == .user_agent and important) or origin == .transition;
+}
+
 /// The caller finishes appending matched batches before this call, and
 /// keeps the slice and declaration blocks immutable until cascade returns.
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
@@ -431,6 +451,7 @@ pub fn collectCandidates(allocator: Allocator, matched: []const Matched, applies
         var it = m.block.typed();
         while (it.next()) |d| {
             if (applies) |set| if (!set.contains(d.longhand)) continue;
+            if (d.longhand == .overlay and !overlaySettable(m.source.origin, d.important)) continue;
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
@@ -1602,7 +1623,7 @@ const Builder = struct {
     /// element's writing mode and direction.
     fn target(self: *const Builder, l: Longhand) Longhand {
         const lg = l.logical() orelse return l;
-        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.writing_mode, self.direction));
+        return properties.physicalOf(lg, self.writing_mode, self.direction);
     }
 
     /// Cascade 5 sections 6-7.3: the specified value of physical longhand
@@ -1829,9 +1850,43 @@ const Builder = struct {
             defer selected.release();
             return self.computeValue(l, selected, source);
         }
+        switch (l) {
+            // Viewport 1 §3.1: "as specified, but with <percentage>
+            // converted to the equivalent <number>". normal and 0 compute to
+            // 1 in all three browsers (zoom-computed.html 13/13, wpt.fyi
+            // 2026-11-11): golden rule 2. A calc() computes first and
+            // returns here as its number.
+            .zoom => switch (v) {
+                .keyword => return .{ .number = 1 },
+                .number => |n| return .{ .number = if (n == 0) 1 else n },
+                .length => |len| return .{ .number = if (len.value == 0) 1 else len.value / 100 },
+                else => {},
+            },
+            // Text Size Adjust 1 §2. Chrome, the one browser shipping the
+            // unprefixed property, computes none to 100%
+            // (text-size-adjust-computed.html 6/6): golden rule 2.
+            .text_size_adjust => if (v.isKeyword(.none)) return .{ .length = Length.percent(100) },
+            // Compat §3.4.6.3: <line-width> computes to an absolute length.
+            // Chrome and Safari make thin, medium and thick 1/48, 3/48 and
+            // 5/48 of the font size (Blink StyleBuilderConverter::
+            // ConvertTextStrokeWidth, WebKit's convertTextStrokeWidth: the
+            // border widths as ems); Firefox uses the border's 1, 3 and 5px.
+            // Golden rule 2: the majority.
+            ._webkit_text_stroke_width => if (v == .keyword) {
+                const lines: f64 = switch (v.keyword) {
+                    .thin => 1,
+                    .thick => 5,
+                    else => 3,
+                };
+                return Value.px(lines / 48 * self.fontSize());
+            },
+            else => {},
+        }
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.
         if (v == .gap_list) return .{ .gap_list = try v.gap_list.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) };
+        // Color HDR 1 §3.3: a mix computes to its normalized percentages.
+        if (v == .dynamic_range) return v.dynamic_range.compute(self.ctx.allocator, ComponentContext.init(self, source));
         if (v == .animation_list) {
             // CSS Scoping 1 tree-scoped references: animation-name keeps the
             // tree scope of its winning declaration (as font-family's named
@@ -1962,6 +2017,18 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // Lists 3 §3.3: a counter-style name keeps the tree scope that
+            // named it (list_values.ScopedName). The document's scope (0)
+            // stays the plain name: no allocation for the common case, and
+            // a plain name never equals a scoped one.
+            .list_style_type => if (v == .text and source.tree_scope.serial != 0 and @import("list_values.zig").namesCounterStyle(v.text.bytes))
+                return .{ .scoped_name = try @import("list_values.zig").ScopedName.create(self.ctx.allocator, v.text, source.tree_scope) },
+            // SVG 2 §13.5.6: "numbers converted to absolute lengths first".
+            .stroke_dasharray => if (v == .number) return Value.px(v.number),
+            // Borders 4 §3.7: "the corresponding superellipse() value".
+            .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape, .corner_start_start_shape, .corner_start_end_shape, .corner_end_start_shape, .corner_end_end_shape => if (v == .keyword) {
+                if (@import("corner_shape_values.zig").parameter(v.keyword)) |k| return .{ .number = k };
+            },
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             .font_width => return @import("font_width.zig").compute(v),

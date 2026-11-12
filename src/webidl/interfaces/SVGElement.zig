@@ -1145,51 +1145,21 @@ pub const SVGElement = struct {
             return cached;
         }
         try @import("dom").same_object_cache.elementReserve(instance, .dataset);
-        const value = try SVGElementImpl.get_dataset(instance);
+        const value = try mixins.HTMLOrSVGOrMathMLElement.get_dataset(instance);
         @import("dom").same_object_cache.elementMade(instance, .dataset, value, "dataset");
         return value;
     }
 
-    pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try SVGElementImpl.get_nonce(instance);
-    }
-
-    pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        try SVGElementImpl.set_nonce(instance, value);
-    }
-
-    const reflection = @import("dom").reflection;
+    pub const get_nonce = mixins.HTMLOrSVGOrMathMLElement.get_nonce;
+    pub const set_nonce = mixins.HTMLOrSVGOrMathMLElement.set_nonce;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-        if (comptime @hasDecl(SVGElementImpl, "get_autofocus")) return try SVGElementImpl.get_autofocus(instance);
-        return try reflection.get(bool, instance, .{ .name = "autofocus" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(SVGElementImpl, "set_autofocus")) return try SVGElementImpl.set_autofocus(instance, value);
-        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
-    }
+    pub const get_autofocus = mixins.HTMLOrSVGOrMathMLElement.get_autofocus;
+    pub const set_autofocus = mixins.HTMLOrSVGOrMathMLElement.set_autofocus;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
-        return try SVGElementImpl.get_tabIndex(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(SVGElementImpl, "set_tabIndex")) return try SVGElementImpl.set_tabIndex(instance, value);
-        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
-    }
+    pub const get_tabIndex = mixins.HTMLOrSVGOrMathMLElement.get_tabIndex;
+    pub const set_tabIndex = mixins.HTMLOrSVGOrMathMLElement.set_tabIndex;
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
     pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
@@ -1198,7 +1168,7 @@ pub const SVGElement = struct {
             return cached;
         }
         try @import("dom").same_object_cache.elementReserve(instance, .inline_style);
-        const value = try SVGElementImpl.get_style(instance);
+        const value = try mixins.ElementCSSInlineStyle.get_style(instance);
         @import("dom").same_object_cache.elementMade(instance, .inline_style, value, "style");
         return value;
     }
@@ -1221,18 +1191,14 @@ pub const SVGElement = struct {
             return cached;
         }
         try @import("dom").same_object_cache.elementReserve(instance, .attribute_style_map);
-        const value = try SVGElementImpl.get_attributeStyleMap(instance);
+        const value = try mixins.ElementCSSInlineStyle.get_attributeStyleMap(instance);
         @import("dom").same_object_cache.elementMade(instance, .attribute_style_map, value, "attributeStyleMap");
         return value;
     }
 
-    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
-        return try SVGElementImpl.call_focus(instance, options);
-    }
+    pub const call_focus = mixins.HTMLOrSVGOrMathMLElement.call_focus;
 
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try SVGElementImpl.call_blur(instance);
-    }
+    pub const call_blur = mixins.HTMLOrSVGOrMathMLElement.call_blur;
 
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{ "set_onabort", "set_onauxclick", "set_onbeforeinput", "set_onbeforematch", "set_onbeforetoggle", "set_onblur", "set_oncancel", "set_oncanplay", "set_oncanplaythrough", "set_onchange", "set_onclick", "set_onclose", "set_oncommand", "set_oncontextlost", "set_oncontextmenu", "set_oncontextrestored", "set_oncopy", "set_oncuechange", "set_oncut", "set_ondblclick", "set_ondrag", "set_ondragend", "set_ondragenter", "set_ondragleave", "set_ondragover", "set_ondragstart", "set_ondrop", "set_ondurationchange", "set_onemptied", "set_onended", "set_onerror", "set_onfocus", "set_onformdata", "set_oninput", "set_oninvalid", "set_onkeydown", "set_onkeypress", "set_onkeyup", "set_onload", "set_onloadeddata", "set_onloadedmetadata", "set_onloadstart", "set_onmousedown", "set_onmouseenter", "set_onmouseleave", "set_onmousemove", "set_onmouseout", "set_onmouseover", "set_onmouseup", "set_onpaste", "set_onpause", "set_onplay", "set_onplaying", "set_onprogress", "set_onratechange", "set_onreset", "set_onresize", "set_onscroll", "set_onscrollend", "set_onsecuritypolicyviolation", "set_onseeked", "set_onseeking", "set_onselect", "set_onslotchange", "set_onstalled", "set_onsubmit", "set_onsuspend", "set_ontimeupdate", "set_ontoggle", "set_onvolumechange", "set_onwaiting", "set_onwebkitanimationend", "set_onwebkitanimationiteration", "set_onwebkitanimationstart", "set_onwebkittransitionend", "set_onwheel", "set_onanimationstart", "set_onanimationiteration", "set_onanimationend", "set_onanimationcancel", "set_onsnapchanged", "set_onsnapchanging", "set_ontransitionrun", "set_ontransitionstart", "set_ontransitionend", "set_ontransitioncancel", "set_onfencedtreeclick", "set_onpointerover", "set_onpointerenter", "set_onpointerdown", "set_onpointermove", "set_onpointerrawupdate", "set_onpointerup", "set_onpointercancel", "set_onpointerout", "set_onpointerleave", "set_ongotpointercapture", "set_onlostpointercapture", "set_onselectstart", "set_onselectionchange", "set_ontouchstart", "set_ontouchend", "set_ontouchmove", "set_ontouchcancel", "set_onbeforexrselect" };

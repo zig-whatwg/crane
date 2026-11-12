@@ -101,6 +101,10 @@ pub const DomTreeAdapter = struct {
     /// This allows O(1) lookup of the TreeNode for a given DOM node
     reverse_map: infra.address_map.AddressHashMap(*runtime.Instance, *TreeNode),
 
+    /// This parse's shared attribute blocks (dom.element_data.SharingCache),
+    /// freed in `deinit`.
+    attribute_blocks: dom.element_attributes.SharingCache = .{},
+
     /// Whether to automatically execute scripts when script elements are created
     /// Set to false during fragment parsing
     execute_scripts: bool,
@@ -125,6 +129,7 @@ pub const DomTreeAdapter = struct {
     pub fn deinit(self: *DomTreeAdapter) void {
         self.node_map.deinit();
         self.reverse_map.deinit();
+        self.attribute_blocks.deinit();
     }
 
     /// Connect this adapter to a tree builder.
@@ -391,8 +396,7 @@ pub const DomTreeAdapter = struct {
             parser_script_execution.recordStartPosition(element, self.document);
         }
         // "Append each attribute in the given token to element."
-        dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
-        for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
+        parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_blocks);
 
         // Capture the token's stylesheet state before connection. A style
         // block also waits for its pop callback before reading its text.

@@ -10,3 +10,10 @@
 **Fix**: Save chroma, calculate both Cartesian coordinates into scalar constants, then assign the completed coordinates to the vector. The unchanged 44-case contrast table passes, as do the 36 transfer-curve cases and 14 typed-color tests. Keep diagnostic printing in scratch files, outside production paths.
 
 **Takeaway**: **Materialize dependent coordinates before assigning an aggregate into the storage they read.**
+
+**Again (2026-11-12, lane editing5 b3)**: a struct, not a vector. insertHTML's caret walk climbed out of inline
+elements with `point = .{ .node = parent_node, .offset = try common.indexOf(point.node) + 1 }`: the result location is
+`point`, so `.node` was written first and `indexOf(point.node)` read the PARENT's index - the host's index in the body
+(0) plus one. A paste at the end of `foo<b>bar</b>baz` went in after "foo". A native test whose host happened to be the
+body's first child passed (`<b>abc[]</b>`: index 0 + 1 is right there); the clipboard test with three host children
+caught it. Fix: `const index = try common.indexOf(point.node);` before the assignment.

@@ -26,11 +26,16 @@
 //! shared records, 16 B (core/dom/attribute.h) - and WebKit's the same
 //! (Source/WebCore/dom/Attribute.h); here the two records are ids.
 //!
-//! Growth (oss review R16): exact on parse and clone - the parser and
-//! "clone a single node" reserve room for their attributes first
-//! (`dom.element_attributes.reserve`) - and 1 -> 4 -> x2 for script's
-//! appends, so a `setAttribute` loop is not quadratic. Servo pre-sizes the
-//! same way (f28a39571849), and so do Gecko and Ladybird.
+//! Growth (oss review R16): exact on parse and clone - the parser sets a
+//! token's attributes at once (`dom.element_attributes.setParsed`) and a
+//! clone shares its source's list - and 1 -> 4 -> x2 for script's appends,
+//! so a `setAttribute` loop is not quadratic. Servo pre-sizes the same way
+//! (f28a39571849), and so do Gecko and Ladybird.
+//!
+//! Sharing (lane nd2 batch 4, plan-v2 A3): elements with equal attribute
+//! sets share one immutable block - a parser run's `SharingCache` hands
+//! out one per distinct set, and a clone shares its source's - and every
+//! writer copies first (`ElementData.writable`). See `AttributeList`.
 //!
 //! Reads are DOM's own read algorithms, plain functions over a `View` of
 //! the data: the data and its element's Browser's tables, which decode the
@@ -226,6 +231,20 @@ fn namesLocal(tables: Tables, id: NameId, comptime static: NameId) bool {
 /// length stays 32 bits. The list's own changes keep them (`append`,
 /// `take`); a change of value or prefix ("change", "replace") moves no
 /// attribute. 8 bytes, as before.
+///
+/// SHARED blocks (lane nd2 batch 4, plan-v2 A3): elements whose attribute
+/// sets are equal - names and values, in order - share ONE block, made by
+/// the parser through a `SharingCache` or by a clone from its source (Blink
+/// core/dom/element_data_cache.cc ElementDataCache::
+/// CachedShareableElementDataWithAttributes and Element::CloneAttributesFrom;
+/// WebKit Source/WebCore/dom/DocumentSharedObjectPool.cpp and
+/// Element::cloneAttributesFromElement). A shared block is immutable: its
+/// `holders` byte counts the elements and the cache that hold it, and every
+/// writer first makes the list its element's own (`ElementData.writable`:
+/// copy on write, Blink's Element::CreateUniqueElementData). 0 holders is an
+/// element's own, writable list. The count costs no byte: it is the
+/// header's spare one, and a block at `max_holders` takes no more - the next
+/// sharer gets a new block.
 pub const AttributeList = struct {
     len: u32,
     /// The capacity: 1 to 128 is that many entries (exact, as parse and
@@ -235,13 +254,17 @@ pub const AttributeList = struct {
     id_index: u8 = no_index,
     /// Where the class attribute in no namespace is.
     class_index: u8 = no_index,
-    _reserved: u8 = 0,
+    /// 0: one element's own list. 1 to `max_holders`: a shared, immutable
+    /// block with that many holders (elements, and a parser's cache).
+    holders: u8 = 0,
 
     /// No such attribute.
     pub const no_index: u8 = 0xFF;
     /// The attribute is at position `saturated_index` or later: found by a
     /// scan from there.
     pub const saturated_index: u8 = 0xFE;
+    /// The most holders a shared block counts; it never wraps.
+    pub const max_holders: u8 = std.math.maxInt(u8);
 
     const exact_classes = 128;
 
@@ -279,13 +302,65 @@ pub const AttributeList = struct {
         return base[0..bytesFor(self.capacity())];
     }
 
+    /// The entries, to write: a list with no holders only.
     fn slots(self: *AttributeList) [*]Entry {
         const base: [*]u8 = @ptrCast(self);
         return @ptrCast(@alignCast(base + @sizeOf(AttributeList)));
     }
 
-    fn items(self: *AttributeList) []Entry {
+    fn mutableItems(self: *AttributeList) []Entry {
         return self.slots()[0..self.len];
+    }
+
+    /// The entries, to read.
+    fn items(self: *const AttributeList) []const Entry {
+        const base: [*]const u8 = @ptrCast(self);
+        const entries: [*]const Entry = @ptrCast(@alignCast(base + @sizeOf(AttributeList)));
+        return entries[0..self.len];
+    }
+
+    /// Whether this is a shared block (see the type's comment).
+    pub inline fn isShared(self: *const AttributeList) bool {
+        return self.holders != 0;
+    }
+
+    /// A new SHARED block holding exactly `entries`, whose references it
+    /// takes, with `holders` holders; its ID and class indices are computed
+    /// here, once (lane nd2 N3).
+    fn createShared(scope: *runtime.BrowserScope, entries: []const Entry, holders: u8) error{OutOfMemory}!*AttributeList {
+        std.debug.assert(entries.len != 0 and holders != 0);
+        if (entries.len > std.math.maxInt(u32)) return error.OutOfMemory;
+        const list = try create(scope.allocator, try classFor(entries.len));
+        @memcpy(list.slots()[0..entries.len], entries);
+        list.len = @intCast(entries.len);
+        const tables = Tables.of(scope);
+        for (entries, 0..) |entry, position| list.appended(tables, position, entry.name);
+        list.holders = holders;
+        return list;
+    }
+
+    /// One holder more of shared block `list`, or false when it has
+    /// `max_holders` (the count never wraps).
+    fn hold(list: *const AttributeList) bool {
+        std.debug.assert(list.isShared());
+        if (list.holders == max_holders) return false;
+        // The count is the one field of a shared block that changes, as
+        // Blink's ElementData keeps mutable bits in an immutable block.
+        @constCast(list).holders += 1;
+        return true;
+    }
+
+    /// Let go of one holder's `list` - a shared block's holder, or an
+    /// element's own list: the last holder releases the entries' references
+    /// and frees the block.
+    fn drop(list: *const AttributeList, scope: *runtime.BrowserScope) void {
+        const mutable = @constCast(list);
+        if (list.holders > 1) {
+            mutable.holders -= 1;
+            return;
+        }
+        for (list.items()) |entry| ElementData.releaseEntry(scope, entry);
+        mutable.destroy(scope.allocator);
     }
 
     /// An empty list of class `class`, its header written.
@@ -306,6 +381,7 @@ pub const AttributeList = struct {
     /// this one freed (MOVED - nothing holds a pointer into it across this;
     /// a view's bytes are its records', which do not move).
     fn moved(self: *AttributeList, allocator: std.mem.Allocator, class: u8) error{OutOfMemory}!*AttributeList {
+        std.debug.assert(!self.isShared());
         const list = try create(allocator, class);
         const header = self.*;
         @memcpy(list.slots()[0..self.len], self.items());
@@ -332,7 +408,7 @@ pub const AttributeList = struct {
 
     /// The position of the attribute `index` says where to find, named by
     /// `static` (or a record of its namespace and local name), or null.
-    fn find(self: *AttributeList, tables: Tables, index: u8, comptime static: NameId) ?usize {
+    fn find(self: *const AttributeList, tables: Tables, index: u8, comptime static: NameId) ?usize {
         if (index == no_index) return null;
         if (index != saturated_index) return index;
         const from = @min(@as(usize, saturated_index), self.len);
@@ -345,13 +421,13 @@ pub const AttributeList = struct {
     /// The value of the attribute `index` finds, decoded with `view`'s
     /// tables, or "": the values' table alone, the names' too only past a
     /// saturated index.
-    fn valueAt(self: *AttributeList, view: View, values: ?*const attribute_values.Table, index: u8, comptime static: NameId) []const u8 {
+    fn valueAt(self: *const AttributeList, view: View, values: ?*const attribute_values.Table, index: u8, comptime static: NameId) []const u8 {
         return attribute_values.bytesIn(values, self.valueIdAt(view, index, static));
     }
 
     /// The value id of the attribute `index` finds, or .empty: no table read
     /// at all, the names' only past a saturated index.
-    inline fn valueIdAt(self: *AttributeList, view: View, index: u8, comptime static: NameId) ValueId {
+    inline fn valueIdAt(self: *const AttributeList, view: View, index: u8, comptime static: NameId) ValueId {
         if (index == no_index) return .empty;
         if (index != saturated_index) return self.items()[index].value;
         const position = self.find(view.tables(), index, static) orelse return .empty;
@@ -471,8 +547,10 @@ pub const ElementData = struct {
     name: *const ElementName = &element_name.unnamed,
 
     /// The attributes in list order, with the positions of the id and class
-    /// attributes in its header; null while there are none.
-    attrs: ?*AttributeList = null,
+    /// attributes in its header; null while there are none. CONST: the
+    /// block may be shared (AttributeList's comment), so a write goes
+    /// through `writable` - the compiler holds every writer to it.
+    attrs: ?*const AttributeList = null,
 
     pub fn init() ElementData {
         return .{};
@@ -494,10 +572,16 @@ pub const ElementData = struct {
     pub fn deinit(self: *ElementData, scope: *runtime.BrowserScope) void {
         self.rename(scope, &element_name.unnamed);
         if (self.attrs) |list| {
-            for (list.items()) |entry| releaseEntry(scope, entry);
-            list.destroy(scope.allocator);
             self.attrs = null;
+            list.drop(scope);
         }
+    }
+
+    /// Take a reference on each of an entry's records: its name's and its
+    /// value's.
+    pub fn retainEntry(scope: *runtime.BrowserScope, entry: Entry) void {
+        attribute_names.retain(scope, entry.name);
+        attribute_values.retain(scope, entry.value);
     }
 
     /// Drop the references an entry held: its name's and its value's.
@@ -540,23 +624,108 @@ pub const ElementData = struct {
     /// Room for `more` attributes appended next, exactly: "create an
     /// element for a token" and "clone a single node" know how many they
     /// append (oss R16: exact on parse and clone). The list may MOVE.
-    pub fn reserve(self: *ElementData, allocator: std.mem.Allocator, more: usize) error{OutOfMemory}!void {
+    pub fn reserve(self: *ElementData, scope: *runtime.BrowserScope, more: usize) error{OutOfMemory}!void {
         if (more == 0) return;
         const len = self.getAttributeCount();
         const wanted = std.math.add(usize, len, more) catch return error.OutOfMemory;
-        if (self.attrs) |list| {
+        if (self.attrs != null) {
+            const list = try self.writable(scope, more);
             if (wanted <= list.capacity()) return;
-            self.attrs = try list.moved(allocator, try AttributeList.classFor(wanted));
+            self.attrs = try list.moved(scope.allocator, try AttributeList.classFor(wanted));
         } else {
-            self.attrs = try AttributeList.create(allocator, try AttributeList.classFor(wanted));
+            self.attrs = try AttributeList.create(scope.allocator, try AttributeList.classFor(wanted));
         }
+    }
+
+    /// The list, made this element's own for a write (copy on write: Blink's
+    /// Element::CreateUniqueElementData, WebKit's Element::
+    /// ensureUniqueElementData): itself when it has no holders; a shared
+    /// block's last holder takes the block over; otherwise a copy, with room
+    /// for `room` more entries, taking a reference on each entry's records,
+    /// and the shared block loses this holder. The list may MOVE.
+    fn writable(self: *ElementData, scope: *runtime.BrowserScope, room: usize) error{OutOfMemory}!*AttributeList {
+        const list = self.attrs.?;
+        const mutable = @constCast(list);
+        if (!list.isShared()) return mutable;
+        return self.unshare(scope, list, room);
+    }
+
+    noinline fn unshare(self: *ElementData, scope: *runtime.BrowserScope, list: *const AttributeList, room: usize) error{OutOfMemory}!*AttributeList {
+        const mutable = @constCast(list);
+        if (list.holders == 1) {
+            mutable.holders = 0;
+            return mutable;
+        }
+        const wanted = std.math.add(usize, list.len, room) catch return error.OutOfMemory;
+        const copy = try AttributeList.create(scope.allocator, try AttributeList.classFor(wanted));
+        const entries = list.items();
+        @memcpy(copy.slots()[0..entries.len], entries);
+        copy.len = list.len;
+        copy.id_index = list.id_index;
+        copy.class_index = list.class_index;
+        for (entries) |entry| retainEntry(scope, entry);
+        mutable.holders -= 1;
+        self.attrs = copy;
+        return copy;
+    }
+
+    /// The list of an element that has none yet: `entries`, whose references
+    /// it takes on success - from `cache`, a parser's (shared with every
+    /// element of the parse whose set is equal), or with no cache a block of
+    /// its own. "Create an element for a token" (HTML 13.2.6.1: "Append each
+    /// attribute in the given token to element") through Element: Blink's
+    /// Element::ParserSetAttributes, WebKit's Element::parserSetAttributes.
+    pub fn adoptEntries(self: *ElementData, scope: *runtime.BrowserScope, entries: []const Entry, cache: ?*SharingCache) error{OutOfMemory}!void {
+        std.debug.assert(self.attrs == null);
+        if (entries.len == 0) return;
+        if (cache) |c| {
+            self.attrs = try c.share(scope, entries);
+            return;
+        }
+        if (entries.len > std.math.maxInt(u32)) return error.OutOfMemory;
+        const list = try AttributeList.create(scope.allocator, try AttributeList.classFor(entries.len));
+        @memcpy(list.slots()[0..entries.len], entries);
+        list.len = @intCast(entries.len);
+        const tables = Tables.of(scope);
+        for (entries, 0..) |entry, position| list.appended(tables, position, entry.name);
+        self.attrs = list;
+    }
+
+    /// DOM "clone a single node" step 3's attributes, for an element that has
+    /// none yet: `source`'s list, SHARED - a shared block takes one holder
+    /// more, and an element's own list becomes a shared block in place
+    /// (Blink's Element::CloneAttributesFrom makes the source's
+    /// UniqueElementData shareable; WebKit's Element::
+    /// cloneAttributesFromElement). Across documents too: both elements are
+    /// one Browser's, whose tables the ids are. A block at `max_holders`
+    /// gives the clone a copy of its own.
+    pub fn shareFrom(self: *ElementData, scope: *runtime.BrowserScope, source: *ElementData) error{OutOfMemory}!void {
+        std.debug.assert(self.attrs == null);
+        const list = source.attrs orelse return;
+        if (!list.isShared()) {
+            @constCast(list).holders = 2;
+            self.attrs = list;
+            return;
+        }
+        if (list.hold()) {
+            self.attrs = list;
+            return;
+        }
+        const copy = try AttributeList.create(scope.allocator, try AttributeList.classFor(list.len));
+        const entries = list.items();
+        @memcpy(copy.slots()[0..entries.len], entries);
+        copy.len = list.len;
+        copy.id_index = list.id_index;
+        copy.class_index = list.class_index;
+        for (entries) |entry| retainEntry(scope, entry);
+        self.attrs = copy;
     }
 
     /// Append an attribute to the list, which takes the entry's references
     /// - on success only. Element's "append an attribute" step 1. The list
     /// may MOVE (script's appends grow it 1 -> 4 -> x2).
     pub fn appendAttribute(self: *ElementData, scope: *runtime.BrowserScope, entry: Entry) error{OutOfMemory}!void {
-        const list = if (self.attrs) |list| try list.withRoom(scope.allocator) else try AttributeList.create(scope.allocator, 1);
+        const list = if (self.attrs != null) try (try self.writable(scope, 1)).withRoom(scope.allocator) else try AttributeList.create(scope.allocator, 1);
         self.attrs = list;
         const position = list.len;
         list.slots()[position] = entry;
@@ -567,10 +736,19 @@ pub const ElementData = struct {
     /// Remove the attribute at `index` and hand its entry - its references
     /// - to the caller (`releaseEntry`). The list keeps its order (attribute
     /// order is observable through `attributes` and `getAttributeNames()`),
-    /// and goes with its last attribute.
-    pub fn takeAttributeAt(self: *ElementData, scope: *runtime.BrowserScope, index: usize) Entry {
-        const list = self.attrs.?;
-        const items = list.items();
+    /// and goes with its last attribute. A shared block whose last attribute
+    /// goes is let go, no copy made.
+    pub fn takeAttributeAt(self: *ElementData, scope: *runtime.BrowserScope, index: usize) error{OutOfMemory}!Entry {
+        const current = self.attrs.?;
+        if (current.isShared() and current.len == 1) {
+            const entry = current.items()[0];
+            retainEntry(scope, entry);
+            self.attrs = null;
+            current.drop(scope);
+            return entry;
+        }
+        const list = try self.writable(scope, 0);
+        const items = list.mutableItems();
         const entry = items[index];
         std.mem.copyForwards(Entry, items[index .. items.len - 1], items[index + 1 ..]);
         list.len -= 1;
@@ -586,8 +764,8 @@ pub const ElementData = struct {
     /// Set the value of the attribute at `index` to `value`, a reference
     /// the list takes, and hand back the old one for the caller to release
     /// once nothing reads it.
-    pub fn setValueAt(self: *ElementData, index: usize, value: ValueId) ValueId {
-        const slot = &self.attrs.?.items()[index];
+    pub fn setValueAt(self: *ElementData, scope: *runtime.BrowserScope, index: usize, value: ValueId) error{OutOfMemory}!ValueId {
+        const slot = &(try self.writable(scope, 0)).mutableItems()[index];
         const old = slot.value;
         slot.value = value;
         return old;
@@ -598,11 +776,152 @@ pub const ElementData = struct {
     /// the list takes, and hand back the old one for the caller to release -
     /// after moving an Attr node kept for it to the new record
     /// (AttrNodeList.rename).
-    pub fn setNameAt(self: *ElementData, index: usize, name: NameId) NameId {
-        const slot = &self.attrs.?.items()[index];
+    pub fn setNameAt(self: *ElementData, scope: *runtime.BrowserScope, index: usize, name: NameId) error{OutOfMemory}!NameId {
+        const slot = &(try self.writable(scope, 0)).mutableItems()[index];
         const old = slot.name;
         slot.name = name;
         return old;
+    }
+};
+
+/// A parser's shared attribute blocks: one per distinct attribute set -
+/// names and values, in order - that the parse has made (plan-v2 A3). The
+/// parser hands an element's entries to `share` and gets the block every
+/// element of the parse with an equal set holds.
+///
+/// The key is the CONTENT, compared in full: the entries' bytes, which are
+/// the name and value ids - one id per distinct name and value in a Browser,
+/// so equal sets are equal bytes (WebKit DocumentSharedObjectPool compares
+/// the atomized attribute spans the same way; Blink compares the attribute
+/// vectors). The hash only picks the slot.
+///
+/// LIFETIME: one parser run - a document's parse, or one fragment parse
+/// (innerHTML, insertAdjacentHTML, DOMParser, an XML parse) - and freed with
+/// it on every path its parser ends by (finished, aborted, stopped). Blink
+/// and WebKit keep theirs on the Document from the start of its parse until
+/// a one-shot timer 10 s after parsing finishes (Blink Document::
+/// SetParsingState and FinishedParsing's element_data_cache_clear_timer_;
+/// WebKit Document::finishedParsing's
+/// timeToKeepSharedObjectPoolAliveAfterParsingFinished), so fragments parsed
+/// in those 10 s share with the document. Which elements share is not web-
+/// observable, so the shorter lifetime is a memory trade, not a behaviour
+/// deviation: measured over the node-memory walker's 17 pages (lane nd2
+/// batch 4 census, 2026-11-11), a cache per parser run saves what the 10 s
+/// document cache saves on 15 of them; the other two lose 3,136 B
+/// (load-news) and 4,128 B (grid), their innerHTML calls after the parse.
+/// The integrator's ruling of 2026-11-11: per parser run now; the Document
+/// cache with a timer that keeps no event loop alive is a queued follow-up.
+pub const SharingCache = struct {
+    /// The Browser whose tables the blocks' ids are, set by the first share.
+    scope: ?*runtime.BrowserScope = null,
+    /// How many blocks the table holds.
+    count: usize = 0,
+    /// The table of a run with more than `inline_len * 3 / 4` distinct sets:
+    /// open addressing, linear probing, a power of two long. Empty while the
+    /// run's table is the inline one.
+    heap_slots: []?*const AttributeList = &.{},
+    heap_hashes: []u32 = &.{},
+    /// The table every run starts with, in the cache itself: most runs are a
+    /// fragment of a few elements (`el.innerHTML = '<b class=x>..</b>'`),
+    /// and a table from the allocator cost such a parse two allocations and
+    /// two frees - 1.8% of its instructions (lane nd2 batch 4, the cost
+    /// pair's tiny-fragment rows, 2026-11-11). Blink's cache is a HashMap
+    /// its Document keeps, so its fragments never pay for one either.
+    inline_slots: [inline_len]?*const AttributeList = @splat(null),
+    inline_hashes: [inline_len]u32 = @splat(0),
+
+    const inline_len = 16;
+
+    inline fn slots(self: *SharingCache) []?*const AttributeList {
+        return if (self.heap_slots.len != 0) self.heap_slots else &self.inline_slots;
+    }
+
+    inline fn hashes(self: *SharingCache) []u32 {
+        return if (self.heap_slots.len != 0) self.heap_hashes else &self.inline_hashes;
+    }
+
+    /// Let go of the cache's holder on every block (a block no element holds
+    /// any more is freed) and free the table.
+    pub fn deinit(self: *SharingCache) void {
+        const scope = self.scope orelse return;
+        for (self.slots()) |slot| if (slot) |list| list.drop(scope);
+        scope.allocator.free(self.heap_slots);
+        scope.allocator.free(self.heap_hashes);
+        self.* = .{};
+    }
+
+    /// The slot hash of `entries`: their ids mixed as integers (an entry is
+    /// a name id and a value id, 8 bytes). The hash only picks the slot -
+    /// equality is the content - so it need not be a byte hash's quality:
+    /// a multiply and a fold per entry.
+    fn hashOf(entries: []const Entry) u32 {
+        var hash: u64 = entries.len;
+        for (entries) |entry| {
+            const bits: u64 = @bitCast(std.mem.asBytes(&entry).*);
+            hash = (hash ^ bits) *% 0x9E3779B97F4A7C15;
+            hash ^= hash >> 32;
+        }
+        return @truncate(hash);
+    }
+
+    fn sameEntries(list: *const AttributeList, entries: []const Entry) bool {
+        return std.mem.eql(u8, std.mem.sliceAsBytes(list.items()), std.mem.sliceAsBytes(entries));
+    }
+
+    /// The shared block holding exactly `entries`, with one holder taken for
+    /// the caller. The entries' references are handed over on success: a
+    /// block found already holds its own, so they are released; a new block
+    /// takes them. A block found with `max_holders` is replaced in the cache
+    /// by a new one, and the cache lets go of its holder on the old.
+    pub fn share(self: *SharingCache, scope: *runtime.BrowserScope, entries: []const Entry) error{OutOfMemory}!*const AttributeList {
+        std.debug.assert(entries.len != 0);
+        std.debug.assert(self.scope == null or self.scope == scope);
+        self.scope = scope;
+        if ((self.count + 1) * 4 > self.slots().len * 3) try self.grow(scope);
+        const table = self.slots();
+        const table_hashes = self.hashes();
+        const hash = hashOf(entries);
+        const mask = table.len - 1;
+        var at: usize = hash & mask;
+        while (table[at]) |list| : (at = (at + 1) & mask) {
+            if (table_hashes[at] != hash or !sameEntries(list, entries)) continue;
+            if (list.hold()) {
+                for (entries) |entry| ElementData.releaseEntry(scope, entry);
+                return list;
+            }
+            const fresh = try AttributeList.createShared(scope, entries, 2);
+            table[at] = fresh;
+            list.drop(scope);
+            return fresh;
+        }
+        const fresh = try AttributeList.createShared(scope, entries, 2);
+        table[at] = fresh;
+        table_hashes[at] = hash;
+        self.count += 1;
+        return fresh;
+    }
+
+    /// A table four times as long, from the allocator: a run with many
+    /// distinct sets grows it few times (16 -> 64 -> 256 -> 1,024).
+    noinline fn grow(self: *SharingCache, scope: *runtime.BrowserScope) error{OutOfMemory}!void {
+        const old_slots = self.slots();
+        const old_hashes = self.hashes();
+        const len = old_slots.len * 4;
+        const new_slots = try scope.allocator.alloc(?*const AttributeList, len);
+        errdefer scope.allocator.free(new_slots);
+        const new_hashes = try scope.allocator.alloc(u32, len);
+        @memset(new_slots, null);
+        for (old_slots, old_hashes) |slot, hash| {
+            const list = slot orelse continue;
+            var at: usize = hash & (len - 1);
+            while (new_slots[at] != null) at = (at + 1) & (len - 1);
+            new_slots[at] = list;
+            new_hashes[at] = hash;
+        }
+        scope.allocator.free(self.heap_slots);
+        scope.allocator.free(self.heap_hashes);
+        self.heap_slots = new_slots;
+        self.heap_hashes = new_hashes;
     }
 };
 
@@ -1016,7 +1335,247 @@ fn testAppend(scope: *runtime.BrowserScope, data: *ElementData, namespace: ?[]co
 }
 
 fn testRemoveAt(scope: *runtime.BrowserScope, data: *ElementData, index: usize) void {
-    ElementData.releaseEntry(scope, data.takeAttributeAt(scope, index));
+    ElementData.releaseEntry(scope, data.takeAttributeAt(scope, index) catch unreachable);
+}
+
+/// `names[i]` = `values[i]` interned in `scope`: entries whose references
+/// the caller owns.
+fn testEntries(scope: *runtime.BrowserScope, buffer: []Entry, names: []const []const u8, values: []const []const u8) ![]Entry {
+    for (names, values, 0..) |name, value, i| {
+        buffer[i] = .{ .name = try attribute_names.intern(scope, null, null, name), .value = try attribute_values.intern(scope, value) };
+    }
+    return buffer[0..names.len];
+}
+
+/// A parsed element's data: `names` = `values` through `cache`.
+fn testParsed(scope: *runtime.BrowserScope, cache: ?*SharingCache, names: []const []const u8, values: []const []const u8) !ElementData {
+    var buffer: [8]Entry = undefined;
+    var data = ElementData.init();
+    try data.adoptEntries(scope, try testEntries(scope, &buffer, names, values), cache);
+    return data;
+}
+
+test "A3: two parsed elements with equal sets hold ONE block, a different set its own; the last holder frees it" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    var a = try testParsed(&scope, &cache, &.{ "class", "id" }, &.{ "x y", "one" });
+    var b = try testParsed(&scope, &cache, &.{ "class", "id" }, &.{ "x y", "one" });
+    var c = try testParsed(&scope, &cache, &.{ "class", "id" }, &.{ "x y", "two" });
+    // Same names, other order: another set.
+    var d = try testParsed(&scope, &cache, &.{ "id", "class" }, &.{ "one", "x y" });
+    try std.testing.expect(a.attrs.? == b.attrs.?);
+    try std.testing.expect(a.attrs.? != c.attrs.? and a.attrs.? != d.attrs.?);
+    try std.testing.expectEqual(@as(u8, 3), a.attrs.?.holders); // a, b and the cache
+    try std.testing.expectEqual(@as(usize, 3), cache.count);
+    // The ID and class indices are the block's, computed once.
+    try std.testing.expectEqualStrings("one", b.view(&scope).idValue());
+    try std.testing.expectEqualStrings("x y", b.view(&scope).classValue());
+    try std.testing.expectEqualStrings("one", d.view(&scope).idValue());
+    try std.testing.expectEqualStrings("x y", d.view(&scope).classValue());
+    // The cache goes first; the blocks live while an element holds them.
+    cache.deinit();
+    try std.testing.expectEqual(@as(u8, 2), a.attrs.?.holders);
+    a.deinit(&scope);
+    try std.testing.expectEqual(@as(u8, 1), b.attrs.?.holders);
+    try std.testing.expectEqualStrings("one", b.view(&scope).idValue());
+    b.deinit(&scope);
+    c.deinit(&scope);
+    d.deinit(&scope);
+    // std.testing.allocator: every block, record and table freed.
+}
+
+test "A3: a block counts at most 255 holders: 300 equal elements are two blocks, counts exact, all freed" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    var elements: [300]ElementData = undefined;
+    for (&elements) |*data| data.* = try testParsed(&scope, &cache, &.{ "class", "href" }, &.{ "row", "#" });
+    const first = elements[0].attrs.?;
+    const second = elements[299].attrs.?;
+    try std.testing.expect(first != second);
+    // The first block: 255 holders when it filled - 254 elements and the
+    // cache - then the cache let go of it for the second.
+    try std.testing.expectEqual(@as(u8, 254), first.holders);
+    for (elements[0..254]) |data| try std.testing.expect(data.attrs.? == first);
+    for (elements[254..]) |data| try std.testing.expect(data.attrs.? == second);
+    try std.testing.expectEqual(@as(u8, 300 - 254 + 1), second.holders);
+    // A clone of an element of the full block... the first is not full now;
+    // fill it again through clones, then one more clone gets a copy.
+    var clones: [2]ElementData = .{ ElementData.init(), ElementData.init() };
+    try clones[0].shareFrom(&scope, &elements[0]);
+    try std.testing.expectEqual(@as(u8, 255), first.holders);
+    try clones[1].shareFrom(&scope, &elements[0]);
+    try std.testing.expect(clones[1].attrs.? != first and !clones[1].attrs.?.isShared());
+    try std.testing.expectEqual(@as(u8, 255), first.holders);
+    for (&clones) |*data| data.deinit(&scope);
+    cache.deinit();
+    for (&elements) |*data| data.deinit(&scope);
+}
+
+test "A3: every writer copies a shared block and leaves the other holder untouched" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    const Writer = enum { append, take, take_last, set_value, set_name, reserve };
+    for (std.enums.values(Writer)) |writer| {
+        var cache: SharingCache = .{};
+        defer cache.deinit();
+        const one = writer == .take_last;
+        const names: []const []const u8 = if (one) &.{"id"} else &.{ "id", "class" };
+        const values: []const []const u8 = if (one) &.{"a"} else &.{ "a", "b c" };
+        var mine = try testParsed(&scope, &cache, names, values);
+        defer mine.deinit(&scope);
+        var other = try testParsed(&scope, &cache, names, values);
+        defer other.deinit(&scope);
+        const shared = other.attrs.?;
+        try std.testing.expect(mine.attrs.? == shared);
+        switch (writer) {
+            .append => try testAppend(&scope, &mine, null, null, "title", "t"),
+            .take => testRemoveAt(&scope, &mine, 0),
+            .take_last => testRemoveAt(&scope, &mine, 0),
+            .set_value => attribute_values.release(&scope, try mine.setValueAt(&scope, 0, try attribute_values.intern(&scope, "z"))),
+            .set_name => attribute_names.release(&scope, try mine.setNameAt(&scope, 0, try attribute_names.intern(&scope, null, "p", "id"))),
+            .reserve => try mine.reserve(&scope, 3),
+        }
+        // The other holder still reads its set, from the same block.
+        try std.testing.expect(other.attrs.? == shared);
+        try std.testing.expectEqualStrings("a", other.view(&scope).idValue());
+        try std.testing.expectEqual(names.len, other.getAttributeCount());
+        // The writer's list is its own now (or gone).
+        if (mine.attrs) |list| {
+            try std.testing.expect(list != shared and !list.isShared());
+        } else try std.testing.expect(writer == .take_last);
+        try std.testing.expectEqual(@as(u8, 2), shared.holders); // other + cache
+        switch (writer) {
+            .append => try std.testing.expectEqualStrings("t", mine.view(&scope).findValue(null, "title").?),
+            .take => try std.testing.expectEqualStrings("", mine.view(&scope).idValue()),
+            .set_value => try std.testing.expectEqualStrings("z", mine.view(&scope).idValue()),
+            .set_name => try std.testing.expectEqualStrings("p", mine.view(&scope).attributeAt(0).?.prefix.?),
+            .reserve => try std.testing.expect(mine.attrs.?.capacity() >= 5),
+            .take_last => {},
+        }
+        try std.testing.expectEqualStrings("b c", if (one) "b c" else mine.view(&scope).classValue());
+    }
+}
+
+test "A3: the last holder of a shared block takes it over for a write - no copy" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    var data = try testParsed(&scope, &cache, &.{"id"}, &.{"a"});
+    defer data.deinit(&scope);
+    cache.deinit();
+    const block = data.attrs.?;
+    try std.testing.expectEqual(@as(u8, 1), block.holders);
+    attribute_values.release(&scope, try data.setValueAt(&scope, 0, try attribute_values.intern(&scope, "b")));
+    try std.testing.expect(data.attrs.? == block and !block.isShared());
+    try std.testing.expectEqualStrings("b", data.view(&scope).idValue());
+}
+
+test "A3: a clone shares its source's block - an element's own list becomes shared in place - and writes copy" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var source = ElementData.init();
+    defer source.deinit(&scope);
+    try testAppend(&scope, &source, null, null, "id", "s");
+    try testAppend(&scope, &source, null, null, "class", "k");
+    const own = source.attrs.?;
+    var copy = ElementData.init();
+    defer copy.deinit(&scope);
+    try copy.shareFrom(&scope, &source);
+    try std.testing.expect(copy.attrs.? == own and own.holders == 2);
+    // A source with no attributes: nothing to share.
+    var empty = ElementData.init();
+    var copy_of_empty = ElementData.init();
+    try copy_of_empty.shareFrom(&scope, &empty);
+    try std.testing.expect(copy_of_empty.attrs == null);
+    // The source writes: it copies, the clone keeps the block.
+    try testAppend(&scope, &source, null, null, "title", "t");
+    try std.testing.expect(source.attrs.? != own and copy.attrs.? == own and own.holders == 1);
+    try std.testing.expectEqualStrings("s", copy.view(&scope).idValue());
+    try std.testing.expectEqual(@as(usize, 2), copy.getAttributeCount());
+}
+
+/// A parser run and what follows it, on an allocator that fails: 258 parsed
+/// elements with one set (the block fills, and the cache replaces it), 50
+/// with sets of their own (the cache's table leaves the cache for the
+/// allocator at its 13th set and grows again at its 49th), then a clone, a
+/// clone of the full block, and two writers' copies. Whatever fails, every
+/// reference, block and table is let go.
+fn testRunUnderFailure(allocator: std.mem.Allocator) !void {
+    var scope = runtime.BrowserScope.init(allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [258 + 50]ElementData = undefined;
+    var made: usize = 0;
+    defer for (elements[0..made]) |*data| data.deinit(&scope);
+    for (&elements, 0..) |*data, i| {
+        data.* = ElementData.init();
+        made += 1;
+        // As Element's setParsedAttributesHook: the entries' references are
+        // the caller's until the list takes them.
+        var entries: [2]Entry = undefined;
+        var interned: usize = 0;
+        errdefer for (entries[0..interned]) |entry| ElementData.releaseEntry(&scope, entry);
+        var href: [8]u8 = undefined;
+        const own = i >= 258;
+        for ([_][]const u8{ "class", "href" }, [_][]const u8{ "row", if (own) try std.fmt.bufPrint(&href, "#{d}", .{i}) else "#" }) |name, value| {
+            const name_id = try attribute_names.intern(&scope, null, null, name);
+            const value_id = attribute_values.intern(&scope, value) catch |err| {
+                attribute_names.release(&scope, name_id);
+                return err;
+            };
+            entries[interned] = .{ .name = name_id, .value = value_id };
+            interned += 1;
+        }
+        try data.adoptEntries(&scope, &entries, &cache);
+        interned = 0;
+    }
+    // The first block is full (254 elements; the cache moved on): a clone of
+    // one of its holders takes the 255th place, the next gets a copy.
+    var clones: [2]ElementData = .{ ElementData.init(), ElementData.init() };
+    defer for (&clones) |*data| data.deinit(&scope);
+    for (&clones) |*data| try data.shareFrom(&scope, &elements[0]);
+    // A writer's copy of a shared block, with the append's own growth.
+    try testAppend(&scope, &elements[1], null, null, "title", "t");
+    try elements[2].reserve(&scope, 3);
+}
+
+test "A3: a run of up to twelve distinct sets allocates no table; the thirteenth moves it to the allocator, and every block is still found" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [40]ElementData = undefined;
+    var made: usize = 0;
+    defer for (elements[0..made]) |*data| data.deinit(&scope);
+    var value: [8]u8 = undefined;
+    for (elements[0..12], 0..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+    }
+    // Twelve blocks, in the cache's own table.
+    try std.testing.expectEqual(@as(usize, 12), cache.count);
+    try std.testing.expectEqual(@as(usize, 0), cache.heap_slots.len);
+    for (elements[12..20], 12..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+    }
+    try std.testing.expectEqual(@as(usize, 64), cache.heap_slots.len);
+    try std.testing.expectEqual(@as(usize, 20), cache.count);
+    // Every set made before and after the move is found again: one block each.
+    for (elements[20..40], 0..) |*data, i| {
+        data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        made += 1;
+        try std.testing.expect(data.attrs.? == elements[i].attrs.?);
+        try std.testing.expectEqual(@as(u8, 3), data.attrs.?.holders);
+    }
+    try std.testing.expectEqual(@as(usize, 20), cache.count);
+}
+
+test "A3: an allocation failure in a share, the cache's growth, a copy on write or a clone leaves nothing behind" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, testRunUnderFailure, .{});
 }
 
 test "an entry is 8 bytes with no pointer, and a one-attribute element pays one 16-byte block" {
@@ -1070,7 +1629,7 @@ test "script's appends grow the list 1, 4, 8; a reservation is exact; order hold
 
     // Parse and clone reserve exactly: five attributes, five entries; then
     // a script append doubles.
-    try data.reserve(scope.allocator, 5);
+    try data.reserve(&scope, 5);
     for (names[0..5]) |name| try testAppend(&scope, &data, null, null, name, "v");
     try std.testing.expectEqual(@as(usize, 5), data.attrs.?.capacity());
     try testAppend(&scope, &data, null, null, "f", "v");

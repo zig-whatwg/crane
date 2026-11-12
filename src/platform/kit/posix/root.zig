@@ -18,6 +18,7 @@ const memory = @import("memory");
 // <time.h>, translated by build.zig (addCImport) with the target's libc headers,
 // the iPhoneOS SDK's for aarch64-ios.
 const c_time = @import("c_time");
+const signal_stack = @import("signal_stack.zig");
 
 const log = std.log.scoped(.platform);
 
@@ -235,6 +236,10 @@ fn threadMain(start: *Start) void {
         }
     }
     std.heap.c_allocator.destroy(start);
+    // Every thread the platform starts has its alternate signal stack
+    // (signal_stack.zig), released when its entry returns.
+    const stack = signal_stack.attach();
+    defer signal_stack.detach(stack);
     entry(context);
 }
 
@@ -259,6 +264,16 @@ pub fn joinThread(thread: platform.Thread) void {
     const handle: *std.Thread = @ptrFromInt(thread.handle);
     handle.join();
     std.heap.c_allocator.destroy(handle);
+}
+
+/// The calling thread's alternate signal stack, mapped with guard pages
+/// (signal_stack.zig); 0 when the thread keeps one it already has.
+pub fn attachSignalStack() platform.SignalStack {
+    return .{ .handle = signal_stack.attach() };
+}
+
+pub fn detachSignalStack(stack: platform.SignalStack) void {
+    signal_stack.detach(stack.handle);
 }
 
 // ---------------------------------------------------------------------------

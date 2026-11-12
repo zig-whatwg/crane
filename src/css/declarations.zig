@@ -14,11 +14,14 @@
 //! Spec: https://drafts.csswg.org/cssom-1/#the-cssstyledeclaration-interface
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const properties = @import("properties.zig");
 const rules = @import("rules.zig");
 const values = @import("style_values.zig");
 const custom_properties = @import("custom_properties.zig");
+const computed_style = @import("computed_style.zig");
+const pending_values = @import("pending_values.zig");
 
 const Longhand = properties.Longhand;
 const Shorthand = properties.Shorthand;
@@ -83,6 +86,25 @@ pub const DeclarationBlock = struct {
     /// The number of custom property declarations: the cascade looks for
     /// them only in a block that has some.
     custom_count: u32 = 0,
+    /// `contentHash`, cached: 24 bits, little-endian, 0 when not computed
+    /// (Blink's CSSPropertyValueSet `hash_`, computed lazily by GetHash).
+    /// It sits in the 3 bytes of padding after `custom_count` and
+    /// `context`, so a block stays 48 B and an ElementStyle does not grow
+    /// (the size pin below). Every writer resets it (`content_writers`).
+    content_hash: [3]u8 = .{ 0, 0, 0 },
+
+    /// Every pub method that can change the entries the cascade reads; each
+    /// resets the cached content hash (`contentChanged`), as each of
+    /// Blink's CSSPropertyValueSet mutators calls InvalidateHashIfComputed
+    /// (css_property_value_set.cc, chromium f1bd91298bf0: RemovePropertyAtIndex,
+    /// SetProperty, SetLonghandProperty, Clear, RemovePropertiesInSet ...).
+    /// A pub method taking `*DeclarationBlock` that is not listed here fails
+    /// to compile (the check after this struct): review it, make it reset
+    /// the hash, then list it. Code outside this file that writes `entries`
+    /// directly (page descriptors, font faces, font requests, animation
+    /// effect blocks) never writes an element's own block, the only blocks
+    /// whose hash is read; Debug builds recompute every cached hash read.
+    pub const content_writers = [_][]const u8{ "deinit", "clear", "appendDeclarations", "setProperty", "setValidatedProperty", "setValidatedCustom", "removeProperty", "setCssText" };
 
     pub const Context = enum {
         style,
@@ -135,6 +157,7 @@ pub const DeclarationBlock = struct {
 
     /// Empty the declarations.
     pub fn clear(self: *DeclarationBlock) void {
+        self.contentChanged();
         for (self.entries.items) |*e| self.freeEntry(e);
         self.entries.clearRetainingCapacity();
         std.debug.assert(self.custom_count == 0);
@@ -185,6 +208,7 @@ pub const DeclarationBlock = struct {
     /// discarded rule, preserving importance and specified order without
     /// reparsing the declarations already in this block.
     pub fn appendDeclarations(self: *DeclarationBlock, options: properties.ParseOptions, parsed: []const rules.Declaration) Allocator.Error!void {
+        self.contentChanged();
         for (parsed) |d| try self.addParsed(options, d.name, d.value, d.important);
     }
 
@@ -194,6 +218,7 @@ pub const DeclarationBlock = struct {
     /// order would make lose anyway (Blink's parsed declaration sets do the
     /// same).
     fn addParsed(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        self.contentChanged();
         if (std.mem.startsWith(u8, name, "--")) return self.addCustom(options, name, value_text, important);
         const property = properties.lookup(name) orelse {
             if (self.context == .position_try) return;
@@ -226,6 +251,7 @@ pub const DeclarationBlock = struct {
     }
 
     fn setUnparsed(self: *DeclarationBlock, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        self.contentChanged();
         if (rules.declarationValueHasBadToken(value_text)) return;
         const custom = std.mem.startsWith(u8, name, "--");
         const name_copy = try self.allocator.dupe(u8, name);
@@ -248,6 +274,7 @@ pub const DeclarationBlock = struct {
     /// 2"). Not in @position-try (Anchor Position 1 §6.4 lists its
     /// properties); in @keyframes only without !important.
     fn addCustom(self: *DeclarationBlock, options: properties.ParseOptions, name: []const u8, value_text: []const u8, important: bool) Allocator.Error!void {
+        self.contentChanged();
         if (!custom_properties.isName(name)) return;
         switch (self.context) {
             .style => {},
@@ -285,6 +312,7 @@ pub const DeclarationBlock = struct {
                 value.release();
                 return false;
             }
+            self.contentChanged();
             existing.value.release();
             existing.value = value;
             existing.important = important;
@@ -294,6 +322,7 @@ pub const DeclarationBlock = struct {
         const name_text = try custom_properties.Text.create(self.allocator, name);
         errdefer name_text.release();
         try self.entries.append(self.allocator, .{ .custom = .{ .name = name_text, .value = value, .important = important } });
+        self.contentChanged();
         self.custom_count += 1;
         return true;
     }
@@ -513,6 +542,7 @@ pub const DeclarationBlock = struct {
         if (self.indexOfCustom(name)) |i| {
             const existing = &self.entries.items[i].custom;
             if (!existing.important and existing.value.eql(value)) return false;
+            self.contentChanged();
             value.retain();
             existing.value.release();
             existing.value = value;
@@ -522,6 +552,7 @@ pub const DeclarationBlock = struct {
         const name_text = try custom_properties.Text.create(self.allocator, name);
         errdefer name_text.release();
         try self.entries.ensureUnusedCapacity(self.allocator, 1);
+        self.contentChanged();
         value.retain();
         self.entries.appendAssumeCapacity(.{ .custom = .{ .name = name_text, .value = value, .important = false } });
         self.custom_count += 1;
@@ -544,16 +575,19 @@ pub const DeclarationBlock = struct {
                     value.release();
                     return false;
                 }
+                self.contentChanged();
                 existing.value.release();
                 existing.value = value;
                 existing.important = important;
                 return true;
             }
+            self.contentChanged();
             var old = self.entries.orderedRemove(i);
             self.freeEntry(&old);
         }
         errdefer value.release();
         try self.entries.append(self.allocator, .{ .typed = .{ .longhand = l, .value = value, .important = important } });
+        self.contentChanged();
         return true;
     }
 
@@ -581,6 +615,7 @@ pub const DeclarationBlock = struct {
         var removed = false;
         if (std.mem.startsWith(u8, property_name, "--")) {
             if (self.indexOfCustom(property_name)) |i| {
+                self.contentChanged();
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
                 removed = true;
@@ -589,6 +624,7 @@ pub const DeclarationBlock = struct {
         }
         const property = properties.lookup(property_name) orelse {
             if (self.indexOfNameInsensitive(property_name)) |i| {
+                self.contentChanged();
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
                 removed = true;
@@ -608,6 +644,7 @@ pub const DeclarationBlock = struct {
         if (property == .shorthand and self.holdsPendingShorthand(property.shorthand)) out.shrinkRetainingCapacity(start);
         for (longhands) |l| {
             if (self.indexOf(l)) |i| {
+                self.contentChanged();
                 var old = self.entries.orderedRemove(i);
                 self.freeEntry(&old);
                 removed = true;
@@ -635,6 +672,7 @@ pub const DeclarationBlock = struct {
     /// in specified order."
     pub fn setCssText(self: *DeclarationBlock, options: properties.ParseOptions, text: []const u8) Allocator.Error!void {
         var parsed = try parseInContext(options, text, self.context);
+        // clear() resets the content hash.
         self.clear();
         self.entries.deinit(self.allocator);
         self.entries = parsed.entries;
@@ -737,6 +775,151 @@ pub const DeclarationBlock = struct {
         return .{ .entries = if (self.custom_count == 0) &.{} else self.entries.items };
     }
 
+    // ------------------------------------------------------------------------
+    // Content identity: the matched-properties cache keys and compares an
+    // element's own blocks (its style attribute's, its presentational
+    // hints') by content, as Blink does its inline style (lane style1 b5;
+    // tmp/redesign/style-memory-design.md 3.6).
+    // ------------------------------------------------------------------------
+
+    /// The entries changed: the cached content hash is stale.
+    fn contentChanged(self: *DeclarationBlock) void {
+        self.content_hash = .{ 0, 0, 0 };
+    }
+
+    /// A 24-bit hash of what the cascade reads in this block, computed on
+    /// first use and cached until a writer changes the entries (Blink
+    /// CSSPropertyValueSet::GetHash / ComputeHash: each property's id,
+    /// importance and CSSValue::Hash). Equal content - `interchangeable`
+    /// blocks - hashes equal in the common case; a collision or an unequal
+    /// hash costs the matched-properties cache a compare or a miss, never a
+    /// value, because it compares content. Never 0. Takes a const block:
+    /// the cache is not part of its value (Blink's `mutable hash_`).
+    pub fn contentHash(self: *const DeclarationBlock) u32 {
+        const cached = std.mem.readInt(u24, &self.content_hash, .little);
+        if (cached != 0) {
+            // Debug builds: a writer that changed the entries without
+            // resetting the hash is a bug (content_writers).
+            if (comptime builtin.mode == .debug) {
+                if (self.computeContentHash()) |fresh| if (fresh != cached)
+                    std.debug.panic("declaration block content hash stale: cached {x}, now {x}", .{ cached, fresh });
+            }
+            return cached;
+        }
+        const fresh = self.computeContentHash() orelse return @truncate(@intFromPtr(self) | 1);
+        std.mem.writeInt(u24, &@constCast(self).content_hash, fresh, .little);
+        return fresh;
+    }
+
+    /// Null when out of memory (serializing a value): not cached then.
+    fn computeContentHash(self: *const DeclarationBlock) ?u24 {
+        // Serializing a value allocates; the hash is computed once per change.
+        const scratch = self.allocator;
+        var h = std.hash.Wyhash.init(0x6f776e);
+        hashScalar(&h, @backingInt(self.context));
+        for (self.entries.items) |*e| switch (e.*) {
+            // Kept for read-back only: the cascade never reads it.
+            .unparsed => {},
+            .typed => |d| {
+                hashScalar(&h, @backingInt(d.longhand));
+                hashScalar(&h, @intFromBool(d.important));
+                switch (d.value) {
+                    .css_wide => |k| hashScalar(&h, @backingInt(k)),
+                    .value => |v| hashValue(&h, d.longhand, v, scratch) catch return null,
+                }
+            },
+            .custom => |c| {
+                h.update(c.name.bytes);
+                hashScalar(&h, @as(u64, @intFromBool(c.important)) | 2);
+                switch (c.value) {
+                    .css_wide => |k| hashScalar(&h, @backingInt(k)),
+                    .text => |t| h.update(t.bytes),
+                    .pending => |p| h.update(p.text),
+                }
+            },
+        };
+        const full = h.final();
+        const folded: u24 = @truncate(full ^ (full >> 24) ^ (full >> 48));
+        return if (folded == 0) 1 else folded;
+    }
+
+    /// Whether the cascade computes the same from `a` as from `b` in every
+    /// place - element-attached or not - so a style computed with one may
+    /// stand for one computed with the other (Blink CachedMatchedProperties::
+    /// CorrespondsTo: CSSPropertyValueSet::Equals, value and importance per
+    /// property). Compared: the context; the entries the cascade reads, in
+    /// order (an unsupported declaration kept for read-back is not one):
+    /// a typed declaration's longhand, importance and value, a custom one's
+    /// name, importance and value.
+    ///
+    /// A value: `identical`, else computed_style.interchangeable's rule
+    /// (Value.eql AND Value.resourcesEql: each url()'s resolved URL, flags
+    /// and source - base URL, referrer, referrer policy, origin-clean). What
+    /// that rule cannot see in a DECLARED value (audit, lane style1 b5):
+    /// a pending-substitution value (var(), env(), attr(), random-item())
+    /// keeps its url()s and their base unresolved - Pending.eql compares its
+    /// text and property only and resourceUrls() is empty for it - so its
+    /// provenance is compared field by field (`samePending`): its source
+    /// (the base its substituted url()s resolve against, the referrer and
+    /// its policy, origin-clean), the quirks and SVG-presentation modes it
+    /// re-parses in, its captured url()s, its namespace map (attr()), its
+    /// resolver flag. A custom property's text (Text.eql: bytes and taint)
+    /// resolves nothing itself. Every other declared payload is a computed
+    /// one's type, audited by b4 (computed_style.interchangeable).
+    pub fn interchangeable(a: *const DeclarationBlock, b: *const DeclarationBlock) bool {
+        if (a == b) return true;
+        if (a.context != b.context) return false;
+        var i: usize = 0;
+        var j: usize = 0;
+        while (true) {
+            while (i < a.entries.items.len and a.entries.items[i] == .unparsed) i += 1;
+            while (j < b.entries.items.len and b.entries.items[j] == .unparsed) j += 1;
+            if (i == a.entries.items.len or j == b.entries.items.len) return i == a.entries.items.len and j == b.entries.items.len;
+            const x = &a.entries.items[i];
+            const y = &b.entries.items[j];
+            switch (x.*) {
+                .typed => |d| {
+                    if (y.* != .typed) return false;
+                    const e = y.typed;
+                    if (d.longhand != e.longhand or d.important != e.important or !sameAssigned(d.value, e.value)) return false;
+                },
+                .custom => |c| {
+                    if (y.* != .custom) return false;
+                    const k = y.custom;
+                    if (c.important != k.important or !std.mem.eql(u8, c.name.bytes, k.name.bytes) or !sameSpecified(c.value, k.value)) return false;
+                },
+                .unparsed => unreachable,
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+
+    /// A copy of the entries the cascade reads, sharing their values (each
+    /// retained): what a matched-properties cache entry keeps of an
+    /// element's own block, so the owner's later writes to its block leave
+    /// the entry as it was. `allocator` owns the copy (deinit releases it).
+    pub fn snapshot(self: *const DeclarationBlock, allocator: Allocator) Allocator.Error!DeclarationBlock {
+        var copy = DeclarationBlock.init(allocator);
+        copy.context = self.context;
+        copy.content_hash = self.content_hash;
+        try copy.entries.ensureTotalCapacity(allocator, self.entries.items.len);
+        for (self.entries.items) |e| switch (e) {
+            .unparsed => {},
+            .typed => |d| {
+                d.value.retain();
+                copy.entries.appendAssumeCapacity(e);
+            },
+            .custom => |c| {
+                c.name.retain();
+                c.value.retain();
+                copy.entries.appendAssumeCapacity(e);
+                copy.custom_count += 1;
+            },
+        };
+        return copy;
+    }
+
     pub const CustomIterator = struct {
         entries: []const Entry,
         index: usize = 0,
@@ -811,7 +994,9 @@ const preferred_shorthands = blk: {
     for (fields) |f| {
         const s: Shorthand = @fromBackingInt(@intCast(f.value));
         // Legacy one-member aliases are emitted with their canonical longhand.
-        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s.isLegacyShorthand()) continue;
+        // color-adjust (Color Adjustment 1 §3.1) is one too: cssText keeps
+        // print-color-adjust, as Firefox and Safari serialize it.
+        if (s == .all or s == ._webkit_text_orientation or s == ._webkit_transform or s == ._webkit_perspective or s == .color_adjust or s.isLegacyShorthand()) continue;
         out[n] = s;
         n += 1;
     }
@@ -846,6 +1031,9 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
         .min_width, .min_height => return .min_size,
         .max_width, .max_height => return .max_size,
         .overflow_x, .overflow_y => return .overflow,
+        .overscroll_behavior_x, .overscroll_behavior_y => return .overscroll,
+        .contain_intrinsic_width, .contain_intrinsic_height => return .contain_intrinsic,
+        .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape => return .corner_shape,
         else => {},
     }
     const sides = [_]PhysicalSides{
@@ -863,6 +1051,134 @@ fn logicalGroup(l: Longhand) ?properties.Logical.Group {
 }
 
 const PhysicalSides = struct { group: properties.Logical.Group, ls: [4]Longhand };
+
+comptime {
+    // content_writers is the reviewed list of every pub method that takes
+    // a mutable block (DeclarationBlock.content_hash).
+    @setEvalBranchQuota(20_000);
+    for (@typeInfo(DeclarationBlock).@"struct".decl_names) |name| {
+        const info = @typeInfo(@TypeOf(@field(DeclarationBlock, name)));
+        if (info != .@"fn" or info.@"fn".param_types.len == 0) continue;
+        if (info.@"fn".param_types[0] != *DeclarationBlock) continue;
+        const listed = for (DeclarationBlock.content_writers) |w| {
+            if (std.mem.eql(u8, w, name)) break true;
+        } else false;
+        if (!listed) @compileError("DeclarationBlock." ++ name ++ " takes a mutable block: make it reset the content hash (contentChanged) and list it in content_writers");
+    }
+}
+
+fn hashScalar(h: *std.hash.Wyhash, x: u64) void {
+    h.update(std.mem.asBytes(&x));
+}
+
+/// A declared value into the content hash: a payload that holds no
+/// reference by its bits (so `identical` values hash equal), a
+/// pending-substitution value by its text and property (Pending.eql's
+/// fields), any other by its CSSOM serialization, so equal values parsed
+/// apart share a key (Blink's CSSValue::Hash hashes what it can by content
+/// and the rest by pointer).
+fn hashValue(h: *std.hash.Wyhash, l: Longhand, v: values.Value, scratch: Allocator) Allocator.Error!void {
+    hashScalar(h, @backingInt(std.meta.activeTag(v)));
+    switch (v) {
+        .pending => |p| {
+            h.update(p.text);
+            if (p.property) |property| switch (property) {
+                .longhand => |x| hashScalar(h, @backingInt(x)),
+                .shorthand => |x| hashScalar(h, @as(u64, @backingInt(x)) | 1 << 32),
+            };
+        },
+        inline else => |payload| {
+            if (comptime !computed_style.mayHoldReference(@TypeOf(payload))) {
+                hashPlain(@TypeOf(payload), h, payload);
+            } else {
+                var out: std.ArrayList(u8) = .empty;
+                defer out.deinit(scratch);
+                try properties.serializeAssigned(l, .{ .value = v }, &out, scratch);
+                h.update(out.items);
+            }
+        },
+    }
+}
+
+/// The bits of a payload that holds no reference, as computed_style.identical
+/// compares them.
+fn hashPlain(comptime T: type, h: *std.hash.Wyhash, x: T) void {
+    switch (@typeInfo(T)) {
+        .float => hashScalar(h, @as(u64, @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(x)))),
+        .bool => hashScalar(h, @intFromBool(x)),
+        .int => hashInt(T, h, x),
+        .@"enum" => |e| hashInt(e.tag_type, h, @backingInt(x)),
+        .void => {},
+        .optional => |o| if (x) |y| {
+            hashScalar(h, 1);
+            hashPlain(o.child, h, y);
+        } else hashScalar(h, 0),
+        .array => |a| for (x) |y| hashPlain(a.child, h, y),
+        .@"struct" => |s| if (s.layout == .@"packed") {
+            hashPlain(s.backing_integer.?, h, @bitCast(x));
+        } else inline for (s.field_names, s.field_types) |f_name, f_type| hashPlain(f_type, h, @field(x, f_name)),
+        .@"union" => switch (x) {
+            inline else => |y, tag| {
+                hashScalar(h, @backingInt(tag));
+                hashPlain(@TypeOf(y), h, y);
+            },
+        },
+        else => @compileError("no plain hash for " ++ @typeName(T)),
+    }
+}
+
+fn hashInt(comptime T: type, h: *std.hash.Wyhash, x: T) void {
+    if (comptime @bitSizeOf(T) <= 64) {
+        hashScalar(h, @as(@Int(.unsigned, @bitSizeOf(T)), @bitCast(x)));
+    } else h.update(std.mem.asBytes(&x));
+}
+
+fn sameAssigned(a: Assigned, b: Assigned) bool {
+    return switch (a) {
+        .css_wide => |k| b == .css_wide and b.css_wide == k,
+        .value => |v| b == .value and sameValue(v, b.value),
+    };
+}
+
+fn sameValue(a: values.Value, b: values.Value) bool {
+    if (computed_style.identical(a, b)) return true;
+    if (a == .pending) return b == .pending and samePending(a.pending, b.pending);
+    return computed_style.interchangeable(values.Value, a, b);
+}
+
+fn sameSpecified(a: custom_properties.Specified, b: custom_properties.Specified) bool {
+    return switch (a) {
+        .css_wide => |k| b == .css_wide and b.css_wide == k,
+        .text => |t| b == .text and t.eql(b.text),
+        .pending => |p| b == .pending and samePending(p, b.pending),
+    };
+}
+
+/// Two pending-substitution values the cascade substitutes alike: equal
+/// (text and property) and of the same provenance, field by field (the
+/// audit at DeclarationBlock.interchangeable).
+fn samePending(a: *const pending_values.Pending, b: *const pending_values.Pending) bool {
+    if (a == b) return true;
+    if (!a.eql(b)) return false;
+    if (a.quirks != b.quirks or a.svg_presentation != b.svg_presentation or a.had_resolver != b.had_resolver) return false;
+    if ((a.namespaces == null) != (b.namespaces == null)) return false;
+    if (a.namespaces) |n| if (n != b.namespaces.?) return false;
+    // A UA declaration's -internal-auto-base(): never an element's own.
+    if (a.auto_base != null or b.auto_base != null) return false;
+    if (a.urls.len != b.urls.len) return false;
+    for (a.urls, b.urls) |x, y| {
+        if (!std.mem.eql(u8, x.raw, y.raw) or (x.resolved == null) != (y.resolved == null)) return false;
+        if (x.resolved) |r| if (!std.mem.eql(u8, r, y.resolved.?)) return false;
+    }
+    const s = a.source orelse return b.source == null;
+    const t = b.source orelse return false;
+    if (s == t) return true;
+    if (s.origin_clean != t.origin_clean or !std.mem.eql(u8, s.base_url, t.base_url) or
+        !std.mem.eql(u8, s.referrer_policy, t.referrer_policy)) return false;
+    if ((s.referrer == null) != (t.referrer == null)) return false;
+    if (s.referrer) |r| if (!std.mem.eql(u8, r, t.referrer.?)) return false;
+    return true;
+}
 
 fn assignedEql(a: Assigned, b: Assigned) bool {
     return switch (a) {
@@ -996,6 +1312,7 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "border-style",
         "border-width",
         "column-rule-inset",
+        "corner-shape",
         "font-synthesis",
         "grid-area",
         "inset",
@@ -1040,7 +1357,16 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "column-rule-inset-end",
         "column-rule-inset-junction",
         "column-rule-inset-start",
+        "contain-intrinsic-size",
         "container",
+        "corner-block-end-shape",
+        "corner-block-start-shape",
+        "corner-bottom-shape",
+        "corner-inline-end-shape",
+        "corner-inline-start-shape",
+        "corner-left-shape",
+        "corner-right-shape",
+        "corner-top-shape",
         "flex-flow",
         "gap",
         "grid-column",
@@ -1050,6 +1376,7 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "margin-block",
         "margin-inline",
         "overflow",
+        "overscroll-behavior",
         "padding-block",
         "padding-inline",
         "place-content",
@@ -1074,8 +1401,178 @@ test "page-break repair preserves every preferred shorthand in its original orde
         "text-spacing",
         "text-wrap",
         "white-space",
+        "-webkit-text-stroke",
     };
     try std.testing.expectEqual(expected.len, preferred_shorthands.len);
     for (expected, preferred_shorthands) |name, shorthand|
         try std.testing.expectEqualStrings(name, shorthand.name());
+}
+
+// ---------------------------------------------------------------------------
+// Lane style1 b5: content identity (contentHash, interchangeable, snapshot).
+// ---------------------------------------------------------------------------
+
+test "a block's content hash costs no memory: DeclarationBlock and an optional one keep their sizes" {
+    // The fields before the hash (main 11e1c6a8b86): an ElementStyle keeps a
+    // ?DeclarationBlock by value, so a bigger block is a bigger element.
+    const Before = struct {
+        allocator: Allocator,
+        context: DeclarationBlock.Context,
+        entries: std.ArrayList(Entry),
+        custom_count: u32,
+    };
+    try testing.expectEqual(@sizeOf(Before), @sizeOf(DeclarationBlock));
+    try testing.expectEqual(@sizeOf(?Before), @sizeOf(?DeclarationBlock));
+}
+
+fn contentHashOf(text: []const u8) !u32 {
+    var block = try DeclarationBlock.parse(testOptions(), text);
+    defer block.deinit();
+    return block.contentHash();
+}
+
+test "equal content hashes equal whatever the spelling; importance, values and names hash apart" {
+    try testing.expectEqual(try contentHashOf("margin-top: 3px"), try contentHashOf("margin-top:3px;"));
+    try testing.expectEqual(try contentHashOf("opacity: 0.6;"), try contentHashOf("opacity:0.6"));
+    try testing.expectEqual(try contentHashOf("color: blue; --a: 1px"), try contentHashOf("color:blue;--a:1px"));
+    // Unsupported declarations are kept for read-back only.
+    try testing.expectEqual(try contentHashOf("margin-top: 3px"), try contentHashOf("margin-top: 3px; -crane-unknown: 1"));
+    // A value with a reference (a transform list) hashes its serialization.
+    try testing.expectEqual(try contentHashOf("transform: translateY(4px)"), try contentHashOf("transform:translateY(4px)"));
+    try testing.expect(try contentHashOf("transform: translateY(4px)") != try contentHashOf("transform: translateY(5px)"));
+    try testing.expect(try contentHashOf("margin-top: 3px") != try contentHashOf("margin-top: 3px !important"));
+    try testing.expect(try contentHashOf("margin-top: 3px") != try contentHashOf("margin-top: 4px"));
+    try testing.expect(try contentHashOf("margin-top: 3px") != try contentHashOf("margin-bottom: 3px"));
+    try testing.expect(try contentHashOf("--a: 1px") != try contentHashOf("--b: 1px"));
+    try testing.expect(try contentHashOf("width: var(--a)") != try contentHashOf("width: var(--b)"));
+}
+
+/// The hash `block` caches now, 0 when none.
+fn cachedHash(block: *const DeclarationBlock) u24 {
+    return std.mem.readInt(u24, &block.content_hash, .little);
+}
+
+test "every writer resets the cached content hash, and the next hash is the new content's" {
+    const Write = enum { set, set_custom, set_validated, set_validated_custom, remove, css_text, append, clear };
+    for (std.enums.values(Write)) |write| {
+        var block = try DeclarationBlock.parse(testOptions(), "margin-top: 3px; --a: 1px");
+        defer block.deinit();
+        const before = block.contentHash();
+        try testing.expect(cachedHash(&block) != 0);
+        switch (write) {
+            .set => try testing.expect(try block.setProperty(testOptions(), "margin-top", "4px", "")),
+            .set_custom => try testing.expect(try block.setProperty(testOptions(), "--a", "2px", "")),
+            .set_validated => {
+                var assignments: std.ArrayList(Assignment) = .empty;
+                defer assignments.deinit(testing.allocator);
+                try testing.expect(try properties.parseDeclaration(testOptions(), .{ .longhand = .margin_top }, "5px", &assignments));
+                defer for (assignments.items) |a| a.value.release();
+                try testing.expect(try block.setValidatedProperty(.{ .longhand = .margin_top }, assignments.items));
+            },
+            .set_validated_custom => {
+                const value = (try custom_properties.parse(testOptions(), "9px")).?;
+                defer value.release();
+                try testing.expect(try block.setValidatedCustom("--a", value));
+            },
+            .remove => {
+                var out: std.ArrayList(u8) = .empty;
+                defer out.deinit(testing.allocator);
+                try testing.expect(try block.removeProperty("margin-top", &out));
+            },
+            .css_text => try block.setCssText(testOptions(), "margin-top: 3px; --a: 1px; color: red"),
+            .append => {
+                const parsed = try rules.parseDeclarationList(testing.allocator, "color: red");
+                defer rules.freeDeclarationList(testing.allocator, parsed);
+                try block.appendDeclarations(testOptions(), parsed);
+            },
+            .clear => block.clear(),
+        }
+        try testing.expectEqual(@as(u24, 0), cachedHash(&block));
+        const after = block.contentHash();
+        try testing.expect(after != before);
+        // The same content parsed afresh hashes the same.
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(testing.allocator);
+        try block.serialize(&out);
+        try testing.expectEqual(after, try contentHashOf(out.items));
+    }
+}
+
+test "a write that changes nothing keeps the cached hash" {
+    var block = try DeclarationBlock.parse(testOptions(), "margin-top: 3px");
+    defer block.deinit();
+    const before = block.contentHash();
+    try testing.expect(!try block.setProperty(testOptions(), "margin-top", "3px", ""));
+    try testing.expectEqual(before, cachedHash(&block));
+}
+
+const TestUrlResolver = struct {
+    prefix: []const u8,
+    fn resolve(context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+        const self: *const TestUrlResolver = @ptrCast(@alignCast(context));
+        return std.mem.concat(allocator, u8, &.{ self.prefix, raw }) catch null;
+    }
+};
+
+/// `text` parsed as a style attribute under `base` with referrer policy
+/// `policy`, url()s resolved by prefixing the base.
+fn blockUnder(text: []const u8, base: []const u8, policy: []const u8) !DeclarationBlock {
+    const resolver: TestUrlResolver = .{ .prefix = base };
+    const source = try values.ResourceSource.create(testing.allocator, .{ .base_url = base, .referrer_policy = policy });
+    defer source.unref();
+    return DeclarationBlock.parse(.{ .allocator = testing.allocator, .resource_source = source, .url_resolver = .{ .context = &resolver, .resolve = TestUrlResolver.resolve } }, text);
+}
+
+test "blocks are interchangeable only with the same declarations, importance, values and resource provenance" {
+    const Pair = struct { a: []const u8, b: []const u8, base_b: []const u8 = "https://one.test/", policy_b: []const u8 = "", same: bool };
+    const pairs = [_]Pair{
+        .{ .a = "margin-top: 3px", .b = "margin-top:3px", .same = true },
+        .{ .a = "margin-top: 3px", .b = "margin-top: 3px; -crane-unknown: 2", .same = true },
+        .{ .a = "background-image: url(./a.png)", .b = "background-image: url(./a.png)", .same = true },
+        .{ .a = "margin-top: 3px", .b = "margin-top: 3px !important", .same = false },
+        .{ .a = "margin-top: 3px", .b = "margin-top: 4px", .same = false },
+        .{ .a = "margin-top: 3px", .b = "margin-bottom: 3px", .same = false },
+        .{ .a = "margin-top: 3px; color: red", .b = "color: red; margin-top: 3px", .same = false },
+        .{ .a = "--a: 1px", .b = "--b: 1px", .same = false },
+        .{ .a = "--a: 1px", .b = "--a: 2px", .same = false },
+        .{ .a = "--a: 1px", .b = "--a: 1px !important", .same = false },
+        // CSS Values 4 4.5.1: the same url() under another base or another
+        // referrer policy is another request.
+        .{ .a = "background-image: url(./a.png)", .b = "background-image: url(./a.png)", .base_b = "https://two.test/", .same = false },
+        .{ .a = "background-image: url(./a.png)", .b = "background-image: url(./a.png)", .policy_b = "no-referrer", .same = false },
+        // A pending-substitution value resolves its url()s at substitution,
+        // against its own source (CSS Variables 1 2.1).
+        .{ .a = "background-image: var(--u)", .b = "background-image: var(--u)", .same = true },
+        .{ .a = "background-image: var(--u)", .b = "background-image: var(--u)", .base_b = "https://two.test/", .same = false },
+        .{ .a = "background-image: var(--u)", .b = "background-image: var(--u)", .policy_b = "no-referrer", .same = false },
+    };
+    for (pairs) |pair| {
+        var a = try blockUnder(pair.a, "https://one.test/", "");
+        defer a.deinit();
+        var b = try blockUnder(pair.b, pair.base_b, pair.policy_b);
+        defer b.deinit();
+        if (a.interchangeable(&b) != pair.same or b.interchangeable(&a) != pair.same) {
+            std.debug.print("\ninterchangeable({s}, {s} under {s} {s}) is not {}\n", .{ pair.a, pair.b, pair.base_b, pair.policy_b, pair.same });
+            return error.TestUnexpectedResult;
+        }
+        if (pair.same) try testing.expectEqual(a.contentHash(), b.contentHash());
+    }
+}
+
+test "a snapshot keeps the content it was taken with when its block is rewritten in place" {
+    var block = try DeclarationBlock.parse(testOptions(), "margin-top: 3px; --a: 1px; -crane-unknown: 2");
+    defer block.deinit();
+    var copy = try block.snapshot(testing.allocator);
+    defer copy.deinit();
+    try testing.expect(copy.interchangeable(&block));
+    try testing.expectEqual(block.contentHash(), copy.contentHash());
+    try testing.expect(try block.setProperty(testOptions(), "margin-top", "7px", ""));
+    try testing.expect(try block.setProperty(testOptions(), "--a", "2px", ""));
+    try testing.expect(!copy.interchangeable(&block));
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(testing.allocator);
+    try copy.serialize(&out);
+    try testing.expectEqualStrings("margin-top: 3px; --a: 1px;", out.items);
+    block.clear();
+    try testing.expectEqual(@as(usize, 2), copy.entries.items.len);
 }

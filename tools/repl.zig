@@ -85,7 +85,13 @@ const developer_console = Browser.developer_console;
 
 /// No debug log lines in a Debug build of the console: the console's output
 /// is what the user reads (tools/gc_bench.zig does the same).
-pub const std_options: std.Options = .{ .log_level = .warn };
+/// No thread-local signal stack: Zig std's default (`signal_stack_size`,
+/// 1 << 18) is a 256 KB thread-local array, which every thread that touches
+/// any thread-local pays for - V8's worker threads included, which never use
+/// it. The platform maps each thread's alternate stack instead
+/// (platform.attachSignalStack, src/platform/kit/posix/signal_stack.zig);
+/// build.zig's thread-local block check (tools/thread_local_size.zig) holds it.
+pub const std_options: std.Options = .{ .log_level = .warn, .signal_stack_size = null };
 
 // ============================================================================
 // The command line
@@ -1567,6 +1573,9 @@ pub const Terminal = struct {
 
     /// The terminal's thread.
     fn run(self: *Terminal) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         self.loop() catch |err| {
             self.console.emit("(the terminal failed)\n");
             std.log.warn("terminal: {s}", .{@errorName(err)});
@@ -1831,6 +1840,9 @@ const CompletionRequest = struct {
 };
 
 pub fn main(init: std.process.Init) !u8 {
+    // The main thread's alternate signal stack, for the life of the process
+    // (platform 6.4): std_options sets std's own off.
+    _ = @import("platform").attachSignalStack();
     // First, before any thread exists: the engine's per-process state that
     // only threads created after it inherit (V8's thread isolation key on
     // x86-64 Linux; docs/engine-protocol.md 4.1).

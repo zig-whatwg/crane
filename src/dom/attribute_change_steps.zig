@@ -53,9 +53,13 @@ const AttributeEntry = struct {
 /// install steps (the slot element made it sixteen); an entry dropped here is
 /// a type whose steps never run, so the bound stays well above the count.
 const max_entries = 32;
+/// Per (namespace, attribute) steps: nine at lane quick1 (2026-11-12: the
+/// nonce step for each of the three namespaces whose elements include
+/// HTMLOrSVGOrMathMLElement); past the bound, the process start panics.
+const max_attribute_entries = 16;
 const Tables = struct {
     elements: hook.List(Entry, max_entries) = .empty,
-    attributes: hook.List(AttributeEntry, 8) = .empty,
+    attributes: hook.List(AttributeEntry, max_attribute_entries) = .empty,
 };
 /// Process-wide, written once at start-up (hook.zig).
 var entries: hook.Hook(Tables) = .init(.{});

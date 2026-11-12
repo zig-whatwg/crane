@@ -359,6 +359,56 @@ image-rendering: auto
 image-orientation: from-image
 object-view-box: none
 text-rendering: auto
+isolation: auto
+mix-blend-mode: normal
+background-blend-mode: normal
+clear: none
+print-color-adjust: economy
+forced-color-adjust: auto
+clip-rule: nonzero
+overscroll-behavior-x: auto
+overscroll-behavior-y: auto
+overscroll-behavior-inline: auto
+overscroll-behavior-block: auto
+overlay: none
+ruby-position: alternate
+ruby-align: space-around
+ruby-overhang: auto
+overflow-anchor: auto
+scroll-behavior: auto
+color-interpolation-filters: linearrgb
+frame-sizing: auto
+text-combine-upright: none
+flood-color: rgb(0, 0, 0)
+lighting-color: rgb(255, 255, 255)
+backdrop-filter: none
+-webkit-text-stroke-width: 0px
+-webkit-text-stroke-color: rgb(0, 0, 0)
+-webkit-text-fill-color: rgb(0, 0, 0)
+text-size-adjust: auto
+view-transition-name: none
+view-transition-class: none
+zoom: 1
+clip: auto
+aspect-ratio: auto
+contain-intrinsic-width: none
+contain-intrinsic-height: none
+contain-intrinsic-inline-size: none
+contain-intrinsic-block-size: none
+margin-trim: none
+corner-top-left-shape: superellipse(1)
+corner-top-right-shape: superellipse(1)
+corner-bottom-right-shape: superellipse(1)
+corner-bottom-left-shape: superellipse(1)
+corner-start-start-shape: superellipse(1)
+corner-start-end-shape: superellipse(1)
+corner-end-start-shape: superellipse(1)
+corner-end-end-shape: superellipse(1)
+dynamic-range-limit: no-limit
+scrollbar-color: auto
+scrollbar-width: auto
+d: none
+stroke-dasharray: none
 == initial root and child / 0
 display: block
 == initial root and child / 1
@@ -409,6 +459,8 @@ text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -8.44928, 59.4358)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == inherited and counted values / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -437,6 +489,8 @@ text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == inherited and counted values / 2
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -465,6 +519,8 @@ text-emphasis-color: rgb(255, 0, 0)
 text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == explicit inherit initial unset / 0
 background-color: rgb(0, 128, 0)
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(0, 0, 255))
@@ -513,6 +569,8 @@ text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(0, 0, 255)
 row-rule-color: rgb(0, 0, 255)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+-webkit-text-stroke-color: rgb(0, 0, 255)
+-webkit-text-fill-color: rgb(0, 0, 255)
 == explicit inherit initial unset / 1
 background-color: rgb(0, 128, 0)
 border-block-start-style: solid
@@ -554,6 +612,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == root display contents and none / 1
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -573,6 +633,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == root display contents and none / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -593,6 +655,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == display contents parent in a grid / 0
 display: grid
 justify-items: legacy center
@@ -619,6 +683,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == display contents parent in a grid / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -642,6 +708,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == display contents parent in a grid / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -661,6 +729,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == pseudo-elements / 0
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -680,6 +750,8 @@ text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
 row-rule-color: rgb(128, 0, 128)
+-webkit-text-stroke-color: rgb(128, 0, 128)
+-webkit-text-fill-color: rgb(128, 0, 128)
 == pseudo-elements / 1 ::before
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -700,6 +772,8 @@ text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
 row-rule-color: rgb(128, 0, 128)
+-webkit-text-stroke-color: rgb(128, 0, 128)
+-webkit-text-fill-color: rgb(128, 0, 128)
 == pseudo-elements / 2 ::after
 border-block-end-color: rgb(128, 0, 128)
 border-block-start-color: rgb(128, 0, 128)
@@ -718,6 +792,8 @@ text-decoration-color: rgb(128, 0, 128)
 text-emphasis-color: rgb(128, 0, 128)
 column-rule-color: rgb(128, 0, 128)
 row-rule-color: rgb(128, 0, 128)
+-webkit-text-stroke-color: rgb(128, 0, 128)
+-webkit-text-fill-color: rgb(128, 0, 128)
 == registered custom properties / 0
 --any: foo
 --col: rgb(0, 0, 255)
@@ -755,6 +831,8 @@ text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
 column-rule-color: rgb(0, 0, 255)
 row-rule-color: rgb(0, 0, 255)
+-webkit-text-stroke-color: rgb(0, 0, 255)
+-webkit-text-fill-color: rgb(0, 0, 255)
 == registered custom properties / 2
 --any: foo
 --col: rgb(0, 0, 255)
@@ -780,6 +858,8 @@ text-decoration-color: rgb(0, 0, 255)
 text-emphasis-color: rgb(0, 0, 255)
 column-rule-color: rgb(0, 0, 255)
 row-rule-color: rgb(0, 0, 255)
+-webkit-text-stroke-color: rgb(0, 0, 255)
+-webkit-text-fill-color: rgb(0, 0, 255)
 == all / 0
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -822,6 +902,8 @@ text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == all / 1
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -864,6 +946,8 @@ text-shadow: rgb(255, 0, 0) 1px 2px 3px, rgb(0, 0, 255) 0px 0px 0px
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == all / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -881,6 +965,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == all / 3
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -900,6 +986,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == all / 4
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
@@ -917,6 +1005,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == revert and revert-layer / 0
 border-block-end-color: rgb(128, 128, 0)
 border-block-start-color: rgb(128, 128, 0)
@@ -939,6 +1029,8 @@ text-decoration-color: rgb(128, 128, 0)
 text-emphasis-color: rgb(128, 128, 0)
 column-rule-color: rgb(128, 128, 0)
 row-rule-color: rgb(128, 128, 0)
+-webkit-text-stroke-color: rgb(128, 128, 0)
+-webkit-text-fill-color: rgb(128, 128, 0)
 == revert and revert-layer / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -960,6 +1052,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == logical longhands / 0
 direction: rtl
 display: block
@@ -1188,6 +1282,8 @@ text-decoration-color: rgb(0, 128, 128)
 text-emphasis-color: rgb(0, 128, 128)
 column-rule-color: rgb(0, 128, 128)
 row-rule-color: rgb(0, 128, 128)
+-webkit-text-stroke-color: rgb(0, 128, 128)
+-webkit-text-fill-color: rgb(0, 128, 128)
 == pseudo-elements of one originating element / 1
 border-block-end-color: rgb(0, 0, 128)
 border-block-start-color: rgb(0, 0, 128)
@@ -1212,6 +1308,8 @@ text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
 column-rule-color: rgb(0, 0, 128)
 row-rule-color: rgb(0, 0, 128)
+-webkit-text-stroke-color: rgb(0, 0, 128)
+-webkit-text-fill-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 2 ::before
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1239,6 +1337,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == pseudo-elements of one originating element / 3 ::after
 (parent 1)
 border-block-end-color: rgb(0, 0, 128)
@@ -1264,6 +1364,8 @@ text-decoration-color: rgb(0, 0, 128)
 text-emphasis-color: rgb(0, 0, 128)
 column-rule-color: rgb(0, 0, 128)
 row-rule-color: rgb(0, 0, 128)
+-webkit-text-stroke-color: rgb(0, 0, 128)
+-webkit-text-fill-color: rgb(0, 0, 128)
 == pseudo-elements of one originating element / 4 ::first-line
 (parent 1)
 background-color: rgb(255, 255, 0)
@@ -1290,6 +1392,8 @@ text-decoration-color: rgb(0, 128, 0)
 text-emphasis-color: rgb(0, 128, 0)
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 5 ::first-letter
 (parent 1)
 border-block-end-color: rgb(0, 128, 0)
@@ -1323,6 +1427,8 @@ text-emphasis-color: rgb(0, 128, 0)
 initial-letter: 2
 column-rule-color: rgb(0, 128, 0)
 row-rule-color: rgb(0, 128, 0)
+-webkit-text-stroke-color: rgb(0, 128, 0)
+-webkit-text-fill-color: rgb(0, 128, 0)
 == pseudo-elements of one originating element / 6 ::marker
 (parent 1)
 border-block-end-color: rgb(255, 0, 0)
@@ -1348,6 +1454,8 @@ text-decoration-color: rgb(255, 0, 0)
 text-emphasis-color: rgb(255, 0, 0)
 column-rule-color: rgb(255, 0, 0)
 row-rule-color: rgb(255, 0, 0)
+-webkit-text-stroke-color: rgb(255, 0, 0)
+-webkit-text-fill-color: rgb(255, 0, 0)
 == adjustments / 0
 display: flex
 == adjustments / 1

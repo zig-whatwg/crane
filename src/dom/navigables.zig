@@ -236,6 +236,49 @@ pub fn integrationOf(browsing_context: *anyopaque) ?*IFrameIntegration {
     return impl.integration_of(browsing_context);
 }
 
+/// A form's planned navigation aimed at navigable `navigable_id` (in
+/// `scope`'s Browser) cancels the javascript: URL navigation queued there
+/// whose task has not run: it stops being the navigable's ongoing
+/// navigation, so that task returns at "navigate to a javascript: URL" step
+/// 2 ("If targetNavigable's ongoing navigation is no longer navigationId,
+/// then return") and fires no load event of its own.
+///
+/// Not a spec step: HTML queues the javascript: URL's task and the form's
+/// planned navigation on different task sources and leaves their order open
+/// (html/semantics/forms/form-submission-0/jsurl-navigation-then-form-
+/// submit.html: "The expected behavior of this test is not explicitly
+/// specified"). Golden rule 2, all three browsers aligned: Chrome 157,
+/// Firefox 160 and Safari 27.2 pass it 1/1 - the frame loads the form's
+/// action, and its load event fires once. Blink: HTMLFormElement::
+/// ScheduleFormSubmission cancels the target frame's client navigation
+/// (FrameLoader::CancelClientNavigation), its pending javascript: URLs
+/// included; WebKit: a frame's NavigationScheduler holds one scheduled
+/// navigation, and scheduling the form submission cancels the scheduled
+/// javascript: URL. The host page's traversable keeps its queued
+/// javascript: URL, as a later navigation there does (HTMLIFrameElement
+/// runJavascriptNavigation states why).
+pub fn cancelQueuedJavascriptNavigation(scope: *runtime.Instance, navigable_id: u64) void {
+    if (navigable_id == 0) return;
+    const document = (interfaces.Node.get_ownerDocument(scope) catch null) orelse scope;
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    const own: *BrowsingContext = @import("browser_state.zig").browsingContextOf(window) orelse return;
+    const navigables = own.navigables orelse return;
+    for (navigables.contexts()) |browsing_context| {
+        if (browsing_context.id != navigable_id) continue;
+        const integration = integrationOf(browsing_context) orelse return;
+        if (integration.host_realms != null) return;
+        const id = switch (integration.ongoing_navigation) {
+            .id => |id| id,
+            else => return,
+        };
+        const record = navigables.navigation(id) orelse return;
+        const url = navigationUrl(record) orelse return;
+        if (!html_core.navigation.navigate_steps.isJavascript(url)) return;
+        integration.ongoing_navigation = .none;
+        return;
+    }
+}
+
 // ============================================================================
 // Child navigables of navigable containers (HTML 7.3.1)
 // ============================================================================
@@ -337,6 +380,24 @@ fn historyDocumentInfo(document: *anyopaque, allocator: std.mem.Allocator) anyer
 /// rely on the browsers' order (fetch/api/cors/cors-keepalive's "in unload"
 /// posts to its parent from the frame's unload handler).
 pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameIntegration) void {
+    // Step 4: "Inform the navigation API about child navigable destruction
+    // given navigable" - before the unload below, which destroys the
+    // documents it unloads (unload step 20: a removed frame's document is not
+    // salvageable): its navigateerror, its navigate event's abort and its
+    // traversals' rejections reach listeners while the frame's document is
+    // still fully active, as the spec's step 4 runs before step 5 destroys
+    // it. Blink's order too: LocalFrame::DetachImpl stops the loaders -
+    // FrameLoader::StopAllLoaders, which informs the navigation API of the
+    // canceled navigation - before FrameLoader::DetachDocument dispatches
+    // unload (navigation-api/navigate-event/signal-abort-detach-in-
+    // onnavigate.html and navigation-methods/traverseTo-detach-between-
+    // navigate-and-navigatesuccess.html: Chrome 157 and Firefox 160 pass
+    // both, Safari 27.2 the first).
+    if (integration.state != .discarded) {
+        if (integration.browsing_context) |bc| {
+            if (bc.getActiveWindow()) |window| navigation_api.informAboutChildNavigableDestruction(@ptrCast(@alignCast(window)));
+        }
+    }
     if (integration.state != .discarded) {
         if (activeDocumentOf(integration)) |active| {
             var documents = inclusiveDescendantDocuments(active, integration.allocator);
@@ -365,13 +426,6 @@ pub fn destroyChildNavigable(container: *runtime.Instance, integration: *IFrameI
                 }
                 document_lifecycle.unload(entry.document);
             }
-        }
-    }
-    // Step 4: "Inform the navigation API about child navigable destruction
-    // given navigable."
-    if (integration.state != .discarded) {
-        if (integration.browsing_context) |bc| {
-            if (bc.getActiveWindow()) |window| navigation_api.informAboutChildNavigableDestruction(@ptrCast(@alignCast(window)));
         }
     }
     // The documents of the frame and of every frame in it are destroyed:

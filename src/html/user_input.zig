@@ -562,11 +562,67 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     } else if (nodeDocument(focus_target)) |document| {
         focus.focusingSteps(document, null, .click);
     }
+    // Then the press's selection (Blink EventHandler::HandleMousePressEvent:
+    // HandleMouseFocus, then the SelectionController): a primary press on
+    // an editable element outside a text control puts the caret at the hit
+    // position (selection_focus.caretAtHit: only where it is no geometry).
+    if (button == 0) if (pointer.currentTarget()) |hit| {
+        if (textControlAncestor(hit) == null) @import("selection_focus.zig").caretAtHit(hit);
+    };
     // Keep ordinary focus before the picker focusing steps: the shipping
     // browsers split (select-events.optional.html, df642c4142: Chrome155
     // skips select focus; Safari27 focuses it). HTML decides the tie,
     // row61 Q19; the helper must not swallow this click-focus default.
     if (pointer.currentTarget()) |current| @import("forms/select_picker.zig").mouseDown(current, button);
+}
+
+/// An arrow key's selection change in an editing host (see
+/// defaultKeyDownAction): Selection.modify("move" | "extend", "left" |
+/// "right", granularity) - Blink's MoveLeft / MoveRight commands run the
+/// same SelectionModifier, which collapses a range to its edge for a
+/// character move (ModifyMovingLeft / Right).
+fn moveSelectionByKey(target: *Instance, right: bool, extend: bool, granularity: []const u8) void {
+    const document = nodeDocument(target) orelse return;
+    const selection = (interfaces.Document.call_getSelection(document) catch return) orelse return;
+    if ((interfaces.Selection.get_rangeCount(selection) catch 0) == 0) return;
+    const starts_selection = extend and (interfaces.Selection.get_isCollapsed(selection) catch false);
+    const caret_node = interfaces.Selection.get_focusNode(selection) catch null;
+    const caret_offset = interfaces.Selection.get_focusOffset(selection) catch 0;
+    modifySelection(selection, extend, right, granularity);
+    // Extending a caret into a range starts a selection: the Selection API's
+    // selectstart, at the caret's container, and a cancelled one leaves the
+    // caret where it was. Only when the extension moved something: Blink's
+    // FrameSelection::Modify runs the SelectionModifier first, returns when
+    // it did not move, then DispatchSelectStart at the extent's container
+    // (selection/onselectstart-on-key-in-contenteditable.html: no
+    // selectstart at the host's start or end).
+    if (starts_selection and !(interfaces.Selection.get_isCollapsed(selection) catch true)) {
+        const node = caret_node orelse return;
+        interfaces.Selection.call_collapse(selection, node, .passed(caret_offset)) catch return;
+        if (!@import("execcommand/root.zig").fireSelectStart(node)) return;
+        if ((interfaces.Selection.get_rangeCount(selection) catch 0) == 0) return;
+        modifySelection(selection, extend, right, granularity);
+    }
+}
+
+fn modifySelection(selection: *Instance, extend: bool, right: bool, granularity: []const u8) void {
+    const Opt = webidl.Opt(runtime.DOMString);
+    interfaces.Selection.call_modify(
+        selection,
+        Opt.passed(runtime.DOMString.initInterned(if (extend) "extend" else "move")),
+        Opt.passed(runtime.DOMString.initInterned(if (right) "right" else "left")),
+        Opt.passed(runtime.DOMString.initInterned(granularity)),
+    ) catch {};
+}
+
+/// The text control `node` is, or is inside (its own editor owns its
+/// caret).
+fn textControlAncestor(node: *Instance) ?*Instance {
+    var current: ?*Instance = node;
+    while (current) |n| : (current = parentOf(n)) {
+        if (isElement(n) and textControlKind(n) != .none) return n;
+    }
+    return null;
 }
 
 /// Whether a click at `target` is one a disabled form control swallows: HTML
@@ -827,6 +883,16 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         return;
     }
     const kind = textControlKind(target);
+    // The clipboard shortcuts, in a text control or anywhere else: the
+    // Clipboard API's copy, cut and paste actions as the user's own
+    // (execcommand/clipboard.zig; Blink's "Copy" / "Cut" / "Paste" editor
+    // commands from the key bindings, which run in text fields too).
+    if (editingShortcut(target, key, modifiers)) |shortcut| switch (shortcut) {
+        .copy => return @import("execcommand/clipboard.zig").byKey(target, .copy),
+        .cut => return @import("execcommand/clipboard.zig").byKey(target, .cut),
+        .paste => return @import("execcommand/clipboard.zig").byKey(target, .paste),
+        .select_all => {},
+    };
     if (kind != .none) {
         // SD1-TEXTCONTROL-WORD-KEYS: navigation also applies to readonly
         // controls. The modifier follows navigator.platform, as WPT's
@@ -863,15 +929,87 @@ fn defaultKeyDownAction(keyboard: *Keyboard, target: *Instance, key: Key, modifi
         }
         return;
     }
+    // The editing shortcuts outside text controls: Ctrl+A - Meta+A where
+    // navigator.platform names a Mac, as WPT's EditorTestUtils and every
+    // browser's key bindings choose (Blink editing_behavior.cc's
+    // kKeyboardCodeKeyA with the command modifier, "SelectAll") - runs the
+    // selectAll command: the editing host's contents, or the document's
+    // (execcommand/select_all.zig).
+    if (editingShortcut(target, key, modifiers)) |shortcut| switch (shortcut) {
+        .select_all => {
+            @import("execcommand/root.zig").selectAllByKey(target);
+            return;
+        },
+        .copy, .cut, .paste => unreachable,
+    };
     // Backspace and Delete in an editing host (Editing spec, "Additional
-    // requirements": the key runs the delete / forwardDelete command). The
-    // modified forms - a word or a line - are not routed yet.
-    // TODO(editing): Ctrl/Alt/Meta+Backspace and +Delete (deleteWordBackward,
-    // deleteSoftLineBackward, ... per UI Events / Input Events).
+    // requirements": the key runs the delete / forwardDelete command).
     if ((isKey(key, "Backspace") or isKey(key, "Delete")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
         const execcommand = @import("execcommand/root.zig");
         if (execcommand.isEditableTarget(target)) {
             execcommand.deleteByKey(target, if (isKey(key, "Backspace")) .delete else .forward_delete);
+            return;
+        }
+    }
+    // With the word modifier (Ctrl, Alt where navigator.platform names a
+    // Mac - isWordModifier, as WPT's EditorTestUtils.deleteWordModifier),
+    // Backspace and Delete delete a word: Blink's key bindings
+    // "DeleteWordBackward" / "DeleteWordForward" (editing_behavior.cc),
+    // Gecko's cmd_deleteWordBackward, inputType deleteWordBackward /
+    // deleteWordForward (Input Events 2). The word is found over the inline
+    // formatting context's text, across inline element edges
+    // (execcommand/visible_position.zig): "abc <span>def</span>[]" deletes
+    // "def" as "abc def[]" does (editing/whitespaces/delete-word-around-
+    // span.html compares the two).
+    // TODO(renderer): the line forms (Meta+Backspace on a Mac:
+    // deleteSoftLineBackward) need line boundaries, a renderer read.
+    if ((isKey(key, "Backspace") or isKey(key, "Delete")) and (modifiers.ctrl or modifiers.alt) and !modifiers.meta and !modifiers.shift) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            const window = viewOf(target) orelse return;
+            const navigator = interfaces.Window.get_navigator(window) catch return;
+            var platform = interfaces.Navigator.get_platform(navigator) catch return;
+            defer platform.deinit(target.ctx.allocator);
+            if (isWordModifier(platform.asSlice(), modifiers)) execcommand.deleteWordByKey(target, isKey(key, "Delete"));
+            return;
+        }
+    }
+    // Home and End in an editing host: the caret moves (Shift: the
+    // selection extends) to the start or end of its line - Blink's key
+    // bindings MoveToBeginningOfLine / MoveToEndOfLine and their
+    // AndModifySelection forms, Selection.modify(..., "lineboundary").
+    // Where a line ends is a read on the renderer (soft wraps); with none,
+    // Selection.modify leaves the caret (TODO(renderer)).
+    if ((isKey(key, "Home") or isKey(key, "End")) and !modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            moveSelectionByKey(target, isKey(key, "End"), modifiers.shift, "lineboundary");
+            return;
+        }
+    }
+    // ArrowLeft and ArrowRight in an editing host: the caret moves (Shift:
+    // the selection extends) by a character, or by a word with the word
+    // modifier - Blink's key bindings MoveLeft / MoveRight /
+    // MoveWordLeft / MoveWordRight and their AndModifySelection forms,
+    // which run the SelectionModifier that Selection.modify drives (the
+    // same here). Without Shift, a character move collapses a selection
+    // that is not collapsed to its left or right edge (Blink's
+    // SelectionModifier::ModifyMovingLeft / Right "if (selection_.IsRange())",
+    // in Selection.modify; Gecko's nsFrameSelection::MoveCaret likewise).
+    if ((isKey(key, "ArrowLeft") or isKey(key, "ArrowRight")) and !modifiers.meta) {
+        const execcommand = @import("execcommand/root.zig");
+        if (execcommand.isEditableTarget(target)) {
+            const right = isKey(key, "ArrowRight");
+            var granularity: []const u8 = "character";
+            if (modifiers.ctrl or modifiers.alt) {
+                const window = viewOf(target) orelse return;
+                const navigator = interfaces.Window.get_navigator(window) catch return;
+                var platform = interfaces.Navigator.get_platform(navigator) catch return;
+                defer platform.deinit(target.ctx.allocator);
+                if (!isWordModifier(platform.asSlice(), modifiers)) return;
+                granularity = "word";
+            }
+            moveSelectionByKey(target, right, modifiers.shift, granularity);
             return;
         }
     }
@@ -1074,6 +1212,50 @@ fn graphemeBoundary(text: []const u8, offset: u32, forward: bool) u32 {
     return if (forward) at else @min(offset, at);
 }
 
+const EditingShortcut = enum { select_all, copy, cut, paste };
+
+/// The editing shortcut `key` with `modifiers` is, or null: the platform's
+/// command modifier (Meta on a Mac, else Ctrl; navigator.platform decides,
+/// see isCommandModifier) alone with the letter - A select all, C copy, X
+/// cut, V paste (Blink editing_behavior.cc's key table: kKeyboardCodeKeyA
+/// "SelectAll", C "Copy", X "Cut", V "Paste", each with the command
+/// modifier).
+fn editingShortcut(target: *Instance, key: Key, modifiers: Modifiers) ?EditingShortcut {
+    if (!modifiers.ctrl and !modifiers.meta) return null;
+    if (key.key.len != 1) return null;
+    const shortcut: EditingShortcut = switch (std.ascii.toLower(key.key[0])) {
+        'a' => .select_all,
+        'c' => .copy,
+        'x' => .cut,
+        'v' => .paste,
+        else => return null,
+    };
+    const window = viewOf(target) orelse return null;
+    const navigator = interfaces.Window.get_navigator(window) catch return null;
+    var platform = interfaces.Navigator.get_platform(navigator) catch return null;
+    defer platform.deinit(target.ctx.allocator);
+    if (!isCommandModifier(platform.asSlice(), modifiers)) return null;
+    return shortcut;
+}
+
+/// Whether `modifiers` is exactly the platform's command modifier: Meta
+/// where navigator.platform names a Mac, Ctrl elsewhere (no Alt, no Shift,
+/// not both).
+fn isCommandModifier(platform: []const u8, modifiers: Modifiers) bool {
+    if (modifiers.alt or modifiers.shift or (modifiers.ctrl and modifiers.meta)) return false;
+    return if (std.mem.indexOf(u8, platform, "Mac") != null) modifiers.meta else modifiers.ctrl;
+}
+
+test "the command modifier follows navigator platform" {
+    try std.testing.expect(isCommandModifier("MacIntel", .{ .meta = true }));
+    try std.testing.expect(!isCommandModifier("MacIntel", .{ .ctrl = true }));
+    try std.testing.expect(isCommandModifier("Linux x86_64", .{ .ctrl = true }));
+    try std.testing.expect(!isCommandModifier("Linux x86_64", .{ .meta = true }));
+    try std.testing.expect(!isCommandModifier("Linux x86_64", .{ .ctrl = true, .shift = true }));
+    try std.testing.expect(!isCommandModifier("Win32", .{ .ctrl = true, .alt = true }));
+    try std.testing.expect(!isCommandModifier("MacIntel", .{ .ctrl = true, .meta = true }));
+}
+
 fn isWordModifier(platform: []const u8, modifiers: Modifiers) bool {
     if (modifiers.meta or (modifiers.alt and modifiers.ctrl)) return false;
     return if (std.mem.indexOf(u8, platform, "Mac") != null) modifiers.alt else modifiers.ctrl;
@@ -1177,7 +1359,7 @@ fn fireInputEvent(target: *Instance, comptime event_type: []const u8, input_type
 /// cancelled) the text replaces the selection - cut to the control's
 /// maxlength - and input fires.
 fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_type: []const u8) void {
-    if (!fireInputEvent(target, "beforeinput", input_type, if (std.mem.eql(u8, input_type, "insertText")) text_in else null)) return;
+    if (!fireInputEvent(target, "beforeinput", input_type, if (carriesData(input_type)) text_in else null)) return;
     if (!isConnected(target)) return;
     var text = text_in;
     var value = getValue(target) orelse return;
@@ -1217,7 +1399,53 @@ fn insertText(target: *Instance, kind: TextControl, text_in: []const u8, input_t
             .none => unreachable,
         }
     }
-    _ = fireInputEvent(target, "input", input_type, if (std.mem.eql(u8, input_type, "insertText")) text else null);
+    _ = fireInputEvent(target, "input", input_type, if (carriesData(input_type)) text else null);
+}
+
+/// Whether a text control's beforeinput and input of `input_type` carry the
+/// inserted text as data: insertText, and insertFromPaste - Input Events
+/// 2's data "for ... insertFromPaste ... in a text control" (its
+/// dataTransfer is null there; editing/other/
+/// data_transfer_on_input_event_with_insertfrompaste_type.html, all three
+/// browsers).
+fn carriesData(input_type: []const u8) bool {
+    return std.mem.eql(u8, input_type, "insertText") or std.mem.eql(u8, input_type, "insertFromPaste");
+}
+
+/// The focused area of `document` when it is a text control (an input
+/// whose value is edited as text, or a textarea).
+pub fn focusedTextControl(document: *Instance) ?*Instance {
+    const focused = (interfaces.Document.get_activeElement(document) catch return null) orelse return null;
+    return if (textControlKind(focused) != .none) focused else null;
+}
+
+/// Whether `element` is a text control: an input whose value is edited as
+/// text, or a textarea.
+pub fn isTextControl(element: *Instance) bool {
+    return textControlKind(element) != .none;
+}
+
+/// Whether the user may edit the text control `element`.
+pub fn isMutableTextControl(element: *Instance) bool {
+    return textControlKind(element) != .none and isMutable(element);
+}
+
+/// The paste action into the text control `control` (Clipboard API 8.3
+/// step 3.1.1): `text` replaces its selection as typed text does, with
+/// beforeinput and input of inputType insertFromPaste.
+pub fn pasteIntoTextControl(control: *Instance, text: []const u8) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    insertText(control, kind, text, "insertFromPaste");
+}
+
+/// The cut action's removal in the text control `control` (8.2 step
+/// 3.1.2): its selection goes, with beforeinput and input of inputType
+/// deleteByCut. Nothing for a collapsed selection.
+pub fn deleteByCut(control: *Instance) void {
+    const kind = textControlKind(control);
+    if (kind == .none or !isMutable(control)) return;
+    deleteContent(control, kind, .cut);
 }
 
 /// execCommand("insertText" / "insertHTML") while `document`'s focused area
@@ -1306,7 +1534,7 @@ fn signNotAfterE(text: []const u8) bool {
     return false;
 }
 
-const DeleteDirection = enum { backward, forward };
+const DeleteDirection = enum { backward, forward, cut };
 
 /// The UTF-16 length of the code point that ends (backward) or starts
 /// (forward) at UTF-16 offset `offset` of `value`.
@@ -1324,19 +1552,25 @@ fn codePointUnits(value: []const u8, offset: u32, direction: DeleteDirection) u3
             while (start > 0 and value[start] & 0xC0 == 0x80) start -= 1;
             return if (byte - start == 4) 2 else 1;
         },
+        .cut => return 0,
     }
 }
 
 /// Backspace (backward) or Delete (forward): the selection, or the code
 /// point before (after) the caret.
 fn deleteContent(target: *Instance, kind: TextControl, direction: DeleteDirection) void {
-    const input_type = if (direction == .backward) "deleteContentBackward" else "deleteContentForward";
+    const input_type = switch (direction) {
+        .backward => "deleteContentBackward",
+        .forward => "deleteContentForward",
+        .cut => "deleteByCut",
+    };
     var value = getValue(target) orelse return;
     defer value.deinit(target.ctx.allocator);
     const current = value.asSlice();
     const length = form_associated.utf16Length(current);
     var range: [2]u32 = selectionOf(target) orelse .{ length, length };
     if (range[0] == range[1]) {
+        if (direction == .cut) return;
         const units = codePointUnits(current, range[0], direction);
         if (units == 0) return;
         if (direction == .backward) range[0] -= units else range[1] += units;

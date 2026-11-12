@@ -17,9 +17,12 @@
 //!   a rule's block is stable for the engine generation the cache was filled
 //!   under, and every change to sheets, rules, media, environment variables,
 //!   registrations or page color schemes moves the generation and clears the
-//!   cache). The engine never looks up a resolution that matched a block of
-//!   the element's own - its style attribute, its presentational hints -
-//!   whose address another element can reuse;
+//!   cache). A block of the element's own - its style attribute's, its
+//!   presentational hints' (Source.per_element) - is compared by CONTENT
+//!   with the entry's snapshot of the one it was made with
+//!   (DeclarationBlock.interchangeable; Blink CorrespondsTo compares sets
+//!   with CSSPropertyValueSet::Equals): its owner rewrites it in place and
+//!   its address passes to the next element (lane style1 b5);
 //! - pseudo-element is the element's;
 //! - Context scalars (the root's metrics, the viewport, the color schemes,
 //!   the registrations) are the element's;
@@ -43,7 +46,8 @@
 //! equal elements hold the same objects, as a hit's would.
 //!
 //! The key (`keyOf`) is only where to look: each matched block - a rule's by
-//! address, a style attribute's by the property names it declares - with its
+//! address, an element's own by its content hash (DeclarationBlock.
+//! contentHash; Blink's key mixes CSSPropertyValueSet::GetHash) - with its
 //! Source, the pseudo-element, and the parent's custom property record and
 //! inherited groups by address. A collision or a reused address costs a
 //! compare, never a value.
@@ -52,8 +56,10 @@
 //! hold-comes-with-the-step-that-ends-it). Each entry holds a
 //! ComputedStyle.clone of its style - one reference on each of its groups and
 //! records - and, when it can serve a hit, a clone of its parent's style (so a
-//! group address it compares cannot be freed and reused) and a copy of its
-//! matched list. Released, entry and all:
+//! group address it compares cannot be freed and reused), a copy of its
+//! matched list and a snapshot of each own block in it (each declaration's
+//! value retained: the owner's later writes change nothing the entry
+//! holds). Released, entry and all:
 //! 1. every entry when the engine's generation moves: Blink's
 //!    StyleResolver::InvalidateMatchedPropertiesCache and
 //!    ClearViewportDependent, WebKit's invalidate and
@@ -63,7 +69,26 @@
 //!    300);
 //! 3. a full key takes no more entries (WebKit maxEntriesPerHash = 4);
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
-//! The entries hold values, never a node, a realm or a declaration block.
+//! The entries hold values, never a node, a realm or a live declaration block.
+//!
+//! Admission (lane style1 b5; design 3.6 item 9). A rule's block is one
+//! object for every element it matches; an own block's content may be held
+//! by one element only (a style attribute that positions one row). Kept, such
+//! a style costs an entry and its share of a prune, and serves no hit. Every
+//! resolution is kept as it comes - as both browsers keep theirs - until a
+//! prune shows that the page's own blocks do not repeat: with at least
+//! `own_evidence` own-block entries in the cache, fewer than one in
+//! `own_served_share` having answered a lookup (`weigh`). From that prune
+//! to the next, a resolution with an own block whose content key has no
+//! entry gets one on that key's second sighting (`admits`: the
+//! cache-on-second-hit rule of a bounded cache; TinyLFU's doorkeeper). The
+//! evidence is what the entries did, not how many there are: a rule tied to
+//! the entry count either applied to a page whose cache lives between the
+//! prune target and the limit (the AG Grid page: 7,987 of 1,188,349 hits
+//! lost) or gave the places each prune freed to the next unique blocks.
+//! Neither browser has the rule: Blink declines only an inline set modified
+//! after it was hashed (MatchResult::AddMatchedProperties). It decides which
+//! entries exist, never what a hit holds.
 //!
 //! One per Document's StyleEngine, used on its Browser's window-agent thread
 //! only, as the groups it holds are (css/computed_style.zig, "Storage").
@@ -138,6 +163,13 @@ pub const Inputs = struct {
 /// One resolution, as the cache sees it.
 pub const Lookup = struct {
     key: u64,
+    /// For a resolution that matched a block of the element's own: its key
+    /// without that block's content (`shapeOf`), where `add` also adopts
+    /// and keeps an adoption-only entry, so elements whose own blocks
+    /// differ still share equal groups and records (b3's convergence) and
+    /// their children still find one key. Set, it also marks the resolution
+    /// as one with an own block for admission (`admits`).
+    shape: ?u64 = null,
     generation: u64,
     matched: []const Matched = &.{},
     pseudo: Pseudo = .none,
@@ -170,10 +202,24 @@ pub const MatchedPropertiesCache = struct {
     /// Where each group last compared unequal in an adoption scan
     /// (ComputedStyle.DifferenceHints).
     difference_hints: css.computed_style.DifferenceHints = @splat(0),
+    /// The last prune found own-block entries serving no hit (`weigh`): an
+    /// own block's content is kept from its second sighting (`admits`).
+    second_sighting: bool = false,
+    /// The content keys of own-block resolutions that were given no entry
+    /// (`admits`), one tag per slot; held only while `second_sighting`.
+    seen: ?*[seen_slots]u32 = null,
 
     pub const per_key = 4;
     pub const limit = 500;
     pub const prune_target = 300;
+    /// Sightings remembered: about the cache's own size, so a content that
+    /// comes again while an entry of it would still be held is recognised.
+    pub const seen_slots = 256;
+    /// Own-block entries a prune must find before it concludes anything
+    /// about them, and the share of them that must have answered a lookup
+    /// (one in this many) for first sightings to stay kept.
+    pub const own_evidence = limit / 4;
+    pub const own_served_share = 8;
 
     const Entry = struct {
         holder: *ComputedStyle,
@@ -187,8 +233,13 @@ pub const MatchedPropertiesCache = struct {
     const Correspondence = struct {
         /// The parent's style when the entry was made, held (a clone).
         parent: *ComputedStyle,
-        /// The matched list, copied.
+        /// The matched list, copied; an own block's entry points into `own`.
         matched: []Matched,
+        /// A snapshot of each own block of the matched list, in order
+        /// (DeclarationBlock.snapshot).
+        own: []css.declarations.DeclarationBlock = &.{},
+        /// The entry answered a lookup (what a prune weighs, `weigh`).
+        served: bool = false,
         pseudo: Pseudo,
         inputs: Inputs,
         /// The cascade took a non-inherited value from the parent.
@@ -225,16 +276,65 @@ pub const MatchedPropertiesCache = struct {
         entry.holder.destroy();
         if (entry.hit) |hit| {
             hit.parent.destroy();
+            for (hit.own) |*block| block.deinit();
+            self.allocator.free(hit.own);
             self.allocator.free(hit.matched);
             self.allocator.destroy(hit);
         }
     }
 
-    /// Release every entry.
+    /// Release every entry, and the sightings kept for admission.
     pub fn clear(self: *MatchedPropertiesCache) void {
         for (self.buckets.values()) |*bucket| for (bucket.items[0..bucket.len]) |entry| self.release(entry);
         self.buckets.clearRetainingCapacity();
         self.entries = 0;
+        self.keepFirstSightings();
+    }
+
+    /// Every resolution is kept as it comes (the state a cache starts in).
+    fn keepFirstSightings(self: *MatchedPropertiesCache) void {
+        self.second_sighting = false;
+        if (self.seen) |seen| self.allocator.destroy(seen);
+        self.seen = null;
+    }
+
+    /// What a prune found, before it released anything: `own` entries made
+    /// for a resolution with an own block, `served` of them having answered
+    /// a lookup. Enough of them with almost none serving says the page's
+    /// own blocks do not repeat while an entry lasts (2,000 rows each with
+    /// a position of its own): until the next prune, such a content is kept
+    /// from its second sighting. Anything else - they serve, or they are
+    /// too few to tell - keeps every resolution as it comes.
+    fn weigh(self: *MatchedPropertiesCache, own: u32, served: u32) void {
+        if (own >= own_evidence and served * own_served_share < own) {
+            self.second_sighting = true;
+        } else {
+            self.keepFirstSightings();
+        }
+    }
+
+    /// Whether a resolution with an own block, whose content key has no
+    /// entry, is given one: always, unless the last prune found own-block
+    /// entries serving no hit (`weigh`); then at its key's second sighting.
+    /// The first leaves the key's tag in `seen` (direct-mapped by the key's
+    /// low bits; the tag is its high 32 bits, never 0) and no entry, so a
+    /// content one element holds costs a tag, and one that repeats costs
+    /// one cascade more. A tag another key overwrote, or one that collides,
+    /// delays or admits an entry and nothing else: a hit still compares
+    /// content. Out of memory for the table: no entry.
+    fn admits(self: *MatchedPropertiesCache, key: u64) bool {
+        if (!self.second_sighting) return true;
+        const seen = self.seen orelse made: {
+            const table = self.allocator.create([seen_slots]u32) catch return false;
+            table.* = @splat(0);
+            self.seen = table;
+            break :made table;
+        };
+        const slot = &seen[@as(usize, @truncate(key % seen_slots))];
+        const tag = @as(u32, @truncate(key >> 32)) | 1;
+        if (slot.* == tag) return true;
+        slot.* = tag;
+        return false;
     }
 
     fn tick(self: *MatchedPropertiesCache) u32 {
@@ -265,6 +365,7 @@ pub const MatchedPropertiesCache = struct {
                 self.correspondences +%= 1;
                 if (!corresponds(hit, lookup, parent)) continue;
                 entry.last_used = self.tick();
+                hit.served = true;
                 self.hits +%= 1;
                 return entry.holder;
             }
@@ -281,8 +382,24 @@ pub const MatchedPropertiesCache = struct {
     /// while the key has room. Never fails: running out of memory only
     /// leaves `style` holding its own groups and the cache without it.
     pub fn add(self: *MatchedPropertiesCache, lookup: Lookup, dependencies: ?css.cascade.Dependencies, style: *ComputedStyle) void {
+        // A resolution with an own block: first adopt among the elements
+        // whose own blocks have the same shape, whatever their content (the
+        // path every such resolution took before lane style1 b5, when it was
+        // never looked up), then key it by content below.
+        if (lookup.shape) |shape| if (shape != lookup.key) {
+            var by_shape = lookup;
+            by_shape.key = shape;
+            by_shape.shape = null;
+            self.add(by_shape, null, style);
+        };
         self.enter(lookup.generation);
         const cacheable = if (dependencies) |d| d.cacheable() and lookup.parent != null else false;
+        const found = self.buckets.getPtr(lookup.key);
+        // Admission: an own block's content that has no entry (so nothing to
+        // adopt from under this key either) gets one - on its second
+        // sighting when the last prune found such entries serving no hit
+        // (`admits`).
+        if (found == null and lookup.shape != null and !self.admits(lookup.key)) return;
         // Adoption, the most recent entry first (Blink's Find scans
         // backwards): every group and custom property record the cascade
         // made that holds an entry's values becomes the entry's. The scan
@@ -293,7 +410,6 @@ pub const MatchedPropertiesCache = struct {
         // they differed before (a sibling-index() width, an inline margin).
         var scan = style.adoption();
         var custom_alone = style.customHeldAlone();
-        const found = self.buckets.getPtr(lookup.key);
         if (found) |bucket| {
             var i = bucket.len;
             while (i > 0 and (scan.pending.mask != 0 or custom_alone)) {
@@ -343,8 +459,20 @@ pub const MatchedPropertiesCache = struct {
         errdefer self.allocator.destroy(hit);
         const matched = try self.allocator.dupe(Matched, lookup.matched);
         errdefer self.allocator.free(matched);
+        var own_count: usize = 0;
+        for (lookup.matched) |m| own_count += @intFromBool(m.source.per_element);
+        const own = try self.allocator.alloc(css.declarations.DeclarationBlock, own_count);
+        errdefer self.allocator.free(own);
+        var made: usize = 0;
+        errdefer for (own[0..made]) |*block| block.deinit();
+        for (matched) |*m| if (m.source.per_element) {
+            own[made] = try m.block.snapshot(self.allocator);
+            m.block = &own[made];
+            made += 1;
+        };
         hit.* = .{
             .parent = try lookup.parent.?.clone(self.allocator),
+            .own = own,
             .matched = matched,
             .pseudo = lookup.pseudo,
             .inputs = lookup.inputs,
@@ -358,13 +486,20 @@ pub const MatchedPropertiesCache = struct {
     fn prune(self: *MatchedPropertiesCache) void {
         var stamps: std.ArrayList(u32) = .empty;
         defer stamps.deinit(self.allocator);
+        var own: u32 = 0;
+        var served: u32 = 0;
         for (self.buckets.values()) |*bucket| for (bucket.items[0..bucket.len]) |entry| {
             stamps.append(self.allocator, entry.last_used) catch {
                 // No room to rank them: release everything instead.
                 self.clear();
                 return;
             };
+            if (entry.hit) |hit| if (hit.own.len != 0) {
+                own += 1;
+                served += @intFromBool(hit.served);
+            };
         };
+        self.weigh(own, served);
         if (stamps.items.len <= prune_target) return;
         std.mem.sortUnstable(u32, stamps.items, {}, std.sort.asc(u32));
         const cutoff = stamps.items[stamps.items.len - prune_target - 1];
@@ -393,7 +528,11 @@ fn corresponds(hit: *MatchedPropertiesCache.Correspondence, lookup: Lookup, pare
     if (hit.pseudo != lookup.pseudo or !hit.inputs.eql(lookup.inputs)) return false;
     if (hit.matched.len != lookup.matched.len) return false;
     for (hit.matched, lookup.matched) |a, b| {
-        if (a.block != b.block or !std.meta.eql(a.source, b.source)) return false;
+        if (!std.meta.eql(a.source, b.source)) return false;
+        // An element's own block: by content, against the entry's snapshot.
+        if (a.source.per_element) {
+            if (!a.block.interchangeable(b.block)) return false;
+        } else if (a.block != b.block) return false;
     }
     return parentCorresponds(hit, parent);
 }
@@ -481,8 +620,8 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
 }
 
 /// The cache key of an element's matched declarations (in cascade order) for
-/// `pseudo` under `parent`: each block - a rule's by address, a style
-/// attribute's by the names it declares - with its Source, and the parent's
+/// `pseudo` under `parent`: each block - a rule's by address, an element's
+/// own by its content hash - with its Source, and the parent's
 /// custom property record and inherited groups by address (WebKit's
 /// MatchedDeclarationsCache::computeHash hashes &inheritedCustomProperties;
 /// Blink's key hashes the parent's inherited variables and inherited fields).
@@ -492,15 +631,31 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
 /// steps per block (it runs at every resolution): the key only says where to
 /// look, and a collision costs a compare, never a value.
 pub fn keyOf(matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
+    return keyFor(.content, matched, pseudo, parent);
+}
+
+/// keyOf with each element's own block reduced to its shape: a style
+/// attribute's by the names it declares, a presentational hint's by address
+/// (the key such resolutions had before lane style1 b5). Lookup.shape.
+pub fn shapeOf(matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
+    return keyFor(.shape, matched, pseudo, parent);
+}
+
+fn keyFor(comptime own: enum { content, shape }, matched: []const Matched, pseudo: ?[]const u8, parent: ?*const ComputedStyle) u64 {
     var h: u64 = 0x5354594c4531;
     if (pseudo) |p| h = mix(h, std.hash.Wyhash.hash(0, p));
     for (matched) |*m| {
         const s = &m.source;
-        if (s.element_attached) {
-            for (m.block.entries.items) |*entry| h = mix(h, std.hash.Wyhash.hash(1, entry.name()));
-        } else h = mix(h, @intFromPtr(m.block));
+        switch (own) {
+            .content => h = mix(h, if (s.per_element) m.block.contentHash() else @intFromPtr(m.block)),
+            .shape => if (s.element_attached) {
+                for (m.block.entries.items) |*entry| h = mix(h, std.hash.Wyhash.hash(1, entry.name()));
+            } else {
+                h = mix(h, @intFromPtr(m.block));
+            },
+        }
         h = mix(h, (@as(u64, @backingInt(s.origin)) << 56) | (@as(u64, s.layer) << 40) | (@as(u64, s.tree_depth) << 24) |
-            (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
+            (@as(u64, @intFromBool(s.per_element)) << 2) | (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
         h = mix(h, (@as(u64, s.order) << 32) ^ (@as(u64, s.specificity.a) << 20) ^ (@as(u64, s.specificity.b) << 10) ^ s.specificity.c);
         h = mix(h, s.tree_scope.serial);
     }
@@ -1055,4 +1210,241 @@ test "adoption compares a group no entry holds equal once per entry, at the valu
     cache.add(.{ .key = 1, .generation = 1 }, null, again);
     try testing.expect(again.slots[surround] == styles[1].slots[surround]);
     try testing.expectEqual(@as(usize, 0), again.groupsHeldAlone());
+}
+
+// ---------------------------------------------------------------------------
+// Lane style1 b5: an element's own blocks, keyed and compared by content.
+// ---------------------------------------------------------------------------
+
+const own_source: css.cascade.Source = .{ .origin = .author, .element_attached = true, .per_element = true };
+
+/// A lookup of one own block under `parent`, with `key` (null: its keyOf).
+fn ownLookup(matched: *const [1]Matched, parent: *const ComputedStyle, key: ?u64) Lookup {
+    return .{ .key = key orelse keyOf(matched, null, parent), .generation = 1, .matched = matched, .parent = parent };
+}
+
+fn ownMiss(cache: *MatchedPropertiesCache, matched: *const [1]Matched, parent: *const ComputedStyle, key: ?u64) !*ComputedStyle {
+    var deps: css.cascade.Dependencies = .{};
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = parent, .dependencies = &deps }, matched);
+    cache.add(ownLookup(matched, parent, key), deps, style);
+    return style;
+}
+
+test "an own block corresponds by content: an equal block another element holds hits, and the owner's rewrite in place changes nothing the entry holds" {
+    const cache = try MatchedPropertiesCache.create(testing.allocator);
+    defer cache.destroy();
+    var root = try rootStyle("font-size: 20px");
+    defer root.block.deinit();
+    defer root.style.destroy();
+    var a = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left: 3px");
+    defer a.deinit();
+    var b = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "margin-left:3px");
+    defer b.deinit();
+    const ma = [1]Matched{.{ .block = &a, .source = own_source }};
+    const mb = [1]Matched{.{ .block = &b, .source = own_source }};
+    const first = try ownMiss(cache, &ma, root.style, null);
+    defer first.destroy();
+    try testing.expectEqual(keyOf(&ma, null, root.style), keyOf(&mb, null, root.style));
+    const held = cache.find(ownLookup(&mb, root.style, null)) orelse return error.ExpectedHit;
+    try testing.expect(held.firstDifference(first) == null);
+    // a's block rewritten in place (CSSOM setProperty): same address, new
+    // content, the hash reset.
+    const old_key = keyOf(&ma, null, root.style);
+    try testing.expect(try a.setProperty(.{ .allocator = testing.allocator }, "margin-left", "9px", ""));
+    try testing.expect(keyOf(&ma, null, root.style) != old_key);
+    // b still finds the entry a made, with a's old content ...
+    try testing.expect(cache.find(ownLookup(&mb, root.style, null)) != null);
+    // ... and a, looked up where its old content was, corresponds no more.
+    try testing.expect(cache.find(ownLookup(&ma, root.style, old_key)) == null);
+    try testing.expectEqual(@as(u32, 2), cache.hits);
+}
+
+test "under one key, own blocks that differ in importance, value, a url()'s base or a pending value's base do not correspond" {
+    const Resolver = struct {
+        prefix: []const u8,
+        fn resolve(context: *const anyopaque, allocator: Allocator, raw: []const u8) ?[]u8 {
+            const self: *const @This() = @ptrCast(@alignCast(context));
+            return std.mem.concat(allocator, u8, &.{ self.prefix, raw }) catch null;
+        }
+    };
+    const Case = struct { a: []const u8, b: []const u8, base_b: []const u8 = "https://one.test/" };
+    const cases = [_]Case{
+        .{ .a = "margin-left: 3px", .b = "margin-left: 3px !important" },
+        .{ .a = "margin-left: 3px", .b = "margin-left: 4px" },
+        .{ .a = "--a: 1px", .b = "--a: 2px" },
+        .{ .a = "background-image: url(./a.png)", .b = "background-image: url(./a.png)", .base_b = "https://two.test/" },
+        .{ .a = "--u: url(./a.png); background-image: var(--u)", .b = "--u: url(./a.png); background-image: var(--u)", .base_b = "https://two.test/" },
+    };
+    var root = try rootStyle("font-size: 20px");
+    defer root.block.deinit();
+    defer root.style.destroy();
+    for (cases) |case| {
+        const cache = try MatchedPropertiesCache.create(testing.allocator);
+        defer cache.destroy();
+        var blocks: [2]css.declarations.DeclarationBlock = undefined;
+        for (&blocks, [_][]const u8{ case.a, case.b }, [_][]const u8{ "https://one.test/", case.base_b }) |*block, text, base| {
+            const resolver: Resolver = .{ .prefix = base };
+            const source = try css.style_values.ResourceSource.create(testing.allocator, .{ .base_url = base });
+            defer source.unref();
+            block.* = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator, .resource_source = source, .url_resolver = .{ .context = &resolver, .resolve = Resolver.resolve } }, text);
+        }
+        defer for (&blocks) |*block| block.deinit();
+        const ma = [1]Matched{.{ .block = &blocks[0], .source = own_source }};
+        const mb = [1]Matched{.{ .block = &blocks[1], .source = own_source }};
+        const first = try ownMiss(cache, &ma, root.style, 7);
+        defer first.destroy();
+        // The same block content, the same key: a hit (the entry is there).
+        try testing.expect(cache.find(ownLookup(&ma, root.style, 7)) != null);
+        if (cache.find(ownLookup(&mb, root.style, 7)) != null) {
+            std.debug.print("\n'{s}' under {s} corresponded to '{s}'\n", .{ case.b, case.base_b, case.a });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+/// ownLookup as the engine makes it for a resolution with an own block: the
+/// content key and the shape key (Lookup.shape).
+fn ownShaped(matched: *const [1]Matched, parent: *const ComputedStyle) Lookup {
+    var lookup = ownLookup(matched, parent, null);
+    lookup.shape = shapeOf(matched, null, parent);
+    return lookup;
+}
+
+fn ownShapedMiss(cache: *MatchedPropertiesCache, matched: *const [1]Matched, parent: *const ComputedStyle) !*ComputedStyle {
+    var deps: css.cascade.Dependencies = .{};
+    const style = try css.cascade.cascade(.{ .allocator = testing.allocator, .parent = parent, .dependencies = &deps }, matched);
+    cache.add(ownShaped(matched, parent), deps, style);
+    return style;
+}
+
+/// Own blocks no other element holds (`margin-left: <from>px` and up), each
+/// resolved and added, until the cache prunes; returns how many it took.
+fn uniqueUntilPrune(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, from: usize) !usize {
+    var buffer: [64]u8 = undefined;
+    var n: usize = 0;
+    var last = cache.entries;
+    while (n <= 2 * MatchedPropertiesCache.limit) : (n += 1) {
+        var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{from + n}));
+        defer block.deinit();
+        const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+        (try ownShapedMiss(cache, &matched, parent)).destroy();
+        if (cache.entries < last) return n + 1;
+        last = cache.entries;
+    }
+    return error.NoPrune;
+}
+
+/// Rules' styles (adoption-only, keys of their own from `from` up) until the
+/// cache prunes.
+fn rulesUntilPrune(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, from: usize) !void {
+    var buffer: [64]u8 = undefined;
+    var k: usize = 0;
+    var last = cache.entries;
+    while (k <= 2 * MatchedPropertiesCache.limit) : (k += 1) {
+        const s = try styleOf(testing.allocator, parent, try std.fmt.bufPrint(&buffer, "margin-top: {d}px", .{k + 1}));
+        defer s.destroy();
+        cache.add(.{ .key = from + k, .generation = 1 }, null, s);
+        if (cache.entries < last) return;
+        last = cache.entries;
+    }
+    return error.NoPrune;
+}
+
+/// Whether an own block's content, first seen now, is kept: a second block
+/// with the same content finds it.
+fn firstSightingKept(cache: *MatchedPropertiesCache, parent: *const ComputedStyle, text: []const u8) !bool {
+    const parse = css.declarations.DeclarationBlock.parse;
+    var a = try parse(.{ .allocator = testing.allocator }, text);
+    defer a.deinit();
+    var b = try parse(.{ .allocator = testing.allocator }, text);
+    defer b.deinit();
+    const ma = [1]Matched{.{ .block = &a, .source = own_source }};
+    const mb = [1]Matched{.{ .block = &b, .source = own_source }};
+    (try ownShapedMiss(cache, &ma, parent)).destroy();
+    return cache.find(ownShaped(&mb, parent)) != null;
+}
+
+test "a prune that finds the own-block entries served no hit: from then an own block's content is kept from its second sighting" {
+    const allocator = testing.allocator;
+    const cache = try MatchedPropertiesCache.create(allocator);
+    defer cache.destroy();
+    var scene: Scene = undefined;
+    try scene.init("font-size: 20px", "display: flex; color: currentcolor");
+    defer scene.deinit();
+    const root = scene.parent;
+    var buffer: [64]u8 = undefined;
+    const parse = css.declarations.DeclarationBlock.parse;
+
+    // Before any prune an own block's content is kept at its first sighting.
+    try testing.expect(try firstSightingKept(cache, root, "padding-left: 1px"));
+    // Own blocks no other element holds, until the cache prunes for one:
+    // the prune finds hundreds of own-block entries and one that served.
+    _ = try uniqueUntilPrune(cache, root, 1);
+    const after_prune = cache.entries;
+    // From here such a block gets no entry (its shape key keeps its
+    // adoption-only entries, as before lane style1 b5): no further prune.
+    for (0..1000) |i| {
+        var block = try parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{100000 + i}));
+        defer block.deinit();
+        const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+        (try ownShapedMiss(cache, &matched, root)).destroy();
+    }
+    try testing.expect(cache.entries <= after_prune + MatchedPropertiesCache.per_key);
+
+    // A content that repeats: its first sighting leaves no entry, its
+    // second makes one, its third is a hit.
+    var blocks: [3]css.declarations.DeclarationBlock = undefined;
+    for (&blocks) |*b| b.* = try parse(.{ .allocator = allocator }, "margin-left: 7777777px");
+    defer for (&blocks) |*b| b.deinit();
+    const m0 = [1]Matched{.{ .block = &blocks[0], .source = own_source }};
+    const m1 = [1]Matched{.{ .block = &blocks[1], .source = own_source }};
+    const m2 = [1]Matched{.{ .block = &blocks[2], .source = own_source }};
+    const before = cache.entries;
+    (try ownShapedMiss(cache, &m0, root)).destroy();
+    try testing.expectEqual(before, cache.entries);
+    try testing.expect(cache.find(ownShaped(&m1, root)) == null);
+    (try ownShapedMiss(cache, &m1, root)).destroy();
+    try testing.expectEqual(before + 1, cache.entries);
+    try testing.expect(cache.find(ownShaped(&m2, root)) != null);
+
+    // A rule's style is kept at its first sighting, as before: a rule's
+    // block is one object for every element it matches.
+    (try scene.miss(cache, root)).destroy();
+    try testing.expect(cache.find(scene.lookup(root)) != null);
+}
+
+test "a prune that finds own-block entries serving hits, or too few of them to tell, leaves an own block's content kept at its first sighting" {
+    const allocator = testing.allocator;
+    var buffer: [64]u8 = undefined;
+    {
+        // Half the cache's limit in own-block contents, each held by two
+        // elements: every entry serves a hit.
+        const cache = try MatchedPropertiesCache.create(allocator);
+        defer cache.destroy();
+        var root = try rootStyle("font-size: 20px");
+        defer root.block.deinit();
+        defer root.style.destroy();
+        for (0..MatchedPropertiesCache.limit / 2) |i| {
+            try testing.expect(try firstSightingKept(cache, root.style, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1})));
+        }
+        try rulesUntilPrune(cache, root.style, 1000);
+        try testing.expect(try firstSightingKept(cache, root.style, "padding-left: 9px"));
+    }
+    {
+        // A dozen own-block entries that served no hit among rules' styles:
+        // too few to say what the page's own blocks do.
+        const cache = try MatchedPropertiesCache.create(allocator);
+        defer cache.destroy();
+        var root = try rootStyle("font-size: 20px");
+        defer root.block.deinit();
+        defer root.style.destroy();
+        for (0..12) |i| {
+            var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = allocator }, try std.fmt.bufPrint(&buffer, "margin-left: {d}px", .{i + 1}));
+            defer block.deinit();
+            const matched = [1]Matched{.{ .block = &block, .source = own_source }};
+            (try ownShapedMiss(cache, &matched, root.style)).destroy();
+        }
+        try rulesUntilPrune(cache, root.style, 1000);
+        try testing.expect(try firstSightingKept(cache, root.style, "padding-left: 9px"));
+    }
 }

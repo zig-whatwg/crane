@@ -198,6 +198,14 @@ pub const InternalState = struct {
     image_loader: ?*dom.style.engine.available_images.Loader = null,
     /// Owned. Non-null means the dirty value flag is set; always sanitized.
     value: ?[]u8 = null,
+    /// Step 2 of the type change steps took the element's value from its
+    /// value attribute (the control entered a value-mode state with the
+    /// attribute present) and nothing has reset it since. The dirty value
+    /// flag stays false and the value still follows the attribute; the bit
+    /// only tells step 1 of a later type change that the value was stored on
+    /// the element, as a dirty one is (typeChangeSteps has the evidence).
+    /// WebKit keeps both facts in one field, m_valueIfDirty.
+    value_taken_by_type_change: bool = false,
     /// The last user edit's owned raw text. Null after every script value
     /// write/reset/type change; also records last-user-edit provenance.
     editor_text: ?[]u8 = null,
@@ -531,6 +539,10 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     const target = getInternal(copy) orelse return;
     // The value and its dirty value flag: a non-null value is a dirty one.
     if (source.value) |value| try target.setValue(value) else target.clearValue();
+    // And whether a type change stored it (typeChangeSteps, step 1): WebKit
+    // HTMLInputElement::copyNonAttributePropertiesFromElement copies
+    // m_valueIfDirty, which holds that value.
+    target.value_taken_by_type_change = source.value_taken_by_type_change;
     if (source.editor_text) |raw| target.editor_text = try target.allocator.dupe(u8, raw);
     target.bad_input = source.bad_input;
     target.checkedness = source.checkedness;
@@ -654,24 +666,85 @@ fn typeChangeSteps(instance: *runtime.Instance, previous: InputType, now: InputT
         // the new state ... puts the value IDL attribute in either the
         // default mode or the default/on mode, then set the element's value
         // content attribute to the element's value."
-        const current = valueIn(instance, previous) catch return;
-        defer internal.allocator.free(current);
-        if (current.len > 0) {
-            // The attribute change steps this runs see the new type; the
-            // value is no longer the element's own.
-            setAttributeValue(instance, "value", current) catch |err| {
-                log.warn("input value attribute not set on a type change: {}", .{err});
-            };
+        //
+        // DEVIATION from the spec text (golden rule 2, no newer spec
+        // involved; the integrator's ruling, 2026-11-11): the step runs only
+        // for a value that was STORED on the element - a dirty value, or one
+        // step 2 of an earlier type change took from the value attribute. A
+        // value that only ever came from the value attribute is not written
+        // back. The browsers split, mechanism by mechanism (sources read
+        // 2026-11-11), and the two majorities together are Safari's shipping
+        // behaviour:
+        //   A. never stored (parsed, cloned, createElement + setAttribute,
+        //      or after a form reset): Chrome and Safari do not write,
+        //      Firefox writes - 2 to 1 against the text;
+        //   B. stored by step 2 (hidden -> text -> hidden with a value
+        //      attribute and no script or user write): Safari and Firefox
+        //      write, Chrome does not - 2 to 1 for the text;
+        //   a dirty value: all three write.
+        // - Blink third_party/blink/renderer/core/html/forms/
+        //   html_input_element.cc (9378deaa) UpdateType 570-577: `if
+        //   (HasDirtyValue() && !non_attribute_value_.empty()) setAttribute(
+        //   html_names::kValueAttr, AtomicString(non_attribute_value_));`;
+        //   its step 2 (584-591) ends `has_dirty_value_ = false`, so B is
+        //   not written.
+        // - WebKit Source/WebCore/html/HTMLInputElement.cpp (1e916bfa)
+        //   updateType 594-597: `if (didStoreValue && !willStoreValue) { if
+        //   (auto dirtyValue = std::exchange(m_valueIfDirty, { });
+        //   !dirtyValue.isEmpty()) setAttributeWithoutSynchronization(
+        //   valueAttr, ...); }`; its step 2 (607-608) stores `m_valueIfDirty
+        //   = sanitizeValue(attributeWithoutSynchronization(valueAttr))`,
+        //   null only when there is no value attribute, so B is written.
+        // - Gecko dom/html/HTMLInputElement.cpp (ca13b3aa) HandleTypeChange
+        //   4808-4821: `if (oldValueMode == VALUE_MODE_VALUE &&
+        //   !oldValue.IsEmpty()) SetAttr(kNameSpaceID_None, nsGkAtoms::value,
+        //   oldValue, ...)`: the text.
+        // WPT does not tell them apart - its type-change tests dirty the
+        // value first: the-input-element/type-change-state.html 380/380 in
+        // Chrome, Firefox and Safari, valueMode.html 40/40, clone.html 19/19
+        // (wpt.fyi, run 76f5455a0a, 2026-11-11).
+        //
+        // Why Crane meets case A at all: the parser and a clone set an
+        // element's whole attribute list before any change step runs (Blink's
+        // and WebKit's order: Element.zig handleSetAttributes), so `type`'s
+        // step runs with `value` in the list. Neither engine runs this step
+        // then (Blink ParseAttribute 922-926 skips kByParser, and core/dom/
+        // element.cc 1327-1328 clones the attributes before the value and
+        // its flag; WebKit attributeChanged 820-823 returns unless the
+        // change was made Directly), and a parsed `<input type=hidden
+        // value="a&#10;b">` keeps its attribute in all three browsers.
+        //
+        // The value written stays the spec's, the element's value now (and
+        // Firefox's). WebKit writes what step 2 saw even when the attribute
+        // has changed since; only WebKit does.
+        const stored = internal.value != null or internal.value_taken_by_type_change;
+        internal.value_taken_by_type_change = false;
+        if (stored) {
+            const current = valueIn(instance, previous) catch return;
+            defer internal.allocator.free(current);
+            if (current.len > 0) {
+                // The attribute change steps this runs see the new type; the
+                // value is no longer the element's own.
+                setAttributeValue(instance, "value", current) catch |err| {
+                    log.warn("input value attribute not set on a type change: {}", .{err});
+                };
+            }
         }
     } else if (previous_mode != .value and new_mode == .value) {
         // 2. "set the value of the element to the value of the value content
         // attribute, if there is one, or the empty string otherwise, and then
         // set the control's dirty value flag to false."
         internal.clearValue();
+        // The value the element now has was taken from the attribute by this
+        // step: step 1 of a later type change writes it (case B above).
+        // WebKit's m_valueIfDirty is non-null here exactly when the
+        // attribute is present.
+        internal.value_taken_by_type_change = hasAttribute(instance, "value");
     } else if (previous_mode != .filename and new_mode == .filename) {
         // 3. "set the value of the element to the empty string" - a File
         // Upload control's value is its selected files'.
         internal.clearValue();
+        internal.value_taken_by_type_change = false;
     }
     // 4. (rendering). 5. Signal a type change: the radio button group rule.
     if (now == .radio and internal.checkedness) uncheckOthersInGroup(instance);
@@ -991,6 +1064,10 @@ fn resetAlgorithm(instance: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.user_validity = false;
     internal.clearValue();
+    // The value is the attribute's again: nothing is stored on the element
+    // (typeChangeSteps, step 1; WebKit HTMLInputElement::reset's
+    // `setValue({ })` leaves m_valueIfDirty null).
+    internal.value_taken_by_type_change = false;
     emptySelectedFiles(instance);
     internal.dirty_checkedness = false;
     setCheckedness(instance, hasAttribute(instance, "checked"));

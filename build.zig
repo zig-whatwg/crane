@@ -2595,6 +2595,7 @@ const Platform = enum {
 /// this list only makes a typo fail before any compile starts.
 const platform_capability_names = [_][]const u8{
     "image_decoding",
+    "image_encoding",
     "font_decoding",
     "brotli",
     "persistent_storage",
@@ -2859,7 +2860,7 @@ fn platformBinding(b: *std.Build, target: std.Build.ResolvedTarget, options: Pla
     const font_decoding_enabled = for (options.without) |name| {
         if (std.mem.eql(u8, name, "font_decoding")) break false;
     } else true;
-    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding" };
+    const kit_parts = [_][]const u8{ "posix", "headless", "memory_store", "curl", "crypto", "memory_clipboard", "browser_state", "brotli", "image_codecs", "inflate", "sfnt", "image_decoding", "media_decoding", "image_encoding" };
     var kit: [kit_parts.len]*std.Build.Module = undefined;
     for (kit_parts, 0..) |part, i| {
         kit[i] = b.createModule(.{
@@ -4541,6 +4542,35 @@ pub fn build(b: *std.Build) void {
             // dp1_local_datetime_test.zig checks against localtime_r through the
             // <time.h> module kit/posix imports (addCImport: one per graph).
             .{ .name = "c_time", .module = testing_graph.c_time },
+            // tls1_stack_overflow_test.zig runs the stack-overflow fixture
+            // (tests/platform/stack_overflow_fixture.zig): a program set up
+            // as Crane's roots are - no signal stack from std, the platform's
+            // own alternate stack (kit/posix/signal_stack.zig, compiled in as
+            // it is) - in the two modes whose builds report a stack overflow:
+            // ReleaseSafe (the release console, the production runner) and
+            // Debug (the bug-finding runner's Crane modules).
+            .{ .name = "stack_overflow_fixtures", .module = stack_overflow_fixtures: {
+                const options = b.addOptions();
+                for ([_]std.builtin.OptimizeMode{ .ReleaseSafe, .Debug }) |mode| {
+                    const fixture = b.addExecutable(.{
+                        .name = b.fmt("stack_overflow_fixture_{t}", .{mode}),
+                        .root_module = b.createModule(.{
+                            .root_source_file = b.path("tests/platform/stack_overflow_fixture.zig"),
+                            .target = target,
+                            .optimize = mode,
+                            .link_libc = true,
+                            .imports = &.{.{ .name = "signal_stack", .module = b.createModule(.{
+                                .root_source_file = b.path("src/platform/kit/posix/signal_stack.zig"),
+                                .target = target,
+                                .optimize = mode,
+                                .link_libc = true,
+                            }) }},
+                        }),
+                    });
+                    options.addOptionPath(if (mode == .debug) "debug" else "release_safe", fixture.getEmittedBin());
+                }
+                break :stack_overflow_fixtures options.createModule();
+            } },
         };
         addTestFilesFromDir(b, test_step, "tests/platform", target, &platform_imports, false, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add platform test files: {}\n", .{err});
@@ -4587,6 +4617,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
+            .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
             .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
             .{ .name = "darwin_without_font_decoding", .platform = .darwin, .without = &.{"font_decoding"} },
         };
@@ -5054,6 +5085,9 @@ pub fn build(b: *std.Build) void {
         .{ .name = "host", .module = host_mod },
         // main's first step: engine.initializeBeforeThreadCreation.
         .{ .name = "engine", .module = engine_mod },
+        // main attaches the main thread's alternate signal stack
+        // (platform.attachSignalStack: std_options sets std's own off).
+        .{ .name = "platform", .module = platform_mod },
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
@@ -5909,6 +5943,60 @@ pub fn build(b: *std.Build) void {
     addTestVerify(b, launch, ubsan_symbols_tests, "tools-ubsan_symbols", "tools", &.{"ubsan_symbols.zig"});
 
     // ========================================================================
+    // The thread-local block check
+    // ========================================================================
+    // tools/thread_local_size.zig reads how many bytes of thread-local
+    // storage a built binary's image carries - a per-THREAD cost: macOS
+    // allocates the image's whole block for a thread on its first touch of
+    // any thread-local, glibc with every thread - and its largest
+    // thread-local symbols. The end of build() runs it on the same three
+    // binaries as the UBSan-symbol check, as part of their own steps,
+    // against tools/thread_local_size_budget.txt, which only goes down
+    // (`zig build thread-local-size -- --budget=<file> --lower=<bytes>`).
+    // Its tests read real objects: one C source compiled for ELF and for
+    // Mach-O, with a 65,536-byte thread-local array and without.
+    const thread_local_fixture_source = b.addWriteFiles().add("thread_local_fixture.c",
+        \\#ifdef CRANE_FIXTURE_PLAIN
+        \\#define CRANE_FIXTURE_STORAGE
+        \\#else
+        \\#define CRANE_FIXTURE_STORAGE _Thread_local
+        \\#endif
+        \\CRANE_FIXTURE_STORAGE char crane_fixture_big[65536];
+        \\CRANE_FIXTURE_STORAGE int crane_fixture_small = 7;
+        \\char *crane_fixture_touch(void) { crane_fixture_small += 1; return crane_fixture_big; }
+        \\
+    );
+    const thread_local_fixtures = b.addOptions();
+    for ([_]struct { []const u8, []const u8 }{ .{ "elf", "x86_64-linux-none" }, .{ "mach_o", "aarch64-macos-none" } }) |format| {
+        const fixture_target = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = format[1] }) catch @panic("fixture target"));
+        for ([_]struct { []const u8, []const []const u8 }{ .{ "", &.{} }, .{ "_plain", &.{"-DCRANE_FIXTURE_PLAIN"} } }) |variant| {
+            const object = b.addObject(.{
+                .name = b.fmt("thread_local_fixture_{s}{s}", .{ format[0], variant[0] }),
+                .root_module = b.createModule(.{ .target = fixture_target, .optimize = .ReleaseSafe }),
+            });
+            object.root_module.addCSourceFile(.{ .file = thread_local_fixture_source, .flags = variant[1] });
+            thread_local_fixtures.addOptionPath(b.fmt("{s}{s}", .{ format[0], variant[0] }), object.getEmittedBin());
+        }
+    }
+    const thread_local_size_module = b.createModule(.{
+        .root_source_file = b.path("tools/thread_local_size.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    thread_local_size_module.addOptions("thread_local_fixtures", thread_local_fixtures);
+    const thread_local_size_exe = b.addExecutable(.{ .name = "thread_local_size", .root_module = thread_local_size_module });
+    const thread_local_size_tests = b.addTest(.{ .root_module = thread_local_size_module });
+    test_step.dependOn(&addSuiteRun(b, launch, thread_local_size_tests, "tools-thread_local_size", null).step);
+    // Verify mode for its tests, which live in the tool:
+    // -Dverify-files=tools/thread_local_size.zig.
+    addTestVerify(b, launch, thread_local_size_tests, "tools-thread_local_size", "tools", &.{"thread_local_size.zig"});
+    const thread_local_size_run = b.addRunArtifact(thread_local_size_exe);
+    thread_local_size_run.has_side_effects = true;
+    thread_local_size_run.setCwd(b.path("."));
+    thread_local_size_run.addPassthruArgs();
+    b.step("thread-local-size", "Report a binary's thread-local block and its largest thread-local symbols (-- [--budget=tools/thread_local_size_budget.txt] <binary>; -- --budget=<file> --lower=<bytes> records a lower budget)").dependOn(&thread_local_size_run.step);
+
+    // ========================================================================
     // PERFORMANCE: the benchmark suite's runner and /performance/ (tools/perf_bench/)
     // ========================================================================
     // tools/perf_bench serves tests/perf/ (the engine-neutral workload
@@ -5967,6 +6055,45 @@ pub fn build(b: *std.Build) void {
     // The check that reads the built runners and console back (build_mode's
     // modes, as their binaries carry them).
     perf_bench_test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = ubsan_symbols_module }), "perf-ubsan_symbols", null).step);
+
+    // ========================================================================
+    // FRAMEWORKS: the JS framework compatibility matrix's harness (tools/fw_matrix/)
+    // ========================================================================
+    // tools/fw_matrix fetches the frameworks' pinned suites by checksum,
+    // serves each suite's tree on 127.0.0.1, opens its pages in Crane's
+    // console (`repl <url>`, a fresh one per page), reads the framework's own
+    // report and writes the journal (tmp/plans/framework-matrix-plan.md). A
+    // tool: std only, on the host; no Node.
+    const fw_matrix_module = b.createModule(.{
+        .root_source_file = b.path("tools/fw_matrix/main.zig"),
+        .target = b.graph.host,
+        .optimize = .ReleaseSafe,
+        // The report's HTML helpers are the WPT site's (escaping, numbers).
+        .imports = &.{
+            .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+        },
+    });
+    const fw_matrix_exe = b.addExecutable(.{ .name = "fw_matrix", .root_module = fw_matrix_module });
+    const install_fw_matrix = b.addInstallArtifact(fw_matrix_exe, .{});
+    const fw_matrix_step = b.step("fw-matrix", "Build the JS framework matrix's harness alone (zig-out/bin/fw_matrix)");
+    fw_matrix_step.dependOn(&install_fw_matrix.step);
+    const fw_matrix_tests = b.addTest(.{ .root_module = fw_matrix_module });
+    const run_fw_matrix_tests = addSuiteRun(b, launch, fw_matrix_tests, "tools-fw_matrix", null);
+    test_step.dependOn(&run_fw_matrix_tests.step);
+    addTestVerify(b, launch, fw_matrix_tests, "tools-fw_matrix", "tools/fw_matrix", &.{
+        "main.zig",      "journal.zig", "exclusions.zig", "manifest.zig", "readers.zig",
+        "generated.zig", "server.zig",  "fetch.zig",      "run.zig",      "report.zig",
+    });
+    // The manifest and the exclusion lists, read strictly: every entry with
+    // its reason, each belonging to a page.
+    const fw_matrix_check = b.addRunArtifact(fw_matrix_exe);
+    fw_matrix_check.setCwd(b.path("."));
+    fw_matrix_check.addArgs(&.{"check"});
+    fw_matrix_check.has_side_effects = true;
+    test_step.dependOn(&fw_matrix_check.step);
+    const fw_matrix_test_step = b.step("fw-matrix-test", "Run tools/fw_matrix's tests and its manifest check alone");
+    fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
+    fw_matrix_test_step.dependOn(&fw_matrix_check.step);
 
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
@@ -7004,6 +7131,16 @@ pub fn build(b: *std.Build) void {
         // is shown when it fails.
         check.expectExitCode(0);
         step.dependOn(&check.step);
+        // And its thread-local block is within the budget
+        // (tools/thread_local_size.zig): what every thread of the build pays
+        // for touching a thread-local. The budget is a file argument, so a
+        // changed budget reruns the check.
+        const thread_local_check = b.addRunArtifact(thread_local_size_exe);
+        thread_local_check.addPrefixedFileArg("--budget=", b.path("tools/thread_local_size_budget.txt"));
+        thread_local_check.addArg(b.fmt("--name={s}", .{checked.exe.name}));
+        thread_local_check.addFileArg(checked.exe.getEmittedBin());
+        thread_local_check.expectExitCode(0);
+        step.dependOn(&thread_local_check.step);
     };
 }
 
@@ -8525,6 +8662,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);
+    storage_mod.addImport("platform", platform_mod);
     // A Browser's network context keeps its connection share in kit/curl,
     // and fetch's transfers and WebSocket's handshakes take the Browser's
     // network options (proxy, TLS, user agent) from it.

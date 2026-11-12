@@ -11,11 +11,16 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const platform = @import("platform");
+const dom = @import("dom");
 
 /// The scope's supplement: its Browser's BrowserPlatform, once made.
 pub const PlatformState = struct {
     allocator: std.mem.Allocator,
     browser: ?*platform.BrowserPlatform = null,
+    /// The Browser's request ids (contract: `RequestId` is "unique per
+    /// Browser"): the last one handed out. Atomic - a worker's realm of the
+    /// same Browser asks on its own thread.
+    last_request_id: std.atomic.Value(platform.RequestId) = .init(0),
 
     pub fn init(allocator: std.mem.Allocator) PlatformState {
         return .{ .allocator = allocator };
@@ -65,6 +70,69 @@ pub fn of(realm: runtime.Context) ?*platform.BrowserPlatform {
     const scope = realm.browserScope() orelse return null;
     const state = scope.existing(PlatformState) orelse return null;
     return state.browser;
+}
+
+/// Who asks, for a per-Browser platform request made in `realm` (contract
+/// section 4): what `platform.Requester` borrows, owned here. `deinit` frees
+/// it once the operation has returned (the platform copies what it keeps).
+pub const RequesterParts = struct {
+    allocator: std.mem.Allocator,
+    request_id: platform.RequestId,
+    origin: []const u8,
+    top_level_origin: []const u8,
+    secure_context: bool,
+    transient_activation: bool,
+
+    /// The Requester, BORROWING these parts. Tab and frame are 0: reserved
+    /// until recipes step 7 supplies the document-to-TabId mapping (as
+    /// environmentValue below passes tab 0).
+    pub fn requester(self: *const RequesterParts) platform.Requester {
+        return .{
+            .request_id = self.request_id,
+            .tab = 0,
+            .frame = 0,
+            .origin = platform.Str.from(self.origin),
+            .top_level_origin = platform.Str.from(self.top_level_origin),
+            .secure_context = self.secure_context,
+            .transient_activation = self.transient_activation,
+        };
+    }
+
+    pub fn deinit(self: *RequesterParts) void {
+        self.allocator.free(self.origin);
+        self.allocator.free(self.top_level_origin);
+    }
+};
+
+/// The requester of a request `realm` makes now: a new request id of its
+/// Browser, the serialized origins of its relevant settings object and of
+/// its top-level traversable's active document, whether it is a secure
+/// context, and `transient_activation` - which the caller decides, since
+/// what counts as one is each API's (a user's key press is one; HTML
+/// 6.4.1 for script). Null when the realm has no Browser platform state or
+/// no settings object.
+pub fn requester(realm: runtime.Context, transient_activation: bool) error{OutOfMemory}!?RequesterParts {
+    const scope = realm.browserScope() orelse return null;
+    const state = scope.existing(PlatformState) orelse return null;
+    const record = realm.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const settings = dom.global_settings.of(global) orelse return null;
+    // The settings hooks allocate with the global's allocator.
+    const allocator = global.ctx.allocator;
+    const origin = settings.origin(global) catch |err| return if (err == error.OutOfMemory) error.OutOfMemory else null;
+    errdefer allocator.free(origin);
+    const top_level_origin: []const u8 = blk: {
+        const top_of = settings.top_level_origin orelse break :blk try allocator.dupe(u8, origin);
+        break :blk (try top_of(global)) orelse try allocator.dupe(u8, origin);
+    };
+    return .{
+        .allocator = allocator,
+        .request_id = state.last_request_id.fetchAdd(1, .monotonic) + 1,
+        .origin = origin,
+        .top_level_origin = top_level_origin,
+        .secure_context = settings.is_secure_context(global),
+        .transient_activation = transient_activation,
+    };
 }
 
 /// The clock `realm`'s HR-Time reads measure time with: its Browser's

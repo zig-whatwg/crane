@@ -399,9 +399,22 @@ fn enqueueRequest(instance: *runtime.Instance, source: *runtime.Instance, operat
     if (transaction.state != .active) return error.TransactionInactiveError;
     const task = internal.task orelse return error.InvalidStateError;
     try task.pending.ensureUnusedCapacity(task.allocator, 1);
-    // ED 5.6 step 3 creates a request in the current realm; ED 4.9 captures
-    // that realm again when iteration reuses a request from another realm.
-    const realm = operation.target_realm orelse engine.currentRealm() orelse instance.ctx;
+    // ED 5.6 step 3 creates a request - in the current realm, by WebIDL's
+    // default for a new object. Golden rule 2, all three browsers aligned:
+    // the request is made in its SOURCE's realm (the receiver of
+    // get/put/openCursor), so a method taken from a removed frame and called
+    // on this realm's store makes this realm's request, whose listeners run
+    // (IndexedDB/idb{index,objectstore}-cross-realm-methods.html: Chrome
+    // 157, Firefox 160 and Safari 27.2 pass 7/7 and 11/11). Blink binds
+    // [CallWith=ScriptState] on an operation to ScriptState::ForRelevantRealm
+    // of the receiver; Gecko makes the request for the database's owner
+    // global (IDBRequest::Create with the transaction's database); WebKit
+    // for the object store's script execution context. Its result is made
+    // there too: a getAll()/getAllKeys() operation comes with the current
+    // realm as its target (indexeddb_keys.multipleItems), and a detached
+    // frame's realm would leave the request without its success event. ED
+    // 4.9 captures the reused request's realm again when iteration reuses it.
+    const realm = if (reused != null) (operation.target_realm orelse source.ctx) else source.ctx;
     var captured = operation;
     captured.target_realm = realm;
     const request = reused orelse try interfaces.IDBRequest.init(realm.allocator, realm);

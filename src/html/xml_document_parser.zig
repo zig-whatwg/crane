@@ -72,6 +72,7 @@ pub fn parseInto(document: *runtime.Instance, source: []const u8, options: Optio
     const allocator = document.ctx.allocator;
     var builder: Builder = .{ .allocator = allocator, .document = document, .options = options };
     defer builder.stack.deinit(allocator);
+    defer builder.attribute_blocks.deinit();
     var parser = xml.Parser.init(allocator, .{ .xhtml_entities = htmlNamedReference });
     defer parser.deinit();
     const failure = try parser.parse(source, &builder);
@@ -97,6 +98,9 @@ const Builder = struct {
     document: *runtime.Instance,
     options: Options,
     stack: std.ArrayList(Open) = .empty,
+    /// This parse's shared attribute blocks (dom.element_data.SharingCache);
+    /// freed by the parse's entry point as it returns.
+    attribute_blocks: dom.element_attributes.SharingCache = .{},
 
     fn parent(self: *const Builder) Open {
         if (self.stack.items.len == 0) return .{ .element = self.document, .target = self.document, .document = self.document };
@@ -152,14 +156,23 @@ const Builder = struct {
             // cloned to.
             if (!self.options.scripting) dom.script_elements.markAlreadyStarted(element);
         }
-        dom.element_attributes.reserve(element, attributes.len);
-        for (attributes) |attr| {
-            dom.element_attributes.append(element, .{
+        // "Append each attribute" at once, the list from this parse's
+        // shared blocks (dom.element_attributes.setParsed; lane nd2 batch 4).
+        if (attributes.len != 0) {
+            var stack: [16]dom.element_attributes.Attribute = undefined;
+            const on_heap = attributes.len > stack.len;
+            const converted = if (on_heap) self.allocator.alloc(dom.element_attributes.Attribute, attributes.len) catch |err| {
+                dom.node_creation.destroyUninserted(element);
+                return err;
+            } else stack[0..attributes.len];
+            defer if (on_heap) self.allocator.free(converted);
+            for (attributes, converted) |attr, *out| out.* = .{
                 .namespace = attr.name.namespace,
                 .prefix = attr.name.prefix,
                 .local_name = attr.name.local,
                 .value = attr.value,
-            }) catch |err| {
+            };
+            dom.element_attributes.setParsed(element, converted, &self.attribute_blocks) catch |err| {
                 dom.node_creation.destroyUninserted(element);
                 return err;
             };

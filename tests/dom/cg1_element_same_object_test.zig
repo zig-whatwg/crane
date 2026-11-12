@@ -54,12 +54,12 @@ test "Element's, HTMLElement's, SVGElement's and MathMLElement's States cache no
     try expectNoCaches(interfaces.SVGElement.State);
     try expectNoCaches(interfaces.MathMLElement.State);
     // The level each pinned: 0 bytes of own fields for Element (32 at
-    // 01edfb83b0a), HTMLElement (24) and MathMLElement (24); SVGElement's
-    // only its impl's `_internal` pointer (8; 40 at 01edfb83b0a).
-    inline for (.{ interfaces.Element.State, interfaces.HTMLElement.State, interfaces.MathMLElement.State }) |State| {
+    // 01edfb83b0a), HTMLElement (24), MathMLElement (24) and SVGElement (40
+    // at 01edfb83b0a; 8, its impl's `_internal` pointer, until lane quick1
+    // moved its nonce slot to the rare data's, 2026-11-12).
+    inline for (.{ interfaces.Element.State, interfaces.HTMLElement.State, interfaces.MathMLElement.State, interfaces.SVGElement.State }) |State| {
         try testing.expectEqual(@as(usize, 0), @sizeOf(@FieldType(State, "own")));
     }
-    try testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(interfaces.SVGElement.State, "own")));
 }
 
 test "what stays in a State: Node's childNodes (lane wr1 holds NodeRareData), a non-element's and a leaf element's own caches" {

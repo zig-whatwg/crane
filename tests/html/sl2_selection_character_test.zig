@@ -46,7 +46,7 @@ fn siblingText() !void {
         \\    host.contentEditable = innerEditable;
         \\    selection.collapse(left, left.length);
         \\    selection.modify('move', 'forward', 'character');
-        \\    if (selection.focusNode !== right || selection.focusOffset !== 0)
+        \\    if (selection.focusNode !== right || selection.focusOffset !== 1)
         \\      throw new Error('sibling Text forward transition changed');
         \\    selection.modify('move', 'backward', 'character');
         \\    if (selection.focusNode !== left || selection.focusOffset !== left.length)
@@ -58,8 +58,16 @@ fn siblingText() !void {
 }
 
 test "sibling Text transitions preserve their shared editing context in both directions" {
-    // Pin the current structural movement unit before the cost correction.
     // Text siblings inherit the same parent editing context, including an
     // explicit false or true boundary nested inside the opposite context.
+    // The end of "ab" and the start of "cd" are one caret position, so a
+    // forward character move from the end of "ab" passes "c" (corrected
+    // 2026-11-12, lane editing5 b4, from the old structural unit's
+    // (cd, 0)): Blink's NextVisuallyDistinctCandidate and WebKit's
+    // nextVisuallyDistinctCandidate skip a visually equivalent position,
+    // and selection/contenteditable/modify-around-inline-element-
+    // boundary.tentative.html's "abc[]<span>def</span>" -> (def, 1) passes
+    // in Chrome 157, Firefox 160 and Safari 27.2 (wpt.fyi 24ddf405a0).
+    // Backward from there returns to the end of "ab".
     try helpers.onFreshThread(siblingText);
 }

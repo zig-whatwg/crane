@@ -21,10 +21,13 @@
 //! ```
 //!
 //! What script needs to build file lists - `new DataTransfer()`,
-//! `items.add(file)`, `files` - and the attributes the constructor sets.
-//! Crane has no drag-and-drop operation (rendering and input are the host's),
-//! so a DataTransfer is only ever made by its constructor: always associated
-//! with its drag data store, in read/write mode.
+//! `items.add(file)`, `files` - the attributes the constructor sets, and the
+//! old interface's types/getData/setData/clearData. Crane has no
+//! drag-and-drop operation (rendering and input are the host's); a
+//! DataTransfer is made by its constructor, or by the clipboard event steps
+//! (Clipboard API "fire a clipboard event", src/html/execcommand/
+//! clipboard.zig), which change its store's mode through
+//! dom.drag_data_store.storeOf: always associated with its drag data store.
 //!
 //! The drag data store (dom.drag_data_store) is this object's own: made in
 //! the constructor, freed in deinit. Its item list and its files list are
@@ -187,24 +190,117 @@ pub fn get_files(instance: *runtime.Instance) anyerror!*runtime.Instance {
     return internal.files;
 }
 
-/// Getter for types
+/// The drag data store hook (dom.drag_data_store.storeOf): the clipboard
+/// event steps (src/html/execcommand/clipboard.zig) set the mode of, fill
+/// and read the store of a DataTransfer they made, without this impl.
+pub fn installHooks() void {
+    drag_data_store.installDataTransfer(.{ .store_of = &storeOfDataTransfer });
+}
+
+fn storeOfDataTransfer(instance: *runtime.Instance) ?*drag_data_store.Store {
+    const internal = getInternal(instance) orelse return null;
+    return internal.store;
+}
+
+/// getData, setData and clearData steps 3-4/4-5: the format converted to
+/// ASCII lowercase, "text" changed to "text/plain" and "url" to
+/// "text/uri-list" (whether it was "url": getData's convert-to-URL).
+/// OWNED by `allocator`.
+fn normalizedFormat(allocator: std.mem.Allocator, format: []const u8) !struct { format: []u8, url: bool } {
+    const lowered = try std.ascii.allocLowerString(allocator, format);
+    if (std.mem.eql(u8, lowered, "text")) {
+        allocator.free(lowered);
+        return .{ .format = try allocator.dupe(u8, "text/plain"), .url = false };
+    }
+    if (std.mem.eql(u8, lowered, "url")) {
+        allocator.free(lowered);
+        return .{ .format = try allocator.dupe(u8, "text/uri-list"), .url = true };
+    }
+    return .{ .format = lowered, .url = false };
+}
+
+/// Remove the text item of type `format`, if any, through the item list
+/// (its remove(index) also lets go of the item's DataTransferItem, which
+/// then reads as disabled). The store is in read/write mode.
+fn removeText(internal: *InternalState, format: []const u8) !void {
+    const index = internal.store.textIndex(format) orelse return;
+    try interfaces.DataTransferItemList.call_remove(internal.items, @intCast(index));
+}
+
+/// Getter for types: the types array (HTML 6.11.3): each text item's type
+/// string, then "Files" when any item is a file; empty when no longer
+/// associated with a drag data store. A new frozen array per read.
+/// TODO(datatransfer-types-identity): HTML sets one array when the item
+/// list changes, so `types === types` holds between changes; keep it.
 pub fn get_types(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    const realm = engine.currentRealm() orelse instance.ctx;
+    const internal = getInternal(instance) orelse return (try engine.createFrozenArray(realm, &.{})).take();
+    const store = internal.store;
+    const allocator = instance.ctx.allocator;
+    var values: std.ArrayList(runtime.JSValue) = .empty;
+    defer values.deinit(allocator);
+    // 2.1. Each text item's type string, in order.
+    for (store.items.items) |item| {
+        if (item.kind == .text) try values.append(allocator, runtime.JSValue.fromStringRef(item.type_string));
+    }
+    // 2.2. "Files" when any item is a file.
+    if (store.hasFiles()) try values.append(allocator, runtime.JSValue.fromStringRef("Files"));
+    // 3. A frozen array of L.
+    return (try engine.createFrozenArray(realm, values.items)).take();
 }
 
-/// Operation: getData
+/// Operation: getData(format), HTML 6.11.3.
 pub fn call_getData(instance: *runtime.Instance, format: runtime.DOMString) anyerror!runtime.DOMString {
-    _ = instance;
-    _ = format;
-    return error.NotImplemented;
+    // 1. Not associated with a drag data store: the empty string.
+    const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
+    // 2. Protected mode: the empty string.
+    if (internal.store.mode == .protected) return runtime.DOMString.initEmpty();
+    // 3-6. The format, lowercased; "text" and "url" (convert-to-URL).
+    const allocator = instance.ctx.allocator;
+    const normalized = try normalizedFormat(allocator, format.asSlice());
+    defer allocator.free(normalized.format);
+    // 7-8. The data of the text item of that type, or the empty string.
+    const data = internal.store.textData(normalized.format) orelse return runtime.DOMString.initEmpty();
+    // 9. convert-to-URL: the first URL of the text/uri-list (RFC 2483: one
+    //    URI per CRLF-separated line, "#" lines are comments).
+    if (normalized.url) {
+        var lines = std.mem.tokenizeAny(u8, data, "\r\n");
+        while (lines.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t");
+            if (trimmed.len == 0 or trimmed[0] == '#') continue;
+            return runtime.DOMString.initDupe(allocator, trimmed);
+        }
+        return runtime.DOMString.initEmpty();
+    }
+    // 10.
+    return runtime.DOMString.initDupe(allocator, data);
 }
 
-/// Operation: clearData
+/// Operation: clearData(format), HTML 6.11.3.
 pub fn call_clearData(instance: *runtime.Instance, format: webidl.Opt(runtime.DOMString)) anyerror!void {
-    _ = instance;
-    _ = format;
-    return error.NotImplemented;
+    // 1. Not associated with a drag data store: nothing happens.
+    const internal = getInternal(instance) orelse return;
+    // 2. Not in read/write mode: nothing happens.
+    if (internal.store.mode != .read_write) return;
+    // 3. No argument: remove every text item.
+    if (!format.was_passed) {
+        // Clipboard API "fire a clipboard event" step 11.1.
+        try internal.store.noteClear(null);
+        var index = internal.store.length();
+        while (index > 0) {
+            index -= 1;
+            if (internal.store.items.items[index].kind != .text) continue;
+            try interfaces.DataTransferItemList.call_remove(internal.items, @intCast(index));
+        }
+        return;
+    }
+    // 4-5. The format, lowercased; "text" and "url".
+    const allocator = instance.ctx.allocator;
+    const normalized = try normalizedFormat(allocator, format.value.asSlice());
+    defer allocator.free(normalized.format);
+    try internal.store.noteClear(normalized.format);
+    // 6. Remove the text item of that type, if there is one.
+    try removeText(internal, normalized.format);
 }
 
 /// Operation: setDragImage
@@ -216,10 +312,20 @@ pub fn call_setDragImage(instance: *runtime.Instance, image: *runtime.Instance, 
     return error.NotImplemented;
 }
 
-/// Operation: setData
+/// Operation: setData(format, data), HTML 6.11.3.
 pub fn call_setData(instance: *runtime.Instance, format: runtime.DOMString, data: runtime.DOMString) anyerror!void {
-    _ = instance;
-    _ = format;
-    _ = data;
-    return error.NotImplemented;
+    // 1. Not associated with a drag data store: nothing happens.
+    const internal = getInternal(instance) orelse return;
+    // 2. Not in read/write mode: nothing happens.
+    if (internal.store.mode != .read_write) return;
+    // 3-4. The format, lowercased; "text" and "url".
+    const allocator = instance.ctx.allocator;
+    const normalized = try normalizedFormat(allocator, format.asSlice());
+    defer allocator.free(normalized.format);
+    // 5. Remove the text item of that type, if there is one.
+    try removeText(internal, normalized.format);
+    // 6. Add a text item of that type with the data.
+    _ = try internal.store.addText(data.asSlice(), normalized.format);
+    // Clipboard API "fire a clipboard event" step 11.2.
+    internal.store.noteSet(normalized.format);
 }

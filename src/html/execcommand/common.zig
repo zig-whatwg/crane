@@ -842,6 +842,24 @@ pub fn displayIsNone(element: *Instance) bool {
     return style.display().box == .none;
 }
 
+/// Whether nothing of `node` is shown although it may take space: an
+/// element whose computed visibility is hidden or collapse and no
+/// descendant element of which turns visibility back to visible.
+pub fn isVisibilityHidden(node: *Instance) !bool {
+    if (!isElement(node)) return false;
+    const style = computedStyleOf(node) orelse return false;
+    if (style.keyword(.visibility) == .visible) return false;
+    var current = try firstChild(node);
+    while (current) |c| {
+        if (!isDescendantOf(c, node)) break;
+        if (isElement(c)) {
+            if (computedStyleOf(c)) |s| if (s.keyword(.visibility) == .visible) return false;
+        }
+        current = try nextInTreeOrder(c);
+    }
+    return true;
+}
+
 /// "block node": an Element whose resolved display is not inline,
 /// inline-block, inline-table or none; or a Document or DocumentFragment.
 /// An element without a computed style counts as a block, as Chrome's ""

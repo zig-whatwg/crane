@@ -667,7 +667,7 @@ pub const ComputedStyle = struct {
     /// element's writing mode and direction (CSS Logical 1 §4).
     pub fn physical(self: *const ComputedStyle, l: Longhand) Longhand {
         const lg = l.logical() orelse return l;
-        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.keyword(.writing_mode), self.keyword(.direction)));
+        return properties.physicalOf(lg, self.keyword(.writing_mode), self.keyword(.direction));
     }
 
     /// Store `v` as the computed value of physical longhand `l`, taking the
@@ -868,6 +868,18 @@ pub const ComputedStyle = struct {
             return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        // Scrollbars 1 §3: "two computed colors", each resolved for this
+        // receiver as a color property's (CSSOM §9).
+        if (l == .scrollbar_color and v == .text_values) {
+            for (v.text_values.items, 0..) |item, i| {
+                if (i > 0) try out.append(allocator, ' ');
+                const color: Color = if (item == .color) item.color else .current;
+                const resolved = try color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+                defer resolved.release();
+                try resolved.serializeComputed(out, allocator);
+            }
+            return;
+        }
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
         if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");

@@ -167,6 +167,7 @@ progress = [
   "d74b3cdf00e, e94d5808576 - same-document navigations (pushState/replaceState, fragment navigations) finalize on the traversal queue: their entries are pending until listed, a traversal queued before them computes its endpoint from the original placement, and their finalize jumps a waiting traversal (14.1); every document's view reads the pending entries at once; a same-document traversal ends a navigation in flight (14.10.1) (nav2 E)",
   "66a94c84d0e, ab942228a3d - fragment navigation cost: the joint session history's lookups by id and navigable are indexed, clear-forward is one compaction, the views are written into kept buffers, and the navigation API's dispose check is linear (nav2 H)",
   "a26b9c16d1b, 3e2c123672b, 0ecb930d82c - \"finalize a cross-document navigation\" is a queue item: the entry is listed before the displayed document unloads, the commit waits for the items queued before it, and a mature navigation commits even when a later one started (nav2 F1; the host page's Context.navigate through it, F2)",
+  "771201f4a2d, 3a3ddd1dd3a, 089dc3cad2b - a planned form navigation cancels a javascript: URL queued in its target; about:srcdoc outside srcdoc= is a network error; an about:blank navigation carries main fetch's referrer; a removed frame's subtree is discarded at once; inner invoke skips listeners of not-fully-active Windows, with navigation API detach events before the frame unloads (lane nav2 batch 9)",
 ]
 
   [[infra.items]]

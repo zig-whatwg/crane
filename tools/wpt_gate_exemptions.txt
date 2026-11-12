@@ -88,7 +88,8 @@
 # - intentional: the 2026-10-17 audit of every stated browser deviation (lane
 #   gr2audit, 108 deviations) found none that all three browsers intentionally
 #   declined with evidence. Add an entry only with that evidence for all three.
-# - test-bug: none either (lane site1, 2026-11-09). The candidates were
+# - test-bug: none until 2026-11-11 (lane site1, 2026-11-09); since then the entry at the end of this file
+#   (editing/other/paste_text_with_text_transform.html, wpt#65067). site1's candidates were
 #   html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html and
 #   reporting-to-frame-owner.https.html (wpt#64870, Report.toJSON body ->
 #   DataCloneError). Neither meets the rule. wpt#64870 was resolved on
@@ -757,3 +758,27 @@ assertion = promise_test: Unhandled rejection with value: object "IndexSizeError
 kind      = needs-renderer
 why       = common/security-features requestViaImage reads the image back with getImageData(0, 0, img.clientWidth, img.clientHeight) (common.sub.js decodeImageData); with no renderer img.clientWidth is 0 (CSSOM View: no layout box), so getImageData throws IndexSizeError
 assertion = promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
+
+# needs-renderer (lane editing5 b4, 2026-11-12; integrator's GRANT 04:34 and ruling 05:17 UTC): a click and a
+# line-end key whose caret positions only a renderer answers. Evidence: the production run's messages (server1,
+# 2026-11-12 05:10 UTC, the b3 runner) and the Crane test crane/ed5-delete-at-renderer-caret.html, which places
+# the caret where the renderer's reads would and passes the rest of each subtest.
+[selection/fire-selectionchange-event-on-deleting-single-character-inside-inline-element.html]
+kind      = needs-renderer
+why       = each subtest clicks a non-empty inline editing host and presses End before Backspace: the click's caret is the renderer's position-for-point (Blink SelectionController / PositionForPoint) and End's target is the line's end (Blink MoveToEndOfLine, Selection.modify lineboundary, a line-box read); with no renderer neither places a caret, so Backspace deletes nothing and no selectionchange fires (Crane test crane/ed5-delete-at-renderer-caret.html: with the caret at the line's end all three cases pass)
+assertion = assert_greater_than: selectionchange should fire when deleting single character from inline contenteditable expected a number greater than 0 but got 0
+
+[editing/other/fire-selection-change-on-deleting-empty-element.html]
+kind      = needs-renderer
+why       = the test clicks the editing host holding "<h1>A</h1>" and presses Backspace: the click's caret is the renderer's position-for-point (Blink SelectionController / PositionForPoint; the host's centre lies past "A" on the heading's line), and with no renderer a click on content places no caret, so Backspace deletes nothing (Crane test crane/ed5-delete-at-renderer-caret.html: with the caret after "A" both Backspaces and the selectionchange count pass, since lane editing5 b4's MakeEditableRootEmpty)
+assertion = assert_equals: Character should be removed expected "<h1><br></h1>" but got "<h1>A</h1>"
+
+# test-bug (lane editing5 b2, 2026-11-11; filed on the user's "File both", integrator 23:58 UTC).
+[editing/other/paste_text_with_text_transform.html]
+kind            = test-bug
+why             = the file's top-level script asserts window.testRunner (WebKit's DumpRenderTree/WebKitTestRunner object) before any test is defined, so it ends in a harness ERROR in every wptrunner browser - "This test requires testRunner to read/write clipboard" in Chrome, Firefox, Safari and Crane alike
+upstream        = https://github.com/web-platform-tests/wpt/issues/65067
+chrome.result   = wpt.fyi run 4918833408901120: 0/0 (ERROR, Chrome 157, 24ddf405a0)
+firefox.result  = wpt.fyi run 4888858429489152: 0/0 (ERROR, Firefox 160, 24ddf405a0)
+safari.result   = wpt.fyi run 5440535234609152: 0/0 (ERROR, Safari 27.2, 24ddf405a0)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65067 is resolved

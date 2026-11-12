@@ -978,6 +978,13 @@ const Parser = struct {
                 return .{ .feature = .{ .id = named.resolved.id, .name = named.text, .form = .boolean } };
             }
             if (p.tt(j) == .colon) {
+                // Media Queries 5 §8.1: a custom media query's
+                // <extension-name> "must be used in a boolean context;
+                // using them in a normal or range context is a syntax
+                // error", so the parentheses are a <general-enclosed>, kept
+                // as written (mq-escaped-serialization.html: "(--\(FOO: bar)"
+                // in Chrome, Firefox and Safari).
+                if (p.extensionName(first)) return .none;
                 j = p.skipWs(j + 1, end);
                 const value = (try p.parseValue(&j, end)) orelse return .none;
                 if (p.skipWs(j, end) != end) return .none;
@@ -1020,6 +1027,9 @@ const Parser = struct {
     }
 
     fn rangeFeature(p: *const Parser, name_index: usize, form: @FieldType(Form, "range")) Error!FeatureResult {
+        // Media Queries 5 §8.1: an <extension-name> in a range context is a
+        // syntax error (parseFeature's normal context).
+        if (p.extensionName(name_index)) return .none;
         const named = try p.featureName(name_index);
         // The range context takes the plain name only: "min-width > 5px"
         // names no feature.
@@ -1029,7 +1039,20 @@ const Parser = struct {
 
     const NamedFeature = struct { resolved: Name, text: []const u8 };
 
+    /// Whether the ident at `index` is an <extension-name> (a
+    /// <dashed-ident>: Media Queries 5 §8.1, Extensions 1).
+    fn extensionName(p: *const Parser, index: usize) bool {
+        return std.mem.startsWith(u8, p.tokens[index].value, "--");
+    }
+
     fn featureName(p: *const Parser, index: usize) Error!NamedFeature {
+        // A custom media query's <extension-name> is a <dashed-ident>,
+        // case-sensitive like every one (Values 4 §4.2), so it keeps its
+        // case; every other name is ASCII case-insensitive.
+        if (p.extensionName(index)) {
+            const decoded = try tokenizer.decode(p.arena, p.tokens[index].value);
+            return .{ .resolved = resolveName(decoded), .text = try serialize_mod.serializeIdentifier(p.arena, decoded) };
+        }
         const lower = try p.lowerDecoded(p.tokens[index].value);
         return .{
             .resolved = resolveName(lower),

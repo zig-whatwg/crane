@@ -71,6 +71,11 @@ pub const Implementation = struct {
     /// `scope` has in its registration map (the WPT runner's question: a
     /// file that leaves one gets a fresh Browser after it).
     registration_count: *const fn (scope: *runtime.BrowserScope) usize,
+    /// The browsing context of `realm`'s document was focused at `at_ns` (the
+    /// platform's monotonic clock, nanoseconds), as html.focus's focus update
+    /// steps report it: Clients' matchAll() order (Service Workers 4.3.4
+    /// step 2.6.4, "most recently focused").
+    focused: *const fn (realm: runtime.Context, at_ns: u64) void,
 };
 
 // process-wide: one function table the ServiceWorkerContainer impl installs once at process start (crane.Process), the same for every Browser and thread; the clients themselves are each Browser's (its service worker manager)
@@ -119,6 +124,13 @@ pub fn registrationCount(scope: *runtime.BrowserScope) usize {
 pub fn routeForGlobal(global: *runtime.Instance) ?fetch.internal.ServiceWorkerRoute {
     const impl = implementation.get() orelse return null;
     return impl.route_for_global(global);
+}
+
+/// `realm`'s document's browsing context was focused at `at_ns`; nothing
+/// with no owner installed.
+pub fn focused(realm: runtime.Context, at_ns: u64) void {
+    const impl = implementation.get() orelse return;
+    impl.focused(realm, at_ns);
 }
 
 test "with nothing installed, no client is reserved and no request is routed" {

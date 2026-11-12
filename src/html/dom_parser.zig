@@ -220,7 +220,9 @@ pub fn parseHTML(
     // Step 6: Convert TreeNode tree to DOM nodes
     var associations: PendingAssociations = .empty;
     defer associations.deinit(allocator);
-    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations });
+    var attribute_blocks: dom.element_attributes.SharingCache = .{};
+    defer attribute_blocks.deinit();
+    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations, .attribute_blocks = &attribute_blocks });
     associateParsedControls(associations.items) catch return error.OutOfMemory;
 
     return document;
@@ -449,7 +451,9 @@ pub fn parseFragmentWith(
             interfaces.Element.get_customElementRegistry(value) catch return error.InvalidStateError }
     else
         .default;
-    var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode };
+    var attribute_blocks: dom.element_attributes.SharingCache = .{};
+    defer attribute_blocks.deinit();
+    var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode, .attribute_blocks = &attribute_blocks };
     // The context element's local name and namespace. Its HTML-specific
     // steps below - the tokenizer state, the insertion mode - are for an
     // element in the HTML namespace; a foreign context (innerHTML on an svg
@@ -669,6 +673,9 @@ const Conversion = struct {
     /// element for a token" step 15's parser conditions, associated once the
     /// tree is built (a foster-parented control can precede its form).
     associations: ?*PendingAssociations = null,
+    /// The parse's shared attribute blocks (dom.element_data.SharingCache),
+    /// owned by the parse's entry point, which frees it as it returns.
+    attribute_blocks: ?*dom.element_attributes.SharingCache = null,
 };
 
 const PendingAssociation = struct { element: *runtime.Instance, form: *TreeNode };
@@ -747,7 +754,7 @@ fn convertChildrenToDom(
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
     const child_conversion: Conversion = if (target != parent_dom)
-        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode }
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_blocks = conversion.attribute_blocks }
     else
         conversion;
     var index: usize = 0;
@@ -812,7 +819,7 @@ fn attachDeclarativeShadow(
     // The template's contents are the shadow root (7.11.6); create-for-token
     // step 6 looks the registry up from it.
     const shadow_registry = interfaces.ShadowRoot.get_customElementRegistry(shadow) catch return error.InvalidStateError;
-    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode });
+    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_blocks = conversion.attribute_blocks });
     return true;
 }
 
@@ -902,8 +909,7 @@ fn createElementNode(
     };
 
     // "Append each attribute in the given token to element."
-    dom.element_attributes.reserve(element, tree_node.attributes.toSlice().len);
-    for (tree_node.attributes.toSlice()) |attr| parser_script_execution.appendParsedAttribute(element, attr);
+    parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), conversion.attribute_blocks);
 
     // Step 15, deferred to the end of the conversion: a form keeps its DOM
     // node on its tree node so the controls it was the pointer for find it.

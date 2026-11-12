@@ -29,6 +29,11 @@ const Hook = @import("hook.zig").Hook;
 
 const runtime = @import("runtime");
 
+/// A parser run's shared attribute blocks (dom.element_data.SharingCache):
+/// the parser makes one, hands it to `setParsed` for each element it
+/// creates, and deinits it when its run ends, on every path.
+pub const SharingCache = @import("element_data.zig").SharingCache;
+
 pub const Error = error{ InvalidStateError, OutOfMemory };
 
 /// One attribute of a list. Borrowed from its name and value records: valid
@@ -54,7 +59,8 @@ pub const Implementation = struct {
     remove: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) void,
     node_at: *const fn (element: *runtime.Instance, index: usize) Error!?*runtime.Instance,
     existing_node_at: *const fn (element: *runtime.Instance, index: usize) ?*runtime.Instance,
-    reserve: *const fn (element: *runtime.Instance, more: usize) void,
+    set_parsed: *const fn (element: *runtime.Instance, attributes: []const Attribute, cache: ?*SharingCache) Error!void,
+    clone_from: *const fn (copy: *runtime.Instance, node: *runtime.Instance) Error!void,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -85,18 +91,27 @@ pub fn append(element: *runtime.Instance, attribute: Attribute) Error!void {
     return impl.append(element, attribute);
 }
 
-/// Room for `more` attributes appended to `element` next: "create an
-/// element for a token" (HTML 13.2.6.1: "Append the attributes in the given
-/// token to element") and "clone a single node" (DOM 4.5 step 2.3: "For each
-/// attribute of node's attribute list... Append copyAttribute to copy") know
-/// how many they append, so the list is sized for them exactly; script's
-/// appends grow it 1 -> 4 -> x2 (lane nd2 batch 2; oss review R16: Servo's
-/// f28a39571849 pre-sizes on parse and clone the same way, as do Gecko and
-/// Ladybird). A capacity hint: out of memory, the appends grow the list
-/// themselves. Nothing for a node that is not an element.
-pub fn reserve(element: *runtime.Instance, more: usize) void {
-    const impl = implementation.get() orelse return;
-    impl.reserve(element, more);
+/// HTML 13.2.6.1 "create an element for a token": "Append each attribute in
+/// the given token to element", for an element the parser just created,
+/// with no attributes yet. The list is set at once - from `cache`, shared
+/// with every element of the parse whose set is equal - and then "handle
+/// attribute changes" runs for each attribute, in order. Blink (Element::
+/// ParserSetAttributes) and WebKit (Element::parserSetAttributes) do the
+/// same: their elements' change steps see the whole token's list.
+pub fn setParsed(element: *runtime.Instance, attributes: []const Attribute, cache: ?*SharingCache) Error!void {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    return impl.set_parsed(element, attributes, cache);
+}
+
+/// DOM "clone a single node" step 3 for element `copy`, which has no
+/// attributes yet: a copy of each attribute of `node`'s list, appended to
+/// `copy` - the list SHARED with `node` until either writes it (Blink's
+/// Element::CloneAttributesFrom, WebKit's Element::
+/// cloneAttributesFromElement), then "handle attribute changes" for each, as
+/// a copied attribute (`Attribute.by_cloning`).
+pub fn cloneFrom(copy: *runtime.Instance, node: *runtime.Instance) Error!void {
+    const impl = implementation.get() orelse return error.InvalidStateError;
+    return impl.clone_from(copy, node);
 }
 
 /// DOM "change an attribute": the one with this namespace and local name,

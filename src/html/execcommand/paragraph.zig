@@ -289,6 +289,20 @@ fn nextWithin(node: *Instance, root: *Instance) !?*Instance {
     return null;
 }
 
+/// The outermost inclusive ancestor of `node` in its editing host that
+/// insertParagraph must not split (see insertParagraphAfterDeletion), or
+/// null.
+fn outermostUnsplittable(node: *Instance) !?*Instance {
+    const host = (try common.editingHostOf(node)) orelse return null;
+    var outermost: ?*Instance = null;
+    var current = node;
+    while (current != host) {
+        if (try common.isHtmlElementIn(current, &.{ "iframe", "meter", "progress", "select", "optgroup", "option" })) outermost = current;
+        current = (try common.parent(current)) orelse break;
+    }
+    return outermost;
+}
+
 /// The insertParagraph command's action.
 pub fn insertParagraphAction(edit: *Edit) !bool {
     // Step 1.
@@ -341,6 +355,28 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         const before = try common.pointBefore(node, p);
         node = before.node;
         offset = before.offset;
+    }
+    // A point inside embedded or form content the browsers never split -
+    // iframe, meter, progress, select and its optgroup and option - moves
+    // before the outermost such element, so the new paragraph goes before
+    // it (golden rule 2, no newer spec: the spec's steps split whatever
+    // holds the point). editing/other/insertparagraph-in-non-splittable-
+    // element.html at wpt.fyi 24ddf405a0 (Chrome 157, Firefox 160, Safari
+    // 27.2): iframe, progress and select pass in all three, meter in Firefox
+    // and Safari, optgroup and option in Chrome and Firefox, each giving
+    // `<div><br></div><div><iframe ...></div>`. Gecko:
+    // HTMLEditUtils::IsSplittableNode (no replaced or void element) in
+    // AutoInsertParagraphHandler (editor/libeditor/HTMLEditUtils.h,
+    // mozilla-firefox/firefox main 2026-11-11). Not table structure outside
+    // a cell: there the engines split - Chrome and Safari move into the first
+    // cell, Firefox before the table - and following Firefox loses
+    // insertparagraph.html's `<table><tbody data-start=0 data-end=1>` row,
+    // which Crane passes (all three fail it, each differently); not button,
+    // caption or legend, which only Firefox fills with a br.
+    if (try outermostUnsplittable(node)) |element| {
+        const p = (try common.parent(element)) orelse return true;
+        node = p;
+        offset = try common.indexOf(element);
     }
     // Step 7.
     try edit.collapse(node, offset);
@@ -557,10 +593,33 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     // Steps 32-33, after the browsers' split (see steps 15-16).
     try finishSplitSide(edit, container, .end);
     try finishSplitSide(edit, new_container, .start);
-    // Step 34.
-    try edit.collapse(new_container, 0);
+    // Step 34, at the new paragraph's first caret position: inside the
+    // inline elements the split cloned around the line's start, so text
+    // typed next takes their style (golden rule 2, no newer spec: the
+    // spec's (new container, 0) is before them). Chrome 157, Firefox 160
+    // and Safari 27.2 type into the cloned <font> after fontName,
+    // insertText and insertParagraph (editing/other/inserttext-after-bold-
+    // in-font-face-monospace.html, 1/1 each at wpt.fyi 24ddf405a0). Gecko
+    // puts the caret at HTMLEditUtils::GetDeepestEditableStartPointOf the
+    // new paragraph; Blink at its first VisiblePosition, whose deep
+    // equivalent is inside the inline.
+    const first_caret = try firstCaretPointIn(new_container);
+    try edit.collapse(first_caret.node, first_caret.offset);
     // Step 35.
     return true;
+}
+
+/// (`container`, 0) moved down through leading editable inline elements
+/// with children: (font, 0) for `<font><br></font>`.
+fn firstCaretPointIn(container: *Instance) !Point {
+    var node = container;
+    while (try common.firstChild(node)) |child| {
+        if (!common.isElement(child) or !common.isInlineNode(child)) break;
+        if (!try common.isEditable(child) or !try common.hasChildren(child)) break;
+        if (try common.isHtmlElementIn(child, &.{ "br", "img", "hr", "input", "select", "textarea", "button", "iframe", "video", "audio", "canvas", "object", "embed", "meter", "progress" })) break;
+        node = child;
+    }
+    return .{ .node = node, .offset = 0 };
 }
 
 /// Whether insertParagraph inserts a line break instead of a paragraph at

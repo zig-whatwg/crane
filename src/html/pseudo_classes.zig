@@ -18,6 +18,15 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .dir_rtl => return forms.directionality(element) == .rtl,
         .hover => return userActionMatches(element, &.{.hovered}),
         .active => return userActionMatches(element, &.{ .pointed, .activated }),
+        // A MathML a with an href is the source of a hyperlink (MathML Core
+        // 3.6 gives it the HTML a element's href semantics), so it matches
+        // :any-link and :link (Selectors 4 "the source anchor of a
+        // hyperlink"; HTML's list names only its own a and area). Golden
+        // rule 2: Firefox 160 and Safari 27.2 match it, Chrome 157 links no
+        // MathML a (wpt.fyi stable 24ddf405a0, 2026-11-11:
+        // mathml/relations/html5-tree/anchor-visited-privacy.html F 1/1, S
+        // 1/1, C 0/1); no newer spec differs.
+        .any_link => if (element.stateAs(interfaces.MathMLAnchorElement.State) != null) return has(element, "href"),
         else => {},
     }
     if (element.stateAs(interfaces.HTMLElement.State) == null) return false;

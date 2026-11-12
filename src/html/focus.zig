@@ -448,8 +448,38 @@ fn globalOf(document: *Instance) ?*Instance {
     return windowOf(document);
 }
 
+/// Service Workers matchAll() step 2.6.4 sorts window clients by when their
+/// browsing context was last focused. A focus update that moves the focus
+/// into another document focuses that document's browsing context and - by
+/// this new chain, which holds every ancestor document - each ancestor's
+/// (the integrator's ruling of 2026-11-12 on the spec's reading; Gecko
+/// nsFocusManager::SetFocusedWindowInternal sets the focused window's and
+/// every in-process ancestor document's last focus time likewise): one clock
+/// read for all of them, so they tie and keep creation order
+/// (w3c/ServiceWorker#1080). A move within one document focuses no other
+/// browsing context (Gecko: the focused window is unchanged).
+fn reportFocusedDocuments(old_chain: Chain, new_chain: Chain) void {
+    const new_document = firstDocument(new_chain) orelse return;
+    if (firstDocument(old_chain) == new_document) return;
+    const at_ns: u64 = @intCast(@import("platform").monotonicNow().ns);
+    for (0..new_chain.len) |i| {
+        if (!new_chain.isLive(i)) continue;
+        const entry = new_chain.items[i];
+        if (isDocument(entry)) dom.service_worker_clients.focused(entry.ctx, at_ns);
+    }
+}
+
+/// The innermost Document of a focus chain: the focused area's document.
+fn firstDocument(chain: Chain) ?*Instance {
+    for (0..chain.len) |i| {
+        if (chain.isLive(i) and isDocument(chain.items[i])) return chain.items[i];
+    }
+    return null;
+}
+
 /// HTML "focus update steps".
 fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: ?*Instance) void {
+    reportFocusedDocuments(old_chain_in, new_chain_in);
     var old_chain = old_chain_in;
     var new_chain = new_chain_in;
     // Step 1: "If the last entry in old chain and the last entry in new chain
@@ -758,6 +788,17 @@ pub fn focusMethod(element: *Instance) void {
     // false, then return."
     const document = nodeDocument(element) orelse return;
     if (!allowFocusSteps(document)) return;
+    // The browsers' selection side of focus(), BEFORE the focus events: a
+    // root editable element about to take the focus gets the caret at its
+    // start unless the selection is already in it, so its focus listeners
+    // see the selection they will have afterwards (Blink and WebKit
+    // Element::UpdateSelectionOnFocus with kRestore, Gecko
+    // HTMLEditor::OnFocus -> InitializeSelection; no spec text, golden rule
+    // 2 - see selection_focus.caretOnFocus; selection/contenteditable/
+    // initial-selection-during-focus-event-propagation.html, Chrome 157 and
+    // Firefox 160 3/3). Selection.collapse's own editable focus step
+    // focuses it; step 2 then finds it focused.
+    @import("selection_focus.zig").caretOnFocus(element);
     // Step 2: "Run the focusing steps for this."
     focusingSteps(element, null, .other);
     // Steps 3-4 (indicate focus, scroll into view): nothing is rendered.
@@ -1024,7 +1065,10 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
         const start: ?*Instance = if (isDocument(starting_point)) null else starting_point;
         // Steps 4-5.
         if (sequentialSearch(starting_document, start, direction)) |candidate| {
-            // Step 6.
+            // Step 6. A root editable element gets the caret at its first
+            // position first (Blink's kReset, Gecko's InitializeSelection:
+            // selection_focus.caretOnSequentialFocus).
+            @import("selection_focus.zig").caretOnSequentialFocus(candidate);
             focusingSteps(candidate, null, .keyboard);
             return;
         }
