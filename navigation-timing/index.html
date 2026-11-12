@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../">Crane WPT results</a></li><li aria-current="page"><code>navigation-<wbr>timing/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">28</span><code>navigation-<wbr>timing/</code></h1>
 <div class="figures" role="group" aria-label="navigation-timing/">
-<p class="figures-main"><span class="fg-pass">441</span><span class="fg-of"> / 461</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>20</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>58</dd></div><div class="blk"><dt>Blocking files</dt><dd>5</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">442</span><span class="fg-of"> / 461</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>19</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>58</dd></div><div class="blk"><dt>Blocking files</dt><dd>4</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>456</b> / 459 WPT subtests passing on the same files, <span class="blk">3 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of navigation-timing/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">58 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="49 clean, 4 with failures, 5 blocking, 0 with no subtests, 0 not run, of 58 files"><span class="m-clean" style="width:84.483%"></span><span class="m-partial" style="width:6.897%"></span><span class="m-blocking" style="width:8.621%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>49</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>4</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>5</dd></div><p class="kinds"><b>5</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="50 clean, 4 with failures, 4 blocking, 0 with no subtests, 0 not run, of 58 files"><span class="m-clean" style="width:86.207%"></span><span class="m-partial" style="width:6.897%"></span><span class="m-blocking" style="width:6.897%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>50</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>4</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>4</dd></div><p class="kinds"><b>4</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -283,17 +283,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="nav2-test-redirect-server.html" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>nav2-<wbr>test-<wbr>redirect-<wbr>server.<wbr>html</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="nav2-test-redirect-server.html" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>nav2-<wbr>test-<wbr>redirect-<wbr>server.<wbr>html</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/navigation-timing/nav2-test-redirect-server.html"><code>navigation-<wbr>timing/<wbr>nav2-<wbr>test-<wbr>redirect-<wbr>server.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-5ccf8ad20763"><details><summary><span class="mark">FAIL</span><span class="sub-name">Navigation Timing 2 WPT</span></summary><pre class="msg">Error: assert_true: Expected startTime to be no greater than redirectStart. expected true got false</pre></details><a class="self" href="#s-5ccf8ad20763" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Navigation Timing 2 WPT</li></ol></details>
 </div>
 </div>
 </details>
@@ -318,7 +316,7 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-7ba339fabe9c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check that performance.getEntriesByType(&#39;navigation&#39;)[0].responseEnd has reasonable values before and after the load has finished</span></summary><pre class="msg">assert_equals: PerformanceNavigationTiming.responseEnd == 0 before load event expected 0 but got 7.875</pre></details><a class="self" href="#s-7ba339fabe9c" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-7ba339fabe9c"><details><summary><span class="mark">FAIL</span><span class="sub-name">Check that performance.getEntriesByType(&#39;navigation&#39;)[0].responseEnd has reasonable values before and after the load has finished</span></summary><pre class="msg">assert_equals: PerformanceNavigationTiming.responseEnd == 0 before load event expected 0 but got 1.875</pre></details><a class="self" href="#s-7ba339fabe9c" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 </div>
 </div>
@@ -595,8 +593,8 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-201643aa2752"><details><summary><span class="mark">FAIL</span><span class="sub-name">timing.unloadEventStart == 0 on navigation with no previous document</span></summary><pre class="msg">assert_equals: timing.unloadEventStart == 0 on navigation with no previous document expected 0 but got 1794479096505</pre></details><a class="self" href="#s-201643aa2752" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-eaf56b912e6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">timing.unloadEventEnd == 0 navigation with no previous document</span></summary><pre class="msg">assert_equals: timing.unloadEventEnd == 0 navigation with no previous document expected 0 but got 1794479096505</pre></details><a class="self" href="#s-eaf56b912e6e" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-201643aa2752"><details><summary><span class="mark">FAIL</span><span class="sub-name">timing.unloadEventStart == 0 on navigation with no previous document</span></summary><pre class="msg">assert_equals: timing.unloadEventStart == 0 on navigation with no previous document expected 0 but got 1794527303429</pre></details><a class="self" href="#s-201643aa2752" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-eaf56b912e6e"><details><summary><span class="mark">FAIL</span><span class="sub-name">timing.unloadEventEnd == 0 navigation with no previous document</span></summary><pre class="msg">assert_equals: timing.unloadEventEnd == 0 navigation with no previous document expected 0 but got 1794527303429</pre></details><a class="self" href="#s-eaf56b912e6e" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>window.performance is defined</li><li>window.performance.navigation is defined</li><li>timing.navigation.type is TYPE_NAVIGATE</li></ol></details>
 </div>
@@ -755,14 +753,14 @@
 </dl>
 <div class="run">
 <ol class="subtests">
-<li class="sub s-fail" id="s-c881a562b020"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with a partial TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 9.125</pre></details><a class="self" href="#s-c881a562b020" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-272161b3a843"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with full TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 6.25</pre></details><a class="self" href="#s-272161b3a843" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-6962648470a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-cross-same redirect chain with no TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 4.5</pre></details><a class="self" href="#s-6962648470a6" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-892be473fbc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 2.25</pre></details><a class="self" href="#s-892be473fbc0" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9aca38446d37"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with same origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 9.875</pre></details><a class="self" href="#s-9aca38446d37" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-9ca9393344d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 14.875</pre></details><a class="self" href="#s-9ca9393344d5" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-68b0541f9f68"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with partial TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 4.5</pre></details><a class="self" href="#s-68b0541f9f68" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e84146aa94b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 6.375</pre></details><a class="self" href="#s-e84146aa94b5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c881a562b020"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with a partial TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 4.625</pre></details><a class="self" href="#s-c881a562b020" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-272161b3a843"><details><summary><span class="mark">FAIL</span><span class="sub-name">Redirect chain with full TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 3.25</pre></details><a class="self" href="#s-272161b3a843" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6962648470a6"><details><summary><span class="mark">FAIL</span><span class="sub-name">Same-cross-same redirect chain with no TAO opt-in</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 5.25</pre></details><a class="self" href="#s-6962648470a6" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-892be473fbc0"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 1.875</pre></details><a class="self" href="#s-892be473fbc0" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9aca38446d37"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with same origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 3</pre></details><a class="self" href="#s-9aca38446d37" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-9ca9393344d5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 2.625</pre></details><a class="self" href="#s-9ca9393344d5" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-68b0541f9f68"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with partial TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 2.75</pre></details><a class="self" href="#s-68b0541f9f68" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-e84146aa94b5"><details><summary><span class="mark">FAIL</span><span class="sub-name">No previous document with cross origin redirect with TAO</span></summary><pre class="msg">assert_equals: Expected unloadEventStart to be 0. expected 0 but got 7.25</pre></details><a class="self" href="#s-e84146aa94b5" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>cross-cross-same Redirect chain with no TAO opt-in</li><li>Previous document cross origin</li><li>Previous document same origin</li><li>Same origin previous document with same origin redirect</li></ol></details>
 </div>

@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/browsers/"><code>browsers/</code></a></li><li><a href="../../../../html/browsers/origin/"><code>origin/</code></a></li><li aria-current="page"><code>cross-<wbr>origin-<wbr>objects/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>browsers/<wbr>origin/<wbr>cross-<wbr>origin-<wbr>objects/</code></h1>
 <div class="figures" role="group" aria-label="html/browsers/origin/cross-origin-objects/">
-<p class="figures-main"><span class="fg-pass">118</span><span class="fg-of"> / 127</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>9</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>8</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">116</span><span class="fg-of"> / 127</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>11</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>8</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>110</b> / 127 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/browsers/origin/cross-origin-objects/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">8 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="7 clean, 1 with failures, 0 blocking, 0 with no subtests, 0 not run, of 8 files"><span class="m-clean" style="width:87.500%"></span><span class="m-partial" style="width:12.500%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>7</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="6 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, of 8 files"><span class="m-clean" style="width:75.000%"></span><span class="m-partial" style="width:25.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>6</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -179,15 +179,19 @@
 </div>
 </div>
 </details>
-<details class="tf" id="window-location-and-location-href-cross-realm-set.html" data-gate="clean" data-pass="11" data-of="11" data-failed="0" data-ref-pass="9" data-ref-of="11"><summary><span class="tf-name"><code>window-<wbr>location-<wbr>and-<wbr>location-<wbr>href-<wbr>cross-<wbr>realm-<wbr>set.<wbr>html</code></span><span class="tf-n"><b>11</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 11</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
+<details class="tf" id="window-location-and-location-href-cross-realm-set.html" data-gate="partial" data-pass="9" data-of="11" data-failed="2" data-ref-pass="9" data-ref-of="11"><summary><span class="tf-name"><code>window-<wbr>location-<wbr>and-<wbr>location-<wbr>href-<wbr>cross-<wbr>realm-<wbr>set.<wbr>html</code></span><span class="tf-n"><b>9</b> / 11<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>9</b> / 11</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>9</b> / 11 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/browsers/origin/cross-origin-objects/window-location-and-location-href-cross-realm-set.html"><code>html/<wbr>browsers/<wbr>origin/<wbr>cross-<wbr>origin-<wbr>objects/<wbr>window-<wbr>location-<wbr>and-<wbr>location-<wbr>href-<wbr>cross-<wbr>realm-<wbr>set.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<details class="passing"><summary>11 passing subtests</summary><ol class="pass-list"><li>Same-origin window.location getter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Same-origin location.href getter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Cross-origin location.href getter throws SecurityError in lexical realm</li><li>Same-origin window.location setter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Same-origin location.href setter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Cross-origin window.location setter throws TypeError in lexical realm on invalid |this| value</li><li>Cross-origin location.href setter throws TypeError in lexical realm on invalid |this| value</li><li>Same-origin window.location` setter throws TypeError in holder&#39;s realm on non-coercible URL argument</li><li>Same-origin location.href setter throws TypeError in holder&#39;s realm on non-coercible URL argument</li><li>Cross-origin window.location setter throws TypeError in lexical realm on non-coercible URL argument</li><li>Cross-origin location.href setter throws TypeError in lexical realm on non-coercible URL argument</li></ol></details>
+<ol class="subtests">
+<li class="sub s-fail" id="s-0ca23f8fa7c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin window.location setter throws TypeError in lexical realm on invalid |this| value</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(crossOriginWindow).location = URL_VALID; }&quot; did not throw</pre></details><a class="self" href="#s-0ca23f8fa7c4" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-6e1b13fd3e45"><details><summary><span class="mark">FAIL</span><span class="sub-name">Cross-origin location.href setter throws TypeError in lexical realm on invalid |this| value</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; { Object.create(crossOriginWindow.location).href = URL_VALID; }&quot; did not throw</pre></details><a class="self" href="#s-6e1b13fd3e45" aria-label="Link to this subtest">&para;</a></li>
+</ol>
+<details class="passing"><summary>9 passing subtests</summary><ol class="pass-list"><li>Same-origin window.location getter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Same-origin location.href getter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Cross-origin location.href getter throws SecurityError in lexical realm</li><li>Same-origin window.location setter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Same-origin location.href setter throws TypeError in holder&#39;s realm on invalid |this| value</li><li>Same-origin window.location` setter throws TypeError in holder&#39;s realm on non-coercible URL argument</li><li>Same-origin location.href setter throws TypeError in holder&#39;s realm on non-coercible URL argument</li><li>Cross-origin window.location setter throws TypeError in lexical realm on non-coercible URL argument</li><li>Cross-origin location.href setter throws TypeError in lexical realm on non-coercible URL argument</li></ol></details>
 </div>
 </div>
 </details>

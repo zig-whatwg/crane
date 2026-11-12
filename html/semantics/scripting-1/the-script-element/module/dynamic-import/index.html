@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../../../">Crane WPT results</a></li><li><a href="../../../../../../html/"><code>html/</code></a></li><li><a href="../../../../../../html/semantics/"><code>semantics/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/"><code>scripting-<wbr>1/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-script-element/"><code>the-<wbr>script-<wbr>element/</code></a></li><li><a href="../../../../../../html/semantics/scripting-1/the-script-element/module/"><code>module/</code></a></li><li aria-current="page"><code>dynamic-<wbr>import/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>semantics/<wbr>scripting-<wbr>1/<wbr>the-<wbr>script-<wbr>element/<wbr>module/<wbr>dynamic-<wbr>import/</code></h1>
 <div class="figures" role="group" aria-label="html/semantics/scripting-1/the-script-element/module/dynamic-import/">
-<p class="figures-main"><span class="fg-pass">196</span><span class="fg-of"> / 209</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>13</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>36</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">198</span><span class="fg-of"> / 209</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>11</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>36</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>183</b> / 209 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/semantics/scripting-1/the-script-element/module/dynamic-import/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">36 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="25 clean, 11 with failures, 0 blocking, 0 with no subtests, 0 not run, of 36 files"><span class="m-clean" style="width:69.444%"></span><span class="m-partial" style="width:30.556%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>25</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>11</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="27 clean, 9 with failures, 0 blocking, 0 with no subtests, 0 not run, of 36 files"><span class="m-clean" style="width:75.000%"></span><span class="m-partial" style="width:25.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>27</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>9</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -87,33 +87,27 @@
 </div>
 </div>
 </details>
-<details class="tf" id="code-cache-base-url.html" data-gate="partial" data-pass="5" data-of="6" data-failed="1" data-ref-pass="4" data-ref-of="6"><summary><span class="tf-name"><code>code-<wbr>cache-<wbr>base-<wbr>url.<wbr>html</code></span><span class="tf-n"><b>5</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 6</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="code-cache-base-url.html" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="4" data-ref-of="6"><summary><span class="tf-name"><code>code-<wbr>cache-<wbr>base-<wbr>url.<wbr>html</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>4</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-base-url.html"><code>html/<wbr>semantics/<wbr>scripting-<wbr>1/<wbr>the-<wbr>script-<wbr>element/<wbr>module/<wbr>dynamic-<wbr>import/<wbr>code-<wbr>cache-<wbr>base-<wbr>url.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-7100601313b6"><details><summary><span class="mark">FAIL</span><span class="sub-name">gamma - Function</span></summary><pre class="msg">assert_equals: expected &quot;gamma/import.js&quot; but got &quot;beta/import.js&quot;</pre></details><a class="self" href="#s-7100601313b6" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>alpha - Function</li><li>alpha - eval</li><li>beta - Function</li><li>beta - eval</li><li>gamma - eval</li></ol></details>
+<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>alpha - Function</li><li>alpha - eval</li><li>beta - Function</li><li>beta - eval</li><li>gamma - Function</li><li>gamma - eval</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="code-cache-nonce.html" data-gate="partial" data-pass="2" data-of="3" data-failed="1" data-ref-pass="1" data-ref-of="3"><summary><span class="tf-name"><code>code-<wbr>cache-<wbr>nonce.<wbr>html</code></span><span class="tf-n"><b>2</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 3</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="code-cache-nonce.html" data-gate="clean" data-pass="3" data-of="3" data-failed="0" data-ref-pass="1" data-ref-of="3"><summary><span class="tf-name"><code>code-<wbr>cache-<wbr>nonce.<wbr>html</code></span><span class="tf-n"><b>3</b> / 3<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 3</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 3 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-nonce.html"><code>html/<wbr>semantics/<wbr>scripting-<wbr>1/<wbr>the-<wbr>script-<wbr>element/<wbr>module/<wbr>dynamic-<wbr>import/<wbr>code-<wbr>cache-<wbr>nonce.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-f7bb8b6f5f3f"><details><summary><span class="mark">FAIL</span><span class="sub-name">Third dynamic import should use nonce=ghi</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Failed to fetch dynamically imported module&quot;</pre></details><a class="self" href="#s-f7bb8b6f5f3f" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>First dynamic import should use nonce=abc</li><li>Second dynamic import should use nonce=def</li></ol></details>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>First dynamic import should use nonce=abc</li><li>Second dynamic import should use nonce=def</li><li>Third dynamic import should use nonce=ghi</li></ol></details>
 </div>
 </div>
 </details>

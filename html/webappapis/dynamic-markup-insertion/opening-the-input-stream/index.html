@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/webappapis/"><code>webappapis/</code></a></li><li><a href="../../../../html/webappapis/dynamic-markup-insertion/"><code>dynamic-<wbr>markup-<wbr>insertion/</code></a></li><li aria-current="page"><code>opening-<wbr>the-<wbr>input-<wbr>stream/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>webappapis/<wbr>dynamic-<wbr>markup-<wbr>insertion/<wbr>opening-<wbr>the-<wbr>input-<wbr>stream/</code></h1>
 <div class="figures" role="group" aria-label="html/webappapis/dynamic-markup-insertion/opening-the-input-stream/">
-<p class="figures-main"><span class="fg-pass">171</span><span class="fg-of"> / 179</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>52</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">174</span><span class="fg-of"> / 179</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>5</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>52</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>171</b> / 179 WPT subtests passing on the same files, <span class="blk">6 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/webappapis/dynamic-markup-insertion/opening-the-input-stream/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">52 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="48 clean, 4 with failures, 0 blocking, 0 with no subtests, 0 not run, of 52 files"><span class="m-clean" style="width:92.308%"></span><span class="m-partial" style="width:7.692%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>48</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>4</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="50 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, of 52 files"><span class="m-clean" style="width:96.154%"></span><span class="m-partial" style="width:3.846%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>50</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -576,19 +576,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="tasks.window.js" data-gate="partial" data-pass="8" data-of="10" data-failed="2" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>tasks.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>8</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="tasks.window.js" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>tasks.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/tasks.window.js"><code>html/<wbr>webappapis/<wbr>dynamic-<wbr>markup-<wbr>insertion/<wbr>opening-<wbr>the-<wbr>input-<wbr>stream/<wbr>tasks.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-7f8094c042f9"><details><summary><span class="mark">FAIL</span><span class="sub-name">tasks without document.open() (canvas.toBlob())</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-7f8094c042f9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5f0ad8d45d46"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() and tasks (canvas.toBlob())</span></summary><pre class="msg">This feature is not yet implemented</pre></details><a class="self" href="#s-5f0ad8d45d46" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>tasks without document.open() (timeout)</li><li>document.open() and tasks (timeout)</li><li>tasks without document.open() (window message)</li><li>document.open() and tasks (window message)</li><li>tasks without document.open() (MessagePort)</li><li>document.open() and tasks (MessagePort)</li><li>tasks without document.open() (Promise rejection)</li><li>document.open() and tasks (Promise rejection)</li></ol></details>
+<details class="passing"><summary>10 passing subtests</summary><ol class="pass-list"><li>tasks without document.open() (timeout)</li><li>document.open() and tasks (timeout)</li><li>tasks without document.open() (window message)</li><li>document.open() and tasks (window message)</li><li>tasks without document.open() (canvas.toBlob())</li><li>document.open() and tasks (canvas.toBlob())</li><li>tasks without document.open() (MessagePort)</li><li>document.open() and tasks (MessagePort)</li><li>tasks without document.open() (Promise rejection)</li><li>document.open() and tasks (Promise rejection)</li></ol></details>
 </div>
 </div>
 </details>
@@ -664,18 +660,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="url.window.js" data-gate="partial" data-pass="4" data-of="5" data-failed="1" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>url.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>4</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="url.window.js" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>url.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/webappapis/dynamic-markup-insertion/opening-the-input-stream/url.window.js"><code>html/<wbr>webappapis/<wbr>dynamic-<wbr>markup-<wbr>insertion/<wbr>opening-<wbr>the-<wbr>input-<wbr>stream/<wbr>url.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-3d1cd58ee45a"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.open() does not change document&#39;s URL (active but not fully active document)</span></summary><pre class="msg">assert_equals: expected &quot;http://web-platform.test:8000/common/blank.html&quot; but got &quot;about:blank&quot;</pre></details><a class="self" href="#s-3d1cd58ee45a" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>document.open() changes document&#39;s URL (fully active document)</li><li>document.open() does not change document&#39;s URL (non-active document with an associated Window object; frame is removed)</li><li>document.open() does not change document&#39;s URL (non-active document with an associated Window object; navigated away)</li><li>document.open() does not change document&#39;s URL (non-active document without an associated Window object)</li></ol></details>
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>document.open() changes document&#39;s URL (fully active document)</li><li>document.open() does not change document&#39;s URL (active but not fully active document)</li><li>document.open() does not change document&#39;s URL (non-active document with an associated Window object; frame is removed)</li><li>document.open() does not change document&#39;s URL (non-active document with an associated Window object; navigated away)</li><li>document.open() does not change document&#39;s URL (non-active document without an associated Window object)</li></ol></details>
 </div>
 </div>
 </details>

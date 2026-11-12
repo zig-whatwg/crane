@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../../">Crane WPT results</a></li><li><a href="../../../../html/"><code>html/</code></a></li><li><a href="../../../../html/dom/"><code>dom/</code></a></li><li><a href="../../../../html/dom/elements/"><code>elements/</code></a></li><li aria-current="page"><code>global-<wbr>attributes/</code></li></ol></nav>
 <h1 class="page-title"><code>html/<wbr>dom/<wbr>elements/<wbr>global-<wbr>attributes/</code></h1>
 <div class="figures" role="group" aria-label="html/dom/elements/global-attributes/">
-<p class="figures-main"><span class="fg-pass">212</span><span class="fg-of"> / 214</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>35</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">214</span><span class="fg-of"> / 214</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>35</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>213</b> / 214 WPT subtests passing on the same files, <span class="blk">1 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of html/dom/elements/global-attributes/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">35 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="34 clean, 1 with failures, 0 blocking, 0 with no subtests, 0 not run, of 35 files"><span class="m-clean" style="width:97.143%"></span><span class="m-partial" style="width:2.857%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>34</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="35 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 35 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>35</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -159,19 +159,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="dataset.html" data-gate="partial" data-pass="6" data-of="8" data-failed="2" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>dataset.<wbr>html</code></span><span class="tf-n"><b>6</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="dataset.html" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>dataset.<wbr>html</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/html/dom/elements/global-attributes/dataset.html"><code>html/<wbr>dom/<wbr>elements/<wbr>global-<wbr>attributes/<wbr>dataset.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-0d8bdbcc56ab"><details><summary><span class="mark">FAIL</span><span class="sub-name">SVG elements should have a .dataset</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-0d8bdbcc56ab" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-96a62bdaf8c4"><details><summary><span class="mark">FAIL</span><span class="sub-name">MathML elements should have a .dataset</span></summary><pre class="msg">assert_true: expected true got false</pre></details><a class="self" href="#s-96a62bdaf8c4" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>6 passing subtests</summary><ol class="pass-list"><li>HTML elements should have a .dataset</li><li>Should return &#39;undefined&#39; before setting an attribute</li><li>Should return &#39;value&#39; if that&#39;s the value</li><li>Should return the empty string if that&#39;s the value</li><li>Should return &#39;undefined&#39; after removing an attribute</li><li>Should not have a .dataset on random elements</li></ol></details>
+<details class="passing"><summary>8 passing subtests</summary><ol class="pass-list"><li>HTML elements should have a .dataset</li><li>Should return &#39;undefined&#39; before setting an attribute</li><li>Should return &#39;value&#39; if that&#39;s the value</li><li>Should return the empty string if that&#39;s the value</li><li>Should return &#39;undefined&#39; after removing an attribute</li><li>Should not have a .dataset on random elements</li><li>SVG elements should have a .dataset</li><li>MathML elements should have a .dataset</li></ol></details>
 </div>
 </div>
 </details>

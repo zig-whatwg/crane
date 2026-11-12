@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../FileAPI/"><code>FileAPI/</code></a></li><li aria-current="page"><code>BlobURL/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">1.1</span><code>FileAPI/<wbr>BlobURL/</code></h1>
 <div class="figures" role="group" aria-label="FileAPI/BlobURL/">
-<p class="figures-main"><span class="fg-pass">16</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>1</dd></div><div><dt>Not run</dt><dd>1</dd></div><div><dt>Test files</dt><dd>5</dd></div><div class="blk"><dt>Blocking files</dt><dd>1</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">18</span><span class="fg-of"> / 18</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>5</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>18</b> / 18 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of FileAPI/BlobURL/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">5 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="4 clean, 0 with failures, 1 blocking, 0 with no subtests, 0 not run, of 5 files"><span class="m-clean" style="width:80.000%"></span><span class="m-blocking" style="width:20.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>4</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>1</dd></div><p class="kinds"><b>1</b> TIMEOUT</p></dl>
+<div class="meter" role="img" aria-label="5 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 5 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>5</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -39,20 +39,15 @@
 <div class="tf-list has-ref">
 <p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
 <div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
-<details class="tf" id="cross-partition-navigation.https.html" data-gate="timeout" data-pass="3" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>cross-<wbr>partition-<wbr>navigation.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>3</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-timeout g-block">TIMEOUT</span></span></summary>
+<details class="tf" id="cross-partition-navigation.https.html" data-gate="clean" data-pass="5" data-of="5" data-failed="0" data-ref-pass="5" data-ref-of="5"><summary><span class="tf-name"><code>cross-<wbr>partition-<wbr>navigation.<wbr>https.<wbr>html</code></span><span class="tf-n"><b>5</b> / 5<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>5</b> / 5</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-timeout g-block">TIMEOUT</span> <span class="quiet">runner status <code>TIMEOUT</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>5</b> / 5 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/FileAPI/BlobURL/cross-partition-navigation.https.html"><code>FileAPI/<wbr>BlobURL/<wbr>cross-<wbr>partition-<wbr>navigation.<wbr>https.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/FileAPI/BlobURL/cross-partition-navigation.https.html</code> <span class="gate g-block">TIMEOUT</span> <span class="fcount"><b>3</b> / 5</span></h3>
-<ol class="subtests">
-<li class="sub s-timeout" id="s-90071bebd74f"><details><summary><span class="mark">TIMEOUT</span><span class="sub-name">Blob URL area element click should enforce noopener for a cross-top-level-site navigation</span></summary><pre class="msg">Test timed out</pre></details><a class="self" href="#s-90071bebd74f" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-notrun" id="s-d1d3c8379a1b"><div class="sub-line"><span class="mark">NOT RUN</span><span class="sub-name">Blob URL SVG &lt;a&gt; element click should enforce noopener for a cross-top-level-site navigation</span></div><a class="self" href="#s-d1d3c8379a1b" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>Blob URL window.open should enforce noopener for a cross-top-level-site navigation</li><li>Blob URL should partition subframe navigation.</li><li>Blob URL link click should enforce noopener for a cross-top-level-site navigation</li></ol></details>
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>Blob URL window.open should enforce noopener for a cross-top-level-site navigation</li><li>Blob URL should partition subframe navigation.</li><li>Blob URL link click should enforce noopener for a cross-top-level-site navigation</li><li>Blob URL area element click should enforce noopener for a cross-top-level-site navigation</li><li>Blob URL SVG &lt;a&gt; element click should enforce noopener for a cross-top-level-site navigation</li></ol></details>
 </div>
 </div>
 </details>

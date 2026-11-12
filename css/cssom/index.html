@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../css/"><code>css/</code></a></li><li aria-current="page"><code>cssom/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">12.69</span><code>css/<wbr>cssom/</code></h1>
 <div class="figures" role="group" aria-label="css/cssom/">
-<p class="figures-main"><span class="fg-pass">3,555</span><span class="fg-of"> / 4,319</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>764</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>237</dd></div><div class="blk"><dt>Blocking files</dt><dd>4</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">3,559</span><span class="fg-of"> / 4,319</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>760</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>237</dd></div><div class="blk"><dt>Blocking files</dt><dd>3</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>4,191</b> / 4,318 WPT subtests passing on the same files, <span class="blk">4 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of css/cssom/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">237 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="196 clean, 37 with failures, 4 blocking, 0 with no subtests, 0 not run, of 237 files"><span class="m-clean" style="width:82.700%"></span><span class="m-partial" style="width:15.612%"></span><span class="m-blocking" style="width:1.688%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>196</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>37</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>4</dd></div><p class="kinds"><b>4</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="197 clean, 37 with failures, 3 blocking, 0 with no subtests, 0 not run, of 237 files"><span class="m-clean" style="width:83.122%"></span><span class="m-partial" style="width:15.612%"></span><span class="m-blocking" style="width:1.266%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>197</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>37</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>3</dd></div><p class="kinds"><b>3</b> NONE-PASSED</p></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -51,20 +51,15 @@
 </div>
 </div>
 </details>
-<details class="tf" id="CSS-namespace-object-class-string.html" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>CSS-<wbr>namespace-<wbr>object-<wbr>class-<wbr>string.<wbr>html</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="CSS-namespace-object-class-string.html" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>CSS-<wbr>namespace-<wbr>object-<wbr>class-<wbr>string.<wbr>html</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/css/cssom/CSS-namespace-object-class-string.html"><code>css/<wbr>cssom/<wbr>CSS-<wbr>namespace-<wbr>object-<wbr>class-<wbr>string.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-2c41551bb89d"><details><summary><span class="mark">FAIL</span><span class="sub-name">@@toStringTag exists on the namespace object with the appropriate descriptor</span></summary><pre class="msg">assert_own_property: expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-2c41551bb89d" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-d4ce443908d3"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied to the namespace object</span></summary><pre class="msg">assert_equals: expected &quot;[object CSS]&quot; but got &quot;[object Object]&quot;</pre></details><a class="self" href="#s-d4ce443908d3" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c7b190614558"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-c7b190614558" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-156561086c34"><details><summary><span class="mark">FAIL</span><span class="sub-name">Object.prototype.toString applied after deleting @@toStringTag</span></summary><pre class="msg">assert_own_property: Precondition: @@toStringTag on the namespace object expected property symbol &quot;Symbol(Symbol.toStringTag)&quot; missing</pre></details><a class="self" href="#s-156561086c34" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>4 passing subtests</summary><ol class="pass-list"><li>@@toStringTag exists on the namespace object with the appropriate descriptor</li><li>Object.prototype.toString applied to the namespace object</li><li>Object.prototype.toString applied after modifying the namespace object&#39;s @@toStringTag</li><li>Object.prototype.toString applied after deleting @@toStringTag</li></ol></details>
 </div>
 </div>
 </details>

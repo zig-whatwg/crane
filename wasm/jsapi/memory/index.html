@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../wasm/"><code>wasm/</code></a></li><li><a href="../../../wasm/jsapi/"><code>jsapi/</code></a></li><li aria-current="page"><code>memory/</code></li></ol></nav>
 <h1 class="page-title"><code>wasm/<wbr>jsapi/<wbr>memory/</code></h1>
 <div class="figures" role="group" aria-label="wasm/jsapi/memory/">
-<p class="figures-main"><span class="fg-pass">98</span><span class="fg-of"> / 120</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>22</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>8</dd></div><div class="blk"><dt>Blocking files</dt><dd>4</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">120</span><span class="fg-of"> / 120</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>8</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>120</b> / 120 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of wasm/jsapi/memory/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">8 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="4 clean, 0 with failures, 4 blocking, 0 with no subtests, 0 not run, of 8 files"><span class="m-clean" style="width:50.000%"></span><span class="m-blocking" style="width:50.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>4</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>4</dd></div><p class="kinds"><b>4</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="8 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 8 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>8</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -90,101 +90,71 @@
 </div>
 </div>
 </details>
-<details class="tf" id="to-fixed-length-buffer-shared.any.js" data-gate="none-passed" data-pass="0" data-of="2" data-failed="2" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>to-<wbr>fixed-<wbr>length-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="fail">2</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="to-fixed-length-buffer-shared.any.js" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="2" data-ref-of="2"><summary><span class="tf-name"><code>to-<wbr>fixed-<wbr>length-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>2</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>2</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/memory/to-fixed-length-buffer-shared.any.js"><code>wasm/<wbr>jsapi/<wbr>memory/<wbr>to-<wbr>fixed-<wbr>length-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer-shared.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-718308cc6119"><details><summary><span class="mark">FAIL</span><span class="sub-name">toFixedLengthBuffer caching behavior</span></summary><pre class="msg">memory.toFixedLengthBuffer is not a function</pre></details><a class="self" href="#s-718308cc6119" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer-shared.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>toFixedLengthBuffer caching behavior</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer-shared.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 1</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-7d34fd5487d1"><details><summary><span class="mark">FAIL</span><span class="sub-name">toFixedLengthBuffer caching behavior</span></summary><pre class="msg">memory.toFixedLengthBuffer is not a function</pre></details><a class="self" href="#s-7d34fd5487d1" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer-shared.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>1</b> / 1</span></h3>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>toFixedLengthBuffer caching behavior</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="to-fixed-length-buffer.any.js" data-gate="none-passed" data-pass="0" data-of="4" data-failed="4" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>to-<wbr>fixed-<wbr>length-<wbr>buffer.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="to-fixed-length-buffer.any.js" data-gate="clean" data-pass="4" data-of="4" data-failed="0" data-ref-pass="4" data-ref-of="4"><summary><span class="tf-name"><code>to-<wbr>fixed-<wbr>length-<wbr>buffer.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>4</b> / 4<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>4</b> / 4</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>4</b> / 4 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/memory/to-fixed-length-buffer.any.js"><code>wasm/<wbr>jsapi/<wbr>memory/<wbr>to-<wbr>fixed-<wbr>length-<wbr>buffer.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-01095877ab7b"><details><summary><span class="mark">FAIL</span><span class="sub-name">API surface</span></summary><pre class="msg">assert_equals: expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-01095877ab7b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2a7a3055e70a"><details><summary><span class="mark">FAIL</span><span class="sub-name">toFixedLengthBuffer caching behavior</span></summary><pre class="msg">memory.toFixedLengthBuffer is not a function</pre></details><a class="self" href="#s-2a7a3055e70a" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>API surface</li><li>toFixedLengthBuffer caching behavior</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-e18de8f5387b"><details><summary><span class="mark">FAIL</span><span class="sub-name">API surface</span></summary><pre class="msg">assert_equals: expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-e18de8f5387b" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3644a5c26555"><details><summary><span class="mark">FAIL</span><span class="sub-name">toFixedLengthBuffer caching behavior</span></summary><pre class="msg">memory.toFixedLengthBuffer is not a function</pre></details><a class="self" href="#s-3644a5c26555" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-fixed-length-buffer.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>API surface</li><li>toFixedLengthBuffer caching behavior</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="to-resizable-buffer-shared.any.js" data-gate="none-passed" data-pass="0" data-of="6" data-failed="6" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>to-<wbr>resizable-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="fail">6</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="to-resizable-buffer-shared.any.js" data-gate="clean" data-pass="6" data-of="6" data-failed="0" data-ref-pass="6" data-ref-of="6"><summary><span class="tf-name"><code>to-<wbr>resizable-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>6</b> / 6<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>6</b> / 6</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>6</b> / 6 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/memory/to-resizable-buffer-shared.any.js"><code>wasm/<wbr>jsapi/<wbr>memory/<wbr>to-<wbr>resizable-<wbr>buffer-<wbr>shared.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer-shared.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-17b54de8bd46"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer caching behavior</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-17b54de8bd46" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7f746e15cbf4"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer max size</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-7f746e15cbf4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-5041d92d2ca5"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizing a Memory&#39;s resizable buffer</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-5041d92d2ca5" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer-shared.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>toResizableBuffer caching behavior</li><li>toResizableBuffer max size</li><li>Resizing a Memory&#39;s resizable buffer</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer-shared.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-8f30306fff93"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer caching behavior</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-8f30306fff93" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-08a62eb297d9"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer max size</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-08a62eb297d9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-7197c19cf822"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizing a Memory&#39;s resizable buffer</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-7197c19cf822" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer-shared.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>toResizableBuffer caching behavior</li><li>toResizableBuffer max size</li><li>Resizing a Memory&#39;s resizable buffer</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="to-resizable-buffer.any.js" data-gate="none-passed" data-pass="0" data-of="10" data-failed="10" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>to-<wbr>resizable-<wbr>buffer.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="fail">10</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="to-resizable-buffer.any.js" data-gate="clean" data-pass="10" data-of="10" data-failed="0" data-ref-pass="10" data-ref-of="10"><summary><span class="tf-name"><code>to-<wbr>resizable-<wbr>buffer.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>10</b> / 10<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>10</b> / 10</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>10</b> / 10 WPT subtests passing <span class="quiet">runner status <code>OK</code></span> <span class="quiet">1 of its test URLs has no Chrome result</span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/wasm/jsapi/memory/to-resizable-buffer.any.js"><code>wasm/<wbr>jsapi/<wbr>memory/<wbr>to-<wbr>resizable-<wbr>buffer.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 5</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-4c02e2183c13"><details><summary><span class="mark">FAIL</span><span class="sub-name">API surface</span></summary><pre class="msg">assert_equals: expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-4c02e2183c13" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-179774a7aabe"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer caching behavior</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-179774a7aabe" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-b8a0189fbf09"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer max size</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-b8a0189fbf09" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-3bc96908ecd2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizing a Memory&#39;s resizable buffer</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-3bc96908ecd2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-e6ea748bbf00"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizable buffers from Memory cannot be detached by JS</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-e6ea748bbf00" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>API surface</li><li>toResizableBuffer caching behavior</li><li>toResizableBuffer max size</li><li>Resizing a Memory&#39;s resizable buffer</li><li>Resizable buffers from Memory cannot be detached by JS</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 5</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-c1fcfbe1cf41"><details><summary><span class="mark">FAIL</span><span class="sub-name">API surface</span></summary><pre class="msg">assert_equals: expected &quot;object&quot; but got &quot;undefined&quot;</pre></details><a class="self" href="#s-c1fcfbe1cf41" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-4c1273ba9fc4"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer caching behavior</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-4c1273ba9fc4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ec564ffcffcf"><details><summary><span class="mark">FAIL</span><span class="sub-name">toResizableBuffer max size</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-ec564ffcffcf" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-03826e6e1b94"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizing a Memory&#39;s resizable buffer</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-03826e6e1b94" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-ec30f20360f2"><details><summary><span class="mark">FAIL</span><span class="sub-name">Resizable buffers from Memory cannot be detached by JS</span></summary><pre class="msg">memory.toResizableBuffer is not a function</pre></details><a class="self" href="#s-ec30f20360f2" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/wasm/jsapi/memory/to-resizable-buffer.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>5</b> / 5</span></h3>
+<details class="passing"><summary>5 passing subtests</summary><ol class="pass-list"><li>API surface</li><li>toResizableBuffer caching behavior</li><li>toResizableBuffer max size</li><li>Resizing a Memory&#39;s resizable buffer</li><li>Resizable buffers from Memory cannot be detached by JS</li></ol></details>
 </div>
 </div>
 </details>

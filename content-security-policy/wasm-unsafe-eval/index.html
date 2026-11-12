@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../content-security-policy/"><code>content-<wbr>security-<wbr>policy/</code></a></li><li aria-current="page"><code>wasm-<wbr>unsafe-<wbr>eval/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">8.35</span><code>content-<wbr>security-<wbr>policy/<wbr>wasm-<wbr>unsafe-<wbr>eval/</code></h1>
 <div class="figures" role="group" aria-label="content-security-policy/wasm-unsafe-eval/">
-<p class="figures-main"><span class="fg-pass">121</span><span class="fg-of"> / 129</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>8</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>10</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">129</span><span class="fg-of"> / 129</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>10</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>128</b> / 129 WPT subtests passing on the same files, <span class="blk">1 blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of content-security-policy/wasm-unsafe-eval/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">10 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="8 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, of 10 files"><span class="m-clean" style="width:80.000%"></span><span class="m-partial" style="width:20.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>8</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="10 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 10 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>10</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -64,40 +64,28 @@
 </div>
 </div>
 </details>
-<details class="tf" id="default-src-blocks-wasm.any.js" data-gate="partial" data-pass="8" data-of="12" data-failed="4" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>default-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="default-src-blocks-wasm.any.js" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>default-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.js"><code>content-<wbr>security-<wbr>policy/<wbr>wasm-<wbr>unsafe-<wbr>eval/<wbr>default-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-a43f1c37091e"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-a43f1c37091e" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-96aeeec1a0ed"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-96aeeec1a0ed" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-684929182eb5"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-684929182eb5" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-4921a7fd335b"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-4921a7fd335b" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/default-src-blocks-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 </div>
 </details>
@@ -188,40 +176,28 @@
 </div>
 </div>
 </details>
-<details class="tf" id="script-src-blocks-wasm.any.js" data-gate="partial" data-pass="8" data-of="12" data-failed="4" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>script-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="fail">4</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="script-src-blocks-wasm.any.js" data-gate="clean" data-pass="12" data-of="12" data-failed="0" data-ref-pass="12" data-ref-of="12"><summary><span class="tf-name"><code>script-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>12</b> / 12<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>12</b> / 12</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>12</b> / 12 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.js"><code>content-<wbr>security-<wbr>policy/<wbr>wasm-<wbr>unsafe-<wbr>eval/<wbr>script-<wbr>src-<wbr>blocks-<wbr>wasm.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-3247b770c8fb"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-3247b770c8fb" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-3daee552f2c1"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-3daee552f2c1" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-697c89c3481f"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-697c89c3481f" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 3</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-e24d6df195f0"><details><summary><span class="mark">FAIL</span><span class="sub-name">WebAssembly.compile() is blocked</span></summary><pre class="msg">WebAssembly.compile(): Wasm code generation disallowed by embedder</pre></details><a class="self" href="#s-e24d6df195f0" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
+<h3 class="run-head"><code>/content-security-policy/wasm-unsafe-eval/script-src-blocks-wasm.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>3</b> / 3</span></h3>
+<details class="passing"><summary>3 passing subtests</summary><ol class="pass-list"><li>WebAssembly.instantiate() is blocked</li><li>WebAssembly.compile() is blocked</li><li>new WebAssembly.Module() is blocked</li></ol></details>
 </div>
 </div>
 </details>
