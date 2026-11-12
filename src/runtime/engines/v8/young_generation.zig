@@ -37,7 +37,10 @@
 //! and nothing else about the heap, JSContextRef.h and JSVirtualMachine.h
 //! nothing - so no other engine Crane runs on could honour it. Being the
 //! build's, it reaches every isolate the adapter makes - the window agent's
-//! and every worker's - with nothing for a host to pass along.
+//! and every worker's - with nothing for a host to pass along. And being
+//! V8's, the option is declared by this adapter's build file
+//! (engine_build.zig), not by the root build.zig: a build of another engine
+//! does not have it.
 //!
 //! How it is applied: the ceiling an embedder gives is ResourceConstraints::
 //! set_max_young_generation_size_in_bytes (include/v8-isolate.h:133-143),
@@ -67,7 +70,9 @@
 //! is what it returns to.
 
 const std = @import("std");
-const build_options = @import("build_options");
+/// The adapter's own build options: declared by engine_build.zig, in an
+/// options module only the engine adapter's module imports.
+const adapter_options = @import("adapter_options");
 
 /// THE DEFAULT, for a build that does not say: megabytes of the whole young
 /// generation, in `-Dv8-young-generation-mb`'s unit; null is V8's own sizing.
@@ -83,7 +88,7 @@ const build_options = @import("build_options");
 pub const default_mb: ?u32 = 24;
 
 /// What this build was given: `-Dv8-young-generation-mb` (null: not given).
-pub const requested_mb: ?u32 = build_options.v8_young_generation_mb;
+pub const requested_mb: ?u32 = adapter_options.young_generation_mb;
 
 /// This build's limit for every isolate's young generation, in bytes of the
 /// whole young generation before rounding; null: V8's own sizing.

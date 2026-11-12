@@ -10,6 +10,29 @@ const test_suites = @import("tools/test_suites.zig");
 /// (tools-v8_archives).
 const v8_archives = @import("tools/v8_archives.zig");
 
+/// THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b): an engine adapter's build options are
+/// declared by the adapter, in its own build file, never here (the user, 2026-11-12: "the valid flags should be in
+/// the js engine protocol"). One entry per -Dengine name whose adapter has a build file; each exports
+/// `declareOptions(b) Options` and `apply(options, adapter_options)`.
+const engine_builds = .{
+    .v8 = @import("src/runtime/engines/v8/engine_build.zig"),
+};
+
+/// The options module of the build's engine adapter: the chosen adapter's build file declares its -D options and
+/// puts their values here; only the adapter's module imports it ("adapter_options"). An adapter that is not the
+/// build's engine is never asked, so its options are not declared, and the configure step refuses them by itself
+/// as it refuses any -D nothing declared.
+fn engineAdapterOptions(b: *std.Build, engine: []const u8) *std.Build.Step.Options {
+    const adapter_options = b.addOptions();
+    inline for (comptime std.meta.fieldNames(@TypeOf(engine_builds))) |name| {
+        if (std.mem.eql(u8, engine, name)) {
+            const adapter = @field(engine_builds, name);
+            adapter.apply(adapter.declareOptions(b), adapter_options);
+        }
+    }
+    return adapter_options;
+}
+
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
 // (0.17.1-dev+77c319a0f0) until 0.17.1 ships. Zig 0.17.0 itself cannot build
 // aarch64-ios (ziglang/zig#37061) and its checkAllAllocationFailures lets
@@ -2697,6 +2720,8 @@ const ModuleConfig = struct {
     debug_options: *std.Build.Step.Options,
     /// The dom module's own options (refcount_audit).
     dom_options: *std.Build.Step.Options,
+    /// The engine adapter's own options, from its build file (`engineAdapterOptions`).
+    engine_adapter_options: *std.Build.Step.Options,
     engine_choice: []const u8,
     use_system_curl: bool,
     enable_http2: bool,
@@ -3228,21 +3253,9 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, v8_extra_flags, " "));
 
-    // -Dv8-young-generation-mb=<n>: the most memory the young generation of each V8 isolate of this build - the
-    // window agent's and every worker's - takes at rest, in megabytes of the WHOLE young generation. V8 and Chrome
-    // quote the figure per semispace, a third of it: 24 = 8 MB semispaces (V8 13.1's ceiling; Chrome on a low-end
-    // Android phone), 48 = 16 MB, 96 = 32 MB; 0 = V8's own sizing (15.7: 32 MB semispaces, Chrome 157 on desktop).
-    // A larger one is faster for allocation-heavy pages and holds more memory between collections, so where a
-    // build ships decides it. Not given: the adapter's one default, 24 = 8 MB semispaces (the user, 2026-11-12;
-    // src/runtime/engines/v8/young_generation.zig `default_mb`, which has the unit table, the rounding and why
-    // this is a V8 build option and not an option of the engine protocol - JavaScriptCore's public API has no
-    // heap sizing); a host that builds for desktop passes =0. The adapter applies it through each isolate's
-    // ResourceConstraints, never a V8 flag. Nothing is read from the machine.
-    build_options.addOption(?u32, "v8_young_generation_mb", b.option(
-        u32,
-        "v8-young-generation-mb",
-        "The most memory each V8 isolate's young generation takes at rest, in MB of the WHOLE young generation: 24 = 8 MB semispaces (the default: young_generation.zig default_mb), 48 = 16 MB, 96 = 32 MB, 0 = V8's own sizing (32 MB semispaces, Chrome's on desktop: for a desktop build)",
-    ));
+    // The engine adapter's own build options: declared and carried by the adapter's build file
+    // (`engine_builds`, above), not here.
+    const engine_adapter_options = engineAdapterOptions(b, engine_choice);
 
     build_options.addOption([]const u8, "engine_name", engine_choice);
     build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
@@ -3355,6 +3368,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .build_options = build_options,
         .dom_options = dom_options,
+        .engine_adapter_options = engine_adapter_options,
         .debug_options = debug_options,
         .engine_choice = engine_choice,
         .use_system_curl = use_system_curl,
@@ -7788,6 +7802,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     engine_impl_mod.addImport("engine", engine_mod);
+    // The adapter's own build options (its build file's, `engineAdapterOptions`): this module alone imports them.
+    engine_impl_mod.addOptions("adapter_options", config.engine_adapter_options);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
     webcrypto_mod.addImport("engine", engine_mod);

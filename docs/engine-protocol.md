@@ -553,17 +553,47 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   JSEvalOptions.line_num is the route to a line). The test adapter reports
   its parse error at an embedded script's start.
 
-## 7b. The V8 adapter's build options
+## 7b. The build side: an adapter's build options are declared by the adapter
 
-What is V8's alone is not in the protocol: it is a build option of the
-adapter, read at compile time (build.zig; src/runtime/engines/v8/).
+The protocol has a build side as well as a run-time one. What is one engine's
+alone is not an option of the protocol, and it is not declared by the root
+build.zig either (the user, 2026-11-12: "I don't want any of the v8 code in
+build.zig, the valid flags should be in the js engine protocol"): the adapter
+declares its own `-D` options, in a build file beside its code,
+`src/runtime/engines/<engine>/engine_build.zig`, with a fixed interface:
+
+```zig
+pub const Options = struct { ... };                       // what the command line gave
+pub fn declareOptions(b: *std.Build) Options              // the adapter's b.option calls
+pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
+```
+
+The root build.zig keeps one table, `engine_builds`, of the build files by
+`-Dengine` name, and asks only the CHOSEN engine's (`engineAdapterOptions`):
+it declares that adapter's options and puts their values in an options module
+of the adapter's own, which the engine adapter's module alone imports as
+`@import("adapter_options")` - not in the `build_options` every module
+shares. So:
+
+- a build of another engine does not have the option at all: nothing declared
+  it, and `zig build` refuses a `-D` nothing declared ("invalid option");
+- no line of the root build.zig names an adapter's option, and adding one to
+  an adapter touches only that adapter's directory;
+- an adapter with no build options has no build file and no row.
+
+The V8 adapter's build file declares:
 
 | Option | What it does |
 |---|---|
 | `-Dv8-young-generation-mb=<n>` | The most memory each isolate's young generation takes at rest - the window agent's and every worker's. Below. |
-| `-Djitless` | V8 without its JIT compilers (required on iOS; a large slowdown elsewhere). |
-| `-Dv8-compilation-cache` | A measurement switch: start V8 WITH its compilation cache (off in every product build: the cache answers `Function()` with another script's base URL and nonce). |
-| `-Dv8-extra-flags="<flags>"` | A measurement route: V8 flags appended to the set V8 starts with (`--trace-gc`, ...). Empty in every product build. |
+
+Still declared by the root build.zig, and V8's alone - to move behind this
+interface (lane build1, with the V8 link lines): `-Dv8` and `-Dv8-build`
+(which V8 archive is linked), `-Djitless` (V8 without its JIT compilers:
+required on iOS, a large slowdown elsewhere), `-Dv8-compilation-cache` (a
+measurement switch: start V8 WITH its compilation cache) and
+`-Dv8-extra-flags="<flags>"` (a measurement route: V8 flags appended to the
+set V8 starts with); the last three travel in the shared `build_options`.
 
 **The young generation's size is a V8 build option:
 `-Dv8-young-generation-mb=<n>`.** A generational collector allocates new
