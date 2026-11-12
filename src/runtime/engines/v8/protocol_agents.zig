@@ -566,9 +566,10 @@ pub fn restoredFromSnapshot(agent: *Agent) bool {
 /// was given - with [[CanBlock]] as the options say and the host's hooks
 /// installed. The isolate is not entered.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
-    // RED (the next commit applies the build's limit, young_generation.limit):
-    // no agent is limited yet.
-    return createAgentWithYoungGeneration(options, null);
+    // Every agent of a build has the build's young generation
+    // (-Dv8-young-generation-mb, young_generation.zig): the window agent's
+    // isolate and every worker's are made here.
+    return createAgentWithYoungGeneration(options, young_generation.limit);
 }
 
 /// `createAgent`, with the young generation's limit given - bytes of the
