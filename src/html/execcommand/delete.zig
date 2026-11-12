@@ -369,7 +369,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         if (try common.nextSibling(reference)) |next| {
             try extractFirstLine(edit, next, &line, .move);
         }
+        try dropLeadingWhiteSpace(edit, &line);
         try line.recordWhiteSpace(edit, sb);
+        try rewrapMovedLine(edit, &line);
         // Step 33.8.
         values = try overrides.recordTheValues(edit, line.nodes.items);
         // Step 33.9.
@@ -397,7 +399,9 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         var line: Line = .{};
         defer line.deinit(edit.allocator);
         if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line, .delete);
+        try dropLeadingWhiteSpace(edit, &line);
         try line.recordWhiteSpace(edit, sb);
+        try rewrapMovedLine(edit, &line);
         for (line.nodes.items) |node| {
             try edit.movePreservingRanges(node, sb, try common.childCount(sb));
         }
@@ -958,6 +962,108 @@ fn collectFirstLine(edit: *Edit, first: *Instance, line: *Line, lone_br: LoneBr)
         }
         try line.nodes.append(edit.allocator, child);
         current = try common.nextSibling(child);
+    }
+}
+
+/// The line a block merge moves, as Chrome and Safari move it: Blink's
+/// CompositeEditCommand::MoveParagraphs serializes the paragraph's visible
+/// range (CreateMarkup through StyledMarkupSerializer) and inserts the
+/// markup at the destination, so
+/// - the line's leading collapsible white-space is not part of it (it is
+///   removed with the source paragraph), and
+/// - a span that holds the moved content is not itself moved: it is not a
+///   presentational element (Blink's IsPresentationalHTMLElement: b, i, u,
+///   s, strike, em, strong; and an a) that HighestAncestorToWrapMarkup
+///   keeps, so only its inline style goes along, as the text's wrapping
+///   style - a fresh <span style="..."> with the declaration's own
+///   serialization and none of the span's other attributes (its id
+///   stays behind and goes with the emptied span); a span with no style
+///   adds nothing around the content. Content visibility hides at the
+///   span's end stays in it (EndOfParagraph skips it, see
+///   extractFirstLine).
+/// editing/other/merge-span-with-style-after-backspace-having-
+/// contenteditable.html, merge-span-with-style-after-pressing-enter-
+/// followed-by-backspace-in-contenteditable-div.html and delete-at-end-
+/// boundary-of-div-followed-by-inline-element-containing-hidden-select-
+/// element-with-non-editable-node.html: Chrome 157 and Safari 27.2 pass,
+/// Firefox 159 moves the nodes as the spec does. Golden rule 2, no newer
+/// spec: the majority. WebKit's MoveParagraphs is the same algorithm.
+fn rewrapMovedLine(edit: *Edit, line: *Line) !void {
+    var rebuilt: std.ArrayList(*Instance) = .empty;
+    defer rebuilt.deinit(edit.allocator);
+    var rebuilt_styles: std.ArrayList(?common.WhiteSpaceStyles) = .empty;
+    defer rebuilt_styles.deinit(edit.allocator);
+    var changed = false;
+    for (line.nodes.items, 0..) |node, i| {
+        // The white-space recorded for the span goes with what replaces it,
+        // so preserveWhiteSpace keeps it (a span whose class sets
+        // white-space: editing/other/join-different-white-space-style-*).
+        const recorded: ?common.WhiteSpaceStyles = if (i < line.styles.items.len) line.styles.items[i] else null;
+        if (!try common.isHtmlElementNamed(node, "span") or !try common.isEditable(node)) {
+            try rebuilt.append(edit.allocator, node);
+            try rebuilt_styles.append(edit.allocator, recorded);
+            continue;
+        }
+        // The span's children up to its last one with visible content.
+        var moved: std.ArrayList(*Instance) = .empty;
+        defer moved.deinit(edit.allocator);
+        var keep_from: usize = 0;
+        var index: usize = 0;
+        var child = try common.firstChild(node);
+        while (child) |c| : ({
+            child = try common.nextSibling(c);
+            index += 1;
+        }) {
+            try moved.append(edit.allocator, c);
+            if (!try common.isVisibilityHidden(c)) keep_from = index + 1;
+        }
+        moved.shrinkRetainingCapacity(keep_from);
+        if (moved.items.len == 0) {
+            try rebuilt.append(edit.allocator, node);
+            try rebuilt_styles.append(edit.allocator, recorded);
+            continue;
+        }
+        changed = true;
+        const source_parent = (try common.parent(node)) orelse continue;
+        const style = try interfaces.HTMLElement.get_style(node);
+        var css_text = try interfaces.CSSStyleDeclaration.get_cssText(style);
+        defer css_text.deinit(node.ctx.allocator);
+        if (css_text.asSlice().len > 0) {
+            const fresh = try edit.createElement("span");
+            try common.setAttribute(fresh, "style", css_text.asSlice());
+            try edit.insertBefore(source_parent, fresh, node);
+            for (moved.items) |m| try edit.movePreservingRanges(m, fresh, try common.childCount(fresh));
+            try rebuilt.append(edit.allocator, fresh);
+            try rebuilt_styles.append(edit.allocator, recorded);
+        } else {
+            for (moved.items) |m| {
+                try edit.movePreservingRanges(m, source_parent, try common.indexOf(node));
+                try rebuilt.append(edit.allocator, m);
+                try rebuilt_styles.append(edit.allocator, recorded);
+            }
+        }
+        // The span itself stays, with what it still holds; emptied, it goes.
+        if (!try common.hasChildren(node)) try edit.removeNode(node);
+    }
+    if (!changed) return;
+    line.nodes.clearRetainingCapacity();
+    try line.nodes.appendSlice(edit.allocator, rebuilt.items);
+    if (line.styles.items.len > 0) {
+        line.styles.clearRetainingCapacity();
+        try line.styles.appendSlice(edit.allocator, rebuilt_styles.items);
+    }
+}
+
+/// The moved line's leading collapsible white-space (see rewrapMovedLine):
+/// a white-space-only Text that the style collapses goes with the source.
+fn dropLeadingWhiteSpace(edit: *Edit, line: *Line) !void {
+    while (line.nodes.items.len > 1) {
+        const first = line.nodes.items[0];
+        if (!common.isText(first) or try holdsLineContent(first)) break;
+        if ((try common.whiteSpaceAround(first)).preservesSpaces()) break;
+        if (!try common.isEditable(first)) break;
+        try edit.removeNode(first);
+        _ = line.nodes.orderedRemove(0);
     }
 }
 
