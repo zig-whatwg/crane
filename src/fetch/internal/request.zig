@@ -460,6 +460,21 @@ pub const InternalRequest = struct {
     /// request with no client, whose violations nobody hears.
     csp_violation_reporter: ?CspViolationReporter = null,
 
+    /// The location of the script that started this request, for the CSP
+    /// violations its checks find when no script is running (CSP 2.4.1 step
+    /// 2): HTML "update the image data" fetches after a microtask, by which
+    /// time the script that set `src` has returned. Firefox and Safari report
+    /// that script's location (Gecko's ImageLoadTask captures
+    /// JSCallingLocation when the microtask is queued and installs it as
+    /// JSCallingLocation::AutoFallback around LoadSelectedImage; WebKit's
+    /// ImageLoader requests the image while the script runs); Chrome and
+    /// CSP's text report none (golden rule 2, the majority by mechanism;
+    /// lane quick1, 2026-11-12). Only main fetch's checks before any redirect
+    /// read it (fetch.algorithms.csp_check), the ones those browsers make
+    /// while the location stands. OWNED: set it with
+    /// `setCspViolationLocation`; `deinit` frees its URL and `clone` copies it.
+    csp_violation_location: ?csp.violation_events.SourceLocation = null,
+
     /// Where this request's timing is reported once its response is over
     /// (Fetch "fetch response handover" step 4.2: its client's global), as
     /// "populate request from client" takes it from the client. BORROWED,
@@ -655,6 +670,18 @@ pub const InternalRequest = struct {
         self.blob_storage_key = copy;
     }
 
+    /// Set `csp_violation_location` to a copy of `location` (its URL
+    /// copied), releasing one it replaces; null clears it.
+    pub fn setCspViolationLocation(self: *Self, location: ?csp.violation_events.SourceLocation) !void {
+        const copy: ?csp.violation_events.SourceLocation = if (location) |l| .{
+            .url = try self.allocator.dupe(u8, l.url),
+            .line = l.line,
+            .column = l.column,
+        } else null;
+        if (self.csp_violation_location) |old| self.allocator.free(old.url);
+        self.csp_violation_location = copy;
+    }
+
     /// The caller lends its reference; this request takes one of its own.
     /// Null records a failed capture, rather than requesting a late lookup.
     pub fn setCapturedBlobEntry(self: *Self, entry: ?*CapturedBlobEntry) void {
@@ -685,6 +712,7 @@ pub const InternalRequest = struct {
         self.url_list.deinit(self.allocator);
 
         if (self.cryptographic_nonce_owned) self.allocator.free(self.cryptographic_nonce_metadata);
+        if (self.csp_violation_location) |location| self.allocator.free(location.url);
 
         // Free integrity_metadata if it was allocated (non-empty means it was set)
         if (self.integrity_metadata.len > 0) {
@@ -1003,6 +1031,8 @@ pub const InternalRequest = struct {
         // So is non-empty integrity metadata: `deinit` frees it, and a shared
         // slice was freed twice.
         if (self.cryptographic_nonce_owned) try new_request.setCryptographicNonceMetadata(self.cryptographic_nonce_metadata);
+        // And a CSP violation location's URL.
+        try new_request.setCspViolationLocation(self.csp_violation_location);
         if (self.integrity_metadata.len > 0) {
             new_request.integrity_metadata = try self.allocator.dupe(u8, self.integrity_metadata);
         }
