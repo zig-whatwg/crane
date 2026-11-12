@@ -649,3 +649,46 @@ test "finalizers a collection of V8's own queued inside one task run at the agen
     try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
     try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
 }
+
+// The same report, counted: the collection it runs finds the two dead, and
+// they are finalized when THAT report returns. V8's first pass hands the
+// adapter each dead wrapper inside the collection, the adapter queues its
+// finalizer there, and the report's safe point - V8's collector off the
+// stack - runs the queue. Queued by V8's second pass instead (a posted task:
+// Heap::UpdateExternalMemory's CollectGarbageWithRetry passes no callback
+// flags, src/heap/heap.cc:7021-7038, 2132), they waited for the next
+// collection, which runs a pending pass at its start (heap.cc:1509-1511): a
+// later report's, 256 MB of the host's memory further on.
+test "a report whose own collection found wrappers dead runs their finalizers when it returns, not at the next collection" {
+    defer test_agent.close();
+    const e = try env();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    try openQueueProbe(e, true);
+    defer closeQueueProbe();
+    const accounter = ffi.v8_ExternalMemoryAccounter_New() orelse return error.OutOfMemory;
+    var reported: u64 = 0;
+    defer ffi.v8_ExternalMemoryAccounter_Delete(accounter, e.isolate, reported);
+
+    var armed: [2]Armed = .{ .{ .index = 0 }, .{ .index = 1 } };
+    for (&armed) |*a| try armForQueue(e, a);
+
+    // Reports of 256 MB until one of them collects (its first pass unlinks
+    // the two), and not one report more.
+    const step: i64 = 256 << 20;
+    var reports: usize = 0;
+    while (queue_probe.?.unlinks < armed.len and reports < 64) {
+        ffi.v8_ExternalMemoryAccounter_Update(accounter, e.isolate, step);
+        reported += @intCast(step);
+        reports += 1;
+    }
+    if (queue_probe.?.unlinks != armed.len or queue_probe.?.finalizes != armed.len) {
+        std.debug.print("after {d} reports of 256 MB, the last of which collected: {d} of {d} unlinked, {d} finalizers run, {d} queued\n", .{ reports, queue_probe.?.unlinks, armed.len, queue_probe.?.finalizes, ffi.v8_Debug_QueuedFinalizers(e.isolate) });
+    }
+    try testing.expectEqual(armed.len, queue_probe.?.unlinks);
+    try testing.expectEqual(armed.len, queue_probe.?.finalizes);
+    try testing.expect(!queue_probe.?.write_failed);
+    inline for (.{ "f0", "f1" }) |name| try testing.expect(ffi.v8_Object_Has(e.context, queue_probe.?.target, name));
+    for (armed) |a| try testing.expect(a.handle == null);
+    try testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(e.isolate));
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}

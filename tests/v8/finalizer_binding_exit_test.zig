@@ -261,6 +261,58 @@ test "wrappers a script drops while it keeps calling bindings are finalized insi
     try testing.expectEqual(@as(usize, 0), waiting);
 }
 
+// The same, counted: ONE collection of V8's own - a scavenge an allocation
+// started - finds three wrappers dead, no other collection follows and
+// nothing pumps. V8 hands a dead wrapper to its embedder in the collection's
+// FIRST pass (include/v8-weak-callback-info.h: the callback resets the
+// handle, and "should additional work be required, the embedder must set a
+// second pass callback" - work that needs V8's API, which the pass forbids).
+// The adapter's work there is its own queue, so the first pass queues the
+// finalizer and the script's next binding exit runs it. Queued by V8's second
+// pass instead - a task V8 posts (15.7.112.43 src/handles/global-handles.cc:
+// 892-901) that a script without a pump never reaches - they waited for the
+// script's NEXT collection, which runs a pending pass first (src/heap/
+// heap.cc:1509-1511): every dead wrapper kept its native state for one more
+// whole young generation. dom.event-ctor, 650,000 dropped Events: 113.5 MB of
+// Event state held at its end mark, 66.8 MB with the first pass queueing
+// (lane v8up b7, release consoles on chat.local).
+test "wrappers one collection of V8's own found dead are finalized at the script's next binding exit, with no second collection and no pump" {
+    defer probe = null;
+    defer test_agent.close();
+    const page = try Page.open();
+    try page.callBinding();
+    const baseline = ffi.v8_Debug_LiveWeakCallbackData();
+    probe = .{ .page = page };
+    const self = &probe.?;
+    for (0..3) |_| try self.arm();
+
+    // Script that allocates and calls no binding, a piece at a time, until
+    // V8's young generation fills and V8 collects by itself. A piece is far
+    // smaller than a semispace (15.7: 1 MB at least, heap.cc:4945-4949), so
+    // the piece that unlinks the three ran one collection, and the loop ends
+    // there.
+    var pieces: usize = 0;
+    while (self.unlinks < 3 and pieces < 4096) : (pieces += 1) {
+        try page.run("{ let junk; for (let i = 0; i < 4096; i++) junk = { i }; globalThis.junk = junk; }");
+    }
+    if (self.unlinks != 3 or page.queued() != 3) {
+        std.debug.print("after {d} pieces of script: {d} of 3 unlinked by V8's first pass, {d} finalizers queued, {d} run\n", .{ pieces, self.unlinks, page.queued(), self.finalizes });
+    }
+    try testing.expectEqual(@as(usize, 3), self.unlinks);
+    // Nothing of Zig's ran inside the collection, and its first pass queued
+    // the three: no task of V8's and no later collection is needed.
+    try testing.expectEqual(@as(usize, 0), self.finalizes);
+    try testing.expectEqual(@as(usize, 3), page.queued());
+
+    // The script's next binding exit is their safe point.
+    try page.callBinding();
+    try testing.expectEqual(@as(usize, 3), self.finalizes);
+    try testing.expectEqualSlices(u32, &.{ 0, 0, 0 }, self.depths[0..3]);
+    try testing.expectEqual(@as(usize, 0), page.queued());
+    try testing.expectEqual(@as(u8, 0), page.owed());
+    try testing.expectEqual(baseline, ffi.v8_Debug_LiveWeakCallbackData());
+}
+
 test "queued finalizers run at the next binding exit into script, in the order V8's second pass handed them over, with engine work allowed" {
     defer probe = null;
     defer test_agent.close();
