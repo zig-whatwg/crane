@@ -331,6 +331,52 @@ test "wr8 b8: a free refused while the C++ heap is collecting is counted, and it
     try testing.expect(try counter(page, "cpp_heap_used_bytes") - cpp_before < 4096);
 }
 
+test "wr11: a free refused while the C++ heap swept is made once the pump has run the sweeper's task - with no further collection" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    const deferred_before = try counter(page, "node_anchor_frees_deferred");
+
+    // As the test above: a collection V8 does not force leaves its C++ heap
+    // sweeping, wrappers are dropped in scavenges meanwhile, and the agent's
+    // safe point inside the task finds every free refused.
+    try page.run("globalThis.keep = (() => { const a = []; for (let i = 0; i < 100000; i++) a.push(d.createElement('div')); return a; })();");
+    try page.run("globalThis.keep = null;");
+    {
+        const entered = page.enter();
+        defer page.leave(entered);
+        try testing.expect(ffi.v8_test_Isolate_CollectUnforced(page.isolate()));
+    }
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(5000); }");
+    try page.scavenge(2);
+    {
+        const entered = page.enter();
+        defer page.leave(entered);
+        _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
+    }
+    const waiting = try counter(page, "node_anchors_dropped_waiting");
+    try testing.expect(try counter(page, "node_anchor_frees_deferred") - deferred_before > 0);
+    try testing.expect(waiting > 0);
+
+    // The event loop's pump runs V8's tasks - the C++ heap's sweeper among
+    // them (15.7 finishes its sweep in foreground tasks) - and the pump that
+    // ran one tries the refused frees again (v8_wrapper.cpp
+    // `oweWaitingAnchorFrees`): no collection has to come first. Until lane
+    // wr1 b11 a task the collection's epilogue posted did that; with the
+    // releases owed by the collection itself nothing else would, and the
+    // anchors would wait for the next collection that dropped a wrapper.
+    const freed_before = try counter(page, "node_anchors_freed");
+    const collections = try counter(page, "full_gc_count") + try counter(page, "minor_gc_count");
+    page.pump();
+    try testing.expectEqual(collections, try counter(page, "full_gc_count") + try counter(page, "minor_gc_count"));
+    try testing.expectEqual(@as(i64, 0), try counter(page, "node_anchors_dropped_waiting"));
+    try testing.expectEqual(waiting, try counter(page, "node_anchors_freed") - freed_before);
+    page.fullGC();
+}
+
 test "wr8 b8: a node whose wrapper was dropped is wrapped again with a fresh anchor, and each anchor is freed exactly once" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
