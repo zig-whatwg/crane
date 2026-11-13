@@ -4021,9 +4021,10 @@ static PlatformAnchor* platformAnchorOf(Isolate* isolate, Local<Object> object) 
 /// 1. a non-node platform object's: its PlatformAnchor's instance (null once
 ///    severed);
 /// 2. a node's: its NodeAnchor's slot, the node, its instance (design 4.3);
-/// 3. a realm's global (and the WindowProperties object a test still makes
-///    with a field): internal field 0, which its template alone still has
-///    (realm_global.zig; v8_GlobalAnchor_Attach).
+/// 3. a realm's global: internal field 0, which a [Global] interface's
+///    template alone still has (realm_global.zig; v8_GlobalAnchor_Attach) -
+///    and so any object made from a template with a field whose field 0 was
+///    given an instance (tests/v8's own mock platform objects).
 /// Which interface the instance implements is the caller's brand check, the
 /// instance's state ancestry. `IsApiWrapper()` guards the Unwraps: only an
 /// API object has the CppHeap pointer field they read.
