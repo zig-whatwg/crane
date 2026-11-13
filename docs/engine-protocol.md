@@ -563,7 +563,8 @@ The protocol has a build side as well as a run-time one. What is one engine's
 alone is not an option of the protocol, and it is not declared by the root
 build.zig either (the user, 2026-11-12: "I don't want any of the v8 code in
 build.zig, the valid flags should be in the js engine protocol"): the adapter
-declares its own `-D` options, in a build file beside its code,
+declares its own `-D` options, its sources and link inputs and its Zig
+module, in a build file beside its code,
 `src/runtime/engines/<engine>/engine_build.zig`, with a fixed interface:
 
 ```zig
@@ -574,8 +575,24 @@ pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void
 pub fn isDefaultFor(target: std.Target) bool               // the engine of a build for `target` when -Dengine does not say
 pub const Resolved = struct { ... };                      // what this build links
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
+pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: LinkRequest) void
 pub const facts: Facts = .{ ... };                        // what the neutral build asks about the adapter
 ```
+
+`link` puts the engine into one artifact's own root module: the adapter's
+sources with their flags and include paths, then the engine's archives, their
+C++ runtime and system libraries. The request is in the build's words -
+`LinkRequest { link, thread_sanitized, handle_accounting }`: a compile-only
+check that links nothing, an artifact with ThreadSanitizer-instrumented
+modules, the one binary that counts live handles - and what each means for
+an engine is its adapter's business (the V8 adapter compiles its wrapper
+apart, uninstrumented, for a thread-sanitized artifact). `facts` names the
+adapter's Zig module - `module_root`, `module_name`, and `imports`, the
+modules it imports in the order they are added, which is part of every
+compile that takes the module - with `engineless` (the facade is compiled
+against the adapter with nothing linked), `build_tests` (the std-only files
+of its build side that hold tests: the V8 adapter's `build/archives.zig`)
+and `words` (what `lint-build` looks for in neutral files).
 
 The protocol's own build file, `src/runtime/engine_build_protocol.zig`, keeps
 the list of adapters (`adapters`: every adapter's build file, by `-Dengine`
@@ -589,7 +606,17 @@ build's `Engine`, a handle with no adapter type in it. `engine.adapterOptions(b)
 puts the adapter's compile-time values in an options module of the adapter's
 own, which the engine adapter's module alone imports as
 `@import("adapter_options")` - not in the `build_options` every module
-shares. So:
+shares. `engine.link(b, module, request)` links the engine into an artifact,
+or - for an engine that cannot be built - makes whatever takes the module
+fail with the adapter's reason; it records the module, and
+`engine.isLinkedInto(module)` answers from that record, never from a look at
+what the adapter put where (under `-Dsanitize-thread` the V8 adapter's source
+is on a library beside the executable, and a predicate that inspected the
+executable's own sources told 9 of 10 engine-running test executables they
+had no engine: `zig build check-suite-facts`, part of the whole test run,
+compares that fact across configurations). `engine.facts` is the chosen
+adapter's: the root build creates one adapter module from it and adds its
+imports with one loop. So:
 
 - a build of another engine does not have the option at all: nothing declared
   it, and `zig build` refuses a `-D` nothing declared ("invalid option") -
@@ -597,6 +624,9 @@ shares. So:
   (`engine.addOptionOwnershipChecks`);
 - no line of the root build.zig names an adapter's option, and adding an
   option to an adapter touches only that adapter's directory;
+- no line of the root build.zig says how an engine is linked or what its
+  adapter's module imports: an artifact asks `engine.link`, and a new import
+  of the adapter's module is a word in its build file's `facts.imports`;
 - every adapter has a build file and a row: a directory under
   `src/runtime/engines/` the list lacks fails the configure;
 - an adapter that cannot be built - for this target, with these options, or
@@ -618,15 +648,23 @@ The V8 adapter's build file declares:
 | `-Dv8-wrapper-trace-check` | A diagnosis build: the node wrapper walk's oracle (src/runtime/engines/v8/node_wrappers.zig `checkWalk`). In every major collection's weak processing it walks, unpruned, the trees every kept node wrapper and every keep holds and logs a `wrapper-trace-check` error for a wrapper in such a tree that the collection dropped, for a kept wrapper whose node the walk did not reach, and for a walked tree whose wrapper was dropped; `engine.diagnosticCounters`' `wrapper_trace_check_failures` counts them. Off by default: a walk of every live tree per collection. |
 | `-Dv8-memory-pool-timeout-s=<n>` | How many seconds V8's page pool keeps a page a collection freed before the operating system gets it back; 0 is no pool. Not given: V8's own, as Chrome ships. Below. |
 
+(Since the build migration's batch E2, `-Dv8` takes 15.7 alone: 13.1, which
+the adapter no longer compiles against, is not a value of the option any
+more, so `zig build` itself refuses `-Dv8=13.1` as it refuses any value an
+option does not list; nothing answers `unavailable` for it.)
+
 `-Djitless`, `-Dv8-compilation-cache` and `-Dv8-extra-flags` still travel in
 the shared `build_options`, where the adapter reads them
 (snapshot_loader.zig): the adapter's build file writes them there itself
 (`applyTransitional`) with the names and in the order they always had, until
 the one commit of the build migration that may change an options module's
-text moves them to `adapter_options`. Still in the root build.zig, and V8's
-alone - to move behind this interface next (tmp/plans/build-protocol-design.md,
-batches E2 to E5): the V8 link lines (the wrapper's flags and source, the
-archives), the adapter's module wiring, the snapshot and tests/v8's rows.
+text moves them to `adapter_options`. Behind this interface since batches E2
+and E3: the V8 link lines (the wrapper's flags and source, the archives, and
+the archive table itself, `engines/v8/build/archives.zig`) and the adapter's
+module wiring. Still in the root build.zig, and V8's alone - to move next
+(tmp/plans/build-protocol-design.md, batches E4 and E5): the snapshot and its
+generator, tests/v8's rows and tables, and the leftovers (the setup step's V8
+section, the engines help text, comments).
 
 **The young generation's size is a V8 build option:
 `-Dv8-young-generation-mb=<n>`.** A generational collector allocates new
