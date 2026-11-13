@@ -13,6 +13,7 @@
     {"page": "workloads/fetch.html", "kind": "timed", "timeout_s": 600, "workloads": ["fetch.data-url-text", "fetch.response-text", "fetch.loopback-small", "fetch.loopback-json", "fetch.loopback-stream"]},
     {"page": "workloads/streams.html", "kind": "timed", "timeout_s": 600, "workloads": ["streams.reader", "streams.enqueue-read", "streams.pipe-through-decoder", "streams.transform-chain", "streams.blob-stream"]},
     {"page": "workloads/timers.html", "kind": "timed", "timeout_s": 600, "workloads": ["timers.set-timeout-batch", "timers.promise-chain", "timers.queue-microtask", "timers.message-channel"]},
+    {"page": "workloads/workers.html", "kind": "timed", "timeout_s": 600, "workloads": ["workers.start-stop", "workers.start-work-stop", "workers.four-at-once"]},
     {"page": "load/news.html", "kind": "chain", "steps": 10, "timeout_s": 300, "workloads": ["load.news"]},
     {"page": "load/docs.html", "kind": "chain", "steps": 10, "timeout_s": 300, "workloads": ["load.docs"]},
     {"page": "load/app.html", "kind": "chain", "steps": 10, "timeout_s": 300, "workloads": ["load.app"]},
