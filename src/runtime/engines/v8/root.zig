@@ -155,6 +155,8 @@ pub const young_generation = @import("young_generation.zig");
 /// The collection after a main frame's navigation, a build option of this
 /// adapter (-Dv8-navigation-collection-mb).
 pub const navigation_collection = @import("navigation_collection.zig");
+/// V8's page pool, a build option of this adapter (-Dv8-memory-pool-timeout-s).
+pub const memory_pool = @import("memory_pool.zig");
 
 /// Isolate allocator (per-isolate memory management)
 pub const isolate_allocator = @import("isolate_allocator.zig");

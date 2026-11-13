@@ -121,6 +121,10 @@ test "a default build starts V8 with the product's flags only; -Dv8-extra-flags 
         try std.testing.expect(std.mem.endsWith(u8, loader.SNAPSHOT_V8_FLAGS, extra));
         return error.SkipZigTest; // the default is pinned by the default build
     }
+    // A build given -Dv8-memory-pool-timeout-s carries that option's one flag
+    // (v8up_memory_pool_option_test.zig holds it to exactly that); it is not
+    // the default build this allowlist pins.
+    if (v8.memory_pool.flag.len != 0) return error.SkipZigTest;
     // An allowlist: a flag that reaches the product's set from anywhere else
     // fails here by name.
     var it = std.mem.tokenizeScalar(u8, loader.RUNTIME_V8_FLAGS, ' ');

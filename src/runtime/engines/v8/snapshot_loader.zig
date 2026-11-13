@@ -46,6 +46,7 @@ const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const host = @import("host");
 const intl_binding = @import("intl_binding.zig");
+const memory_pool = @import("memory_pool.zig");
 const clock = @import("clock");
 
 /// Tracked snapshot data for cleanup
@@ -164,6 +165,7 @@ pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
     (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
     " --no-handle-weak-ref-weakly-in-minor-gc" ++
     (if (build_options.jitless) " --jitless" else "") ++
+    memory_pool.flag ++ // -Dv8-memory-pool-timeout-s (memory_pool.zig): empty unless the build gives it
     (if (measurement_v8_flags.len != 0) " " ++ measurement_v8_flags else "");
 
 /// V8 flags a measurement build adds (-Dv8-extra-flags="<flags>"; empty in

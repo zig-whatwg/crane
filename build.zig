@@ -8675,6 +8675,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .{ .name = "streams_async_promise", .module = streams_async_promise_mod },
         .{ .name = "intl", .module = intl_mod },
         .{ .name = "fetch", .module = fetch_mod },
+        .{ .name = "platform", .module = platform_mod },
     };
     const options_offered_to_engine = [_]struct { name: []const u8, options: *std.Build.Step.Options }{
         .{ .name = "build_options", .options = build_options },

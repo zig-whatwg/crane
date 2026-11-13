@@ -1577,6 +1577,9 @@ pub const AccessorNameGetterCallback = *const fn (property: *Name, info: *const 
 
 /// %Error.prototype% of `context` - the realm's intrinsic. Caller owns it.
 pub extern fn v8_Context_ErrorPrototype(context: *Context) ?*Object;
+/// %AsyncIteratorPrototype% of `context` - the realm's intrinsic, by V8's own
+/// name for it (no script is evaluated), kept per context. Caller owns it.
+pub extern fn v8_Context_AsyncIteratorPrototype(isolate: *Isolate, context: *Context) ?*Value;
 /// Whether two module handles name the same module.
 pub extern fn v8_Module_Equals(a: *Module, b: *Module) bool;
 

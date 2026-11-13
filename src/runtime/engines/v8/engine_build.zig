@@ -79,6 +79,12 @@ pub const Options = struct {
     /// option: it costs a walk of every live tree per collection. Not given:
     /// off.
     wrapper_trace_check: bool,
+    /// `-Dv8-memory-pool-timeout-s`: how many seconds V8's page pool keeps a
+    /// page a collection freed before the operating system gets it back; 0
+    /// is no pool; null, not given, is the adapter's default - V8's own pool
+    /// and no flag (memory_pool.zig, which has the values and what each
+    /// measured).
+    memory_pool_timeout_s: ?u32,
 };
 
 /// Declare the V8 adapter's build options. `target`: what the build is for -
@@ -137,9 +143,9 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         // 522 files x3 on server1: summed per-file time 0.997. Its cost is confined to the adapter's own internal
         // compiles: a page's scripts each carry their own host-defined options, so V8's script cache never hit across
         // them in Crane, but a script the adapter itself compiles more than once is now a real compile every time -
-        // which is why the adapter may evaluate a script of its own only where the adapter's script-compiles check
-        // lists it (lane v8up b8, 2026-11-13, which brings that check: the per-call compile behind ReadableStream's
-        // values() cost 21% of that row before it was removed).
+        // which is why the adapter may evaluate a script of its own only where the adapter's script-compiles check,
+        // tests/infra/v8up_adapter_script_compiles_test.zig, lists it (lane v8up b8, 2026-11-13: the per-call
+        // compile behind ReadableStream's values() cost 21% of that row before it was removed).
         // -Dv8-compilation-cache turns the cache back on, for measurement only (tmp/plans/feature-queue.md says
         // when to re-measure).
         .compilation_cache = b.option(
@@ -171,6 +177,11 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
             "v8-wrapper-trace-check",
             "V8: check the node wrapper walk in every major collection (the wrapper redesign's oracle; logs wrapper-trace-check errors, costs a walk of every live tree per collection)",
         ) orelse false,
+        .memory_pool_timeout_s = b.option(
+            u32,
+            "v8-memory-pool-timeout-s",
+            "V8: how many seconds its page pool keeps a page a collection freed before the operating system gets it back (default: not given = V8's own pool, 8 s, as Chrome ships - src/runtime/engines/v8/memory_pool.zig default_timeout_s); 0 = no pool: memory back at once, for a host of many short-lived pages",
+        ),
     };
 }
 
@@ -179,6 +190,7 @@ pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
     adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
     adapter_options.addOption(bool, "wrapper_trace_check", options.wrapper_trace_check);
+    adapter_options.addOption(?u32, "memory_pool_timeout_s", options.memory_pool_timeout_s);
 }
 
 /// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the
@@ -438,6 +450,9 @@ pub const facts: engine_build.Facts = .{
         // operations (streams, promises).
         "event_loop",
         "streams_async_promise",
+        // The platform protocol: the adapter's Intl asks it for local time
+        // (intl_binding.zig, platform.localDateTime).
+        "platform",
         // For the pure Zig Intl.DateTimeFormat implementation.
         "intl",
         // For ES module loading from HTTP URLs.
