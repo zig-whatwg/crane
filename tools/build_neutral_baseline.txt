@@ -4,16 +4,12 @@
 # count rises or a new line appears. After a batch moves a slice behind the
 # build side of a protocol (src/runtime/engine_build_protocol.zig), lower it
 # with `zig build lint-build -- --update`. Never raise it by hand.
-build.zig engine:javascriptcore comment 2
+build.zig engine:javascriptcore comment 1
 build.zig engine:javascriptcore script 4
-build.zig engine:jsc code 1
-build.zig engine:jsc comment 1
 build.zig engine:jsc script 3
-build.zig engine:quickjs code 1
-build.zig engine:quickjs comment 2
 build.zig engine:quickjs script 6
-build.zig engine:v8 code 96
-build.zig engine:v8 comment 144
+build.zig engine:v8 code 63
+build.zig engine:v8 comment 124
 build.zig engine:v8 script 81
 build.zig library:brotli code 62
 build.zig library:brotli comment 14

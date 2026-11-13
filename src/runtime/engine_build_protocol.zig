@@ -1,9 +1,9 @@
 //! THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b).
 //!
-//! What is one engine's in the build - its `-D` options, its sources and its
-//! link inputs today; its module, startup data and tests as the migration
-//! goes (tmp/plans/build-protocol-design.md) - is declared by the engine's
-//! adapter, in a build file beside its code,
+//! What is one engine's in the build - its `-D` options, its sources, its
+//! link inputs and its Zig module today; its startup data and tests as the
+//! migration goes (tmp/plans/build-protocol-design.md) - is declared by the
+//! engine's adapter, in a build file beside its code,
 //! `engines/<engine>/engine_build.zig`, and never by the root build.zig (the
 //! user, 2026-11-12: "I don't want any of the v8 code in build.zig, the valid
 //! flags should be in the js engine protocol"). This file is the protocol's
@@ -95,12 +95,31 @@ pub const Link = struct {
 };
 
 /// What the neutral build asks about an adapter. It grows with the
-/// migration: the adapter module's root file, the modules it imports, its
-/// test directory.
+/// migration: its test directory is next.
 pub const Facts = struct {
     /// The words that name this engine: what `zig build lint-build` looks for
     /// in the root build.zig and the neutral files it imports.
     words: []const []const u8,
+    /// The root file of the adapter's Zig module, relative to the build root:
+    /// the module the engine protocol's facade binds as `engine_impl`.
+    module_root: []const u8,
+    /// The name the adapter's module is registered under, and the import name
+    /// the adapter's own tests and tools reach it by.
+    module_name: []const u8,
+    /// What the adapter's module imports, by import name, in the order the
+    /// imports are added. The order is part of every compile that takes the
+    /// module (a compile is cached on its command line), so a new import goes
+    /// at the end unless its cost is known. Each name is a module the root
+    /// build offers an adapter (its `addCraneModules`): Crane's own modules,
+    /// the engine protocol's facade ("engine") and the options modules
+    /// ("build_options", "debug_options" and the adapter's own,
+    /// "adapter_options").
+    imports: []const []const u8,
+    /// The facade compiles against this adapter with no engine linked: while
+    /// the adapter cannot be built nothing else compiles its protocol root,
+    /// so the engine protocol's tests are compiled against it, in a compile
+    /// of its own (`engineless`).
+    engineless: bool,
     /// The std-only files of the adapter's build side that hold tests of
     /// their own - its build file's helpers - relative to the build root.
     /// The test step runs each (`build_tests`).
@@ -156,6 +175,24 @@ fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u
     if (Actual != Expected) @compileError(who ++ ": `" ++ decl ++ "` is " ++ @typeName(Actual) ++ "; the build protocol's is " ++ @typeName(Expected));
 }
 
+/// A listed adapter the facade compiles against with no engine linked.
+pub const Engineless = struct {
+    /// The adapter's `-Dengine` name.
+    name: []const u8,
+    /// Its module's root file, relative to the build root.
+    module_root: []const u8,
+};
+
+/// The listed adapters whose `facts.engineless` is true, in the list's order.
+pub const engineless: []const Engineless = list: {
+    var found: []const Engineless = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const facts = @field(adapters, name).facts;
+        if (facts.engineless) found = found ++ &[_]Engineless{.{ .name = name, .module_root = facts.module_root }};
+    }
+    break :list found;
+};
+
 /// Every listed adapter's words, comma-separated: the engine keys of
 /// `zig build lint-build`, from the list itself - so the root build.zig spells
 /// no engine to look for one, and a new adapter is covered the day it is
@@ -190,6 +227,9 @@ pub const Engine = struct {
     /// The names of the `-D` options the chosen adapter declared, in its
     /// order.
     option_names: []const []const u8,
+    /// What the neutral build asks about the chosen adapter: its module's
+    /// root file, name and imports.
+    facts: Facts,
     /// The chosen adapter's `StateOf`.
     state: *const anyopaque,
     vtable: *const VTable,
@@ -381,6 +421,7 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
                 .unavailable = unavailable,
                 .unavailable_step = if (unavailable) |reason| &b.addFail(reason).step else null,
                 .option_names = option_names,
+                .facts = A.facts,
                 .state = state,
                 .vtable = vtableOf(A),
                 .linked = linked,

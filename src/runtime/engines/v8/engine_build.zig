@@ -37,7 +37,9 @@
 //!     archives, their C++ runtime and system libraries. The request is in
 //!     the build's words (engine_build.LinkRequest); what each field means
 //!     for V8 is decided here.
-//!   - `facts`: what the neutral build asks about the adapter.
+//!   - `facts`: what the neutral build asks about the adapter - the words
+//!     that name it, its Zig module (root file, name, and what it imports,
+//!     in order), its build side's own tests.
 //!
 //! A build file is run by `zig build`'s configure step, not compiled into
 //! Crane: it imports std and other build files alone.
@@ -376,4 +378,56 @@ fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
 pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
     .build_tests = &.{"src/runtime/engines/v8/build/archives.zig"},
+    // The adapter's Zig module. Its root re-exports protocol.zig, so in a V8
+    // build the facade's `engine_impl` IS this module: the protocol functions
+    // live beside the adapter files they call, and a file of another module
+    // cannot import those by relative path.
+    .module_root = "src/runtime/engines/v8/root.zig",
+    .module_name = "v8",
+    // What the module imports, in the order the root build.zig added them
+    // while it wired this module by hand. The order is part of every compile
+    // that takes the module: a new import goes at the end, or where its cost
+    // is known.
+    .imports = &.{
+        // interface_bindings consults build_options.interface_allowlist (and
+        // snapshot_loader the three values `applyTransitional` still writes
+        // there).
+        "build_options",
+        "clock",
+        "process",
+        "infra",
+        "host",
+        "runtime",
+        "debug_options",
+        // The protocol's facade: the adapter's own files call it as
+        // everything else does.
+        "engine",
+        // This adapter's own build options (`apply`): this module alone
+        // imports them.
+        "adapter_options",
+        // For automatic constructor inheritance setup.
+        "interfaces",
+        // For async iterator options parsing.
+        "dictionaries",
+        // For error types (Exception).
+        "webidl",
+        // For HeadersInit conversion.
+        "typedefs",
+        // For ReadableStream start callback invocation.
+        "impls",
+        // The adapter registers the namespaces a snapshot lacks when it
+        // creates a Window realm.
+        "namespaces",
+        // For document initialization.
+        "dom",
+        // The event loop and the streams' promise helper, for async
+        // operations (streams, promises).
+        "event_loop",
+        "streams_async_promise",
+        // For the pure Zig Intl.DateTimeFormat implementation.
+        "intl",
+        // For ES module loading from HTTP URLs.
+        "fetch",
+    },
+    .engineless = false,
 };

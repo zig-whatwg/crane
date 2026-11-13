@@ -67,4 +67,13 @@ pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved,
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{ "jsc", "javascriptcore" },
+    // The adapter's module is its protocol root: it binds the protocol and
+    // calls the facade back, and has no option of its own to read yet.
+    .module_root = "src/runtime/engines/jsc/protocol.zig",
+    .module_name = "jsc",
+    .imports = &.{ "engine", "adapter_options" },
+    // No engine is linked: the engine protocol's tests are compiled against
+    // this root in a compile of their own, which is what checks it against
+    // the protocol while the adapter cannot be built.
+    .engineless = true,
 };

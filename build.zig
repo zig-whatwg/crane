@@ -2260,8 +2260,8 @@ fn addModuleTestWithEngine(
 /// their own, for a test compile whose graph holds no other binding - one
 /// file belongs to one module per compile, so two bindings of the facade
 /// cannot meet in one.
-/// A runtime module for a compile with no V8 in it, bound to the engine
-/// protocol over `adapter_root`: runtime_mod's imports except v8 and engine,
+/// A runtime module for a compile with no engine in it, bound to the engine
+/// protocol over `adapter_root`: runtime_mod's imports except the facade,
 /// and the facade the adapter makes (which imports this runtime).
 fn runtimeTier(
     builder: *std.Build,
@@ -2274,7 +2274,7 @@ fn runtimeTier(
         .target = target,
     });
     for (runtime_mod.import_table.keys(), runtime_mod.import_table.values()) |import_name, dep| {
-        if (std.mem.eql(u8, import_name, "v8") or std.mem.eql(u8, import_name, "engine")) continue;
+        if (std.mem.eql(u8, import_name, "engine")) continue;
         tier.addImport(import_name, dep);
     }
     const facade = engineProtocolBinding(builder, target, tier, adapter_root);
@@ -2554,7 +2554,9 @@ const ModuleConfig = struct {
     dom_options: *std.Build.Step.Options,
     /// The engine adapter's own options, from its build file (the engine's `adapterOptions`).
     engine_adapter_options: *std.Build.Step.Options,
-    engine_choice: []const u8,
+    /// The build's engine: its adapter's module (root file, name, imports) is
+    /// its build file's (`facts`).
+    engine: *const engine_build.Engine,
     use_system_curl: bool,
     enable_http2: bool,
     /// libcurl and its mbedTLS, built once for every graph (null with
@@ -3081,7 +3083,7 @@ pub fn build(b: *std.Build) void {
         .dom_options = dom_options,
         .engine_adapter_options = engine_adapter_options,
         .debug_options = debug_options,
-        .engine_choice = @tagName(engine.name),
+        .engine = &engine,
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .static_libcurl = static_libcurl,
@@ -3193,7 +3195,7 @@ pub fn build(b: *std.Build) void {
     const webidl_mod = crane_graph.webidl;
     const storage_mod = crane_graph.storage;
     const runtime_mod = crane_graph.runtime;
-    const v8_mod = crane_graph.v8;
+    const engine_impl_mod = crane_graph.engine_impl;
     const codegen_mod = crane_graph.codegen;
     const callbacks_mod = crane_graph.callbacks;
     const dictionaries_mod = crane_graph.dictionaries;
@@ -4171,15 +4173,15 @@ pub fn build(b: *std.Build) void {
         const test_adapter_engine_mod = test_adapter_tier.engine;
         // Every tests/runtime file sees the protocol bound to the runtime
         // tier's test adapter. And each other adapter with no engine behind
-        // it - the JavaScriptCore and QuickJS protocol roots, which nothing
-        // else compiles while -Dengine=jsc|quickjs is not buildable - gets the
-        // protocol's tests in a compile of its own, with a runtime tier of its
-        // own: compiling the facade against an adapter is what checks it
-        // against the protocol.
-        for ([_][]const u8{ "jsc", "quickjs" }) |adapter| {
-            const adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{adapter})));
+        // it - a listed adapter's protocol root that nothing else compiles
+        // while that adapter is not buildable (the engine build protocol's
+        // `engineless`) - gets the protocol's tests in a compile of its own,
+        // with a runtime tier of its own: compiling the facade against an
+        // adapter is what checks it against the protocol.
+        for (engine_build.engineless) |adapter| {
+            const adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path(adapter.module_root));
             const conformance = b.addTest(.{
-                .name = b.fmt("engine_protocol_{s}", .{adapter}),
+                .name = b.fmt("engine_protocol_{s}", .{adapter.name}),
                 .root_module = b.createModule(.{
                     .root_source_file = b.path("tests/runtime/engine_protocol_test.zig"),
                     .target = target,
@@ -4214,7 +4216,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "runtime", .module = testing_graph.runtime },
-            .{ .name = "v8", .module = testing_graph.v8 },
+            .{ .name = engine.facts.module_name, .module = testing_graph.engine_impl },
             .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = testing_graph.engine },
             // The generated interfaces, for a test host that makes platform
@@ -4947,7 +4949,7 @@ pub fn build(b: *std.Build) void {
             .optimize = snapshot_generator_optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = "v8", .module = v8_mod },
+                .{ .name = engine.facts.module_name, .module = engine_impl_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
                 .{ .name = "namespaces", .module = namespaces_mod },
             },
@@ -7005,7 +7007,8 @@ const CraneModules = struct {
     storage: *std.Build.Module,
     cookiestore: *std.Build.Module,
     runtime: *std.Build.Module,
-    v8: *std.Build.Module,
+    /// The engine adapter's module: what the facade binds as `engine_impl`.
+    engine_impl: *std.Build.Module,
     codegen: *std.Build.Module,
     callbacks: *std.Build.Module,
     dictionaries: *std.Build.Module,
@@ -7229,7 +7232,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     const optimize = config.optimize;
     const build_options = config.build_options;
     const debug_options = config.debug_options;
-    const engine_choice = config.engine_choice;
     const use_system_curl = config.use_system_curl;
     const enable_http2 = config.enable_http2;
     // ========================================================================
@@ -7346,20 +7348,13 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addOptions("build_options", build_options);
     runtime_mod.addOptions("debug_options", debug_options);
 
-    // V8 bindings module
-    const v8_mod = graphModule(b, public, "v8", .{
-        .root_source_file = b.path("src/runtime/engines/v8/root.zig"),
+    // The engine adapter's module: the root file and the name its build file
+    // gives (`facts`). What it imports is that file's list too, wired at the
+    // end of this function, where every module the list may name exists.
+    const engine_impl_mod = graphModule(b, public, config.engine.facts.module_name, .{
+        .root_source_file = b.path(config.engine.facts.module_root),
         .target = target,
     });
-    // Phase 8 (DCE): interface_bindings consults build_options.interface_allowlist.
-    v8_mod.addOptions("build_options", build_options);
-    v8_mod.addImport("clock", clock_mod);
-    v8_mod.addImport("process", process_mod);
-    v8_mod.addImport("infra", infra_mod);
-    v8_mod.addImport("host", host_mod);
-    v8_mod.addImport("runtime", runtime_mod);
-    v8_mod.addOptions("debug_options", debug_options);
-    // v8_mod will need event_loop - added later after streams_event_loop_mod is defined
 
     // JS bindings module
     const js_bindings_mod = graphModule(b, public, "js_bindings", .{
@@ -7489,26 +7484,17 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // `engine.op(...)`. The facade forwards every operation, inline, to
     // `engine_impl.protocol` - the adapter `-Dengine=` selects - so dispatch
     // is static, and a missing or mis-typed adapter function is a compile
-    // error in the facade. In a V8 build `engine_impl` IS the v8 module (its
-    // root re-exports src/runtime/engines/v8/protocol.zig), because the
-    // protocol functions live beside the adapter files they call, and a file
-    // of another module cannot import those by relative path. One module
-    // each, shared by every artifact: binding it adds no root-module
-    // analysis, and runtime already imports v8, so it adds no module cycle.
+    // error in the facade. `engine_impl` is the adapter's own module
+    // (`engine_impl_mod`, above): the protocol functions live beside the
+    // adapter files they call, and a file of another module cannot import
+    // those by relative path. One module each, shared by every artifact:
+    // binding it adds no root-module analysis.
     const engine_protocol_root = b.path("src/runtime/engine_protocol.zig");
     const engine_mod = graphModule(b, public, "engine", .{
         .root_source_file = engine_protocol_root,
         .target = target,
     });
     engine_mod.addImport("runtime", runtime_mod);
-    const engine_impl_mod = if (std.mem.eql(u8, engine_choice, "v8")) v8_mod else b.createModule(.{
-        .root_source_file = b.path(b.fmt("src/runtime/engines/{s}/protocol.zig", .{engine_choice})),
-        .target = target,
-    });
-    engine_impl_mod.addImport("engine", engine_mod);
-    // The adapter's own build options (its build file's, the engine's `adapterOptions`): this module alone
-    // imports them.
-    engine_impl_mod.addOptions("adapter_options", config.engine_adapter_options);
     engine_mod.addImport("engine_impl", engine_impl_mod);
     impls_mod.addImport("engine", engine_mod);
     webcrypto_mod.addImport("engine", engine_mod);
@@ -7534,29 +7520,16 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     impls_mod.addImport("callbacks", callbacks_mod);
     impls_mod.addImport("webidl", webidl_mod); // For error types and WebIDL infrastructure
 
-    // V8 module needs interfaces for automatic constructor inheritance setup
-    v8_mod.addImport("interfaces", interfaces_mod);
-    // V8 module needs dictionaries for async iterator options parsing
-    v8_mod.addImport("dictionaries", dictionaries_mod);
-    // V8 module needs webidl for error types (Exception)
-    v8_mod.addImport("webidl", webidl_mod);
-    // V8 module needs typedefs for HeadersInit conversion
-    v8_mod.addImport("typedefs", typedefs_mod);
-    // V8 module needs impls for ReadableStream start callback invocation
-    v8_mod.addImport("impls", impls_mod);
-
     // Dictionaries module needs typedefs, enums and callbacks for RequestInit and other dictionaries
     dictionaries_mod.addImport("typedefs", typedefs_mod);
     dictionaries_mod.addImport("enums", enums_mod);
     dictionaries_mod.addImport("callbacks", callbacks_mod);
 
-    // AGENTS.md "The engine boundary": no module outside the V8 adapter (and
-    // its tests and tools) imports "v8" - the module graph, not only
-    // lint-engine, keeps V8 inside the adapter. The engine is reached through
-    // `engine`, which build.zig binds to the adapter.
-    // The adapter registers the namespaces a snapshot lacks when it creates a
-    // Window realm (an Engine function pointer cannot take a comptime module).
-    v8_mod.addImport("namespaces", namespaces_mod);
+    // AGENTS.md "The engine boundary": no module outside the engine adapter
+    // (and its tests and tools) imports the adapter's module - the module
+    // graph, not only lint-engine, keeps the engine inside its adapter. The
+    // engine is reached through `engine`, which this file binds to the
+    // adapter.
 
     // DOM module
     const dom_mod = graphModule(b, public, "dom", .{
@@ -7618,9 +7591,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // The generated interfaces' defaults run src/dom's algorithms: an event
     // handler IDL attribute's getter and setter (dom.event_handlers).
     interfaces_mod.addImport("dom", dom_mod);
-
-    // V8 module needs dom for document initialization
-    v8_mod.addImport("dom", dom_mod);
 
     // MIXINS MODULE (Shared WebIDL mixin implementations)
     // ========================================================================
@@ -8125,10 +8095,8 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     streams_mod.addImport("runtime", runtime_mod);
     streams_mod.addImport("dom", dom_mod);
 
-    // Add event loop to runtime and v8 for async operations (streams, promises)
+    // Add event loop to runtime for async operations (streams, promises)
     runtime_mod.addImport("event_loop", streams_event_loop_mod);
-    v8_mod.addImport("event_loop", streams_event_loop_mod);
-    v8_mod.addImport("streams_async_promise", streams_async_promise_mod);
 
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
@@ -8639,12 +8607,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     intl_mod.addImport("host", host_mod);
     html_mod.addImport("intl", intl_mod);
 
-    // V8 module needs intl for pure Zig Intl.DateTimeFormat implementation
-    v8_mod.addImport("intl", intl_mod);
-
-    // V8 module needs fetch for ES module loading from HTTP URLs
-    v8_mod.addImport("fetch", fetch_mod);
-
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
@@ -8671,6 +8633,48 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     whatwg_mod.addImport("browser", browser_mod);
     whatwg_mod.addImport("intl", intl_mod);
 
+    // The engine adapter's module imports what its build file lists
+    // (`facts.imports`), in the list's order - the order is part of every
+    // compile that takes the module. Each name is one of the modules this
+    // graph offers an adapter, or one of three options modules.
+    const offered_to_engine = [_]std.Build.Module.Import{
+        .{ .name = "clock", .module = clock_mod },
+        .{ .name = "process", .module = process_mod },
+        .{ .name = "infra", .module = infra_mod },
+        .{ .name = "host", .module = host_mod },
+        .{ .name = "runtime", .module = runtime_mod },
+        .{ .name = "engine", .module = engine_mod },
+        .{ .name = "interfaces", .module = interfaces_mod },
+        .{ .name = "dictionaries", .module = dictionaries_mod },
+        .{ .name = "webidl", .module = webidl_mod },
+        .{ .name = "typedefs", .module = typedefs_mod },
+        .{ .name = "impls", .module = impls_mod },
+        .{ .name = "namespaces", .module = namespaces_mod },
+        .{ .name = "dom", .module = dom_mod },
+        .{ .name = "event_loop", .module = streams_event_loop_mod },
+        .{ .name = "streams_async_promise", .module = streams_async_promise_mod },
+        .{ .name = "intl", .module = intl_mod },
+        .{ .name = "fetch", .module = fetch_mod },
+    };
+    const options_offered_to_engine = [_]struct { name: []const u8, options: *std.Build.Step.Options }{
+        .{ .name = "build_options", .options = build_options },
+        .{ .name = "debug_options", .options = debug_options },
+        // The adapter's own build options (its build file's, the engine's
+        // `adapterOptions`): this module alone imports them.
+        .{ .name = "adapter_options", .options = config.engine_adapter_options },
+    };
+    next_engine_import: for (config.engine.facts.imports) |name| {
+        for (options_offered_to_engine) |offered| if (std.mem.eql(u8, offered.name, name)) {
+            engine_impl_mod.addOptions(name, offered.options);
+            continue :next_engine_import;
+        };
+        for (offered_to_engine) |offered| if (std.mem.eql(u8, offered.name, name)) {
+            engine_impl_mod.addImport(name, offered.module);
+            continue :next_engine_import;
+        };
+        std.debug.panic("the engine adapter's module imports \"{s}\" (its build file's facts.imports), which is no module this graph offers an adapter: add it to addCraneModules' offered_to_engine", .{name});
+    }
+
     return .{
         .whatwg = whatwg_mod,
         .clock = clock_mod,
@@ -8682,7 +8686,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .storage = storage_mod,
         .cookiestore = cookiestore_mod,
         .runtime = runtime_mod,
-        .v8 = v8_mod,
+        .engine_impl = engine_impl_mod,
         .codegen = codegen_mod,
         .callbacks = callbacks_mod,
         .dictionaries = dictionaries_mod,
