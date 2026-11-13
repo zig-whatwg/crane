@@ -94,6 +94,17 @@ test "V8 starts without its compilation cache unless the measurement switch turn
     try std.testing.expect(runtime_has);
 }
 
+test "V8 holds WeakRef and FinalizationRegistry targets strongly in a young-generation collection, at generation and at run time" {
+    // The integrator's ruling, 2026-11-13 (lane wr1 b11; snapshot_loader.zig
+    // RUNTIME_V8_FLAGS has the evidence): V8 15.7 drops an unmodified API
+    // object that is only a FinalizationRegistry target in a scavenge, so the
+    // registry's callback ran for a node still in its document. Firefox,
+    // WebKit and ECMA-262's liveness rule keep it; Chrome 157 does not. The
+    // behaviour itself is pinned by tests/v8/wr8_young_generation_test.zig.
+    try std.testing.expect(std.mem.indexOf(u8, loader.RUNTIME_V8_FLAGS, "--no-handle-weak-ref-weakly-in-minor-gc") != null);
+    try std.testing.expect(std.mem.indexOf(u8, loader.SNAPSHOT_V8_FLAGS, "--no-handle-weak-ref-weakly-in-minor-gc") != null);
+}
+
 test "a default build starts V8 with the product's flags only; -Dv8-extra-flags is the measurement route" {
     // Lane v8up b5: measuring V8's collector (young-generation size,
     // --trace-gc cadence) needs V8 flags in a console and a gc_bench, and V8
@@ -114,7 +125,7 @@ test "a default build starts V8 with the product's flags only; -Dv8-extra-flags 
     // fails here by name.
     var it = std.mem.tokenizeScalar(u8, loader.RUNTIME_V8_FLAGS, ' ');
     while (it.next()) |flag| {
-        const known = for ([_][]const u8{ "--harmony-shadow-realm", "--no-compilation-cache", "--jitless" }) |product| {
+        const known = for ([_][]const u8{ "--harmony-shadow-realm", "--no-compilation-cache", "--no-handle-weak-ref-weakly-in-minor-gc", "--jitless" }) |product| {
             if (std.mem.eql(u8, flag, product)) break true;
         } else false;
         if (!known) {

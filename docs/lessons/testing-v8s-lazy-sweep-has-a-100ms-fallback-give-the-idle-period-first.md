@@ -1,5 +1,7 @@
 # Testing: V8's lazy sweep has a 100 ms fallback - a test of idle time must give the idle period before that task can run
 
+**Status (2026-11-13, lane wr1 batch 11)**: SUPERSEDED on V8 15.7. cppgc's sweeper no longer posts an idle task: after a non-forced collection it posts a low-priority FOREGROUND task at once and a regular one 100 ms later (15.7.112.43 src/heap/cppgc-internal/sweeper.cc:39-40, 1028-1029, 1553-1576), and nothing else in V8's heap posts idle work. The engine idle periods this lesson's test exercised (engine.runEngineIdleTasks, tests/v8/wr10_idle_tasks_test.zig) were removed in the merge onto 15.7. What stays true: a test of a lazy phase must hand the engine its next step before a fallback finishes the phase for it - on 15.7 a pump runs the sweeper's task ahead of anything queued behind it (tests/v8/wr8_anchor_free_test.zig provokes a refused free at a safe point inside the task instead).
+
 **Date**: 2026-11-10
 **Lesson**: After a collection that V8 did not force, cppgc's sweeper posts an idle task and also a regular task 100 ms later. If no idle progress was made by then, the regular task finishes the sweep itself. A test pump that runs every due task in one go lets any task longer than 100 ms make that fallback due, so the sweep ends before the idle period the test is about.
 

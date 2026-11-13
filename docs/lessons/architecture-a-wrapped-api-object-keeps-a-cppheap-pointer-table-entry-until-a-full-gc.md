@@ -1,5 +1,7 @@
 # Architecture: A wrapped API object keeps a CppHeapPointerTable entry until the next full collection
 
+**Status (2026-11-13, lane wr1 batch 11)**: on V8 15.7 the comparison with internal fields changed. Every aligned pointer stored in an internal field now allocates a cppgc EmbedderDataSlotWrapper AND takes a CppHeapPointerTable entry (15.7.112.43 src/objects/embedder-data-slot-inl.h:167-227), freed only by a full collection - so a wrapper that keeps its instance in a field has the property this lesson describes, plus a C++-heap object, and a 0-field wrapper behind Object::Wrap has the entry alone. An entry is also born unmarked outside a marking cycle now (src/sandbox/cppheap-pointer-table-inl.h:17-31), so a dead wrapper's entry goes at the first full collection after it, not the second (batch 10's finding on 13.1.203).
+
 **Date**: 2026-11-10
 **Lesson**: Under V8's sandbox, `Object::Wrap` gives every wrapper an entry in the isolate's CppHeapPointerTable. Only a mark-compact frees an entry (V8 13.1.203 src/sandbox/cppheap-pointer-table.cc SweepAndCompact, called only from mark-compact.cc; still one space, swept only there, in V8 14.6 main). A wrapper a scavenge drops, and whose C++ side is freed at once, still leaves 8 bytes behind until a full collection - and the faster everything else is freed, the rarer the full collections that would take them.
 

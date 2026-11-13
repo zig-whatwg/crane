@@ -1,5 +1,7 @@
 # Architecture: cppgc refuses explicit frees until a lazy sweep is finalized, and that finalization needs the host's event loop
 
+**Status (2026-11-13, lane wr1 batch 11)**: still true of the refusal (15.7.112.43 src/heap/cppgc-internal/explicit-management.cc:21-35 InGC), but WHO finalizes a lazy sweep changed on V8 15.7: the sweeper posts a low-priority foreground task at once (sweeper.cc:1028-1029; no idle task any more), so a host that turns its loop finishes the sweep at its next pump of the agent's tasks, before the drain queued behind it. Batch 10's engine idle periods, built for 13.1's idle sweep task, had no client and were removed in the merge. A long script that never returns to the loop still meets refusals at its safe points until allocation finishes the sweep.
+
 **Date**: 2026-11-10
 **Lesson**: After any full collection V8 does not force, cppgc sweeps lazily: concurrently, then finalized on the agent's thread by a task that first reschedules itself 100 ms later, or by allocation. Until then `HeapState::IsSweeping` holds and `FreeUnreferencedObject` is a silent no-op. A host that runs long scripts, or never turns its event loop, can see every explicit free refused from one full collection to the next.
 
