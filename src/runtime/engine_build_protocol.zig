@@ -128,6 +128,9 @@ pub const Engine = struct {
     /// The step that fails with `unavailable`: every artifact that needs the
     /// engine depends on it (`failModule`). Null when the engine can be built.
     unavailable_step: ?*std.Build.Step,
+    /// The names of the `-D` options the chosen adapter declared, in its
+    /// order.
+    option_names: []const []const u8,
     /// The chosen adapter's `StateOf`.
     state: *const anyopaque,
     vtable: *const VTable,
@@ -162,6 +165,36 @@ pub const Engine = struct {
         const marker = b.addWriteFiles();
         marker.step.dependOn(engine.unavailable_step.?);
         module.addCSourceFile(.{ .file = marker.add("engine_unavailable.c", ""), .flags = &.{} });
+    }
+
+    /// The rule that an option belongs to its adapter, run: for every OTHER
+    /// listed adapter, one configure of this build root with `-Dengine=<it>`
+    /// and each option this build's adapter declared - the configure step
+    /// itself must refuse every one ("invalid option"), since only the chosen
+    /// adapter is asked to declare. Each of `dependants` depends on them.
+    /// Nothing is compiled: the configure fails before any step runs. An
+    /// adapter with no option has nothing another build could be given.
+    pub fn addOptionOwnershipChecks(engine: *const Engine, b: *std.Build, dependants: []const *std.Build.Step) void {
+        if (engine.option_names.len == 0) return;
+        inline for (comptime std.meta.fieldNames(@TypeOf(adapters))) |other| {
+            if (!std.mem.eql(u8, other, @tagName(engine.name))) {
+                const check = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--list-steps", "-Dengine=" ++ other });
+                check.setName(b.fmt("the {t} adapter's options are refused under -Dengine={s}", .{ engine.name, other }));
+                for (engine.option_names) |option| {
+                    check.addArg(b.fmt("-D{s}=1", .{option}));
+                    check.expectStdErrMatch(b.fmt("invalid option: \"{s}\"", .{option}));
+                }
+                check.expectExitCode(1);
+                // The parent's local cache; the global one travels in the
+                // environment (the build command takes no --global-cache-dir).
+                check.addArg("--cache-dir");
+                check.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+                check.setCwd(b.path("."));
+                // The sub-configure decides; this step always asks it.
+                check.has_side_effects = true;
+                for (dependants) |dependant| dependant.dependOn(&check.step);
+            }
+        }
     }
 
     /// TRANSITIONAL (batch E2 ends it, when the link lines that read it leave
@@ -202,16 +235,50 @@ fn defaultFor(target: std.Target) Name {
     std.debug.panic("no engine adapter is the default for a {t} target: pass -Dengine", .{target.os.tag});
 }
 
+/// Whether `name` is a listed adapter's name.
+fn isListed(name: []const u8) bool {
+    return std.meta.stringToEnum(Name, name) != null;
+}
+
+/// Fail the configure when a directory under src/runtime/engines/ is not a
+/// listed adapter. The list is what `-Dengine` offers, what the conformance
+/// check holds to the interface and what the build-neutrality lint takes its
+/// engine words from: an adapter's directory it lacks would be none of the
+/// three, silently. (A listed adapter without its directory or its build
+/// file cannot happen: the list imports the file.) The pattern of the root
+/// build.zig's check that every test directory is a suite.
+fn checkListIsComplete(b: *std.Build) void {
+    // A configure-time read of the checkout the configure cache cannot track.
+    b.graph.poisonCache();
+    const io = b.graph.io;
+    const engines_path = "src/runtime/engines";
+    var engines = b.root.root_dir.handle.openDir(io, engines_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("the engine build protocol cannot open {s} to check its list of adapters: {t}", .{ engines_path, err });
+    defer engines.close(io);
+    var entries = engines.iterate();
+    while (entries.next(io) catch |err| std.debug.panic("the engine build protocol cannot read {s}: {t}", .{ engines_path, err })) |entry| {
+        if (entry.kind != .directory or isListed(entry.name)) continue;
+        std.debug.panic(
+            "{s}/{s}/ is an engine adapter the build protocol does not list: give it an engine_build.zig (the interface: src/runtime/engine_build_protocol.zig) and a line in that file's `adapters`",
+            .{ engines_path, entry.name },
+        );
+    }
+}
+
 /// Declare `-Dengine`, ask ONLY the chosen adapter to declare its options
 /// and to resolve what it links, and hand back the build's engine. Called
 /// once, before anything links the engine.
 pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
+    checkListIsComplete(b);
     const name = b.option(Name, "engine", "The JavaScript engine: the adapter this build binds (default: the target's)") orelse defaultFor(target.result);
     switch (name) {
         inline else => |tag| {
             const A = @field(adapters, @tagName(tag));
             const state = b.allocator.create(StateOf(A)) catch @panic("OOM");
+            // What the adapter declares is what the options map gains.
+            const declared_before = b.available_options_map.count();
             const options = A.declareOptions(b, target);
+            const option_names = b.allocator.dupe([]const u8, b.available_options_map.keys()[declared_before..]) catch @panic("OOM");
             state.* = .{ .options = options, .resolution = A.resolve(b, target, options) };
             const unavailable: ?[]const u8 = switch (state.resolution) {
                 .ready => null,
@@ -221,6 +288,7 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
                 .name = tag,
                 .unavailable = unavailable,
                 .unavailable_step = if (unavailable) |reason| &b.addFail(reason).step else null,
+                .option_names = option_names,
                 .state = state,
                 .vtable = vtableOf(A),
             };

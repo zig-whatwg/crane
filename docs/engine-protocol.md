@@ -566,37 +566,61 @@ declares its own `-D` options, in a build file beside its code,
 pub const Options = struct { ... };                       // what the command line gave
 pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options   // the adapter's b.option calls
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
+pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void   // what build_options still carries
+pub fn isDefaultFor(target: std.Target) bool               // the engine of a build for `target` when -Dengine does not say
+pub const Resolved = struct { ... };                      // what this build links
+pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
+pub const facts: Facts = .{ ... };                        // what the neutral build asks about the adapter
 ```
 
 The protocol's own build file, `src/runtime/engine_build_protocol.zig`, keeps
-the list of adapters that have a build file (`adapters`, by `-Dengine` name)
-and one function, `adapterOptions(b, target, engine)`, which asks only the
-CHOSEN engine's: it declares that adapter's options and puts their values in
-an options module of the adapter's own, which the engine adapter's module
-alone imports as `@import("adapter_options")` - not in the `build_options`
-every module shares. The root build.zig imports the protocol's build file and
-calls that function. So:
+the list of adapters (`adapters`: every adapter's build file, by `-Dengine`
+name - v8, jsc, quickjs) and holds each one to that interface with exactly
+its types at compile time, as engine_protocol.zig holds an adapter's
+operations. `-Dengine` is declared there, an enum whose values are the
+list's own names, and so is the one function the root build.zig calls:
+`choose(b, target)`, which asks only the CHOSEN adapter - it declares that
+adapter's options, asks it what the build links (`resolve`), and returns the
+build's `Engine`, a handle with no adapter type in it. `engine.adapterOptions(b)`
+puts the adapter's compile-time values in an options module of the adapter's
+own, which the engine adapter's module alone imports as
+`@import("adapter_options")` - not in the `build_options` every module
+shares. So:
 
 - a build of another engine does not have the option at all: nothing declared
-  it, and `zig build` refuses a `-D` nothing declared ("invalid option");
-- no line of the root build.zig names an adapter or an adapter's option, and
-  adding an option to an adapter touches only that adapter's directory;
-- an adapter with no build options has no build file and no row.
+  it, and `zig build` refuses a `-D` nothing declared ("invalid option") -
+  `zig build test` runs that as a check, one configure per other adapter
+  (`engine.addOptionOwnershipChecks`);
+- no line of the root build.zig names an adapter's option, and adding an
+  option to an adapter touches only that adapter's directory;
+- every adapter has a build file and a row: a directory under
+  `src/runtime/engines/` the list lacks fails the configure;
+- an adapter that cannot be built - for this target, with these options, or
+  because it links no engine yet (jsc, quickjs) - answers `unavailable` with
+  its reason instead of stopping the configure: the build still configures,
+  and each step that needs the engine fails with that reason.
 
 The V8 adapter's build file declares:
 
 | Option | What it does |
 |---|---|
+| `-Dv8-build=<static\|official>` | Which build of the V8 to link. `official` has none for 15.7: `resolve` answers `unavailable`. |
+| `-Dv8=<version>` | Which V8 to link: 15.7 (15.7.112.43, the default). 13.1 is refused: `unavailable`. |
+| `-Djitless` | V8 without its JIT compilers: required on iOS (its default there), a large slowdown elsewhere. |
+| `-Dv8-compilation-cache` | A measurement switch: start V8 WITH its compilation cache (default off). |
+| `-Dv8-extra-flags="<flags>"` | A measurement route: V8 flags appended to the set V8 starts with. |
 | `-Dv8-young-generation-mb=<n>` | The most memory each isolate's young generation takes at rest - the window agent's and every worker's. Below. |
 | `-Dv8-navigation-collection-mb=<n>` | After a main frame's navigation, collect the page that was left when V8's heap holds at least `n` MB. Below. |
 
-Still declared by the root build.zig, and V8's alone - to move behind this
-interface (lane build1, with the V8 link lines): `-Dv8` and `-Dv8-build`
-(which V8 archive is linked), `-Djitless` (V8 without its JIT compilers:
-required on iOS, a large slowdown elsewhere), `-Dv8-compilation-cache` (a
-measurement switch: start V8 WITH its compilation cache) and
-`-Dv8-extra-flags="<flags>"` (a measurement route: V8 flags appended to the
-set V8 starts with); the last three travel in the shared `build_options`.
+`-Djitless`, `-Dv8-compilation-cache` and `-Dv8-extra-flags` still travel in
+the shared `build_options`, where the adapter reads them
+(snapshot_loader.zig): the adapter's build file writes them there itself
+(`applyTransitional`) with the names and in the order they always had, until
+the one commit of the build migration that may change an options module's
+text moves them to `adapter_options`. Still in the root build.zig, and V8's
+alone - to move behind this interface next (tmp/plans/build-protocol-design.md,
+batches E2 to E5): the V8 link lines (the wrapper's flags and source, the
+archives), the adapter's module wiring, the snapshot and tests/v8's rows.
 
 **The young generation's size is a V8 build option:
 `-Dv8-young-generation-mb=<n>`.** A generational collector allocates new

@@ -6129,6 +6129,12 @@ pub fn build(b: *std.Build) void {
     const lint_build_tests = b.addTest(.{ .root_module = lint_build_module });
     test_step.dependOn(&addSuiteRun(b, launch, lint_build_tests, "tools-lint_build", null).step);
 
+    // And the rule that an option belongs to its adapter, shown by the
+    // configure step itself: under any other engine, each option this build's
+    // engine adapter declared is one nothing declared, and is refused. Part
+    // of this lint's step and of the test step.
+    engine.addOptionOwnershipChecks(b, &.{ lint_build_step, test_step });
+
     // ========================================================================
     // LINT: global state, as a ratchet
     // ========================================================================
