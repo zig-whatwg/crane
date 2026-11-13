@@ -79,26 +79,30 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
     return .{
         // Where this target's V8 archives live.
         //
-        // -Dv8-build picks between two macOS builds of the same V8 (13.1.203):
-        // `static` (the default) and `official`, the build with Chrome's official
-        // ThinLTO and PGO (scripts/build-v8-official.sh, whose control build
-        // reproduces out/static byte for byte). build/archives.zig holds the
-        // paths and pins them. An iOS target has none: iOS is JavaScriptCore's (the
-        // user, 2026-11-10, ruling R4 - no V8 for iOS in any form), and the user
-        // paused every iOS build until the JavaScriptCore adapter exists (15:55 ET:
-        // "skip ios builds and tests for now until we get js core implemented").
-        // So an aarch64-ios build with -Dengine=v8 has no V8 to link, and
-        // `resolve` says so; nothing else changes for a host build, and no gate
-        // builds for iOS.
+        // -Dv8-build picks between builds of the same V8: `static` (the default)
+        // and `official`, the build with Chrome's official ThinLTO and PGO - which
+        // 15.7 does not have (out/official was 13.1.203's and is retired until
+        // roadmap item v8-pgo), so `resolve` answers that it is unavailable.
+        // build/archives.zig holds the paths and pins them. An iOS target has
+        // none: iOS is JavaScriptCore's (the user, 2026-11-10, ruling R4 - no V8
+        // for iOS in any form), and the user paused every iOS build until the
+        // JavaScriptCore adapter exists (15:55 ET: "skip ios builds and tests for
+        // now until we get js core implemented"). So an aarch64-ios build with
+        // -Dengine=v8 has no V8 to link, and `resolve` says so; nothing else
+        // changes for a host build, and no gate builds for iOS.
         .build = b.option(
             archives.Build,
             "v8-build",
-            "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
+            "Which build of the V8 to link: static (default: the release build, <the V8's directory>/out/static) or official (ThinLTO + PGO as Chrome's official build; V8 15.7 has none yet - roadmap item v8-pgo)",
         ) orelse archives.Build.default,
-        // -Dv8: the V8 version (build/archives.zig Version): 13.1 until the
-        // switch commit; 15.7 is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
-        // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/.
-        .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (default: 15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh); 13.1 is refused, the adapter is ported") orelse archives.Version.default,
+        // -Dv8: the V8 version (build/archives.zig Version). One value: 15.7
+        // is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
+        // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/. 13.1,
+        // which the adapter no longer compiles against, is not a value any more
+        // (the integrator's ruling Q5 on the build migration: dead pieces are
+        // deleted): `zig build` itself refuses -Dv8=13.1 as it refuses any
+        // value an option does not list.
+        .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh)") orelse archives.Version.default,
         // Phase 8 (mobile): iOS forbids JIT outright - no W^X exception for third-party
         // apps - so V8 must run in its interpreter-only mode there or the process is
         // killed on first code generation. Defaults ON for iOS targets and OFF everywhere
@@ -184,40 +188,35 @@ pub fn isDefaultFor(target: std.Target) bool {
 }
 
 /// What this build links: the archives -Dv8, -Dv8-build and the target's OS
-/// select (build/archives.zig) and, for an archive built against
-/// Chromium's libc++ (-Dv8=15.7), what `resolve` reads from beside it at
-/// configure time: that libc++'s consumer flags and the system libraries the
-/// archive's own link names. Resolved once, so every artifact links the same
-/// V8.
+/// select (build/archives.zig) and what `resolve` reads from beside them at
+/// configure time - the archive is built against Chromium's libc++, and
+/// keeps that libc++'s consumer flags and the system libraries its own link
+/// names in two files. Resolved once, so every artifact links the same V8.
 pub const Resolved = struct {
     archives: archives.Archives,
     /// libcxx/flags.txt's -D defines and -nostdinc++ (its directories are
     /// added by `addSourceTo`, relative and as -I).
-    libcxx_flags: []const []const u8 = &.{},
+    libcxx_flags: []const []const u8,
     /// system-libs.txt's `-framework X` entries.
-    frameworks: []const []const u8 = &.{},
+    frameworks: []const []const u8,
     /// system-libs.txt's `-lX` entries.
-    system_libs: []const []const u8 = &.{},
+    system_libs: []const []const u8,
 };
 
 /// Which V8 this build links, or why it can link none: the archives the
-/// options and the target's OS select and, for an archive built against
-/// Chromium's libc++, the facts it keeps beside itself
-/// (scripts/build-v8-15.7.sh writes them from GN's own compile and d8's own
-/// link). A configure-time read the configuration cache cannot see change, so
-/// it is poisoned; a host without the archive gets the reason and how to get
-/// it as this build's answer.
+/// options and the target's OS select, and the facts the archive keeps
+/// beside itself (scripts/build-v8-15.7.sh writes them from GN's own compile
+/// and d8's own link). A configure-time read the configuration cache cannot
+/// see change, so it is poisoned; a host without the archive gets the reason
+/// and how to get it as this build's answer.
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) engine_build.Resolution(Resolved) {
-    if (options.version == .@"13.1") return .{
-        .unavailable = "-Dv8=13.1: the V8 adapter (src/runtime/engines/v8/v8_wrapper.cpp) is ported to V8 15.7.112.43 and no longer compiles against 13.1.203; drop -Dv8",
-    };
-    const selected = archives.selectVersion(options.version, options.build, target.result.os.tag) catch |err| return .{
+    const selected = archives.select(options.version, options.build, target.result.os.tag) catch |err| return .{
         .unavailable = switch (err) {
             error.NoOfficialBuild => "-Dv8=15.7 has no official build: out/official is retired until roadmap item v8-pgo (the user, 2026-11-10); drop -Dv8-build",
             error.NoV8ForIos => "an iOS target builds nothing yet: iOS uses JavaScriptCore, never V8 (the user, 2026-11-10), and iOS builds wait for the JavaScriptCore adapter (src/runtime/engines/jsc/)",
         },
     };
-    const chromium = selected.chromium orelse return .{ .ready = .{ .archives = selected } };
+    const chromium = selected.chromium;
     b.graph.poisonCache();
     const dir = b.root.root_dir.handle;
     const flags_text = dir.readFileAlloc(b.graph.io, chromium.libcxx_flags, b.allocator, .limited(1 << 16)) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
@@ -252,55 +251,24 @@ const wrapper_source = "src/runtime/engines/v8/v8_wrapper.cpp";
 /// The flags every compile of v8_wrapper.cpp passes: C++20 without exceptions
 /// or RTTI, and the defines V8's public headers must see to agree with the
 /// archive the artifact links - the V8 ones (pointer compression, the
-/// sandbox) and the cppgc ones, in this one place.
+/// sandbox) and the cppgc ones, which are the archive's ABI, not a choice: the
+/// headers inline `cppgc::Member`'s pointer compression, the write barrier's
+/// fast path and the cage constants, so they must see what the library was
+/// built with or a Member reads back another address than it was given
+/// (tests/v8/cpp_heap_test.zig checks the result).
 ///
-/// An archive built against Chromium's libc++ (-Dv8=15.7) says all of them
-/// itself: its include/ holds the build's v8-gn.h, which v8config.h includes
-/// under -DV8_GN_HEADER (V8 BUILD.gn v8_generate_external_defines_header), and
-/// its libcxx/flags.txt the defines GN compiles every consumer of that libc++
-/// with (`Resolved.libcxx_flags`, read by `resolve`). Nothing is kept by hand
-/// for it. What follows is 13.1's list:
+/// The archive says all of them itself, so none is kept by hand: its
+/// include/ holds the build's v8-gn.h, which v8config.h includes under
+/// -DV8_GN_HEADER (V8 BUILD.gn v8_generate_external_defines_header), and its
+/// libcxx/flags.txt the defines GN compiles every consumer of its libc++ with
+/// (`Resolved.libcxx_flags`, read by `resolve`). (13.1.203's archive said
+/// neither, and its seven defines were listed here by hand until the value
+/// -Dv8=13.1 was deleted.)
 ///
-/// The cppgc defines are the archive's ABI, not a choice (the wrapper
-/// redesign, tmp/redesign/wrapper-redesign-design.md 2.6 and 4.12; risk R7).
-/// The headers inline `cppgc::Member`'s pointer compression, the write
-/// barrier's fast path and the cage constants, so they must see what the
-/// library was built with or a Member reads back another address than it was
-/// given. 13.1.203's BUILD.gn sets cppgc_enable_caged_heap on 64-bit, which
-/// forces CPPGC_YOUNG_GENERATION and CPPGC_POINTER_COMPRESSION, and its
-/// gni/v8.gni defaults cppgc_enable_slim_write_barrier and
-/// cppgc_enable_larger_cage to true; no args.gn Crane builds with
-/// (scripts/build-v8-official.sh control_args, scripts/build-v8-linux.sh)
-/// changes them. Read from the archives themselves (lane wr2, .wr2/abi-check.sh
-/// in its handoff): out/static on macOS and on Linux define
-/// CagedHeapBase::g_heap_base_, AgeTable, CombinedWriteBarrierSlow and
-/// CageBaseGlobal::g_base_, whose initial value - the cage alignment's mask -
-/// is 0x3ffffffff: the 16 GB "larger cage", compression shift 3
-/// (include/cppgc/internal/api-constants.h). out/ios-arm64's is 0xffffffff:
-/// built without the larger cage (shift 1), so an iOS compile leaves
-/// CPPGC_ENABLE_LARGER_CAGE out. tests/v8/cpp_heap_test.zig checks the result:
-/// a Member is 4 bytes and reads back what it was given.
-///
-/// `archive_os`: the OS whose archive the artifact links (build/archives.zig
-/// selects it by the target's OS). `extra`: flags of the artifact's own.
-fn wrapperFlags(b: *std.Build, resolved: *const Resolved, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
-    if (resolved.archives.chromium != null) {
-        const from_archive = [_][]const u8{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_GN_HEADER" };
-        return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, resolved.libcxx_flags, extra }) catch @panic("OOM");
-    }
-    const common = [_][]const u8{
-        "-std=c++20",
-        "-fno-exceptions",
-        "-fno-rtti",
-        "-DV8_COMPRESS_POINTERS",
-        "-DV8_ENABLE_SANDBOX",
-        "-DCPPGC_CAGED_HEAP",
-        "-DCPPGC_YOUNG_GENERATION",
-        "-DCPPGC_POINTER_COMPRESSION",
-        "-DCPPGC_SLIM_WRITE_BARRIER",
-    };
-    const larger_cage: []const []const u8 = if (archive_os == .ios) &.{} else &.{"-DCPPGC_ENABLE_LARGER_CAGE"};
-    return std.mem.concat(b.allocator, []const u8, &.{ &common, larger_cage, extra }) catch @panic("OOM");
+/// `extra`: flags of the artifact's own.
+fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const u8) []const []const u8 {
+    const from_archive = [_][]const u8{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_GN_HEADER" };
+    return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, resolved.libcxx_flags, extra }) catch @panic("OOM");
 }
 
 /// Link V8 into `module`, one artifact's own root module (the protocol's
@@ -341,15 +309,15 @@ pub fn linkedInto(module: *std.Build.Module) bool {
 }
 
 /// The V8 wrapper's source and headers on `module`: v8_wrapper.cpp with
-/// wrapperFlags, then the include directories. For an archive built against
-/// Chromium's libc++ that libc++'s three directories come first, as -I
+/// wrapperFlags, then the include directories. The three directories of
+/// Chromium's libc++, which the archive is built against, come first, as -I
 /// (addIncludePath): Zig puts its own -isystem directories (clang's builtins,
 /// the C library's) before any a module adds, so as -isystem they would follow
 /// the C library's and <cstdio> would find its <stdio.h> instead of libc++'s
 /// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/. Zig's own
-/// libc++ only for 13.1: with 15.7 the binary holds Chromium's, alone.
+/// libc++ is not linked: the binary holds Chromium's, alone.
 ///
-/// `apart` (a thread-sanitized artifact) with such an archive: Zig links
+/// `apart` (a thread-sanitized artifact): Zig links
 /// its ThreadSanitizer runtime with its own libc++ (std::__1) into every
 /// compilation that has an instrumented module, and puts that libc++'s -D
 /// macros and -isystem directories on every C++ file the compilation builds -
@@ -372,7 +340,7 @@ pub fn linkedInto(module: *std.Build.Module) bool {
 /// v8_wrapper.cpp weak ones that keep libc++abi's from being linked, so the
 /// runtime's win (see there).
 fn addSource(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, apart: bool, extra: []const []const u8) void {
-    if (apart and resolved.archives.chromium != null) {
+    if (apart) {
         const wrapper = b.addLibrary(.{
             .name = "v8_wrapper",
             .linkage = .static,
@@ -396,28 +364,26 @@ fn addSource(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved
 fn addSourceTo(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, extra: []const []const u8) void {
     module.addCSourceFile(.{
         .file = b.path(wrapper_source),
-        .flags = wrapperFlags(b, resolved, module.resolved_target.?.result.os.tag, extra),
+        .flags = wrapperFlags(b, resolved, extra),
     });
-    if (resolved.archives.chromium) |chromium| for (chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
+    for (resolved.archives.chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
     module.addIncludePath(.{ .cwd_relative = resolved.archives.include });
-    if (resolved.archives.chromium == null) module.link_libcpp = true else module.link_libc = true;
+    module.link_libc = true;
 }
 
 /// V8's archives on `module`, and the C++ runtime and system libraries they
-/// need: Zig's libc++ for 13.1; for 15.7 Chromium's libc++ (libc++_chromium.a),
-/// Temporal's Rust (librust_v8.a) and the archive's frameworks and libraries.
-/// The archives' libplatform and libbase are regular ("fat") archives: GN's
-/// thin ones cannot be read by Zig's linker.
+/// need: Chromium's libc++ (libc++_chromium.a), Temporal's Rust
+/// (librust_v8.a) and the archive's frameworks and libraries. The archives'
+/// libplatform and libbase are regular ("fat") archives: GN's thin ones
+/// cannot be read by Zig's linker.
 fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
     module.addObjectFile(.{ .cwd_relative = resolved.archives.monolith });
     module.addObjectFile(.{ .cwd_relative = resolved.archives.libplatform });
     module.addObjectFile(.{ .cwd_relative = resolved.archives.libbase });
-    if (resolved.archives.chromium) |chromium| {
-        module.addObjectFile(.{ .cwd_relative = chromium.libcxx });
-        module.addObjectFile(.{ .cwd_relative = chromium.rust });
-        for (resolved.frameworks) |framework| module.linkFramework(framework, .{});
-        for (resolved.system_libs) |library| module.linkSystemLibrary(library, .{});
-    }
+    module.addObjectFile(.{ .cwd_relative = resolved.archives.chromium.libcxx });
+    module.addObjectFile(.{ .cwd_relative = resolved.archives.chromium.rust });
+    for (resolved.frameworks) |framework| module.linkFramework(framework, .{});
+    for (resolved.system_libs) |library| module.linkSystemLibrary(library, .{});
 }
 
 /// What the neutral build asks about this adapter.
