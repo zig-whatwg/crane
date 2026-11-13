@@ -53,37 +53,34 @@ fn expectSize(comptime T: type, expected: usize) !void {
 }
 
 const ElementState = @FieldType(interfaces.Element.State, "_embedded");
-const ElementRareData = dom.element_rare_data.ElementRareData;
-const has_rare_slottable = @hasField(ElementRareData, "slottable");
+const has_rare_slottable = @hasField(dom.element_rare_data.Field, "slottable");
 
 // ============================================================================
 // Sizes (red until item 2)
 // ============================================================================
 
-test "Element's InternalState keeps no slottable state: 136 bytes" {
+test "Element's InternalState keeps no slottable state: 40 bytes" {
     if (comptime @hasField(ElementState, "slottable")) {
         printLayout(ElementState);
         return error.SlottableStillInElement;
     }
     // 200 after item 1: - 64 (the assigned slot and the manual slot
     // assignment, two NodeRefs with their optional tags).
-    try expectSize(ElementState, 136);
+    // 136 at E1; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
+    // nd2 N3: the ID and classes views (48) are indices in the list's header.
+    try expectSize(ElementState, 40);
 }
 
-test "a div's one block is 352 bytes: 432 less the slottable state, and perf2 b7's 8 (merged after), and the wrapper redesign P6's 8 (NodeBase.holds)" {
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 352);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
-test "ElementRareData keeps the slottable state: 344 bytes" {
+test "the rare data keeps the slottable state in a block of its own" {
     if (comptime !has_rare_slottable) return error.NoRareSlottable;
-    try testing.expectEqual(@sizeOf(dom.slot_helpers.SlottableState), @sizeOf(@FieldType(ElementRareData, "slottable")));
-    try expectSize(ElementRareData, 344);
+    // 344 at E1 in one fixed block; since lane rare1 the rare data is one
+    // sparse block whose slot names the state's own block, so the writers'
+    // `*SlottableState` (dom.slot_helpers.ensureSlottable) stays good when
+    // the block grows (tests/dom/rare1_sparse_rare_data_test.zig).
+    try testing.expect(dom.element_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
 }
 
 // ============================================================================
@@ -146,8 +143,9 @@ const Host = struct {
     default: *runtime.Instance,
 };
 
-fn rareOf(element: *runtime.Instance) ?*ElementRareData {
-    return dom.element_rare_data.of(element);
+/// `element`'s rare block, or null when it has none.
+fn rareOf(element: *runtime.Instance) ?*dom.element_rare_data.Block {
+    return dom.element_rare_data.of(element).block;
 }
 
 fn assignedSlotOf(node: *runtime.Instance) ?*runtime.Instance {

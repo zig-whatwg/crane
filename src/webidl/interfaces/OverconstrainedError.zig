@@ -58,7 +58,6 @@ pub const OverconstrainedError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            constraint: runtime.DOMString = undefined,
             _internal: ?*OverconstrainedErrorImpl.InternalState = null,
         },
     );

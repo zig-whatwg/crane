@@ -95,11 +95,6 @@ pub const ShadowRealmGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            self: *runtime.Instance = undefined,
-            name: runtime.DOMString = undefined,
-            origin: runtime.USVString = undefined,
-            isSecureContext: bool = undefined,
-            crossOriginIsolated: bool = undefined,
             _internal: ?*ShadowRealmGlobalScopeImpl.InternalState = null,
         },
     );

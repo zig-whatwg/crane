@@ -30,6 +30,7 @@ const Allocator = std.mem.Allocator;
 const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
 const ArenaAllocator = @import("arena_allocator.zig").ArenaAllocator;
 const Instance = @import("instance.zig").Instance;
+const browser_heap = @import("browser_heap.zig");
 
 /// The scope of objects made with no Browser - unit tests, and a host that
 /// starts the runtime itself (runtime.initializeRuntime). A Browser never
@@ -43,8 +44,17 @@ var standalone_scope: ?*BrowserScope = null;
 var live_scopes: std.atomic.Value(usize) = .init(0);
 
 pub const BrowserScope = struct {
+    /// A Browser's heap: its reservation, profile, layout, `Link` and
+    /// `heapOf` (src/runtime/browser_heap.zig).
+    pub const Heap = browser_heap;
+
     /// Thread-safe: supplements are made on whichever thread first asks.
     allocator: Allocator,
+    /// The Browser's heap - one reservation of address space (`Heap`) -
+    /// once `reserveHeap` made it: a Browser's at its start. Null in a scope
+    /// that never reserved (the standalone scope, unit tests' scopes):
+    /// nothing allocates from a heap yet (phase H1).
+    heap: ?*browser_heap.BrowserHeap = null,
     /// The Instance handles of every platform object of this Browser. Never
     /// moves once it has issued one (its slabs record its address).
     slab: SlabAllocator,
@@ -102,7 +112,6 @@ pub const BrowserScope = struct {
         /// HTMLElement, HTMLAnchorElement, HTMLAreaElement,
         /// HTMLTemplateElement, SVGScriptElement, HTMLSlotElement).
         document,
-        svg_element,
         html_form_element,
         html_image_element,
         html_input_element,
@@ -133,6 +142,22 @@ pub const BrowserScope = struct {
         intersection_observers,
         navigations,
         processing_instructions,
+        /// dom.element_name.Table: the Browser's interned element names -
+        /// one COUNTED record per qualified name no static table has that an
+        /// element of the Browser names now (lane nd2 N2 and batch 1-fix;
+        /// Blink's QualifiedNameCache, Gecko's nsNodeInfoManager). Weak: a
+        /// record's last element frees it, to the scope's general allocator;
+        /// the table's end frees any left.
+        element_names,
+        /// dom.attribute_names.Table: the Browser's interned attribute names
+        /// outside the static tables, each a COUNTED record with a dense u32
+        /// id (lane nd2 batch 2, A2): the same rules as `element_names`.
+        attribute_names,
+        /// dom.attribute_values.Table: the Browser's attribute values, one
+        /// COUNTED record per distinct value an attribute holds now, with a
+        /// dense u32 id (lane nd2 batch 2, A1: Blink's and WebKit's
+        /// AtomString values). Weak, like `element_names`.
+        attribute_values,
     };
     const table_count = @typeInfo(Table).@"enum".field_names.len;
 
@@ -145,7 +170,7 @@ pub const BrowserScope = struct {
 
     /// A scope with no object, supplement or table yet. Its slab records the
     /// scope's address once it issues an object: a scope is not moved after
-    /// its first platform object.
+    /// its first platform object. It has no heap until `reserveHeap`.
     pub fn init(allocator: Allocator) BrowserScope {
         _ = live_scopes.fetchAdd(1, .monotonic);
         return .{
@@ -155,9 +180,48 @@ pub const BrowserScope = struct {
         };
     }
 
+    /// Reserve this scope's heap through the platform `P` (`@import
+    /// ("platform")`, or a test's namespace of the same shape): the ladder's
+    /// first rung that fits (Heap.BrowserHeap.reserve), named as this
+    /// scope's. Called once, when the scope's address is final - Browser.init
+    /// calls it at the Browser's start, so a Browser that cannot reserve
+    /// fails Browser.init cleanly (error.OutOfMemory, or NotSupported on a
+    /// platform without address space).
+    ///
+    /// Why an explicit call and not `init` (the deep review's source finding
+    /// 12): `init` returns the scope by value and cannot fail - 122 call
+    /// sites, and 531 through runtime.initializeRuntime - and a heap header
+    /// cannot name a scope whose address is not final yet.
+    ///
+    /// `browser` is the Browser's platform state: its random stream, when it
+    /// has one (the testing platform's seeded Browser), seeds the Browser's
+    /// generations, so a seeded run replays them; otherwise the OS's
+    /// entropy. Every Browser's generations start at a random value - a
+    /// released reservation's address goes to the next one (oss R12,
+    /// appendix P4) - so a (pointer, generation) pair held across Browsers
+    /// cannot match another Browser's object. Until H3 moves the stamps into
+    /// the blocks, the seed goes to this scope's slab.
+    pub fn reserveHeap(self: *BrowserScope, comptime P: type, browser: ?*anyopaque) browser_heap.Error!void {
+        if (self.heap != null) @panic("BrowserScope.reserveHeap: this scope already has its heap");
+        const heap = try browser_heap.BrowserHeap.reserve(browser_heap.Platform.of(P), self.allocator, browser);
+        heap.owner = self;
+        self.heap = heap;
+        std.Io.Threaded.mutexLockUncancelable(&self.slab.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.slab.mutex);
+        // Never back: generations stay unique within the slab even if an
+        // object was made before the heap.
+        self.slab.next_generation = @max(self.slab.next_generation, heap.generation_seed);
+    }
+
+    /// The scope whose heap `heap` is.
+    pub fn ofHeap(heap: *const browser_heap.BrowserHeap) *BrowserScope {
+        return @ptrCast(@alignCast(heap.owner orelse @panic("BrowserScope.ofHeap: a heap with no scope")));
+    }
+
     /// The scope's end, with its Browser's: every supplement ends, the last
     /// made first; then every side table, the same way; then the arena and
-    /// the slab, with every platform object of the Browser still in them.
+    /// the slab, with every platform object of the Browser still in them;
+    /// then, last, the heap's reservation, after everything that names it.
     pub fn deinit(self: *BrowserScope) void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         var supplements = self.supplements;
@@ -183,6 +247,10 @@ pub const BrowserScope = struct {
 
         self.arena.deinit();
         self.slab.deinit();
+        if (self.heap) |heap| {
+            self.heap = null;
+            heap.release(self.allocator);
+        }
         _ = live_scopes.fetchSub(1, .monotonic);
     }
 

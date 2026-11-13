@@ -53,8 +53,6 @@ pub const NonDocumentTypeChildNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            previousElementSibling: ?*runtime.Instance = null,
-            nextElementSibling: ?*runtime.Instance = null,
             _internal: ?*NonDocumentTypeChildNodeImpl.InternalState = null,
         },
     );

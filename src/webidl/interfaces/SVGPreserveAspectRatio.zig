@@ -75,8 +75,6 @@ pub const SVGPreserveAspectRatio = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"align": u16 = undefined,
-            meetOrSlice: u16 = undefined,
             _internal: ?*SVGPreserveAspectRatioImpl.InternalState = null,
         },
     );

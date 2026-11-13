@@ -76,9 +76,6 @@ pub const FontFacePalette = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            usableWithLightBackground: bool = undefined,
-            usableWithDarkBackground: bool = undefined,
             _internal: ?*FontFacePaletteImpl.InternalState = null,
         },
     );

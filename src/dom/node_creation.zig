@@ -30,7 +30,9 @@ pub const Error = error{ InvalidStateError, OutOfMemory };
 
 /// An element's names, BORROWED from it: its namespace, namespace prefix and
 /// local name, which "create an element" sets and nothing changes for the
-/// element's life - so a reader may keep the slices as long as the element.
+/// element's life - so a reader may keep the slices as long as the element,
+/// and no longer: they are its name record's (dom.element_name), which goes
+/// with the last element of its name. Copy what you keep beyond that.
 pub const ElementNames = struct {
     namespace: ?[]const u8,
     prefix: ?[]const u8,
@@ -39,8 +41,8 @@ pub const ElementNames = struct {
 
 /// What Element supplies.
 pub const ElementSteps = struct {
-    /// Set `element`'s namespace and local name.
-    set_names: *const fn (element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void,
+    /// Set `element`'s namespace, namespace prefix and local name.
+    set_names: *const fn (element: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) Error!void,
     /// Borrow the is value assigned by "create an element", for serialization.
     is_value: ?*const fn (*runtime.Instance) ?[]const u8 = null,
     /// Borrow the names "create an element" set (a live collection's
@@ -91,10 +93,20 @@ pub fn installNode(steps: NodeSteps) void {
     node_steps.installField("node", steps);
 }
 
-/// DOM "create an element": set `element`'s namespace and local name.
+/// DOM "create an element": set `element`'s namespace and local name, with
+/// no namespace prefix (what the HTML parser's elements have).
 pub fn setElementNames(element: *runtime.Instance, namespace: ?[]const u8, local_name: []const u8) Error!void {
+    return setElementQualifiedNames(element, namespace, null, local_name);
+}
+
+/// DOM "create an element" step 4 (create-an-element-internal step 1): a
+/// new element "with ... namespace set to namespace, namespace prefix set to
+/// prefix, local name set to localName" - the three at once, so Element
+/// names it with one record (dom.element_name), never an unprefixed one
+/// first (lane nd2 batch 1-fix).
+pub fn setElementQualifiedNames(element: *runtime.Instance, namespace: ?[]const u8, prefix: ?[]const u8, local_name: []const u8) Error!void {
     const steps = node_steps.read().element orelse return error.InvalidStateError;
-    return steps.set_names(element, namespace, local_name);
+    return steps.set_names(element, namespace, prefix, local_name);
 }
 
 /// `element`'s names, borrowed (see `ElementNames`); null for a node that is

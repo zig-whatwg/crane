@@ -84,17 +84,6 @@ pub const CSPViolationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            documentURL: runtime.USVString = undefined,
-            referrer: ?runtime.USVString = null,
-            blockedURL: ?runtime.USVString = null,
-            effectiveDirective: runtime.DOMString = undefined,
-            originalPolicy: runtime.DOMString = undefined,
-            sourceFile: ?runtime.USVString = null,
-            sample: ?runtime.DOMString = null,
-            disposition: enums.SecurityPolicyViolationEventDisposition = undefined,
-            statusCode: u16 = undefined,
-            lineNumber: ?u32 = null,
-            columnNumber: ?u32 = null,
             _internal: ?*CSPViolationReportBodyImpl.InternalState = null,
         },
     );

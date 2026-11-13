@@ -69,10 +69,6 @@ pub const Exception = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            stack: union(enum) {
-                DOMString: runtime.DOMString,
-                undefined: void,
-            } = undefined,
             _internal: ?*ExceptionImpl.InternalState = null,
         },
     );

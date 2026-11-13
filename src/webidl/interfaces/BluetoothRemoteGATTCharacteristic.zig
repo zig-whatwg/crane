@@ -55,6 +55,12 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
             .{ "oncharacteristicvaluechanged", "get_oncharacteristicvaluechanged", "set_oncharacteristicvaluechanged" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "service",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getDescriptor", "call_getDescriptor", 1 },
@@ -113,11 +119,6 @@ pub const BluetoothRemoteGATTCharacteristic = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            service: *runtime.Instance = undefined,
-            uuid: typedefs.UUID = undefined,
-            properties: *runtime.Instance = undefined,
-            value: ?runtime.DataView = null,
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
             cached_service: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTCharacteristicImpl.InternalState = null,
         },

@@ -69,9 +69,6 @@ pub const Report = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            url: runtime.DOMString = undefined,
-            body: ?*runtime.Instance = null,
             _internal: ?*ReportImpl.InternalState = null,
         },
     );

@@ -49,6 +49,12 @@ pub const PublicKeyCredential = struct {
             .{ "authenticatorAttachment", "get_authenticatorAttachment", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "response",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getClientExtensionResults", "call_getClientExtensionResults", 0 },
@@ -101,9 +107,6 @@ pub const PublicKeyCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rawId: runtime.ArrayBuffer = undefined,
-            response: *runtime.Instance = undefined,
-            authenticatorAttachment: ?runtime.DOMString = null,
             cached_rawId: ?runtime.JSValue = null,
             cached_response: ?*runtime.Instance = null,
             _internal: ?*PublicKeyCredentialImpl.InternalState = null,

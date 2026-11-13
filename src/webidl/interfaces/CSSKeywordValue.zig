@@ -67,7 +67,6 @@ pub const CSSKeywordValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.USVString = undefined,
             _internal: ?*CSSKeywordValueImpl.InternalState = null,
         },
     );

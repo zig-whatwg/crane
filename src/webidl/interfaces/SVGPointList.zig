@@ -82,8 +82,6 @@ pub const SVGPointList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            numberOfItems: u32 = undefined,
             _internal: ?*SVGPointListImpl.InternalState = null,
         },
     );

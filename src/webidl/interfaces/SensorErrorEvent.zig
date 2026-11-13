@@ -73,7 +73,6 @@ pub const SensorErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": *runtime.Instance = undefined,
             _internal: ?*SensorErrorEventImpl.InternalState = null,
         },
     );

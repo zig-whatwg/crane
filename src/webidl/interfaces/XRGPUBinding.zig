@@ -99,8 +99,6 @@ pub const XRGPUBinding = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            nativeProjectionScaleFactor: f64 = undefined,
-            usesDepthValues: bool = undefined,
             _internal: ?*XRGPUBindingImpl.InternalState = null,
         },
     );

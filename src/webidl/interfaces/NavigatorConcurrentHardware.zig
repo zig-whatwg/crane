@@ -50,7 +50,6 @@ pub const NavigatorConcurrentHardware = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            hardwareConcurrency: u64 = undefined,
             _internal: ?*NavigatorConcurrentHardwareImpl.InternalState = null,
         },
     );

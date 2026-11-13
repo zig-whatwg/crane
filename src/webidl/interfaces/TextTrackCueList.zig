@@ -68,7 +68,6 @@ pub const TextTrackCueList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*TextTrackCueListImpl.InternalState = null,
         },
     );

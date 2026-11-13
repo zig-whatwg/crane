@@ -84,9 +84,6 @@ pub const NamedFlow = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            overset: bool = undefined,
-            firstEmptyRegionIndex: i16 = undefined,
             _internal: ?*NamedFlowImpl.InternalState = null,
         },
     );

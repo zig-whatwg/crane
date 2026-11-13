@@ -103,8 +103,6 @@ pub const XRWebGLBinding = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            nativeProjectionScaleFactor: f64 = undefined,
-            usesDepthValues: bool = undefined,
             _internal: ?*XRWebGLBindingImpl.InternalState = null,
         },
     );

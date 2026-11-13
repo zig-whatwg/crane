@@ -154,6 +154,8 @@ pub fn shape(longhand: Longhand, value: Value) Shape {
         .image => .unsupported,
         .content => if (urlImage(value) != null) .image else .unsupported,
         .color_scheme => |scheme| .{ .text_keywords = scheme.text.bytes }, // Q63 named cold-text exception.
+        // A computed counter-style name reifies as its name, as the specified one.
+        .scoped_name => |name| .{ .text_keywords = name.name.bytes },
         .text => |text| if (text.image_kind == .url) .image else if (text.image_kind == .generic) .{ .text_keywords = text.bytes } else .unsupported,
         // Typed OM 5.8: transform's <transform-list> is the CSSTransformValue
         // family (lane anim1 batch 5). Q32: position subclasses are routed;

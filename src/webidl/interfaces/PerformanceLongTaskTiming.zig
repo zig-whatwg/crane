@@ -72,11 +72,6 @@ pub const PerformanceLongTaskTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: typedefs.DOMHighResTimeStamp = undefined,
-            duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            attribution: runtime.JSValue = undefined,
             _internal: ?*PerformanceLongTaskTimingImpl.InternalState = null,
         },
     );

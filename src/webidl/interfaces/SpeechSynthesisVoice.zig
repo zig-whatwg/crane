@@ -64,11 +64,6 @@ pub const SpeechSynthesisVoice = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            voiceURI: runtime.DOMString = undefined,
-            name: runtime.DOMString = undefined,
-            lang: runtime.DOMString = undefined,
-            localService: bool = undefined,
-            default: bool = undefined,
             _internal: ?*SpeechSynthesisVoiceImpl.InternalState = null,
         },
     );

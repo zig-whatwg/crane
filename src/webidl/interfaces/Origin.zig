@@ -67,7 +67,6 @@ pub const Origin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"opaque": bool = undefined,
             _internal: ?*OriginImpl.InternalState = null,
         },
     );

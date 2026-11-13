@@ -71,11 +71,6 @@ pub const ImageData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: u32 = undefined,
-            height: u32 = undefined,
-            data: typedefs.ImageDataArray = undefined,
-            pixelFormat: enums.ImageDataPixelFormat = undefined,
-            colorSpace: enums.PredefinedColorSpace = undefined,
             _internal: ?*ImageDataImpl.InternalState = null,
         },
     );

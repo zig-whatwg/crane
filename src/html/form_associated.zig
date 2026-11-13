@@ -63,7 +63,7 @@ pub fn isElement(node: *Instance) bool {
 pub fn isElementNamed(node: *Instance, comptime name: []const u8) bool {
     if (!isElement(node)) return false;
     const data = @import("dom").element_data.of(node) orelse return false;
-    return std.ascii.eqlIgnoreCase(data.local_name.asSlice(), name);
+    return std.ascii.eqlIgnoreCase(data.localName(), name);
 }
 
 pub fn isForm(node: *Instance) bool {

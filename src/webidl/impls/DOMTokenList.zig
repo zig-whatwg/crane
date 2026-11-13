@@ -16,6 +16,8 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const dom = @import("dom");
+const attribute_values = dom.attribute_values;
 const DOMTokenList = interfaces.DOMTokenList;
 
 pub const State = DOMTokenList.State;
@@ -28,12 +30,18 @@ pub const ImplError = error{
     InvalidCharacterError,
 };
 
-/// Internal state for DOMTokenList implementation
+/// Internal state for DOMTokenList implementation.
+///
+/// The token set is not stored: DOM's attribute change steps set it to the
+/// associated attribute's value, parsed, whenever the attribute changes, so
+/// it is always the current value's ordered set - which the value's record
+/// keeps, split once per distinct value (dom.attribute_values.ClassNames,
+/// lane nd2 batch 3; Blink's DOMTokenList reads the same SpaceSplitString
+/// its element's class names are). A read takes the attribute's value id
+/// and reads its token list; a change serializes the new set and sets the
+/// attribute, whose change steps are the only update.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
-
-    /// The list of tokens
-    tokens: infra.List(runtime.DOMString),
 
     /// Associated element (for attribute updates)
     element: ?*runtime.Instance = null,
@@ -44,30 +52,21 @@ pub const InternalState = struct {
     /// Supported tokens (for supports() method)
     supported_tokens: ?[]const []const u8 = null,
 
-    /// The associated attribute's value the token set was last parsed from
-    /// (null: the attribute was absent), owned. Meaningful only while
-    /// `synced` is true - see `followAttribute`.
-    synced_value: ?[]u8 = null,
-    synced: bool = false,
+    /// A list not associated with an element (Element's getters set a
+    /// list's value before associating it): its value, a counted record of
+    /// its Browser's attribute values, whose tokens are its set.
+    own_value: attribute_values.ValueId = .empty,
 
     pub fn init(allocator: std.mem.Allocator) InternalState {
-        return .{
-            .allocator = allocator,
-            .tokens = infra.List(runtime.DOMString).init(allocator),
-        };
+        return .{ .allocator = allocator };
     }
 
-    pub fn deinit(self: *InternalState) void {
-        // Free owned DOMStrings
-        const slice = self.tokens.toSliceMut();
-        for (slice) |*token| {
-            token.deinit(self.allocator);
-        }
-        self.tokens.deinit();
+    pub fn deinit(self: *InternalState, scope: *runtime.BrowserScope) void {
         if (self.attr_name) |*attr| {
             attr.deinit(self.allocator);
         }
-        if (self.synced_value) |v| self.allocator.free(v);
+        attribute_values.release(scope, self.own_value);
+        self.own_value = .empty;
     }
 };
 
@@ -82,7 +81,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     // Code outside this impl associates a list through dom.token_lists.
-    @import("dom").token_lists.install(.{ .associate = &associateWithAttribute });
+    dom.token_lists.install(.{ .associate = &associateWithAttribute });
 }
 
 /// Initialize instance (creates the instance)
@@ -112,8 +111,9 @@ pub fn init(
 /// `element`'s token list for its `local_name` attribute (null namespace), as
 /// a reflected DOMTokenList attribute's getter returns it (HTML 2.6.1). DOM's
 /// "when a DOMTokenList object is created" steps - run the attribute change
-/// steps with the attribute's current value - happen on the list's first
-/// read (`followAttribute`); from then on the list updates the attribute.
+/// steps with the attribute's current value - need nothing here: every read
+/// takes the attribute's current value's tokens (`TokenSet`), and every
+/// change sets the attribute.
 fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, local_name: []const u8) anyerror!void {
     const internal = getInternal(list) orelse return error.InvalidState;
     const name = try runtime.DOMString.initDupe(internal.allocator, local_name);
@@ -137,7 +137,7 @@ fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, l
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
-        internal.deinit();
+        internal.deinit(runtime.BrowserScope.ofInstance(instance));
 
         // Return the block itself, not just what it points to.
         // `internal.deinit()` releases the strings and lists the state
@@ -154,8 +154,9 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-length
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     const internal = getInternal(instance) orelse return 0;
-    try followAttribute(internal);
-    return @intCast(internal.tokens.size());
+    var set: TokenSet = .{};
+    try set.read(internal, instance);
+    return @intCast(set.ids.len);
 }
 
 /// Getter for value: the serialize steps, "get an attribute value given the
@@ -168,7 +169,13 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const element = internal.element orelse {
         // Not associated (never, once created through an element): the set
         // itself is all there is.
-        const text = try serialize(internal, allocator);
+        var set: TokenSet = .{};
+        try set.read(internal, instance);
+        var buffer: [256]u8 = undefined;
+        var scratch: std.heap.BufferFirstAllocator = .init(&buffer, allocator);
+        var tokens = try set.slices(scratch.allocator());
+        defer tokens.deinit(scratch.allocator());
+        const text = try serialize(allocator, tokens.items);
         return if (text.len == 0) runtime.DOMString.initEmpty() else runtime.DOMString.initOwned(text);
     };
     var value = try interfaces.Element.call_getAttributeNS(element, null, internal.attr_name.?) orelse
@@ -183,10 +190,10 @@ pub fn get_value(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-value
 ///
 /// A list not associated yet (Element's classList and part set their initial
-/// value this way before `setElement`) takes the value as its token set.
+/// value this way before `setElement`) takes the value as its own.
 pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    const element = internal.element orelse return parseInto(internal, value.asSlice());
+    const element = internal.element orelse return setOwnValue(internal, instance, value.asSlice());
     try interfaces.Element.call_setAttributeNS(element, null, internal.attr_name.?, .{ .domstring = value });
 }
 
@@ -194,63 +201,71 @@ pub fn set_value(instance: *runtime.Instance, value: runtime.DOMString) anyerror
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-item
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return null;
-    try followAttribute(internal);
+    var set: TokenSet = .{};
+    try set.read(internal, instance);
     // Step 1: "If index is equal to or greater than this's token set's size,
     // then return null."
-    if (index >= internal.tokens.size()) return null;
+    if (index >= set.ids.len) return null;
     // Step 2: "Return this's token set[index]" - a copy: the caller frees
-    // what it is handed, and the token stays the set's.
-    return try runtime.DOMString.initDupe(instance.ctx.allocator, internal.tokens.toSlice()[index].asSlice());
+    // what it is handed, and the token stays its record's.
+    return try runtime.DOMString.initDupe(instance.ctx.allocator, set.bytesAt(index));
 }
 
 /// Operation: contains(token)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-contains
 pub fn call_contains(instance: *runtime.Instance, token: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
-    try followAttribute(internal);
-    return indexOf(internal, token.asSlice()) != null;
+    var set: TokenSet = .{};
+    try set.read(internal, instance);
+    return set.indexOf(token.asSlice()) != null;
 }
 
 /// Operation: add(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-add
 pub fn call_add(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    try followAttribute(internal);
     // Step 1: every token is validated before any is added.
     for (tokens) |token| try validateToken(token.asSlice());
+    var edit: Edit = undefined;
+    try edit.begin(internal, instance);
+    defer edit.end();
     // Step 2: append each to the set.
-    for (tokens) |token| try appendToken(internal, token.asSlice());
+    for (tokens) |token| try edit.append(token.asSlice());
     // Step 3.
-    try runUpdateSteps(internal);
+    try edit.runUpdateSteps();
 }
 
 /// Operation: remove(tokens...)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-remove
 pub fn call_remove(instance: *runtime.Instance, tokens: []const runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return;
-    try followAttribute(internal);
     // Step 1: every token is validated before any is removed.
     for (tokens) |token| try validateToken(token.asSlice());
+    var edit: Edit = undefined;
+    try edit.begin(internal, instance);
+    defer edit.end();
     // Step 2: remove each from the set.
-    for (tokens) |token| removeToken(internal, token.asSlice());
+    for (tokens) |token| edit.remove(token.asSlice());
     // Step 3.
-    try runUpdateSteps(internal);
+    try edit.runUpdateSteps();
 }
 
 /// Operation: toggle(token, force?)
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-toggle
 pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
-    try followAttribute(internal);
     // Steps 1-2, whatever the set holds.
     try validateToken(token.asSlice());
+    var edit: Edit = undefined;
+    try edit.begin(internal, instance);
+    defer edit.end();
     // Step 3.
-    if (indexOf(internal, token.asSlice()) != null) {
+    if (edit.indexOf(token.asSlice()) != null) {
         // 3.1: "If force is either not given or is false, then remove token,
         // run the update steps and return false."
         if (!force.was_passed or !force.value) {
-            removeToken(internal, token.asSlice());
-            try runUpdateSteps(internal);
+            edit.remove(token.asSlice());
+            try edit.runUpdateSteps();
             return false;
         }
         // 3.2 - with no update steps, for web compatibility.
@@ -258,8 +273,8 @@ pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force:
     }
     // Step 4.
     if (!force.was_passed or force.value) {
-        try appendToken(internal, token.asSlice());
-        try runUpdateSteps(internal);
+        try edit.append(token.asSlice());
+        try edit.runUpdateSteps();
         return true;
     }
     // Step 5.
@@ -270,34 +285,30 @@ pub fn call_toggle(instance: *runtime.Instance, token: runtime.DOMString, force:
 /// Spec: https://dom.spec.whatwg.org/#dom-domtokenlist-replace
 pub fn call_replace(instance: *runtime.Instance, token: runtime.DOMString, newToken: runtime.DOMString) anyerror!bool {
     const internal = getInternal(instance) orelse return false;
-    try followAttribute(internal);
     const old = token.asSlice();
     const new = newToken.asSlice();
     // Steps 1-2.
     if (old.len == 0 or new.len == 0) return error.SyntaxError;
     try validateToken(old);
     try validateToken(new);
+    var edit: Edit = undefined;
+    try edit.begin(internal, instance);
+    defer edit.end();
     // Step 3.
-    if (indexOf(internal, old) == null) return false;
+    const at_old = edit.indexOf(old) orelse return false;
     // Step 4: Infra "replace" in an ordered set - the first of token and
     // newToken becomes newToken, and every other instance of either goes.
-    const first = @min(indexOf(internal, old) orelse std.math.maxInt(usize), indexOf(internal, new) orelse std.math.maxInt(usize));
-    const slice = internal.tokens.toSliceMut();
-    if (!std.mem.eql(u8, slice[first].asSlice(), new)) {
-        const replacement = try runtime.DOMString.initDupe(internal.allocator, new);
-        slice[first].deinit(internal.allocator);
-        slice[first] = replacement;
-    }
+    const first = @min(at_old, edit.indexOf(new) orelse std.math.maxInt(usize));
+    edit.tokens.items[first] = new;
     var i: usize = first + 1;
-    while (i < internal.tokens.size()) {
-        const t = internal.tokens.toSlice()[i].asSlice();
+    while (i < edit.tokens.items.len) {
+        const t = edit.tokens.items[i];
         if (std.mem.eql(u8, t, old) or std.mem.eql(u8, t, new)) {
-            var removed = try internal.tokens.remove(i);
-            removed.deinit(internal.allocator);
+            _ = edit.tokens.orderedRemove(i);
         } else i += 1;
     }
     // Step 5.
-    try runUpdateSteps(internal);
+    try edit.runUpdateSteps();
     // Step 6.
     return true;
 }
@@ -326,54 +337,142 @@ pub fn call_supports(instance: *runtime.Instance, token: runtime.DOMString) anye
 // Internal helper functions
 // ============================================================================
 
-/// The token set follows the associated attribute: DOM's attribute change
-/// steps for a DOMTokenList - "If localName is set's attribute name,
-/// namespace is null, and value is null, then empty token set. Otherwise, if
-/// localName is set's attribute name and namespace is null, then set set's
-/// token set to value, parsed" - run LAZILY, when the set is next read,
-/// rather than on every attribute change.
-///
-/// Observably the same: the token set is visible only through this list, and
-/// it always equals the parse of the value it was last synced to, because
-/// every change the list makes to the set runs the update steps, which write
-/// the attribute (and record that value here). So comparing the attribute's
-/// current value with the last one parsed says exactly whether the change
-/// steps would have run. Eager steps would need the list registered against
-/// its element - any element in any namespace, for classList and part - and
-/// a list routinely outlives its element (script keeps `el.classList` and
-/// drops `el`), which is the recycled-address hazard of a registry keyed on
-/// the element (docs/lessons/architecture-a-stale-weak-callback-s-registry-remove-evicts.md).
-fn followAttribute(internal: *InternalState) !void {
-    const element = internal.element orelse return;
-    const name = internal.attr_name orelse return;
-    var current = try interfaces.Element.call_getAttributeNS(element, null, name);
-    defer if (current) |*c| c.deinit(element.ctx.allocator);
-    const value: ?[]const u8 = if (current) |c| c.asSlice() else null;
-    if (internal.synced and optionalEql(internal.synced_value, value)) return;
-    // Step 1 (null empties the set) and step 2 (a value is parsed).
-    try parseInto(internal, value orelse "");
-    try recordSynced(internal, value);
-}
+/// The token set as it is now: the ordered set parser over the associated
+/// attribute's value - DOM's attribute change steps: "If localName is set's
+/// attribute name, namespace is null, and value is null, then empty token
+/// set. Otherwise, if localName is set's attribute name and namespace is
+/// null, then set set's token set to value, parsed" - read from the value
+/// record's token list (lane nd2 batch 3), or from the list's own value
+/// while it has no element. Borrowed: valid until the attribute (or the own
+/// value) next changes - read it all before setting the attribute.
+const TokenSet = struct {
+    table: ?*attribute_values.Table = null,
+    ids: []const attribute_values.ValueId = &.{},
+    /// A one-token value is its own token.
+    one: [1]attribute_values.ValueId = undefined,
 
-fn optionalEql(a: ?[]const u8, b: ?[]const u8) bool {
-    if (a == null or b == null) return a == null and b == null;
-    return std.mem.eql(u8, a.?, b.?);
-}
+    /// Read in place: `ids` may point into this TokenSet.
+    fn read(self: *TokenSet, internal: *InternalState, instance: *runtime.Instance) !void {
+        self.* = .{};
+        var value: attribute_values.ValueId = internal.own_value;
+        var scope: *runtime.BrowserScope = undefined;
+        if (internal.element) |element| {
+            const data = dom.element_data.of(element) orelse return;
+            const name = (internal.attr_name orelse return).asSlice();
+            // The class attribute through its header index (lane nd2 N3).
+            value = if (std.mem.eql(u8, name, "class")) data.classId() else (data.findValueId(null, name) orelse .empty);
+            scope = data.scope;
+        } else {
+            scope = runtime.BrowserScope.ofInstance(instance);
+        }
+        if (value == .empty) return;
+        const table = attribute_values.classTable(scope) orelse return;
+        self.table = table;
+        if (value.isOneToken()) {
+            self.one[0] = value;
+            self.ids = &self.one;
+        } else {
+            self.ids = (try table.classNames(value)).tokens();
+        }
+    }
 
-fn recordSynced(internal: *InternalState, value: ?[]const u8) !void {
-    const copy: ?[]u8 = if (value) |v| try internal.allocator.dupe(u8, v) else null;
-    if (internal.synced_value) |old| internal.allocator.free(old);
-    internal.synced_value = copy;
-    internal.synced = true;
-}
+    fn bytesAt(self: *const TokenSet, index: usize) []const u8 {
+        return self.table.?.bytesOf(self.ids[index]);
+    }
 
-/// The token set becomes `value`, run through Infra's ordered set parser:
-/// split on ASCII whitespace, each token once, in first-seen order.
-fn parseInto(internal: *InternalState, value: []const u8) !void {
-    for (internal.tokens.toSliceMut()) |*token| token.deinit(internal.allocator);
-    internal.tokens.clear();
-    var it = std.mem.tokenizeAny(u8, value, ascii_whitespace);
-    while (it.next()) |token| try appendToken(internal, token);
+    fn indexOf(self: *const TokenSet, token: []const u8) ?usize {
+        for (0..self.ids.len) |i| {
+            if (std.mem.eql(u8, self.bytesAt(i), token)) return i;
+        }
+        return null;
+    }
+
+    /// The tokens' bytes, in order, borrowed from their records.
+    fn slices(self: *const TokenSet, allocator: std.mem.Allocator) !std.ArrayListUnmanaged([]const u8) {
+        var list: std.ArrayListUnmanaged([]const u8) = .empty;
+        errdefer list.deinit(allocator);
+        try list.ensureTotalCapacity(allocator, self.ids.len);
+        for (0..self.ids.len) |i| list.appendAssumeCapacity(self.bytesAt(i));
+        return list;
+    }
+};
+
+/// A change to the token set: its tokens' bytes, borrowed from their records
+/// (which nothing frees before `runUpdateSteps` sets the attribute), edited
+/// as Infra's ordered set, then serialized into the attribute.
+const Edit = struct {
+    internal: *InternalState,
+    instance: *runtime.Instance,
+    buffer: [16 * @sizeOf([]const u8)]u8,
+    scratch: std.heap.BufferFirstAllocator,
+    tokens: std.ArrayListUnmanaged([]const u8),
+
+    /// In place: `scratch` points into `buffer`.
+    fn begin(self: *Edit, internal: *InternalState, instance: *runtime.Instance) !void {
+        self.internal = internal;
+        self.instance = instance;
+        self.scratch = .init(&self.buffer, internal.allocator);
+        var set: TokenSet = .{};
+        try set.read(internal, instance);
+        self.tokens = try set.slices(self.scratch.allocator());
+    }
+
+    fn end(self: *Edit) void {
+        self.tokens.deinit(self.scratch.allocator());
+    }
+
+    fn indexOf(self: *const Edit, token: []const u8) ?usize {
+        for (self.tokens.items, 0..) |t, i| {
+            if (std.mem.eql(u8, t, token)) return i;
+        }
+        return null;
+    }
+
+    /// Infra "append" to an ordered set: nothing if it is already there.
+    /// The token is the caller's, alive for the call.
+    fn append(self: *Edit, token: []const u8) !void {
+        if (self.indexOf(token) != null) return;
+        try self.tokens.append(self.scratch.allocator(), token);
+    }
+
+    fn remove(self: *Edit, token: []const u8) void {
+        const i = self.indexOf(token) orelse return;
+        _ = self.tokens.orderedRemove(i);
+    }
+
+    /// The update steps.
+    /// Spec: https://dom.spec.whatwg.org/#concept-dtl-update
+    fn runUpdateSteps(self: *Edit) !void {
+        const internal = self.internal;
+        var buffer: [256]u8 = undefined;
+        var scratch: std.heap.BufferFirstAllocator = .init(&buffer, internal.allocator);
+        // Step 2's serializer, first: the tokens are borrowed from the
+        // value's records, which setting the attribute may free.
+        const text = try serialize(scratch.allocator(), self.tokens.items);
+        defer scratch.allocator().free(text);
+        const element = internal.element orelse return setOwnValue(internal, self.instance, text);
+        const name = internal.attr_name orelse return;
+        // Step 1: "If get an attribute by namespace and local name given
+        // null, set's attribute name, and set's element returns null and
+        // set's token set is empty, then return." - remove() on an element
+        // with no class attribute does not create one.
+        if (self.tokens.items.len == 0) {
+            if (!try interfaces.Element.call_hasAttributeNS(element, null, name)) return;
+        }
+        // Step 2: "Set an attribute value given set's element, set's
+        // attribute name, and the result of running the ordered set
+        // serializer for set's token set."
+        try interfaces.Element.call_setAttributeNS(element, null, name, .{ .domstring = runtime.DOMString.initInterned(text) });
+    }
+};
+
+/// A list with no element takes `value` as its own (its set is `value`,
+/// parsed).
+fn setOwnValue(internal: *InternalState, instance: *runtime.Instance, value: []const u8) !void {
+    const scope = runtime.BrowserScope.ofInstance(instance);
+    const id = try attribute_values.intern(scope, value);
+    attribute_values.release(scope, internal.own_value);
+    internal.own_value = id;
 }
 
 /// Infra's ASCII whitespace.
@@ -385,62 +484,21 @@ fn validateToken(token: []const u8) !void {
     if (std.mem.indexOfAny(u8, token, ascii_whitespace) != null) return error.InvalidCharacterError;
 }
 
-fn indexOf(internal: *InternalState, token: []const u8) ?usize {
-    for (internal.tokens.toSlice(), 0..) |t, i| {
-        if (std.mem.eql(u8, t.asSlice(), token)) return i;
-    }
-    return null;
-}
-
-/// Infra "append" to an ordered set: nothing if it is already there.
-fn appendToken(internal: *InternalState, token: []const u8) !void {
-    if (indexOf(internal, token) != null) return;
-    const owned = try runtime.DOMString.initDupe(internal.allocator, token);
-    errdefer {
-        var o = owned;
-        o.deinit(internal.allocator);
-    }
-    try internal.tokens.append(owned);
-}
-
-fn removeToken(internal: *InternalState, token: []const u8) void {
-    const i = indexOf(internal, token) orelse return;
-    var removed = internal.tokens.remove(i) catch return;
-    removed.deinit(internal.allocator);
-}
-
 /// The ordered set serializer: the tokens joined by single spaces.
-fn serialize(internal: *InternalState, allocator: std.mem.Allocator) ![]u8 {
-    var out: std.ArrayList(u8) = .empty;
-    errdefer out.deinit(allocator);
-    for (internal.tokens.toSlice(), 0..) |token, i| {
-        if (i > 0) try out.append(allocator, ' ');
-        try out.appendSlice(allocator, token.asSlice());
+fn serialize(allocator: std.mem.Allocator, tokens: []const []const u8) ![]u8 {
+    var len: usize = 0;
+    for (tokens, 0..) |token, i| len += token.len + @intFromBool(i > 0);
+    const out = try allocator.alloc(u8, len);
+    var at: usize = 0;
+    for (tokens, 0..) |token, i| {
+        if (i > 0) {
+            out[at] = ' ';
+            at += 1;
+        }
+        @memcpy(out[at..][0..token.len], token);
+        at += token.len;
     }
-    return out.toOwnedSlice(allocator);
-}
-
-/// The update steps.
-/// Spec: https://dom.spec.whatwg.org/#concept-dtl-update
-fn runUpdateSteps(internal: *InternalState) !void {
-    const element = internal.element orelse return;
-    const name = internal.attr_name orelse return;
-    // Step 1: "If get an attribute by namespace and local name given null,
-    // set's attribute name, and set's element returns null and set's token
-    // set is empty, then return." - remove() on an element with no class
-    // attribute does not create one.
-    if (internal.tokens.size() == 0) {
-        if (!try interfaces.Element.call_hasAttributeNS(element, null, name)) return;
-    }
-    // Step 2: "Set an attribute value given set's element, set's attribute
-    // name, and the result of running the ordered set serializer for set's
-    // token set."
-    const text = try serialize(internal, internal.allocator);
-    defer internal.allocator.free(text);
-    try interfaces.Element.call_setAttributeNS(element, null, name, .{ .domstring = runtime.DOMString.initInterned(text) });
-    // The change steps parse that value back into this same set; record it
-    // rather than re-parse it on the next read.
-    try recordSynced(internal, text);
+    return out;
 }
 
 /// Set supported tokens for supports() method
@@ -454,6 +512,9 @@ pub fn setElement(instance: *runtime.Instance, element: ?*runtime.Instance, attr
     const internal = getInternal(instance) orelse return;
     internal.element = element;
     internal.attr_name = attr_name;
-    // The set follows this element's attribute from its next read on.
-    internal.synced = false;
+    // The set is the element's attribute's from now on.
+    if (element != null) {
+        attribute_values.release(runtime.BrowserScope.ofInstance(instance), internal.own_value);
+        internal.own_value = .empty;
+    }
 }

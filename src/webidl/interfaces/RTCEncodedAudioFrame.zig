@@ -65,7 +65,6 @@ pub const RTCEncodedAudioFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.ArrayBuffer = undefined,
             _internal: ?*RTCEncodedAudioFrameImpl.InternalState = null,
         },
     );

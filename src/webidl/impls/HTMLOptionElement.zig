@@ -202,7 +202,7 @@ fn localName(node: *runtime.Instance) ?[]const u8 {
     const node_type = interfaces.Node.get_nodeType(node) catch return null;
     if (node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
     const data = element_data.of(node) orelse return null;
-    return data.local_name.asSlice();
+    return data.localName();
 }
 
 fn isElementNamed(node: *runtime.Instance, name: []const u8) bool {
@@ -646,8 +646,7 @@ fn isOpaqueScript(element: *runtime.Instance) bool {
     const local = localName(element) orelse return false;
     if (!std.mem.eql(u8, local, "script")) return false;
     const data = element_data.of(element) orelse return false;
-    const ns = data.namespace_uri orelse return false;
-    const slice = ns.asSlice();
+    const slice = data.namespaceSlice() orelse return false;
     return std.mem.eql(u8, slice, HTML_NAMESPACE) or std.mem.eql(u8, slice, SVG_NAMESPACE);
 }
 

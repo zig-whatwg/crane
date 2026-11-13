@@ -70,7 +70,6 @@ pub const AuthenticatorAttestationResponse = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            attestationObject: runtime.ArrayBuffer = undefined,
             cached_attestationObject: ?runtime.JSValue = null,
             _internal: ?*AuthenticatorAttestationResponseImpl.InternalState = null,
         },

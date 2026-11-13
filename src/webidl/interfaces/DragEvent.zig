@@ -76,7 +76,6 @@ pub const DragEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataTransfer: ?*runtime.Instance = null,
             _internal: ?*DragEventImpl.InternalState = null,
         },
     );

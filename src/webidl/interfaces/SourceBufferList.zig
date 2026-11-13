@@ -85,9 +85,6 @@ pub const SourceBufferList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            onaddsourcebuffer: typedefs.EventHandler = undefined,
-            onremovesourcebuffer: typedefs.EventHandler = undefined,
             _internal: ?*SourceBufferListImpl.InternalState = null,
         },
     );

@@ -76,7 +76,6 @@ pub const PluginArray = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*PluginArrayImpl.InternalState = null,
         },
     );

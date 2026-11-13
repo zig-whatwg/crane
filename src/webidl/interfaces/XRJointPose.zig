@@ -59,7 +59,6 @@ pub const XRJointPose = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            radius: f32 = undefined,
             _internal: ?*XRJointPoseImpl.InternalState = null,
         },
     );

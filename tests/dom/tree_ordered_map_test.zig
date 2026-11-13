@@ -54,9 +54,9 @@ fn refHasKey(node: *NodeBase, kind: map.Kind, key: []const u8) bool {
     if (node.node_type != NodeBase.ELEMENT_NODE) return false;
     const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return false));
     const data = dom.element_data.of(instance) orelse return false;
-    const id = data.id.asSlice();
-    const is_html = if (data.namespace_uri) |ns| std.mem.eql(u8, ns.asSlice(), html_ns) else false;
-    const local = data.local_name.asSlice();
+    const id = data.idValue();
+    const is_html = if (data.namespaceSlice()) |ns| std.mem.eql(u8, ns, html_ns) else false;
+    const local = data.localName();
     const name: []const u8 = if (dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |a| a.value else "";
     const is = struct {
         fn any(l: []const u8, comptime names: []const []const u8) bool {

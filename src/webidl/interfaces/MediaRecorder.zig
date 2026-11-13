@@ -114,18 +114,6 @@ pub const MediaRecorder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            stream: *runtime.Instance = undefined,
-            mimeType: runtime.DOMString = undefined,
-            state: enums.RecordingState = undefined,
-            onstart: typedefs.EventHandler = undefined,
-            onstop: typedefs.EventHandler = undefined,
-            ondataavailable: typedefs.EventHandler = undefined,
-            onpause: typedefs.EventHandler = undefined,
-            onresume: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            videoBitsPerSecond: u32 = undefined,
-            audioBitsPerSecond: u32 = undefined,
-            audioBitrateMode: enums.BitrateMode = undefined,
             _internal: ?*MediaRecorderImpl.InternalState = null,
         },
     );

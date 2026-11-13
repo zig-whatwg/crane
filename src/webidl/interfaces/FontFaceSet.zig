@@ -98,12 +98,6 @@ pub const FontFaceSet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onloading: typedefs.EventHandler = undefined,
-            onloadingdone: typedefs.EventHandler = undefined,
-            onloadingerror: typedefs.EventHandler = undefined,
-            ready: runtime.JSValue = undefined,
-            status: enums.FontFaceSetLoadStatus = undefined,
-            size: u32 = undefined,
             _internal: ?*FontFaceSetImpl.InternalState = null,
         },
     );

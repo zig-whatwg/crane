@@ -119,12 +119,6 @@ pub fn runEngineTasks(_: *Agent) bool {
 pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
     return null;
 }
-pub fn hasEngineIdleTasks(_: *Agent) bool {
-    return false;
-}
-pub fn runEngineIdleTasks(_: *Agent, _: u64) bool {
-    return false;
-}
 
 pub fn requestGarbageCollection(_: *Agent) void {}
 pub fn notifyMemoryPressure(_: *Agent, _: engine.MemoryPressure) void {}

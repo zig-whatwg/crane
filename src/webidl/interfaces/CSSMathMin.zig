@@ -86,7 +86,6 @@ pub const CSSMathMin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            values: *runtime.Instance = undefined,
             _internal: ?*CSSMathMinImpl.InternalState = null,
         },
     );

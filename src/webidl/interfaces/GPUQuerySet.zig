@@ -73,9 +73,6 @@ pub const GPUQuerySet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.GPUQueryType = undefined,
-            count: typedefs.GPUSize32Out = undefined,
-            label: runtime.USVString = undefined,
             _internal: ?*GPUQuerySetImpl.InternalState = null,
         },
     );

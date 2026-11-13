@@ -71,8 +71,6 @@ pub const CSSMixinRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            contents: bool = undefined,
             _internal: ?*CSSMixinRuleImpl.InternalState = null,
         },
     );

@@ -63,24 +63,48 @@ pub const InternalState = struct {
     /// keeps this object ([SameObject]), not the other way.
     inline_owner: ?*runtime.Instance = null,
     inline_owner_generation: u64 = 0,
-    /// `computed`: the element, held.
-    computed_element: dom.node_holds.MemberHold = .{},
-    pseudo: ?[]u8 = null,
-    no_object: bool = false,
     /// `rule`: the rule whose block this is, held.
     rule: ?*dom.style.Rule = null,
-    /// `detached`: the block.
-    own: DeclarationBlock,
+    /// `computed` and `detached`: what only they read, made for them alone.
+    /// Every object carried it inline - every element.style object too,
+    /// which reads nothing but its owner: ~130 bytes on each first
+    /// `element.style` read (lane rare1; framework-pages.md table J). Blink
+    /// keeps the kinds apart the same way: InlineCSSStyleDeclaration holds
+    /// its parent element only, CSSComputedStyleDeclaration its element and
+    /// pseudo id, MutableCSSPropertyValueSet its properties.
+    extra: ?*Extra = null,
 
     pub const Kind = enum { inline_style, computed, rule, detached };
 
+    /// A computed declaration's element, pseudo-element and no-object flag;
+    /// a detached one's own block.
+    const Extra = struct {
+        /// `computed`: the element, held.
+        computed_element: dom.node_holds.MemberHold = .{},
+        pseudo: ?[]u8 = null,
+        no_object: bool = false,
+        /// `detached`: the block.
+        own: DeclarationBlock,
+    };
+
+    /// Give the state its out-of-line part.
+    fn makeExtra(self: *InternalState) !*Extra {
+        const extra = try self.allocator.create(Extra);
+        extra.* = .{ .own = DeclarationBlock.init(self.allocator) };
+        self.extra = extra;
+        return extra;
+    }
+
     fn deinit(self: *InternalState, instance: *runtime.Instance) void {
-        if (self.kind == .computed) self.computed_element.release(instance, element_slot);
+        if (self.kind == .computed) if (self.extra) |extra| extra.computed_element.release(instance, element_slot);
         if (self.rule) |r| r.unref();
         self.rule = null;
-        if (self.pseudo) |p| self.allocator.free(p);
-        self.pseudo = null;
-        self.own.deinit();
+        if (self.extra) |extra| {
+            if (extra.pseudo) |p| self.allocator.free(p);
+            extra.own.deinit();
+            self.allocator.destroy(extra);
+            self.extra = null;
+        }
     }
 
     /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
@@ -89,7 +113,7 @@ pub const InternalState = struct {
     /// element_). Makes no wrapper.
     pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
         const self = Registry.get(instance) orelse return;
-        if (self.kind == .computed) self.computed_element.trace(tracer);
+        if (self.kind == .computed) if (self.extra) |extra| extra.computed_element.trace(tracer);
     }
 
     fn inlineOwner(self: *const InternalState) ?*runtime.Instance {
@@ -109,7 +133,17 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // The registry owns this block, so `Registry.remove` returns it to the
     // arena.
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
-    internal.* = .{ .allocator = allocator, .own = DeclarationBlock.init(allocator) };
+    internal.* = .{ .allocator = allocator };
+    // A failure below (the out-of-line part, the pseudo-element's copy)
+    // frees the instance without its deinit (the construction chain's
+    // errdefer): the state goes now, or the registry keeps an entry its
+    // address's next object would inherit ("stale ... a teardown missed
+    // it": tests/dom/bx1_transform_alias_test.zig's allocation-failure
+    // reads, once `extra` became an allocation of its own).
+    errdefer {
+        internal.deinit(instance);
+        Registry.remove(instance);
+    }
     if (@hasField(@TypeOf(args), "inline_owner")) {
         const owner: *runtime.Instance = args.inline_owner;
         internal.kind = .inline_style;
@@ -119,9 +153,10 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (@hasField(@TypeOf(args), "computed_for")) {
         const target: ComputedFor = args.computed_for;
         internal.kind = .computed;
-        internal.no_object = target.no_object;
-        if (target.pseudo) |p| internal.pseudo = try allocator.dupe(u8, p);
-        internal.computed_element.take(instance, target.element, element_slot);
+        const extra = try internal.makeExtra();
+        extra.no_object = target.no_object;
+        if (target.pseudo) |p| extra.pseudo = try allocator.dupe(u8, p);
+        extra.computed_element.take(instance, target.element, element_slot);
     }
     if (@hasField(@TypeOf(args), "rule_block_of")) {
         const rule: *dom.style.Rule = args.rule_block_of;
@@ -129,6 +164,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         internal.rule = rule;
         rule.ref();
     }
+    // `detached`: a block of its own.
+    if (internal.kind == .detached) _ = try internal.makeExtra();
 }
 
 pub fn deinitOwn(instance: *runtime.Instance) void {
@@ -144,7 +181,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
 /// the object's own.
 fn writableBlock(internal: *InternalState) !?*DeclarationBlock {
     return switch (internal.kind) {
-        .detached => &internal.own,
+        .detached => if (internal.extra) |extra| &extra.own else null,
         .inline_style => blk: {
             const owner = internal.inlineOwner() orelse break :blk null;
             break :blk try dom.style.inline_style.blockOf(owner);
@@ -178,10 +215,11 @@ fn changed(internal: *InternalState) !void {
 /// A computed declaration's style, resolved now; null when its declarations
 /// are empty (CSSOM 7.2 step 5's conditions fail).
 fn computedStyleOf(internal: *InternalState) !?*const css.computed_style.ComputedStyle {
-    if (internal.no_object) return null;
-    const element = internal.computed_element.get() orelse return null;
+    const extra = internal.extra orelse return null;
+    if (extra.no_object) return null;
+    const element = extra.computed_element.get() orelse return null;
     if (!try dom.style.hasComputedStyle(element)) return null;
-    return dom.style.computedStyle(element, internal.pseudo);
+    return dom.style.computedStyle(element, extra.pseudo);
 }
 
 fn ownedString(allocator: std.mem.Allocator, bytes: []const u8) !runtime.DOMString {

@@ -74,7 +74,6 @@ pub const MimeTypeArray = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*MimeTypeArrayImpl.InternalState = null,
         },
     );

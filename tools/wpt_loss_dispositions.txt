@@ -1903,3 +1903,18 @@ pass_rate = 15/60
 condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 32-58 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
 measured_at = 2f5fe44cf9f
 paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/controlled-iframe-postMessage.https.html]
+generation = 217
+kind = flake
+why = The test harness's own server, not Crane: the generation 217 sweep ran on a wpt serve up since 2026-11-10 whose children pause for seconds (lane sw2's probe on server1, 2026-11-12 09:54-10:15 UTC: fresh GETs every 100 ms stalled 1.9 s on the http child and up to 4.6 s on the https child, one child at a time, while a 10 ms sleep never overslept; 4-5 clusters of neighbouring files slowed by the same seconds per 32-runner sweep, e.g. indexes 10599-10631 +4.3 s in generation 217 itself). The file's subtests 2 and 3 have a 2 s with_iframe budget over the worker's 1 s timer, so a stall on its frame fetch times them out ("with_iframe timed out"); Crane's own path measured 1,007-1,014 ms every time. Old serve 16 failures in 179 runs (all 16 concurrent copies failed at one moment), fresh serve 0 in 81, and generation 217's production re-sweep on a fresh serve (10:21-10:27 UTC, same frozen runner) 4/4. Fixed in the pool: every generation sweep (.integ/gen-sweep.sh) and every FULL window run (tmp/remote/crane-pool.sh) now start a fresh wpt serve, as wptrunner starts its servers per run; why the children grow and pause is lane sw2's item 0b. Isolated pairs, the file alone, --parallel=1, server1 2026-11-12 10:29-10:30 UTC: BASE ~/crane-frozen/main-253917157d (generation 216's production runner), TIP ~/crane-frozen/main-9a7434fdee (generation 217's).
+pair.1 = base 4/4; tip 4/4
+pair.2 = base 4/4; tip 4/4
+pair.3 = base 4/4; tip 4/4
+
+[html/browsers/origin/cross-origin-objects/window-location-and-location-href-cross-realm-set.html]
+generation = 219
+kind = user-ruling
+why = Generation 219 is the first on V8 15.7.112.43 (Chrome 157's; merge 58da4933037). V8 14 and later removed PropertyCallbackInfo::This(), so the cross-origin [[Set]] of a WindowProxy or Location cannot call an inherited setter on its receiver: two subtests fail, 11 -> 9, stable (reruns 3/3, verify 10/10 in lane v8up's windows). Chrome 157.0.8103.50 fails the same two (9/11); Firefox 160.0 and Safari 27.2 pass 11/11 (wpt.fyi 2026-11-11). Pinned by tests/wpt/crane/v8up-cross-origin-setter-inherited-receiver-deviation.html; no public V8 API gives the receiver back.
+date = 2026-11-11
+decision = the user, 2026-11-11 09:53 ET (14:53 UTC), by prompt: accept the 2 subtests as a recorded known deviation on V8 15.7

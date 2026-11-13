@@ -24,12 +24,17 @@
 //!   Trace keeps its slot. In the atomic pause the anchor registry's weak
 //!   processing hands each dead anchor's slot here (`collected`): the slot
 //!   written empty (raw: V8 frees the TracedNode in the same pause), the
-//!   release recorded - no V8 call, no count change, no free. After the
-//!   collection, the drain releases the recorded references (a posted task,
-//!   or a requested collection's end) - unless a walk holds the agent's
-//!   teardowns (engine.deferTeardowns), whose last resume drains instead. A
-//!   release only counts: a tree it leaves with no hold is queued by the
-//!   counts (dom.refcount_teardown) - A COLLECTION NEVER FREES A NODE.
+//!   release recorded - no V8 call, no count change, no free. A
+//!   young-generation collection that drops an unmodified wrapper does the
+//!   same from its roots handler (v8_wrapper.cpp NodeWrapperRootsHandler).
+//!   After the collection, at the agent's safe point (v8_wrapper.cpp
+//!   `runQueuedFinalizers`, never inside the collector: lane v8up's
+//!   finalizer queue, which the releases join where V8 would run a second
+//!   pass - `noteNodeWrappersCollected` says why), `drainCallback` releases
+//!   the recorded references - unless a walk holds the agent's teardowns
+//!   (engine.deferTeardowns), whose last resume drains instead. A release
+//!   only counts: a tree it leaves with no hold is queued by the counts
+//!   (dom.refcount_teardown) - A COLLECTION NEVER FREES A NODE.
 //! - **A realm's end** keeps refcount step 7a's net for the realm's detached
 //!   trees, as the wrapper cache's sweep made it while node wrappers were its
 //!   entries, once no wrapper reaches them (`endRealm`, `endedRealmNet`):
@@ -73,9 +78,9 @@ const address_map = @import("infra").address_map;
 
 const log = std.log.scoped(.node_wrappers);
 
-/// -Dwrapper-trace-check: the walk's oracle runs in every major collection's
+/// -Dv8-wrapper-trace-check: the walk's oracle runs in every major collection's
 /// weak processing (`checkWalk`).
-const wrapper_trace_check = @import("build_options").wrapper_trace_check;
+const wrapper_trace_check = @import("adapter_options").wrapper_trace_check;
 
 /// engine.NodeWrapperSlot on V8: one `v8::TracedReference<v8::Object>`, whose
 /// one word this is.
@@ -216,7 +221,7 @@ pub const Registry = struct {
     /// detached node of a document asks for that document's tree in turn
     /// (design R4c). Zero when `visited` is empty.
     last_visited: usize = 0,
-    /// -Dwrapper-trace-check: the slots the walk named in this collection.
+    /// -Dv8-wrapper-trace-check: the slots the walk named in this collection.
     traced: std.AutoHashMapUnmanaged(usize, void) = .empty,
     /// No walk was installed for a trace this collection (a test's override
     /// removed it): the oracle has nothing to check then.
@@ -226,7 +231,7 @@ pub const Registry = struct {
     /// Holder anchors whose holder's nodes were traced, cumulative
     /// (diagnostics, tests; the redesign's P6).
     holder_traces: u64 = 0,
-    /// The oracle's findings, cumulative (-Dwrapper-trace-check).
+    /// The oracle's findings, cumulative (-Dv8-wrapper-trace-check).
     trace_check_failures: u64 = 0,
     /// Debug: a walk is running (inside the collector): no wrap may start.
     in_walk: bool = false,
@@ -411,8 +416,8 @@ fn endedCallback(raw_registry: ?*anyopaque, raw_slot: ?*anyopaque) callconv(.c) 
     endReference(registry, runtime.lifetime.targetOfSlot(slot));
 }
 
-/// The drain after a collection (v8_wrapper.cpp: a posted task, or a
-/// requested collection's end).
+/// The agent's safe point after a collection (v8_wrapper.cpp
+/// `runQueuedFinalizers` -> `drainNodeWrappers`): the agent's drain.
 fn drainCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry.?));
     registry.drain();
@@ -786,7 +791,7 @@ fn endSet(set: *std.AutoHashMapUnmanaged(usize, void)) void {
     } else set.clearRetainingCapacity();
 }
 
-/// The walk's oracle (-Dwrapper-trace-check; design 7 P5, R2-R3), in every
+/// The walk's oracle (-Dv8-wrapper-trace-check; design 7 P5, R2-R3), in every
 /// major collection's weak processing before any slot is emptied: `live`
 /// are the slots of the anchors the collection kept, `dead` of those it did
 /// not. It checks, logging each finding (an error log fails a unit test):

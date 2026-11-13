@@ -78,10 +78,6 @@ pub const ScreenDetails = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            screens: runtime.JSValue = undefined,
-            currentScreen: *runtime.Instance = undefined,
-            onscreenschange: typedefs.EventHandler = undefined,
-            oncurrentscreenchange: typedefs.EventHandler = undefined,
             _internal: ?*ScreenDetailsImpl.InternalState = null,
         },
     );

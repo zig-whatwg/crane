@@ -73,11 +73,6 @@ pub const AudioWorkletGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            currentFrame: u64 = undefined,
-            currentTime: f64 = undefined,
-            sampleRate: f32 = undefined,
-            renderQuantumSize: u32 = undefined,
-            port: *runtime.Instance = undefined,
             _internal: ?*AudioWorkletGlobalScopeImpl.InternalState = null,
         },
     );

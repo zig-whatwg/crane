@@ -82,7 +82,6 @@ pub const CSSUnparsedValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*CSSUnparsedValueImpl.InternalState = null,
         },
     );

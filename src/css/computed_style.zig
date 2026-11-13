@@ -188,6 +188,130 @@ fn same(comptime T: type, a: T, b: T) bool {
     };
 }
 
+/// Whether no reader can tell `a` from `b`, so that one style may hold the
+/// other's object in its place (adoption: ComputedStyle.adoptEqualGroupsIn
+/// and adoptEqualCustom). T is Value or a custom property record.
+///
+/// A computed value: the same value (Value.eql - its text, numbers, keywords,
+/// names and the tree scope of the names that keep one: font-family's named
+/// families, animation-name's list) AND the same resources behind it
+/// (Value.resourcesEql - each url()'s resolved URL, local-fragment and valid
+/// flags, and its source's base URL, referrer, referrer policy and
+/// origin-clean flag: what the fetch layer reads). Value.eql "deliberately
+/// remains a value/text comparison" (style_values.zig) - a url() keeps its
+/// authored text there - so eql alone called `url(./)` under two base URLs
+/// one value, and lane style1 b3's adoption handed an element the previous
+/// declaration's URL (WPT css/cssom/css-style-attr-decl-block.html, "Changes
+/// to CSS declaration block after a base URL change"; lane style1 b4).
+///
+/// Audit of what Value.eql folds (lane style1 b4): resource identity (the
+/// one gap, closed here); -0 and +0 inside a payload's numbers (CSSOM
+/// serializes both as 0, and no computed value divides by a stored one);
+/// NaN (never eql: never adopted). Every other payload's eql compares its
+/// text or fields whole: colors by form and channels, named colors by name,
+/// images, gradients and content by serialization and resolution, families
+/// and animation names with their tree scope; no other computed value keeps
+/// a tree scope or loads anything (an Image holds no load state). A custom
+/// property record holds text and taint only - its url()s resolve where they
+/// are substituted (custom_properties.parse) - so CustomProperties.eql is its
+/// whole identity.
+pub fn interchangeable(comptime T: type, a: T, b: T) bool {
+    return switch (T) {
+        Value => a.eql(b) and a.resourcesEql(b),
+        ?*const custom_properties.CustomProperties => custom_properties.CustomProperties.eql(a, b),
+        else => @compileError("interchangeable: no rule for " ++ @typeName(T)),
+    };
+}
+
+/// Whether the fetch layer would make the same requests for both lists of
+/// url()s: each one's resolved URL, its valid and local-fragment flags, and
+/// its source's base URL, referrer, referrer policy and origin-clean flag,
+/// field by field (Fetch's request from CSS Values 4 §4.5.1 "fetch a style
+/// resource"). Written out rather than ResourceUrl.eql, which
+/// `interchangeable` uses: it is what the Debug self-check observes.
+fn sameFetch(a: []const values.ResourceUrl, b: []const values.ResourceUrl) bool {
+    if (a.len != b.len) return false;
+    for (a, b) |x, y| {
+        if (x.valid != y.valid or x.local_fragment != y.local_fragment or !std.mem.eql(u8, x.url, y.url)) return false;
+        const s = x.source orelse {
+            if (y.source != null) return false;
+            continue;
+        };
+        const t = y.source orelse return false;
+        if (s.origin_clean != t.origin_clean or !std.mem.eql(u8, s.base_url, t.base_url) or
+            !std.mem.eql(u8, s.referrer_policy, t.referrer_policy)) return false;
+        if ((s.referrer == null) != (t.referrer == null)) return false;
+        if (s.referrer) |r| if (!std.mem.eql(u8, r, t.referrer.?)) return false;
+    }
+    return true;
+}
+
+/// interchangeable for two values whose payload holds a reference (the only
+/// ones identical() can call different while interchangeable); false for
+/// the rest, which identical() already compared bit for bit - so a miss pays
+/// the compare only where it can find something (lane style1 b3, guard on
+/// the all-miss benches).
+fn heldEqual(x: Value, y: Value) bool {
+    if (std.meta.activeTag(x) != std.meta.activeTag(y)) return false;
+    return switch (x) {
+        inline else => |payload| if (comptime mayHoldReference(@TypeOf(payload))) interchangeable(Value, x, y) else false,
+    };
+}
+
+/// Whether group `g`'s values at `a` and `b` are the same computed values,
+/// slot by slot: identical, or - for a value the cascade allocated, such as
+/// a font-family list or a color substituted from var() - interchangeable.
+/// What adoption shares on: no reader can tell the two apart. The value at
+/// `hints[g]` - where the group last compared unequal - is compared first,
+/// and an unequal value found now becomes the hint; counts the values it
+/// compares into `compared`.
+fn groupValuesEqual(g: usize, a: [*]const Value, b: [*]const Value, hints: *DifferenceHints, compared: *u32) bool {
+    const n = groups.lengths[g];
+    const h: usize = if (hints[g] < n) hints[g] else 0;
+    var k: u32 = 0;
+    defer compared.* += k;
+    if (h != 0) {
+        k += 1;
+        if (!valuesEqual(a[h], b[h])) return false;
+    }
+    for (0..n) |i| {
+        if (h != 0 and i == h) continue;
+        k += 1;
+        if (!valuesEqual(a[i], b[i])) {
+            hints[g] = @intCast(i);
+            return false;
+        }
+    }
+    return true;
+}
+
+/// One value of groupValuesEqual.
+inline fn valuesEqual(x: Value, y: Value) bool {
+    return identical(x, y) or heldEqual(x, y);
+}
+
+/// Where a value lives in a style: its group, and its index in the group.
+pub const Place = struct {
+    group: u8,
+    index: u8,
+};
+
+/// Per group, the index of the value at which the group last compared
+/// unequal in an adoption scan: compared first the next time, so a group
+/// that differs where it differed before is rejected in one compare. Any
+/// index is a valid hint - it orders the compares, it never decides one.
+pub const DifferenceHints = [groups.count]u8;
+
+/// One style's adoption scan over the entries of a matched-properties cache
+/// key (dom/style/matched_properties_cache.zig, `add`): the groups it still
+/// holds alone, and how many values it compared.
+pub const Adoption = struct {
+    /// The groups the style holds alone and has not adopted yet.
+    pending: Held,
+    /// Values compared so far (the cache's counter: tests and censuses).
+    compared: u32 = 0,
+};
+
 /// Every group's initial values, in group order: what an unheld group's
 /// slots point into.
 const initial_storage: [groups.stored]Value = blk: {
@@ -282,6 +406,195 @@ pub const ComputedStyle = struct {
         self.allocator.destroy(self);
     }
 
+    /// A holder of this style's groups, the caller's: one more reference on
+    /// every group this style holds and on its custom property records and
+    /// registrations, so the groups outlive this style. Blink's
+    /// MatchedPropertiesCache::Add keeps `CloneStyle()` and WebKit's
+    /// MatchedDeclarationsCache::add `ComputedStyle::clonePtr(style)` for the
+    /// same use: "the ComputedStyle in the cache is really just a holder for
+    /// the substructures and never used as-is".
+    pub fn clone(self: *const ComputedStyle, allocator: Allocator) Allocator.Error!*ComputedStyle {
+        const copy = try allocator.create(ComputedStyle);
+        copy.* = self.*;
+        copy.allocator = allocator;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| Group.of(self.slots[g]).refs += 1;
+        if (self.custom) |c| c.retain();
+        if (self.custom_own) |c| c.retain();
+        if (self.registered) |r| r.retain();
+        return copy;
+    }
+
+    /// Share `from`'s groups where they hold this style's values: each group
+    /// this style holds alone whose every value equals the one `from` holds
+    /// for that group (`groupValuesEqual`: identical, or Value.eql for a value
+    /// the cascade allocated) is released, and `from`'s is held in its place
+    /// (one more reference). No value a reader can see changes, so a style
+    /// that computes the same values as another stops paying for its own copy
+    /// (Blink's MatchedPropertiesCache hit "allows us to reuse subgroups of
+    /// ComputedStyle so that we use less RAM", core/css/resolver/
+    /// style_resolver.cc; WebKit copyNonInheritedFrom on a
+    /// MatchedDeclarationsCache hit) - and its children see the same group
+    /// address as the children of every equal element, which is what the
+    /// matched-properties cache keys on. Returns how many groups it shared.
+    pub fn adoptEqualGroups(self: *ComputedStyle, from: *const ComputedStyle) usize {
+        var scan = self.adoption();
+        var hints: DifferenceHints = @splat(0);
+        return self.adoptEqualGroupsIn(from, &scan, &hints);
+    }
+
+    /// The start of an adoption scan: the groups this style holds alone.
+    pub fn adoption(self: *const ComputedStyle) Adoption {
+        var pending: Held = .empty;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| {
+            if (Group.of(self.slots[g]).refs == 1) pending.set(g);
+        }
+        return .{ .pending = pending };
+    }
+
+    /// adoptEqualGroups as one step of `scan`, which a matched-properties
+    /// cache runs over the entries of a key, most recent first: only the
+    /// groups the scan has not adopted yet are compared - a group shared
+    /// already (the parent's inherited group, or one adopted from an earlier
+    /// entry) saves nothing by moving, so a group is adopted at most once -
+    /// each starting at the value where it last differed (`hints`).
+    pub fn adoptEqualGroupsIn(self: *ComputedStyle, from: *const ComputedStyle, scan: *Adoption, hints: *DifferenceHints) usize {
+        var adopted: usize = 0;
+        var it = scan.pending.iterator(.{});
+        while (it.next()) |g| {
+            if (!from.held.isSet(g) or self.slots[g] == from.slots[g]) continue;
+            const mine = Group.of(self.slots[g]);
+            if (!groupValuesEqual(g, self.slots[g], from.slots[g], hints, &scan.compared)) continue;
+            Group.of(from.slots[g]).refs += 1;
+            self.slots[g] = from.slots[g];
+            mine.release();
+            scan.pending.unset(g);
+            adopted += 1;
+        }
+        return adopted;
+    }
+
+    /// Share `from`'s custom property records where they hold this style's
+    /// values: a record this style holds alone (its cascade made it) that
+    /// CustomProperties.eql calls equal to `from`'s is released and `from`'s
+    /// held instead - so elements that declare the same custom properties
+    /// hold one record, as a cache hit's would (Blink StyleVariables::
+    /// operator== rewrites two equal tries to one pointer; WebKit
+    /// deduplicateCustomProperties). Returns how many records it shared.
+    pub fn adoptEqualCustom(self: *ComputedStyle, from: *const ComputedStyle) usize {
+        return @as(usize, @intFromBool(adoptRecord(&self.custom, from.custom))) + @intFromBool(adoptRecord(&self.custom_own, from.custom_own));
+    }
+
+    fn adoptRecord(slot: *?*custom_properties.CustomProperties, from: ?*custom_properties.CustomProperties) bool {
+        const mine = slot.* orelse return false;
+        const other = from orelse return false;
+        if (mine == other or mine.refs != 1) return false;
+        if (!interchangeable(?*const custom_properties.CustomProperties, mine, other)) return false;
+        other.retain();
+        mine.release();
+        slot.* = other;
+        return true;
+    }
+
+    /// A custom property record this style holds alone.
+    pub fn customHeldAlone(self: *const ComputedStyle) bool {
+        if (self.custom) |c| if (c.refs == 1) return true;
+        if (self.custom_own) |c| if (c.refs == 1) return true;
+        return false;
+    }
+
+    /// The groups this style holds that no other style holds: what it pays
+    /// for its values beyond its own header.
+    pub fn groupsHeldAlone(self: *const ComputedStyle) usize {
+        var alone: usize = 0;
+        var it = self.held.iterator(.{});
+        while (it.next()) |g| {
+            if (Group.of(self.slots[g]).refs == 1) alone += 1;
+        }
+        return alone;
+    }
+
+    /// Every inherited group holds the same values in both styles: the same
+    /// group, or groups whose values are identical (`identical`). Blink's
+    /// ComputedStyle::InheritedEqual, WebKit's RenderStyle::inheritedEqual
+    /// (DataRef: pointer-equal or value-equal). The custom property record
+    /// is the caller's to compare.
+    pub fn inheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
+        return self.firstUnidentical(other, .inherited) == null;
+    }
+
+    /// inheritedEqual for the non-inherited groups (Blink NonInheritedEqual).
+    pub fn nonInheritedEqual(self: *const ComputedStyle, other: *const ComputedStyle) bool {
+        return self.firstUnidentical(other, .non_inherited) == null;
+    }
+
+    /// The first value, in group order, at which the inherited (or the
+    /// non-inherited) groups of the two styles differ: not the same group and
+    /// not `identical` values. Null when inheritedEqual (nonInheritedEqual).
+    pub fn firstUnidentical(self: *const ComputedStyle, other: *const ComputedStyle, comptime which: enum { inherited, non_inherited }) ?Place {
+        inline for (0..groups.count) |g| if (comptime groups.inherited[g] == (which == .inherited)) {
+            const a = self.slots[g];
+            const b = other.slots[g];
+            if (a != b) for (0..groups.lengths[g]) |i| {
+                if (!identical(a[i], b[i])) return .{ .group = g, .index = @intCast(i) };
+            };
+        };
+        return null;
+    }
+
+    /// Whether the value at `place` is the same in both styles: the same
+    /// group, or identical values there.
+    pub fn identicalAt(self: *const ComputedStyle, other: *const ComputedStyle, place: Place) bool {
+        const a = self.slots[place.group];
+        const b = other.slots[place.group];
+        return a == b or identical(a[place.index], b[place.index]);
+    }
+
+    /// The first stored longhand whose computed value a reader would see
+    /// differ (Value.eql), or null when every one is equal: what a
+    /// matched-properties cache hit's Debug self-check compares with the
+    /// cascade it skipped.
+    pub fn firstDifference(self: *const ComputedStyle, other: *const ComputedStyle) ?Longhand {
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @fromBackingInt(@intCast(i));
+            if (l.logical() != null) continue;
+            if (!self.get(l).eql(other.get(l))) return l;
+        }
+        return null;
+    }
+
+    /// The first longhand whose value an observer tells apart in the two
+    /// styles, observed WITHOUT Value.eql or `interchangeable`: its resolved
+    /// value as getComputedStyle serializes it (serializeResolved), and the
+    /// resources behind it as the fetch layer reads them (`sameFetch`). The
+    /// matched-properties cache's Debug self-check runs it beside
+    /// firstDifference, so the predicate adoption shares on is checked by an
+    /// observation, not repeated (lane style1 b4: a check through the same
+    /// eql could not see that eql folds a url()'s base URL). A longhand whose
+    /// values are `identical` (the same bits: the same objects) is skipped:
+    /// nothing about it can differ.
+    pub fn firstObservableDifference(self: *const ComputedStyle, other: *const ComputedStyle, allocator: Allocator) Allocator.Error!?Longhand {
+        var a: std.ArrayList(u8) = .empty;
+        defer a.deinit(allocator);
+        var b: std.ArrayList(u8) = .empty;
+        defer b.deinit(allocator);
+        for (0..Longhand.count) |i| {
+            const l: Longhand = @fromBackingInt(@intCast(i));
+            if (l.logical() != null) continue;
+            const x = self.get(l);
+            const y = other.get(l);
+            if (identical(x, y)) continue;
+            a.clearRetainingCapacity();
+            b.clearRetainingCapacity();
+            try self.serializeResolved(l, &a, allocator);
+            try other.serializeResolved(l, &b, allocator);
+            if (!std.mem.eql(u8, a.items, b.items)) return l;
+            if (!sameFetch(x.resourceUrls(), y.resourceUrls())) return l;
+        }
+        return null;
+    }
+
     /// The computed value of custom property `name` (case-sensitive), or
     /// null for the guaranteed-invalid value (absent included). Borrowed.
     pub fn customValue(self: *const ComputedStyle, name: []const u8) ?*custom_properties.Text {
@@ -354,7 +667,7 @@ pub const ComputedStyle = struct {
     /// element's writing mode and direction (CSS Logical 1 §4).
     pub fn physical(self: *const ComputedStyle, l: Longhand) Longhand {
         const lg = l.logical() orelse return l;
-        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.keyword(.writing_mode), self.keyword(.direction)));
+        return properties.physicalOf(lg, self.keyword(.writing_mode), self.keyword(.direction));
     }
 
     /// Store `v` as the computed value of physical longhand `l`, taking the
@@ -555,6 +868,18 @@ pub const ComputedStyle = struct {
             return out.appendSlice(allocator, "normal");
         if (l == .animation_duration) return @import("animation_values.zig").serializeDurationResolved(v, self.get(.animation_timeline), out, allocator);
         if (l == .caret_color) return @import("ui_values.zig").serializeCaretResolved(v, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color }, out, allocator);
+        // Scrollbars 1 §3: "two computed colors", each resolved for this
+        // receiver as a color property's (CSSOM §9).
+        if (l == .scrollbar_color and v == .text_values) {
+            for (v.text_values.items, 0..) |item, i| {
+                if (i > 0) try out.append(allocator, ' ');
+                const color: Color = if (item == .color) item.color else .current;
+                const resolved = try color.resolveComputed(allocator, .{ .scheme = self.used_color_scheme, .current = self.get(.color).color });
+                defer resolved.release();
+                try resolved.serializeComputed(out, allocator);
+            }
+            return;
+        }
         // Backgrounds 3 §3.3: a side whose style is none or hidden keeps its
         // computed width (inherit passes it on) but resolves to zero.
         if (self.undrawnBorderWidth(l)) return out.appendSlice(allocator, "0px");

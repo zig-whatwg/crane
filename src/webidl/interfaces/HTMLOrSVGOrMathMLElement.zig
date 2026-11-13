@@ -65,10 +65,6 @@ pub const HTMLOrSVGOrMathMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataset: *runtime.Instance = undefined,
-            nonce: runtime.DOMString = undefined,
-            autofocus: bool = undefined,
-            tabIndex: i32 = undefined,
             cached_dataset: ?*runtime.Instance = null,
             _internal: ?*HTMLOrSVGOrMathMLElementImpl.InternalState = null,
         },

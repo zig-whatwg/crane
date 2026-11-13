@@ -60,11 +60,6 @@ pub const SVGFilterPrimitiveStandardAttributes = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: *runtime.Instance = undefined,
-            y: *runtime.Instance = undefined,
-            width: *runtime.Instance = undefined,
-            height: *runtime.Instance = undefined,
-            result: *runtime.Instance = undefined,
             _internal: ?*SVGFilterPrimitiveStandardAttributesImpl.InternalState = null,
         },
     );

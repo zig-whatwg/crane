@@ -115,19 +115,6 @@ pub const EventLoop = struct {
     /// frame long or longer (`noteWork`).
     idle_blocked_until_ns: i64 = 0,
 
-    /// Whether the current idle period started for the engine's idle work
-    /// alone - no window was waiting for one - so the engine being done ends
-    /// it (`runEngineIdleWork`).
-    idle_period_engine_only: bool = false,
-
-    /// The idle periods started for the engine's idle work alone, so far:
-    /// every one is given to the engine, none runs an idle callback.
-    engine_only_idle_periods: u64 = 0,
-
-    /// How the loop reaches the engine's idle work: the agent's engine, or a
-    /// test's stand-in for a loop over no engine.
-    engine_idle: EngineIdle = .agent_engine,
-
     /// The agent's deferred teardown queue (the host's AgentHost owns it;
     /// engine.AgentOptions.deferred_teardown): the nodes whose wrappers the
     /// collector took, freed here between tasks, a slice at a time. Null for
@@ -517,14 +504,9 @@ pub const EventLoop = struct {
         self.noteWork(work_start, now);
 
         // Step 2d (HTML 8.1.7.3 step 5): no runnable task, so an idle period
-        // for the same-loop windows that asked for one - or for the engine's
-        // idle work. Each window queues its "invoke idle callbacks" task,
-        // which the next turn runs.
+        // for the same-loop windows that asked for one. Each queues its
+        // "invoke idle callbacks" task, which the next turn runs.
         if (self.startIdlePeriod(now)) did_work = true;
-
-        // Step 2e: the engine's share of the idle period - what is left of
-        // it while no task is runnable (runEngineIdleWork).
-        if (self.runEngineIdleWork(now)) did_work = true;
 
         // Step 3: how long to wait - until the next timer or max_wait_ms.
         var wait_time = blk: {
@@ -797,8 +779,6 @@ pub const EventLoop = struct {
         // A window waiting for an idle period: one will start - unless it is
         // a page the back/forward cache keeps.
         if (self.idleRequestsRunnable()) return true;
-        // The engine's idle work: an idle period will start for it.
-        if (self.engine_idle.pending(self.agent)) return true;
         // A fetch in flight will queue a task when it ends.
         if (self.fetches) |fetches| if (fetches.inFlight() > 0) return true;
         if (self.timer_manager) |mgr| {
@@ -872,21 +852,8 @@ pub const EventLoop = struct {
     /// last idle period start time to the unsafe shared current time", and
     /// for each same-loop window, "start an idle period" with
     /// computeDeadline. Whether one started.
-    ///
-    /// Also when no window waits for one but the engine has idle work
-    /// posted (engine.hasEngineIdleTasks): the idle period is the event
-    /// loop's - step 5 runs for every window event loop with no runnable
-    /// task - and its time is the engine's too, which runEngineIdleWork gives
-    /// it. Chrome's: Blink's scheduler keeps a long idle period paused while
-    /// its idle queue is empty and resumes it when an idle task is posted
-    /// (IdleHelper::OnIdleTaskPostedOnMainThread, platform/scheduler/common/
-    /// idle_helper.cc), and V8's idle tasks share that queue with
-    /// requestIdleCallback's (V8IdleTaskRunner posts them to the
-    /// ThreadScheduler: bindings/core/v8/v8_idle_task_runner.h), Chromium
-    /// 145.0.7608.0. With neither, starting one would change nothing, and
-    /// none is started.
     fn startIdlePeriod(self: *Self, now: i64) bool {
-        if (!self.idleWanted()) return false;
+        if (!self.idleRequestsRunnable()) return false;
         // A runnable task: not idle. Tasks waiting for their documents are
         // not runnable ("has no runnable task").
         if (self.runnableQueued()) return false;
@@ -910,7 +877,6 @@ pub const EventLoop = struct {
         var requests = self.idle_requests;
         self.idle_requests = .empty;
         defer requests.deinit(self.allocator);
-        var windows_started = false;
         for (requests.items) |request| {
             // A cached page's window keeps asking: its idle callbacks run in
             // an idle period after its restore, not into a page that cannot
@@ -920,51 +886,8 @@ pub const EventLoop = struct {
                 continue;
             }
             request.start(request.realm, period);
-            windows_started = true;
         }
-        // No window's: the period is the engine's alone, and ends when its
-        // work is done (runEngineIdleWork).
-        self.idle_period_engine_only = !windows_started;
-        if (!windows_started) self.engine_only_idle_periods += 1;
         return true;
-    }
-
-    /// Step 2e: the engine's idle work, in the current idle period while no
-    /// task is runnable, given the time the period has left - computeDeadline
-    /// now: its end, brought forward by a timer or rendering opportunity due
-    /// sooner, the deadline the windows' idle callbacks get (`idleDeadline`).
-    /// The windows' "invoke idle callbacks" tasks run first, as idle tasks
-    /// posted before V8's run first in Blink's one idle queue; the engine
-    /// gets what they leave. What the engine does with its time is its own
-    /// (V8: its idle tasks - cppgc's incremental sweep, a young-generation
-    /// collection after a context's disposal - each run with the deadline,
-    /// as Blink's V8IdleTaskRunner runs them: bindings/core/v8/
-    /// v8_idle_task_runner.h, Chromium 145.0.7608.0); the loop forces
-    /// nothing. A period that was the engine's alone ends once its work is
-    /// done - "the user agent is free to end an idle period early" - so a
-    /// window that asks then is not kept waiting for the rest of it (Blink:
-    /// a long idle period with no idle task left is paused, and one posted
-    /// then starts a new one, IdleHelper::UpdateLongIdlePeriodStateAfterIdleTask
-    /// and OnIdleTaskPostedOnMainThread). Whether any idle work ran.
-    fn runEngineIdleWork(self: *Self, now: i64) bool {
-        // No current idle period, or a task waits.
-        if (now >= self.idle_period_end_ns) return false;
-        if (self.runnableQueued()) return false;
-        if (!self.engine_idle.pending(self.agent)) return false;
-        var deadline = self.idle_period_end_ns;
-        if (self.nextTimerDueNs(now)) |due| deadline = @min(deadline, due);
-        if (deadline <= now) return false;
-        const ran = self.engine_idle.run(self.agent, @intCast(deadline - now));
-        if (self.idle_period_engine_only and !self.engine_idle.pending(self.agent)) {
-            self.idle_period_end_ns = now;
-        }
-        return ran;
-    }
-
-    /// Whether an idle period is wanted: a window waits for one, or the
-    /// engine has idle work posted.
-    fn idleWanted(self: *Self) bool {
-        return self.idleRequestsRunnable() or self.engine_idle.pending(self.agent);
     }
 
     /// Whether a window that asked for an idle period may get one: any that
@@ -1013,7 +936,7 @@ pub const EventLoop = struct {
     /// bounds it: the timer or the rendering opportunity due next, which the
     /// turn's wait already ends at - no wake-up of its own.
     fn idleWaitMs(self: *Self, now: i64) ?u64 {
-        if (!self.idleWanted()) return null;
+        if (!self.idleRequestsRunnable()) return null;
         const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
         if (at <= now) {
             if (self.nextTimerDueNs(now)) |due| if (due - now < min_idle_period_ns) return null;
@@ -1070,7 +993,7 @@ pub const EventLoop = struct {
         if (self.timer_manager) |mgr| {
             if (mgr.nextDeadlineNs()) |deadline| wake = @intCast(deadline);
         }
-        if (self.idleWanted()) {
+        if (self.idleRequestsRunnable()) {
             const at = @max(self.idle_blocked_until_ns, self.idle_period_end_ns);
             if (at > now) wake = if (wake) |w| @min(w, at) else at;
         }
@@ -1144,38 +1067,6 @@ pub const EventLoop = struct {
     }
 };
 
-/// How an event loop reaches its agent's engine for the engine's idle work
-/// (engine.hasEngineIdleTasks, engine.runEngineIdleTasks), or a test's
-/// stand-in: the idle period steps' own tests run over no engine.
-pub const EngineIdle = struct {
-    /// Whether the engine has idle work posted for the agent.
-    pending: *const fn (agent: *engine.Agent) bool,
-    /// The engine's idle work, in `time_left_ns` of an idle period; whether
-    /// any ran.
-    run: *const fn (agent: *engine.Agent, time_left_ns: u64) bool,
-
-    /// The agent's engine: every loop's, outside the idle period tests.
-    pub const agent_engine: EngineIdle = .{ .pending = enginePending, .run = engineRun };
-    /// No engine: never any idle work.
-    pub const none: EngineIdle = .{ .pending = nonePending, .run = noneRun };
-
-    fn enginePending(agent: *engine.Agent) bool {
-        return engine.hasEngineIdleTasks(agent);
-    }
-
-    fn engineRun(agent: *engine.Agent, time_left_ns: u64) bool {
-        return engine.runEngineIdleTasks(agent, time_left_ns);
-    }
-
-    fn nonePending(_: *engine.Agent) bool {
-        return false;
-    }
-
-    fn noneRun(_: *engine.Agent, _: u64) bool {
-        return false;
-    }
-};
-
 /// The process's monotonic clock, in nanoseconds: what bounds the loop's own
 /// work (`runDeferredTeardown`), whatever the Browser's clock.
 fn realMonotonicNs() i64 {
@@ -1242,12 +1133,9 @@ const QueuedMicrotask = struct {
 
 const testing = std.testing;
 
-/// A loop over no agent: the idle period steps never reach it, and its
-/// engine has no idle work.
+/// A loop over no agent: the idle period steps never reach it.
 fn testLoop() !EventLoop {
-    var loop = try EventLoop.init(@ptrFromInt(@alignOf(usize)), testing.allocator);
-    loop.engine_idle = .none;
-    return loop;
+    return EventLoop.init(@ptrFromInt(@alignOf(usize)), testing.allocator);
 }
 
 /// A window, as the idle period steps see it: its realm, and what its start
@@ -1356,183 +1244,6 @@ test "work a frame long keeps idle periods away for a frame" {
     try testing.expect(loop.startIdlePeriod(2_036 * ms));
 }
 
-/// An engine with idle work, as the loop sees it through `EngineIdle`: the
-/// loop's agent pointer is this record. Its work is done after `runs_needed`
-/// idle periods.
-const TestEngine = struct {
-    pending: bool = false,
-    runs: usize = 0,
-    runs_needed: usize = 1,
-    /// The time left each run was given, in order.
-    given: [8]u64 = @splat(0),
-
-    fn loop(self: *TestEngine) !EventLoop {
-        var l = try EventLoop.init(@ptrCast(self), testing.allocator);
-        l.engine_idle = .{ .pending = pending_, .run = run_ };
-        return l;
-    }
-
-    fn of(agent: *engine.Agent) *TestEngine {
-        return @ptrCast(@alignCast(agent));
-    }
-
-    fn pending_(agent: *engine.Agent) bool {
-        return of(agent).pending;
-    }
-
-    fn run_(agent: *engine.Agent, time_left_ns: u64) bool {
-        const self = of(agent);
-        if (!self.pending) return false;
-        if (self.runs < self.given.len) self.given[self.runs] = time_left_ns;
-        self.runs += 1;
-        if (self.runs >= self.runs_needed) self.pending = false;
-        return true;
-    }
-};
-
-test "the engine's idle work gets an idle period of its own when no window asked, with computeDeadline's time left" {
-    var fake: TestEngine = .{};
-    var loop = try fake.loop();
-    defer loop.deinit();
-    const ms = std.time.ns_per_ms;
-    const t0: i64 = 1_000 * ms;
-
-    // No idle work, no window: no idle period.
-    try testing.expect(!loop.hasPendingWork());
-    try testing.expect(!loop.startIdlePeriod(t0));
-    try testing.expect(!loop.runEngineIdleWork(t0));
-    try testing.expectEqual(@as(usize, 0), fake.runs);
-
-    // The engine posts idle work: the loop has work waiting, and an idle
-    // period starts for it - Blink's scheduler resumes a paused long idle
-    // period when an idle task is posted (IdleHelper::
-    // OnIdleTaskPostedOnMainThread).
-    fake.pending = true;
-    try testing.expect(loop.hasPendingWork());
-    try testing.expectEqual(@as(?u64, 0), loop.idleWaitMs(t0));
-    try testing.expect(loop.startIdlePeriod(t0));
-    try testing.expect(loop.idle_period_engine_only);
-    try testing.expectEqual(@as(u64, 1), loop.engine_only_idle_periods);
-    // The engine is given the period's time left: computeDeadline with no
-    // timer due, the 50 ms cap.
-    try testing.expect(loop.runEngineIdleWork(t0));
-    try testing.expectEqual(@as(usize, 1), fake.runs);
-    try testing.expectEqual(@as(u64, @intCast(EventLoop.max_idle_period_ns)), fake.given[0]);
-    // Its work done, the period it had alone ends - the user agent "is free
-    // to end an idle period early" - and nothing is waiting.
-    try testing.expect(!loop.hasPendingWork());
-    try testing.expect(loop.idle_period_end_ns <= t0);
-}
-
-test "a timer due sooner brings the engine's idle deadline forward, and a period under a millisecond is not started for it" {
-    var fake: TestEngine = .{ .pending = true };
-    var loop = try fake.loop();
-    defer loop.deinit();
-    const mgr = loop.timer_manager.?;
-    const id = mgr.setTimeout(20, &noop, null);
-    defer _ = mgr.clearTimeout(id);
-
-    const now = loop.nowNs();
-    try testing.expect(loop.startIdlePeriod(now));
-    try testing.expect(loop.runEngineIdleWork(now));
-    // At most the 20 ms to the timer, never the 50 ms cap.
-    try testing.expect(fake.given[0] <= 20 * std.time.ns_per_ms);
-    try testing.expect(fake.given[0] > 0);
-
-    // A timer due in under a millisecond: no period starts for the engine
-    // (Blink's kMinimumIdlePeriodDuration), and the loop waits for the timer.
-    var soon: TestEngine = .{ .pending = true };
-    var loop2 = try soon.loop();
-    defer loop2.deinit();
-    const due = loop2.timer_manager.?.setTimeout(0, &noop, null);
-    defer _ = loop2.timer_manager.?.clearTimeout(due);
-    const now2 = loop2.nowNs();
-    try testing.expect(!loop2.startIdlePeriod(now2));
-    try testing.expect(!loop2.runEngineIdleWork(now2));
-    try testing.expectEqual(@as(usize, 0), soon.runs);
-}
-
-test "a window's idle callbacks come first: the engine waits while a task is queued, then gets what is left of their period, which it does not end" {
-    var fake: TestEngine = .{ .pending = true };
-    var loop = try fake.loop();
-    defer loop.deinit();
-    const ms = std.time.ns_per_ms;
-    const t0: i64 = 1_000 * ms;
-    var a: TestWindow = .{};
-
-    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
-    try testing.expect(loop.startIdlePeriod(t0));
-    try testing.expectEqual(@as(usize, 1), a.starts);
-    try testing.expect(!loop.idle_period_engine_only);
-    try testing.expectEqual(@as(u64, 0), loop.engine_only_idle_periods);
-
-    // The window's "invoke idle callbacks" task is queued: it runs first.
-    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
-    try testing.expect(!loop.runEngineIdleWork(t0));
-    try testing.expectEqual(@as(usize, 0), fake.runs);
-    _ = loop.tasks.orderedRemove(0);
-
-    // 10 ms later the callbacks are done: the engine gets the 40 ms left.
-    try testing.expect(loop.runEngineIdleWork(t0 + 10 * ms));
-    try testing.expectEqual(@as(u64, 40 * ms), fake.given[0]);
-    // The period was the window's too: its deadline stands.
-    try testing.expectEqual(a.period.end_ns, loop.idle_period_end_ns);
-    try testing.expectEqual(a.period.end_ns, loop.idleDeadline(a.period));
-}
-
-test "an engine-only idle period ends when the engine is done, so a window that asks then gets one at once; one the engine still works in does not" {
-    var fake: TestEngine = .{ .pending = true };
-    var loop = try fake.loop();
-    defer loop.deinit();
-    const ms = std.time.ns_per_ms;
-    const t0: i64 = 1_000 * ms;
-    var a: TestWindow = .{};
-
-    try testing.expect(loop.startIdlePeriod(t0));
-    try testing.expect(loop.runEngineIdleWork(t0));
-    // Done: a window that asks now does not wait out the engine's 50 ms.
-    loop.requestIdlePeriod(&a.realm, &TestWindow.start);
-    try testing.expectEqual(@as(?u64, 0), loop.idleWaitMs(t0 + 1 * ms));
-    try testing.expect(loop.startIdlePeriod(t0 + 1 * ms));
-    try testing.expectEqual(@as(usize, 1), a.starts);
-
-    // An engine that needs two periods: its first keeps the period until
-    // its deadline, and the loop wakes for the next one then.
-    var slow: TestEngine = .{ .pending = true, .runs_needed = 2 };
-    var loop2 = try slow.loop();
-    defer loop2.deinit();
-    try testing.expect(loop2.startIdlePeriod(t0));
-    try testing.expect(loop2.runEngineIdleWork(t0));
-    try testing.expect(slow.pending);
-    try testing.expectEqual(t0 + EventLoop.max_idle_period_ns, loop2.idle_period_end_ns);
-    try testing.expect(loop2.hasPendingWork());
-    try testing.expectEqual(@as(?u64, 40), loop2.idleWaitMs(t0 + 10 * ms));
-    try testing.expect(!loop2.startIdlePeriod(t0 + 10 * ms));
-    // Still in the period: the engine may go on in what is left of it.
-    try testing.expect(loop2.runEngineIdleWork(t0 + 10 * ms));
-    try testing.expectEqual(@as(u64, 40 * ms), slow.given[1]);
-    try testing.expect(!slow.pending);
-}
-
-test "no idle period for the engine while a task is runnable or right after long work" {
-    var fake: TestEngine = .{ .pending = true };
-    var loop = try fake.loop();
-    defer loop.deinit();
-    const ms = std.time.ns_per_ms;
-
-    try loop.tasks.append(testing.allocator, .{ .callback = &noop, .context = null });
-    try testing.expect(!loop.startIdlePeriod(1_000 * ms));
-    _ = loop.tasks.orderedRemove(0);
-
-    loop.noteWork(2_000 * ms, 2_020 * ms);
-    try testing.expect(!loop.startIdlePeriod(2_030 * ms));
-    try testing.expect(!loop.runEngineIdleWork(2_030 * ms));
-    try testing.expectEqual(@as(?u64, 6), loop.idleWaitMs(2_030 * ms));
-    try testing.expect(loop.startIdlePeriod(2_036 * ms));
-    try testing.expect(loop.runEngineIdleWork(2_036 * ms));
-    try testing.expectEqual(@as(usize, 1), fake.runs);
-}
-
 test "a task with no document is runnable" {
     try testing.expectEqual(dom.document_activity.Activity.fully_active, EventLoop.classifyTask(.{ .callback = &noop, .context = null }));
 }
@@ -1557,7 +1268,6 @@ test "a task the queue cannot take is dropped, not leaked" {
     var failing = testing.FailingAllocator.init(testing.allocator, .{});
     var loop = try EventLoop.init(@ptrFromInt(@alignOf(usize)), failing.allocator());
     defer loop.deinit();
-    loop.engine_idle = .none;
     var tally: Tally = .{};
     // The next allocation - the queue's growth - fails.
     failing.fail_index = failing.alloc_index;

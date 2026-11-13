@@ -96,47 +96,44 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 ///
 /// `--harmony-shadow-realm` enables the TC39 Stage 3 ShadowRealm proposal.
 ///
-/// `--js-float16array` installs Float16Array, Math.f16round and DataView's
-/// getFloat16/setFloat16 (ES2025). The V8 Crane links (13.1, the prebuilt
-/// monolith; the source checkout beside it is newer) has them behind this
-/// flag - shipping only from 13.5 - so the global had no Float16Array, and
-/// WebIDL's (Float16Array or ...) arms, ImageDataArray's among them, could
-/// never be given one. Genesis installs it per context, so the snapshot is
-/// generated with it too (SNAPSHOT_V8_FLAGS includes these).
-///
-/// `--experimental-wasm-memory64` enables WebAssembly's i64 address type for
-/// memories and tables (memory64, part of Wasm 3.0): V8 13.1 has it behind
-/// this flag - it ships from 13.3 (Chrome 133), as in Firefox and Safari - so
-/// a module declaring an i64 memory or table (limits flags 0x04/0x05) was a
-/// CompileError and wasm/core/memory64/ failed. The JS API side, the
-/// descriptors' `address` member, is v8_WebAssembly_InstallAddressDescriptors.
-/// Drop it with the V8 upgrade (>= 13.3).
-///
-/// `--experimental-wasm-exnref` enables WebAssembly's exception handling with
-/// exnref (try_table, throw_ref; Wasm 3.0), behind this flag in 13.1 and
-/// shipped from V8 13.7 (wasm-feature-flags.h in the 14.6 checkout); without
-/// it those modules are CompileErrors ("invalid value type 'exn'") and
-/// wasm/core/exceptions/ failed. Measured pure gain on wasm/ (+155 subtests,
-/// no file lost a subtest, no crash). Drop it with the V8 upgrade (>= 13.7).
-///
-/// `--experimental-wasm-jspi` enables WebAssembly JavaScript Promise
-/// Integration: WasmJs::Install then defines WebAssembly.Suspending and
-/// WebAssembly.promising on each new context (13.1 wasm-js.cc
-/// InstallJSPromiseIntegration). A staged feature in 13.1
-/// (wasm-feature-flags.h), shipped from V8 13.7 (Chrome 137); Chrome,
-/// Firefox and Safari all pass wasm/jsapi/jspi/ on wpt.fyi (stable run
-/// 23b0b89b1a, 2026-10-18), so golden rule 2 says implement. 13.1 has no
-/// WebAssembly.SuspendError, which notraps.any.js's last case needs. Not in a
-/// jitless build: JSPI switches stacks for compiled WebAssembly, and V8 >= 13.7
-/// installs it only `if (!v8_flags.wasm_jitless)` (wasm-js.cc
-/// InstallConditionalFeatures), a guard 13.1's WasmJs::Install lacks. Drop it
-/// with the V8 upgrade (>= 13.7).
+/// Float16Array, Wasm memory64, Wasm exnref and JSPI were flags here while
+/// Crane linked V8 13.1 (--js-float16array, --experimental-wasm-memory64,
+/// --experimental-wasm-exnref, --experimental-wasm-jspi). V8 15.7.112.43 ships
+/// all four and has deleted their flags, and V8::SetFlagsFromString stops at
+/// the first flag it does not know (flags.cc:771): leaving them would drop
+/// every flag after them without a sign. Their effects are pinned by
+/// tests/v8/v8up_flag_effects_test.zig.
 ///
 /// `--jitless` is appended when built for a target that cannot JIT. iOS gives
 /// third-party apps no W^X exception, so V8 generating code there gets the process
 /// killed; interpreter-only is the only way to run at all. It is a build-time
 /// decision rather than runtime because it must be set before V8 initializes.
-pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm --js-float16array --experimental-wasm-memory64 --experimental-wasm-exnref" ++ if (build_options.jitless) " --jitless" else " --experimental-wasm-jspi";
+///
+/// `--no-compilation-cache`: Crane starts V8 without its compilation cache
+/// (the user's ruling, 2026-11-11; build.zig has the evidence): V8 15.7's
+/// eval cache answers `new Function(...)` by source text alone, with the
+/// first caller's base URL and nonce. -Dv8-compilation-cache leaves the flag
+/// out, for measurement only.
+///
+/// `measurement_v8_flags` come last: nothing in a default build.
+pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
+    (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
+    (if (build_options.jitless) " --jitless" else "") ++
+    (if (measurement_v8_flags.len != 0) " " ++ measurement_v8_flags else "");
+
+/// V8 flags a measurement build adds (-Dv8-extra-flags="<flags>"; empty in
+/// every default build, which tests/v8/v8_flags_test.zig pins). V8 freezes its
+/// flags when it starts, so a flag that changes or traces the collector
+/// (--trace-gc, --max-semi-space-size) has to be in the set V8 starts with:
+/// the route is a build option, as Chromium's is a switch a developer passes
+/// (--js-flags, applied in gin/v8_initializer.cc before V8 starts) - never an
+/// environment variable the product reads. V8::SetFlagsFromString stops at
+/// the first flag it does not know, so they come after the product's.
+pub const measurement_v8_flags: []const u8 = build_options.v8_extra_flags;
+
+/// Whether this is a measurement build that starts V8 WITH its compilation
+/// cache (-Dv8-compilation-cache; off by default).
+pub const compilation_cache_measurement = build_options.v8_compilation_cache;
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

@@ -82,9 +82,6 @@ pub const ScreenOrientation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.OrientationType = undefined,
-            angle: u16 = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*ScreenOrientationImpl.InternalState = null,
         },
     );

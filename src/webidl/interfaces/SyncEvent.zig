@@ -72,8 +72,6 @@ pub const SyncEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            tag: runtime.DOMString = undefined,
-            lastChance: bool = undefined,
             _internal: ?*SyncEventImpl.InternalState = null,
         },
     );

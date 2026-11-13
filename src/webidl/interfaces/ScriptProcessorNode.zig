@@ -85,8 +85,6 @@ pub const ScriptProcessorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onaudioprocess: typedefs.EventHandler = undefined,
-            bufferSize: i32 = undefined,
             _internal: ?*ScriptProcessorNodeImpl.InternalState = null,
         },
     );

@@ -68,7 +68,6 @@ pub const GPUShaderModule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUShaderModuleImpl.InternalState = null,
         },
     );

@@ -69,7 +69,6 @@ pub const OfflineAudioCompletionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            renderedBuffer: *runtime.Instance = undefined,
             _internal: ?*OfflineAudioCompletionEventImpl.InternalState = null,
         },
     );

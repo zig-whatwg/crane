@@ -71,9 +71,6 @@ pub const CSSScale = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: typedefs.CSSNumberish = undefined,
-            y: typedefs.CSSNumberish = undefined,
-            z: typedefs.CSSNumberish = undefined,
             _internal: ?*CSSScaleImpl.InternalState = null,
         },
     );

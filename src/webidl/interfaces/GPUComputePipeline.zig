@@ -70,7 +70,6 @@ pub const GPUComputePipeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUComputePipelineImpl.InternalState = null,
         },
     );

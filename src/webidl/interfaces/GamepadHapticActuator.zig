@@ -70,7 +70,6 @@ pub const GamepadHapticActuator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            effects: runtime.JSValue = undefined,
             cached_effects: ?runtime.JSValue = null,
             _internal: ?*GamepadHapticActuatorImpl.InternalState = null,
         },

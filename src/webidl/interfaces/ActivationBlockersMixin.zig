@@ -56,9 +56,6 @@ pub const ActivationBlockersMixin = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            isValid: bool = undefined,
-            invalidReason: enums.ActivationBlockersMixinBlockerReason = undefined,
-            onvalidationstatuschange: typedefs.EventHandler = undefined,
             _internal: ?*ActivationBlockersMixinImpl.InternalState = null,
         },
     );

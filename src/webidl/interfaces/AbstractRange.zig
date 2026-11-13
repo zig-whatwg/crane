@@ -64,11 +64,6 @@ pub const AbstractRange = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startContainer: *runtime.Instance = undefined,
-            startOffset: u32 = undefined,
-            endContainer: *runtime.Instance = undefined,
-            endOffset: u32 = undefined,
-            collapsed: bool = undefined,
             _internal: ?*AbstractRangeImpl.InternalState = null,
         },
     );

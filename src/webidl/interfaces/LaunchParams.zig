@@ -59,8 +59,6 @@ pub const LaunchParams = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            targetURL: ?runtime.DOMString = null,
-            files: runtime.JSValue = undefined,
             _internal: ?*LaunchParamsImpl.InternalState = null,
         },
     );

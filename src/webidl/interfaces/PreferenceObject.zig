@@ -83,10 +83,6 @@ pub const PreferenceObject = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            override: ?runtime.DOMString = null,
-            value: runtime.DOMString = undefined,
-            validValues: runtime.JSValue = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*PreferenceObjectImpl.InternalState = null,
         },
     );

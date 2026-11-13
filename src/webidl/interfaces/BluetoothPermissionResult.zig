@@ -72,7 +72,6 @@ pub const BluetoothPermissionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devices: runtime.JSValue = undefined,
             _internal: ?*BluetoothPermissionResultImpl.InternalState = null,
         },
     );

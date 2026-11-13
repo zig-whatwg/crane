@@ -56,7 +56,6 @@ pub const AuthenticatorResponse = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clientDataJSON: runtime.ArrayBuffer = undefined,
             cached_clientDataJSON: ?runtime.JSValue = null,
             _internal: ?*AuthenticatorResponseImpl.InternalState = null,
         },

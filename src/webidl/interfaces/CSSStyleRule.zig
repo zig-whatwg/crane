@@ -41,6 +41,13 @@ pub const CSSStyleRule = struct {
             .{ "styleMap", "get_styleMap", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "style",
+            "styleMap",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -76,9 +83,6 @@ pub const CSSStyleRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            selectorText: typedefs.CSSOMString = undefined,
-            style: *runtime.Instance = undefined,
-            styleMap: *runtime.Instance = undefined,
             cached_style: ?*runtime.Instance = null,
             cached_styleMap: ?*runtime.Instance = null,
             _internal: ?*CSSStyleRuleImpl.InternalState = null,

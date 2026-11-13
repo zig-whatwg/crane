@@ -93,12 +93,6 @@ pub const DynamicsCompressorNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            threshold: *runtime.Instance = undefined,
-            knee: *runtime.Instance = undefined,
-            ratio: *runtime.Instance = undefined,
-            reduction: f32 = undefined,
-            attack: *runtime.Instance = undefined,
-            release: *runtime.Instance = undefined,
             _internal: ?*DynamicsCompressorNodeImpl.InternalState = null,
         },
     );

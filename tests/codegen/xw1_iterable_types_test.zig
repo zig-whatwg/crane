@@ -11,7 +11,7 @@ fn check(idl: []const u8, key: ?[]const u8, value: []const u8) !void {
     const member = iface.members[0];
     var out: std.Io.Writer.Allocating = .init(testing.allocator);
     defer out.deinit();
-    try codegen.writer.writeMetadata(&out.writer, "Items", null, null, true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, member.iterable, &.{}, member.async_iterable, &.{}, null, null);
+    try codegen.writer.writeMetadata(&out.writer, "Items", null, null, true, &.{}, &.{}, &.{}, &.{}, &.{}, &.{}, false, false, false, member.iterable, &.{}, member.async_iterable, &.{}, null, null, null);
     const expected_value = try std.fmt.allocPrint(testing.allocator, ".value_type = \"{s}\"", .{value});
     defer testing.allocator.free(expected_value);
     try testing.expect(std.mem.indexOf(u8, out.written(), expected_value) != null);

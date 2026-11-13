@@ -106,17 +106,6 @@ pub const KeyboardEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: runtime.DOMString = undefined,
-            code: runtime.DOMString = undefined,
-            location: u32 = undefined,
-            ctrlKey: bool = undefined,
-            shiftKey: bool = undefined,
-            altKey: bool = undefined,
-            metaKey: bool = undefined,
-            repeat: bool = undefined,
-            isComposing: bool = undefined,
-            charCode: u32 = undefined,
-            keyCode: u32 = undefined,
             _internal: ?*KeyboardEventImpl.InternalState = null,
         },
     );

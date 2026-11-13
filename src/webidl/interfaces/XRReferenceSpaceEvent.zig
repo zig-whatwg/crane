@@ -42,6 +42,13 @@ pub const XRReferenceSpaceEvent = struct {
             .{ "transform", "get_transform", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "referenceSpace",
+            "transform",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -73,8 +80,6 @@ pub const XRReferenceSpaceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            referenceSpace: *runtime.Instance = undefined,
-            transform: ?*runtime.Instance = null,
             cached_referenceSpace: ?*runtime.Instance = null,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRReferenceSpaceEventImpl.InternalState = null,

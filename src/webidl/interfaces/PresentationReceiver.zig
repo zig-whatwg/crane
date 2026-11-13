@@ -57,7 +57,6 @@ pub const PresentationReceiver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            connectionList: runtime.JSValue = undefined,
             _internal: ?*PresentationReceiverImpl.InternalState = null,
         },
     );

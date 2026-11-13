@@ -61,8 +61,6 @@ pub const PushSubscriptionOptions = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userVisibleOnly: bool = undefined,
-            applicationServerKey: ?runtime.ArrayBuffer = null,
             cached_applicationServerKey: ?runtime.JSValue = null,
             _internal: ?*PushSubscriptionOptionsImpl.InternalState = null,
         },

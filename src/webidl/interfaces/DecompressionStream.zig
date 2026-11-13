@@ -63,8 +63,6 @@ pub const DecompressionStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
             _internal: ?*DecompressionStreamImpl.InternalState = null,
         },
     );

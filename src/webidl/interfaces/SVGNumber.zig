@@ -55,7 +55,6 @@ pub const SVGNumber = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f32 = undefined,
             _internal: ?*SVGNumberImpl.InternalState = null,
         },
     );

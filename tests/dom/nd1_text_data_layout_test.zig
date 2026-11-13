@@ -74,20 +74,20 @@ test "CharacterData's data is 16 bytes: two u32 lengths and one word" {
     try std.testing.expectEqual(@as(usize, 8), @alignOf(Data));
 }
 
-test "a text node's one block is 176 bytes: 208 less 32 of inline buffer" {
+test "a text node's one block is 160 bytes: 216 less 32 of inline buffer, EventTarget's 16 and NodeBase.holds' 8" {
     // 216 at main b1bd4eae568 (perf3e1_text_slottable_test.zig): 16 of
     // pointers and the live word, EventTarget's 24, Node's 128 and
-    // CharacterData's 48; 208 with the wrapper redesign's P6 (NodeBase.holds,
-    // -8: lane wr1's merge of nd1). The -32 is this lane's: its arena block
-    // goes from 224 to 192 on main, from 208 to 176 on P4..P8.
+    // CharacterData's 48. Its arena block goes from 224 to 192; lane lis1
+    // made EventTarget's 24 one pointer (8): 168; the wrapper redesign's P6
+    // (lane wr1) took NodeBase.holds (8): 160, an exact block.
     const S = interfaces.Text.State;
-    try expectSize(S, 176);
+    try expectSize(S, 160);
     try expectExactBlock(S);
 }
 
-test "a comment's one block is 176 bytes, as a text node's" {
+test "a comment's one block is 160 bytes, as a text node's" {
     const S = interfaces.Comment.State;
-    try expectSize(S, 176);
+    try expectSize(S, 160);
     try expectExactBlock(S);
 }
 

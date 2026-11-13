@@ -58,6 +58,12 @@ pub const Node = struct {
             .{ "textContent", "get_textContent", "set_textContent" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "childNodes",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getRootNode", "call_getRootNode", 0 },

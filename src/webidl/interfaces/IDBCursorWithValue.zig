@@ -70,7 +70,6 @@ pub const IDBCursorWithValue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.JSValue = undefined,
             _internal: ?*IDBCursorWithValueImpl.InternalState = null,
         },
     );

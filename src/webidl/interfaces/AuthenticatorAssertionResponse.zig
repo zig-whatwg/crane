@@ -62,9 +62,6 @@ pub const AuthenticatorAssertionResponse = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            authenticatorData: runtime.ArrayBuffer = undefined,
-            signature: runtime.ArrayBuffer = undefined,
-            userHandle: ?runtime.ArrayBuffer = null,
             cached_authenticatorData: ?runtime.JSValue = null,
             cached_signature: ?runtime.JSValue = null,
             cached_userHandle: ?runtime.JSValue = null,

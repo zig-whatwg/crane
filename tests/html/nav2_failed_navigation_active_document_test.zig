@@ -200,12 +200,17 @@ fn sweep(rounds: usize) !void {
 
     var round: usize = 0;
     var script_buffer: [128]u8 = undefined;
-    // Rounds after which the frame showed no document.
-    var without_document: usize = 0;
+    // Rounds whose navigation's new realm could not be made, or was made and
+    // abandoned before its Window had a document: the frame's
+    // IFrameIntegration counts both in realm_replacements_failed.
+    var replacements_failed: usize = 0;
     while (round < rounds) : (round += 1) {
         // "Allowed to perform a navigation or history update" (200 per 10 s)
         // would stop the rounds otherwise: not this test's.
-        (try frameNavigable(browser)).navigation_rate_count = 0;
+        const navigable = try frameNavigable(browser);
+        navigable.navigation_rate_count = 0;
+        const integration = dom.navigables.integrationOf(@ptrCast(navigable)) orelse return error.NoFrameIntegration;
+        const failed_before = integration.realm_replacements_failed;
         const script = try std.fmt.bufPrint(&script_buffer, "document.getElementById('n').src = 'data:text/html,<p>{d}</p>';", .{round});
         failing.has_induced_failure = false;
         failing.fail_index = failing.alloc_index + round;
@@ -213,6 +218,7 @@ fn sweep(rounds: usize) !void {
         _ = browser.runEventLoopBlocking(50) catch {};
         failing.fail_index = std.math.maxInt(usize);
         const induced = failing.has_induced_failure;
+        if (integration.realm_replacements_failed != failed_before) replacements_failed += 1;
 
         // What the navigable shows now; then a collection, with memory to
         // spare. The document it shows is still that document.
@@ -230,7 +236,6 @@ fn sweep(rounds: usize) !void {
         // commits a new document - through src alone, never contentWindow,
         // which makes a new child navigable of its own.
         if (after == null) {
-            without_document += 1;
             (try frameNavigable(browser)).navigation_rate_count = 0;
             const recovery = try std.fmt.bufPrint(&script_buffer, "document.getElementById('n').src = 'data:text/html,<p>recovered {d}</p>';", .{round});
             try page.runScript(recovery);
@@ -250,8 +255,15 @@ fn sweep(rounds: usize) !void {
         // A round past the navigation's last allocation failed nothing.
         if (!induced) break;
     } else return error.SweepDidNotEnd;
-    // The sweep reached the state the recovery is for.
-    if (without_document == 0) return error.NoRoundLeftTheFrameWithoutADocument;
+    // The sweep reached the path it is for: a navigation that ran out of
+    // memory in its realm replacement. The check counts that path, not an
+    // effect of it. It used to require a round that left the frame with NO
+    // document - the state that path made until a navigation came to commit
+    // with its document or leave the navigable as it was (lane v8up b3g,
+    // 0263c50e918, HTMLIFrameElement settleRealmReplacement): that state was
+    // the bug, so the check required it
+    // (docs/lessons/testing-a-coverage-check-can-require-the-bug-s-own-state.md).
+    if (replacements_failed == 0) return error.NoRoundFailedItsRealmReplacement;
 }
 
 test "a frame navigation that runs out of memory never leaves its navigable showing a document a collection frees" {

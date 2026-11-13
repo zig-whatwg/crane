@@ -72,8 +72,6 @@ pub const MediaKeyMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            messageType: enums.MediaKeyMessageType = undefined,
-            message: runtime.ArrayBuffer = undefined,
             _internal: ?*MediaKeyMessageEventImpl.InternalState = null,
         },
     );

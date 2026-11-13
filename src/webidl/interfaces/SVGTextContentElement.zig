@@ -107,6 +107,13 @@ pub const SVGTextContentElement = struct {
             .{ "lengthAdjust", "get_lengthAdjust", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "textLength",
+            "lengthAdjust",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getNumberOfChars", "call_getNumberOfChars", 0 },

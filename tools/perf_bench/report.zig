@@ -1257,6 +1257,7 @@ const style =
     \\.trend-svg .ref { stroke: var(--ink-2); stroke-width: 1; }
     \\.trend-svg .trend-value { font-size: 12px; font-weight: 600; fill: var(--ink); }
     \\.trend-svg .x-round { fill: var(--ink); font-weight: 600; }
+    \\.trend-svg .x-title { font-size: 10px; }
     \\.trend-svg .x-date { font-size: 10px; }
     \\.trend-svg .x-commit { font-family: var(--mono); font-size: 9.5px; }
     \\.perf .chart-note, .perf .gap-legend { max-width: var(--measure); font: 400 0.88rem/1.45 var(--sans); color: var(--ink-2); }
@@ -1384,7 +1385,7 @@ fn writeProgress(w: W, arena: Allocator, m: *const Model) !void {
     const first = pts[0].round;
     try w.print("<section id=\"progress\"><h2>Progress</h2>\n<h3>Crane over time</h3>\n<p>Crane&rsquo;s own time and memory in each measurement round as a share of round {d}&rsquo;s: the geometric mean, over the workloads both rounds ran, of each workload&rsquo;s figure over its round-{d} figure (memory is the steady footprint). Round {d} is 100%; lower is better.</p>\n<div class=\"trend-pair\">\n", .{ first, first, first });
     var cpoints: std.ArrayList(chart.Point) = .empty;
-    for (pts) |p| try cpoints.append(arena, .{ .label = try std.fmt.allocPrint(arena, "Round {d}", .{p.round}), .date = p.date, .commit = p.commit });
+    for (pts) |p| try cpoints.append(arena, .{ .label = try std.fmt.allocPrint(arena, "Round {d}", .{p.round}), .short = try std.fmt.allocPrint(arena, "{d}", .{p.round}), .date = p.date, .commit = p.commit });
     for ([_]Measure{ .time, .steady }) |measure| {
         const what = if (measure == .time) "time" else "memory";
         var values: std.ArrayList(?f64) = .empty;
@@ -1397,7 +1398,7 @@ fn writeProgress(w: W, arena: Allocator, m: *const Model) !void {
         }
         try w.print("<figure class=\"chart trend\"><figcaption class=\"trend-title\"><strong>{s}</strong> as a share of round {d}&rsquo;s &middot; lower is better</figcaption>", .{ if (measure == .time) "Time" else "Memory", first });
         const aria = try std.fmt.allocPrint(arena, "Crane's {s} as a share of round {d}'s over {d} rounds, from round {d} to round {d}; lower is better. The figures are in the list below.", .{ what, first, pts.len, first, pts[pts.len - 1].round });
-        try chart.trendChart(w, cpoints.items, .{ .aria = aria, .values = values.items, .titles = titles.items });
+        try chart.trendChart(w, cpoints.items, .{ .aria = aria, .values = values.items, .titles = titles.items, .x_title = "Round" });
         try w.writeAll("</figure>\n");
     }
     try w.writeAll("</div>\n");

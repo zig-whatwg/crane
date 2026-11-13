@@ -6,22 +6,23 @@
 //! touches node memory - the node's slot, the anchor, the registry, the
 //! record, the collected callback - and it runs on the isolate's own thread
 //! (a Debug check there aborts otherwise). TryResetRoot touches none of them
-//! and answers false. The review read F2 in V8's source checkout
-//! (jsengines/v8/v8, V8 14.6), where ClearWeaknessProcessor calls TryResetRoot
-//! from up to 3 worker threads once the young list has more than 8 blocks
-//! (since b1ea3fc1dbf, 2025-02-24); the V8 Crane links, 13.1.203, has no
-//! caller of TryResetRoot at all - its ProcessYoungObjects is a serial loop
-//! calling ResetRoot (lesson workflow-the-linked-v8-is-not-the-v8-source-
-//! checkout.md).
+//! and answers false.
 //!
-//! This file pins both halves at the size where a later V8 goes parallel:
-//! a scavenge that drops more than 8 young TracedNode blocks' worth of node
-//! wrappers (13.1.203 src/handles/traced-handles.cc TracedNodeBlock::Create:
-//! at least 256 nodes a block) empties every slot through ResetRoot - on the
-//! agent's thread, or the Debug build aborts - and the linked V8 calls
-//! TryResetRoot for none. When a V8 upgrade makes that count non-zero, the
-//! answer must stay false: the static_assert beside the handler sends the
-//! upgrade here.
+//! Who calls TryResetRoot is the V8 version's: 13.1.203 had no caller (a
+//! serial loop calling ResetRoot); V8 15.7.112.43, the one Crane links since
+//! lane v8up's port, runs ClearWeaknessProcessor as a platform Job (since
+//! b1ea3fc1dbf, 2025-02-24: src/handles/traced-handles.cc
+//! ProcessWeakYoungObjects) - up to 3 tasks, one per 8 young TracedNode blocks
+//! left, the joining thread calling ResetRoot and every worker TryResetRoot;
+//! a handle TryResetRoot answers false for is processed again on the
+//! isolate's thread with ResetRoot (lane wr1 b11 re-read it at the merge
+//! onto 15.7; lesson workflow-the-linked-v8-is-not-the-v8-source-checkout.md).
+//!
+//! This file pins the rule at the size where V8 goes parallel: a scavenge
+//! that drops more than 8 young TracedNode blocks' worth of node wrappers
+//! (TracedNodeBlock::Create: at least 256 nodes a block) empties every slot
+//! through ResetRoot - on the agent's thread, or the Debug build aborts -
+//! however many of the handles V8's workers offered to TryResetRoot first.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -139,7 +140,7 @@ fn counter(page: Page, name: []const u8) !i64 {
     return error.CounterMissing;
 }
 
-test "wr10 F2: a scavenge dropping more than 8 young blocks of node wrappers empties every slot through ResetRoot on the agent's thread; the linked V8 calls TryResetRoot for none" {
+test "wr10 F2: a scavenge dropping more than 8 young blocks of node wrappers empties every slot through ResetRoot on the agent's thread, whatever V8's workers offered to TryResetRoot" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -168,8 +169,10 @@ test "wr10 F2: a scavenge dropping more than 8 young blocks of node wrappers emp
     // loop's registers and feedback still name (wr8's 1,900 of 2,000).
     try testing.expect(dropped >= lone * 95 / 100);
     try testing.expect(live < lone * 5 / 100);
-    // 13.1.203 never calls TryResetRoot. A later V8 does, from its workers,
-    // for exactly this many young blocks - then this count is non-zero, and
-    // the handler's answer must stay false (it touches no node).
-    try testing.expectEqual(@as(u64, 0), tries);
+    // V8 15.7's workers may have offered some of these handles to
+    // TryResetRoot first (0 when the Job ran on the joining thread alone):
+    // it answered false and touched nothing, so every one of them was reset
+    // by ResetRoot - counted in `dropped` above. Never more offers than
+    // handles processed.
+    try testing.expect(tries <= lone + 1024);
 }

@@ -74,9 +74,6 @@ pub const History = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            scrollRestoration: enums.ScrollRestoration = undefined,
-            state: runtime.JSValue = undefined,
             _internal: ?*HistoryImpl.InternalState = null,
         },
     );

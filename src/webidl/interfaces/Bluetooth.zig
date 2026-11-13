@@ -60,6 +60,12 @@ pub const Bluetooth = struct {
             .{ "onserviceremoved", "get_onserviceremoved", "set_onserviceremoved" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "referringDevice",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getAvailability", "call_getAvailability", 0 },
@@ -119,14 +125,6 @@ pub const Bluetooth = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onavailabilitychanged: typedefs.EventHandler = undefined,
-            referringDevice: ?*runtime.Instance = null,
-            onadvertisementreceived: typedefs.EventHandler = undefined,
-            ongattserverdisconnected: typedefs.EventHandler = undefined,
-            oncharacteristicvaluechanged: typedefs.EventHandler = undefined,
-            onserviceadded: typedefs.EventHandler = undefined,
-            onservicechanged: typedefs.EventHandler = undefined,
-            onserviceremoved: typedefs.EventHandler = undefined,
             cached_referringDevice: ?*runtime.Instance = null,
             _internal: ?*BluetoothImpl.InternalState = null,
         },

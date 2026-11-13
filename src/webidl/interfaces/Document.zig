@@ -298,6 +298,26 @@ pub const Document = struct {
             .{ "onbeforexrselect", "get_onbeforexrselect", "set_onbeforexrselect" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "implementation",
+            "images",
+            "embeds",
+            "plugins",
+            "links",
+            "forms",
+            "scripts",
+            "anchors",
+            "applets",
+            "all",
+            "permissionsPolicy",
+            "fragmentDirective",
+            "modelContext",
+            "styleSheets",
+            "children",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{

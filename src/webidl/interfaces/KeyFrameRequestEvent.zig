@@ -67,7 +67,6 @@ pub const KeyFrameRequestEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rid: ?runtime.DOMString = null,
             _internal: ?*KeyFrameRequestEventImpl.InternalState = null,
         },
     );

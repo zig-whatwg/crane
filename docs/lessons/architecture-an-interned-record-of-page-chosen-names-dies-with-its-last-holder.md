@@ -1,0 +1,18 @@
+# Architecture: An interned record of page-chosen names dies with its last holder
+
+**Date**: 2026-11-10
+**Lesson**: A table that interns names a page can mint (custom element names, createElementNS's namespaces and prefixes, attribute names) must be weak and counted - a record freed when its last holder goes - or it is a page-controlled leak for the table owner's life; "a few dozen names per page" describes real pages, not the worst one.
+
+**Why**: Interning trades one copy per holder for one record per distinct name. That is a saving only while the record's life is bounded by its holders. A record kept for its owner's life (here a Browser: every tab, navigation, DOMParser and XHR document it ever runs) turns `for (i) document.createElement('x-' + i)` - each element garbage at once - into memory held until the Browser ends. Every engine bounds it: Blink and WebKit count QualifiedNameImpl and erase it from the cache in its destructor, with the static names uncounted (`is_static`); Gecko's NodeInfo removes itself from its nsNodeInfoManager on its last release and clears the manager's non-owning recent-use cache.
+
+**What Happened**: Lane nd2 batch 1 (N2) made an element's qualified name one pointer to a shared record, static for the HTML/SVG/MathML names and interned per Browser for the rest, and kept the interned records for the Browser's life, from the state arena ("records live as long as their Browser", the design's words). The deep review (tmp/redesign/review/source/appendix-nd2.md F1-F3) measured the cost by reading: about 131 B per distinct name, a regression against main, which freed each element's own copy with the element. Two more defects rode along: a prefixed name interned two records (namespace and local name first, the prefix later), and records came from the state arena's class lists - where freed node State blocks go - so a 264-byte record of page-chosen bytes could take a collected div's block. The red tests on batch 1's tip: a million `createElement('x-' + i)`, each dropped, left 1,000,000 records and +133 MB; the prefixed createElementNS loop left 2,000,000 records and +372 MB.
+
+**Fix** (batch 1-fix, src/dom/element_name.zig):
+1. Count dynamic records only (`references`, u32, in what was padding): `intern` hands out a counted reference, `release` drops one; static records never touch a count.
+2. Keep the table weak: the last release removes and frees the record then and there, on the owning thread. No deferred sweep - Gecko's exists only for cross-thread release.
+3. Check the count for overflow in every build, and a release with nothing kept; check the owner thread in Debug (an off-thread reach of Blink's lockless name cache became a use-after-free).
+4. List every structure that keeps a record beyond one call - here one, ElementData.name, written only through `rename` - and every non-owning cache to clear on free (none). The strings a record hands out are borrowed for the element's life; audit the readers that used to receive copies (60 native calls in 25 files, every one inside its call).
+5. Take records from the general allocator, never the arena node blocks come from; intern once, with the prefix, where create-an-element sets all three names.
+6. Shrink the map as names leave (WTF's HashTable shrinks below a sixth full) and drop tombstones (infra.tombstones), or a churn of names leaves a big, slow map behind.
+
+**Takeaway**: **Interning page-chosen names is only a saving while each record dies with its last holder: count the dynamic ones, keep the table weak, free at zero on the owning thread, and never let a record share a free list with the objects a stale pointer can reach.**

@@ -63,9 +63,6 @@ pub const WebGLShaderPrecisionFormat = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rangeMin: typedefs.GLint = undefined,
-            rangeMax: typedefs.GLint = undefined,
-            precision: typedefs.GLint = undefined,
             _internal: ?*WebGLShaderPrecisionFormatImpl.InternalState = null,
         },
     );

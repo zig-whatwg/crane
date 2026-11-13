@@ -85,7 +85,6 @@ pub const CSSMathSum = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            values: *runtime.Instance = undefined,
             _internal: ?*CSSMathSumImpl.InternalState = null,
         },
     );

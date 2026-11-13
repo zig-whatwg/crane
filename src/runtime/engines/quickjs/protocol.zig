@@ -137,13 +137,6 @@ pub fn runEngineTasks(_: *Agent) bool {
 pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
     return null;
 }
-// QuickJS collects synchronously and leaves no work for idle time.
-pub fn hasEngineIdleTasks(_: *Agent) bool {
-    return false;
-}
-pub fn runEngineIdleTasks(_: *Agent, _: u64) bool {
-    return false;
-}
 
 pub fn requestGarbageCollection(_: *Agent) void {}
 // TODO(protocol): JS_RunGC(rt) once the adapter has a runtime per agent.

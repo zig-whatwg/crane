@@ -88,8 +88,6 @@ pub const HID = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onconnect: typedefs.EventHandler = undefined,
-            ondisconnect: typedefs.EventHandler = undefined,
             _internal: ?*HIDImpl.InternalState = null,
         },
     );

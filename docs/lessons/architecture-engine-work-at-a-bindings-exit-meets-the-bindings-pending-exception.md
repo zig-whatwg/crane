@@ -1,0 +1,12 @@
+# Architecture: Engine work at a binding's exit meets the binding's own pending exception
+
+**Date**: 2026-11-12
+**Lesson**: Anything that runs at a binding's return into script - a deferred finalizer, a drain, a report - runs after the binding may have thrown, and engine work there clears the exception silently: check `Isolate::HasPendingException()` first and leave the work owed.
+
+**Why**: A binding throws by calling `Isolate::ThrowException` and returning; its exit steps (`defer dom_algorithm.leaveToScript(...)`) run in between, with the exception pending. V8 hands an exception thrown inside an API callback only to a `v8::TryCatch` registered BEFORE the throw, and the next `Script::Run` or `Function::Call` clears a pending exception no TryCatch holds (v8_wrapper.cpp, "Binding catch scopes"). A finalizer is an instance's teardown and may run script or call a function, so a finalizer run at a throwing binding's exit erased the binding's exception: the script went on as if the call had returned.
+
+**What Happened**: Lane v8up b6c made the binding exit the safe point for queued wrapper finalizers. The first design ran them at every depth-zero exit. Reading how [CEReactions] members set the pending exception aside (the binding catch scope, lane ce work) showed the exposure before any sweep did, and a test pinned it: `try { new Event(); } catch (e) { caught = e.name }` with two finalizers queued whose work runs a script. With the check removed the test fails - expected "TypeError", found "no exception": the catch block never ran. The external-memory report safe point of the batch before (0fc27fc0492) had the same exposure, since the report is made at the same exit.
+
+**Fix**: The in-task entry (`runQueuedFinalizersInTask`, v8_wrapper.cpp) answers "not here" while `isolate->HasPendingException()` (V8 15.7.112.43 src/api/api.cc:10065-10073: the isolate has an exception, or the innermost TryCatch has caught one); the queue keeps the finalizers owed (`DeferredTeardown.FinalizerSteps.run` returns false) and the next exit that returns normally, or the pump, runs them. The report safe point goes through the same entry.
+
+**Takeaway**: **A hook on the binding's exit path runs between the throw and the catch. Before it calls into the engine, ask whether an exception is pending; if one is, defer - never set it aside by hand unless a TryCatch was registered before the throw - and pin it with a test whose binding throws and whose script reads the exception in its catch block.**

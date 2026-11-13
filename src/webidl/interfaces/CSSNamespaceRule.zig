@@ -61,8 +61,6 @@ pub const CSSNamespaceRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            namespaceURI: typedefs.CSSOMString = undefined,
-            prefix: typedefs.CSSOMString = undefined,
             _internal: ?*CSSNamespaceRuleImpl.InternalState = null,
         },
     );

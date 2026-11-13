@@ -59,6 +59,14 @@ pub const Performance = struct {
             .{ "onresourcetimingbufferfull", "get_onresourcetimingbufferfull", "set_onresourcetimingbufferfull" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "eventCounts",
+            "timing",
+            "navigation",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "now", "call_now", 0 },
@@ -127,12 +135,6 @@ pub const Performance = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            timeOrigin: typedefs.DOMHighResTimeStamp = undefined,
-            eventCounts: *runtime.Instance = undefined,
-            interactionCount: u64 = undefined,
-            timing: *runtime.Instance = undefined,
-            navigation: *runtime.Instance = undefined,
-            onresourcetimingbufferfull: typedefs.EventHandler = undefined,
             cached_eventCounts: ?*runtime.Instance = null,
             cached_timing: ?*runtime.Instance = null,
             cached_navigation: ?*runtime.Instance = null,

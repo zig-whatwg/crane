@@ -249,6 +249,14 @@ pub const HTMLElement = struct {
             .{ "tabIndex", "get_tabIndex", "set_tabIndex" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "style",
+            "attributeStyleMap",
+            "dataset",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -544,9 +552,6 @@ pub const HTMLElement = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_style: ?*runtime.Instance = null,
-            cached_attributeStyleMap: ?*runtime.Instance = null,
-            cached_dataset: ?*runtime.Instance = null,
             _internal: ?*HTMLElementImpl.InternalState = null,
         },
     );
@@ -914,7 +919,7 @@ pub const HTMLElement = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(HTMLElementImpl, "deinit") and @hasDecl(HTMLElementImpl, "deinitOwn")) @compileError("HTMLElementImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
+        @import("dom").same_object_cache.endElement(instance, &.{ .{ .field = .attribute_style_map, .attribute = "attributeStyleMap" }, .{ .field = .dataset, .attribute = "dataset" } });
         if (comptime @hasDecl(HTMLElementImpl, "deinit")) return HTMLElementImpl.deinit(instance);
         if (comptime @hasDecl(HTMLElementImpl, "deinitOwn")) HTMLElementImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -1262,39 +1267,18 @@ pub const HTMLElement = struct {
     }
 
     /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn get_style(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_style) |cached| {
-            return cached;
-        }
-        const value = try HTMLElementImpl.get_style(instance);
-        state.own.cached_style = value;
-        @import("dom").same_object_cache.made(instance, value, "style");
-        return value;
-    }
-
-    /// Extended attributes: [SameObject], [PutForwards=cssText]
-    pub fn set_style(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        // [PutForwards] - Get target object and set the forwarded property
-        // Per WebIDL spec: setting 'style' forwards to 'cssText' on the attribute's value
-        const target = try get_style(instance);
-
-        // Use JavaScript [[Set]] semantics to set the forwarded property
-        // This respects prototype chain and user-defined setters
-        try runtime.setPropertyOnInstance(target, "cssText", value);
-    }
+    pub const get_style = mixins.ElementCSSInlineStyle.get_style;
+    pub const set_style = mixins.ElementCSSInlineStyle.set_style;
 
     /// Extended attributes: [SameObject]
     pub fn get_attributeStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_attributeStyleMap) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .attribute_style_map)) |cached| {
             return cached;
         }
-        const value = try HTMLElementImpl.get_attributeStyleMap(instance);
-        state.own.cached_attributeStyleMap = value;
-        @import("dom").same_object_cache.made(instance, value, "attributeStyleMap");
+        try @import("dom").same_object_cache.elementReserve(instance, .attribute_style_map);
+        const value = try mixins.ElementCSSInlineStyle.get_attributeStyleMap(instance);
+        @import("dom").same_object_cache.elementMade(instance, .attribute_style_map, value, "attributeStyleMap");
         return value;
     }
 
@@ -1678,55 +1662,26 @@ pub const HTMLElement = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_dataset(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_dataset) |cached| {
+        // [SameObject] - Return the instance the element's rare data keeps
+        if (@import("dom").same_object_cache.elementGet(instance, .dataset)) |cached| {
             return cached;
         }
-        const value = try HTMLElementImpl.get_dataset(instance);
-        state.own.cached_dataset = value;
-        @import("dom").same_object_cache.made(instance, value, "dataset");
+        try @import("dom").same_object_cache.elementReserve(instance, .dataset);
+        const value = try mixins.HTMLOrSVGOrMathMLElement.get_dataset(instance);
+        @import("dom").same_object_cache.elementMade(instance, .dataset, value, "dataset");
         return value;
     }
 
-    pub fn get_nonce(instance: *runtime.Instance) anyerror!runtime.DOMString {
-        return try HTMLElementImpl.get_nonce(instance);
-    }
-
-    pub fn set_nonce(instance: *runtime.Instance, value: runtime.DOMString) anyerror!void {
-        try HTMLElementImpl.set_nonce(instance, value);
-    }
+    pub const get_nonce = mixins.HTMLOrSVGOrMathMLElement.get_nonce;
+    pub const set_nonce = mixins.HTMLOrSVGOrMathMLElement.set_nonce;
 
     /// Extended attributes: [CEReactions], [Reflect]
-    pub fn get_autofocus(instance: *runtime.Instance) anyerror!bool {
-        if (comptime @hasDecl(HTMLElementImpl, "get_autofocus")) return try HTMLElementImpl.get_autofocus(instance);
-        return try reflection.get(bool, instance, .{ .name = "autofocus" });
-    }
-
-    /// Extended attributes: [CEReactions], [Reflect]
-    pub fn set_autofocus(instance: *runtime.Instance, value: bool) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(HTMLElementImpl, "set_autofocus")) return try HTMLElementImpl.set_autofocus(instance, value);
-        try reflection.set(bool, instance, .{ .name = "autofocus" }, value);
-    }
+    pub const get_autofocus = mixins.HTMLOrSVGOrMathMLElement.get_autofocus;
+    pub const set_autofocus = mixins.HTMLOrSVGOrMathMLElement.set_autofocus;
 
     /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn get_tabIndex(instance: *runtime.Instance) anyerror!i32 {
-        return try HTMLElementImpl.get_tabIndex(instance);
-    }
-
-    /// Extended attributes: [CEReactions], [ReflectSetter]
-    pub fn set_tabIndex(instance: *runtime.Instance, value: i32) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        if (comptime @hasDecl(HTMLElementImpl, "set_tabIndex")) return try HTMLElementImpl.set_tabIndex(instance, value);
-        try reflection.set(i32, instance, .{ .name = "tabindex" }, value);
-    }
+    pub const get_tabIndex = mixins.HTMLOrSVGOrMathMLElement.get_tabIndex;
+    pub const set_tabIndex = mixins.HTMLOrSVGOrMathMLElement.set_tabIndex;
 
     pub fn call_attachInternals(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try HTMLElementImpl.call_attachInternals(instance);
@@ -1740,9 +1695,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_showPopover(instance, options);
     }
 
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try HTMLElementImpl.call_blur(instance);
-    }
+    pub const call_blur = mixins.HTMLOrSVGOrMathMLElement.call_blur;
 
     pub fn call_togglePopover(instance: *runtime.Instance, options: webidl.Opt(runtime.JSValue)) anyerror!bool {
         return try HTMLElementImpl.call_togglePopover(instance, options);
@@ -1752,9 +1705,7 @@ pub const HTMLElement = struct {
         return try HTMLElementImpl.call_hidePopover(instance);
     }
 
-    pub fn call_focus(instance: *runtime.Instance, options: webidl.Opt(FocusOptions)) anyerror!void {
-        return try HTMLElementImpl.call_focus(instance, options);
-    }
+    pub const call_focus = mixins.HTMLOrSVGOrMathMLElement.call_focus;
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
     /// (bit i = argument i; an attribute setter's value is bit 0).

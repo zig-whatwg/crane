@@ -112,8 +112,6 @@ pub const SharedWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            onconnect: typedefs.EventHandler = undefined,
             _internal: ?*SharedWorkerGlobalScopeImpl.InternalState = null,
         },
     );

@@ -66,16 +66,6 @@ pub const CanvasFillStrokeStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            strokeStyle: union(enum) {
-                DOMString: runtime.DOMString,
-                CanvasGradient: CanvasGradient,
-                CanvasPattern: CanvasPattern,
-            } = undefined,
-            fillStyle: union(enum) {
-                DOMString: runtime.DOMString,
-                CanvasGradient: CanvasGradient,
-                CanvasPattern: CanvasPattern,
-            } = undefined,
             _internal: ?*CanvasFillStrokeStylesImpl.InternalState = null,
         },
     );

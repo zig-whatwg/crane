@@ -31,7 +31,7 @@ fn attributeChanged(element: *runtime.Instance, local_name: []const u8, _: ?[]co
         if (!std.mem.eql(u8, local_name, "href") or !std.mem.eql(u8, ns, xlink_namespace)) return;
         if (data.findAttribute(null, "href") != null) return;
     }
-    const name = data.local_name.asSlice();
+    const name = data.localName();
     if (std.mem.eql(u8, name, "image")) hooks.svgImageResourceChanged(element) else if (std.mem.eql(u8, name, "use")) hooks.svgUseResourceChanged(element);
 }
 
@@ -84,7 +84,7 @@ fn target(document: *runtime.Instance, fragment: []const u8, kind: TargetKind) ?
         break :blk (interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned(decoded)) catch null) orelse return null;
     };
     const data = element_data.of(element) orelse return null;
-    return if (targetAllowed(data.namespaceSlice(), data.local_name.asSlice(), kind)) element else null;
+    return if (targetAllowed(data.namespaceSlice(), data.localName(), kind)) element else null;
 }
 
 /// One immutable subresource document. The consuming Document traces the

@@ -67,10 +67,6 @@ pub const USBInterface = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            interfaceNumber: u8 = undefined,
-            alternate: *runtime.Instance = undefined,
-            alternates: runtime.JSValue = undefined,
-            claimed: bool = undefined,
             _internal: ?*USBInterfaceImpl.InternalState = null,
         },
     );

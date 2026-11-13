@@ -74,7 +74,6 @@ pub const CSSNumericArray = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*CSSNumericArrayImpl.InternalState = null,
         },
     );

@@ -63,7 +63,6 @@ pub const GPUTextureView = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUTextureViewImpl.InternalState = null,
         },
     );

@@ -86,16 +86,6 @@ pub const Location = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            origin: runtime.USVString = undefined,
-            protocol: runtime.USVString = undefined,
-            host: runtime.USVString = undefined,
-            hostname: runtime.USVString = undefined,
-            port: runtime.USVString = undefined,
-            pathname: runtime.USVString = undefined,
-            search: runtime.USVString = undefined,
-            hash: runtime.USVString = undefined,
-            ancestorOrigins: *runtime.Instance = undefined,
             _internal: ?*LocationImpl.InternalState = null,
         },
     );

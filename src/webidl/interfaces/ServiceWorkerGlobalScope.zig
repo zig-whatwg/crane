@@ -91,6 +91,15 @@ pub const ServiceWorkerGlobalScope = struct {
             .{ "onpaymentrequest", "get_onpaymentrequest", "set_onpaymentrequest" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "clients",
+            "registration",
+            "serviceWorker",
+            "cookieStore",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "skipWaiting", "call_skipWaiting", 0 },
@@ -172,10 +181,6 @@ pub const ServiceWorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clients: *runtime.Instance = undefined,
-            registration: *runtime.Instance = undefined,
-            serviceWorker: *runtime.Instance = undefined,
-            cookieStore: *runtime.Instance = undefined,
             cached_clients: ?*runtime.Instance = null,
             cached_registration: ?*runtime.Instance = null,
             cached_serviceWorker: ?*runtime.Instance = null,

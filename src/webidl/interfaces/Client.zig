@@ -73,11 +73,6 @@ pub const Client = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            url: runtime.USVString = undefined,
-            frameType: enums.FrameType = undefined,
-            id: runtime.DOMString = undefined,
-            type: enums.ClientType = undefined,
-            lifecycleState: enums.ClientLifecycleState = undefined,
             _internal: ?*ClientImpl.InternalState = null,
         },
     );

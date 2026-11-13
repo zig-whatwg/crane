@@ -70,7 +70,6 @@ pub const ContentIndexEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
             _internal: ?*ContentIndexEventImpl.InternalState = null,
         },
     );

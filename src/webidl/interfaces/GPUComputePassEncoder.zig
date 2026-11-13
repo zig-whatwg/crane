@@ -97,7 +97,6 @@ pub const GPUComputePassEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUComputePassEncoderImpl.InternalState = null,
         },
     );

@@ -79,7 +79,6 @@ pub const MIDIInput = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmidimessage: typedefs.EventHandler = undefined,
             _internal: ?*MIDIInputImpl.InternalState = null,
         },
     );

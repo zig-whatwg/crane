@@ -77,10 +77,6 @@ pub const CSSOKLCH = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            l: typedefs.CSSColorPercent = undefined,
-            c: typedefs.CSSColorPercent = undefined,
-            h: typedefs.CSSColorAngle = undefined,
-            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSOKLCHImpl.InternalState = null,
         },
     );

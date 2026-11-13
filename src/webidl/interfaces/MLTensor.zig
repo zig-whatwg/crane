@@ -72,11 +72,6 @@ pub const MLTensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataType: enums.MLOperandDataType = undefined,
-            shape: runtime.JSValue = undefined,
-            readable: bool = undefined,
-            writable: bool = undefined,
-            constant: bool = undefined,
             _internal: ?*MLTensorImpl.InternalState = null,
         },
     );

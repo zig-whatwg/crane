@@ -41,6 +41,12 @@ pub const NDEFReadingEvent = struct {
             .{ "message", "get_message", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "message",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -72,8 +78,6 @@ pub const NDEFReadingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            serialNumber: runtime.DOMString = undefined,
-            message: *runtime.Instance = undefined,
             cached_message: ?*runtime.Instance = null,
             _internal: ?*NDEFReadingEventImpl.InternalState = null,
         },

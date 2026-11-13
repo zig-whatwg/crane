@@ -58,10 +58,6 @@ pub const PowerfulFeatureObserver = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            initialPermissionStatus: enums.PermissionState = undefined,
-            permissionStatus: enums.PermissionState = undefined,
-            onpromptaction: typedefs.EventHandler = undefined,
-            onpromptdismiss: typedefs.EventHandler = undefined,
             _internal: ?*PowerfulFeatureObserverImpl.InternalState = null,
         },
     );

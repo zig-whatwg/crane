@@ -96,9 +96,6 @@ pub const IdleDetector = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userState: ?enums.UserIdleState = null,
-            screenState: ?enums.ScreenIdleState = null,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*IdleDetectorImpl.InternalState = null,
         },
     );

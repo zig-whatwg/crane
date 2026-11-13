@@ -84,7 +84,6 @@ pub const GPUQueue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUQueueImpl.InternalState = null,
         },
     );

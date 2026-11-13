@@ -72,15 +72,6 @@ pub const BluetoothCharacteristicProperties = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            broadcast: bool = undefined,
-            read: bool = undefined,
-            writeWithoutResponse: bool = undefined,
-            write: bool = undefined,
-            notify: bool = undefined,
-            indicate: bool = undefined,
-            authenticatedSignedWrites: bool = undefined,
-            reliableWrite: bool = undefined,
-            writableAuxiliaries: bool = undefined,
             _internal: ?*BluetoothCharacteristicPropertiesImpl.InternalState = null,
         },
     );

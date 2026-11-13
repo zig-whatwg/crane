@@ -62,10 +62,6 @@ pub const XRViewport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: i32 = undefined,
-            y: i32 = undefined,
-            width: i32 = undefined,
-            height: i32 = undefined,
             _internal: ?*XRViewportImpl.InternalState = null,
         },
     );

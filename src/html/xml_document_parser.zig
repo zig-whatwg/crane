@@ -42,6 +42,12 @@ pub const Options = struct {
     /// scripts the parser prepares (as the HTML parser's; the WPT runner
     /// serves testharness.js through it).
     script_loader: ?script_execution.ParserScriptLoader = null,
+    /// The XML fragment parsing algorithm's context element's node
+    /// document: the parse runs in a document of its own (step 3), and its
+    /// elements share attribute blocks through the cache of the document
+    /// they are for (dom.attribute_block_cache). Null: a document's parse,
+    /// which shares through its own.
+    fragment_context_document: ?*runtime.Instance = null,
 };
 
 /// A well-formedness error: where, and libxml2's words for what.
@@ -70,8 +76,14 @@ pub const Failure = struct {
 /// built.
 pub fn parseInto(document: *runtime.Instance, source: []const u8, options: Options) !?Failure {
     const allocator = document.ctx.allocator;
-    var builder: Builder = .{ .allocator = allocator, .document = document, .options = options };
+    var builder: Builder = .{
+        .allocator = allocator,
+        .document = document,
+        .options = options,
+        .attribute_run = if (options.fragment_context_document) |context_document| .begin(context_document, .fragment) else .begin(document, .document),
+    };
     defer builder.stack.deinit(allocator);
+    defer builder.attribute_run.end();
     var parser = xml.Parser.init(allocator, .{ .xhtml_entities = htmlNamedReference });
     defer parser.deinit();
     const failure = try parser.parse(source, &builder);
@@ -97,6 +109,10 @@ const Builder = struct {
     document: *runtime.Instance,
     options: Options,
     stack: std.ArrayList(Open) = .empty,
+    /// This parse's share in its document's attribute-block cache
+    /// (dom.attribute_block_cache.Run); ended by the parse's entry point as
+    /// it returns.
+    attribute_run: dom.element_attributes.ParserRun,
 
     fn parent(self: *const Builder) Open {
         if (self.stack.items.len == 0) return .{ .element = self.document, .target = self.document, .document = self.document };
@@ -152,13 +168,23 @@ const Builder = struct {
             // cloned to.
             if (!self.options.scripting) dom.script_elements.markAlreadyStarted(element);
         }
-        for (attributes) |attr| {
-            dom.element_attributes.append(element, .{
+        // "Append each attribute" at once, the list from this parse's
+        // shared blocks (dom.element_attributes.setParsed; lane nd2 batch 4).
+        if (attributes.len != 0) {
+            var stack: [16]dom.element_attributes.Attribute = undefined;
+            const on_heap = attributes.len > stack.len;
+            const converted = if (on_heap) self.allocator.alloc(dom.element_attributes.Attribute, attributes.len) catch |err| {
+                dom.node_creation.destroyUninserted(element);
+                return err;
+            } else stack[0..attributes.len];
+            defer if (on_heap) self.allocator.free(converted);
+            for (attributes, converted) |attr, *out| out.* = .{
                 .namespace = attr.name.namespace,
                 .prefix = attr.name.prefix,
                 .local_name = attr.name.local,
                 .value = attr.value,
-            }) catch |err| {
+            };
+            dom.element_attributes.setParsed(element, converted, self.attribute_run.blocks()) catch |err| {
                 dom.node_creation.destroyUninserted(element);
                 return err;
             };
@@ -285,7 +311,7 @@ pub fn parseFragment(context: *runtime.Instance, input: []const u8) !*runtime.In
     defer dom.node_creation.destroyUninserted(document);
     try dom.document_internals.setDocumentType(document, .xml);
     // Step 7: a well-formedness or namespace well-formedness error.
-    if (try parseInto(document, markup.items, .{ .scripting = false }) != null) return error.SyntaxError;
+    if (try parseInto(document, markup.items, .{ .scripting = false, .fragment_context_document = try interfaces.Node.get_ownerDocument(context) }) != null) return error.SyntaxError;
     // Step 8 holds by construction: input sits inside the root's tags.
     const root = (try interfaces.Document.get_documentElement(document)) orelse return error.SyntaxError;
     // Steps 10-12: a fragment in context's node document, and newChildren -

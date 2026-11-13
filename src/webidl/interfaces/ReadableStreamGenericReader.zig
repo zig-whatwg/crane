@@ -54,7 +54,6 @@ pub const ReadableStreamGenericReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.JSValue = undefined,
             _internal: ?*ReadableStreamGenericReaderImpl.InternalState = null,
         },
     );

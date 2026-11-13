@@ -72,12 +72,6 @@ pub const AudioPlaybackStats = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            underrunDuration: f64 = undefined,
-            underrunEvents: u32 = undefined,
-            totalDuration: f64 = undefined,
-            averageLatency: f64 = undefined,
-            minimumLatency: f64 = undefined,
-            maximumLatency: f64 = undefined,
             _internal: ?*AudioPlaybackStatsImpl.InternalState = null,
         },
     );

@@ -34,8 +34,6 @@
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const runtime = @import("runtime");
-const wrapper_type_info = @import("wrapper_type_info.zig");
-const dom_type_info = @import("dom_type_info.zig");
 const instance_bridge = @import("dom").instance_bridge;
 const ownership = @import("isolate_ownership.zig");
 const interfaces = @import("interfaces");
@@ -364,15 +362,6 @@ pub fn wrapInstanceAsV8Object(
     // insert, or bound to the NodeBase with no cache at all.
     runtime.instance_lifecycle.markWrapped(instance);
 
-    // Store WrapperTypeInfo in internal field 1 (for type-safe unwrapping)
-    if (!is_node) if (dom_type_info.getTypeInfoByName(interface_name)) |type_info| {
-        v8.v8_Object_SetAlignedPointerInInternalField(
-            v8_object,
-            1,
-            @ptrCast(@constCast(type_info)),
-        );
-    };
-
     // Realm-dependent non-configurable members cannot live on an isolate's
     // shared template. The dispatcher has no work for all other interfaces.
     @import("interface_bindings.zig").installConditionalUnforgeablesByName(interface_name, isolate, context, v8_object);
@@ -465,9 +454,7 @@ fn discardUncachedWrapper(wrapper: *v8.Object) void {
         if (target) |t| object = @ptrCast(t);
     }
     defer if (target) |t| v8.v8_Value_Dispose(t);
-    const count = v8.v8_Object_InternalFieldCount(object);
-    if (count >= 1) v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
-    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
+    if (v8.v8_Object_InternalFieldCount(object) >= 1) v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
     v8.v8_Object_Dispose(wrapper);
 }
 

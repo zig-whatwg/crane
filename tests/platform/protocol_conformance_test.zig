@@ -73,8 +73,31 @@ test "conformance: the bound platform matches every operation" {
     }
     // Every operation of the contract is declared (section 6): pin the count,
     // so an operation removed by accident shows here. 221 since D3 (the user,
-    // 2026-11-09 22:21 UTC) removed replacedElementBox.
-    try testing.expectEqual(@as(usize, 221), count);
+    // 2026-11-09 22:21 UTC) removed replacedElementBox; 228 since lane h1
+    // added the address-space group (6.11: pageSize, reserveAddressSpace,
+    // labelAddressSpace, commitPages, decommitPages, protectPages,
+    // releaseAddressSpace); 230 since lane tls1 added a thread's alternate
+    // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
+    // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
+    // encodeImage).
+    try testing.expectEqual(@as(usize, 232), count);
+}
+
+test "address space (6.11): this platform reserves, commits, decommits and releases" {
+    // Every built-in platform has it; the platform-specific behaviour is
+    // tests/platform/h1_address_space_test.zig's, on each host OS.
+    if (comptime platform.capabilities.address_space == .unsupported) return error.SkipZigTest;
+    const page = platform.pageSize();
+    const range = try platform.reserveAddressSpace(8 * page, 4 * page, 0, .objects);
+    defer platform.releaseAddressSpace(range);
+    try testing.expectEqual(@as(usize, 0), range.base % (4 * page));
+    platform.labelAddressSpace(range, 0, 4 * page, .node_cage);
+    try platform.commitPages(range, 0, 2 * page);
+    const p: *volatile u8 = @ptrFromInt(range.base + page);
+    p.* = 0xa5;
+    try testing.expectEqual(@as(u8, 0xa5), p.*);
+    try platform.decommitPages(range, 0, 2 * page);
+    try platform.protectPages(range, 0, 2 * page, .none);
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +435,26 @@ test "the in-memory clipboard is per Browser: two Browsers do not share it" {
 test "every built-in platform decodes images unless image_decoding is compiled out" {
     const expected: platform.Support = if (comptime compiledOut("image_decoding")) .unsupported else .native;
     try testing.expectEqual(expected, platform.capabilities.image_decoding);
+}
+
+// HTML 4.12.5.5 "User agents must support PNG": every built-in platform
+// encodes it with kit/image_encoding unless -Dplatform-without=image_encoding
+// (the integrator, 2026-11-12, D1's pattern), and its file decodes back
+// through the bound platform's own decoder.
+test "every built-in platform encodes PNG unless image_encoding is compiled out" {
+    const expected: platform.Support = if (comptime compiledOut("image_encoding")) .unsupported else .native;
+    try testing.expectEqual(expected, platform.capabilities.image_encoding);
+    if (platform.capabilities.image_encoding == .unsupported) return;
+    try testing.expect(platform.imageEncodingMimeTypeSupported(platform.Str.from("image/png")));
+    try testing.expect(!platform.imageEncodingMimeTypeSupported(platform.Str.from("image/x-unknown")));
+    const pixels = [_]u8{ 255, 0, 0, 255, 0, 255, 0, 128 };
+    const file = try platform.encodeImage(testing.allocator, platform.Str.from("image/png"), .{ .width = 2, .height = 1, .pixels = platform.Bytes.from(&pixels) }, -1);
+    defer testing.allocator.free(file.slice());
+    try testing.expect(std.mem.startsWith(u8, file.slice(), "\x89PNG\r\n\x1a\n"));
+    if (platform.capabilities.image_decoding == .unsupported) return;
+    const image = try platform.decodeImage(testing.allocator, platform.Str.from("image/png"), file, image_limits);
+    defer testing.allocator.free(image.pixels.slice());
+    try testing.expectEqualSlices(u8, &pixels, image.pixels.slice());
 }
 
 const image_limits: platform.ImageLimits = .{ .max_dimension = 4096, .max_pixels = 4096 * 4096 };

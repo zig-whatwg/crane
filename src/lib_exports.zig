@@ -36,6 +36,14 @@
 
 const std = @import("std");
 
+// No thread-local signal stack: Zig std's default (`signal_stack_size`,
+// 1 << 18) is a 256 KB thread-local array, which every thread that touches
+// any thread-local pays for - V8's worker threads included, which never use
+// it. The platform maps each thread's alternate stack instead
+// (platform.attachSignalStack, src/platform/kit/posix/signal_stack.zig);
+// build.zig's thread-local block check (tools/thread_local_size.zig) holds it.
+pub const std_options: std.Options = .{ .signal_stack_size = null };
+
 // ============================================================================
 // Core Modules - Force compilation by referencing types
 // ============================================================================

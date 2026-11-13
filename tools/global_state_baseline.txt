@@ -50,6 +50,8 @@ src/dom/event_construction.zig ui_event_steps 1 G H decl:809646f121ceb5ed
 src/dom/event_dispatch.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/event_handlers.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/event_handlers.zig raw_compiler 1 G H decl:cb883a0bcb7758e2
+src/dom/event_listener_changes.zig implementation 1 G H decl:4e36a001743de65f
+src/dom/event_listener_changes.zig steps 1 G H decl:3f633f23f42875ca
 src/dom/event_listener_types.zig implementation 1 G H decl:c5606999d98f8b8a
 src/dom/extract_origin.zig implementations 1 G H decl:488366715d5be2b1
 src/dom/fetch_objects.zig request_steps 1 G H decl:6740d2e3e96e2e48
@@ -79,6 +81,7 @@ src/dom/indexeddb.zig records 1 G H decl:5aa0c591d1a18137
 src/dom/indexeddb.zig requests 1 G H decl:6740d2e3e96e2e48
 src/dom/indexeddb.zig stores 1 G H decl:62e176784ecc77da
 src/dom/indexeddb.zig transactions 1 G H decl:767da84fdc7ee6d5
+src/dom/instance_bridge.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/intersection_targets.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/live_collections.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/media_elements.zig implementation 1 G H decl:ff436fb405f84ffb
@@ -132,7 +135,7 @@ src/dom/traversal.zig node_iterator 1 G H decl:47df97f8ace79ab7
 src/dom/traversal.zig tree_walker 1 G H decl:76a8736caafa1390
 src/dom/tree_ordered_map.zig implementation 1 G H decl:3ff874087001da34
 src/dom/trusted_types.zig table 1 G H decl:08747621c34834b2
-src/dom/unloading_cleanup.zig steps 1 G H decl:3f633f23f42875ca
+src/dom/unloading_cleanup.zig steps 1 G H decl:fd0ef800b557e170
 src/dom/update_the_rendering.zig loop 1 G H decl:a7b84726b2f41273
 src/dom/update_the_rendering.zig steps 1 G H decl:3b5001385e22bc37
 src/dom/url_patterns.zig implementation 1 G H decl:2ed8289caf50c1eb
@@ -156,6 +159,7 @@ src/platform/host.zig cached_io 1 G P-res decl:5fde91e1f8769bc9
 src/platform/host.zig init_mutex 1 G P-res decl:ee0617868871b920
 src/platform/host.zig threaded 1 G P-res decl:46f2a8444cfc8e17
 src/process/start.zig state 1 G P-res decl:9aefe5ce61f3dbd3
+src/runtime/browser_heap.zig graveyard 1 G P-res decl:e02362a20666d9a5
 src/runtime/browser_scope.zig live_scopes 1 G P-res decl:224489c067b5c8fe
 src/runtime/browser_scope.zig standalone_scope 1 G P-res decl:900c140c0fed34c8
 src/runtime/ce_reactions.zig hooks 1 G H decl:1fe1b0ac7507f38b
@@ -204,7 +208,6 @@ src/runtime/instance.zig TypeIdHolder.marker 1 G P-res decl:f33e1c60fc8c8315
 src/runtime/lifetime.zig hooks 1 G H decl:25197d739fa0326e
 src/runtime/orphan_roots.zig hooks 1 G H decl:1fe1b0ac7507f38b
 src/webdriver/main.zig main.handler.server_ptr 1 G P-res decl:f033b82c181714a1
-src/webidl/impls/EventTarget.zig next_handler_serial 1 G I/engine decl:d7230747e11f8385
 src/webidl/impls/EventTarget.zig next_listener_id 1 G I/engine decl:c14518b5d31b8ea0
 src/webidl/impls/HTMLFormElement.zig next_navigation_token 1 G I/engine decl:c14518b5d31b8ea0
 src/webidl/impls/HTMLIFrameElement.zig next_navigation_id 1 G I/engine decl:c14518b5d31b8ea0

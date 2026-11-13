@@ -177,6 +177,7 @@ pub fn installHooks() void {
         .stop_loading = &stopLoadingDocument,
         .is_navigating = &documentIsNavigating,
         .load_delay_may_have_ended = &childLoadDelayMayHaveEnded,
+        .load_stopped = &contentDocumentLoadStopped,
     });
     dom_module.attribute_change_steps.install("iframe", &iframeAttributeChangeSteps);
     dom_module.navigables.install(.{
@@ -337,10 +338,9 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // <html><head></head><body></body></html>
     // This is required because browsers always create these elements for any HTML document.
     const DocumentImpl = @import("Document.zig");
-    const NodeImpl = @import("Node.zig");
 
     // Create html element (HTMLHtmlElement)
-    const html_element = DocumentImpl.call_createElement(
+    const html_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("html"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -349,7 +349,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Create head element (HTMLHeadElement)
-    const head_element = DocumentImpl.call_createElement(
+    const head_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("head"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -358,7 +358,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Create body element (HTMLBodyElement)
-    const body_element = DocumentImpl.call_createElement(
+    const body_element = interfaces.Document.call_createElement(
         document_instance,
         runtime.DOMString.initInterned("body"),
         webidl.Opt(runtime.JSValue).notPassed(),
@@ -367,17 +367,17 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Append head to html
-    _ = NodeImpl.call_appendChild(html_element, head_element) catch {
+    _ = interfaces.Node.call_appendChild(html_element, head_element) catch {
         return document_instance;
     };
 
     // Append body to html
-    _ = NodeImpl.call_appendChild(html_element, body_element) catch {
+    _ = interfaces.Node.call_appendChild(html_element, body_element) catch {
         return document_instance;
     };
 
     // Append html to document
-    _ = NodeImpl.call_appendChild(document_instance, html_element) catch {
+    _ = interfaces.Node.call_appendChild(document_instance, html_element) catch {
         return document_instance;
     };
 
@@ -536,6 +536,10 @@ fn createNavigationDocument(
     giveAboutBaseUrl(document_instance, browsing_ctx_ptr);
     givePolicyContainer(document_instance, browsing_ctx_ptr);
     giveReferrer(document_instance, browsing_ctx_ptr);
+    // Step 21: "Potentially free deferred fetch quota for document" (Fetch
+    // 4.12.1): a same-origin nested document shares its parent's quota, and
+    // its origin is known only now, after redirects.
+    dom_module.deferred_fetches.potentiallyFreeQuota(browsing_ctx_ptr, document_instance);
 
     const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
@@ -1531,8 +1535,7 @@ fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
 /// Steps not modelled, stated: source snapshot params and sandboxed
-/// navigation (1-7), deferred fetch quota (22), WebDriver BiDi, and lazy
-/// loading (11). Step 21's navigate event has no form data entry list.
+/// navigation (1-7), WebDriver BiDi, and lazy loading (11). Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
     // The navigation's start: the moment navigate is entered, which the new
     // document's time origin becomes (performance_timeline's
@@ -1914,6 +1917,27 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
             if (navigationById(list, id) == null or !isOngoing(integration, id)) return;
         }
     }
+    // Step 23: "If sourceDocument is navigable's container document, then
+    // reserve deferred fetch quota for navigable's container given url's
+    // origin" (Fetch 4.12.1; dom.deferred_fetches). Golden rule 2, stated:
+    // a container whose sandboxing flags set the sandboxed origin browsing
+    // context flag (an iframe sandbox without allow-same-origin) reserves
+    // for an opaque origin - the one its document will have - not url's:
+    // Chrome 157, the only browser shipping fetchLater, gives such a frame
+    // its own minimal quota (fetch/fetch-later/quota/cross-origin-iframe/
+    // sandboxed-iframe.https.window.js 1/1, wpt.fyi stable 24ddf405a0), where
+    // url's origin would reserve normal quota that the opaque document's
+    // "deferred-fetch" policy cannot use.
+    if (options.source_document) |source| if (integration.iframe_element) |raw| {
+        const container: *runtime.Instance = @ptrCast(@alignCast(raw));
+        if ((interfaces.Node.get_ownerDocument(container) catch null) == source) {
+            const opaque_document = creationSandboxingFlagsOf(integration).origin;
+            if (if (opaque_document) allocator.dupe(u8, "null") else fetch_mod.internal.origins.serializedOriginOf(allocator, url)) |origin| {
+                defer allocator.free(origin);
+                dom_module.deferred_fetches.reserveQuota(browsing_context, container, origin);
+            } else |_| {}
+        }
+    };
     // Step 24: "In parallel": beforeunload, then the fetch. Deviation,
     // stated: "checking if unloading is canceled" runs now, inside the call
     // that navigates, not from a task - as Blink (FrameLoader::StartNavigation
@@ -1976,6 +2000,37 @@ fn requestReferrerOf(source: *runtime.Instance, allocator: std.mem.Allocator) ?[
         document = (interfaces.Node.get_ownerDocument(container) catch null) orelse return null;
     }
     return null;
+}
+
+/// `node`'s node document - DOM's "node document" of an element or other
+/// non-document node, read through Node's interface (ownerDocument); null
+/// for a Document node or when it cannot be read.
+fn nodeDocumentOf(node: *runtime.Instance) ?*runtime.Instance {
+    return interfaces.Node.get_ownerDocument(node) catch null;
+}
+
+/// The referrer main fetch leaves on the request of an about:blank
+/// navigation - "create and initialize a Document object" step 14 takes the
+/// new document's referrer from it. Fetch main fetch step 8: the request's
+/// referrer policy, or its policy container's when it has none (here the
+/// initiator's, as "create navigation params by fetching" step 3 gives the
+/// request), then "determine request's referrer" toward about:blank, whose
+/// origin is opaque: a cross-origin target, so strict-origin-when-cross-
+/// origin sends the source's origin alone
+/// (html/browsers/browsing-the-web/navigating-across-documents/source/
+/// navigate-child-src-about-blank.html: Chrome 157 and Safari 27.2 pass,
+/// with document.referrer the parent's origin and "/"). Owned by the
+/// record's allocator; null for no referrer.
+fn aboutBlankReferrer(record: *Navigation) ?[]u8 {
+    const source = record.referrer orelse return null;
+    var policy = record.referrer_policy;
+    if (policy == .empty) {
+        if (record.initiator_policy_container) |*container| policy = container.referrer_policy;
+    }
+    if (policy == .empty) policy = .strict_origin_when_cross_origin;
+    const determined = (fetch_mod.algorithms.main_fetch.determineRequestReferrer(record.allocator, policy, source, record.url) catch return null) orelse return null;
+    defer record.allocator.free(determined);
+    return record.allocator.dupe(u8, determined) catch null;
 }
 
 /// Queue `callback` for navigation `id` on the navigable's event loop - a
@@ -2156,6 +2211,9 @@ fn startFetch(record: *Navigation) void {
     }
     if (navigate_steps.matchesAboutBlank(url)) {
         record.response = htmlResponse(allocator, url, "") catch navigation_fetch.networkErrorResult(allocator, url) catch return endNavigation(record.navigables, record.id);
+        if (record.response) |*response| {
+            if (!response.is_network_error) response.referrer = aboutBlankReferrer(record);
+        }
         return queueNavigationTask(record.integration, record.id, &runCommit);
     }
 
@@ -2449,9 +2507,8 @@ fn startFetch(record: *Navigation) void {
 fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
     if (std.mem.eql(u8, navigate_steps.schemeOf(url), "about")) return false;
     const container: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return false));
-    const NodeImpl = @import("Node.zig");
     const allocator = integration.allocator;
-    var document = NodeImpl.getOwnerDocument(container);
+    var document = nodeDocumentOf(container);
     var found = false;
     var depth: usize = 0;
     while (document) |doc| : (depth += 1) {
@@ -2464,7 +2521,7 @@ fn isSelfReferential(integration: *IFrameIntegration, url: []const u8) bool {
         }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const parent_container = dom_module.navigable_container.of(window) orelse return false;
-        document = NodeImpl.getOwnerDocument(parent_container);
+        document = nodeDocumentOf(parent_container);
     }
     return false;
 }
@@ -3260,6 +3317,9 @@ fn commitAfterFinalize(integration: *IFrameIntegration, record: *Navigation, wai
         log.warn("[navigation] no realm for {s}: {s}", .{ record.url, @errorName(err) });
         return endLoadDelay(integration);
     };
+    // A new realm commits with its document ("create and initialize a
+    // Document object" step 10) or is undone, on every way out below.
+    defer settleRealmReplacement(integration);
     // Service Workers 2.5.1: the new document's window client - the
     // navigation's reserved client, or its creator's controller for a
     // document no fetch went through HTTP for - before any of its script
@@ -4671,8 +4731,7 @@ fn navigationParamsOrigin(integration: *IFrameIntegration, flags: SandboxingFlag
     if (navigate_steps.matchesAboutBlank(url) or navigate_steps.matchesAboutSrcdoc(url)) {
         const container_window: ?*runtime.Instance = blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
-            const NodeImpl = @import("Node.zig");
-            const container = NodeImpl.getOwnerDocument(element) orelse break :blk null;
+            const container = nodeDocumentOf(element) orelse break :blk null;
             break :blk interfaces.Document.get_defaultView(container) catch null;
         };
         const active: ?*runtime.Instance = if (bc.getActiveWindow()) |w| @ptrCast(@alignCast(w)) else null;
@@ -4772,7 +4831,7 @@ fn traverseNavigable(browsing_context_ptr: *anyopaque, entry_id: u64, url: []con
         }
         const source: ?*runtime.Instance = if (resource != null) blk: {
             const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse break :blk null));
-            break :blk @import("Node.zig").getOwnerDocument(element);
+            break :blk nodeDocumentOf(element);
         } else null;
         navigate(integration, url, .{ .source_document = source, .history_behavior = .replace, .traversal_entry = entry_id, .traversal_from = from_entry_id, .srcdoc = resource, .traversal_waiter = waiter });
         return traversalInFlight(list, integration, waiter);
@@ -5240,6 +5299,9 @@ fn runJavascriptNavigation(context: ?*anyopaque) void {
     const url = record.javascript_url orelse return;
     if (integration.state == .discarded or integration.browsing_context == null) return;
     integration.realmForDocument(integration.container_origin) catch return endLoadDelay(integration);
+    // A new realm commits with its document ("create and initialize a
+    // Document object" step 10) or is undone, on every way out below.
+    defer settleRealmReplacement(integration);
     // Step 11: the new document state's about base URL is oldDocState's.
     integration.setNextAboutBaseUrl(record.initiator_base_url);
     defer integration.setNextAboutBaseUrl(null);
@@ -5478,8 +5540,7 @@ fn endLoadDelay(integration: *IFrameIntegration) void {
     if (!integration.delaying_load) return;
     integration.delaying_load = false;
     const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return));
-    const NodeImpl = @import("Node.zig");
-    const document = NodeImpl.getOwnerDocument(element) orelse return;
+    const document = nodeDocumentOf(element) orelse return;
     document_lifecycle.loadDelayMayHaveEnded(document);
 }
 
@@ -5496,6 +5557,19 @@ fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
         if (!document_lifecycle.isReadyForPostLoadTasks(active) or document_lifecycle.delaysLoadEvent(active)) return true;
     }
     return false;
+}
+
+/// dom.content_navigables: window.stop() ended `document`'s load before its
+/// load event (Document's lifecycleStopLoad), so the iframe load event steps,
+/// which end its navigable's delay on the container's document, never run:
+/// the delay ends now. HTML sets "is delaying load events" false at the
+/// commit ("finalize a cross-document navigation" step 2); Crane holds it to
+/// the iframe load event steps, and a stopped load must release it as
+/// Blink's DocumentLoader::StopLoading -> LoadFailed -> DidFinishNavigation
+/// runs the parent's CheckCompleted without the owner's load event.
+fn contentDocumentLoadStopped(document: *runtime.Instance) void {
+    const integration = navigableOfDocument(document) orelse return;
+    endLoadDelay(integration);
 }
 
 /// A resource in an active child document stopped delaying load, possibly
@@ -5651,8 +5725,7 @@ fn chosenOf(document: *runtime.Instance) Chosen {
 fn parentDocumentOf(document: *runtime.Instance) ?*runtime.Instance {
     const integration = navigableOfDocument(document) orelse return null;
     const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return null));
-    const NodeImpl = @import("Node.zig");
-    return NodeImpl.getOwnerDocument(element);
+    return nodeDocumentOf(element);
 }
 
 /// The active document of `document`'s top-level traversable.
@@ -5980,10 +6053,9 @@ fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.wi
 /// loads eagerly.
 fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    const ElementImpl = @import("Element.zig");
     // Step 1: "If element's srcdoc attribute is specified" - navigate to the
     // srcdoc resource.
-    if (ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
+    if (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
         const markup = internal.allocator.dupe(u8, srcdoc.asSlice()) catch return;
         defer internal.allocator.free(markup);
         navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
@@ -6016,8 +6088,7 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
 /// Step 4 (URL and history update steps for about:blank?query) is not
 /// modelled. error.OutOfMemory when the URL cannot be made (`resolveSrc`).
 fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}!?[]const u8 {
-    const ElementImpl = @import("Element.zig");
-    const src = ElementImpl.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
+    const src = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("src")) catch null;
     const value: []const u8 = if (src) |s| s.asSlice() else "";
     const url = try resolveSrc(element, value);
     if (ancestorShows(element, url)) {
@@ -6051,8 +6122,7 @@ fn sharedAttributeProcessingSteps(element: *runtime.Instance) error{OutOfMemory}
 /// (2026-09-29).
 fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     if (navigate_steps.matchesAboutBlank(url)) return false;
-    const NodeImpl = @import("Node.zig");
-    var document = NodeImpl.getOwnerDocument(element);
+    var document = nodeDocumentOf(element);
     var depth: usize = 0;
     var found_one_self_reference = false;
     while (document) |doc| : (depth += 1) {
@@ -6067,7 +6137,7 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
         }
         const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return false;
         const container = dom_module.navigable_container.of(window) orelse return false;
-        document = NodeImpl.getOwnerDocument(container);
+        document = nodeDocumentOf(container);
     }
     return false;
 }
@@ -6119,8 +6189,7 @@ fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration
     // a fragment navigation of a cross-origin frame through its element
     // fires the element's load event, as a cross-document one would - its
     // absence would tell the container that the frame is still on that URL.
-    const NodeImpl = @import("Node.zig");
-    const container_document = NodeImpl.getOwnerDocument(element);
+    const container_document = nodeDocumentOf(element);
     const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
     // Step 3: "Let referrerPolicy be the current state of element's
     // referrerpolicy content attribute."
@@ -6235,8 +6304,28 @@ pub fn get_contentWindow(instance: *runtime.Instance) anyerror!?typedefs.WindowP
     // navigable", and their pagehide and unload handlers still reach the
     // frame's window through the element, as in every browser.
     if (internal.integration.state == .discarded) return null;
-    const NodeImpl = @import("Node.zig");
-    const is_connected = NodeImpl.get_isConnected(instance) catch false;
+    // Nor does an element whose node document was destroyed - a frame inside
+    // a removed frame, or inside a document its navigable navigated away
+    // from. HTML "destroy a document and its descendants" destroys the
+    // documents of a document's child navigables (steps 4-5) before the
+    // document itself (step 6.1), and a destroyed document's navigable has
+    // no active document ("destroy a document" step 7), so no active
+    // WindowProxy: the content window is null by the time the node document
+    // is destroyed. Blink: LocalFrame::DetachImpl's DetachChildren detaches
+    // each child frame - Frame::Detach ends in DisconnectOwnerElement, which
+    // clears the owner's content frame - before DomWindow()->
+    // FrameDestroyed() shuts the document down. (html/semantics/embedded-
+    // content/the-iframe-element/iframe-synchronously-discard.html: Chrome
+    // 157, Firefox 160 and Safari 27.2 pass "grandchild should be
+    // discarded".) The CONTAINER's document, and only "destroyed": a frame's
+    // own document is destroyed while a Window kept for its successor is
+    // still the frame's, and document_activity's "gone" also counts a
+    // document never given a browsing context (lesson spec-compliance-gone-
+    // is-not-destroyed-a-document-being-made-has-no-browsing-context-yet).
+    if (interfaces.Node.get_ownerDocument(instance) catch null) |node_document| {
+        if (document_lifecycle.isDestroyed(node_document)) return null;
+    }
+    const is_connected = interfaces.Node.get_isConnected(instance) catch false;
     if (!is_connected) {
         if (!internal.integration.hasRealmContext()) return null;
         if (navigableContext(internal.integration)) |realm| {
@@ -6723,7 +6812,9 @@ fn keepsInitialWindow(integration: *IFrameIntegration, new_origin: html_core.Ori
 /// it (Blink's LocalWindowProxy::CreateContext after DisposeContext with
 /// kFrameWillBeReused). Every reference to the proxy - iframe.contentWindow,
 /// open()'s return value, a window[name] on the parent - now reaches the new
-/// Window.
+/// Window. The replacement stays pending until the new Window has its
+/// document: settleRealmReplacement then ends the old realm, or, if the
+/// navigation stops first, goes back to it.
 ///
 /// The old realm is not destroyed: its document was unloaded (runCommit) and
 /// is destroyed ("destroy a document": its timers were cleared, its tasks go,
@@ -6736,6 +6827,8 @@ fn keepsInitialWindow(integration: *IFrameIntegration, new_origin: html_core.Ori
 /// churn.html). Code still running in it sees a detached global (V8 gives
 /// API callbacks a holder with no Window).
 fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) bool {
+    // A replacement still pending, if a caller did not settle it, is settled first.
+    settleRealmReplacement(integration);
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
     const allocator = integration.allocator;
@@ -6762,33 +6855,109 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     // is a new one, with a WindowProxy of its own ("obtain a browsing
     // context to use for a navigation response" step 10).
     const switched = integration.next_new_window_proxy;
-    const old_data = integration.releaseCurrentRealm() orelse return false;
+    const kept = integration.currentRealm();
+    _ = integration.releaseCurrentRealm() orelse return false;
     if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
-        // No new realm: the old one ends with the integration, as every
-        // replaced realm once did.
-        integration.keepRetiredRealm(old_data) catch engine.destroyWindowRealm(old, .global_detached);
+        // No new realm - out of memory, which HTML does not let "create and
+        // initialize a Document object" step 7 ("create a new realm") do:
+        // the navigation fails before its document exists, as one whose
+        // response makes no document, and the navigable keeps its active
+        // document, its active window and that Window's realm, so every
+        // invariant the spec states still holds. The old realm is the
+        // integration's again and NOTHING ends it: a realm is never ended
+        // while a browsing context answers its Window as its active window.
+        // It used to be kept as retired (or, when that append ran out of
+        // memory too, ended) while the browsing context still answered its
+        // Window: the next navigation's abort made a DOMException in the
+        // ended realm and panicked ("a platform object made in a realm no
+        // Browser owns"), and the navigable, with no realm, never navigated
+        // again. The new Window, when one was made before the failure, was
+        // set as the browsing context's active window (FrameWindow.create):
+        // the old one is active again. If the engine had already handed the
+        // WindowProxy on (window_proxy_of detaches the old global first), the
+        // old Window keeps its realm but the proxy no longer reaches it:
+        // V8 has no way to attach a global to a context again.
+        integration.restoreCurrentRealm(kept);
+        if (old_window) |window| browsing_context.setActiveWindow(@ptrCast(window));
         return false;
     }
-    // The popups the old Window opened move with the navigable (lane
-    // newwin1, B7): the new Window keeps them, and their next realms are
-    // made under the new realm.
-    if (old_window) |from| if (browsing_context.getActiveWindow()) |to| {
-        dom_module.window_globals.moveAuxiliaryNavigables(from, @ptrCast(@alignCast(to)));
-    };
-    // After a switch, the browsing context the old Window showed is
-    // discarded for whoever still holds its WindowProxy - its opener: the
-    // proxy stays attached to the old Window, which reads `closed` true and
-    // no frames, as a removed frame's does (engine.WindowRealmEnd
-    // .navigable_destroyed; Chromium's opener sees a closed popup after a
-    // COOP swap).
-    if (switched) {
-        engine.destroyWindowRealm(old, .navigable_destroyed);
-        return true;
-    }
-    // HTML "destroy a document" for the old document: the engine keeps its
-    // realm while script reaches it.
-    engine.destroyWindowRealm(old, .global_detached);
+    // The old realm, its Window and the Window's popups wait until the new
+    // Window has its document: settleRealmReplacement ends the old realm or
+    // goes back to it.
+    integration.pending_realm_replacement = .{ .kept = kept, .window = if (old_window) |w| @ptrCast(w) else null, .switched = switched };
     return true;
+}
+
+/// Commit or undo the realm replacement `replaceRealm` left pending
+/// (IFrameIntegration.pending_realm_replacement), once the navigation that
+/// made it has made its document, or has stopped. Every caller of
+/// realmForDocument runs this before it returns.
+///
+/// HTML "create and initialize a Document object" does it all in one
+/// algorithm that cannot fail. Step 7 creates the new realm and its Window,
+/// step 9 creates the document, and step 10 sets the Window's associated
+/// Document, so every Window has one. Crane makes the realm (replaceRealm,
+/// through realmForDocument) before the document (commitResponse), and
+/// either can run out of memory, which HTML never allows for. So the
+/// replacement commits only at step 10: once the new Window has its
+/// associated Document, the old realm ends and the old Window's popups move
+/// to the new one. A navigation that stops before step 10 leaves the
+/// navigable exactly as it was: its old realm, its old Window active, and
+/// its old document. The new realm is ended. Its global is detached
+/// (engine.WindowRealmEnd.global_detached on a realm whose WindowProxy was
+/// not handed on).
+///
+/// One trace stays, and it is the engine's: when the new realm was made
+/// around the navigable's WindowProxy, V8 had already detached the proxy
+/// from the old global. V8 has no API to attach a global to a context again
+/// (Context::ReattachGlobal was removed), so until the next navigation
+/// commits, the proxy has no global. Member reads through it throw V8's
+/// TypeError "no access". The old Window, its realm and its document are
+/// whole, and the browsing context answers that Window as its active window.
+///
+/// Before this, a failure between the two steps (the new Window's Location,
+/// then everything after it) left the navigable on the new Window with no
+/// document. Script through the proxy got a SecurityError, because a Window
+/// with no document has no origin. The old realm was already ended.
+/// tests/html/iframe_policy_container_oom_test.zig hit it at failing
+/// allocation 146 (chat2) and 145 (server1).
+fn settleRealmReplacement(integration: *IFrameIntegration) void {
+    const pending = integration.pending_realm_replacement orelse return;
+    integration.pending_realm_replacement = null;
+    const old: runtime.Context = @ptrCast(@alignCast(pending.kept.context_cleanup_data orelse return));
+    const old_window: ?*runtime.Instance = if (pending.window) |w| @ptrCast(@alignCast(w)) else null;
+    const old_end: engine.WindowRealmEnd = if (pending.switched)
+        // After a browsing context group switch, the browsing context the old Window showed is
+        // discarded for whoever still holds its WindowProxy, which is its opener. The proxy
+        // stays attached to the old Window, which reads `closed` true and has no frames, as a
+        // removed frame's does (engine.WindowRealmEnd.navigable_destroyed; Chromium's opener
+        // sees a closed popup after a COOP swap).
+        .navigable_destroyed
+    else
+        // HTML "destroy a document" for the old document: the engine keeps its realm while
+        // script reaches it.
+        .global_detached;
+    // The navigable lost its realm while the document was being made: its
+    // iframe went and its teardown ended the new realm. Nothing goes back.
+    const new: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return engine.destroyWindowRealm(old, old_end)));
+    const new_window = windowOfRealm(new);
+    const has_document = if (new_window) |w| if (interfaces.Window.get_document(w)) |_| true else |_| false else false;
+    if (has_document) {
+        // Step 10 happened: the replacement commits. The popups the old
+        // Window opened move with the navigable (lane newwin1, B7). The new
+        // Window keeps them, and their next realms are made under the new
+        // realm.
+        if (old_window) |from| if (new_window) |to| dom_module.window_globals.moveAuxiliaryNavigables(from, to);
+        engine.destroyWindowRealm(old, old_end);
+        return;
+    }
+    // The navigation stopped before step 10: back to the old realm and
+    // Window. The browsing context answers the old Window as active before
+    // the new realm ends, so no realm ends while it is the active window.
+    integration.restoreCurrentRealm(pending.kept);
+    integration.realm_replacements_abandoned +|= 1;
+    if (old_window) |window| if (integration.browsing_context) |bc| bc.setActiveWindow(@ptrCast(window));
+    engine.destroyWindowRealm(new, .global_detached);
 }
 
 /// HTML 8.1.3.5 for the realm of a document of `new_origin` that replaces a
@@ -7577,8 +7746,7 @@ pub fn set_src(instance: *runtime.Instance, value: runtime.USVString) anyerror!v
 /// HTML "reflect": the srcdoc content attribute, or "". A copy - the binding
 /// frees what a getter returns, and the attribute can change under it.
 pub fn get_srcdoc(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    const ElementImpl = @import("Element.zig");
-    const value = (try ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) orelse
+    const value = (try interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("srcdoc"))) orelse
         return runtime.DOMString.initInterned("");
     return runtime.DOMString.initDupe(instance.ctx.allocator, value.asSlice());
 }
@@ -7636,8 +7804,7 @@ fn iframeAttributeChangeSteps(
     if (!is_srcdoc and !std.mem.eql(u8, local_name, "src")) return;
     if (!hasContentNavigable(element)) return;
     if (!is_srcdoc) {
-        const ElementImpl = @import("Element.zig");
-        if (ElementImpl.call_hasAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch false) return;
+        if (interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch false) return;
     }
     processIframeAttributes(element, false);
 }
@@ -7648,8 +7815,7 @@ fn hasContentNavigable(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     if (internal.integration.state == .discarded or internal.integration.state == .uninitialized) return false;
     if (internal.integration.browsing_context == null) return false;
-    const NodeImpl = @import("Node.zig");
-    return NodeImpl.get_isConnected(instance) catch false;
+    return interfaces.Node.get_isConnected(instance) catch false;
 }
 
 /// Getter for name
@@ -7695,13 +7861,12 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // This is critical: the attribute may have been set via Element.setAttribute()
     // before the DOMTokenList was created. Per spec, the DOMTokenList should
     // reflect the current attribute value.
-    const ElementImpl = @import("Element.zig");
     const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
-    if (ElementImpl.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
+    if (interfaces.Element.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
         const attr_slice = attr_value.asSlice();
         if (attr_slice.len > 0) {
             // Parse the attribute value and populate the token list
-            DOMTokenListImpl.set_value(token_list, attr_value) catch {};
+            interfaces.DOMTokenList.set_value(token_list, attr_value) catch {};
         }
     }
 
@@ -7879,8 +8044,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     const instance_ptr = instance_bridge.getInstance(node) orelse return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(instance_ptr));
     const internal = getInternal(instance) orelse return;
-    const NodeImpl = @import("Node.zig");
-    if (!(NodeImpl.get_isConnected(instance) catch false)) return;
+    if (!(interfaces.Node.get_isConnected(instance) catch false)) return;
 
     // Inserted again after a removal: the old navigable is gone.
     if (internal.integration.state == .discarded) {
@@ -7891,7 +8055,6 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     // security token as it is created. Fails closed: an attribute that
     // cannot be read sandboxes the frame fully, as `sandbox=""` does - an
     // error read as no attribute made the frame unsandboxed.
-    const ElementImpl = @import("Element.zig");
     if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("sandbox"))) |attribute| {
         if (attribute) |sandbox| internal.integration.setSandbox(sandbox.asSlice());
     } else |_| internal.integration.setSandbox("");
@@ -7905,7 +8068,7 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
     // parent's global reaches it by that name.
     const name: ?[]const u8 = blk: {
         if (internal.name_attr) |n| break :blk n;
-        if (ElementImpl.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
+        if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
         break :blk null;
     };
     if (name) |n| {

@@ -39,6 +39,12 @@ pub const CSSMediaRule = struct {
             .{ "matches", "get_matches", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "media",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -73,8 +79,6 @@ pub const CSSMediaRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            media: *runtime.Instance = undefined,
-            matches: bool = undefined,
             cached_media: ?*runtime.Instance = null,
             _internal: ?*CSSMediaRuleImpl.InternalState = null,
         },

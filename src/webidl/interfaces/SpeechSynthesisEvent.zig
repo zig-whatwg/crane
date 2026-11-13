@@ -77,11 +77,6 @@ pub const SpeechSynthesisEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            utterance: *runtime.Instance = undefined,
-            charIndex: u32 = undefined,
-            charLength: u32 = undefined,
-            elapsedTime: f32 = undefined,
-            name: runtime.DOMString = undefined,
             _internal: ?*SpeechSynthesisEventImpl.InternalState = null,
         },
     );

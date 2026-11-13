@@ -110,7 +110,7 @@ const Record = struct {
 
     const allocator = std.heap.c_allocator;
 
-    /// Leave the realm's list, dispose the handle (cancelling a second pass
+    /// Leave the realm's list, dispose the handle (cancelling a finalizer
     /// still to come) and free the record; what the host's finalize needs.
     fn end(self: *Record) struct { steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque } {
         const steps = self.steps;
@@ -121,8 +121,8 @@ const Record = struct {
         return .{ .steps = steps, .data = data };
     }
 
-    /// V8's second pass, after the collection (v8_Global_SetWeakFinalizer):
-    /// `finalize` may touch the engine.
+    /// The agent's safe point after the collection (never inside V8's
+    /// collector: ffi.v8_Global_SetWeakFinalizer): `finalize` may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Record = @ptrCast(@alignCast(raw.?));
         const host = self.end();

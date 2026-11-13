@@ -260,8 +260,12 @@ const LoadMicrotaskContext = struct {
     /// `no_source`.
     url: []const u8,
     allocator: std.mem.Allocator,
+    /// Where the script that queued this microtask was (`queuingLocation`),
+    /// for the CSP violations of the request it makes; OWNED.
+    location: ?engine.ScriptLocation = null,
 
     pub fn deinit(self: *LoadMicrotaskContext) void {
+        if (self.location) |location| location.deinit(self.allocator);
         self.allocator.free(self.url);
         self.allocator.destroy(self);
     }
@@ -712,7 +716,7 @@ fn pictureTarget(node: *dom.NodeBase) ?PictureTarget {
     if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return null;
     const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
     const data = dom.element_data.of(element) orelse return null;
-    const name = data.local_name.asSlice();
+    const name = data.localName();
     const kind: @FieldType(PictureTarget, "kind") = if (std.mem.eql(u8, name, "img")) .img else if (std.mem.eql(u8, name, "source")) .source else return null;
     if (!std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return null;
     return .{ .element = element, .kind = kind };
@@ -831,7 +835,7 @@ fn reuseAvailableImage(instance: *runtime.Instance) bool {
     if (attributeValue(instance, "srcset") != null) return false;
     if (interfaces.Node.get_parentNode(instance) catch null) |parent| {
         if (dom.element_data.of(parent)) |data| {
-            if (std.mem.eql(u8, data.local_name.asSlice(), "picture") and
+            if (std.mem.eql(u8, data.localName(), "picture") and
                 std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml")) return false;
         }
     }
@@ -1082,7 +1086,7 @@ fn selectImageSource(instance: *runtime.Instance) ?ImageSource {
 
 fn isHtmlElement(instance: *runtime.Instance, local_name: []const u8) bool {
     const data = dom.element_data.of(instance) orelse return false;
-    return std.mem.eql(u8, data.local_name.asSlice(), local_name) and
+    return std.mem.eql(u8, data.localName(), local_name) and
         std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
 }
 
@@ -1373,6 +1377,7 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
         .selection = selection,
         .url = url_copy,
         .allocator = allocator,
+        .location = queuingLocation(instance, internal, allocator),
     };
 
     // Queue microtask
@@ -1380,6 +1385,32 @@ fn startLoad(instance: *runtime.Instance, selection: Selection, url_str: []const
         .callback = &loadMicrotaskCallback,
         .context = ctx,
     });
+}
+
+/// Where the running script is as step 8 queues its microtask - the
+/// location CSP violations of the request the microtask makes report (CSP
+/// 2.4.1 step 2 finds no running script by then; fetch.internal
+/// .InternalRequest.csp_violation_location). Gecko's ImageLoadTask captures
+/// JSCallingLocation::Get() in its constructor, when it is queued, and Run()
+/// installs it as JSCallingLocation::AutoFallback around LoadSelectedImage
+/// (dom/base/nsImageLoadingContent.cpp); WebKit requests the image while the
+/// script runs. Null when no script runs, or the engine cannot say.
+///
+/// Captured only when the node document's CSP list is not empty at queue
+/// time: a document without a policy then has no violation to locate, and
+/// the capture walks the engine's stack and copies the script's URL on every
+/// `src` set (the integrator's ruling, 2026-11-12). The one case this misses,
+/// stated: a script that sets `src` and then inserts a
+/// `<meta http-equiv=Content-Security-Policy>` before the microtask runs -
+/// that violation reports no location, as Chrome reports none for any
+/// image's (wpt.fyi 24ddf405a0: securitypolicyviolation-block-image.sub.html
+/// "sourceFile ''") and CSP 2.4.1 step 2's text gives none once the script
+/// has returned.
+fn queuingLocation(instance: *runtime.Instance, internal: *InternalState, allocator: std.mem.Allocator) ?engine.ScriptLocation {
+    const document = internal.document orelse return null;
+    if (dom.csp_violations.documentCspList(document.instance).isEmpty()) return null;
+    const agent = instance.ctx.agent orelse return null;
+    return engine.runningScriptLocation(agent, allocator) catch null;
 }
 
 /// Step 24: the img's lazy loading attribute is in the Lazy state - its
@@ -1568,7 +1599,7 @@ fn loadMicrotaskCallback(data: ?*anyopaque) void {
             // "In parallel": the image request is fetched without blocking
             // the event loop; its response arrives from the loop's network
             // step (ImageFetch). One that cannot start is an error.
-            startImageFetch(instance, selected.url, generation) catch |err| {
+            startImageFetch(instance, selected.url, generation, ctx.location) catch |err| {
                 log.debug("img: the fetch did not start: {s}", .{@errorName(err)});
                 internal.complete = true;
                 queueImageTask(instance, generation, .broken, allocator);
@@ -1721,7 +1752,7 @@ const ImageFetch = struct {
 /// document's relevant settings object; its initiator type "img"; its
 /// referrer policy the element's referrerpolicy attribute's state - then
 /// fetched in parallel.
-fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64) !void {
+fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64, location: ?engine.ScriptLocation) !void {
     const internal = getInternal(instance) orelse return error.InvalidState;
     internal.document = if (interfaces.Node.get_ownerDocument(instance) catch null) |document| same_object.Link.to(document) else null;
     const allocator = instance.ctx.allocator;
@@ -1746,6 +1777,8 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     }
     request.use_url_credentials = true;
     request.referrer_policy = fetch.internal.policy_container.referrerPolicyFromAttribute(attributeValue(instance, "referrerpolicy"));
+    // Where the script that started this update was (`queuingLocation`).
+    if (location) |l| try request.setCspViolationLocation(.{ .url = l.url, .line = l.line, .column = l.column });
     // The client: the element's node document's relevant settings object -
     // its realm's global's.
     if (realmGlobal(instance.ctx)) |global| {

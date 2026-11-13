@@ -74,8 +74,6 @@ pub const PushSubscriptionChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            newSubscription: ?*runtime.Instance = null,
-            oldSubscription: ?*runtime.Instance = null,
             _internal: ?*PushSubscriptionChangeEventImpl.InternalState = null,
         },
     );

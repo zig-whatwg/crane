@@ -93,10 +93,6 @@ pub const OffscreenCanvas = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: u64 = undefined,
-            height: u64 = undefined,
-            oncontextlost: typedefs.EventHandler = undefined,
-            oncontextrestored: typedefs.EventHandler = undefined,
             _internal: ?*OffscreenCanvasImpl.InternalState = null,
         },
     );

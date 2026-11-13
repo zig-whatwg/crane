@@ -521,7 +521,9 @@ pub const EngineOptions = struct {
 pub const MemoryPressure = enum {
     /// Collect what is cheap to find, when convenient.
     moderate,
-    /// Collect everything that can be collected, now: a page was let go.
+    /// Collect everything that can be collected, before returning: the
+    /// system is short of memory (a browser's critical memory pressure) -
+    /// or, from Crane's Browser today, a page was let go.
     critical,
 };
 
@@ -553,7 +555,13 @@ pub const AgentOptions = struct {
     /// invocation on its `algorithm_depth`: nothing is freed while it is not
     /// zero, and what is owed meanwhile runs when the outermost binding exit
     /// brings it back to zero - never at a callback's return
-    /// (docs/engine-protocol.md, "Deferred teardown"). The agent's end closes
+    /// (docs/engine-protocol.md, "Deferred teardown"). The queue also carries
+    /// what the adapter owes for the wrappers its collector found dead: their
+    /// finalizers run at that same outermost exit (and between tasks), and
+    /// at a binding's return into a callback's own script only for an object
+    /// a script-called constructor made since the innermost callback
+    /// invocation began - the adapter keeps the agent's callback clock on
+    /// the queue for it (`DeferredTeardown.Callbacks`). The agent's end closes
     /// it. Null (only a test's own agent): an adapter that frees no node from
     /// a collection makes the agent's OWN queue, drained at a requested
     /// collection, at each realm's end and at the agent's end - no event loop
@@ -588,24 +596,6 @@ pub const AgentOptions = struct {
     /// before its unified heap). The agent's end takes back what it
     /// reported. Null, the default: the engine sees only its own heap.
     external_memory: ?*runtime.gc.ExternalMemory = null,
-    /// Whether the host's event loop gives the engine this agent's idle
-    /// periods (`hasEngineIdleTasks`, `runEngineIdleTasks`): the engine may
-    /// then leave work for idle time, which it does in the time each period
-    /// has left (V8: idle tasks, which it posts only to a runner whose
-    /// IdleTasksEnabled is true). Chromium enables V8's idle tasks per
-    /// isolate, for each thread whose scheduler has idle periods: gin's
-    /// PerIsolateData::EnableIdleTasks, called by Blink's V8Initializer for
-    /// the main thread (bindings/core/v8/v8_initializer.cc) and by
-    /// WorkerBackingThread for a worker's (core/workers/
-    /// worker_backing_thread.cc), Chromium 145.0.7608.0. False, the default:
-    /// the engine posts no idle work and does all of it in its own tasks.
-    /// The Browser's window agent has them (src/browser/event_loop.zig
-    /// step 2e). TODO(workers): a worker's agent has none yet - its loop
-    /// (src/html/worker_event_loop.zig) starts no idle period; Blink enables
-    /// V8's idle tasks for workers too (core/workers/
-    /// worker_backing_thread.cc:141), each in its worker scheduler's long
-    /// idle periods.
-    idle_periods: bool = false,
 };
 
 /// A host's wall clock for an agent (AgentOptions.clock): nanoseconds since
@@ -1234,31 +1224,6 @@ pub inline fn runEngineTasks(agent: *Agent) bool {
 /// its wait bound. This does not create an artificial polling deadline.
 pub inline fn nextEngineTaskDelay(agent: *Agent) ?u64 {
     return impl.nextEngineTaskDelay(agent);
-}
-
-/// Whether the engine has idle work posted for `agent`: work it does only in
-/// the host's idle periods, for an agent made with `AgentOptions.idle_periods`
-/// (V8's idle tasks: cppgc's incremental sweep, a young-generation collection
-/// after a context's disposal). A host loop with nothing of its own to do
-/// starts an idle period for it, as Blink's scheduler resumes a paused long
-/// idle period when an idle task is posted (IdleHelper::OnIdleTaskPosted,
-/// third_party/blink/renderer/platform/scheduler/common/idle_helper.cc,
-/// Chromium 145.0.7608.0). False for an agent made without idle periods, and
-/// from an engine that posts no idle work. Call on the agent's thread.
-pub inline fn hasEngineIdleTasks(agent: *Agent) bool {
-    return impl.hasEngineIdleTasks(agent);
-}
-
-/// HTML 8.1.7.3 step 5's idle period, the engine's share: the engine does its
-/// idle work for `agent` in the `time_left_ns` the period has left - its
-/// computeDeadline, the deadline requestIdleCallback's callbacks get - and
-/// should be done by then. What it does there is the engine's to decide: the
-/// host only gives the time, as Blink's V8IdleTaskRunner runs V8's idle tasks
-/// with the idle period's deadline (bindings/core/v8/v8_idle_task_runner.h).
-/// Whether any idle work ran. Call on the agent's thread, between tasks, with
-/// no script running.
-pub inline fn runEngineIdleTasks(agent: *Agent, time_left_ns: u64) bool {
-    return impl.runEngineIdleTasks(agent, time_left_ns);
 }
 
 /// Collect `agent`'s garbage now, as completely as the engine can - for

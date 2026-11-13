@@ -76,7 +76,6 @@ pub const XRReferenceSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onreset: typedefs.EventHandler = undefined,
             _internal: ?*XRReferenceSpaceImpl.InternalState = null,
         },
     );

@@ -71,7 +71,6 @@ pub const BackgroundFetchEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            registration: *runtime.Instance = undefined,
             _internal: ?*BackgroundFetchEventImpl.InternalState = null,
         },
     );

@@ -78,10 +78,6 @@ pub const RTCTrackEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            receiver: *runtime.Instance = undefined,
-            track: *runtime.Instance = undefined,
-            streams: runtime.JSValue = undefined,
-            transceiver: *runtime.Instance = undefined,
             cached_streams: ?runtime.JSValue = null,
             _internal: ?*RTCTrackEventImpl.InternalState = null,
         },

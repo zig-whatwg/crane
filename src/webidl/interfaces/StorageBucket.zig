@@ -43,6 +43,13 @@ pub const StorageBucket = struct {
             .{ "caches", "get_caches", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "indexedDB",
+            "caches",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "persist", "call_persist", 0 },
@@ -87,9 +94,6 @@ pub const StorageBucket = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            indexedDB: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
             cached_caches: ?*runtime.Instance = null,
             _internal: ?*StorageBucketImpl.InternalState = null,

@@ -82,9 +82,6 @@ pub const VirtualKeyboard = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            boundingRect: *runtime.Instance = undefined,
-            overlaysContent: bool = undefined,
-            ongeometrychange: typedefs.EventHandler = undefined,
             _internal: ?*VirtualKeyboardImpl.InternalState = null,
         },
     );

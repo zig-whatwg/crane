@@ -40,6 +40,12 @@ pub const XRPlane = struct {
             .{ "semanticLabel", "get_semanticLabel", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "planeSpace",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -68,11 +74,6 @@ pub const XRPlane = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            planeSpace: *runtime.Instance = undefined,
-            polygon: runtime.JSValue = undefined,
-            orientation: ?enums.XRPlaneOrientation = null,
-            lastChangedTime: typedefs.DOMHighResTimeStamp = undefined,
-            semanticLabel: ?runtime.DOMString = null,
             cached_planeSpace: ?*runtime.Instance = null,
             _internal: ?*XRPlaneImpl.InternalState = null,
         },

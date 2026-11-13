@@ -78,15 +78,6 @@ pub const AudioListener = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            positionX: *runtime.Instance = undefined,
-            positionY: *runtime.Instance = undefined,
-            positionZ: *runtime.Instance = undefined,
-            forwardX: *runtime.Instance = undefined,
-            forwardY: *runtime.Instance = undefined,
-            forwardZ: *runtime.Instance = undefined,
-            upX: *runtime.Instance = undefined,
-            upY: *runtime.Instance = undefined,
-            upZ: *runtime.Instance = undefined,
             _internal: ?*AudioListenerImpl.InternalState = null,
         },
     );

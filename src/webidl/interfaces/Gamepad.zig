@@ -50,6 +50,12 @@ pub const Gamepad = struct {
             .{ "pose", "get_pose", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "vibrationActuator",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -85,18 +91,6 @@ pub const Gamepad = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            index: i32 = undefined,
-            connected: bool = undefined,
-            timestamp: typedefs.DOMHighResTimeStamp = undefined,
-            mapping: enums.GamepadMappingType = undefined,
-            axes: runtime.JSValue = undefined,
-            buttons: runtime.JSValue = undefined,
-            touches: runtime.JSValue = undefined,
-            vibrationActuator: *runtime.Instance = undefined,
-            hand: enums.GamepadHand = undefined,
-            hapticActuators: runtime.JSValue = undefined,
-            pose: ?*runtime.Instance = null,
             cached_vibrationActuator: ?*runtime.Instance = null,
             _internal: ?*GamepadImpl.InternalState = null,
         },

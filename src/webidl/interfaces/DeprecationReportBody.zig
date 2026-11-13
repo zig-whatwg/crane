@@ -76,12 +76,6 @@ pub const DeprecationReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            anticipatedRemoval: ?runtime.JSValue = null,
-            message: runtime.DOMString = undefined,
-            sourceFile: ?runtime.DOMString = null,
-            lineNumber: ?u32 = null,
-            columnNumber: ?u32 = null,
             _internal: ?*DeprecationReportBodyImpl.InternalState = null,
         },
     );

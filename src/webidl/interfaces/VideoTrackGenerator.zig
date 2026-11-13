@@ -61,9 +61,6 @@ pub const VideoTrackGenerator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            writable: *runtime.Instance = undefined,
-            muted: bool = undefined,
-            track: *runtime.Instance = undefined,
             _internal: ?*VideoTrackGeneratorImpl.InternalState = null,
         },
     );

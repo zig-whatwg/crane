@@ -77,9 +77,6 @@ pub const WindowClient = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visibilityState: enums.DocumentVisibilityState = undefined,
-            focused: bool = undefined,
-            ancestorOrigins: runtime.JSValue = undefined,
             cached_ancestorOrigins: ?runtime.JSValue = null,
             _internal: ?*WindowClientImpl.InternalState = null,
         },

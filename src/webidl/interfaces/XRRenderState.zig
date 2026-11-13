@@ -79,12 +79,6 @@ pub const XRRenderState = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            depthNear: f64 = undefined,
-            depthFar: f64 = undefined,
-            passthroughFullyObscured: ?bool = null,
-            inlineVerticalFieldOfView: ?f64 = null,
-            baseLayer: ?*runtime.Instance = null,
-            layers: runtime.JSValue = undefined,
             _internal: ?*XRRenderStateImpl.InternalState = null,
         },
     );

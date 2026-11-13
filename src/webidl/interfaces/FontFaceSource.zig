@@ -51,7 +51,6 @@ pub const FontFaceSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fonts: *runtime.Instance = undefined,
             _internal: ?*FontFaceSourceImpl.InternalState = null,
         },
     );

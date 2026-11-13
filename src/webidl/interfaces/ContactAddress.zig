@@ -78,16 +78,6 @@ pub const ContactAddress = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            city: runtime.DOMString = undefined,
-            country: runtime.DOMString = undefined,
-            dependentLocality: runtime.DOMString = undefined,
-            organization: runtime.DOMString = undefined,
-            phone: runtime.DOMString = undefined,
-            postalCode: runtime.DOMString = undefined,
-            recipient: runtime.DOMString = undefined,
-            region: runtime.DOMString = undefined,
-            sortingCode: runtime.DOMString = undefined,
-            addressLine: runtime.JSValue = undefined,
             _internal: ?*ContactAddressImpl.InternalState = null,
         },
     );

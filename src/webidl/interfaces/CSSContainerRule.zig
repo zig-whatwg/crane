@@ -69,9 +69,6 @@ pub const CSSContainerRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            containerName: typedefs.CSSOMString = undefined,
-            containerQuery: typedefs.CSSOMString = undefined,
-            conditions: runtime.JSValue = undefined,
             _internal: ?*CSSContainerRuleImpl.InternalState = null,
         },
     );

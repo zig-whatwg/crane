@@ -56,7 +56,6 @@ pub const Viewport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            segments: ?runtime.JSValue = null,
             _internal: ?*ViewportImpl.InternalState = null,
         },
     );

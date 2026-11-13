@@ -93,9 +93,6 @@ pub const SFrameDecryptorStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*SFrameDecryptorStreamImpl.InternalState = null,
         },
     );

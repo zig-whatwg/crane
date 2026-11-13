@@ -90,10 +90,6 @@ pub const SpeechSynthesis = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pending: bool = undefined,
-            speaking: bool = undefined,
-            paused: bool = undefined,
-            onvoiceschanged: typedefs.EventHandler = undefined,
             _internal: ?*SpeechSynthesisImpl.InternalState = null,
         },
     );

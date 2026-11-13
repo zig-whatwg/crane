@@ -79,9 +79,6 @@ pub const ProximitySensor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            distance: ?f64 = null,
-            max: ?f64 = null,
-            near: ?bool = null,
             _internal: ?*ProximitySensorImpl.InternalState = null,
         },
     );

@@ -81,9 +81,6 @@ pub const MediaQueryList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            media: typedefs.CSSOMString = undefined,
-            matches: bool = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*MediaQueryListImpl.InternalState = null,
         },
     );

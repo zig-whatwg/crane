@@ -72,7 +72,6 @@ pub const SpeechGrammarList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*SpeechGrammarListImpl.InternalState = null,
         },
     );

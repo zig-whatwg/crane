@@ -101,13 +101,6 @@ pub const IDBDatabase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            version: u64 = undefined,
-            objectStoreNames: *runtime.Instance = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            onversionchange: typedefs.EventHandler = undefined,
             _internal: ?*IDBDatabaseImpl.InternalState = null,
         },
     );

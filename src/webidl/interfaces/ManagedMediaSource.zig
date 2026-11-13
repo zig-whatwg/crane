@@ -88,9 +88,6 @@ pub const ManagedMediaSource = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            streaming: bool = undefined,
-            onstartstreaming: typedefs.EventHandler = undefined,
-            onendstreaming: typedefs.EventHandler = undefined,
             _internal: ?*ManagedMediaSourceImpl.InternalState = null,
         },
     );

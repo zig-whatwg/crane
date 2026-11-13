@@ -70,7 +70,6 @@ pub const MediaKeyStatusMap = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u32 = undefined,
             _internal: ?*MediaKeyStatusMapImpl.InternalState = null,
         },
     );

@@ -80,7 +80,6 @@ pub const XRSystem = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ondevicechange: typedefs.EventHandler = undefined,
             _internal: ?*XRSystemImpl.InternalState = null,
         },
     );

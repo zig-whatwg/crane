@@ -57,10 +57,6 @@ pub const CanvasShadowStyles = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            shadowOffsetX: f64 = undefined,
-            shadowOffsetY: f64 = undefined,
-            shadowBlur: f64 = undefined,
-            shadowColor: runtime.DOMString = undefined,
             _internal: ?*CanvasShadowStylesImpl.InternalState = null,
         },
     );

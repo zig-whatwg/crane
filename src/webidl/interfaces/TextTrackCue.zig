@@ -83,13 +83,6 @@ pub const TextTrackCue = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: ?*runtime.Instance = null,
-            id: runtime.DOMString = undefined,
-            startTime: f64 = undefined,
-            endTime: f64 = undefined,
-            pauseOnExit: bool = undefined,
-            onenter: typedefs.EventHandler = undefined,
-            onexit: typedefs.EventHandler = undefined,
             _internal: ?*TextTrackCueImpl.InternalState = null,
         },
     );

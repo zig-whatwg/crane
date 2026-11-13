@@ -126,15 +126,6 @@ pub const LanguageModel = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            contextUsage: f64 = undefined,
-            contextWindow: f64 = undefined,
-            oncontextoverflow: typedefs.EventHandler = undefined,
-            inputUsage: f64 = undefined,
-            inputQuota: f64 = undefined,
-            onquotaoverflow: typedefs.EventHandler = undefined,
-            topK: u32 = undefined,
-            temperature: f32 = undefined,
-            samplingMode: enums.LanguageModelSamplingMode = undefined,
             _internal: ?*LanguageModelImpl.InternalState = null,
         },
     );

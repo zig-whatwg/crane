@@ -205,3 +205,51 @@ pub fn parseStrokeWidth(options: properties.ParseOptions, stream: *properties.St
     }
     return properties.parseLonghand(options, .padding_left, stream);
 }
+
+/// SVG 2 §13.5.6: stroke-dasharray is none | <dasharray>, where
+/// <dasharray> = [ [ <length-percentage> | <number> ]+ ]# - "a list of comma
+/// and/or white space separated <number> or <length-percentage> values";
+/// "if any value in the list is negative, the <dasharray> value is invalid".
+/// The list is a text_values.Components (serialized comma separated); its
+/// numbers compute to px (cascade.zig, "numbers converted to absolute
+/// lengths first").
+pub fn parseDasharray(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Value {
+    const first = stream.peek();
+    if (first.token_type == .ident and tokenizer.nameEql(first.value, "none")) {
+        _ = stream.next();
+        return Value.kw(.none);
+    }
+    const allocator = options.allocator;
+    var items: std.ArrayList(Value) = .empty;
+    defer {
+        for (items.items) |item| item.release();
+        items.deinit(allocator);
+    }
+    while (true) {
+        const item = (try dash(options, stream)) orelse return null;
+        items.append(allocator, item) catch |err| {
+            item.release();
+            return err;
+        };
+        switch (stream.peek().token_type) {
+            // A comma needs a value after it.
+            .comma => _ = stream.next(),
+            .number, .dimension, .percentage, .function => {},
+            else => break,
+        }
+    }
+    return .{ .text_values = try @import("text_values.zig").Components.create(allocator, .stroke_dasharray, items.items) };
+}
+
+/// <length-percentage [0,∞]> | <number [0,∞]>.
+fn dash(options: properties.ParseOptions, stream: *properties.Stream) Allocator.Error!?Value {
+    const token = stream.peek();
+    if (@import("math_values.zig").isFunction(token)) return properties.mathValue(options, stream, .{ .kind = .length_percentage_number, .minimum = 0, .minimum_kind = .computation });
+    if (token.token_type == .number) {
+        const number = token.numeric_value orelse return null;
+        if (!std.math.isFinite(number) or number < 0) return null;
+        _ = stream.next();
+        return .{ .number = number };
+    }
+    return properties.lengthPercentage(options, stream, .{ .negative = false, .quirky = false });
+}

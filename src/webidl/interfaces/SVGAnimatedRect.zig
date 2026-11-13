@@ -33,6 +33,13 @@ pub const SVGAnimatedRect = struct {
             .{ "animVal", "get_animVal", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "baseVal",
+            "animVal",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -58,8 +65,6 @@ pub const SVGAnimatedRect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: typedefs.SVGRect = undefined,
-            animVal: typedefs.SVGRect = undefined,
             cached_baseVal: ?SVGRect = null,
             cached_animVal: ?SVGRect = null,
             _internal: ?*SVGAnimatedRectImpl.InternalState = null,

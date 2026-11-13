@@ -70,8 +70,6 @@ pub const MediaEncryptedEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            initDataType: runtime.DOMString = undefined,
-            initData: ?runtime.ArrayBuffer = null,
             _internal: ?*MediaEncryptedEventImpl.InternalState = null,
         },
     );

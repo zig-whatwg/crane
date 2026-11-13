@@ -57,8 +57,6 @@ pub const ResizeObserverSize = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inlineSize: f64 = undefined,
-            blockSize: f64 = undefined,
             _internal: ?*ResizeObserverSizeImpl.InternalState = null,
         },
     );

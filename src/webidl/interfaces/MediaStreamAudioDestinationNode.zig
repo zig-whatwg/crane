@@ -85,7 +85,6 @@ pub const MediaStreamAudioDestinationNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            stream: *runtime.Instance = undefined,
             _internal: ?*MediaStreamAudioDestinationNodeImpl.InternalState = null,
         },
     );

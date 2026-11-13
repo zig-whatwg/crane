@@ -41,16 +41,12 @@ fn idlePeriodsRunTheirCallbacks() !void {
 
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
     const periods_before = loop.idle_period_id;
-    // Periods started for the engine's idle work alone (lane wr1 batch 10:
-    // V8's idle tasks share the loop's idle periods) run no idle callback by
-    // design; each is given to the engine, so none of them is empty.
-    const engine_only_before = loop.engine_only_idle_periods;
     var turns: usize = 0;
     const start = clock.monotonicMillis();
     while (clock.monotonicMillis() - start < 300) : (turns += 1) {
         _ = loop.runOnceBlocking(5);
     }
-    const periods = (loop.idle_period_id - periods_before) - (loop.engine_only_idle_periods - engine_only_before);
+    const periods = loop.idle_period_id - periods_before;
     try page.run("stopIdle = true; clearInterval(ticker);");
 
     const runs_text = try page.evaluate("String(idleRuns)");

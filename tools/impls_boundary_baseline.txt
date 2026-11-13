@@ -2,10 +2,6 @@
 # A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
-src/runtime/engines/v8/context_manager.zig Window.getInternal 1
-src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
-src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 1
-src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 2
 src/runtime/engines/v8/window_properties.zig Window.getNamedProperty 2
 src/runtime/engines/v8/window_properties.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/wrapper_cache.zig Document.getInternalState 1
@@ -13,18 +9,11 @@ src/runtime/engines/v8/wrapper_cache.zig History.getInternal 1
 src/runtime/engines/v8/wrapper_cache.zig Location.getInternalState 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setElement 1
 src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.setSupportedTokens 1
-src/webidl/impls/HTMLIFrameElement.zig DOMTokenList.set_value 1
-src/webidl/impls/HTMLIFrameElement.zig Document.call_createElement 3
 src/webidl/impls/HTMLIFrameElement.zig Document.setDefaultView 2
 src/webidl/impls/HTMLIFrameElement.zig Document.setDocumentElement 1
-src/webidl/impls/HTMLIFrameElement.zig Element.call_getAttribute 5
-src/webidl/impls/HTMLIFrameElement.zig Element.call_hasAttribute 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setNavigateCallback 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setURLFromString 1
 src/webidl/impls/HTMLIFrameElement.zig Location.setWindow 1
-src/webidl/impls/HTMLIFrameElement.zig Node.call_appendChild 3
-src/webidl/impls/HTMLIFrameElement.zig Node.getOwnerDocument 9
-src/webidl/impls/HTMLIFrameElement.zig Node.get_isConnected 3
 src/webidl/impls/HTMLIFrameElement.zig Node.setLocalName 1
 src/webidl/impls/HTMLIFrameElement.zig Window.getInternal 1
 src/webidl/impls/HTMLIFrameElement.zig Window.replaceBrowsingContext 1

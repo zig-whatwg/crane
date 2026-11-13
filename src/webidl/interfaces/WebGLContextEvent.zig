@@ -71,7 +71,6 @@ pub const WebGLContextEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            statusMessage: runtime.DOMString = undefined,
             _internal: ?*WebGLContextEventImpl.InternalState = null,
         },
     );

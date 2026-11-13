@@ -57,8 +57,6 @@ pub const SVGAnimatedBoolean = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: bool = undefined,
-            animVal: bool = undefined,
             _internal: ?*SVGAnimatedBooleanImpl.InternalState = null,
         },
     );

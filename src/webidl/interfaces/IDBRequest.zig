@@ -91,17 +91,6 @@ pub const IDBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            result: runtime.JSValue = undefined,
-            @"error": ?*runtime.Instance = null,
-            source: ?union(enum) {
-                IDBObjectStore: IDBObjectStore,
-                IDBIndex: IDBIndex,
-                IDBCursor: IDBCursor,
-            } = null,
-            transaction: ?*runtime.Instance = null,
-            readyState: enums.IDBRequestReadyState = undefined,
-            onsuccess: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*IDBRequestImpl.InternalState = null,
         },
     );

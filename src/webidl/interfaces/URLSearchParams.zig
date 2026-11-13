@@ -81,7 +81,6 @@ pub const URLSearchParams = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u32 = undefined,
             _internal: ?*URLSearchParamsImpl.InternalState = null,
         },
     );

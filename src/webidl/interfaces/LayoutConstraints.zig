@@ -72,15 +72,6 @@ pub const LayoutConstraints = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            availableInlineSize: f64 = undefined,
-            availableBlockSize: f64 = undefined,
-            fixedInlineSize: ?f64 = null,
-            fixedBlockSize: ?f64 = null,
-            percentageInlineSize: f64 = undefined,
-            percentageBlockSize: f64 = undefined,
-            blockFragmentationOffset: ?f64 = null,
-            blockFragmentationType: enums.BlockFragmentationType = undefined,
-            data: runtime.JSValue = undefined,
             _internal: ?*LayoutConstraintsImpl.InternalState = null,
         },
     );

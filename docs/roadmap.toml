@@ -167,6 +167,7 @@ progress = [
   "d74b3cdf00e, e94d5808576 - same-document navigations (pushState/replaceState, fragment navigations) finalize on the traversal queue: their entries are pending until listed, a traversal queued before them computes its endpoint from the original placement, and their finalize jumps a waiting traversal (14.1); every document's view reads the pending entries at once; a same-document traversal ends a navigation in flight (14.10.1) (nav2 E)",
   "66a94c84d0e, ab942228a3d - fragment navigation cost: the joint session history's lookups by id and navigable are indexed, clear-forward is one compaction, the views are written into kept buffers, and the navigation API's dispose check is linear (nav2 H)",
   "a26b9c16d1b, 3e2c123672b, 0ecb930d82c - \"finalize a cross-document navigation\" is a queue item: the entry is listed before the displayed document unloads, the commit waits for the items queued before it, and a mature navigation commits even when a later one started (nav2 F1; the host page's Context.navigate through it, F2)",
+  "771201f4a2d, 3a3ddd1dd3a, 089dc3cad2b - a planned form navigation cancels a javascript: URL queued in its target; about:srcdoc outside srcdoc= is a network error; an about:blank navigation carries main fetch's referrer; a removed frame's subtree is discarded at once; inner invoke skips listeners of not-fully-active Windows, with navigation API detach events before the frame unloads (lane nav2 batch 9)",
 ]
 
   [[infra.items]]
@@ -695,6 +696,57 @@ progress = [
 # ---------------------------------------------------------------------------
 # Prerequisites for parallel work
 # ---------------------------------------------------------------------------
+
+[[infra]]
+id = "build-protocols"
+title = "build.zig names no engine and no platform: adapters declare their build side"
+why = """The user, 2026-11-12 (HARD): "I don't want any of the v8 code in build.zig, the valid \
+flags should be in the js engine protocol that can be used, same goes for the platform \
+protocol." build.zig had 519 lines naming an engine and 149 naming an OS (lane build1's \
+inventory); another engine's flags must not exist in a build that does not use it."""
+done_when = """Each protocol has a build side its adapters implement (flags, sources, link \
+inputs, steps); build.zig imports only the two protocol build files; `zig build lint-build` \
+(a ratchet) is at zero for engine names and for platform names; every migration commit but \
+one is proven byte-identical in build output. Design: lane build1, 2026-11-12 (ten batches)."""
+progress = [
+  "2026-11-12 - lane build1: the design and inventory; lane v8up b7: the first adapter-declared options (the V8 adapter's engine_build.zig behind src/runtime/engine_build_protocol.zig).",
+]
+
+  [[infra.items]]
+  name = "Engine half (batches 0, E1-E5): the list of adapters, flags, sources and link inputs, the adapter module, snapshot and tests"
+  status = "todo"
+
+  [[infra.items]]
+  name = "Platform half (batches P1-P4): the adapter list, the kit's C libraries, per-OS links, checks and tests"
+  status = "todo"
+
+[[infra]]
+id = "api-subset-build"
+title = "A smaller build from a list of web APIs (0.1 requirement)"
+why = """The user, 2026-11-12: a dead-code-elimination build flag that takes the list of web \
+APIs a host needs, adds what those depend on, and compiles a smaller engine - "a blocker \
+for 0.1". The release console is 89.8 MB (50.9 MB of code: about 26 MB V8 and ICU, about \
+24 MB Crane's own, by symbol name); only Crane's half can shrink this way."""
+done_when = """A build option, declared by the WebIDL layer through the build protocols, takes a \
+list of interfaces; the generator computes the dependency closure from the IDL (inheritance, \
+members' types, mixins, and the engine's own internal uses, declared), emits only those \
+interfaces, and the startup snapshot is built from the same list; a reduced build's size is \
+measured against the full build for at least two named lists; a reduced build passes the \
+WPT files of the APIs it kept; the full build stays the default, and WPT, the results site \
+and the performance page run the full build only."""
+progress = []
+
+  [[infra.items]]
+  name = "Prototype, measurement first: generate for one small list, measure code size and the snapshot, name what does not fall out by itself (parser, cascade, internal uses)"
+  status = "todo"
+
+  [[infra.items]]
+  name = "The dependency closure from the IDL plus declared internal uses; a build error for a missing dependency"
+  status = "todo"
+
+  [[infra.items]]
+  name = "The build option, the reduced snapshot, tests of a reduced build, documentation"
+  status = "todo"
 
 [[parallel]]
 name = "Heavy builds and WPT runs on chat.local, one mirror per lane"

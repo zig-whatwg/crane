@@ -72,8 +72,6 @@ pub const RTCPeerConnectionIceEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            candidate: ?*runtime.Instance = null,
-            url: ?runtime.USVString = null,
             _internal: ?*RTCPeerConnectionIceEventImpl.InternalState = null,
         },
     );

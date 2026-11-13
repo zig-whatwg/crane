@@ -409,7 +409,7 @@ test "=== holds across collections while script holds the node" {
     try testing.expect(try page.holds("held.expando === 6 && d2.documentElement === held && held.ownerDocument === d2"));
 }
 
-test "a node anchor is 24 bytes of its agent's C++ heap, and a node wrapper keeps no Global" {
+test "a node anchor is 32 bytes of its agent's C++ heap, and a node wrapper keeps no Global" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
@@ -441,12 +441,15 @@ test "a node anchor is 24 bytes of its agent's C++ heap, and a node wrapper keep
     page.collect();
     queue.drainAll();
     try testing.expectEqual(wrappers_before + count, try counter("node_wrappers"));
-    // One anchor each: cppgc's 8-byte header, the slot pointer (design 4.1)
-    // and its registry index with its keeps' count (4 + 4 bytes: the O(1)
-    // removal when a scavenge drops its wrapper and the anchor is freed,
-    // lane wr1 batch 8). The registry holds raw pointers, off the C++ heap.
+    // One anchor each: cppgc's 8-byte header, the vptr every
+    // v8::Object::Wrappable has (V8 15.7's Object::Wrap takes one; 13.1.203
+    // took any cppgc object and the anchor was 24 bytes), the slot pointer
+    // (design 4.1) and its registry index with its keeps' count (4 + 4
+    // bytes: the O(1) removal when a scavenge drops its wrapper and the
+    // anchor is freed, lane wr1 batch 8). The registry holds raw pointers,
+    // off the C++ heap.
     const per_node = @divTrunc(try counterOf(page, "cpp_heap_used_bytes") - cpp_before, count);
-    try testing.expectEqual(@as(i64, 24), per_node);
+    try testing.expectEqual(@as(i64, 32), per_node);
     // No Global<Object> per node: the binding's box went once the slot held
     // the wrapper (P2 kept its node in the slot).
     try testing.expect(try counter("live_object_globals") - globals_before < 10);

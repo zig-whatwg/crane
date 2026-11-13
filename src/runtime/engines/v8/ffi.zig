@@ -100,11 +100,10 @@ pub const ArgumentRead = extern struct {
     boolean: bool,
     /// The whole string is in the buffer.
     fits: bool,
-    /// An object's internal fields 0 and 1 (through a legacy platform
+    /// An object's internal field 0, its instance (through a legacy platform
     /// object's proxy, as `this` is read); null when it has none, and for a
-    /// function.
+    /// function. A wrapper has no other field (lane v8up A0).
     instance: ?*anyopaque,
-    type_info: ?*anyopaque,
 
     pub const Kind = enum(i32) {
         missing = 0,
@@ -120,6 +119,10 @@ pub const ArgumentRead = extern struct {
     };
 };
 
+/// sizeof the C++ side's ArgumentRead: a test pins `ArgumentRead`'s layout
+/// against it (tests/v8/v8up_a0_wrapper_field_test.zig).
+pub extern fn v8_ArgumentRead_Size() usize;
+
 /// FunctionCallbackInfo - Encapsulates information about a function call from JavaScript
 pub const FunctionCallbackInfo = opaque {
     /// Get the V8 isolate for this callback
@@ -134,13 +137,13 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
-    /// Internal fields 0 and 1 of the receiver (the instance and its
-    /// WrapperTypeInfo), looked through a legacy platform object's proxy, in
-    /// one call; a field the receiver lacks, or a receiver that is not an
-    /// object, reads as null. A node wrapper (no internal field: the wrapper
-    /// redesign's P4) reads as its anchor's instance and no type info. Makes
-    /// no handle.
-    pub extern fn v8_FunctionCallbackInfo_ThisInstanceFields(self: *const FunctionCallbackInfo, instance: *?*anyopaque, type_info: *?*anyopaque) void;
+    /// Internal field 0 of the receiver, its instance, looked through a
+    /// legacy platform object's proxy; null for a receiver with no instance
+    /// or one that is not an object. A node wrapper (no internal field: the
+    /// wrapper redesign's P4) reads as its anchor's instance. Makes no
+    /// handle. The brand check is the instance's state ancestry
+    /// (`conv.implements`), not a WrapperTypeInfo beside it (lane v8up A0).
+    pub extern fn v8_FunctionCallbackInfo_ThisInstance(self: *const FunctionCallbackInfo) ?*anyopaque;
 
     /// The receiver's node wrapper slot (Object::Unwrap under the node
     /// anchors' tag, the anchor's slot), for a member of a node interface;
@@ -175,9 +178,6 @@ pub const FunctionCallbackInfo = opaque {
 
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
-
-    /// Get the function being called
-    pub extern fn v8_FunctionCallbackInfo_GetFunction(self: *const FunctionCallbackInfo) ?*Function;
 
     /// Get the creation context of the target function being called.
     /// This is critical for cross-realm support: when calling
@@ -225,21 +225,11 @@ pub const FunctionCallbackInfo = opaque {
         return v8_FunctionCallbackInfo_Data(self);
     }
 
-    /// Get the function being called.
-    pub inline fn getFunction(self: *const FunctionCallbackInfo) ?*Function {
-        return v8_FunctionCallbackInfo_GetFunction(self);
-    }
-
     /// Get the creation context of the target function being called.
     /// For cross-realm support: returns the context where the method was instantiated.
     pub inline fn getFunctionCreationContext(self: *const FunctionCallbackInfo) ?*Context {
         return v8_FunctionCallbackInfo_GetFunctionCreationContext(self);
     }
-
-    /// What the callback's target is, read as
-    /// v8_FunctionCallbackInfo_GetFunctionCreationContext reads it: 1 a
-    /// FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests.
-    pub extern fn v8_Debug_FunctionCallbackTargetKind(self: *const FunctionCallbackInfo) c_int;
 
     /// A string result, `length` bytes of ASCII (`one_byte`) or well-formed
     /// UTF-8, made in the callback's own HandleScope and set into the return
@@ -277,10 +267,10 @@ pub const PropertyCallbackInfo = opaque {
     /// Get the V8 isolate for this callback
     pub extern fn v8_PropertyCallbackInfo_GetIsolate(self: *const PropertyCallbackInfo) *Isolate;
 
-    /// Get the 'this' object for the property access
-    pub extern fn v8_PropertyCallbackInfo_This(self: *const PropertyCallbackInfo) *Object;
-
-    /// Get the holder object
+    /// The object that has the interceptor or accessor - WebIDL's O. V8 >= 14
+    /// gives a property callback no receiver (PropertyCallbackInfo::This() is
+    /// gone, 24eb3c4ba35); v8_wrapper.cpp v8_PropertyCallbackInfo_Holder says
+    /// why the holder is what the algorithms ask for.
     pub extern fn v8_PropertyCallbackInfo_Holder(self: *const PropertyCallbackInfo) ?*Object;
 
     /// The aligned pointer in internal field `index` of the object that has
@@ -309,16 +299,14 @@ pub const PropertyCallbackInfo = opaque {
     /// Get data associated with the accessor
     pub extern fn v8_PropertyCallbackInfo_Data(self: *const PropertyCallbackInfo) *Value;
 
-    /// Check if errors should throw (indicates strict mode)
-    /// Returns true if we're in strict mode and should throw TypeError on failure
+    /// Whether a setter, definer or deleter interceptor should throw (strict
+    /// mode). Only those ask: the C++ side reads the info as the
+    /// PropertyCallbackInfo<Boolean> V8 >= 14 passes them, the only kind it
+    /// answers for (a Value one says false in strict mode too).
     pub extern fn v8_PropertyCallbackInfo_ShouldThrowOnError(self: *const PropertyCallbackInfo) bool;
 
     pub inline fn getIsolate(self: *const PropertyCallbackInfo) *Isolate {
         return v8_PropertyCallbackInfo_GetIsolate(self);
-    }
-
-    pub inline fn getThis(self: *const PropertyCallbackInfo) *Object {
-        return v8_PropertyCallbackInfo_This(self);
     }
 
     pub inline fn getHolder(self: *const PropertyCallbackInfo) ?*Object {
@@ -373,47 +361,41 @@ pub const AccessorGetterCallback = *const fn (
 pub const AccessorSetterCallback = *const fn (
     property_name: *Name,
     value: *Value,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) void;
 
-/// PropertyCallbackInfo for setters (returns void)
-pub const PropertyCallbackInfoVoid = opaque {
-    pub extern fn v8_PropertyCallbackInfo_Void_GetIsolate(self: *const PropertyCallbackInfoVoid) *Isolate;
+/// The info of a setter or definer: V8 >= 14 types it PropertyCallbackInfo<Boolean>
+/// (the setter's answer is a boolean; it was <void> before, crbug 348660658).
+pub const PropertyCallbackInfoBoolean = opaque {
+    pub extern fn v8_PropertyCallbackInfo_Boolean_GetIsolate(self: *const PropertyCallbackInfoBoolean) *Isolate;
 
     /// Check if errors should throw (indicates strict mode)
     /// Returns true if we're in strict mode and should throw TypeError on failure
-    pub extern fn v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool;
+    pub extern fn v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(self: *const PropertyCallbackInfoBoolean) bool;
 
-    /// Get the 'this' object
-    pub extern fn v8_PropertyCallbackInfo_Void_This(self: *const PropertyCallbackInfoVoid) *Object;
-
-    /// Get the holder object
-    pub extern fn v8_PropertyCallbackInfo_Void_Holder(self: *const PropertyCallbackInfoVoid) ?*Object;
+    /// The object being set or defined on (v8_PropertyCallbackInfo_Holder says why).
+    pub extern fn v8_PropertyCallbackInfo_Boolean_Holder(self: *const PropertyCallbackInfoBoolean) ?*Object;
 
     /// A definer or setter interceptor's "return false" (WebIDL 3.9.3):
     /// Object.defineProperty's TypeError, Reflect.defineProperty's false.
-    pub extern fn v8_PropertyCallbackInfo_Void_SetFalse(self: *const PropertyCallbackInfoVoid) void;
+    pub extern fn v8_PropertyCallbackInfo_Boolean_SetFalse(self: *const PropertyCallbackInfoBoolean) void;
 
-    pub inline fn getIsolate(self: *const PropertyCallbackInfoVoid) *Isolate {
-        return v8_PropertyCallbackInfo_Void_GetIsolate(self);
+    pub inline fn getIsolate(self: *const PropertyCallbackInfoBoolean) *Isolate {
+        return v8_PropertyCallbackInfo_Boolean_GetIsolate(self);
     }
 
-    pub inline fn getThis(self: *const PropertyCallbackInfoVoid) *Object {
-        return v8_PropertyCallbackInfo_Void_This(self);
+    pub inline fn getHolder(self: *const PropertyCallbackInfoBoolean) ?*Object {
+        return v8_PropertyCallbackInfo_Boolean_Holder(self);
     }
 
-    pub inline fn getHolder(self: *const PropertyCallbackInfoVoid) ?*Object {
-        return v8_PropertyCallbackInfo_Void_Holder(self);
-    }
-
-    pub inline fn setFalse(self: *const PropertyCallbackInfoVoid) void {
-        v8_PropertyCallbackInfo_Void_SetFalse(self);
+    pub inline fn setFalse(self: *const PropertyCallbackInfoBoolean) void {
+        v8_PropertyCallbackInfo_Boolean_SetFalse(self);
     }
 
     /// Check if errors should throw (indicates strict mode)
     /// Returns true if we're in strict mode and should throw TypeError on failure
-    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfoVoid) bool {
-        return v8_PropertyCallbackInfo_Void_ShouldThrowOnError(self);
+    pub inline fn shouldThrowOnError(self: *const PropertyCallbackInfoBoolean) bool {
+        return v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(self);
     }
 };
 
@@ -622,7 +604,7 @@ pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerFull(
 pub const NamedPropertyDefinerCallback = *const fn (
     property: *Name,
     desc: *const PropertyDescriptor,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) Intercepted;
 
 pub extern fn v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
@@ -650,13 +632,25 @@ pub const IndexedPropertyEnumeratorCallback = *const fn (
     info: *const PropertyCallbackInfo,
 ) callconv(.c) void;
 
-/// V8 Intercepted enum - indicates whether a property interceptor handled the request
-/// kNo (0) = not intercepted, continue normal lookup
-/// kYes (1) = intercepted, use the return value
-pub const Intercepted = enum(u8) {
-    kNo = 0,
-    kYes = 1,
+/// V8's v8::Intercepted, which every interceptor callback returns by value:
+/// kNo = not intercepted, V8 continues the ordinary lookup; kYes = intercepted,
+/// the return value (or the exception) is the answer. V8's own definition at
+/// 15.7 (include/v8-template.h): `enum class Intercepted : uint32_t { kNo = 1,
+/// kYes = 0 }` - V8 8f35dec9947 (2026-01-30) changed it from 13.1's
+/// `uint8_t { kNo = 0, kYes = 1 }` so that kNo is the IC's
+/// kNotInterceptedSentinel. With 13.1's values every "not mine" read as
+/// "intercepted, undefined" (`new Document().implementation` was undefined
+/// behind Document's masking named interceptor). Pinned against V8's by
+/// v8_Intercepted_Value / _Size (tests/v8/v8up_interceptor_contract_test.zig).
+pub const Intercepted = enum(u32) {
+    kNo = 1,
+    kYes = 0,
 };
+
+/// V8's own v8::Intercepted: the value of kYes (`yes`) or kNo, and the enum's
+/// size - the pin for `Intercepted` above (v8_wrapper.cpp).
+pub extern fn v8_Intercepted_Value(yes: bool) u32;
+pub extern fn v8_Intercepted_Size() usize;
 
 /// Indexed property query callback for Object.getOwnPropertyDescriptor attribute queries
 /// Should return property attributes (None=0, ReadOnly=1, DontEnum=2, DontDelete=4)
@@ -709,7 +703,7 @@ pub const PropertyDescriptor = opaque {};
 pub const IndexedPropertyDefinerCallback = *const fn (
     index: u32,
     desc: *const PropertyDescriptor,
-    info: *const PropertyCallbackInfoVoid,
+    info: *const PropertyCallbackInfoBoolean,
 ) callconv(.c) Intercepted;
 
 /// Check if PropertyDescriptor is an accessor descriptor (has get or set)
@@ -845,8 +839,9 @@ const isolate_entries = struct {
 };
 
 /// What an agent asks of its isolate before it initializes (v8_wrapper.cpp
-/// CraneIsolateOptions): engine.AgentOptions.random_seed and .clock. The
-/// default - nothing seeded, no clock - is an isolate exactly as
+/// CraneIsolateOptions): engine.AgentOptions.random_seed and .clock, and the
+/// build's limit for the young generation (young_generation.zig). The
+/// default - nothing seeded, no clock, no ceiling - is an isolate exactly as
 /// v8_Isolate_New makes one.
 pub const IsolateOptions = extern struct {
     /// Whether `random_seed` seeds the isolate's random number generator,
@@ -858,9 +853,10 @@ pub const IsolateOptions = extern struct {
     /// isolate is disposed.
     clock_context: ?*anyopaque = null,
     clock_wall_now: ?*const fn (context: ?*anyopaque) callconv(.c) i64 = null,
-    /// engine.AgentOptions.idle_periods: whether the isolate's runners take
-    /// V8's idle tasks, which wait for v8_Platform_RunIdleTasks.
-    idle_tasks: bool = false,
+    /// The isolate's ResourceConstraints max_young_generation_size_in_bytes
+    /// (young_generation.zig computes it from the build's limit,
+    /// -Dv8-young-generation-mb); 0: none, V8's own ceiling.
+    max_young_generation_bytes: usize = 0,
 };
 
 /// v8_Isolate_New, with `options` applied before the isolate initializes.
@@ -1090,15 +1086,24 @@ pub extern fn v8_Isolate_GetContextCounts(
     detached_contexts: ?*usize,
 ) void;
 pub extern fn v8_Isolate_ThrowException(isolate: *Isolate, exception: *Value) void;
-/// Isolate::AdjustAmountOfExternalAllocatedMemory: the external memory the
-/// isolate's objects keep alive changed by `change_in_bytes`; returns the
-/// new total. A rise may start incremental marking, or collect, before it
-/// returns (V8 13.1 Heap::HandleExternalMemoryInterrupt); a fall never does.
-/// On the isolate's thread, with it entered.
-pub extern fn v8_Isolate_AdjustAmountOfExternalAllocatedMemory(isolate: *Isolate, change_in_bytes: i64) i64;
+/// A v8::ExternalMemoryAccounter: one agent's report of the host memory its
+/// objects keep alive (external_memory.zig), on the C++ heap. Made with
+/// `_New`, moved with `_Update`, ended with `_Delete` (which takes back what
+/// is still reported).
+pub const ExternalMemoryAccounter = opaque {};
+pub extern fn v8_ExternalMemoryAccounter_New() ?*ExternalMemoryAccounter;
+/// ExternalMemoryAccounter::Update: the external memory the isolate's
+/// objects keep alive changed by `change_in_bytes`. A rise past V8's
+/// re-check step checks its allocation limits and may start incremental
+/// marking, or collect, before it returns (V8 15.7 Heap::UpdateExternalMemory);
+/// a fall never does. On the isolate's thread, with it entered.
+pub extern fn v8_ExternalMemoryAccounter_Update(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// ExternalMemoryAccounter::Decrease of `reported` (what the accounter still
+/// reports), then the accounter freed. On the isolate's thread, entered.
+pub extern fn v8_ExternalMemoryAccounter_Delete(accounter: *ExternalMemoryAccounter, isolate: *Isolate, reported: u64) void;
 /// Every byte of external memory V8 counts toward its collections - backing
 /// stores and what the host reported (HeapStatistics' external is backing
-/// stores alone in 13.1). Starts nothing.
+/// stores alone). Starts nothing.
 pub extern fn v8_Isolate_GetExternalMemory(isolate: *Isolate) usize;
 
 // Isolate embedder data (for storing per-isolate state)
@@ -1126,15 +1131,34 @@ pub extern fn v8_Context_Exit(context: *Context) void;
 /// the link between the context and its global proxy.
 pub extern fn v8_Context_DetachGlobal(context: *Context) void;
 
-/// Notify V8 that a context has been disposed.
-/// Per Chrome's LocalWindowProxy::DisposeContext, this hints to V8's GC that
-/// a context is no longer needed.
-pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, force_gc: bool) c_int;
-
-/// Get the real global object (not the global proxy) from a context.
-/// V8 uses a split global architecture: the global proxy is what JavaScript sees,
-/// but the real global object (with internal fields) is its prototype.
-pub extern fn v8_Context_GetRealGlobal(context: *Context) ?*Object;
+/// Isolate::ContextDisposedNotification, as Blink sends it when a frame's
+/// context goes (V8GCForContextDispose::NotifyContextDisposed):
+/// `has_dependants` is false for a main frame's context (kNoDependants: V8
+/// resets its allocation limits and tells its memory reducer) and true for a
+/// child frame's (kSomeDependants: a young collection by task). It collects
+/// nothing by itself. `disposed`, the context being disposed and still alive,
+/// is entered for the call, as Blink's DisposeContext is inside it: V8 takes
+/// the current context for the disposed one, and aborts its WebAssembly
+/// compilations. Nothing is sent for a context the collector already took.
+pub extern fn v8_Isolate_ContextDisposedNotification(isolate: *Isolate, disposed: *Context, has_dependants: bool) void;
+/// `isolate`'s context disposals so far, by what V8 was told: a main frame's
+/// (no dependants) and a child frame's. A diagnostic for tests; 0 for an
+/// isolate the adapter did not make.
+pub extern fn v8_Debug_ContextDisposals(isolate: ?*Isolate, main_frame: *u64, child_frame: *u64) void;
+/// navigation_collection.zig: a navigation replaced a main frame's document
+/// of `isolate`; its next engine-task step looks at the heap. On the
+/// isolate's thread.
+pub extern fn v8_Isolate_OweNavigationCollection(isolate: *Isolate) void;
+/// Whether that was owed - and it is not any more. One field of the
+/// isolate's record, no lock: asked at every engine-task step.
+pub extern fn v8_Isolate_TakeNavigationCollectionOwed(isolate: *Isolate) bool;
+/// v8::MemoryPressureLevel.
+pub const MemoryPressureLevel = enum(c_int) { none = 0, moderate = 1, critical = 2 };
+/// Isolate::MemoryPressureNotification, the signal Blink sends when the
+/// system is short of memory (BlinkIsolatesPressureListener::OnReleaseMemory):
+/// on the isolate's thread, moderate starts an incremental collection that
+/// reduces the footprint, and critical collects everything before it returns.
+pub extern fn v8_Isolate_MemoryPressureNotification(isolate: *Isolate, level: MemoryPressureLevel) void;
 
 pub extern fn v8_Context_Global(context: *Context) ?*Object;
 /// The context's registry key: a never-reused id kept in its embedder data,
@@ -1515,7 +1539,7 @@ pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Ob
 pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
 /// `value` may be null: clearing field 0 is how a discarded Window is severed
-/// from its global (window_properties.detachWindow).
+/// from its global proxy (realm_global.clearInstance).
 pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: ?*anyopaque) void;
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
 pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;
@@ -2193,6 +2217,10 @@ pub extern fn v8_Exception_SyntaxErrorInContext(context: *Context, message: *Str
 /// Create Error in a specific context (for cross-realm errors).
 pub extern fn v8_Exception_ErrorInContext(context: *Context, message: *String) ?*Value;
 
+/// A `stack` own property on `object` from the current stack, in `context`'s realm
+/// (v8::Exception::CaptureStackTrace; Blink V8ThrowDOMException::AttachStackProperty). Both borrowed.
+pub extern fn v8_Exception_CaptureStackTrace(context: *Context, object: *Object) bool;
+
 /// Get the creation context of an object's prototype.
 /// This walks up the prototype chain to find the context where the method/property
 /// was defined, which is needed for cross-realm error handling.
@@ -2668,22 +2696,6 @@ pub extern fn v8_test_TaskRunner_Release(runner: *TestTaskRunner) void;
 pub extern fn v8_test_TaskRunner_Post(runner: *TestTaskRunner, run: *const fn (?*anyopaque) callconv(.c) void, drop: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque, delay_seconds: f64) void;
 
 pub extern fn v8_Platform_PumpMessageLoop(isolate: *Isolate) bool;
-/// engine.hasEngineIdleTasks: whether V8 has idle tasks posted for `isolate`
-/// that have not run (only an isolate made with IsolateOptions.idle_tasks).
-pub extern fn v8_Isolate_HasIdleTasks(isolate: *Isolate) bool;
-/// engine.runEngineIdleTasks: V8's idle tasks for `isolate` (entered) in
-/// `seconds` of the host's idle period (libplatform's RunIdleTasks), then the
-/// agent's drain if it has work; whether any idle task ran.
-pub extern fn v8_Platform_RunIdleTasks(isolate: *Isolate, seconds: f64) bool;
-/// What the host's idle periods gave an isolate's V8, cumulative
-/// (v8_wrapper.cpp IdleStats).
-pub const IdleStats = extern struct {
-    periods: u64 = 0,
-    given_ns: u64 = 0,
-    used_ns: u64 = 0,
-    tasks_run: u64 = 0,
-};
-pub extern fn v8_Debug_IdleStats(isolate: ?*Isolate, out: *IdleStats) void;
 /// Whether V8 has background work for `isolate` that will post a foreground
 /// task when it ends (d8's CompleteMessageLoop waits on it).
 pub extern fn v8_Isolate_HasPendingBackgroundTasks(isolate: *Isolate) bool;
@@ -2795,10 +2807,20 @@ pub extern fn v8_Global_SetWeak(
 /// `unlink(data)` (optional) runs in V8's first pass, under the same rule as
 /// v8_Global_SetWeak's callback - no V8 API - so that nothing can reach what
 /// is being finalized: the wrapper cache drops its entry there. `finalize(data)`
-/// runs in V8's second pass, once every first-pass callback of the collection
-/// has run - from V8's posted task, the next collection's prologue, or at the
-/// end of a forced collection - where V8 API calls are allowed. Disposing the
-/// handle before then cancels `finalize`.
+/// NEVER runs inside the collector, V8's second pass included: both passes run
+/// under DisallowJSObjectModification on V8 15.7 (a write to a JS object there
+/// is a fatal CHECK). The first pass queues the finalizer on its agent, which
+/// runs it at the agent's next safe point - `v8_Platform_PumpMessageLoop`,
+/// after the task it ran and before the event loop's microtask checkpoint;
+/// `v8_Isolate_RequestGarbageCollection` /
+/// `v8_Isolate_MemoryPressureNotification`, before a forced collection
+/// returns; or, inside a task, a binding's return into script at
+/// DOM-algorithm depth zero (`v8_Isolate_RunQueuedFinalizers`) - where it
+/// may do any engine work, in the order V8's first pass found the objects
+/// dead. Disposing the handle before then cancels `finalize`; an agent's end
+/// runs what is queued in its last forced collections, and v8_Isolate_Dispose
+/// drops the rest uncalled (v8_wrapper.cpp `runQueuedFinalizers`, "Why the
+/// first pass queues").
 pub extern fn v8_Global_SetWeakFinalizer(
     handle: *anyopaque,
     data: ?*anyopaque,
@@ -2809,6 +2831,64 @@ pub extern fn v8_Global_SetWeakFinalizer(
 /// Whether this thread is inside V8's first-pass weak callbacks - for tests
 /// that a finalizer runs after the collection, never inside it.
 pub extern fn v8_Debug_InFirstPassWeakCallback() bool;
+
+/// The bytes `isolate`'s heap has committed to the space V8 names `name`
+/// ("new_space", "old_space", ...: Isolate::GetHeapSpaceStatistics'
+/// space_size), 0 for no such space. Counters only. For tests of the heap's
+/// configuration (the young generation's ceiling).
+pub extern fn v8_Debug_HeapSpaceCommittedBytes(isolate: *Isolate, name: [*:0]const u8) usize;
+
+/// Finalizers a collection's first pass has queued on `isolate`'s agent and
+/// its safe point has not run yet, not counting cancelled ones (tests).
+pub extern fn v8_Debug_QueuedFinalizers(isolate: *Isolate) usize;
+
+/// Where `isolate`'s collections say that finalizers wait: `word`, a byte
+/// of the agent's - what its deferred teardown queue owes
+/// (runtime.gc.DeferredTeardown.owedWord) - that stays valid until this is
+/// called again, and two bits of it: `mask`, "finalizers wait", and
+/// `fresh_mask`, "some have not been looked at by a callback's exit". The
+/// first pass stores the bits and calls nothing; a drain that leaves none waiting
+/// clears them. Null withdraws it: the agent's end, before its queue can go.
+/// On the isolate's thread.
+pub extern fn v8_Isolate_SetFinalizersOwed(isolate: *Isolate, word: ?*u8, mask: u8, fresh_mask: u8) void;
+
+/// The stamp of the object a queued finalizer is for, asked by
+/// `v8_Isolate_RunFreshFinalizers` of each one it looks at: `finalize` and
+/// `data` as the finalizer was armed. 0: never fresh.
+pub const FreshStampFn = *const fn (finalize: WeakCallbackFn, data: ?*anyopaque) callconv(.c) u32;
+
+/// The agent's safe point INSIDE A CALLBACK: a binding returned into the
+/// script of the innermost callback invocation on the stack
+/// (finalizer_safe_point.zig). Of the finalizers no callback's exit has
+/// looked at yet, and those that waited for an outer callback: one stamped
+/// (`stamp_of`) at or after `innermost` runs now; one stamped at or after
+/// `outermost` waits where it is; every other joins those that wait for
+/// depth zero. `waiting` gets the newest stamp left waiting (0: none). False
+/// when nothing was looked at because this is no place to run a finalizer
+/// (as `v8_Isolate_RunQueuedFinalizers`). On the isolate's thread, the
+/// isolate entered.
+pub extern fn v8_Isolate_RunFreshFinalizers(isolate: *Isolate, innermost: u32, outermost: u32, stamp_of: FreshStampFn, waiting: *u32) bool;
+
+/// The agent's safe point for queued finalizers INSIDE a task: a binding
+/// returned into script at DOM-algorithm depth zero and the agent's queue
+/// owes finalizers (finalizer_safe_point.zig). Runs them all, as the pump
+/// does. False when they still wait because this is no place to run them: a
+/// finalizer is already on the stack (no drain runs beneath itself), or the
+/// returning binding left an exception pending, which a finalizer's engine
+/// work would clear. On the isolate's thread, the isolate entered.
+pub extern fn v8_Isolate_RunQueuedFinalizers(isolate: *Isolate) bool;
+
+/// One platform task WITHOUT the agent's safe point: what a collection it
+/// finished queued stays queued. For tests of the finalizer queue only; the engine
+/// pumps with `v8_Platform_PumpMessageLoop`.
+pub extern fn v8_Debug_PumpMessageLoopHoldingFinalizers(isolate: *Isolate) bool;
+
+/// A full collection WITHOUT the agent's safe point after it - V8's own
+/// collection of last resort (Heap::CollectAllAvailableGarbage), whose second
+/// pass runs before it returns: what it found dead stays queued. For tests of
+/// the finalizer queue only; the engine collects with
+/// `v8_Isolate_RequestGarbageCollection`.
+pub extern fn v8_Debug_CollectHoldingFinalizers(isolate: *Isolate) void;
 
 // ---- Node wrappers on the agent's C++ heap (the wrapper redesign's P4;
 // node_wrappers.zig, v8_wrapper.cpp "Node wrappers on the agent's C++ heap") ----
@@ -2909,10 +2989,6 @@ pub extern fn v8_test_Isolate_CollectUnforced(isolate: *Isolate) bool;
 /// isolate's C++ heap, object by object (cppgc's detailed statistics; it
 /// finishes a running sweep and gives back the allocation buffers first).
 pub extern fn v8_test_CppHeap_LiveBytes(isolate: ?*Isolate) usize;
-/// tests/v8/wr10_idle_tasks_test.zig: whether `isolate`'s C++ heap is still
-/// sweeping - a lazy sweep not yet finalized, while cppgc refuses explicit
-/// frees (13.1.203 explicit-management.cc InGC).
-pub extern fn v8_test_CppHeap_IsSweeping(isolate: *Isolate) bool;
 
 /// tests/v8: whether V8 drops in a scavenge an unreachable object made from
 /// `tpl`'s instance template - with `prototype` set as its prototype when
@@ -2936,7 +3012,7 @@ pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u
 /// visitor)` from the anchors' registry's Trace in a collection's atomic
 /// pause - the kept nodes' trees; `marked(registry)` at the end of each
 /// marking, from its weak processing - the per-collection sets end;
-/// `check` (null unless -Dwrapper-trace-check) in the same weak processing
+/// `check` (null unless -Dv8-wrapper-trace-check) in the same weak processing
 /// before any slot is emptied, with the slots of the live and of the dead
 /// anchors. False for an isolate with no record.
 pub extern fn v8_Isolate_SetNodeWrapperTracing(
@@ -3802,9 +3878,10 @@ pub extern fn v8_Object_DeletePrivateRef(holder: *Object, key: [*]const u8, key_
 /// tracedValue). Needs an entered context.
 pub extern fn v8_Object_GetPrivateRef(holder: *Object, key: [*]const u8, key_len: c_int) ?*Value;
 /// Keep `value` alive exactly as long as `holder` (an object - a detached
-/// realm's hidden global object, never its proxy): appended to an array in a
-/// private property (`key`) of it - an edge, never a root. Runs in the
-/// holder's creation context. A no-op for an empty (collected) holder.
+/// realm's retained store, which its global's GlobalAnchor traces): appended
+/// to an array in a private property (`key`) of it - an edge, never a root.
+/// Runs in the holder's creation context. A no-op for an empty (collected)
+/// holder.
 pub extern fn v8_Object_RetainInPrivateArray(holder: *Value, key: [*]const u8, key_len: c_int, value: *Value) void;
 /// Set `holder`'s private property `key` to `value`, or delete it when
 /// `value` is null: an edge, never a root - a node's wrapper keeping its
@@ -3823,9 +3900,43 @@ pub extern fn v8_Context_SetWeak(context: *Context, user_data: ?*anyopaque, call
 /// event handler); a dispose untags it.
 pub extern fn v8_Global_TagRealm(global: *Value, realm_key: usize) void;
 /// A detached realm (`realm_key`): every handle tagged with it is kept from
-/// `holder`, its hidden global object (an array in private `key`), and made
-/// weak. Returns how many.
+/// `holder`, its retained store (an array in private `key`), and made weak.
+/// Returns how many.
 pub extern fn v8_Object_WeakenTaggedHandles(holder: *Value, realm_key: usize, key: [*]const u8, key_len: c_int) c_int;
+/// Zig's reference to a realm global's GlobalAnchor (v8_wrapper.cpp): a
+/// cppgc::WeakPersistent, which cppgc clears in the collection that finds the
+/// anchor - and the global object holding it - dead. Disposed at the realm's
+/// end, on its agent's thread (v8_GlobalAnchor_Dispose).
+pub const GlobalAnchorRef = opaque {};
+/// THE attach function for a realm's global (realm_global.attach): `instance`
+/// in the global proxy's field 0 and a new GlobalAnchor on the proxy and its
+/// hidden global (Object::WrapGlobal). Null when the isolate has no C++ heap.
+pub extern fn v8_GlobalAnchor_Attach(context: *Context, instance: ?*anyopaque) ?*GlobalAnchorRef;
+/// A navigation hands `context`'s WindowProxy on: clear the PROXY's anchor
+/// (Blink ClearNativeInfo), before DetachGlobal.
+pub extern fn v8_GlobalAnchor_ClearProxy(context: *Context) void;
+/// Wrap `object` (a WindowProperties object) with the realm's anchor.
+pub extern fn v8_GlobalAnchor_WrapObject(ref: *GlobalAnchorRef, object: *Object) void;
+/// The anchor's instance is about to be freed: every object wrapped with it
+/// finds none from now on.
+pub extern fn v8_GlobalAnchor_Clear(ref: *GlobalAnchorRef) void;
+/// Whether the anchor (so the global object holding it) is alive.
+pub extern fn v8_GlobalAnchor_IsAlive(ref: *GlobalAnchorRef) bool;
+/// The realm's retained store, an owned Global (v8_Global_Dispose); null once
+/// the anchor is gone.
+pub extern fn v8_GlobalAnchor_Retained(ref: *GlobalAnchorRef) ?*Value;
+/// Zig's reference ends.
+pub extern fn v8_GlobalAnchor_Dispose(ref: *GlobalAnchorRef) void;
+/// The instance of the anchor an interceptor's holder is wrapped with - only
+/// for a holder Crane wrapped (WindowProperties).
+pub extern fn v8_PropertyCallbackInfo_HolderGlobalAnchorInstance(info: *const PropertyCallbackInfo) ?*anyopaque;
+/// Tests: the instance of the anchor a global proxy or a WindowProperties
+/// object (BORROWED) carries; with `check_global` (an ATTACHED proxy only),
+/// after V8's CheckGlobalWrappable (proxy and hidden global agree; fatal if
+/// not).
+pub extern fn v8_Debug_GlobalAnchorInstanceOf(object: *Object, check_global: bool) ?*anyopaque;
+/// Tests: whether a global proxy carries any GlobalAnchor.
+pub extern fn v8_Debug_HasGlobalAnchor(proxy: *Object) bool;
 // ---- end lane: realms ----
 // ---- lane: speed ----
 /// Isolate::TerminateExecution: any thread, no lock (engine.abortRunningScript).

@@ -72,11 +72,6 @@ pub const ScriptingPolicyReportBody = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            violationType: runtime.DOMString = undefined,
-            violationURL: ?runtime.USVString = null,
-            violationSample: ?runtime.USVString = null,
-            lineno: u32 = undefined,
-            colno: u32 = undefined,
             _internal: ?*ScriptingPolicyReportBodyImpl.InternalState = null,
         },
     );

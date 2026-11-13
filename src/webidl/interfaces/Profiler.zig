@@ -81,8 +81,6 @@ pub const Profiler = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sampleInterval: typedefs.DOMHighResTimeStamp = undefined,
-            stopped: bool = undefined,
             _internal: ?*ProfilerImpl.InternalState = null,
         },
     );

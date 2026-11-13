@@ -79,12 +79,6 @@ pub const SFrameTransformErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            errorType: enums.SFrameTransformErrorEventType = undefined,
-            keyID: ?typedefs.CryptoKeyID = null,
-            frame: union(enum) {
-                RTCEncodedVideoFrame: RTCEncodedVideoFrame,
-                RTCEncodedAudioFrame: RTCEncodedAudioFrame,
-            } = undefined,
             _internal: ?*SFrameTransformErrorEventImpl.InternalState = null,
         },
     );

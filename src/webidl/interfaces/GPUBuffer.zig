@@ -84,10 +84,6 @@ pub const GPUBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: typedefs.GPUSize64Out = undefined,
-            usage: typedefs.GPUFlagsConstant = undefined,
-            mapState: enums.GPUBufferMapState = undefined,
-            label: runtime.USVString = undefined,
             _internal: ?*GPUBufferImpl.InternalState = null,
         },
     );

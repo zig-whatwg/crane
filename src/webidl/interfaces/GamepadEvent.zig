@@ -39,6 +39,12 @@ pub const GamepadEvent = struct {
             .{ "gamepad", "get_gamepad", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "gamepad",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -69,7 +75,6 @@ pub const GamepadEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            gamepad: *runtime.Instance = undefined,
             cached_gamepad: ?*runtime.Instance = null,
             _internal: ?*GamepadEventImpl.InternalState = null,
         },

@@ -67,7 +67,6 @@ pub const XRHand = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u32 = undefined,
             _internal: ?*XRHandImpl.InternalState = null,
         },
     );

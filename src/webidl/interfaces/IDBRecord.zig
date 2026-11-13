@@ -62,9 +62,6 @@ pub const IDBRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            key: runtime.JSValue = undefined,
-            primaryKey: runtime.JSValue = undefined,
-            value: runtime.JSValue = undefined,
             _internal: ?*IDBRecordImpl.InternalState = null,
         },
     );

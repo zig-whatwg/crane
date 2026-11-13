@@ -57,9 +57,6 @@ pub const ServiceEventHandlers = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onserviceadded: typedefs.EventHandler = undefined,
-            onservicechanged: typedefs.EventHandler = undefined,
-            onserviceremoved: typedefs.EventHandler = undefined,
             _internal: ?*ServiceEventHandlersImpl.InternalState = null,
         },
     );

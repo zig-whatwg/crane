@@ -56,7 +56,7 @@
 //! (NodeBase.linkChildBefore, refcount.linkChild / moveChild / unlinkChild),
 //! so the walk sees consistent links and counts.
 //!
-//! The Debug oracle (-Dwrapper-trace-check, the V8 adapter's node_wrappers.zig)
+//! The Debug oracle (-Dv8-wrapper-trace-check, the V8 adapter's node_wrappers.zig)
 //! walks the same trees unpruned (`forEachWrapped`) after each major GC.
 //!
 //! HOLDERS (the redesign's P6, design 3.2 rule (d) and 4.4 "Holders"): a

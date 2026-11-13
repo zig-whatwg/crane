@@ -90,11 +90,6 @@ pub const StorageAccessHandle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionStorage: *runtime.Instance = undefined,
-            localStorage: *runtime.Instance = undefined,
-            indexedDB: *runtime.Instance = undefined,
-            locks: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
             _internal: ?*StorageAccessHandleImpl.InternalState = null,
         },
     );

@@ -73,8 +73,6 @@ pub const PerformancePaintTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformancePaintTimingImpl.InternalState = null,
         },
     );

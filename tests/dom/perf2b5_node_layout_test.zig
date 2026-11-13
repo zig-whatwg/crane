@@ -129,7 +129,7 @@ test "Node's embedded state is its NodeBase by value and the fields a node uses:
     }
 }
 
-test "a div is ONE exact-size block: 72 bytes of pointers and every level's InternalState" {
+test "a div is ONE exact-size block: its pointers and every level's InternalState" {
     const S = interfaces.HTMLDivElement.State;
     // EventTarget, Node, Element and HTMLElement embed (HTMLDivElement's own
     // InternalState is empty); the generated part is batch 3's 104 bytes.
@@ -138,7 +138,8 @@ test "a div is ONE exact-size block: 72 bytes of pointers and every level's Inte
         return error.NotEmbedded;
     }
     // Batch 6: no `_internal` pointers, the root's live word instead: 72.
-    try std.testing.expectEqual(@as(usize, 72), @sizeOf(S) - embeddedBytes(S));
+    // The generated part's bytes are pinned in ONE place since lane cg1:
+    // tests/dom/node_block_sizes_test.zig.
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     if (slack(S) >= 16) {
         std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), @sizeOf(S) + slack(S) });

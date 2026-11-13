@@ -70,9 +70,10 @@ test "ShadowRoot's embedded state keeps no allocator copy" {
     try expectNoField(Embedded(interfaces.ShadowRoot.State), .{"allocator"});
 }
 
-test "EventTarget's embedded state keeps no current event: 24 bytes" {
+test "EventTarget's embedded state keeps no current event: 8 bytes" {
     const E = Embedded(interfaces.EventTarget.State);
     try expectNoField(E, .{ "allocator", "current_event" });
-    // listener list 8, handler map 8, listeners_watched 1 (padded to 8).
-    try expectSize(E, 24);
+    // One pointer to the listener block (lane lis1): 24 with the listener
+    // list 8, the handler map 8 and listeners_watched 1 (padded to 8).
+    try expectSize(E, 8);
 }

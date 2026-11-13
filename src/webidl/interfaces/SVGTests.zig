@@ -53,8 +53,6 @@ pub const SVGTests = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            requiredExtensions: *runtime.Instance = undefined,
-            systemLanguage: *runtime.Instance = undefined,
             cached_requiredExtensions: ?*runtime.Instance = null,
             cached_systemLanguage: ?*runtime.Instance = null,
             _internal: ?*SVGTestsImpl.InternalState = null,

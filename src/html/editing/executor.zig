@@ -11,7 +11,6 @@ const state = @import("state.zig");
 const history = @import("history.zig");
 const formatting = @import("formatting.zig");
 const structure = @import("structure.zig");
-const selection_ops = @import("selection_ops.zig");
 const clock = @import("clock");
 const runtime = @import("runtime");
 const dom = @import("dom");
@@ -126,24 +125,21 @@ fn executeCommandImpl(
         .insertHTML => structure.executeInsertHTML(allocator, document, value),
         .insertText => structure.executeInsertText(allocator, document, value),
 
-        // Clipboard commands
-        // TODO: Pass clipboard backend from document/editor state when available
-        // For now, use legacy functions that don't require clipboard backend
-        .copy => selection_ops.executeCopyLegacy(allocator, document),
-        .cut => selection_ops.executeCutLegacy(allocator, document),
-        .paste => selection_ops.executePasteLegacy(allocator, document),
+        // The clipboard commands are the html module's (src/html/execcommand/
+        // clipboard.zig: the Clipboard API's actions through the platform
+        // protocol's clipboard); Document.execCommand dispatches them there
+        // before this executor, so they never arrive here.
+        .copy, .cut, .paste => .{ .success = false },
 
         // History commands
         .undo => executeUndo(allocator, document),
         .redo => executeRedo(allocator, document),
 
-        // Selection commands
-        .selectAll => selection_ops.executeSelectAll(allocator, document),
-        // delete and forwardDelete are the html module's
+        // selectAll, delete and forwardDelete are the html module's
         // (src/html/execcommand/, on the generated interfaces, which
         // html_core cannot reach); Document.execCommand dispatches them
         // there before this executor, so they never arrive here.
-        .delete, .forwardDelete => .{ .success = false },
+        .selectAll, .delete, .forwardDelete => .{ .success = false },
 
         // Configuration commands
         .styleWithCSS,

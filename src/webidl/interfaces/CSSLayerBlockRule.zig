@@ -64,7 +64,6 @@ pub const CSSLayerBlockRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
             _internal: ?*CSSLayerBlockRuleImpl.InternalState = null,
         },
     );

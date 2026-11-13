@@ -72,10 +72,6 @@ pub const EncodedAudioChunk = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.EncodedAudioChunkType = undefined,
-            timestamp: i64 = undefined,
-            duration: ?u64 = null,
-            byteLength: u32 = undefined,
             _internal: ?*EncodedAudioChunkImpl.InternalState = null,
         },
     );

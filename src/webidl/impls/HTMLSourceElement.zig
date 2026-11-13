@@ -72,7 +72,7 @@ fn attributeChanged(instance: *runtime.Instance, name: []const u8, _: ?[]const u
 
 fn isHtmlElement(instance: *runtime.Instance, name: []const u8) bool {
     const data = dom.element_data.of(instance) orelse return false;
-    return std.mem.eql(u8, data.local_name.asSlice(), name) and
+    return std.mem.eql(u8, data.localName(), name) and
         std.mem.eql(u8, data.namespaceSlice() orelse "", "http://www.w3.org/1999/xhtml");
 }
 

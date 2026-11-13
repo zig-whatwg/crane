@@ -65,10 +65,6 @@ pub const CSSPropertyRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            syntax: typedefs.CSSOMString = undefined,
-            inherits: bool = undefined,
-            initialValue: ?typedefs.CSSOMString = null,
             _internal: ?*CSSPropertyRuleImpl.InternalState = null,
         },
     );

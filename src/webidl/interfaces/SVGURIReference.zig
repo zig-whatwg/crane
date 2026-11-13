@@ -51,7 +51,6 @@ pub const SVGURIReference = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: *runtime.Instance = undefined,
             cached_href: ?*runtime.Instance = null,
             _internal: ?*SVGURIReferenceImpl.InternalState = null,
         },

@@ -81,8 +81,6 @@ pub const CloseWatcher = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oncancel: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
             _internal: ?*CloseWatcherImpl.InternalState = null,
         },
     );

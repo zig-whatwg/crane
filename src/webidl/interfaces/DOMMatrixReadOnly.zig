@@ -158,12 +158,6 @@ pub const DOMMatrixReadOnly = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            a: f64 = undefined,
-            b: f64 = undefined,
-            c: f64 = undefined,
-            d: f64 = undefined,
-            e: f64 = undefined,
-            f: f64 = undefined,
             m11: f64 = undefined,
             m12: f64 = undefined,
             m13: f64 = undefined,
@@ -181,7 +175,6 @@ pub const DOMMatrixReadOnly = struct {
             m43: f64 = undefined,
             m44: f64 = undefined,
             is2D: bool = undefined,
-            isIdentity: bool = undefined,
             _internal: ?*DOMMatrixReadOnlyImpl.InternalState = null,
         },
     );

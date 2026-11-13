@@ -360,7 +360,9 @@ INCLUDE = [
     ('css/css-lists/li-counter-increment-computed-style.html', 'lists computed style and inheritance; no rendered box assertions'),
     ('css/css-mixins/functions/at-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
     ('css/css-mixins/functions/dashed-function-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
-    ('css/css-mixins/mixins/mixin-parsing.html', 'mixins syntax and value parsing outside the parsing directory'),
+    # css/css-mixins/mixins/mixin-parsing.html left (the integrator, 2026-11-12 03:21 UTC; the 11-01 scope
+    # line): @mixin/@apply (CSS Mixins 1 draft) ships in no browser - wpt.fyi stable Chrome 0/29, Firefox
+    # 0/29, Safari 0/29, Chrome behind a flag only. Revisit when an engine ships @mixin.
     ('css/css-multicol/zero-column-width-computed-style.html', 'multicol computed style and inheritance; no rendered box assertions'),
     ('css/css-nesting/parsing.html', 'nesting syntax and value parsing outside the parsing directory'),
     ('css/css-overflow/column-creates-computed-style.html', 'overflow computed style and inheritance; no rendered box assertions'),
@@ -668,6 +670,30 @@ EXCLUDE = [
     ('html/anonymous-iframe/', 'WICG draft; deferred by the user 2026-10-22'),
     ('html/document-isolation-policy/', 'WICG draft; deferred by the user 2026-10-22'),
     ('fetch/orb/', 'unmerged Fetch proposal; deferred by the user 2026-10-22'),
+    # The integrator's ruling (2026-11-12 08:45 UTC, lane nav2 b10's finding) under the same line: HTML's
+    # speculation rules section calls prerender rules "not-yet-accepted extensions" from WICG's
+    # Prerendering Revamped (a UA may treat "prerender" as "prefetch"). Only Chrome ships them
+    # (wpt.fyi stable 24ddf405a0: Chrome 157 passes, Firefox 160 ERROR "speculationrules must be
+    # supported", Safari 27.2 TIMEOUT). The other pagereveal/ files stay. Revisit when prerendering
+    # is merged into HTML.
+    ('html/browsers/browsing-the-web/history-traversal/pagereveal/order-in-prerender-activation.https.html',
+     'pagereveal at prerender activation: speculation-rules prerendering is a WICG draft only Chrome ships'),
+    # The integrator's ruling (2026-11-12 10:30 UTC, lane sw2 b1's finding) under the same line: the file
+    # freezes a frame with test_driver.freeze() and asserts Client.lifecycleState ("frozen"/"active"), both
+    # from WICG Page Lifecycle (specs/idl/page-lifecycle.idl's partial interface Client), a Community Group
+    # draft no browser ships (Chromium keeps lifecycleState behind a runtime flag). wpt.fyi stable
+    # 24ddf405a0: Chrome 157, Firefox 160 and Safari 27.2 all TIMEOUT at "Test Clients.matchAll()", as
+    # Crane does. Revisit when Page Lifecycle is ratified or ships.
+    ('service-workers/service-worker/clients-matchall-frozen.https.html',
+     'Client.lifecycleState + test_driver.freeze: WICG Page Lifecycle, shipped by no browser'),
+    # The integrator's ruling (2026-11-12 10:43 UTC, lane sw2 b1's finding) under the same line (WICG drafts
+    # wait even when Chrome ships them): navigator.storageBuckets is WICG Storage Buckets, a Community Group
+    # draft (mozilla/standards-positions#475 positive, WebKit/standards-positions#181 open). wpt.fyi stable
+    # 24ddf405a0: Chrome 157 passes (shipped since 122), Firefox 160 and Safari 27.2 0/2. Both worklist files
+    # that read navigator.storageBuckets leave; Storage Buckets is a feature-queue item after 0.1.
+    ('IndexedDB/storage-buckets.https.any.js', 'navigator.storageBuckets: WICG Storage Buckets, only Chrome ships'),
+    ('service-workers/cache-storage/cache-storage-buckets.https.any.js',
+     'navigator.storageBuckets: WICG Storage Buckets, only Chrome ships'),
     ('websockets/stream/', 'unmerged WebSocketStream proposal; deferred by the user 2026-10-22'),
 
     # Anything that needs layout or paint. Crane is the web platform; the host
@@ -740,6 +766,13 @@ EXCLUDE = [
     ('mathml/relations/html5-tree/dynamic-childlist-', 'asserts MathML layout feature detection and getBoundingClientRect sizes'),
     ('mathml/relations/html5-tree/integration-point-4.html', 'asserts MathML fraction getBoundingClientRect sizes and alignment'),
     ('mathml/relations/html5-tree/integration-point-5.html', 'asserts MathML fraction getBoundingClientRect sizes and alignment'),
+    # The integrator's ruling (2026-11-12 08:36 UTC) under the 11-01 scope line (a file stays only when a
+    # browser ships its feature): rel/relList on MathMLAnchorElement are in no spec - MathML Core's IDL (the
+    # editor's draft of 2026-11-12) has href, target and HyperlinkElementUtils only - and ship in no stable
+    # browser (wpt.fyi stable 24ddf405a0: Chrome 157, Firefox 160 and Safari 27.2 all 0/1); only Chromium's
+    # unshipped patch has them (wpt 20a7bd3ff3, Chromium bug 510487697). Revisit when MathML Core adds them
+    # or an engine ships them.
+    ('mathml/relations/html5-tree/a-rel-getter-setter.html', 'rel/relList IDL on MathMLAnchorElement: in no spec, shipped by no browser'),
 
     ('html/interaction/focus/processing-model/preventScroll', 'asserts scroll positions before/after focus'),
     ('html/interaction/focus/processing-model/textarea-scroll-selection.html', 'asserts textarea scrollTop after selection changes'),
@@ -1221,6 +1254,49 @@ EXCLUDE = [
     # the page but the COEP report-to on its iframe, so no report reaches the endpoint (lane coi2).
     ('html/cross-origin-embedder-policy/reporting-to-endpoint.https.html',
      'fails 0/5 in Chrome, Firefox and Safari: the endpoint header and the COEP report-to are on different documents'),
+    # CSS features no browser ships (lane cssprop1, 2026-11-11; the 11-01 scope
+    # line: shipped by at least one browser). Each file fails every subtest in
+    # Chrome 157, Firefox 160 and Safari 27.2 (wpt.fyi stable runs 4918833408901120,
+    # 4888858429489152, 5440535234609152 at wpt 24ddf405a0, 2026-11-11). The
+    # files for the same features that pass everywhere (their -invalid siblings)
+    # stay: they assert only that the grammar is rejected.
+    ('css/css-borders/corner-shape/corner-block-start-computed.html',
+     'the corner-* shorthands (border radius + corner shape): 0/7 in all three; the corner-*-shape longhands ship in Chrome'),
+    ('css/css-borders/corner-shape/corner-computed.html',
+     'the corner shorthand: 0/17 in all three'),
+    ('css/css-borders/corner-shape/corner-top-computed.html',
+     'the corner-top shorthand: 0/8 in all three'),
+    ('css/css-borders/corner-shape/corner-top-left-computed.html',
+     'the corner-top-left shorthand: 0/10 in all three'),
+    ('css/css-color/parsing/color-valid-color-layers-function.html',
+     'color-layers() (CSS Color 6): 0/170 in all three'),
+    ('css/css-link-params/link-parameters-computed.html',
+     'link-parameters (Link Parameters draft): 0/12 in all three'),
+    ('css/css-properties-values-api/registered-property-ident-function.html',
+     'ident() (CSS Values 5): 0/1 in all three'),
+    ('css/css-ruby/parsing/ruby-merge-valid.html',
+     'ruby-merge: 0/3 in all three (ruby-align, ruby-overhang and ruby-position ship)'),
+    ('css/css-scroll-snap/parsing/scroll-snap-stop-before.html',
+     'scroll-snap-stop: before: 0/1 in all three'),
+    ('css/css-sizing/parsing/size-shorthand.html',
+     'size as a width/height shorthand (CSS Sizing 4): 0/12 in all three'),
+    # The integrator, 2026-11-12 03:05 UTC: size-valid tests the same Sizing 4
+    # shorthand. Chrome's 9/10 is Blink parsing its @page `size` descriptor in
+    # element style (no width or height is set), not the shorthand shipping.
+    ('css/css-sizing/parsing/size-valid.html',
+     'size as a width/height shorthand (CSS Sizing 4): Chrome 9/10 only through its @page size descriptor, Firefox 0/10, Safari 0/10'),
+    ('css/css-text/parsing/text-align-all-valid.html',
+     'text-align-all: 0/7 in all three'),
+    ('css/css-ui/input-security-computed.html',
+     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
+    ('css/css-ui/input-security-parsing.html',
+     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
+    ('css/css-values/ident-function-computed.html',
+     'ident() (CSS Values 5): 0/14 in all three'),
+    ('css/css-writing-modes/text-combine-upright-parsing-digits-001.html',
+     'text-combine-upright: digits <integer>: 0/10 in all three'),
+    ('css/css-writing-modes/text-combine-upright-parsing-digits-002.html',
+     'text-combine-upright: digits <integer>: 0/12 in all three'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),

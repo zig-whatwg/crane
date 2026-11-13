@@ -96,12 +96,6 @@ pub const MediaKeySession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionId: runtime.DOMString = undefined,
-            expiration: f64 = undefined,
-            closed: runtime.JSValue = undefined,
-            keyStatuses: *runtime.Instance = undefined,
-            onkeystatuseschange: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
             _internal: ?*MediaKeySessionImpl.InternalState = null,
         },
     );

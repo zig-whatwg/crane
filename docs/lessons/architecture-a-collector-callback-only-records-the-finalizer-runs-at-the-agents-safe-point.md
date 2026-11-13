@@ -1,0 +1,18 @@
+# Architecture: A collector callback only records - the finalizer runs at the agent's safe point
+
+**Date**: 2026-11-11
+**Lesson**: Nothing the collector calls may do an instance's teardown: V8's second-pass weak callback is still inside the collector's rules (15.7 CHECKs a JS object write there), so it only queues the finalizer on its agent, and the agent runs it at a safe point.
+
+**Why**: The adapter treated V8's second pass as "after the collection, V8 API allowed" and ran the Zig finalizer in it. A finalizer is a platform object's whole teardown and reaches anything: a dropped Response cancels its open body transfer, which reports a resource-timing entry to its page, which traces a child - `v8::Object::SetPrivate`, a map transition. V8 15.7.112.43 runs the second pass under `DisallowJavascriptExecution` and `DisallowJSObjectModification` - at the end of a forced collection (src/heap/heap.cc:1470-1477) and in the task it posts for every other collection (src/handles/global-handles.cc:890-900) - and CHECKs the second scope wherever a map changes (src/objects/map.cc:717, 745, 922; lookup.cc; transitions.cc:416). 13.1.203 has neither the scope nor a check, so the same code ran for months.
+
+**What Happened**: Lane v8up b5's full A/B on the 15.7 port crashed three cookies files in production and one in the bug-finding sweep, flaky, with `Check failed: AllowJSObjectModification::IsAllowed(isolate)` under `GlobalHandles::InvokeSecondPassPhantomCallbacks -> WeakCallbackSecondPass -> wrapper_cache.finalizeEntry -> ... -> protocol_tracing.traceChild`. b4's sweeps never hit it: six forced collections at each page end, after the page's fetch group was terminated, left nothing for a mid-page collection to finalize. b5's Blink-shaped memory-pressure signals made mid-page collections by task common. The exposure was every arm of `v8_Global_SetWeakFinalizer` (the wrapper cache, observable array states, promise reactions, asynchronous iterators) and the node wrappers' releases.
+
+**Fix**: In the adapter, for all of them at once (v8_wrapper.cpp, lane v8up b6):
+
+1. `WeakCallbackSecondPass` calls no Zig: it puts the record on `IsolateData::queued_finalizers` (the agent's own; no global, nothing added to a live wrapper). `nodeWrapperSecondPass` only sets `node_wrappers_collected`.
+2. `runQueuedFinalizers` runs them, in the order the second pass handed them over, at the agent's safe points: `v8_Platform_PumpMessageLoop` after the platform task it ran and before the event loop's microtask checkpoint; `v8_Isolate_RequestGarbageCollection` and `v8_Isolate_MemoryPressureNotification` before a forced collection returns. Those are the moments the finalizers ran before, minus V8's scopes, so nothing Zig sees is reordered.
+3. A handle disposed while its finalizer is queued cancels it (`releaseWeakArm`, unchanged); an agent's end drains in its last forced collections; `v8_Isolate_Dispose` drops the list uncalled and frees the records.
+
+The browsers' rule is the same: a cppgc destructor "must not touch any other on-heap object" and a pre-finalizer may not resurrect one (Blink platform/heap/BlinkGCAPIReference.md); WebKit marks a Weak dead in `WeakBlock::reap` and calls `WeakHandleOwner::finalize` from `WeakBlock::sweep`, where a DOM wrapper's owner only uncaches (JSDOMWrapperCache.h `uncacheWrapper`).
+
+**Takeaway**: **A callback the collector invokes - first pass, second pass, a cppgc destructor or pre-finalizer - does bookkeeping and records that something died; the work that death implies runs later, at a point the agent chooses, with the collector off the stack. "The API is allowed here" on one engine version is not a contract.**

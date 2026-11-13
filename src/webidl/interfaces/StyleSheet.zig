@@ -44,6 +44,12 @@ pub const StyleSheet = struct {
             .{ "disabled", "get_disabled", "set_disabled" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "media",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -80,16 +86,6 @@ pub const StyleSheet = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: typedefs.CSSOMString = undefined,
-            href: ?runtime.USVString = null,
-            ownerNode: ?union(enum) {
-                Element: Element,
-                ProcessingInstruction: ProcessingInstruction,
-            } = null,
-            parentStyleSheet: ?*runtime.Instance = null,
-            title: ?runtime.DOMString = null,
-            media: *runtime.Instance = undefined,
-            disabled: bool = undefined,
             cached_media: ?*runtime.Instance = null,
             _internal: ?*StyleSheetImpl.InternalState = null,
         },

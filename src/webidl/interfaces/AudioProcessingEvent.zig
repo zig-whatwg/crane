@@ -73,9 +73,6 @@ pub const AudioProcessingEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            playbackTime: f64 = undefined,
-            inputBuffer: *runtime.Instance = undefined,
-            outputBuffer: *runtime.Instance = undefined,
             _internal: ?*AudioProcessingEventImpl.InternalState = null,
         },
     );

@@ -76,9 +76,6 @@ pub const AudioSession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.AudioSessionType = undefined,
-            state: enums.AudioSessionState = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*AudioSessionImpl.InternalState = null,
         },
     );

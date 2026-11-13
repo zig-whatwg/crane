@@ -102,7 +102,7 @@ pub fn byId(owner: *runtime.Instance, id: []const u8) ?*runtime.Instance {
     var at = base.first_child;
     while (at) |node| {
         if (bridge.getInstanceTyped(runtime.Instance, node)) |candidate| {
-            if (data.of(candidate)) |element| if (std.mem.eql(u8, element.id.asSlice(), id)) return candidate;
+            if (data.of(candidate)) |element| if (std.mem.eql(u8, element.idValue(), id)) return candidate;
         }
         at = next(node, base);
     }

@@ -61,6 +61,12 @@ pub const WebTransport = struct {
             .{ "incomingUnidirectionalStreams", "get_incomingUnidirectionalStreams", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "responseHeaders",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getStats", "call_getStats", 0 },
@@ -115,18 +121,6 @@ pub const WebTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ready: runtime.JSValue = undefined,
-            reliability: enums.WebTransportReliabilityMode = undefined,
-            congestionControl: enums.WebTransportCongestionControl = undefined,
-            anticipatedConcurrentIncomingUnidirectionalStreams: ?u16 = null,
-            anticipatedConcurrentIncomingBidirectionalStreams: ?u16 = null,
-            responseHeaders: ?*runtime.Instance = null,
-            protocol: runtime.DOMString = undefined,
-            closed: runtime.JSValue = undefined,
-            draining: runtime.JSValue = undefined,
-            datagrams: *runtime.Instance = undefined,
-            incomingBidirectionalStreams: *runtime.Instance = undefined,
-            incomingUnidirectionalStreams: *runtime.Instance = undefined,
             cached_responseHeaders: ?*runtime.Instance = null,
             _internal: ?*WebTransportImpl.InternalState = null,
         },

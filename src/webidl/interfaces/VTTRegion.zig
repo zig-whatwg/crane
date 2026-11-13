@@ -71,14 +71,6 @@ pub const VTTRegion = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            width: f64 = undefined,
-            lines: u32 = undefined,
-            regionAnchorX: f64 = undefined,
-            regionAnchorY: f64 = undefined,
-            viewportAnchorX: f64 = undefined,
-            viewportAnchorY: f64 = undefined,
-            scroll: enums.ScrollSetting = undefined,
             _internal: ?*VTTRegionImpl.InternalState = null,
         },
     );

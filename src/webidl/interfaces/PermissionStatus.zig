@@ -78,9 +78,6 @@ pub const PermissionStatus = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: enums.PermissionState = undefined,
-            name: runtime.DOMString = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*PermissionStatusImpl.InternalState = null,
         },
     );

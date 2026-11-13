@@ -61,7 +61,6 @@ pub const Global = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.JSValue = undefined,
             _internal: ?*GlobalImpl.InternalState = null,
         },
     );

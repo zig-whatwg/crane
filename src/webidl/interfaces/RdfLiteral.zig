@@ -60,9 +60,6 @@ pub const RdfLiteral = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.USVString = undefined,
-            datatype: runtime.USVString = undefined,
-            language: ?runtime.USVString = null,
             _internal: ?*RdfLiteralImpl.InternalState = null,
         },
     );

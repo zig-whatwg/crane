@@ -59,8 +59,6 @@ pub const Highlight = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            priority: i32 = undefined,
-            type: enums.HighlightType = undefined,
             _internal: ?*HighlightImpl.InternalState = null,
         },
     );

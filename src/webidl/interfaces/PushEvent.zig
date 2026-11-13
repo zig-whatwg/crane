@@ -75,8 +75,6 @@ pub const PushEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: ?*runtime.Instance = null,
-            notification: ?*runtime.Instance = null,
             _internal: ?*PushEventImpl.InternalState = null,
         },
     );

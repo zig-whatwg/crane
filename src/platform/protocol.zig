@@ -235,6 +235,12 @@ pub const Thread = extern struct {
     handle: usize,
 };
 
+/// A thread's alternate signal stack, OWNED by the thread that attached it
+/// until `detachSignalStack`. `handle` 0: none was made.
+pub const SignalStack = extern struct {
+    handle: usize = 0,
+};
+
 // ============================================================================
 // 3. Per-Browser state
 // ============================================================================
@@ -311,6 +317,9 @@ pub const Capabilities = struct {
     thread_qos: Support,
     /// Diagnostics report no resident memory.
     resident_memory: Support,
+    /// Reserved address space (6.11): a Browser's heap. Without it
+    /// `Browser.init` fails with NotSupported - no page sees the difference.
+    address_space: Support,
     /// CSSOM View with no layout box: zero boxes, no hit (6.9).
     layout: Support,
     /// A permission request in the prompt state is denied.
@@ -328,6 +337,10 @@ pub const Capabilities = struct {
     /// Every image is broken: HTML "update the image data" finds the image
     /// cannot be decoded and fires error.
     image_decoding: Support,
+    /// Every serialization of a bitmap as a file is null (HTML 4.12.5.5's
+    /// encoder error): toDataURL answers "data:,", and toBlob's callback
+    /// gets null.
+    image_encoding: Support,
     /// No web font loads (CSS Font Loading 2.2 step 5.2's failure), no face
     /// has metrics - so cap, rcap, ex, ch and ic take CSS Values 4's
     /// fallbacks - and the system font keywords take CSS Fonts 4 2.7's
@@ -709,6 +722,33 @@ pub inline fn spawnThread(options: ThreadOptions, entry: *const fn (?*anyopaque)
 /// Wait for `thread` to end and release it.
 pub inline fn joinThread(thread: Thread) void {
     return impl.joinThread(thread);
+}
+
+/// Give the calling thread an alternate signal stack: where the process's
+/// fault handler runs when the thread's own stack is what ran out, so a
+/// stack overflow is reported instead of ending the process silently (POSIX
+/// sigaltstack, for a handler installed SA_ONSTACK - Zig std's, in a build
+/// with runtime safety). OWNED until `detachSignalStack`. A thread that
+/// already has one at least as large keeps it and the handle is 0; so is it
+/// on a platform with no such thing. Any thread; synchronous; never fails
+/// (a refused mapping is a handle of 0: the thread runs unattached).
+///
+/// Every thread `spawnThread` starts has one. This is for a thread the
+/// platform did not start: the process's main thread (a root sets
+/// `std_options.signal_stack_size = null` - std's own is a 256 KB
+/// thread-local that every thread touching a thread-local pays for - and
+/// calls this first in `main`), a host's own threads, and Crane's worker and
+/// IndexedDB threads until they move to `spawnThread`. A thread nobody
+/// attached - the JavaScript engine's own worker threads - has none, as it
+/// never had: a stack overflow there ends the process without a report.
+pub inline fn attachSignalStack() SignalStack {
+    return impl.attachSignalStack();
+}
+
+/// Release what `attachSignalStack` returned, on the thread that attached
+/// it, before that thread ends. A handle of 0 is nothing to release.
+pub inline fn detachSignalStack(stack: SignalStack) void {
+    return impl.detachSignalStack(stack);
 }
 
 // ============================================================================
@@ -1902,6 +1942,58 @@ pub inline fn imageMimeTypeSupported(essence: Str) bool {
 pub inline fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage {
     comptime gate(.image_decoding, "decodeImage");
     return impl.decodeImage(allocator, mime, bytes, limits);
+}
+
+// Image encoding [image_encoding] (the integrator, 2026-11-12, lane quick1;
+// the shape of image_decoding). Crane runs HTML 4.12.5.5 "a serialization of
+// the bitmap as a file" above the protocol - the type, lowercased and checked
+// here, its fallback to PNG, the conversion to straight alpha - and the
+// platform turns one bitmap's pixels into one file of that type.
+
+/// The pixels to encode: `width` x `height`, rows top to bottom, each pixel
+/// R, G, B, A as 8-bit samples with straight (not premultiplied) alpha, in
+/// sRGB - a 2D context's bitmap, as Crane unpremultiplied it. `pixels`
+/// (width * height * 4 bytes) is BORROWED for the call.
+pub const EncodeSource = extern struct {
+    width: u32,
+    height: u32,
+    pixels: Bytes,
+};
+
+/// Why an encode failed. Every one makes HTML's serialization null.
+pub const ImageEncodeError = error{
+    OutOfMemory,
+    /// The `image_encoding` capability is unsupported.
+    NotSupported,
+    /// The platform encodes images, but not of this MIME type - or the
+    /// source's pixels are not width * height * 4 bytes.
+    UnsupportedFormat,
+    /// The format cannot hold an image of these dimensions (PNG: either
+    /// above 2^31 - 1, or zero), refused before anything is allocated.
+    TooLarge,
+};
+
+/// Whether this platform can encode a lowercase image MIME essence: what
+/// HTML 4.12.5.5 asks before falling back to PNG ("If the user agent does
+/// not support the requested type, then it must create the file using the
+/// PNG format"). No allocation, I/O, state or cache; synchronous and callable
+/// on any thread. Guard image_encoding first.
+pub inline fn imageEncodingMimeTypeSupported(essence: Str) bool {
+    comptime gate(.image_encoding, "imageEncodingMimeTypeSupported");
+    return impl.imageEncodingMimeTypeSupported(essence);
+}
+
+/// Encode `source` as one file of the type `mime` - an essence for which
+/// `imageEncodingMimeTypeSupported` is true; any other is `UnsupportedFormat`.
+/// `quality` is HTML's quality level, 0.0 to 1.0, for a format that has one;
+/// a negative value asks for the platform's default (HTML: "the user agent
+/// must use its default quality value"). The file is OWNED, allocated with
+/// `allocator`. A format that records resolution or a colour space records
+/// 96 dpi and sRGB (HTML 4.12.5.5). Stateless, synchronous, any thread - HTML
+/// serializes "in parallel", so Crane may call it off the agent's thread.
+pub inline fn encodeImage(allocator: std.mem.Allocator, mime: Str, source: EncodeSource, quality: f64) ImageEncodeError!Bytes {
+    comptime gate(.image_encoding, "encodeImage");
+    return impl.encodeImage(allocator, mime, source, quality);
 }
 
 // Font decoding [font_decoding] (decision 20). Crane runs CSS's font steps
@@ -3203,6 +3295,143 @@ pub inline fn showVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
 pub inline fn hideVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
     comptime gate(.virtual_keyboard, "hideVirtualKeyboard");
     return impl.hideVirtualKeyboard(browser, tab);
+}
+
+// ============================================================================
+// 6.11 Address space [address_space]
+// ============================================================================
+//
+// Reserved address space, committed and decommitted in place: the pages a
+// Browser's own heap is made of (tmp/redesign/node-memory-architecture.md
+// 6.6, as amended by node-memory-plan-v2.md). Each Browser reserves one range
+// aligned to its size; its node cage, its general pools and its allocator
+// metadata are parts of it (runtime.BrowserScope.Heap). The model is
+// PartitionAlloc's page allocator (base/allocator/partition_allocator/src/
+// partition_alloc/page_allocator.h, page_allocator_internals_posix.h at
+// Chromium 145): reserve inaccessible, commit by changing protection, decommit
+// by discarding in place, never unmapping a part while the range lives - as
+// V8 takes its pages from the embedder's v8::PageAllocator.
+//
+// Offsets and lengths are multiples of `pageSize()`, which is a run-time value
+// on aarch64-linux (4-64 KiB): nothing here assumes a page size at compile
+// time. Every operation may be called from any thread; the ranges are the
+// caller's, and two threads never operate on one page at once.
+//
+// Gated on `address_space`, a capability no page sees: Crane's own platforms
+// (darwin, linux, testing) all have it; kit/headless answers
+// `error.NotSupported`, and a Browser on a platform without it fails
+// `Browser.init` cleanly (runtime.BrowserScope.reserveHeap).
+
+/// What a reserved range is for. The OS's tools show the range under it -
+/// darwin's VM tag (vmmap and footprint: "App-Specific Tag 1" to "4", tags 240
+/// to 243, beside Chrome's 251-255 and V8's 255), Linux's VMA name
+/// (`[anon:crane-node-cage]` in /proc/<pid>/maps, Linux 5.17 and later) - and
+/// on Linux it decides the range's transparent huge pages.
+pub const AddressLabel = enum(u8) {
+    /// A Browser's node cage: every compressed link decodes into it. Linux
+    /// also excludes it from transparent huge pages (MADV_NOHUGEPAGE: a
+    /// sparse class-stable pool costs 2 MiB per touched super page under THP
+    /// `always`, and khugepaged undoes span decommit; oss review R4).
+    node_cage = 0,
+    /// Pointer-bearing Crane structs: the objects pool.
+    objects = 1,
+    /// Page-controlled bytes: text, attribute values, bodies.
+    bytes = 2,
+    /// The heap's own metadata - header, span table, free bitmaps, the
+    /// Browser's tables - outside the cage, where no link decodes (oss R1).
+    heap_metadata = 3,
+};
+
+/// A reserved range: `base` is a multiple of the alignment it was reserved
+/// with (plus its alignment offset), `size` a multiple of `pageSize()`.
+pub const AddressRange = extern struct {
+    base: usize,
+    size: usize,
+};
+
+/// What a committed page may be used for.
+pub const PageAccess = enum(u8) { none = 0, read = 1, read_write = 2 };
+
+/// The OS page size: the unit of every offset and length in this group. Read
+/// at run time (std.heap.pageSize): 16 KiB on Apple silicon, 4 KiB on x86-64,
+/// 4 to 64 KiB on aarch64-linux. Any thread.
+pub inline fn pageSize() usize {
+    comptime gate(.address_space, "pageSize");
+    return impl.pageSize();
+}
+
+/// Reserve `size` bytes of address space, inaccessible and uncommitted, whose
+/// `base` is `alignment_offset` above a multiple of `alignment` (a power of
+/// two, at least `pageSize()`; the offset a page multiple below it). Named
+/// `label` in the OS's tools. Exact-size hints first - random aligned
+/// addresses, so consecutive reservations do not land where the last one was
+/// released (oss review R12) - then over-reserve and trim, PartitionAlloc's
+/// AllocPagesWithAlignOffset. `error.OutOfMemory` when the process's address
+/// space (or its RLIMIT_AS) has no room. The result is OWNED by the caller
+/// until `releaseAddressSpace`. Any thread.
+pub inline fn reserveAddressSpace(size: usize, alignment: usize, alignment_offset: usize, label: AddressLabel) Error!AddressRange {
+    comptime gate(.address_space, "reserveAddressSpace");
+    return impl.reserveAddressSpace(size, alignment, alignment_offset, label);
+}
+
+/// Rename `[offset, offset + length)` of `range` - a part none of whose pages
+/// is committed yet - as `label`: a Browser names its cage, metadata and pools
+/// once, at reservation, before anything lives there. darwin maps the part
+/// again in place with the new tag (MAP_FIXED over its own inaccessible
+/// reservation - never over a live page); Linux names the VMA once
+/// (PR_SET_VMA_ANON_NAME; absent before Linux 5.17, as in PartitionAlloc) and
+/// applies the label's huge-page advice. Best effort: a platform that cannot
+/// label leaves the part as it was. Any thread.
+pub inline fn labelAddressSpace(range: AddressRange, offset: usize, length: usize, label: AddressLabel) void {
+    comptime gate(.address_space, "labelAddressSpace");
+    return impl.labelAddressSpace(range, offset, length, label);
+}
+
+/// Make `[offset, offset + length)` of `range` readable and writable with its
+/// memory accounted again: a part never committed, or one `decommitPages`
+/// released (whose contents are then unspecified). Linux: one mprotect, never
+/// MAP_FIXED over a live range (oss R24). darwin: mprotect, then
+/// MADV_FREE_REUSE - without it a page decommitted with MADV_FREE_REUSABLE and
+/// written again stays out of the task's footprint (oss R3, measured: 64 of 64
+/// MiB missing), PartitionAlloc's RecommitSystemPages. `error.OutOfMemory`
+/// when the OS will not commit (strict overcommit, RLIMIT_DATA). Any thread.
+pub inline fn commitPages(range: AddressRange, offset: usize, length: usize) Error!void {
+    comptime gate(.address_space, "commitPages");
+    return impl.commitPages(range, offset, length);
+}
+
+/// Give the memory of `[offset, offset + length)` of `range` back to the OS,
+/// keeping the pages reserved and accessible: the next touch reads zero
+/// (Linux) or either zero or the old bytes (darwin - write whatever a freed
+/// block must say before decommitting it). The part must be committed and
+/// readable-and-writable throughout: darwin's MADV_FREE_REUSABLE fails with
+/// EPERM on an inaccessible page or a range with one in it and releases
+/// nothing, so a caller decommits BEFORE it protects (oss R3; PartitionAlloc
+/// discards before it changes protection, "the opposite order resulted in PMF
+/// regression on Mac"), and never across a super page it has not committed.
+/// darwin: MADV_FREE_REUSABLE, falling back to MADV_DONTNEED when it fails
+/// (PartitionAlloc: it "sometimes fails"); Linux: MADV_DONTNEED. An error when
+/// the OS refused both. Any thread.
+pub inline fn decommitPages(range: AddressRange, offset: usize, length: usize) Error!void {
+    comptime gate(.address_space, "decommitPages");
+    return impl.decommitPages(range, offset, length);
+}
+
+/// Set the access of `[offset, offset + length)` of `range`: the bug-finding
+/// build's inaccessible freed spans and released Browsers. Contents are kept;
+/// to release memory and make it inaccessible, `decommitPages` first, then
+/// this. Any thread.
+pub inline fn protectPages(range: AddressRange, offset: usize, length: usize, access: PageAccess) Error!void {
+    comptime gate(.address_space, "protectPages");
+    return impl.protectPages(range, offset, length, access);
+}
+
+/// Return the whole of `range` to the OS, once, at its owner's end. After it,
+/// a stale pointer into the range faults until the OS hands the address to a
+/// later reservation. Any thread.
+pub inline fn releaseAddressSpace(range: AddressRange) void {
+    comptime gate(.address_space, "releaseAddressSpace");
+    return impl.releaseAddressSpace(range);
 }
 
 // ============================================================================

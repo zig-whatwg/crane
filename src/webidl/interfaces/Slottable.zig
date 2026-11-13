@@ -51,7 +51,6 @@ pub const Slottable = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            assignedSlot: ?*runtime.Instance = null,
             _internal: ?*SlottableImpl.InternalState = null,
         },
     );

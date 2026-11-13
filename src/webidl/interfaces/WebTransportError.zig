@@ -67,8 +67,6 @@ pub const WebTransportError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: enums.WebTransportErrorSource = undefined,
-            streamErrorCode: ?u32 = null,
             _internal: ?*WebTransportErrorImpl.InternalState = null,
         },
     );

@@ -51,7 +51,6 @@ pub const GPUObjectBase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUObjectBaseImpl.InternalState = null,
         },
     );

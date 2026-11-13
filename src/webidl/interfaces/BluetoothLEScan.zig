@@ -67,10 +67,6 @@ pub const BluetoothLEScan = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            filters: runtime.JSValue = undefined,
-            keepRepeatedDevices: bool = undefined,
-            acceptAllAdvertisements: bool = undefined,
-            active: bool = undefined,
             _internal: ?*BluetoothLEScanImpl.InternalState = null,
         },
     );

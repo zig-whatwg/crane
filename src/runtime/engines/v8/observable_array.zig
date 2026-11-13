@@ -238,7 +238,8 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     state.registry = null;
 }
 
-/// After that collection (V8's second pass, V8 API allowed): the backing
+/// After that collection, at the agent's safe point (never inside V8's
+/// collector: ffi.v8_Global_SetWeakFinalizer), V8 API allowed: the backing
 /// list's handles - strong roots of its values, which would otherwise keep
 /// them alive for the isolate's life - the Proxy's Global, and the state go.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {

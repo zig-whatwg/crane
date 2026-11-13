@@ -60,7 +60,6 @@ pub const IdleDeadline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            didTimeout: bool = undefined,
             _internal: ?*IdleDeadlineImpl.InternalState = null,
         },
     );

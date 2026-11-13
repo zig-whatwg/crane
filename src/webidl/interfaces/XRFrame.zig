@@ -59,6 +59,14 @@ pub const XRFrame = struct {
             .{ "detectedPlanes", "get_detectedPlanes", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "session",
+            "trackedAnchors",
+            "body",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "getViewerPose", "call_getViewerPose", 1 },
@@ -110,12 +118,6 @@ pub const XRFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            session: *runtime.Instance = undefined,
-            predictedDisplayTime: typedefs.DOMHighResTimeStamp = undefined,
-            trackedAnchors: *runtime.Instance = undefined,
-            body: ?*runtime.Instance = null,
-            detectedMeshes: *runtime.Instance = undefined,
-            detectedPlanes: *runtime.Instance = undefined,
             cached_session: ?*runtime.Instance = null,
             cached_trackedAnchors: ?*runtime.Instance = null,
             cached_body: ?*runtime.Instance = null,

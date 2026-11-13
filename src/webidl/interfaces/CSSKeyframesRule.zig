@@ -80,9 +80,6 @@ pub const CSSKeyframesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            cssRules: *runtime.Instance = undefined,
-            length: u32 = undefined,
             _internal: ?*CSSKeyframesRuleImpl.InternalState = null,
         },
     );

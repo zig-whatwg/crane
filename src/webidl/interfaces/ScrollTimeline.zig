@@ -67,8 +67,6 @@ pub const ScrollTimeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            source: ?*runtime.Instance = null,
-            axis: enums.ScrollAxis = undefined,
             _internal: ?*ScrollTimelineImpl.InternalState = null,
         },
     );

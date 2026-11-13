@@ -73,10 +73,6 @@ pub const ImageTrackList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ready: runtime.JSValue = undefined,
-            length: u32 = undefined,
-            selectedIndex: i32 = undefined,
-            selectedTrack: ?*runtime.Instance = null,
             _internal: ?*ImageTrackListImpl.InternalState = null,
         },
     );

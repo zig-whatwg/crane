@@ -106,6 +106,23 @@ pub const WorkerNavigator = struct {
             .{ "ml", "get_ml", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "mediaCapabilities",
+            "permissions",
+            "serial",
+            "serviceWorker",
+            "hid",
+            "usb",
+            "crossOriginStorage",
+            "connection",
+            "storageBuckets",
+            "storage",
+            "gpu",
+            "ml",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setAppBadge", "call_setAppBadge", 0 },
@@ -201,36 +218,6 @@ pub const WorkerNavigator = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaCapabilities: *runtime.Instance = undefined,
-            permissions: *runtime.Instance = undefined,
-            serial: *runtime.Instance = undefined,
-            serviceWorker: *runtime.Instance = undefined,
-            hid: *runtime.Instance = undefined,
-            usb: *runtime.Instance = undefined,
-            crossOriginStorage: *runtime.Instance = undefined,
-            deviceMemory: f64 = undefined,
-            globalPrivacyControl: bool = undefined,
-            appCodeName: runtime.DOMString = undefined,
-            appName: runtime.DOMString = undefined,
-            appVersion: runtime.DOMString = undefined,
-            platform: runtime.DOMString = undefined,
-            product: runtime.DOMString = undefined,
-            productSub: runtime.DOMString = undefined,
-            userAgent: runtime.DOMString = undefined,
-            vendor: runtime.DOMString = undefined,
-            vendorSub: runtime.DOMString = undefined,
-            oscpu: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
-            languages: runtime.JSValue = undefined,
-            onLine: bool = undefined,
-            hardwareConcurrency: u64 = undefined,
-            connection: *runtime.Instance = undefined,
-            storageBuckets: *runtime.Instance = undefined,
-            storage: *runtime.Instance = undefined,
-            userAgentData: *runtime.Instance = undefined,
-            locks: *runtime.Instance = undefined,
-            gpu: *runtime.Instance = undefined,
-            ml: *runtime.Instance = undefined,
             cached_mediaCapabilities: ?*runtime.Instance = null,
             cached_permissions: ?*runtime.Instance = null,
             cached_serial: ?*runtime.Instance = null,

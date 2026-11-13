@@ -82,7 +82,6 @@ pub const RTCRtpSFrameDecryptor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onerror: typedefs.EventHandler = undefined,
             _internal: ?*RTCRtpSFrameDecryptorImpl.InternalState = null,
         },
     );

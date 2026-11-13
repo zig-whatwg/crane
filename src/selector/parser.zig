@@ -369,7 +369,7 @@ pub const SimpleSelector = union(enum) {
     /// A type selector: its name as written and ASCII-lowercased (HTML
     /// 4.16.2 compares HTML elements in HTML documents with the lowercase).
     Type: struct { tag_name: []const u8, lower_name: []const u8, namespace: NamespaceConstraint = .any },
-    Class: struct { class_name: []const u8 },
+    Class: ClassSelector,
     Id: struct { id: []const u8 },
     Attribute: AttributeSelector,
     /// CSS Namespaces 3: only namespaced selectors use these extra arms.
@@ -406,6 +406,50 @@ pub const SimpleSelector = union(enum) {
             .PseudoElement => |*pseudo| pseudo.calculateSpecificity(),
         };
     }
+};
+
+/// A class selector (Selectors 4 6.6): its name, and the name as an id of
+/// the Browser's attribute values, which the DOM's matcher fills on first
+/// use (`operand`).
+pub const ClassSelector = struct {
+    class_name: []const u8,
+    operand: ClassOperand = .{},
+};
+
+/// A class selector's name as an id of its document's Browser's attribute
+/// values table (dom.attribute_values; lane nd2 batch 3), so a class check
+/// compares ids, as Blink's compares AtomicStrings (CSSSelector's value,
+/// lowercased in quirks mode by SetValue(value, match_lower_case)). Filled
+/// and read only by the DOM's query matcher (dom.selector_matching), on the
+/// thread of the document whose selector cache keeps the list; the style
+/// engine's matching leaves it alone.
+///
+/// A WEAK cache - no reference is counted - unlike Blink's, whose selector
+/// holds its AtomicString (a count on the StringImpl), so its name can never
+/// be freed under it. A count here would make every cached compiled
+/// selector a holder whose release has to run before its Browser's values
+/// table ends - the document's selector cache and the CSSOM tearing down
+/// against the Browser's tables, an order nothing fixes today. So the cell
+/// keeps the id with the table's `operand_frees` when it was read: a record
+/// an operand names is marked, and its free moves that count, so an id is
+/// trusted only while no such record has been freed since (a freed record's
+/// id can go to another value; tests/dom/nd2_class_tokens_test.zig pins
+/// that the old id then matches nothing). The count is 64 bits, never reset
+/// and never narrowed: a wrap could make a stale id look valid.
+pub const ClassOperand = struct {
+    /// The table the id is of (its address, compared only), null before
+    /// the first match.
+    table: ?*const anyopaque = null,
+    /// The table's `operand_frees` when the id was read.
+    frees: u64 = 0,
+    /// The id, raw: the name's record, or its ASCII lowercase's when
+    /// `folded`; 0 when the name is no token (it matches nothing).
+    id: u32 = 0,
+    /// The id is of the name ASCII-lowercased (a quirks-mode document).
+    folded: bool = false,
+    /// No id could be kept (a name too long to keep a record for): the
+    /// matcher compares bytes.
+    bytes: bool = false,
 };
 
 /// The attribute selector's case modifier (Selectors 4 6.3).

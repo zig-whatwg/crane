@@ -319,6 +319,19 @@ pub fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits
     return error.NotSupported;
 }
 
+/// This platform has no image encoder.
+pub fn imageEncodingMimeTypeSupported(essence: Str) bool {
+    _ = essence;
+    return false;
+}
+
+/// No image encodes: every serialization of a bitmap as a file is null
+/// (HTML 4.12.5.5).
+pub fn encodeImage(allocator: std.mem.Allocator, mime: Str, source: platform.EncodeSource, quality: f64) platform.ImageEncodeError!Bytes {
+    _ = .{ allocator, mime, source, quality };
+    return error.NotSupported;
+}
+
 /// No font decodes: every web font fails to load (CSS Font Loading 2.2 step
 /// 5.2), and no face has metrics.
 pub fn decodeFont(allocator: std.mem.Allocator, bytes: Bytes, postscript_name: Str, limits: platform.FontLimits) platform.FontError!platform.DecodedFont {
@@ -849,6 +862,44 @@ pub fn showVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
 
 pub fn hideVirtualKeyboard(browser: *BrowserPlatform, tab: TabId) void {
     _ = .{ browser, tab };
+}
+
+// ---------------------------------------------------------------------------
+// 6.11 Address space: no reservations. A Browser cannot start on a platform
+// without them (runtime.BrowserScope.reserveHeap returns NotSupported, so
+// Browser.init fails cleanly); every page the protocol could name is none.
+// ---------------------------------------------------------------------------
+
+pub fn pageSize() usize {
+    return std.heap.page_size_min;
+}
+
+pub fn reserveAddressSpace(size: usize, alignment: usize, alignment_offset: usize, label: platform.AddressLabel) Error!platform.AddressRange {
+    _ = .{ size, alignment, alignment_offset, label };
+    return error.NotSupported;
+}
+
+pub fn labelAddressSpace(range: platform.AddressRange, offset: usize, length: usize, label: platform.AddressLabel) void {
+    _ = .{ range, offset, length, label };
+}
+
+pub fn commitPages(range: platform.AddressRange, offset: usize, length: usize) Error!void {
+    _ = .{ range, offset, length };
+    return error.NotSupported;
+}
+
+pub fn decommitPages(range: platform.AddressRange, offset: usize, length: usize) Error!void {
+    _ = .{ range, offset, length };
+    return error.NotSupported;
+}
+
+pub fn protectPages(range: platform.AddressRange, offset: usize, length: usize, access: platform.PageAccess) Error!void {
+    _ = .{ range, offset, length, access };
+    return error.NotSupported;
+}
+
+pub fn releaseAddressSpace(range: platform.AddressRange) void {
+    _ = range;
 }
 
 // ---------------------------------------------------------------------------

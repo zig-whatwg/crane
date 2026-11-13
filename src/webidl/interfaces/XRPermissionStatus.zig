@@ -71,7 +71,6 @@ pub const XRPermissionStatus = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            granted: runtime.JSValue = undefined,
             _internal: ?*XRPermissionStatusImpl.InternalState = null,
         },
     );

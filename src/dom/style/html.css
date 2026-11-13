@@ -84,6 +84,15 @@ dialog::backdrop {
  background: rgba(0,0,0,0.1);
 }
 
+/* Position 4 §3.4 "add an element to the top layer" step 4: a UA !important
+   overlay: auto while the element is in the top layer, gone when its removal
+   is requested (dialog.close(), hidePopover()). Blink html.css: the same
+   selectors under OverlayProperty. Only the UA's important declarations set
+   overlay (css/cascade.zig overlaySettable). */
+dialog:modal, [popover]:popover-open {
+ overlay: auto !important;
+}
+
 [popover]:not(:popover-open):not(dialog[open]) {
  display:none;
 }

@@ -82,7 +82,6 @@ pub const AudioDestinationNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            maxChannelCount: u32 = undefined,
             _internal: ?*AudioDestinationNodeImpl.InternalState = null,
         },
     );

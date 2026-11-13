@@ -53,7 +53,6 @@ pub const NavigatorLocks = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            locks: *runtime.Instance = undefined,
             _internal: ?*NavigatorLocksImpl.InternalState = null,
         },
     );

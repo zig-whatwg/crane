@@ -59,8 +59,6 @@ pub const BluetoothDataFilter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dataPrefix: runtime.ArrayBuffer = undefined,
-            mask: runtime.ArrayBuffer = undefined,
             _internal: ?*BluetoothDataFilterImpl.InternalState = null,
         },
     );

@@ -71,12 +71,6 @@ pub const VideoTrack = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            kind: runtime.DOMString = undefined,
-            label: runtime.DOMString = undefined,
-            language: runtime.DOMString = undefined,
-            selected: bool = undefined,
-            sourceBuffer: ?*runtime.Instance = null,
             _internal: ?*VideoTrackImpl.InternalState = null,
         },
     );

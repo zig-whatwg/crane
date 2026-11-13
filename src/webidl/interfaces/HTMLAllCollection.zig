@@ -75,7 +75,6 @@ pub const HTMLAllCollection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*HTMLAllCollectionImpl.InternalState = null,
         },
     );

@@ -61,9 +61,6 @@ pub const MediaStreamTrackProcessor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            discardedFrames: u64 = undefined,
-            totalFrames: u64 = undefined,
             _internal: ?*MediaStreamTrackProcessorImpl.InternalState = null,
         },
     );

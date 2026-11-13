@@ -67,11 +67,6 @@ pub const FontFaceVariationAxis = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            axisTag: runtime.DOMString = undefined,
-            minimumValue: f64 = undefined,
-            maximumValue: f64 = undefined,
-            defaultValue: f64 = undefined,
             _internal: ?*FontFaceVariationAxisImpl.InternalState = null,
         },
     );

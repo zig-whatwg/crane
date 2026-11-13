@@ -56,7 +56,6 @@ pub const AudioSinkInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.AudioSinkType = undefined,
             _internal: ?*AudioSinkInfoImpl.InternalState = null,
         },
     );

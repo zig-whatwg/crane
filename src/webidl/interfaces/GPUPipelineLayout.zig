@@ -63,7 +63,6 @@ pub const GPUPipelineLayout = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUPipelineLayoutImpl.InternalState = null,
         },
     );

@@ -66,11 +66,6 @@ pub const ResizeObserverEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            target: *runtime.Instance = undefined,
-            contentRect: *runtime.Instance = undefined,
-            borderBoxSize: runtime.JSValue = undefined,
-            contentBoxSize: runtime.JSValue = undefined,
-            devicePixelContentBoxSize: runtime.JSValue = undefined,
             _internal: ?*ResizeObserverEntryImpl.InternalState = null,
         },
     );

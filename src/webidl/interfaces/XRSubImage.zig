@@ -32,6 +32,12 @@ pub const XRSubImage = struct {
             .{ "viewport", "get_viewport", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "viewport",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -56,7 +62,6 @@ pub const XRSubImage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            viewport: *runtime.Instance = undefined,
             cached_viewport: ?*runtime.Instance = null,
             _internal: ?*XRSubImageImpl.InternalState = null,
         },

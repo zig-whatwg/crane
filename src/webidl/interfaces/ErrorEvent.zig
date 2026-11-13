@@ -77,11 +77,6 @@ pub const ErrorEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
-            filename: runtime.USVString = undefined,
-            lineno: u32 = undefined,
-            colno: u32 = undefined,
-            @"error": runtime.JSValue = undefined,
             _internal: ?*ErrorEventImpl.InternalState = null,
         },
     );

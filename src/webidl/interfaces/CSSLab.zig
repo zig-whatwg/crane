@@ -77,10 +77,6 @@ pub const CSSLab = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            l: typedefs.CSSColorPercent = undefined,
-            a: typedefs.CSSColorNumber = undefined,
-            b: typedefs.CSSColorNumber = undefined,
-            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSLabImpl.InternalState = null,
         },
     );

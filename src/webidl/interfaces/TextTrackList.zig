@@ -88,10 +88,6 @@ pub const TextTrackList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            onaddtrack: typedefs.EventHandler = undefined,
-            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*TextTrackListImpl.InternalState = null,
         },
     );

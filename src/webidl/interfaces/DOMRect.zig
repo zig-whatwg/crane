@@ -78,10 +78,6 @@ pub const DOMRect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: f64 = undefined,
-            y: f64 = undefined,
-            width: f64 = undefined,
-            height: f64 = undefined,
             _internal: ?*DOMRectImpl.InternalState = null,
         },
     );

@@ -93,10 +93,6 @@ pub const MediaStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            active: bool = undefined,
-            onaddtrack: typedefs.EventHandler = undefined,
-            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*MediaStreamImpl.InternalState = null,
         },
     );

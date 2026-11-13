@@ -86,10 +86,6 @@ pub const RemotePlayback = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: enums.RemotePlaybackState = undefined,
-            onconnecting: typedefs.EventHandler = undefined,
-            onconnect: typedefs.EventHandler = undefined,
-            ondisconnect: typedefs.EventHandler = undefined,
             _internal: ?*RemotePlaybackImpl.InternalState = null,
         },
     );

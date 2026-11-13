@@ -72,8 +72,6 @@ pub const SpeechRecognitionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            resultIndex: u32 = undefined,
-            results: *runtime.Instance = undefined,
             _internal: ?*SpeechRecognitionEventImpl.InternalState = null,
         },
     );

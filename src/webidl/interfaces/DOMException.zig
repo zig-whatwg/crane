@@ -90,9 +90,6 @@ pub const DOMException = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            message: runtime.DOMString = undefined,
-            code: u16 = undefined,
             _internal: ?*DOMExceptionImpl.InternalState = null,
         },
     );

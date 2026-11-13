@@ -101,9 +101,6 @@ pub const MediaDevices = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ondevicechange: typedefs.EventHandler = undefined,
-            defaultSemantics: enums.GetUserMediaSemantics = undefined,
-            oncaptureaction: typedefs.EventHandler = undefined,
             _internal: ?*MediaDevicesImpl.InternalState = null,
         },
     );

@@ -89,9 +89,6 @@ pub const AnimationEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            parent: ?*runtime.Instance = null,
-            previousSibling: ?*runtime.Instance = null,
-            nextSibling: ?*runtime.Instance = null,
             _internal: ?*AnimationEffectImpl.InternalState = null,
         },
     );

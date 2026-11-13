@@ -61,9 +61,6 @@ pub const LayoutShiftAttribution = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            node: ?*runtime.Instance = null,
-            previousRect: *runtime.Instance = undefined,
-            currentRect: *runtime.Instance = undefined,
             _internal: ?*LayoutShiftAttributionImpl.InternalState = null,
         },
     );

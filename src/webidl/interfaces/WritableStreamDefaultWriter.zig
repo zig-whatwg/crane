@@ -70,9 +70,6 @@ pub const WritableStreamDefaultWriter = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.JSValue = undefined,
-            desiredSize: ?f64 = null,
-            ready: runtime.JSValue = undefined,
             _internal: ?*WritableStreamDefaultWriterImpl.InternalState = null,
         },
     );

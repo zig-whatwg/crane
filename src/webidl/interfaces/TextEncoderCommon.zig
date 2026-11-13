@@ -51,7 +51,6 @@ pub const TextEncoderCommon = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: runtime.DOMString = undefined,
             _internal: ?*TextEncoderCommonImpl.InternalState = null,
         },
     );

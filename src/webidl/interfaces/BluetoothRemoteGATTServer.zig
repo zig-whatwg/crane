@@ -36,6 +36,12 @@ pub const BluetoothRemoteGATTServer = struct {
             .{ "connected", "get_connected", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "device",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "connect", "call_connect", 0 },
@@ -71,8 +77,6 @@ pub const BluetoothRemoteGATTServer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            device: *runtime.Instance = undefined,
-            connected: bool = undefined,
             cached_device: ?*runtime.Instance = null,
             _internal: ?*BluetoothRemoteGATTServerImpl.InternalState = null,
         },

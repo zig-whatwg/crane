@@ -64,7 +64,6 @@ pub const CSSSupportsConditionRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
             _internal: ?*CSSSupportsConditionRuleImpl.InternalState = null,
         },
     );

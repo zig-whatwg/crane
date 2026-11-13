@@ -97,11 +97,6 @@ pub const ServiceWorkerContainer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            controller: ?*runtime.Instance = null,
-            ready: runtime.JSValue = undefined,
-            oncontrollerchange: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*ServiceWorkerContainerImpl.InternalState = null,
         },
     );

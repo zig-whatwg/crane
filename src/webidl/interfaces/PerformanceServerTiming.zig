@@ -68,9 +68,6 @@ pub const PerformanceServerTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            duration: typedefs.DOMHighResTimeStamp = undefined,
-            description: runtime.DOMString = undefined,
             _internal: ?*PerformanceServerTimingImpl.InternalState = null,
         },
     );

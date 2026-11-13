@@ -38,7 +38,9 @@ const element_data = dom.element_data;
 const ElementData = element_data.ElementData;
 
 /// Whether D1's out-of-line list is in this build.
-const out_of_line = @hasDecl(element_data, "Attribute");
+/// Whether the list is out of line: its entries a type of their own (lane
+/// perf3 D1's `Attribute`, lane nd2 batch 2's 8-byte `Entry`).
+const out_of_line = @hasDecl(element_data, "Attribute") or @hasDecl(element_data, "Entry");
 
 fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
@@ -78,22 +80,25 @@ test "the std and runtime parts the pins count are the sizes they were pinned wi
     try testing.expectEqual(@as(usize, 16), @sizeOf(?[]const u8));
 }
 
-test "an Attribute is 24 bytes: its name record's address and its value" {
+test "an attribute is an 8-byte entry: a name id and a value id, its records shared" {
     if (comptime !out_of_line) {
         std.debug.print("\nElementData still keeps its attributes inline ({d} bytes)\n", .{@sizeOf(ElementData)});
         return error.AttributesStillInline;
     } else {
-        // Blink's and WebKit's are 16: their value is an 8-byte atom. The name
-        // record is static for a known name and the attribute's own otherwise.
-        try expectSize(element_data.Attribute, 24);
-        try testing.expect(@FieldType(element_data.Attribute, "name") == *const element_data.QualifiedName);
-        try testing.expect(@FieldType(element_data.Attribute, "value") == []const u8);
-        // The list's header: its length and capacity, then the attributes.
+        // Blink's and WebKit's are 16: a QualifiedName and an AtomicString,
+        // two pointers to shared records. Here the two records are u32 ids
+        // (lane nd2 batch 2: A1 + A2): dom.attribute_names, a static record
+        // for a known name and the Browser's counted one otherwise, and
+        // dom.attribute_values, the Browser's counted record of the value.
+        try expectSize(element_data.Entry, 8);
+        try testing.expect(@FieldType(element_data.Entry, "name") == element_data.NameId);
+        try testing.expect(@FieldType(element_data.Entry, "value") == element_data.ValueId);
+        // The list's header: its length and capacity, then the entries.
         try expectSize(element_data.AttributeList, 8);
     }
 }
 
-test "ElementData is 112 bytes: the list out of line, no allocator, the prefix and Attr nodes rare data" {
+test "ElementData is 16 bytes: the list out of line, no allocator, the Attr nodes rare data, the name one record, the ID and classes indices in the list" {
     if (comptime !out_of_line) {
         printLayout(ElementData);
         return error.AttributesStillInline;
@@ -103,8 +108,12 @@ test "ElementData is 112 bytes: the list out of line, no allocator, the prefix a
         // list) + 8 (the Attr nodes) = 152 at D1; D2 moved the prefix (32)
         // and the Attr nodes (8) to the element's rare data
         // (tests/dom/perf3d2_element_rare_data_test.zig): namespace 32, local
-        // name 24, ID 24, classes 24, list 8.
-        try expectSize(ElementData, 112);
+        // name 24, ID 24, classes 24, list 8: 112. Lane nd2 N2 made the
+        // namespace and local name one record pointer (8; the prefix joined
+        // it from rare data): 64 (tests/dom/nd2_element_name_test.zig).
+        // N3 kept the ID and classes as two indices in the list's header
+        // (tests/dom/nd2_id_class_index_test.zig): 16.
+        try expectSize(ElementData, 16);
         inline for (.{ "allocator", "inline_attrs", "inline_attr_count", "heap_attrs" }) |gone| {
             if (@hasField(ElementData, gone)) {
                 std.debug.print("ElementData still has `{s}`\n", .{gone});
@@ -115,7 +124,7 @@ test "ElementData is 112 bytes: the list out of line, no allocator, the prefix a
     }
 }
 
-test "Element's InternalState is 136 bytes" {
+test "Element's InternalState is 40 bytes" {
     // 848 at 5b07812bf00: - 432 (ElementData's diet) = 416 at D1, Element
     // still keeping its 16-byte allocator copy then (in the V8 tests' realms
     // the creation allocator was not the scope's: docs/lessons/
@@ -123,31 +132,17 @@ test "Element's InternalState is 136 bytes" {
     // browser.md); D2 took the copy out and the cold fields into rare data
     // (tests/dom/perf3d2_element_rare_data_test.zig): 240; E1 its registry
     // association (tests/dom/perf3e1_element_registry_test.zig): 200, and
-    // its slottable state (tests/dom/perf3e1_slottable_test.zig): 136.
-    try expectSize(ElementState, 136);
+    // its slottable state (tests/dom/perf3e1_slottable_test.zig): 136; nd2
+    // N2 its name (tests/dom/nd2_element_name_test.zig): 88.
+    // N3 the ID and classes views: 40.
+    try expectSize(ElementState, 40);
     // Kept by value in its element's one State block (perf2 b5, Z7), or in a
     // block of its own before that: either way at most 512 bytes of arena.
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);
 }
 
-test "a div's one block is 352 bytes: perf2 b5's 1,272 less D1's 432, perf2 b6's 104, D2's 264, perf2 b7's 8 and E1's 104, and the wrapper redesign P6's 8 (NodeBase.holds)" {
-    // perf2 b5 made a node ONE exact-size State block holding every level's
-    // InternalState (1,272 bytes for a div at a67aa1e08e5, Element's 848 of
-    // them); D1 takes ElementData's 432 out of it; perf2 b6 the allocator
-    // copies of NodeBase, Node and EventTarget (48), last_child (8),
-    // EventTarget's lazy entry record (24 less 8 of padding) and four
-    // `_internal` pointers (32); D2 Element's allocator copy and cold fields
-    // (176) and HTMLElement's whole state (88); perf2 b7 EventTarget's
-    // current event (8, a Window's: in Window's state now); E1 the registry
-    // association (40) and the slottable state (64).
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 352);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
 // ============================================================================
 // An engine-less page
@@ -184,7 +179,7 @@ const Page = struct {
         self.ctx.deinit();
     }
 
-    fn data(self: *Page, el: *runtime.Instance) !*const ElementData {
+    fn data(self: *Page, el: *runtime.Instance) !element_data.View {
         _ = self;
         return element_data.of(el) orelse error.NoElementData;
     }
@@ -208,14 +203,14 @@ const Page = struct {
     }
 
     fn expectId(self: *Page, el: *runtime.Instance, expected: []const u8) !void {
-        try testing.expectEqualStrings(expected, (try self.data(el)).id.asSlice());
+        try testing.expectEqualStrings(expected, (try self.data(el)).idValue());
         var id = try interfaces.Element.get_id(el);
         defer id.deinit(self.ctx.allocator);
         try testing.expectEqualStrings(expected, id.asSlice());
     }
 
     fn expectClassName(self: *Page, el: *runtime.Instance, expected: []const u8) !void {
-        try testing.expectEqualStrings(expected, (try self.data(el)).class_name.asSlice());
+        try testing.expectEqualStrings(expected, (try self.data(el)).classValue());
         var class_name = try interfaces.Element.get_className(el);
         defer class_name.deinit(self.ctx.allocator);
         try testing.expectEqualStrings(expected, class_name.asSlice());
@@ -401,32 +396,32 @@ test "known names share a static record; other names have their own; a named nam
     } else {
         const data = try page.data(page.div);
         // The element's namespace is the static string, not a copy.
-        try testing.expect(data.namespace_uri.?.asSlice().ptr == infra.namespaces.HTML_NAMESPACE.ptr);
+        try testing.expect(data.namespaceSlice().?.ptr == infra.namespaces.HTML_NAMESPACE.ptr);
         try interfaces.Element.call_setAttribute(page.div, str("class"), .{ .domstring = str("a") });
         try interfaces.Element.call_setAttribute(page.div, str("onclick"), .{ .domstring = str("") });
         try interfaces.Element.call_setAttribute(page.div, str("aria-label"), .{ .domstring = str("x") });
         try interfaces.Element.call_setAttribute(page.div, str("data-x"), .{ .domstring = str("y") });
         try interfaces.Element.call_setAttributeNS(page.div, str(infra.namespaces.XLINK_NAMESPACE), str("xlink:href"), .{ .domstring = str("#a") });
         try interfaces.Element.call_setAttributeNS(page.div, str(infra.namespaces.XLINK_NAMESPACE), str("other:role"), .{ .domstring = str("r") });
-        try testing.expect(!data.storedAt(0).?.name.isOwned());
-        try testing.expect(!data.storedAt(1).?.name.isOwned());
-        try testing.expect(!data.storedAt(2).?.name.isOwned());
-        try testing.expect(data.storedAt(3).?.name.isOwned());
-        try testing.expect(!data.storedAt(4).?.name.isOwned());
+        try testing.expect(data.data.storedAt(0).?.name.isStatic());
+        try testing.expect(data.data.storedAt(1).?.name.isStatic());
+        try testing.expect(data.data.storedAt(2).?.name.isStatic());
+        try testing.expect(!data.data.storedAt(3).?.name.isStatic());
+        try testing.expect(data.data.storedAt(4).?.name.isStatic());
         // xlink:role is in the table; other:role is not, and keeps the
-        // static namespace string in its own record.
-        const other = data.storedAt(5).?.name;
-        try testing.expect(other.isOwned());
+        // static namespace string in its Browser's record.
+        const other = data.nameAt(5).?;
+        try testing.expect(!other.is_static);
         try testing.expect(other.namespace_uri.?.ptr == infra.namespaces.XLINK_NAMESPACE.ptr);
         // Two elements share the record of a known name.
         const span = try page.element("span");
         _ = try interfaces.Node.call_appendChild(page.div, span);
         try interfaces.Element.call_setAttribute(span, str("class"), .{ .domstring = str("b") });
-        try testing.expect((try page.data(span)).storedAt(0).?.name == data.storedAt(0).?.name);
+        try testing.expect((try page.data(span)).data.storedAt(0).?.name == data.data.storedAt(0).?.name);
         // A foreign element's namespace is static too.
         const svg = try interfaces.Document.call_createElementNS(page.document, str(infra.namespaces.SVG_NAMESPACE), str("svg"), .{ .was_passed = false, .value = undefined });
         _ = try interfaces.Node.call_appendChild(page.div, svg);
-        try testing.expect((try page.data(svg)).namespace_uri.?.asSlice().ptr == infra.namespaces.SVG_NAMESPACE.ptr);
+        try testing.expect((try page.data(svg)).namespaceSlice().?.ptr == infra.namespaces.SVG_NAMESPACE.ptr);
     }
 }
 

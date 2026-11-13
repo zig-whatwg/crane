@@ -81,8 +81,6 @@ pub const IDBOpenDBRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onblocked: typedefs.EventHandler = undefined,
-            onupgradeneeded: typedefs.EventHandler = undefined,
             _internal: ?*IDBOpenDBRequestImpl.InternalState = null,
         },
     );

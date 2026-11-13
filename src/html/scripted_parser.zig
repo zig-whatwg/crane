@@ -823,6 +823,9 @@ pub const DocumentParser = struct {
         try self.pump();
         if (self.detached or !self.isCurrent() or !self.input_stream.eof_processed) return;
         self.eof_processed = true;
+        // The parse is over: the document's shared attribute blocks start
+        // their 10 s (dom.attribute_block_cache).
+        self.adapter.finishedParsing();
         self.on_finished(self.document, self);
     }
 

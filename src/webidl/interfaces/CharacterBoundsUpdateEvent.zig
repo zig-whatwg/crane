@@ -70,8 +70,6 @@ pub const CharacterBoundsUpdateEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            rangeStart: u32 = undefined,
-            rangeEnd: u32 = undefined,
             _internal: ?*CharacterBoundsUpdateEventImpl.InternalState = null,
         },
     );

@@ -70,8 +70,6 @@ pub const PromiseRejectionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            promise: runtime.JSValue = undefined,
-            reason: runtime.JSValue = undefined,
             _internal: ?*PromiseRejectionEventImpl.InternalState = null,
         },
     );

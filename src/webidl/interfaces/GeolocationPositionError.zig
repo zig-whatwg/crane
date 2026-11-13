@@ -65,8 +65,6 @@ pub const GeolocationPositionError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            code: u16 = undefined,
-            message: runtime.DOMString = undefined,
             _internal: ?*GeolocationPositionErrorImpl.InternalState = null,
         },
     );

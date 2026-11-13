@@ -68,7 +68,6 @@ pub const ReadableStreamDefaultReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.JSValue = undefined,
             _internal: ?*ReadableStreamDefaultReaderImpl.InternalState = null,
         },
     );

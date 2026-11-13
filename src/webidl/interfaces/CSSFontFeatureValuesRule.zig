@@ -74,14 +74,6 @@ pub const CSSFontFeatureValuesRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            fontFamily: typedefs.CSSOMString = undefined,
-            annotation: *runtime.Instance = undefined,
-            ornaments: *runtime.Instance = undefined,
-            stylistic: *runtime.Instance = undefined,
-            swash: *runtime.Instance = undefined,
-            characterVariant: *runtime.Instance = undefined,
-            styleset: *runtime.Instance = undefined,
-            historicalForms: *runtime.Instance = undefined,
             _internal: ?*CSSFontFeatureValuesRuleImpl.InternalState = null,
         },
     );

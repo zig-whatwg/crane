@@ -83,10 +83,6 @@ pub const SVGLength = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            unitType: u16 = undefined,
-            value: f32 = undefined,
-            valueInSpecifiedUnits: f32 = undefined,
-            valueAsString: runtime.DOMString = undefined,
             _internal: ?*SVGLengthImpl.InternalState = null,
         },
     );

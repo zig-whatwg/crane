@@ -1,0 +1,16 @@
+# Architecture: Values packed in a growable block dangle every view: intern them as counted records
+
+**Date**: 2026-11-10
+**Lesson**: A layout that packs an object's VALUE bytes into the same block as its growable entry list (SQLite's page layout) cannot hand readers stable views. Every growth moves every value. Keep the values in shared, counted records the entries name by id, as the browsers' atomized strings are; then a growth moves ids, never bytes.
+
+**Why**: Readers borrow attribute values for the length of their own step, and some hold them across a point where script can run: DOM's "handle attribute changes" hands the old and new values to the change steps, and those steps can dispatch synchronously (HTML's popover attribute steps fire beforetoggle; img's src step fires load or error). With the bytes inside the block, any append past capacity, or any longer value once the value area is full, reallocates the block. A view taken before then reads freed memory. Making it safe would need a deferred free tied to the event loop's safe points (allocator lifetime and teardown order), or an audit of every reader, which the lesson "hand readers of a growable list a view by value" exists to avoid. No browser stores attribute values inline. Blink's and WebKit's `Attribute` is a QualifiedName and an AtomString (two pointers to refcounted shared strings). Gecko's nsAttrValue is an atom, or a refcounted string buffer for a long value.
+
+**What Happened**: The plan of record (node-memory-plan-v2 I7, review R16) specified A1 as an 8-B entry {name id u32, value offset u16, value length u16} with the value bytes packed in the block. Lane nd2 batch 2 found the conflict with its own brief's rule ("a value view must not dangle across a growth") before writing code, and escalated. The integrator chose the browsers' shape: the entry became {name id u32, value id u32}, and each distinct value became ONE record per Browser. A record is counted by every entry that names it and by any holder that takes a count for a span (`dom.element_data.Hold`), and it is freed at zero in a weak table on the window agent's thread, the same rules the element-name records already had. The red test showed the hazard was already live on main, where a change step that removes the attribute left the later steps reading the freed data-* name record. The audit found one more real holder (SVG script href across a Trusted Types default policy). It also showed the popover step running script before the element-type steps.
+
+**Fix**:
+1. An entry holds ids, never bytes or pointers: a comptime check over its type.
+2. Each value is a counted record in a per-owner weak table, freed at its last release. The empty value is id 0 with no record.
+3. A reader within its own step borrows. A holder across a point where script can run takes a count for that span (an RAII guard: `const held = Hold.take(scope, entry); defer held.end();`).
+4. Write paths hold the name and the new value across "handle attribute changes", and keep the old value's reference until the steps are done.
+
+**Takeaway**: **Before packing page-chosen bytes beside a growable index, ask what a reader's view points at after the next growth. If the answer is "the old block", intern the bytes as counted records and let the index hold ids.**

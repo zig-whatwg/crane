@@ -70,10 +70,6 @@ pub const LayoutShift = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f64 = undefined,
-            hadRecentInput: bool = undefined,
-            lastInputTime: typedefs.DOMHighResTimeStamp = undefined,
-            sources: runtime.JSValue = undefined,
             _internal: ?*LayoutShiftImpl.InternalState = null,
         },
     );

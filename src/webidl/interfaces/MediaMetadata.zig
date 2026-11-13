@@ -66,11 +66,6 @@ pub const MediaMetadata = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            title: runtime.DOMString = undefined,
-            artist: runtime.DOMString = undefined,
-            album: runtime.DOMString = undefined,
-            artwork: runtime.JSValue = undefined,
-            chapterInfo: runtime.JSValue = undefined,
             cached_chapterInfo: ?runtime.JSValue = null,
             _internal: ?*MediaMetadataImpl.InternalState = null,
         },

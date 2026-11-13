@@ -175,6 +175,9 @@ pub const ClientInfo = struct {
     /// A window client's window data: the object is a WindowClient. Null for
     /// a worker client.
     window: ?WindowData = null,
+    /// When its browsing context was last focused (registry
+    /// Environment.last_focus_ns; 0: never): matchAll()'s order.
+    last_focus_ns: u64 = 0,
 
     /// The client `environment`, without its window data. Locked.
     fn of(allocator: Allocator, environment: *const registry_mod.Environment) Allocator.Error!ClientInfo {
@@ -184,6 +187,7 @@ pub const ClientInfo = struct {
             .url = try allocator.dupe(u8, environment.creation_url),
             .kind = environment.kind,
             .frame_type = environment.frame_type,
+            .last_focus_ns = environment.last_focus_ns,
         };
     }
 
@@ -450,6 +454,14 @@ pub const ReservedClient = struct {
     /// The same for a top-level traversable's document (a request whose
     /// destination is "document"). OWNED; null: none.
     top_level_storage_key: ?[]u8 = null,
+    /// The creator's browsing context and its last focus time when it
+    /// reserved (0: none, never): a frame's navigation reserves from the
+    /// frame's own document, which unloads - its environment ends - before
+    /// the new document is a client (HTMLIFrameElement runCommit), so the
+    /// browsing context's focus time crosses on the reservation to the next
+    /// client of the same navigable (`createClientControlled`).
+    creator_navigable: usize = 0,
+    creator_focus_ns: u64 = 0,
 
     /// The key for a fetch whose destination is `destination`.
     fn storageKeyFor(self: *const ReservedClient, destination: fetch.internal.Destination) ?[]const u8 {
@@ -1459,6 +1471,14 @@ pub const Manager = struct {
     pub fn reserveClient(self: *Manager, kind: registry_mod.EnvironmentKind, creator: u64, inherited_worker: u64, keys: ReservedKeys) ?*ReservedClient {
         const handle = self.allocator.create(ReservedClient) catch return null;
         handle.* = .{ .manager = self, .kind = kind, .creator = creator, .inherited_worker = inherited_worker };
+        if (creator != 0) {
+            self.lock();
+            defer self.unlock();
+            if (self.registry.findEnvironment(creator)) |environment| if (environment.kind == .window) {
+                handle.creator_navigable = environment.navigable;
+                handle.creator_focus_ns = environment.last_focus_ns;
+            };
+        }
         if (keys.nested) |k| handle.storage_key = self.allocator.dupe(u8, k) catch {
             self.destroyReserved(handle);
             return null;
@@ -1555,6 +1575,8 @@ pub const Manager = struct {
                         });
                         environment.secure_context = values.secure_context;
                         environment.navigable = values.navigable;
+                        self.registry.inheritFocusTime(environment);
+                        self.inheritReservedFocusTime(environment, reserved);
                         const controller = try self.controllerAtCreation(environment);
                         // The messages a service worker sent it meanwhile.
                         self.deliverReservedMessages(environment);
@@ -1585,12 +1607,35 @@ pub const Manager = struct {
                 break :inherit creator.active_worker;
             } else null;
             if (inherited) |worker| self.registry.setActiveWorker(environment, worker);
+            if (values.reserved) |reserved| self.inheritReservedFocusTime(environment, reserved);
             const controller = try self.controllerAtCreation(environment);
             self.navigated(&requests, values.navigable, environment) catch {};
             break :blk .{ .id = environment.id, .controller = controller };
         };
         self.postWindowDataRequests(requests.items);
         return created;
+    }
+
+    /// A new window client of the navigable its reservation's creator was a
+    /// document of starts with that browsing context's focus time - the
+    /// creator's latest if it is still listed, else the one it had when it
+    /// reserved (`ReservedClient.creator_focus_ns`). Locked.
+    fn inheritReservedFocusTime(self: *Manager, environment: *registry_mod.Environment, reserved: *const ReservedClient) void {
+        if (environment.navigable == 0 or reserved.creator_navigable != environment.navigable) return;
+        var at = reserved.creator_focus_ns;
+        if (self.registry.findEnvironment(reserved.creator)) |creator| at = @max(at, creator.last_focus_ns);
+        environment.last_focus_ns = @max(environment.last_focus_ns, at);
+    }
+
+    /// The window client `id`'s browsing context was focused at `at_ns` (the
+    /// platform's monotonic clock, nanoseconds), as its window's focus update
+    /// steps report it (one clock read per update, so a frame and the
+    /// ancestors it refreshes tie): matchAll()'s "most recently focused"
+    /// order. Any thread.
+    pub fn environmentFocused(self: *Manager, id: u64, at_ns: u64) void {
+        self.lock();
+        defer self.unlock();
+        self.registry.setFocusTime(id, at_ns);
     }
 
     /// The active service worker of `environment`, just made a client, as its
@@ -2834,21 +2879,42 @@ pub const Manager = struct {
                     clients.append(self.allocator, info) catch continue;
                     slot.info = null;
                 }
-                // 2.6.4: window clients first - focused ones before the
-                // others - then worker clients, each group in creation
-                // order (the slots' order). Stated deviation: the order of
-                // the focused windows among themselves is creation order,
-                // not most recently focused first - no focus history is
-                // kept.
+                // 2.6.4: window clients whose browsing context has been
+                // focused first, most recently focused first; then the
+                // never-focused window clients in creation order; then
+                // worker clients in creation order. Creation order is the
+                // environments' (their ids are one increasing counter); equal
+                // focus times fall back to it (w3c/ServiceWorker#1080). The
+                // mechanisms, by golden rule 2 (integrator's ruling,
+                // 2026-11-12, choice (a)):
+                // - M1 recency order: Chrome and Firefox (majority) -
+                //   Chromium content/browser/service_worker/
+                //   service_worker_client_utils.cc ServiceWorkerClientInfoSort
+                //   (windows first, last_focus_time desc, creation time), Gecko
+                //   dom/clients/api/Clients.cpp MatchAllComparator (focus time
+                //   desc, never-focused after, ties by creation time); WebKit
+                //   keeps no focus time (focused first, then creation order).
+                // - M2 a focused frame refreshes its ancestors too: Firefox
+                //   yes (nsFocusManager::SetFocusedWindowInternal sets each
+                //   in-process ancestor Document's mLastFocusTime with one
+                //   TimeStamp), Chrome no (FrameTreeNode::DidFocus, the frame
+                //   only), Safari not counted - no majority, so the spec:
+                //   HTML's focus update steps put the ancestor documents in
+                //   the new focus chain, so their browsing contexts have been
+                //   focused too (the focus update reports each, one clock read).
+                // - M3 the time lives on the browsing context (the spec's
+                //   words; Chromium's FrameTreeNode) rather than the document
+                //   (Gecko): no majority, so the spec - registry
+                //   Environment.last_focus_ns, carried to the next client of
+                //   the same navigable (`Registry.inheritFocusTime`).
+                // clients-matchall-order.https.html: wpt.fyi 24ddf405a0
+                // Chrome 4/7, Firefox 7/7, Safari 3/7.
                 std.mem.sort(ClientInfo, clients.items, {}, struct {
-                    fn rank(info: ClientInfo) u2 {
-                        const window = info.window orelse return 2;
-                        return if (window.focused) 0 else 1;
-                    }
                     fn lessThan(_: void, a: ClientInfo, b: ClientInfo) bool {
-                        const ra = rank(a);
-                        const rb = rank(b);
-                        if (ra != rb) return ra < rb;
+                        const a_window = a.window != null;
+                        const b_window = b.window != null;
+                        if (a_window != b_window) return a_window;
+                        if (a_window and a.last_focus_ns != b.last_focus_ns) return a.last_focus_ns > b.last_focus_ns;
                         return a.environment < b.environment;
                     }
                 }.lessThan);

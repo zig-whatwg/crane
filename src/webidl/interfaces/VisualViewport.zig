@@ -88,16 +88,6 @@ pub const VisualViewport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            offsetLeft: f64 = undefined,
-            offsetTop: f64 = undefined,
-            pageLeft: f64 = undefined,
-            pageTop: f64 = undefined,
-            width: f64 = undefined,
-            height: f64 = undefined,
-            scale: f64 = undefined,
-            onresize: typedefs.EventHandler = undefined,
-            onscroll: typedefs.EventHandler = undefined,
-            onscrollend: typedefs.EventHandler = undefined,
             _internal: ?*VisualViewportImpl.InternalState = null,
         },
     );

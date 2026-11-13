@@ -84,8 +84,6 @@ pub const HTMLOptionsCollection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            selectedIndex: i32 = undefined,
             _internal: ?*HTMLOptionsCollectionImpl.InternalState = null,
         },
     );

@@ -62,10 +62,6 @@ pub const VideoPlaybackQuality = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            creationTime: typedefs.DOMHighResTimeStamp = undefined,
-            droppedVideoFrames: u32 = undefined,
-            totalVideoFrames: u32 = undefined,
-            corruptedVideoFrames: u32 = undefined,
             _internal: ?*VideoPlaybackQualityImpl.InternalState = null,
         },
     );

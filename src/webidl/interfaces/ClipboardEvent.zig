@@ -69,7 +69,6 @@ pub const ClipboardEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            clipboardData: ?*runtime.Instance = null,
             _internal: ?*ClipboardEventImpl.InternalState = null,
         },
     );

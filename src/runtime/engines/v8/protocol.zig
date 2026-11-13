@@ -96,9 +96,9 @@ pub const capabilities: engine.Capabilities = .{
     .webassembly_streaming = .native,
     // runtime.instance_lifecycle.markWrapped where the instance is written
     // into the object: template_registry.wrapInstanceAsV8Object (every
-    // outcome of its cache step), interface.zig setInstance and
-    // setInstanceWithTypeInfo (constructors, custom element construction
-    // and upgrade), and the Window and worker global bindings
+    // outcome of its cache step), interface.zig setInstance (constructors,
+    // custom element construction and upgrade), and the Window and worker
+    // global bindings
     // (tests/v8/wrap_tracking_test.zig).
     .wrap_tracking = .native,
     // AgentOptions.clock: CranePlatform's CurrentClockTimeMilli* read the
@@ -116,11 +116,11 @@ pub const capabilities: engine.Capabilities = .{
     // public only through the inspector.
     .repl_mode = .native,
     // AgentOptions.external_memory: the change of the host's figure goes to
-    // Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding
-    // exit and each microtask checkpoint (external_memory.zig); V8 starts
-    // incremental marking past its low-water mark + 64 MB and collects in
-    // full past half its old-generation limit (V8 13.1 heap.cc
-    // HandleExternalMemoryInterrupt).
+    // the agent's v8::ExternalMemoryAccounter at the outermost binding exit
+    // and each microtask checkpoint (external_memory.zig); V8 counts it
+    // toward its global allocation limit, starts incremental marking when
+    // that is reached and collects when it is overshot by a large margin
+    // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
     // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
     // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
@@ -272,17 +272,11 @@ pub fn nextEngineTaskDelay(agent: *Agent) ?u64 {
     var delay: u64 = undefined;
     return if (ffi.v8_Isolate_NextForegroundTaskDelay(isolateOf(agent), &delay)) delay else null;
 }
-pub fn hasEngineIdleTasks(agent: *Agent) bool {
-    return worker_realm.hasEngineIdleTasks(agent);
-}
-pub fn runEngineIdleTasks(agent: *Agent, time_left_ns: u64) bool {
-    return worker_realm.runEngineIdleTasks(agent, time_left_ns);
-}
 
 /// A realm's agent is its isolate (context_manager records it so).
 /// LowMemoryNotification: a full, synchronous collection.
 pub fn requestGarbageCollection(agent: *Agent) void {
-    ffi.v8_Isolate_RequestGarbageCollection(isolateOf(agent));
+    protocol_agents.collectGarbageNow(agent);
     // "As completely as the engine can": the trees the collection queued for
     // deferred teardown are freed before it returns - unless a DOM algorithm
     // is on the agent's stack (TestUtils.gc() from script is itself a binding
@@ -468,8 +462,8 @@ pub fn invokeCallbackFunction(realm: Context, callback: *const engine.CallbackFu
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.invokeCallbackFunction(realm, callback, this_arg, args, behavior);
 }
 
@@ -477,8 +471,8 @@ pub fn invokeCallbackFunctionWithReturnType(realm: Context, callback: *const eng
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return switch (return_type) {
         inline else => |kind| protocol_callbacks.invokeCallbackFunctionWithReturnType(realm, callback, this_arg, args, behavior, kind),
     };
@@ -488,8 +482,8 @@ pub fn constructCallbackFunction(realm: Context, callback: *const engine.Callbac
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.constructCallbackFunction(realm, callback, args);
 }
 
@@ -497,8 +491,8 @@ pub fn callUserObjectOperation(realm: Context, callback: *const engine.CallbackI
     forbidScriptInHold(realm);
     // A native algorithm calls script: a DOM algorithm on the agent's stack
     // until the callback returns to it (dom_algorithm.zig, risk 4).
-    const algorithm = dom_algorithm.enterRealm(realm);
-    defer dom_algorithm.leaveToNative(algorithm);
+    const algorithm = dom_algorithm.enterCallback(realm);
+    defer dom_algorithm.leaveCallback(algorithm);
     return protocol_callbacks.callUserObjectOperation(realm, callback, operation, this_arg, args, behavior);
 }
 
@@ -1050,7 +1044,7 @@ pub fn platformObjectDestroyed(instance: *Instance) void {
     context_manager.markInstanceCleanedUp(instance);
 }
 
-/// engine.deferTeardowns: the agent's second passes flag their entries
+/// engine.deferTeardowns: the agent's finalizers flag their entries
 /// instead of tearing them down (wrapper_cache.TeardownHolds).
 pub fn deferTeardowns(realm: Context) void {
     @import("wrapper_cache.zig").deferTeardowns(realm);
@@ -1125,7 +1119,7 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 /// - `node_wrapper_walks`, `wrapper_trace_check_failures`: the current
 ///   isolate's walks so far - anchors and keeps whose tree the collector
 ///   asked the host about (the wrapper redesign's P5, node_wrappers.zig "The
-///   walk") - and the walk oracle's findings (-Dwrapper-trace-check; 0 in
+///   walk") - and the walk oracle's findings (-Dv8-wrapper-trace-check; 0 in
 ///   every other build), cumulative; 0 with no isolate current;
 /// - `node_anchors_registered`: the current isolate's node anchors in its
 ///   registry - those whose wrapper may still live - now;
@@ -1134,12 +1128,6 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   and that wait for their free now, those freed so far, and the frees
 ///   cppgc refused because its heap was collecting (v8_wrapper.cpp
 ///   freeDroppedAnchors);
-/// - `engine_idle_periods`, `engine_idle_given_us`, `engine_idle_used_us`,
-///   `engine_idle_tasks_run`: the current isolate's share of its host's idle
-///   periods so far - the periods that found idle work, the time they gave
-///   V8 and the time it used, and its idle tasks run (engine.
-///   runEngineIdleTasks; lane wr1 batch 10), cumulative; 0 with no isolate
-///   current or none given;
 /// - `node_anchor_weak_ns_max`, `node_anchor_weak_slots_max`: the anchors'
 ///   weak processing in one full collection at most - its walk over the
 ///   registry's slots, and the slots (v8_wrapper.cpp GCPhaseStats);
@@ -1175,8 +1163,6 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
     var anchors: ffi.NodeAnchorStats = .{};
     ffi.v8_Debug_NodeAnchorStats(ffi.v8_Isolate_GetCurrent(), &anchors);
-    var idle: ffi.IdleStats = .{};
-    ffi.v8_Debug_IdleStats(ffi.v8_Isolate_GetCurrent(), &idle);
     const walk_counts = @import("node_wrappers.zig").walkCountsOfCurrent();
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
@@ -1200,10 +1186,6 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
         .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
-        .{ .name = "engine_idle_periods", .value = @intCast(idle.periods) },
-        .{ .name = "engine_idle_given_us", .value = @intCast(idle.given_ns / std.time.ns_per_us) },
-        .{ .name = "engine_idle_used_us", .value = @intCast(idle.used_ns / std.time.ns_per_us) },
-        .{ .name = "engine_idle_tasks_run", .value = @intCast(idle.tasks_run) },
         .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },
         .{ .name = "node_anchor_weak_slots_max", .value = @intCast(anchors.weak_slots_max) },
         .{ .name = "gc_atomic_us_max", .value = anchors.atomic_us_max },
@@ -1219,7 +1201,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },
-        .{ .name = "object_globals_from.PropertyCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(1) },
+        .{ .name = "object_globals_from.PropertyCallbackInfo_Holder", .value = ffi.v8_Debug_ObjSrc(1) },
         .{ .name = "object_globals_from.Context_Global", .value = ffi.v8_Debug_ObjSrc(2) },
         .{ .name = "object_globals_from.GetGlobalPrototype", .value = ffi.v8_Debug_ObjSrc(3) },
         .{ .name = "object_globals_from.FunctionTemplate_GetPrototypeObject", .value = ffi.v8_Debug_ObjSrc(4) },

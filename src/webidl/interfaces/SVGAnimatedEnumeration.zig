@@ -57,8 +57,6 @@ pub const SVGAnimatedEnumeration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            baseVal: u16 = undefined,
-            animVal: u16 = undefined,
             _internal: ?*SVGAnimatedEnumerationImpl.InternalState = null,
         },
     );

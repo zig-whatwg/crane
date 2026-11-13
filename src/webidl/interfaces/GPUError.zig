@@ -60,7 +60,6 @@ pub const GPUError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            message: runtime.DOMString = undefined,
             _internal: ?*GPUErrorImpl.InternalState = null,
         },
     );

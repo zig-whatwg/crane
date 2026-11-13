@@ -73,6 +73,12 @@ pub const BaseAudioContext = struct {
             .{ "onstatechange", "get_onstatechange", "set_onstatechange" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "audioWorklet",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "createAnalyser", "call_createAnalyser", 0 },
@@ -156,14 +162,6 @@ pub const BaseAudioContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            destination: *runtime.Instance = undefined,
-            sampleRate: f32 = undefined,
-            currentTime: f64 = undefined,
-            listener: *runtime.Instance = undefined,
-            state: enums.AudioContextState = undefined,
-            renderQuantumSize: u32 = undefined,
-            audioWorklet: *runtime.Instance = undefined,
-            onstatechange: typedefs.EventHandler = undefined,
             cached_audioWorklet: ?*runtime.Instance = null,
             _internal: ?*BaseAudioContextImpl.InternalState = null,
         },

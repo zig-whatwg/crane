@@ -64,7 +64,6 @@ pub const PaymentManager = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            userHint: runtime.DOMString = undefined,
             _internal: ?*PaymentManagerImpl.InternalState = null,
         },
     );

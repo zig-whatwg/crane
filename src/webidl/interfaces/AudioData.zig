@@ -84,12 +84,6 @@ pub const AudioData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            format: ?enums.AudioSampleFormat = null,
-            sampleRate: f32 = undefined,
-            numberOfFrames: u32 = undefined,
-            numberOfChannels: u32 = undefined,
-            duration: u64 = undefined,
-            timestamp: i64 = undefined,
             _internal: ?*AudioDataImpl.InternalState = null,
         },
     );

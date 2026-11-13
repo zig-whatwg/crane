@@ -9,6 +9,55 @@ const symbols_mod = @import("counter_style_values.zig");
 const Allocator = std.mem.Allocator;
 const Value = values.Value;
 const Stream = properties.Stream;
+const TreeScopeRef = @FieldType(@import("cascade.zig").Source, "tree_scope");
+
+/// Lists 3 §3.3 list-style-type's <counter-style-name>, computed: the name
+/// with the tree scope of the declaration that named it (Scoping 1's
+/// tree-scoped names; @counter-style rules are looked up from that scope).
+/// CSSOM serializes the name alone; equality keeps the scope, so the same
+/// name from another tree is another value (css/css-lists/
+/// list-style-type-transition-tree-scope-custom-ident.html, Chrome 1/1:
+/// the change starts a transition). font_family.zig's model; Blink keeps a
+/// ScopedCSSName for list-style-type.
+pub const ScopedName = struct {
+    refs: std.atomic.Value(u32) = .init(1),
+    allocator: Allocator,
+    name: *values.SharedText,
+    scope: TreeScopeRef,
+
+    pub fn create(allocator: Allocator, name: *values.SharedText, scope: TreeScopeRef) Allocator.Error!*ScopedName {
+        const self = try allocator.create(ScopedName);
+        name.ref();
+        self.* = .{ .allocator = allocator, .name = name, .scope = scope };
+        return self;
+    }
+
+    pub fn ref(self: *ScopedName) void {
+        _ = self.refs.fetchAdd(1, .monotonic);
+    }
+
+    pub fn unref(self: *ScopedName) void {
+        if (self.refs.fetchSub(1, .acq_rel) != 1) return;
+        self.name.unref();
+        self.allocator.destroy(self);
+    }
+
+    pub fn eql(self: *const ScopedName, other: *const ScopedName) bool {
+        return self == other or (self.scope.serial == other.scope.serial and std.mem.eql(u8, self.name.bytes, other.name.bytes));
+    }
+};
+
+/// Whether list-style-type's specified text is an author-defined
+/// <counter-style-name>: not a <string>, not symbols(), and not one of the
+/// predefined counter styles, which match as keywords and are the same
+/// value from any tree (css/css-lists/list-style-type-transition-tree-scope-
+/// keyword.html: `circle` from the document and from a shadow tree starts
+/// no transition; Blink parses them as CSSIdentifierValues and only other
+/// names as tree-scoped custom idents).
+pub fn namesCounterStyle(text: []const u8) bool {
+    return text.len != 0 and text[0] != '"' and !std.mem.startsWith(u8, text, "symbols(") and
+        !@import("counter_style_descriptors.zig").isPredefined(text);
+}
 
 pub const Counters = struct {
     refs: std.atomic.Value(u32) = .init(1),
@@ -275,7 +324,12 @@ pub fn consumeShorthand(options: properties.ParseOptions, stream: *Stream, out: 
 
 pub fn serializeShorthand(assigned: []const properties.Assigned, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!bool {
     const list_type = assigned[2].value;
-    const ambiguous = list_type == .text and (std.ascii.eqlIgnoreCase(list_type.text.bytes, "inside") or std.ascii.eqlIgnoreCase(list_type.text.bytes, "outside"));
+    const type_name: ?[]const u8 = switch (list_type) {
+        .text => |t| t.bytes,
+        .scoped_name => |n| n.name.bytes,
+        else => null,
+    };
+    const ambiguous = if (type_name) |name| std.ascii.eqlIgnoreCase(name, "inside") or std.ascii.eqlIgnoreCase(name, "outside") else false;
     var wrote = false;
     for (longhands, assigned, 0..) |longhand, item, index| {
         // Q32 / CSSOM shortest round-trip form: retain an initial outside

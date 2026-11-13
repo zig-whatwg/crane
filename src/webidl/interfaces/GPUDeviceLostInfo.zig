@@ -63,8 +63,6 @@ pub const GPUDeviceLostInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: enums.GPUDeviceLostReason = undefined,
-            message: runtime.DOMString = undefined,
             _internal: ?*GPUDeviceLostInfoImpl.InternalState = null,
         },
     );

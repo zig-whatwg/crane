@@ -275,6 +275,28 @@ pub const CustomProperties = struct {
         return slice;
     }
 
+    /// Whether no reader can tell `a` from `b`: the same record, or records
+    /// whose own entries are equal name by name and value by value (bytes and
+    /// taint) over equal parents. Structural, as WebKit's
+    /// CustomPropertyData::operator== (the same parent: the own maps
+    /// compared) and Blink's StyleVariables::operator== (pointer first, then
+    /// values): two records with equal values but differently shaped chains
+    /// compare unequal, which only keeps them apart.
+    pub fn eql(a: ?*const CustomProperties, b: ?*const CustomProperties) bool {
+        if (a == b) return true;
+        const x = a orelse return false;
+        const y = b orelse return false;
+        if (x.entries.len != y.entries.len or x.ancestors != y.ancestors) return false;
+        for (x.entries, y.entries) |p, q| {
+            if (!p.name.eql(q.name)) return false;
+            if (p.value == q.value) continue;
+            const pv = p.value orelse return false;
+            const qv = q.value orelse return false;
+            if (!pv.eql(qv)) return false;
+        }
+        return eql(x.parent, y.parent);
+    }
+
     pub fn retain(self: *CustomProperties) void {
         self.refs += 1;
     }

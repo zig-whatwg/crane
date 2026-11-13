@@ -54,8 +54,6 @@ pub const PopoverTargetAttributes = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            popoverTargetElement: ?*runtime.Instance = null,
-            popoverTargetAction: runtime.DOMString = undefined,
             _internal: ?*PopoverTargetAttributesImpl.InternalState = null,
         },
     );

@@ -71,11 +71,6 @@ pub const TrackEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            track: ?union(enum) {
-                VideoTrack: VideoTrack,
-                AudioTrack: AudioTrack,
-                TextTrack: TextTrack,
-            } = null,
             _internal: ?*TrackEventImpl.InternalState = null,
         },
     );

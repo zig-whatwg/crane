@@ -51,7 +51,6 @@ pub const WindowLocalStorage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            localStorage: *runtime.Instance = undefined,
             _internal: ?*WindowLocalStorageImpl.InternalState = null,
         },
     );

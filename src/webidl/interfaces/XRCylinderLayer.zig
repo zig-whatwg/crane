@@ -85,12 +85,6 @@ pub const XRCylinderLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: *runtime.Instance = undefined,
-            transform: *runtime.Instance = undefined,
-            radius: f32 = undefined,
-            centralAngle: f32 = undefined,
-            aspectRatio: f32 = undefined,
-            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRCylinderLayerImpl.InternalState = null,
         },
     );

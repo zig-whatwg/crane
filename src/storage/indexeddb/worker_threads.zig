@@ -535,6 +535,9 @@ pub const WorkerPool = struct {
 
     /// Worker thread main function
     fn workerMain(self: *Self) void {
+        // This thread's alternate signal stack, for a stack overflow's report (platform 6.4).
+        const signal_stack = @import("platform").attachSignalStack();
+        defer @import("platform").detachSignalStack(signal_stack);
         while (self.running.load(.acquire)) {
             if (self.queue.pop()) |item| {
                 const start_time = clock.monotonicNanos();

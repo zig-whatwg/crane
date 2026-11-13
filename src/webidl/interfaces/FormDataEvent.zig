@@ -69,7 +69,6 @@ pub const FormDataEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            formData: *runtime.Instance = undefined,
             _internal: ?*FormDataEventImpl.InternalState = null,
         },
     );

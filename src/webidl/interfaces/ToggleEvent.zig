@@ -73,9 +73,6 @@ pub const ToggleEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            oldState: runtime.DOMString = undefined,
-            newState: runtime.DOMString = undefined,
-            source: ?*runtime.Instance = null,
             _internal: ?*ToggleEventImpl.InternalState = null,
         },
     );

@@ -63,7 +63,6 @@ pub const WorkletAnimationEffect = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            localTime: ?f64 = null,
             _internal: ?*WorkletAnimationEffectImpl.InternalState = null,
         },
     );

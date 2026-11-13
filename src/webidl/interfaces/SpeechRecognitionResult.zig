@@ -70,8 +70,6 @@ pub const SpeechRecognitionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            isFinal: bool = undefined,
             _internal: ?*SpeechRecognitionResultImpl.InternalState = null,
         },
     );

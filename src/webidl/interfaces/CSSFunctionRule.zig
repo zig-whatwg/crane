@@ -71,8 +71,6 @@ pub const CSSFunctionRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: typedefs.CSSOMString = undefined,
-            returnType: typedefs.CSSOMString = undefined,
             _internal: ?*CSSFunctionRuleImpl.InternalState = null,
         },
     );

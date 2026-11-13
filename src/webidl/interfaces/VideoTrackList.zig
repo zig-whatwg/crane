@@ -90,11 +90,6 @@ pub const VideoTrackList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
-            selectedIndex: i32 = undefined,
-            onchange: typedefs.EventHandler = undefined,
-            onaddtrack: typedefs.EventHandler = undefined,
-            onremovetrack: typedefs.EventHandler = undefined,
             _internal: ?*VideoTrackListImpl.InternalState = null,
         },
     );

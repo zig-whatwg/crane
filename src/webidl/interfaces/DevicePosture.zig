@@ -76,8 +76,6 @@ pub const DevicePosture = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: enums.DevicePostureType = undefined,
-            onchange: typedefs.EventHandler = undefined,
             _internal: ?*DevicePostureImpl.InternalState = null,
         },
     );

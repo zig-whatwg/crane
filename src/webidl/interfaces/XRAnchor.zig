@@ -64,7 +64,6 @@ pub const XRAnchor = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            anchorSpace: *runtime.Instance = undefined,
             _internal: ?*XRAnchorImpl.InternalState = null,
         },
     );

@@ -87,8 +87,6 @@ pub const TaskSignal = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            priority: enums.TaskPriority = undefined,
-            onprioritychange: typedefs.EventHandler = undefined,
             _internal: ?*TaskSignalImpl.InternalState = null,
         },
     );

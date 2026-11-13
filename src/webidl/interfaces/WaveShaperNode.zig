@@ -86,8 +86,6 @@ pub const WaveShaperNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            curve: ?runtime.Float32Array = null,
-            oversample: enums.OverSampleType = undefined,
             _internal: ?*WaveShaperNodeImpl.InternalState = null,
         },
     );

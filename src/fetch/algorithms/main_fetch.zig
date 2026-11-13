@@ -408,7 +408,9 @@ pub fn isCorsSafelistedMethod(method: []const u8) bool {
 /// the owned referrer to set, or null for "no referrer". Step 4 strips the
 /// source (`stripUrlForReferrer`); `referrer_policy.determineReferrer` does
 /// steps 5-8 over the origins of the stripped URL and the current URL.
-fn determineRequestReferrer(
+/// Public for a navigation that runs main fetch's steps without a request:
+/// the about:blank navigation of a navigable (HTMLIFrameElement startFetch).
+pub fn determineRequestReferrer(
     allocator: Allocator,
     policy: internal_request.ReferrerPolicy,
     source: []const u8,

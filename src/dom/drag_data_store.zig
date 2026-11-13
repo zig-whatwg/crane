@@ -27,7 +27,7 @@
 //! place on every change to the item list (Blink's OnItemListChanged: clear,
 //! then Append each File), through FileList's hook (`file_lists.zig`).
 //!
-//! lint-impls: hook for DataTransferItemList, DataTransferItem
+//! lint-impls: hook for DataTransferItemList, DataTransferItem, DataTransfer
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -94,6 +94,12 @@ pub const Store = struct {
     mode: Mode,
     /// The DataTransfer's `files`, rebuilt in place on every change.
     files: ?KeptInstance = null,
+    /// Clipboard API "fire a clipboard event" steps 1-2 for the store of a
+    /// copy or cut event: the clear-was-called flag and the types-to-clear
+    /// list, kept by step 11's rules while the event is dispatched and read
+    /// by "write content to the clipboard". Owned entries, ASCII lowercase.
+    clear_was_called: bool = false,
+    types_to_clear: std.ArrayList([]u8) = .empty,
 
     pub fn create(allocator: std.mem.Allocator, owner: *runtime.Instance, mode: Mode) error{OutOfMemory}!*Store {
         const store = try allocator.create(Store);
@@ -110,7 +116,41 @@ pub const Store = struct {
             item.deinit(self.allocator);
         }
         self.items.deinit(self.allocator);
+        for (self.types_to_clear.items) |t| self.allocator.free(t);
+        self.types_to_clear.deinit(self.allocator);
         self.allocator.destroy(self);
+    }
+
+    /// Clipboard API "fire a clipboard event" step 11.1: script called
+    /// clearData() (`format` null) or clearData(format) while the store is
+    /// in read/write mode - set clear-was-called, and add the format to
+    /// types-to-clear. `format` is the one clearData converted (ASCII
+    /// lowercase, "text" -> "text/plain").
+    pub fn noteClear(self: *Store, format: ?[]const u8) error{OutOfMemory}!void {
+        if (self.mode != .read_write) return;
+        self.clear_was_called = true;
+        const f = format orelse return;
+        const copy = try self.allocator.dupe(u8, f);
+        errdefer self.allocator.free(copy);
+        try self.types_to_clear.append(self.allocator, copy);
+    }
+
+    /// Step 11.2: script called setData(format) (or added an item of that
+    /// type) while clear-was-called is set: an empty types-to-clear list
+    /// unsets the flag; otherwise the format leaves the list, and the flag
+    /// goes with the list's last entry.
+    pub fn noteSet(self: *Store, format: []const u8) void {
+        if (!self.clear_was_called) return;
+        if (self.types_to_clear.items.len == 0) {
+            self.clear_was_called = false;
+            return;
+        }
+        for (self.types_to_clear.items, 0..) |t, i| {
+            if (!std.mem.eql(u8, t, format)) continue;
+            self.allocator.free(self.types_to_clear.orderedRemove(i));
+            if (self.types_to_clear.items.len == 0) self.clear_was_called = false;
+            return;
+        }
     }
 
     pub fn length(self: *const Store) usize {
@@ -185,6 +225,39 @@ pub const Store = struct {
         self.changed();
     }
 
+    /// Change the drag data store mode: the clipboard event steps (Clipboard
+    /// API "fire a clipboard event" step 7: read-only for paste, read/write
+    /// for copy and cut) and the end of the event (Blink's
+    /// DataTransfer::SetAccessPolicy(kNumb) after DispatchClipboardEvent;
+    /// HTML's protected mode, which exposes no data and no files). `files`
+    /// follows (the files getter's step 3).
+    pub fn setMode(self: *Store, mode: Mode) void {
+        self.mode = mode;
+        self.changed();
+    }
+
+    /// The index of the text item whose type string is `type_string`
+    /// (already ASCII lowercase), if there is one.
+    pub fn textIndex(self: *const Store, type_string: []const u8) ?usize {
+        for (self.items.items, 0..) |item, index| {
+            if (item.kind == .text and std.mem.eql(u8, item.type_string, type_string)) return index;
+        }
+        return null;
+    }
+
+    /// The data of the text item whose type string is `type_string`
+    /// (already ASCII lowercase), BORROWED from the store until it changes.
+    pub fn textData(self: *const Store, type_string: []const u8) ?[]const u8 {
+        const index = self.textIndex(type_string) orelse return null;
+        return self.items.items[index].data.text;
+    }
+
+    /// Whether any item's kind is File (the types array's "Files" entry).
+    pub fn hasFiles(self: *const Store) bool {
+        for (self.items.items) |item| if (item.kind == .file) return true;
+        return false;
+    }
+
     /// The drag data store item list changed: rebuild the DataTransfer's
     /// `files` in place - every file item's File, in order (6.11.3, the
     /// files getter's steps 1-5; Blink's DataTransfer::OnItemListChanged).
@@ -231,13 +304,36 @@ pub const ItemSteps = struct {
     make: *const fn (data_transfer: *runtime.Instance, store: *Store, id: u32) anyerror!*runtime.Instance,
 };
 
+/// What DataTransfer supplies: the drag data store a DataTransfer is
+/// associated with. Code outside DataTransfer's impl that runs a drag or
+/// clipboard operation (Clipboard API "fire a clipboard event": the store's
+/// mode, the items it fills or reads) reaches the store through this,
+/// never through DataTransfer's state.
+pub const DataTransferSteps = struct {
+    /// The store `data_transfer` is associated with; null when it is no
+    /// longer associated with one, or is not a DataTransfer.
+    store_of: *const fn (data_transfer: *runtime.Instance) ?*Store,
+};
+
 const Implementation = struct {
     item_list: ?ItemListSteps = null,
     item: ?ItemSteps = null,
+    data_transfer: ?DataTransferSteps = null,
 };
 
-// process-wide: hook table written once at process start by DataTransferItemList's and DataTransferItem's installHooks (B0); every store is its DataTransfer's own state
+// process-wide: hook table written once at process start by DataTransferItemList's, DataTransferItem's and DataTransfer's installHooks (B0); every store is its DataTransfer's own state
 var implementation: Hook(Implementation) = .init(.{});
+
+/// Called by DataTransfer's installHooks, once, at process start.
+pub fn installDataTransfer(steps: DataTransferSteps) void {
+    implementation.installField("data_transfer", steps);
+}
+
+/// The drag data store `data_transfer` is associated with, if any.
+pub fn storeOf(data_transfer: *runtime.Instance) ?*Store {
+    const steps = implementation.read().data_transfer orelse return null;
+    return steps.store_of(data_transfer);
+}
 
 /// Called by DataTransferItemList's installHooks, once, at process start.
 pub fn installItemList(steps: ItemListSteps) void {

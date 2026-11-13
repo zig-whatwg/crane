@@ -57,8 +57,6 @@ pub const UserActivation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            hasBeenActive: bool = undefined,
-            isActive: bool = undefined,
             _internal: ?*UserActivationImpl.InternalState = null,
         },
     );

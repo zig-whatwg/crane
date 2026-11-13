@@ -264,6 +264,12 @@ pub const Browser = struct {
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;
         const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
+        // The Browser's heap: one reservation of address space, named as
+        // this scope's (runtime.BrowserScope.reserveHeap), its generations
+        // seeded from the Browser's stream after the agent's seed is drawn,
+        // so a seeded run replays both. A Browser that cannot reserve fails
+        // here, cleanly; the scope's end releases it, last.
+        try scope.reserveHeap(platform, browser_platform);
 
         const agent_host = try allocator.create(@import("html").agent_host.AgentHost);
         agent_host.* = @import("html").agent_host.AgentHost.init(allocator);
@@ -287,11 +293,6 @@ pub const Browser = struct {
             .clock = if (browser_clock.wall_now) |wall_now| .{ .context = browser_clock.context, .wall_now = wall_now } else null,
             // Math.random replays from the Browser's stream when it has one.
             .random_seed = if (seeded) random_seed else null,
-            // The event loop gives the engine its idle periods (event_loop.zig
-            // step 2e), as Blink enables V8's idle tasks for the main thread's
-            // isolate (bindings/core/v8/v8_initializer.cc,
-            // V8PerIsolateData::EnableIdleTasks, Chromium 145.0.7608.0).
-            .idle_periods = true,
         }) catch return error.V8InitFailed;
 
         // What the agent really is: one asked for the snapshot is made without
@@ -477,7 +478,8 @@ pub const Browser = struct {
         // GOAWAY), its own and no other Browser's - then its side tables
         // (what their entries still hold of the engine is released without
         // it), then its slab and arena - every platform object of this
-        // Browser, and none of another's. Its platform state ends first.
+        // Browser, and none of another's - and last its heap's reservation.
+        // Its platform state ends first.
         @import("html").platform_state.destroy(self.scope);
         self.scope.deinit();
         self.allocator.destroy(self.scope);
@@ -539,9 +541,15 @@ pub const Browser = struct {
 
             // The page was let go: what it held is garbage now, and the
             // engine collects it before the next page's realm is made
-            // (engine.notifyMemoryPressure .critical - on V8, three full
-            // collections with checkpoints between). This is critical for
-            // sequential test execution to prevent heap growth.
+            // (engine.notifyMemoryPressure .critical - on V8,
+            // Isolate::MemoryPressureNotification(kCritical): one full
+            // collection, a second when the first left much to free). This is
+            // critical for sequential test execution to prevent heap growth.
+            // KNOWN, queued (lane v8up b5, tmp/plans/feature-queue.md): not a
+            // browser's path - when a page goes Blink tells V8 only that a
+            // context was disposed (V8GCForContextDispose::
+            // NotifyContextDisposed, which the realm's end sends), and sends
+            // critical pressure at a navigation only on low-end Android.
             engine.notifyMemoryPressure(agent, .critical);
         }
 

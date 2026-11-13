@@ -66,9 +66,6 @@ pub const USBConfiguration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            configurationValue: u8 = undefined,
-            configurationName: ?runtime.DOMString = null,
-            interfaces: runtime.JSValue = undefined,
             _internal: ?*USBConfigurationImpl.InternalState = null,
         },
     );

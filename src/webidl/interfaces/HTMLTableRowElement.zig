@@ -107,6 +107,12 @@ pub const HTMLTableRowElement = struct {
             .{ "bgColor", "get_bgColor", "set_bgColor" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "cells",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "insertCell", "call_insertCell", 0 },

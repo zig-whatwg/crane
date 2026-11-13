@@ -92,9 +92,6 @@ pub const AbortSignal = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            aborted: bool = undefined,
-            reason: runtime.JSValue = undefined,
-            onabort: typedefs.EventHandler = undefined,
             _internal: ?*AbortSignalImpl.InternalState = null,
         },
     );

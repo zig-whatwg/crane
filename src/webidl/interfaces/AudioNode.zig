@@ -89,12 +89,6 @@ pub const AudioNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            context: *runtime.Instance = undefined,
-            numberOfInputs: u32 = undefined,
-            numberOfOutputs: u32 = undefined,
-            channelCount: u32 = undefined,
-            channelCountMode: enums.ChannelCountMode = undefined,
-            channelInterpretation: enums.ChannelInterpretation = undefined,
             _internal: ?*AudioNodeImpl.InternalState = null,
         },
     );

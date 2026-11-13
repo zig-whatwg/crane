@@ -62,8 +62,6 @@ pub const USBIsochronousInTransferResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: ?runtime.DataView = null,
-            packets: runtime.JSValue = undefined,
             _internal: ?*USBIsochronousInTransferResultImpl.InternalState = null,
         },
     );

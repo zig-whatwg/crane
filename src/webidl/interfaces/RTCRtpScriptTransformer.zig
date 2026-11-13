@@ -84,10 +84,6 @@ pub const RTCRtpScriptTransformer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
-            onkeyframerequest: typedefs.EventHandler = undefined,
-            options: runtime.JSValue = undefined,
             _internal: ?*RTCRtpScriptTransformerImpl.InternalState = null,
         },
     );

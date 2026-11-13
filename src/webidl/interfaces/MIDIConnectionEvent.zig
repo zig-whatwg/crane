@@ -73,7 +73,6 @@ pub const MIDIConnectionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            port: ?*runtime.Instance = null,
             _internal: ?*MIDIConnectionEventImpl.InternalState = null,
         },
     );

@@ -91,9 +91,6 @@ pub const MessagePort = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onclose: typedefs.EventHandler = undefined,
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*MessagePortImpl.InternalState = null,
         },
     );

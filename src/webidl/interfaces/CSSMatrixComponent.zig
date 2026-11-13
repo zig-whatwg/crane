@@ -68,7 +68,6 @@ pub const CSSMatrixComponent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            matrix: *runtime.Instance = undefined,
             _internal: ?*CSSMatrixComponentImpl.InternalState = null,
         },
     );

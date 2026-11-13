@@ -59,8 +59,6 @@ pub const SpeechRecognitionPhrase = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            phrase: runtime.DOMString = undefined,
-            boost: f32 = undefined,
             _internal: ?*SpeechRecognitionPhraseImpl.InternalState = null,
         },
     );

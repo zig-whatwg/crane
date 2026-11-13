@@ -69,7 +69,6 @@ pub const ValueEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: runtime.JSValue = undefined,
             _internal: ?*ValueEventImpl.InternalState = null,
         },
     );

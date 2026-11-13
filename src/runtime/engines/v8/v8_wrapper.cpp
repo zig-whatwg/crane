@@ -13,6 +13,7 @@
 #include <cassert>
 #include <chrono>
 #include <mutex>
+#include <new>
 #include <v8.h>
 #include <v8-snapshot.h>
 #include <libplatform/libplatform.h>
@@ -24,6 +25,7 @@
 #include <v8-cppgc.h>
 #include <v8-metrics.h>  // GCPhaseRecorder (lane wr1 batch 8)
 #include <cppgc/explicit-management.h>  // freeDroppedAnchors (lane wr1 batch 8)
+#include <v8-external-memory-accounter.h>  // external_memory.zig: one accounter per agent
 #include <cppgc/allocation.h>
 #include <cppgc/garbage-collected.h>
 #include <cppgc/heap.h>
@@ -37,9 +39,11 @@
 #include <thread>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 #include <set>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
@@ -47,6 +51,24 @@
 #include <execinfo.h>  // For backtrace on macOS/Linux
 
 using namespace v8;
+
+#if defined(CRANE_V8_WRAPPER_APART_FOR_TSAN) && defined(__linux__)
+// -Dsanitize-thread on Linux (build.zig addV8Source, V8Link.wrapper_apart): the test executable links Zig's
+// static ThreadSanitizer runtime, whose interceptors DEFINE __cxa_guard_acquire/release/abort
+// (tsan_interceptors_posix.cpp: it models a function-local static's one-time initialization as a lock), and
+// Chromium's libc++_chromium.a, whose libc++abi member cxa_guard.o defines them too. The archive comes first on
+// the link line, so V8's and this file's references loaded cxa_guard.o, and the runtime's interceptor object
+// then made them duplicate symbols (ld.lld, lane v8up b3e). These WEAK definitions are what those references
+// resolve to while the archives are read - a defined symbol loads no archive member, so cxa_guard.o is never
+// loaded - and the runtime's strong definitions replace them in the final link, which is what Zig's own libc++
+// build gets under TSAN: the runtime's guards. They are never called (a TSAN build always links the runtime);
+// if one ever is, it traps. macOS links the runtime as a dylib, which defines nothing in the executable.
+extern "C" {
+__attribute__((weak)) int __cxa_guard_acquire(uint64_t*) { __builtin_trap(); }
+__attribute__((weak)) void __cxa_guard_release(uint64_t*) { __builtin_trap(); }
+__attribute__((weak)) void __cxa_guard_abort(uint64_t*) { __builtin_trap(); }
+}
+#endif
 
 // A native step that is not a script call - engine bookkeeping, a realm's
 // properties being defined, a promise resolved from a task, a value
@@ -74,6 +96,18 @@ using namespace v8;
 // (docs/lessons/architecture-suppressmicrotaskexecutionscope-must-live-on-the.md).
 using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 
+// V8 >= 14 checks the type of every pointer an External, an internal field or
+// a context's embedder data holds against the tag it was stored with
+// (External::New/Value f8fa8e7d227, internal fields and embedder data
+// 4de1c836b12; ExternalPointerTypeTag, EmbedderDataTypeTag). The adapter
+// stores pointers of many types through FFI functions whose callers alone know
+// the type, so it uses the default tags V8 names for an embedder that does not
+// type them ("If type tags are not used in the embedder, the default value
+// kExternalPointerTypeTagDefault can be used", v8-external.h; the same for
+// kEmbedderDataTypeTagDefault, v8-object.h).
+static constexpr ExternalPointerTypeTag kCraneExternalTag = kExternalPointerTypeTagDefault;
+static constexpr EmbedderDataTypeTag kCraneEmbedderDataTag = kEmbedderDataTypeTagDefault;
+
 /// V8's platform and its start, once per process (v8_Platform_Start). V8
 /// itself allows one start: V8::InitializePlatform and V8::Initialize advance
 /// a process-wide state and FATAL on a second or concurrent start (13.1.203
@@ -81,8 +115,22 @@ using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 /// (V8::Initialize, FlagList::FreezeFlags). So the start and the flags it
 /// applies are taken under one lock, by whichever thread asks first.
 struct PlatformStart {
-    /// Made by the start, under `mutex`, before `started` is published.
-    std::unique_ptr<Platform> platform;
+    /// Made by the start, under `mutex`, before `started` is published, and
+    /// NEVER deleted - not by v8_Platform_Dispose, not at process exit. V8's
+    /// worker threads run until the process ends, and a task on one may post
+    /// to the platform at any time: on V8 15.7 MemoryPool's
+    /// ReleasePooledChunksTask posts its next release from a worker
+    /// (PostDelayedTaskOnWorkerThread). As a std::unique_ptr in this static
+    /// object, the platform was destroyed by exit()'s static destructors
+    /// while those threads ran: CranePlatform's backend_ went null first and
+    /// a worker's post became a call on null - the tests-v8 processes that
+    /// aborted AFTER their test passed ("member call on null pointer of type
+    /// 'v8::Platform'", v8_wrapper.cpp PostDelayedTaskOnWorkerThreadImpl; lane
+    /// v8up b3d: 21 of 1,813 in one loaded Linux run). Chrome never destroys
+    /// its platform either (gin's V8Platform is a base::LazyInstance::Leaky;
+    /// Chromium builds with -Wexit-time-destructors). Held here, it stays
+    /// reachable to leak checkers.
+    Platform* platform = nullptr;
     /// Whether V8 has started. Stored true (release) once, by the start,
     /// after V8::Initialize and after `platform` and `flags` are written;
     /// stored false only by v8_Platform_Dispose. Read without the lock
@@ -476,9 +524,10 @@ struct WeakCallbackData {
     // The isolate the arm belongs to. Disposing an isolate frees only its own
     // detached records: another isolate's may still have a callback queued.
     Isolate* isolate;
-    // Runs in V8's SECOND pass, once every first-pass callback of the
-    // collection has run, where V8 API calls are allowed: the finalizer
-    // proper (v8_Global_SetWeakFinalizer). Null for a first-pass-only arm.
+    // The finalizer proper (v8_Global_SetWeakFinalizer): runs AFTER the
+    // collection, at its agent's safe point (`runQueuedFinalizers`), where
+    // engine work is allowed - V8's first pass only queues it
+    // (`queueFinalizer`). Null for a first-pass-only arm.
     ZigWeakCallbackFn finalize = nullptr;
 };
 
@@ -550,19 +599,19 @@ static std::unordered_set<WeakCallbackData*>& detachedWeakData() {
     return set;
 }
 
-/// Records whose first pass has run and whose finalizer waits for V8's second
-/// pass, by the handle they were armed on. The handle is Reset by then; its
+/// Records whose first pass has run and whose finalizer waits on its agent's
+/// queue, by the handle they were armed on. The handle is Reset by then; its
 /// owner disposes it from the finalizer - or earlier, which cancels the
 /// finalizer (`releaseWeakArm`): the owner is freeing `user_data` in the same
-/// breath. A record whose second pass never runs - its isolate disposed first
-/// - is freed by `v8_Isolate_Dispose`.
+/// breath. A record whose finalizer never runs - its isolate disposed first,
+/// or an isolate with no queue - is freed by `v8_Isolate_Dispose`.
 ///
-/// Per thread: V8 runs an isolate's weak callbacks, first and second pass, on
-/// the thread that holds the isolate, and its owner disposes its handles there
-/// too, so each thread's isolates keep their own (Browsers and workers run on
-/// threads of their own).
+/// Per thread: V8 runs an isolate's weak callbacks on the thread that holds
+/// the isolate, and its owner disposes its handles there too, so each
+/// thread's isolates keep their own (Browsers and workers run on threads of
+/// their own).
 static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
-    // per-thread: V8 runs an isolate's weak callbacks, both passes, on the thread that holds the isolate - each thread's isolates' pending finalizers, read and written only on that thread.
+    // per-thread: V8 runs an isolate's weak callbacks on the thread that holds the isolate - each thread's isolates' pending finalizers, read and written only on that thread.
     static thread_local std::unordered_map<const void*, WeakCallbackData*> map;
     return map;
 }
@@ -572,6 +621,18 @@ static std::unordered_map<const void*, WeakCallbackData*>& pendingFinalizers() {
 /// ran outside the collection.
 // per-thread: a call-stack extent - whether V8's first-pass weak callbacks are running on this thread's stack (a diagnostic for tests).
 static thread_local int g_first_pass_depth = 0;
+
+/// The bytes `isolate`'s heap has committed to the space named `name`
+/// (HeapSpaceStatistics::space_size), 0 for no such space (tests).
+extern "C" size_t v8_Debug_HeapSpaceCommittedBytes(Isolate* isolate, const char* name) {
+    if (!isolate || !name) return 0;
+    for (size_t i = 0; i < isolate->NumberOfHeapSpaces(); i++) {
+        HeapSpaceStatistics statistics;
+        if (!isolate->GetHeapSpaceStatistics(&statistics, i)) continue;
+        if (strcmp(statistics.space_name(), name) == 0) return statistics.space_size();
+    }
+    return 0;
+}
 
 extern "C" bool v8_Debug_InFirstPassWeakCallback() {
     return g_first_pass_depth > 0;
@@ -641,10 +702,10 @@ enum class WeakArmEnd {
 template <typename T>
 static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handle_dying) {
     if (!global) return;
-    // A finalizer waiting for the second pass on this (already Reset) handle:
-    // its owner is ending it now, freeing `user_data` with it, so the second
-    // pass must not run it. The record stays V8's to hand back; that pass
-    // frees it.
+    // A finalizer waiting on its agent's queue for this (already Reset)
+    // handle: its owner is ending it now, freeing `user_data` with it, so it
+    // must not run. The record stays listed on the queue; the drain that
+    // reaches it frees it.
     auto& pending = pendingFinalizers();
     if (!pending.empty()) {
         auto pit = pending.find(static_cast<const void*>(global));
@@ -654,8 +715,9 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
             waiting->user_data = nullptr;
             waiting->handle = nullptr;
             pending.erase(pit);
-            // Queued in V8 still: freed by its second pass, or with its
-            // isolate if that never comes (v8_Isolate_Dispose).
+            // Queued still, on its agent's queue: freed by the queue's
+            // drain (`runQueuedFinalizers`), which finds it cancelled, or
+            // with its isolate if no drain comes (v8_Isolate_Dispose).
             std::lock_guard<std::mutex> guard(weakDataLock());
             detachedWeakData().insert(waiting);
         }
@@ -688,7 +750,7 @@ static void releaseWeakArm(Global<T>* global, WeakArmEnd end = WeakArmEnd::handl
 
     if (global->IsWeak()) {
         armed.erase(it);
-        global->ClearWeak();
+        global->template ClearWeak<void>();
         clearHandleFlag(static_cast<const void*>(global), kArmedFlag);
         freeWeakData(data);
         return;
@@ -739,7 +801,8 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
     setHandleFlag(handle, kArmedFlag);
 }
 
-static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info);
+static void queueFinalizer(Isolate* isolate, WeakCallbackData* data);
+static bool runQueuedFinalizers(Isolate* isolate);
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
@@ -800,9 +863,9 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         detachedWeakData().erase(data);
     }
 
-    // A finalizer waits for the second pass from here - registered before the
-    // first-pass callback runs, so that one disposing the handle cancels it
-    // (`releaseWeakArm`) like any other owner.
+    // A finalizer waits for its agent's safe point from here - registered
+    // before the first-pass callback runs, so that one disposing the handle
+    // cancels it (`releaseWeakArm`) like any other owner.
     if (data->finalize) pendingFinalizers()[static_cast<const void*>(data->handle)] = data;
 
     // The first-pass callback: the same header allows no V8 API call here -
@@ -814,16 +877,16 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
         --g_first_pass_depth;
     }
 
-    // "Should additional work be required, the embedder must set a second
-    // pass callback, which will be called after all the initial callbacks are
-    // processed." The finalizer runs there: after this collection, from V8's
-    // posted task, the next collection's prologue, or synchronously at the end
-    // of a forced one (GlobalHandles::PostGarbageCollectionProcessing). Blink
-    // freed a collected wrapper's object the same way: firstWeakCallback reset
-    // the wrapper and secondWeakCallback derefed the object (ScriptWrappable.h,
-    // Chromium 45).
+    // The finalizer is QUEUED HERE, in the first pass, on its agent
+    // (`queueFinalizer`: a list push and one byte stored - nothing of V8's
+    // API, nothing of Zig's), and runs at the agent's next safe point
+    // (`runQueuedFinalizers`). No second pass is set: "Should additional work
+    // be required, the embedder must set a second pass callback"
+    // (v8-weak-callback-info.h) is for work that needs V8 inside the
+    // collection's own processing, and the adapter's work waits for its own
+    // safe point instead. See "Why the first pass queues" below.
     if (data->finalize) {
-        info.SetSecondPassCallback(WeakCallbackSecondPass);
+        queueFinalizer(info.GetIsolate(), data);
         return;
     }
 
@@ -836,26 +899,64 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     freeWeakData(data);
 }
 
-/// V8's second pass for a record armed with a finalizer: every first-pass
-/// callback of the collection has run, and V8 API calls are allowed again.
-static void WeakCallbackSecondPass(const WeakCallbackInfo<WeakCallbackData>& info) {
-    WeakCallbackData* data = info.GetParameter();
-    if (!data) return;
-    // Its owner may have cancelled it (`releaseWeakArm` cleared the entry and
-    // the handle); otherwise erase it BEFORE calling into Zig, which disposes
-    // the handle and must not find a finalizer to cancel.
-    if (data->handle) {
-        auto& pending = pendingFinalizers();
-        auto it = pending.find(static_cast<const void*>(data->handle));
-        if (it != pending.end() && it->second == data) pending.erase(it);
-    }
-    {
-        std::lock_guard<std::mutex> guard(weakDataLock());
-        detachedWeakData().erase(data);
-    }
-    if (data->finalize) data->finalize(data->user_data, 0);
-    freeWeakData(data);
-}
+// Why the first pass queues, and V8's second pass is not used.
+//
+// NO ZIG FINALIZER RUNS INSIDE A COLLECTION OR IN V8'S SECOND PASS. V8 15.7
+// runs both under DisallowJavascriptExecution and DisallowJSObjectModification
+// (15.7.112.43 src/heap/heap.cc:1470-1477: "JS execution and object
+// modifications are not allowed during GC or in any of the embedder callbacks
+// triggered below: first-pass weak callbacks ..., second-pass phantom
+// callbacks (PostGarbageCollectionProcessing) ..."; the pass V8 posts as a
+// task, src/handles/global-handles.cc:890-900) and CHECKs the second scope
+// wherever an object's map changes (src/objects/map.cc, lookup.cc,
+// transitions.cc). A finalizer is an instance's teardown: a dropped
+// Response's cancelled its open body transfer, which reported a
+// resource-timing entry to its page and wrote a JS object ("Check failed:
+// AllowJSObjectModification::IsAllowed(isolate)", 3 files in lane v8up b5's
+// sweep). 13.1 had neither scope around its second pass, where the finalizers
+// used to run. So a dead wrapper's finalizer waits on its agent's queue for
+// the agent's safe point - a binding's return into script, the pump, a forced
+// collection's return (`runQueuedFinalizers`).
+//
+// THE RECORD JOINS THAT QUEUE IN THE FIRST PASS (lane v8up b7). Lane b6 had
+// V8's second pass do the queueing, and a second pass is late by a whole
+// collection for a script that does not return to the event loop: V8 posts
+// it as a task (global-handles.cc:892-901) and, when the next collection
+// begins before that task has run, runs it at that collection's start
+// (heap.cc:1509-1511). A wrapper found dead by scavenge k was finalized after
+// scavenge k+1 began, so the native state of two young generations of dead
+// wrappers was alive at once - and V8 15.7 keeps a larger young generation
+// than 13.1 did (a semispace of up to 32 MB, heap.cc:4844-4860; 13.1 capped
+// the scavenger at 8 MB, flag scavenger_max_new_space_capacity_mb). Measured
+// (release consoles, chat.local, dom.event-ctor's end mark, 650,000 dropped
+// Events): 113.5 MB of Event state blocks with the second pass queueing,
+// 66.8 MB with the first.
+//
+// It is what the first pass is for. V8 hands the embedder each dead object's
+// parameter there; the embedder Resets its handle and does its bookkeeping
+// without V8's API (v8-weak-callback-info.h), and the second pass exists for
+// work that needs that API. Node.js frees the native object itself in the
+// first pass (src/base_object.cc:59-71, BaseObject::MakeWeak's callback ->
+// OnGCCollect, base_object-inl.h:112-114 `delete this`; Node main
+// ab11f834fc6 on V8 15.6). Blink has no pass at all: its
+// wrappables are cppgc objects whose destructors "must not touch any other
+// on-heap object" (platform/heap/BlinkGCAPIReference.md, GarbageCollected)
+// and run when the page they are on is swept, inside the running script
+// (cppgc-internal/object-allocator.cc TryRefillLinearAllocationBuffer ->
+// Sweeper::SweepForAllocationIfRunning); its pre-Oilpan second pass only
+// dropped the object's reference (ScriptWrappable.h, Chromium 45). WebKit
+// marks a dead Weak in WeakBlock::reap and calls WeakHandleOwner::finalize
+// from WeakBlock::sweep, after the collection (JavaScriptCore/heap/
+// WeakBlock.cpp), where a DOM wrapper's owner only uncaches it
+// (WebCore/bindings/js/JSDOMWrapperCache.h uncacheWrapper).
+//
+// What it changes and what it does not: WHEN a record joins the queue (in the
+// collection that found its wrapper dead, not after V8's later task or next
+// collection), and the ORDER within one collection (the first pass's own
+// order; V8's second pass handed them over reversed, global-handles.cc:850,
+// 765-767). The safe points and their rules are the same. NOT a node
+// wrapper's release: that keeps its second pass (`nodeWrapperSecondPass`
+// says why).
 
 // ============================================================================
 // V8 Exception Information Structure
@@ -946,28 +1047,6 @@ static V8ErrorInfo* extractException(Isolate* isolate, TryCatch* try_catch) {
 }
 
 extern "C" {
-
-Global<Function>* v8_FunctionCallbackInfo_GetFunction(const FunctionCallbackInfo<Value>* info) {
-    if (!info) return nullptr;
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    
-    // FCILayout { implicit_args, values, length }
-    struct FCILayout {
-        internal::Address* implicit_args;
-        internal::Address* values;
-        internal::Address length;
-    };
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    internal::Address target_addr = layout->implicit_args[4]; // kTargetIndex
-    Local<Value> target_val = *reinterpret_cast<Local<Value>*>(&target_addr);
-    
-    if (target_val.IsEmpty() || !target_val->IsFunction()) {
-        return nullptr;
-    }
-    
-    return trackHandle(new Global<Function>(isolate, target_val.As<Function>()));
-}
 
 // ============================================================================
 // V8ErrorInfo Functions
@@ -1912,14 +1991,14 @@ static void zigReactionTrampoline(const FunctionCallbackInfo<Value>& info, bool 
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
     Local<Context> ctx = isolate->GetCurrentContext();
-    if (!info.Data()->IsArray()) return;
-    Local<Array> holder = info.Data().As<Array>();
+    if (!info.DataV2().As<Value>()->IsArray()) return;
+    Local<Array> holder = info.DataV2().As<Value>().As<Array>();
     Local<Value> data_slot;
     Local<Value> callback_slot;
     if (!holder->Get(ctx, kReactionData).ToLocal(&data_slot) || !data_slot->IsExternal()) return;
     if (!holder->Get(ctx, kReactionCallback).ToLocal(&callback_slot) || !callback_slot->IsExternal()) return;
-    void* data = data_slot.As<External>()->Value();
-    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value());
+    void* data = data_slot.As<External>()->Value(kCraneExternalTag);
+    auto callback = reinterpret_cast<ZigReactionCallback>(callback_slot.As<External>()->Value(kCraneExternalTag));
     // A promise settles once and `then` registered exactly one reaction, so the
     // other function sharing this holder never runs; disarm it anyway before
     // calling out, so nothing can reach the record the callback frees.
@@ -1962,8 +2041,8 @@ bool v8_Promise_React(
     if (!value->IsPromise()) return false;
 
     Local<Value> slots[] = {
-        External::New(isolate, data),
-        External::New(isolate, reinterpret_cast<void*>(callback)),
+        External::New(isolate, data, kCraneExternalTag),
+        External::New(isolate, reinterpret_cast<void*>(callback), kCraneExternalTag),
     };
     Local<Array> holder = Array::New(isolate, slots, 2);
 
@@ -2212,21 +2291,6 @@ struct ForegroundTasks {
     void (*wake)(void*) = nullptr;
     void (*release)(void*) = nullptr;
     std::multiset<Clock::time_point> deadlines;
-    /// engine.AgentOptions.idle_periods: whether the isolate's runners take
-    /// idle tasks - whether its host gives it idle periods
-    /// (v8_Platform_RunIdleTasks). Set before Isolate::Initialize, never
-    /// changed after (V8 asks while it sets up its heap and from then on).
-    /// gin's per-isolate switch: V8Platform::IdleTasksEnabled asks the
-    /// isolate's own runner, which says yes once Blink called
-    /// PerIsolateData::EnableIdleTasks (gin/v8_platform.cc,
-    /// gin/v8_foreground_task_runner_base.cc, Chromium 145.0.7608.0).
-    bool idle_enabled = false;
-    /// The idle tasks posted and not yet run or dropped (ForegroundIdleTask):
-    /// what the host's loop asks before it starts an idle period for the
-    /// engine (engine.hasEngineIdleTasks).
-    std::atomic<size_t> idle_pending{0};
-    /// The idle tasks that ran, cumulative.
-    std::atomic<uint64_t> idle_runs{0};
 
     bool attach(void* target, void (*notify)(void*), void (*drop)(void*)) {
         std::lock_guard<std::mutex> guard(mutex);
@@ -2289,37 +2353,11 @@ class ForegroundTask final : public Task {
     bool registered_ = true;
 };
 
-/// An idle task V8 posted, counted while it waits (ForegroundTasks::
-/// idle_pending) and run only while the isolate's tasks are open.
-class ForegroundIdleTask final : public IdleTask {
- public:
-    ForegroundIdleTask(std::shared_ptr<ForegroundTasks> state, std::unique_ptr<IdleTask> task)
-        : state_(std::move(state)), task_(std::move(task)) {
-        state_->idle_pending.fetch_add(1, std::memory_order_relaxed);
-    }
-    ~ForegroundIdleTask() override { state_->idle_pending.fetch_sub(1, std::memory_order_relaxed); }
-    void Run(double deadline_in_seconds) override {
-        {
-            std::lock_guard<std::mutex> guard(state_->mutex);
-            if (state_->closed) return;
-        }
-        state_->idle_runs.fetch_add(1, std::memory_order_relaxed);
-        // Run and close are both foreground-only; no close can race this call.
-        task_->Run(deadline_in_seconds);
-    }
- private:
-    std::shared_ptr<ForegroundTasks> state_;
-    std::unique_ptr<IdleTask> task_;
-};
-
 class ForegroundTaskRunner final : public TaskRunner {
  public:
     ForegroundTaskRunner(std::shared_ptr<ForegroundTasks> state, std::shared_ptr<TaskRunner> runner)
         : state_(std::move(state)), runner_(std::move(runner)) {}
-    /// Only an isolate whose host gives it idle periods takes idle tasks
-    /// (ForegroundTasks::idle_enabled); the backend accepts them for every
-    /// isolate (CranePlatform makes it with IdleTaskSupport::kEnabled).
-    bool IdleTasksEnabled() override { return state_->idle_enabled && runner_->IdleTasksEnabled(); }
+    bool IdleTasksEnabled() override { return runner_->IdleTasksEnabled(); }
     bool NonNestableTasksEnabled() const override { return runner_->NonNestableTasksEnabled(); }
     bool NonNestableDelayedTasksEnabled() const override { return runner_->NonNestableDelayedTasksEnabled(); }
  protected:
@@ -2335,18 +2373,12 @@ class ForegroundTaskRunner final : public TaskRunner {
     void PostNonNestableDelayedTaskImpl(std::unique_ptr<Task> task, double delay, const SourceLocation& location) override {
         post(std::move(task), delay, true, true, location);
     }
-    /// V8 posts an idle task only to a runner whose IdleTasksEnabled is true
-    /// (13.1.203 sweeper.cc ScheduleIdleIncrementalSweeping, heap.cc
-    /// IdleTaskOnContextDispose::TryPostJob). It waits in the backend's idle
-    /// queue, counted, for the host's next idle period (v8_Platform_
-    /// RunIdleTasks), and wakes nothing: the host's loop asks for it when it
-    /// has nothing else to do (engine.hasEngineIdleTasks), as Blink's
-    /// scheduler runs an idle task only in an idle period (platform/
-    /// scheduler/common/idle_helper.cc, Chromium 145.0.7608.0).
     void PostIdleTaskImpl(std::unique_ptr<IdleTask> task, const SourceLocation& location) override {
-        assert(IdleTasksEnabled());
+        // The DefaultPlatform was created without idle tasks. Keep its contract;
+        // an idle task cannot become a wake that makes an idle loop busy.
+        assert(!runner_->IdleTasksEnabled());
         std::lock_guard<std::mutex> guard(state_->mutex);
-        if (!state_->closed) runner_->PostIdleTask(std::make_unique<ForegroundIdleTask>(state_, std::move(task)), location);
+        if (!state_->closed) runner_->PostIdleTask(std::move(task), location);
     }
  private:
     void post(std::unique_ptr<Task> task, double delay, bool delayed, bool nonnestable,
@@ -2376,18 +2408,8 @@ class CranePlatform final : public Platform {
  public:
     /// `made_before_threads`: made by v8_Platform_InitializeBeforeThreadCreation,
     /// on the process's main thread before it made any other thread.
-    /// The backend accepts idle tasks (IdleTaskSupport::kEnabled): V8's idle
-    /// work - cppgc's incremental sweep, a young-generation collection after
-    /// a context's disposal - waits for the host's idle periods
-    /// (v8_Platform_RunIdleTasks), as in Chrome, where gin enables it per
-    /// isolate. Which isolates post any is each isolate's own switch
-    /// (ForegroundTasks::idle_enabled, from engine.AgentOptions.idle_periods);
-    /// d8 makes its platform the same way when asked to (13.1.203
-    /// src/d8/d8.cc, --enable-idle-tasks, and RunIdleTasks with 50 ms after
-    /// each pump in ProcessMessages).
     explicit CranePlatform(bool made_before_threads)
-        : backend_(platform::NewDefaultPlatform(0, platform::IdleTaskSupport::kEnabled)),
-          made_before_threads_(made_before_threads) {}
+        : backend_(platform::NewDefaultPlatform()), made_before_threads_(made_before_threads) {}
     Platform* backend() { return backend_.get(); }
     PageAllocator* GetPageAllocator() override { return backend_->GetPageAllocator(); }
     /// V8's thread isolation (13.1.203 src/common/code-memory-access.cc
@@ -2417,13 +2439,16 @@ class CranePlatform final : public Platform {
     ThreadIsolatedAllocator* GetThreadIsolatedAllocator() override {
         return made_before_threads_ ? backend_->GetThreadIsolatedAllocator() : nullptr;
     }
+    /// V8 15.7's zero segment (v8-platform.h: the process's segment from
+    /// address 0, read-only or no access, never reused): the backend's answer,
+    /// as every other question is forwarded - libplatform answers 0 unless
+    /// PartitionAlloc reserved one (S7, tmp/plans/v8-update-plan.md 2.2).
+    size_t GetZeroSegmentSize() override { return backend_->GetZeroSegmentSize(); }
     void OnCriticalMemoryPressure() override { backend_->OnCriticalMemoryPressure(); }
     int NumberOfWorkerThreads() override { return backend_->NumberOfWorkerThreads(); }
+    std::unique_ptr<ScopedBoostablePriority> CreateBoostablePriorityScope() override { return backend_->CreateBoostablePriorityScope(); }
     std::shared_ptr<TaskRunner> GetForegroundTaskRunner(Isolate*, TaskPriority) override;
-    /// The isolate's own switch (ForegroundTasks::idle_enabled); an isolate
-    /// with no record - the snapshot creator's - gets the backend's runner,
-    /// and its answer. Defined below IsolateData.
-    bool IdleTasksEnabled(Isolate* isolate) override;
+    bool IdleTasksEnabled(Isolate* isolate) override { return backend_->IdleTasksEnabled(isolate); }
     std::unique_ptr<ScopedBlockingCall> CreateBlockingScope(BlockingType type) override { return backend_->CreateBlockingScope(type); }
     // V8's own clock (GC heuristics, compile timing): the backend's, always.
     // A host's clock (engine.AgentOptions.clock) is what a page reads - Date -
@@ -2444,17 +2469,17 @@ class CranePlatform final : public Platform {
                                            const SourceLocation& location) override {
         return backend_->CreateJob(priority, std::move(job), location);
     }
+    // The backend's public entry points, which reach its Impl overrides with
+    // the priority (the Call*OnWorkerThread forms are deprecated in 15.7,
+    // "Use PostTaskOnWorkerThread instead", and the delayed one dropped the
+    // priority).
     void PostTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
                                     const SourceLocation& location) override {
-        switch (priority) {
-            case TaskPriority::kBestEffort: backend_->CallLowPriorityTaskOnWorkerThread(std::move(task), location); break;
-            case TaskPriority::kUserVisible: backend_->CallOnWorkerThread(std::move(task), location); break;
-            case TaskPriority::kUserBlocking: backend_->CallBlockingTaskOnWorkerThread(std::move(task), location); break;
-        }
+        backend_->PostTaskOnWorkerThread(priority, std::move(task), location);
     }
-    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority, std::unique_ptr<Task> task,
+    void PostDelayedTaskOnWorkerThreadImpl(TaskPriority priority, std::unique_ptr<Task> task,
                                            double delay, const SourceLocation& location) override {
-        backend_->CallDelayedOnWorkerThread(std::move(task), delay, location);
+        backend_->PostDelayedTaskOnWorkerThread(priority, std::move(task), delay, location);
     }
  private:
     std::unique_ptr<Platform> backend_;
@@ -2462,7 +2487,7 @@ class CranePlatform final : public Platform {
 };
 
 static Platform* defaultPlatform() {
-    return static_cast<CranePlatform*>(g_platform.platform.get())->backend();
+    return static_cast<CranePlatform*>(g_platform.platform)->backend();
 }
 
 /// The per-isolate seed V8 asks for (defined with IsolateData, below).
@@ -2521,8 +2546,8 @@ int v8_Platform_Start(const char* flags) {
             // (v8_Platform_InitializeBeforeThreadCreation), else one made
             // here, on this thread, which hands V8 no thread-isolated
             // allocator (CranePlatform::GetThreadIsolatedAllocator).
-            if (!g_platform.platform) g_platform.platform = std::make_unique<CranePlatform>(false);
-            V8::InitializePlatform(g_platform.platform.get());
+            if (!g_platform.platform) g_platform.platform = new CranePlatform(false);
+            V8::InitializePlatform(g_platform.platform);
             // cppgc's process start, before any agent's C++ heap is made
             // (CppHeap::Create - every isolate this file makes has one,
             // IsolateData::cpp_heap): the GC info table and the cage every
@@ -2560,7 +2585,7 @@ int v8_Platform_Start(const char* flags) {
 void v8_Platform_InitializeBeforeThreadCreation() {
     std::lock_guard<std::mutex> guard(g_platform.mutex);
     if (g_platform.disposed || g_platform.platform) return;
-    g_platform.platform = std::make_unique<CranePlatform>(true);
+    g_platform.platform = new CranePlatform(true);
 }
 
 /// Whether V8 runs - or will run, once it starts - with thread isolation:
@@ -2627,14 +2652,55 @@ bool v8_Isolate_HasPendingBackgroundTasks(Isolate* isolate) {
     return isolate && isolate->HasPendingBackgroundTasks();
 }
 
+/// Run one foreground task V8 posted for |isolate|, if any (the comment
+/// above v8_Isolate_HasPendingBackgroundTasks).
+///
+/// The pump is also the agent's safe point for its collected wrappers'
+/// finalizers (`runQueuedFinalizers`): V8's task has returned - a collection
+/// it finished only queued them, in its first pass - so they run here,
+/// before the caller's microtask checkpoint. Answers whether a task or a
+/// finalizer ran.
 bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
     // V8's tasks may finish a collection (IncrementalMarkingJob::Task ->
     // AdvanceAndFinalizeIfComplete): the collecting isolate is the current
     // one (collectingRecord).
     CollectingScope collecting(isolate);
+    const bool task_ran = platform::PumpMessageLoop(defaultPlatform(), isolate,
+                                                    platform::MessageLoopBehavior::kDoNotWait);
+    const bool finalizers_ran = runQueuedFinalizers(isolate);
+    return task_ran || finalizers_ran;
+}
+
+/// The pump WITHOUT its safe point: one platform task, and what its second
+/// pass queued stays queued (v8_Debug_QueuedFinalizers). For tests of the
+/// queue only - of a finalizer waiting, cancelled or outlived by its agent;
+/// nothing in the engine pumps this way.
+extern "C" bool v8_Debug_PumpMessageLoopHoldingFinalizers(Isolate* isolate) {
+    if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
+    // As the pump: a task may finish a collection (collectingRecord).
+    CollectingScope collecting(isolate);
     return platform::PumpMessageLoop(defaultPlatform(), isolate,
                                      platform::MessageLoopBehavior::kDoNotWait);
+}
+
+/// A full collection WITHOUT the agent's safe point after it: the collection
+/// V8 runs by itself when an allocation fails - Heap::CollectAllAvailableGarbage
+/// (15.7.112.43 src/heap/heap.cc:1295-1330), which is both
+/// Isolate::LowMemoryNotification (src/api/api.cc:10868-10875) and the last
+/// resort of a failed allocation (src/heap/heap-allocator.cc:201-218, called
+/// at :528 before the fatal "CALL_AND_RETRY_LAST" at :537). It runs its second
+/// pass before it returns (kGCCallbackFlagCollectAllAvailableGarbage,
+/// src/handles/global-handles.cc:881-889), in the
+/// middle of whatever allocated, and the adapter is not there to run the
+/// queue: what it found dead stays queued (v8_Debug_QueuedFinalizers) until
+/// the agent's next safe point. For tests of the queue only - the engine
+/// collects with v8_Isolate_RequestGarbageCollection.
+extern "C" void v8_Debug_CollectHoldingFinalizers(Isolate* isolate) {
+    if (!isolate) return;
+    // The collecting isolate is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
+    isolate->LowMemoryNotification();
 }
 
 /// End V8 for the process: it cannot start again (v8_Platform_Start answers
@@ -2827,6 +2893,90 @@ class GCPhaseRecorder final : public metrics::Recorder {
 };
 
 // ----------------------------------------------------------------------------
+// CraneWrappable: the adapter's one base for every C++ object V8 holds by a
+// CppHeap pointer - Object::WrapGlobal (a realm's global: GlobalAnchor),
+// Object::Wrap (a node's wrapper: lane wr1's NodeAnchor; every other platform
+// object's: lane wrap1's PlatformAnchor). Lane v8up b3b, item 1;
+// tmp/plans/v8-global-object-design.md 3.1, tmp/plans/object-wrap-design.md
+// 3.6; the contract the three kinds share is written out in
+// tmp/plans/lane-v8up-handoff.md ("CraneWrappable CONTRACT").
+//
+// It carries NO data. What V8 needs is v8::Object::Wrappable's vptr (Wrap
+// takes a Wrappable*, v8-object.h; cppgc's NameProvider makes it virtual) and
+// a Trace; each kind lays out its own fields after it, so a NodeAnchor pays
+// for no field it does not use (instance_ + generation_ in the base would make
+// wr1's 24 B NodeAnchor 40 B, +16 B per wrapped node). Blink's ScriptWrappable
+// is the same shape: the vptr, then the object's own members.
+//
+// Lifetime (the contract): MakeGarbageCollected on the isolate's CppHeap; OWNED
+// by that heap, never freed by Zig, alive while a JS object holds its CppHeap
+// pointer or a cppgc Member/Persistent reaches it. The virtual destructor is
+// its finalizer: it runs at cppgc's sweep on the agent's thread (and in
+// cppgc::subtle::FreeUnreferencedObject), touches no V8 API and no engine
+// state - Zig bookkeeping only; engine work it implies is queued to a task.
+// The Zig instance a kind points at keeps Zig's lifetime: Zig calls the
+// kind's clear() before it frees the instance (one write severs every JS
+// object that points at the anchor).
+// ----------------------------------------------------------------------------
+
+/// The tags (v8-sandbox.h: V8's embedder range is [kFirstEmbedderWrappableTag,
+/// kLastEmbedderWrappableTag] = [1, 0x6eff], and a parent's range must hold
+/// exactly its subclasses' tags). Object::Unwrap with a kind's range is V8's
+/// type check; the base range answers "a Crane anchor of any kind".
+namespace crane_tags {
+constexpr uint16_t kCraneWrappableFirst = 0x0001;
+constexpr uint16_t kCraneWrappableLast = 0x00ff;
+/// A realm's global (Window, WorkerGlobalScope, a worklet's, ShadowRealm's).
+constexpr uint16_t kGlobalAnchor = 0x0001;
+/// A node's wrapper (lane wr1; it may split this range by node kind).
+constexpr uint16_t kNodeAnchorFirst = 0x0002;
+constexpr uint16_t kNodeAnchorLast = 0x007f;
+/// Every other platform object's wrapper (lane wrap1, design 3.4).
+constexpr uint16_t kPlatformAnchorFirst = 0x0080;
+constexpr uint16_t kPlatformAnchorLast = 0x00ff;
+/// A node's wrapper today: one tag for every node interface (NodeAnchor says
+/// why), the first of the node range.
+constexpr uint16_t kNodeAnchor = kNodeAnchorFirst;
+/// A HOLDER's wrapper (lane wr1's HolderAnchor, the wrapper redesign's P6): a
+/// platform object that holds nodes for script. The first tag of the
+/// platform range; lane wrap1's PlatformAnchor takes the holder's trace over
+/// when non-node wrappers move to Object::Wrap.
+constexpr uint16_t kHolderAnchor = kPlatformAnchorFirst;
+/// tests/v8's droppable probe (DroppableProbeAnchor): the platform range's
+/// last tag, which no production anchor uses.
+constexpr uint16_t kTestProbeAnchor = kPlatformAnchorLast;
+
+static_assert(kCraneWrappableFirst >= static_cast<uint16_t>(CppHeapPointerTag::kFirstEmbedderWrappableTag) &&
+                  kCraneWrappableLast <= static_cast<uint16_t>(CppHeapPointerTag::kLastEmbedderWrappableTag),
+              "Crane's anchors use V8's embedder Wrappable tag range only");
+static_assert(kGlobalAnchor == kCraneWrappableFirst && kGlobalAnchor < kNodeAnchorFirst &&
+                  kNodeAnchorLast + 1 == kPlatformAnchorFirst && kPlatformAnchorLast == kCraneWrappableLast,
+              "the three kinds tile the base range: GlobalAnchor 1, NodeAnchor [2, 0x7f], PlatformAnchor [0x80, 0xff]");
+
+constexpr CppHeapPointerTag tag(uint16_t value) { return static_cast<CppHeapPointerTag>(value); }
+[[maybe_unused]] constexpr CppHeapPointerTagRange kCraneWrappableRange{tag(kCraneWrappableFirst), tag(kCraneWrappableLast)};
+constexpr CppHeapPointerTagRange kGlobalAnchorRange{tag(kGlobalAnchor), tag(kGlobalAnchor)};
+[[maybe_unused]] constexpr CppHeapPointerTagRange kNodeAnchorRange{tag(kNodeAnchorFirst), tag(kNodeAnchorLast)};
+[[maybe_unused]] constexpr CppHeapPointerTagRange kPlatformAnchorRange{tag(kPlatformAnchorFirst), tag(kPlatformAnchorLast)};
+}  // namespace crane_tags
+
+class CraneWrappable : public v8::Object::Wrappable {
+ public:
+    /// What the anchor keeps alive: per kind (a global's retained values, a
+    /// node's tree, a platform object's keeps). The base keeps nothing.
+    void Trace(cppgc::Visitor* visitor) const override { v8::Object::Wrappable::Trace(visitor); }
+    const char* GetHumanReadableName() const override { return "Crane anchor"; }
+
+ protected:
+    CraneWrappable() = default;
+};
+
+// The base is Wrappable's vptr and nothing else (the contract: no data fields).
+static_assert(sizeof(CraneWrappable) == sizeof(void*), "CraneWrappable carries no data: each kind lays out its own fields");
+static_assert(!std::is_trivially_destructible_v<CraneWrappable>,
+              "a Wrappable is a NameProvider: cppgc finalizes it (its destructor is the anchor's finalizer)");
+
+// ----------------------------------------------------------------------------
 // Node anchors: node wrappers on the agent's C++ heap (the wrapper redesign's
 // P4, tmp/redesign/wrapper-redesign-design.md 4.1-4.5)
 // ----------------------------------------------------------------------------
@@ -2845,25 +2995,29 @@ static void traceAnchorTree(IsolateData* record, void* slot, cppgc::Visitor* vis
 ///
 /// Why only the pause: Crane's agents' C++ heaps are made with
 /// CppHeapCreateParams.marking_support = kAtomic (agentCppHeapParams), so in
-/// V8 13.1.203 C++ Trace methods run only there: src/heap/cppgc-js/
-/// cpp-heap.cc - UpdateGCCapabilitiesFromFlags only lowers marking_support_
-/// (std::min; 13.1's DEFINE_WEAK_IMPLICATION(incremental_marking,
-/// cppheap_incremental_marking) turns the flag on by default, so the explicit
-/// kAtomic is what holds it), SelectMarkingType never returns more than
-/// marking_support(), and AdvanceTracing - the only caller of MarkerBase::
-/// AdvanceMarkingWithLimits, which pops the worklists and calls Trace - is
-/// reached outside the pause only from IncrementalMarking::EmbedderStep
-/// (src/heap/incremental-marking.cc), which returns at once when
-/// !incremental_marking_supported(); src/heap/cppgc/marker.cc MarkerBase::
-/// StartMarking starts no incremental task and no concurrent marker for
-/// kAtomic (EnterIncrementalMarkingIfNeeded). V8's own markers - incremental
-/// steps, concurrent threads (concurrent-marking.cc CreateCppMarkingState)
-/// and the Object::Wrap write barrier (CppHeap::WriteBarrier) - only mark an
-/// anchor's header and push it (CppMarkingState::MarkAndPush), so every
-/// anchor marked in a cycle is traced once, in the pause, after every tree
-/// change of the cycle: Crane's trees have no write barrier, and a walk done
-/// earlier would miss nodes appended after it (the integrator, 2026-11-09
-/// 16:22). A V8 upgrade that changes any of this fails the check below.
+/// V8 15.7.112.43 - re-read at lane v8up's port; 13.1.203 said the same -
+/// C++ Trace methods run only there: src/heap/cppgc-js/cpp-heap.cc:771-787
+/// UpdateGCCapabilitiesFromFlags only lowers marking_support_ (std::min
+/// with what --cppheap-incremental-marking / --cppheap-concurrent-marking
+/// allow, which --incremental-marking implies by default,
+/// flag-definitions.h:2916-2926: the explicit kAtomic is what holds it);
+/// SelectMarkingType (:736-755) never returns more than marking_support();
+/// AdvanceMarking - the only caller of MarkerBase::AdvanceMarkingWithLimits,
+/// which pops the worklists and calls Trace - is reached outside the pause
+/// only from IncrementalMarking::CppHeapStep (src/heap/
+/// incremental-marking.cc:468-484), which returns at once when
+/// !incremental_marking_supported() (cppgc-internal/heap-base.h:217-219);
+/// MarkerBase::StartMarking (cppgc-internal/marker.cc:209-239) schedules no
+/// incremental task, starts no concurrent marker and registers no
+/// allocation observer for kAtomic (EnterIncrementalMarkingIfNeeded,
+/// :39-48). V8's own markers - incremental steps, concurrent threads and the
+/// Object::Wrap write barrier (CppHeap::WriteBarrier, cpp-heap.cc:960-964) -
+/// only mark an anchor's header and push it (CppMarkingState::MarkAndPush,
+/// cppgc-js/cpp-marking-state.h:37), so every anchor marked in a cycle is
+/// traced once, in the pause, after every tree change of the cycle: Crane's
+/// trees have no write barrier, and a walk done earlier would miss nodes
+/// appended after it (the integrator, 2026-11-09 16:22). A V8 upgrade that
+/// changes any of this fails the check below.
 ///
 /// Why the current isolate: the pause runs on the collecting isolate's
 /// thread with that isolate entered, as Blink's Trace reaches
@@ -2900,9 +3054,9 @@ static IsolateData* collectingRecord(const void* object) {
 /// `ToAnyScriptWrappable`'s kScriptWrappableTagRange
 /// (third_party/blink/renderer/platform/bindings/wrapper_type_info.h), where
 /// Blink's per-interface tags (WrapperTypeInfo::this_tag) are its brand.
-/// Blink's first ScriptWrappable tag (kScriptWrappableStartTag, 256), below
-/// V8's kDefaultTag (0x7000, include/v8-sandbox.h).
-static constexpr CppHeapPointerTag kNodeAnchorTag = static_cast<CppHeapPointerTag>(256);
+/// The first tag of the adapter's node range (crane_tags, the CraneWrappable
+/// contract: [2, 0x7f] inside V8's embedder Wrappable range).
+static constexpr CppHeapPointerTag kNodeAnchorTag = crane_tags::tag(crane_tags::kNodeAnchor);
 static constexpr CppHeapPointerTagRange kNodeAnchorTagRange(kNodeAnchorTag, kNodeAnchorTag);
 
 /// What a node wrapper points at (design 4.1): a cppgc object behind the
@@ -2914,7 +3068,9 @@ static constexpr CppHeapPointerTagRange kNodeAnchorTagRange(kNodeAnchorTag, kNod
 /// anchor per major GC. With its place in the anchors' registry (`index_`,
 /// for an O(1) removal when a scavenge drops its wrapper: lane wr1 batch 8)
 /// and its keeps (`roots_`, Debug's check that a kept anchor is never
-/// dropped) in the same word: 16 bytes of payload, 24 with cppgc's header.
+/// dropped) in the same word, after the vptr every v8::Object::Wrappable has
+/// (V8 15.7's Object::Wrap takes a Wrappable*; CraneWrappable): 24 bytes of
+/// payload, 32 with cppgc's header (13.1.203: 16 and 24, with no vptr).
 ///
 /// Its wrapper's counted reference is the anchor's: taken before the anchor
 /// exists (node_wrappers.adopt, design 4.2 step 1) and released after the
@@ -2924,9 +3080,11 @@ static constexpr CppHeapPointerTagRange kNodeAnchorTagRange(kNodeAnchorTag, kNod
 /// nothing and is dropped when it dies; or once a young-generation
 /// collection dropped its wrapper (NodeWrapperRootsHandler::ResetRoot), and
 /// the anchor is then freed after that collection (freeDroppedAnchors).
-/// Trivially destructible: cppgc sweeps it with no finalizer (concurrently:
-/// nothing reads it then), and an explicit free runs none.
-class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
+/// Its destructor is the base's and does nothing (the CraneWrappable
+/// contract: a Wrappable is a NameProvider, so cppgc finalizes every anchor
+/// on the agent's thread - at its sweep, or in the explicit free - and the
+/// finalizer touches no V8 API, no engine state and no node).
+class NodeAnchor final : public CraneWrappable {
  public:
     /// `index_` of an anchor in no registry: made and not yet registered, or
     /// dropped by a scavenge (on the record's dropped list).
@@ -2944,12 +3102,14 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
     ///    dom.wrapper_tracing), as Blink's Node::Trace reaches its tree's
     ///    wrappers through the tree's Member edges. Since P7 the walk alone
     ///    keeps trees (node tracing's JS edges are gone).
-    void Trace(cppgc::Visitor* visitor) const {
+    void Trace(cppgc::Visitor* visitor) const override {
+        CraneWrappable::Trace(visitor);
         if (!slot_) return;
         visitor->Trace(*static_cast<const TracedReference<Object>*>(slot_));
         IsolateData* record = collectingRecord(this);
         if (record) traceAnchorTree(record, slot_, visitor);
     }
+    const char* GetHumanReadableName() const override { return "Crane NodeAnchor"; }
 
     void* slot_;
     /// Where the anchor is in its agent's registry (NodeWrapperRegistry::
@@ -2961,14 +3121,12 @@ class NodeAnchor final : public cppgc::GarbageCollected<NodeAnchor> {
     uint32_t roots_ = 0;
 };
 
-static_assert(std::is_trivially_destructible_v<NodeAnchor>, "a node anchor needs no finalizer");
-static_assert(sizeof(NodeAnchor) == 16, "a node anchor is its slot, its registry index and its roots: 16 bytes");
+static_assert(sizeof(NodeAnchor) == 3 * sizeof(void*), "a node anchor is the vptr, its slot, its registry index and its roots: 24 bytes");
 static_assert(sizeof(TracedReference<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one TracedReference<Object>");
 
-/// The CppHeapPointerTag a holder wrapper's anchor is wrapped with: the next
-/// of Blink's ScriptWrappable tags after the node anchors' (257 is a
-/// tests/v8 probe's).
-static constexpr CppHeapPointerTag kHolderAnchorTag = static_cast<CppHeapPointerTag>(258);
+/// The CppHeapPointerTag a holder wrapper's anchor is wrapped with
+/// (crane_tags::kHolderAnchor, in the platform range).
+static constexpr CppHeapPointerTag kHolderAnchorTag = crane_tags::tag(crane_tags::kHolderAnchor);
 static constexpr CppHeapPointerTagRange kHolderAnchorTagRange(kHolderAnchorTag, kHolderAnchorTag);
 
 static void traceHolderNodes(IsolateData* record, void* instance, uint64_t generation, cppgc::Visitor* visitor);
@@ -2983,31 +3141,34 @@ static void traceHolderNodes(IsolateData* record, void* instance, uint64_t gener
 /// are Zig instances, reached through this anchor. The wrapper keeps its
 /// internal fields (the instance): a JS API object carries both.
 ///
-/// It holds the holder's instance and its slab generation - 16 bytes, 24
-/// with cppgc's header, one per holder wrapper, none per node. Its Trace runs
+/// It holds the holder's instance and its slab generation after the
+/// Wrappable's vptr - 24 bytes, 32 with cppgc's header, one per holder
+/// wrapper, none per node. Its Trace runs
 /// in the collection's atomic pause, under the node anchors' rule
 /// (collectingRecord: kAtomic marking, the collecting isolate's record):
 /// the host reads its holder's state, which has no write barrier either.
 /// `instance_` is null once the instance went while the wrapper lived (its
 /// realm's end: v8_HolderAnchor_Clear from the wrapper cache's severing);
 /// the generation is the net for any other way the instance went - the
-/// Zig side compares it before it reads the instance. Trivially
-/// destructible.
-class HolderAnchor final : public cppgc::GarbageCollected<HolderAnchor> {
+/// Zig side compares it before it reads the instance. Its destructor is
+/// the base's and does nothing (the CraneWrappable contract).
+class HolderAnchor final : public CraneWrappable {
  public:
     HolderAnchor(void* instance, uint64_t generation) : instance_(instance), generation_(generation) {}
 
-    void Trace(cppgc::Visitor* visitor) const {
+    void Trace(cppgc::Visitor* visitor) const override {
+        CraneWrappable::Trace(visitor);
         if (!instance_) return;
         IsolateData* record = collectingRecord(this);
         if (record) traceHolderNodes(record, instance_, generation_, visitor);
     }
+    const char* GetHumanReadableName() const override { return "Crane HolderAnchor"; }
 
     void* instance_;
     uint64_t generation_;
 };
 
-static_assert(std::is_trivially_destructible_v<HolderAnchor>, "a holder anchor needs no finalizer");
+static_assert(sizeof(HolderAnchor) == 3 * sizeof(void*), "a holder anchor is the vptr, its instance and its generation: 24 bytes");
 
 /// The agent's node anchors, for weak processing (design 4.5): a cppgc
 /// object rooted by its record (IsolateData::node_anchors), whose Trace only
@@ -3071,17 +3232,6 @@ class NodeWrapperRegistry final : public cppgc::GarbageCollected<NodeWrapperRegi
 
 class NodeWrapperRootsHandler;
 
-/// What the host's idle periods gave an isolate's V8, cumulative
-/// (v8_Platform_RunIdleTasks; ffi.zig IdleStats mirrors it): the periods
-/// that ran idle work, their time, the time V8 used of it, and its idle tasks
-/// run.
-struct IdleStats {
-    uint64_t periods = 0;
-    uint64_t given_ns = 0;
-    uint64_t used_ns = 0;
-    uint64_t tasks_run = 0;
-};
-
 struct IsolateData {
     // Installed before Isolate::Initialize: V8 caches runners while setting up
     // its heap. Their shared state receives the host's sink after creation.
@@ -3131,8 +3281,6 @@ struct IsolateData {
     /// resolves (engine.HostHooks.importMetaResolve): the dispatcher is the
     /// process's, so whether the builtin is made is the isolate's.
     bool import_meta_resolve = false;
-    /// The host's idle periods given to V8 (v8_Platform_RunIdleTasks).
-    IdleStats idle_stats;
     /// The isolate's full-collection pauses (GCPauses): the GC callbacks
     /// installGCPauseRecorder adds after Isolate::Initialize write it, with
     /// this record as their data until the record goes after Dispose.
@@ -3141,19 +3289,28 @@ struct IsolateData {
     /// by the anchors' weak processing and the isolate's metrics recorder
     /// (installGCPauseRecorder).
     GCPhaseStats gc_phases;
-    /// The agent's C++ heap (newAgentCppHeap), handed to V8 as
-    /// CreateParams::cpp_heap - attached from Isolate::Initialize on - and
-    /// OWNED here too, because V8 13.1.203 never frees it: "V8 takes
-    /// ownership of the CppHeap passed this way" (v8-isolate.h), but its
-    /// Heap::StartTearDown, inside Isolate::Dispose, releases its owning
-    /// pointer, detaches the heap and terminates it, and nothing deletes it
-    /// (src/heap/heap.cc, StartTearDown: `owning_cpp_heap_.release()`) - one
-    /// leaked heap per agent. V8 13.4.100 frees it there itself (1c079f473b1,
-    /// "[cppheap] Change order of CppHeap teardown calls":
-    /// `owning_cpp_heap_.reset()`), which the static_assert below holds to.
-    /// So the record frees it with itself: after Isolate::Dispose has
-    /// returned (v8_Isolate_Dispose) - detached and terminated by then, so
-    /// its end touches no isolate - or when no isolate was made with it.
+    /// How many context disposals this isolate was told of, by what V8 was
+    /// told about dependants (v8_Isolate_ContextDisposedNotification): [0] a
+    /// main frame's context (kNoDependants), [1] a child frame's
+    /// (kSomeDependants). Written on the isolate's thread; a diagnostic the
+    /// tests read (v8_Debug_ContextDisposals).
+    uint64_t context_disposals[2] = {0, 0};
+    /// navigation_collection.zig: a navigation replaced a main frame's
+    /// document, and the agent's next engine-task step owes V8 a look at how
+    /// much the heap holds - and, over the build's threshold, a critical
+    /// memory-pressure notice. Written and read on the isolate's thread.
+    bool navigation_collection_owed = false;
+    /// The agent's C++ heap (newAgentCppHeap) until V8 takes it: handed to
+    /// V8 as CreateParams::cpp_heap and attached from Isolate::Initialize on,
+    /// after which V8 OWNS it ("V8 takes ownership of the CppHeap passed this
+    /// way", v8-isolate.h) and deletes it in Isolate::Dispose: 15.7's
+    /// Heap::TearDown detaches it and hands `owning_cpp_heap_` to
+    /// RunReleaseCppHeapCallback, which with no callback lets the unique_ptr
+    /// go (src/heap/heap.cc:6322-6324, src/execution/isolate.cc:7711; since
+    /// 1c079f473b1, 13.4). So `adoptCppHeap` releases this record's hold right
+    /// after Isolate::Initialize; the record frees the heap itself only when
+    /// no isolate was made with it. (13.1.203 never freed it - the record
+    /// did, after Dispose - and freeing it here now would free it twice.)
     std::unique_ptr<CppHeap> cpp_heap;
     /// The agent's node wrapper registry (node_wrappers.zig `Registry`, the
     /// wrapper redesign's P2 and P4), OWNED: made by the adapter's Zig side on
@@ -3165,15 +3322,60 @@ struct IsolateData {
     /// the isolate's thread only.
     void* node_wrappers = nullptr;
     /// A node wrapper's anchor was found dead in a collection's atomic pause
-    /// (NodeWrapperRegistry::ProcessWeak): `slot` is its node's slot. Zig
-    /// bookkeeping only - the slot written empty (raw: V8 frees the unmarked
-    /// TracedNode itself in the same pause), the release recorded. No V8
-    /// call, no count change, no free.
+    /// (NodeWrapperRegistry::ProcessWeak), or a young-generation collection
+    /// dropped its wrapper (NodeWrapperRootsHandler::ResetRoot): `slot` is
+    /// its node's slot. Zig bookkeeping only - the slot written empty (raw:
+    /// V8 frees the TracedNode itself), the release recorded. No V8 call, no
+    /// count change, no free.
     void (*node_wrapper_collected)(void* registry, void* slot) = nullptr;
-    /// The agent's released references go (its drain): after a collection,
-    /// from a posted task (nodeWrappersEpilogue) or a requested collection's
-    /// end (v8_Isolate_RequestGarbageCollection).
+    /// The agent's safe point (`runQueuedFinalizers`), once
+    /// `node_wrappers_collected` is set: the agent's released references go
+    /// (its drain).
     void (*node_wrappers_drain)(void* registry) = nullptr;
+    /// The node wrappers' drain is owed to the agent's next safe point
+    /// (`noteNodeWrappersCollected`): the registry holds releases a
+    /// collection recorded, or anchors a scavenge dropped wait for their
+    /// free.
+    bool node_wrappers_collected = false;
+    /// THE AGENT'S FINALIZER QUEUE: the records of collected wrappers, queued
+    /// by V8's first pass (`WeakCallbackWrapper`), oldest first, each
+    /// waiting for the agent's safe point to run its Zig finalizer
+    /// (`runQueuedFinalizers`). BORROWED pointers: a record is owned as it
+    /// always was - by pendingFinalizers() under its handle until it runs,
+    /// or by detachedWeakData() once its owner cancelled it (it stays listed
+    /// here, with a null `finalize`, until the drain frees it). Nothing is
+    /// added to a live wrapper: a record joins when its wrapper has died.
+    /// v8_Isolate_Dispose empties the list without calling Zig; the two
+    /// owners free the records. Read and written on the isolate's thread.
+    ///
+    /// Two lists, run in this order by every full drain: `queued_finalizers`
+    /// holds the records a callback's exit has looked at and found must wait
+    /// for depth zero (`v8_Isolate_RunFreshFinalizers`); the first pass puts
+    /// a record on `unjudged_finalizers`, where one that waits for an outer
+    /// callback also stays. An agent that never looks from inside a callback
+    /// keeps everything on the second list, in the first pass's order.
+    std::deque<WeakCallbackData*> queued_finalizers;
+    std::deque<WeakCallbackData*> unjudged_finalizers;
+    /// WHERE THE FIRST PASS SAYS FINALIZERS WAIT: one byte of the agent's own
+    /// - what its deferred teardown queue owes its next safe point
+    /// (runtime.gc.DeferredTeardown.owedWord) - and the bit of it that means
+    /// "finalizers" (`oweFinalizers`). BORROWED from the adapter's Zig side
+    /// (v8_Isolate_SetFinalizersOwed: createAgent to the agent's end); null
+    /// for an isolate with no queue, whose finalizers wait for the pump or a
+    /// forced collection. The first pass calls nothing of Zig's for it: it
+    /// stores.
+    /// Read and written on the isolate's thread.
+    uint8_t* finalizers_owed = nullptr;
+    uint8_t finalizers_owed_mask = 0;
+    /// The bit of the same byte that says "some finalizer has not been
+    /// looked at by a callback's exit" (DeferredTeardown.Owed.fresh): set
+    /// with the other when the first pass queues a record.
+    uint8_t fresh_owed_mask = 0;
+    /// `runQueuedFinalizers` is on the stack: a finalizer is running. The
+    /// safe points inside a task - a binding's return into script, the
+    /// external-memory report made there - run nothing beneath it
+    /// (`runQueuedFinalizersInTask`).
+    bool finalizers_running = false;
     /// The registry's end, and its memory.
     void (*node_wrappers_end)(void* registry) = nullptr;
     /// The instance of the node whose wrapper slot is `slot` - the last step
@@ -3186,10 +3388,11 @@ struct IsolateData {
     /// (v8_Isolate_SetNodeWrappers to v8_Isolate_Dispose's start, which
     /// clears it before Isolate::Dispose terminates the heap).
     cppgc::Persistent<NodeWrapperRegistry> node_anchors;
-    /// A collection found node anchors dead: their releases wait for the
-    /// drain, posted after the collection (nodeWrappersEpilogue).
+    /// A collection found node anchors dead or dropped node wrappers: their
+    /// releases wait to be owed to the agent's safe point - where V8 would
+    /// run a second pass (nodeWrappersPrologue, nodeWrappersEpilogue).
     bool node_wrappers_drain_due = false;
-    /// A drain task is posted and has not run.
+    /// The task that owes them is posted and has not run.
     bool node_wrappers_drain_posted = false;
     /// The isolate's EmbedderRootsHandler (design 4.11, P8: Blink's
     /// BlinkRootsHandler), installed right after Isolate::Initialize
@@ -3228,7 +3431,7 @@ struct IsolateData {
     /// (the record found as the current isolate's: collectingRecord); the
     /// kept nodes' trees, from the anchors' registry's Trace in the
     /// atomic pause; the end of each marking (the walk's per-collection sets
-    /// go); and the oracle (-Dwrapper-trace-check, else null), in the weak
+    /// go); and the oracle (-Dv8-wrapper-trace-check, else null), in the weak
     /// processing before any slot is emptied.
     void (*node_wrapper_trace_anchor)(void* registry, void* slot, cppgc::Visitor* visitor) = nullptr;
     void (*node_wrapper_trace_keeps)(void* registry, cppgc::Visitor* visitor) = nullptr;
@@ -3253,11 +3456,16 @@ struct IsolateData {
     }
 };
 
-// IsolateData::cpp_heap frees what 13.1.203 leaves: from 13.4 V8 frees it,
-// and the record would free it twice.
-static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION < 4,
-              "V8 13.4 frees a CppHeap given in CreateParams in Heap::StartTearDown (1c079f473b1): "
-              "IsolateData::cpp_heap must stop owning it");
+// From 13.4 V8 frees a CppHeap given in CreateParams (1c079f473b1), so the
+// record lets go of it once the isolate has it (IsolateData::cpp_heap).
+static_assert(V8_MAJOR_VERSION > 13 || (V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION >= 4),
+              "a V8 before 13.4 never frees a CppHeap given in CreateParams: IsolateData::cpp_heap would have to own it");
+
+/// Isolate::Initialize has attached `record`'s C++ heap: V8 owns it from now
+/// on and deletes it in Isolate::Dispose (IsolateData::cpp_heap).
+static void adoptCppHeap(IsolateData* record) {
+    (void)record->cpp_heap.release();
+}
 
 /// `isolate`'s record, or null for an isolate this file did not make (the
 /// snapshot creator's).
@@ -3325,6 +3533,289 @@ extern "C" void v8_Debug_FullGCPauses(Isolate* isolate, uint64_t* count, uint64_
 extern "C" uint64_t v8_Debug_MinorGCCount(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     return record ? record->gc_pauses.minor_count : 0;
+}
+
+// ============================================================================
+// The agent's finalizer queue and its safe points (lane v8up b6-b7)
+// ============================================================================
+//
+// Every dead wrapper's Zig-side work waits here for the agent's safe point:
+// a wrapper-cache entry's finalizer, queued by V8's first pass
+// (`WeakCallbackWrapper`), and the node wrappers' releases, which the anchors'
+// weak processing and the young generation's ResetRoot record ("Node wrappers
+// on the agent's C++ heap", below) and `noteNodeWrappersCollected` owes.
+
+static void drainNodeWrappers(IsolateData* record);
+
+/// The first pass queued a finalizer, or a node wrapper's second pass said
+/// one died: the agent's queue owes them to its next safe point - the
+/// binding's return into script that finds the bit (dom_algorithm.zig
+/// leaveToScript -> DeferredTeardown.leaveAlgorithmToScript). One store into
+/// the agent's own byte; nothing of Zig's is called from V8's pass.
+static inline void oweFinalizers(IsolateData* record, uint8_t bits) {
+    if (record->finalizers_owed) *record->finalizers_owed |= bits;
+}
+
+/// Nothing waits any more - a drain ran every finalizer, at whichever safe
+/// point: the queue owes none, so the next binding exit pays nothing for
+/// them.
+static inline void settleFinalizersOwed(IsolateData* record) {
+    if (!record->finalizers_owed) return;
+    if (!record->queued_finalizers.empty() || !record->unjudged_finalizers.empty() || record->node_wrappers_collected) return;
+    *record->finalizers_owed &= static_cast<uint8_t>(~(record->finalizers_owed_mask | record->fresh_owed_mask));
+}
+
+/// A record's first pass has run: it waits on its agent's queue from here.
+/// An isolate with no record - the snapshot creator's, or one whose disposal
+/// has begun - has no safe point: the record stays where the first pass left
+/// it (pendingFinalizers()), for its owner's end to cancel or
+/// v8_Isolate_Dispose to free.
+static void queueFinalizer(Isolate* isolate, WeakCallbackData* data) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->unjudged_finalizers.push_back(data);
+    oweFinalizers(record, record->finalizers_owed_mask | record->fresh_owed_mask);
+}
+
+/// Run the finalizer of `data`, a record a drain took off its list: the
+/// record goes first, then the Zig finalizer runs unless its owner cancelled
+/// it. Answers whether it ran.
+static bool runFinalizerRecord(WeakCallbackData* data) {
+    const ZigWeakCallbackFn finalize = data->finalize;
+    void* const user_data = data->user_data;
+    // Forgotten BEFORE calling into Zig, which disposes the handle and must
+    // not find a finalizer to cancel. A cancelled record has no handle and
+    // is in the detached set.
+    if (data->handle) {
+        auto& pending = pendingFinalizers();
+        auto it = pending.find(static_cast<const void*>(data->handle));
+        if (it != pending.end() && it->second == data) pending.erase(it);
+    }
+    {
+        std::lock_guard<std::mutex> guard(weakDataLock());
+        detachedWeakData().erase(data);
+    }
+    freeWeakData(data);
+    if (!finalize) return false;
+    finalize(user_data, 0);
+    return true;
+}
+
+/// THE AGENT'S SAFE POINT for the finalizers of its collected wrappers: run
+/// every queued one, oldest first, then the node wrappers' releases. Answers
+/// whether anything ran. Call on the isolate's thread with the isolate
+/// entered and nothing of V8's collector on the stack.
+///
+/// Where it is called, and so where a finalizer runs relative to tasks and
+/// microtasks:
+///   * v8_Platform_PumpMessageLoop, after the platform task it ran - a
+///     collection V8's marking job finished among them - and before the
+///     microtask checkpoint the event loop performs after each such task
+///     (event_loop.pumpPlatformTasks): between two tasks of the agent, never
+///     inside one or inside a checkpoint. It is where the task V8 posts for
+///     FinalizationRegistry cleanup runs (HTML's
+///     HostEnqueueFinalizationRegistryCleanupJob queues a task too).
+///   * v8_Isolate_RequestGarbageCollection and
+///     v8_Isolate_MemoryPressureNotification, after V8 returns: the
+///     operations built on them promise what the collection found dead is
+///     finalized when they return (engine.requestGarbageCollection,
+///     notifyMemoryPressure) - as a browser's test-only gc() finalizes
+///     before it returns.
+///   * INSIDE A TASK (`runQueuedFinalizersInTask`): a binding's return into
+///     script at DOM-algorithm depth zero, when a first pass has owed them
+///     to the agent's queue (v8_Isolate_RunQueuedFinalizers, the queue's
+///     finalizer steps), and the host's external-memory report made at that
+///     same exit or at a microtask checkpoint outside a DOM algorithm
+///     (v8_ExternalMemoryAccounter_Update, after V8 returns). Finalizers of
+///     what a collection V8 ran by itself found dead - a scavenge an
+///     allocation started, an allocation's last resort, the report's own -
+///     run there, not a task later at the pump.
+///   * INSIDE A CALLBACK (`v8_Isolate_RunFreshFinalizers`, not this
+///     function): a binding's return into the script of the innermost
+///     callback invocation runs the FRESH ones alone - objects a
+///     script-called constructor made since that callback began.
+/// A teardown hold (engine.deferTeardowns) is the Zig finalizer's own
+/// business: it lists its entry for the hold's last resume, as before.
+///
+/// One record at a time, the next taken afresh: a finalizer may force a
+/// collection, which runs this again beneath it (the collection promises
+/// what it found dead is finalized when it returns), or end a realm, whose
+/// cache cancels records still listed here. The safe points inside a task
+/// never run it beneath itself (`finalizers_running`): what a collection
+/// queues under a finalizer, the drain on the stack takes when that
+/// finalizer returns.
+static bool runQueuedFinalizers(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return false;
+    if (record->queued_finalizers.empty() && record->unjudged_finalizers.empty() && !record->node_wrappers_collected) {
+        settleFinalizersOwed(record);
+        return false;
+    }
+    HandleScope handle_scope(isolate);
+    const bool was_running = record->finalizers_running;
+    record->finalizers_running = true;
+    bool ran = false;
+    // The records a callback's exit set aside for depth zero first - they
+    // are the older ones - then the rest, each list from its front.
+    for (;;) {
+        std::deque<WeakCallbackData*>& list =
+            !record->queued_finalizers.empty() ? record->queued_finalizers : record->unjudged_finalizers;
+        if (list.empty()) break;
+        WeakCallbackData* data = list.front();
+        list.pop_front();
+        if (runFinalizerRecord(data)) ran = true;
+    }
+    if (record->node_wrappers_collected) {
+        record->node_wrappers_collected = false;
+        // The anchors scavenges dropped are freed and the recorded releases
+        // go (`drainNodeWrappers`, "Node wrappers on the agent's C++ heap").
+        drainNodeWrappers(record);
+        ran = true;
+    }
+    record->finalizers_running = was_running;
+    settleFinalizersOwed(record);
+    return ran;
+}
+
+/// THE SAFE POINT INSIDE A TASK: `runQueuedFinalizers` for a caller on the
+/// agent's stack while script runs - a binding returning into script at
+/// DOM-algorithm depth zero, the external-memory report made there. False
+/// when finalizers still wait because this is no place to run them:
+///
+///   * a finalizer is already on the stack (`finalizers_running`): one that
+///     runs script, whose binding returns into it, runs no other finalizer
+///     beneath itself. cppgc's sweeper has the same rule for a finalizer
+///     that allocates - "Bail out for recursive sweeping calls. This can
+///     happen when finalizers allocate new memory." (15.7.112.43 src/heap/
+///     cppgc-internal/sweeper.cc:1197-1211, SweepForAllocationIfRunning,
+///     `is_sweeping_on_mutator_thread_`) - and so has V8's own second pass,
+///     which the adapter does not use
+///     (src/handles/global-handles.cc:752-756, "Newly added callbacks will
+///     always be run by the outermost GC run only");
+///   * the returning binding left an exception pending (Isolate::
+///     HasPendingException, src/api/api.cc:10065-10073): V8 hands an
+///     exception thrown inside an API callback only to a TryCatch registered
+///     before the throw, and the engine work of a finalizer - a script, a
+///     call - would clear it silently ("Binding catch scopes", above): the
+///     script would never see what its call threw.
+/// The queue then keeps them owed, for the next exit or the pump.
+static bool runQueuedFinalizersInTask(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return true;
+    if (record->finalizers_running) return false;
+    if (isolate->HasPendingException()) {
+        return record->queued_finalizers.empty() && record->unjudged_finalizers.empty() && !record->node_wrappers_collected;
+    }
+    runQueuedFinalizers(isolate);
+    return true;
+}
+
+/// THE SAFE POINT INSIDE A CALLBACK: a binding returned into the script of
+/// the innermost native-to-script callback invocation on the agent's stack,
+/// with no other DOM algorithm between the two (DeferredTeardown.runFresh).
+/// Only a FRESH finalizer runs here: one whose object a script-called
+/// constructor made at or after that invocation began - every DOM algorithm
+/// on the stack has been suspended in its call into script since before the
+/// object existed, so none holds a pointer to it (finalizer_safe_point.zig,
+/// "Inside a callback"). `stamp_of` answers when a record's object was made
+/// on the agent's callback clock (0: never fresh - the default); `innermost`
+/// and `outermost` are when the innermost and the outermost invocation on
+/// the stack began.
+///
+/// Every record no callback's exit has looked at yet, and every one that
+/// waited for an outer callback, is looked at once: stamped at or after
+/// `innermost`, it runs; at or after `outermost`, it stays - script will be
+/// back in a callback it is fresh for (`*waiting` gets the newest such
+/// stamp, for DeferredTeardown.leaveCallback to owe the next look); anything
+/// else joins the records that wait for depth zero and is not looked at
+/// again. Nothing here touches the node wrappers' releases.
+///
+/// The two rules of `runQueuedFinalizersInTask` hold: not beneath a running
+/// finalizer, not while the returning binding's exception is pending - then
+/// nothing is looked at and the answer is false.
+extern "C" bool v8_Isolate_RunFreshFinalizers(Isolate* isolate, uint32_t innermost, uint32_t outermost,
+                                              uint32_t (*stamp_of)(ZigWeakCallbackFn finalize, void* user_data),
+                                              uint32_t* waiting) {
+    *waiting = 0;
+    IsolateData* record = isolateData(isolate);
+    if (!record || !stamp_of) return true;
+    if (record->finalizers_running) return false;
+    if (isolate->HasPendingException()) return record->unjudged_finalizers.empty();
+    if (record->unjudged_finalizers.empty()) {
+        if (record->finalizers_owed) *record->finalizers_owed &= static_cast<uint8_t>(~record->fresh_owed_mask);
+        return true;
+    }
+    HandleScope handle_scope(isolate);
+    record->finalizers_running = true;
+    // Taken whole: a finalizer may collect, and what that collection's first
+    // pass queues joins the (now empty) list behind the records kept here.
+    std::deque<WeakCallbackData*> looking;
+    looking.swap(record->unjudged_finalizers);
+    std::deque<WeakCallbackData*> kept;
+    uint32_t newest_kept = 0;
+    while (!looking.empty()) {
+        WeakCallbackData* data = looking.front();
+        looking.pop_front();
+        // Cancelled while it waited: the record goes, uncalled.
+        const uint32_t stamp = data->finalize ? stamp_of(data->finalize, data->user_data) : UINT32_MAX;
+        if (stamp != 0 && stamp >= innermost) {
+            runFinalizerRecord(data);
+        } else if (stamp != 0 && stamp >= outermost) {
+            kept.push_back(data);
+            if (stamp > newest_kept) newest_kept = stamp;
+        } else {
+            record->queued_finalizers.push_back(data);
+        }
+    }
+    const bool arrived = !record->unjudged_finalizers.empty();
+    for (WeakCallbackData* data : record->unjudged_finalizers) kept.push_back(data);
+    record->unjudged_finalizers.swap(kept);
+    record->finalizers_running = false;
+    *waiting = newest_kept;
+    // Looked at, every one - unless a finalizer's own collection queued more.
+    if (!arrived && record->finalizers_owed) *record->finalizers_owed &= static_cast<uint8_t>(~record->fresh_owed_mask);
+    settleFinalizersOwed(record);
+    return true;
+}
+
+/// The agent's queue owes finalizers and a binding returned into script at
+/// DOM-algorithm depth zero (the queue's finalizer steps,
+/// finalizer_safe_point.zig): run them (`runQueuedFinalizersInTask`). False
+/// when they still wait. On the isolate's thread, the isolate entered.
+extern "C" bool v8_Isolate_RunQueuedFinalizers(Isolate* isolate) {
+    if (!isolate) return true;
+    return runQueuedFinalizersInTask(isolate);
+}
+
+/// Where `isolate`'s first passes say that finalizers wait
+/// (IsolateData::finalizers_owed): `word`, a byte of the agent's that stays
+/// valid until this is called again, and the bit `mask` of it; null
+/// withdraws it (the agent's end, before its queue can go). What already
+/// waits is owed at once. On the isolate's thread.
+extern "C" void v8_Isolate_SetFinalizersOwed(Isolate* isolate, uint8_t* word, uint8_t mask, uint8_t fresh_mask) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->finalizers_owed = word;
+    record->finalizers_owed_mask = word ? mask : 0;
+    record->fresh_owed_mask = word ? fresh_mask : 0;
+    if (!record->queued_finalizers.empty() || record->node_wrappers_collected) oweFinalizers(record, record->finalizers_owed_mask);
+    if (!record->unjudged_finalizers.empty()) oweFinalizers(record, record->finalizers_owed_mask | record->fresh_owed_mask);
+}
+
+/// Finalizers on `isolate`'s queue that their owners have not cancelled: a
+/// collection's first pass has run and the agent's safe point has not
+/// (tests). 0 for an isolate with no record.
+extern "C" size_t v8_Debug_QueuedFinalizers(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return 0;
+    size_t waiting = 0;
+    for (const WeakCallbackData* data : record->queued_finalizers) {
+        if (data->finalize) waiting++;
+    }
+    for (const WeakCallbackData* data : record->unjudged_finalizers) {
+        if (data->finalize) waiting++;
+    }
+    return waiting;
 }
 
 /// What v8_Debug_NodeAnchorStats reads (ffi.zig's NodeAnchorStats mirrors
@@ -3400,10 +3891,9 @@ extern "C" void v8_Debug_NodeAnchorStats(Isolate* isolate, CraneNodeAnchorStats*
 //   it empty (raw: V8 frees the unmarked TracedNode in the same pause;
 //   TracedReference::Reset would free it twice) and records the release. No
 //   V8 call, no count change, no free. The drain - the counts' release -
-//   runs after the collection: from a posted foreground task, as V8 posts
-//   its own second-pass callbacks (13.1 src/handles/global-handles.cc,
-//   GlobalHandles::PostGarbageCollectionProcessing), or at a requested
-//   collection's end.
+//   runs after the collection, at the agent's safe point
+//   (`runQueuedFinalizers`: lane v8up's finalizer queue), owed to it where
+//   V8 would run a second pass (`noteNodeWrappersCollected`).
 // - Keeps (a node's pending activity): a cppgc::Persistent on the anchor
 //   (v8_NodeWrapper_Root) - a traced root, its own slot only (design 7 P4).
 // - The node's teardown under a live wrapper, and the agent's end: the
@@ -3502,7 +3992,7 @@ void NodeWrapperRegistry::Trace(cppgc::Visitor* visitor) const {
 
 void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     IsolateData* record = record_;
-    // The walk's oracle (-Dwrapper-trace-check), while every slot still holds
+    // The walk's oracle (-Dv8-wrapper-trace-check), while every slot still holds
     // what marking saw.
     if (record->node_wrappers && record->node_wrapper_trace_check) {
         std::vector<void*> live;
@@ -3569,17 +4059,18 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
 //
 // A node's slot is a DROPPABLE TracedReference (v8_NodeWrapper_Attach): in a
 // young-generation collection V8 treats it as weak instead of as a root when
-// its wrapper is an "unmodified API object" - 13.1.203
-// src/handles/traced-handles.cc ComputeWeaknessForYoungObject:
+// its wrapper is an "unmodified API object" - 15.7.112.43
+// src/handles/traced-handles.cc:519-533 ComputeWeaknessProcessor:
 // `node->is_droppable()` once `JSObject::IsUnmodifiedApiObject` holds
-// (src/objects/js-objects.cc: a JS_API_OBJECT whose map is still its
-// constructor's initial map, with no elements and no identity hash - not a
-// WeakMap key). Such a wrapper script cannot tell from a fresh one: no
+// (src/objects/js-objects.cc:3152-3168: a JS_API_OBJECT whose map is still
+// its constructor's initial map, with no elements and no identity hash - not
+// a WeakMap key; 13.1.203 had the same rule). Such a wrapper script cannot
+// tell from a fresh one: no
 // expando, no changed prototype, nothing keyed by it. When nothing else
 // reaches it, V8 reclaims it in the scavenge and calls the isolate's
-// EmbedderRootsHandler::ResetRoot (TracedHandles::ProcessYoungObjects), on
+// EmbedderRootsHandler::ResetRoot (TracedHandles::ProcessWeakYoungObjects), on
 // the isolate's thread, inside the collection, with the C++ heap's GC and
-// allocation disallowed. Blink's design, read at Chromium 131.0.6778.0 (the
+// allocation disallowed (:621-624). Blink's design, read at Chromium 131.0.6778.0 (the
 // release on V8 13.1) and 145.0.7608.0 (461c62b66d7c), the same in both:
 // - third_party/blink/renderer/platform/heap/thread_state.cc BlinkRootsHandler:
 //   ResetRoot unwraps the dying wrapper (ToAnyScriptWrappable: Object::Unwrap
@@ -3592,9 +4083,9 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
 //   (wrapper_type_info.h: every type with a wrapper class id); nothing else is
 //   added on top of V8's unmodified rule - V8 decides what is observable.
 // Here ResetRoot clears the anchor's slot (the dead wrapper reaches no node),
-// Resets the node's slot - which V8 requires: 13.1.203's ProcessYoungObjects
-// CHECKs the TracedNode is free after ResetRoot (`CHECK(!node->is_in_use())`;
-// a DCHECK in later V8, which zaps the node itself) - and records the
+// Resets the node's slot - which V8 requires: the Reset is what frees the
+// TracedNode (TracedHandles::Destroy -> FreeNode; 15.7 then zaps the node and
+// DCHECKs it is no longer in use, :587-590; 13.1.203 CHECKed it) - and records the
 // wrapper's release for the drain, exactly as a full collection's weak
 // processing does (NodeWrapperRegistry::ProcessWeak). The anchor leaves the
 // registry there and is freed after the collection (freeDroppedAnchors: lane
@@ -3610,33 +4101,38 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
 // touches none of them: it answers false, and V8 then calls ResetRoot on the
 // isolate's thread for that handle. Why the rule must be written down: who
 // calls TryResetRoot depends on the V8 version.
-// - V8 13.1.203, the one Crane links: nothing does. ProcessYoungObjects
-//   (src/handles/traced-handles.cc) is a serial loop on the isolate's thread
-//   calling ResetRoot only (`git grep TryResetRoot 13.1.203 -- src` finds no
-//   caller; v8-embedder-heap.h declares it, its default calling ResetRoot).
-// - V8 from b1ea3fc1dbf (2025-02-24, "[heap] Parallelize processing of young
-//   wrapper reclamation"), e.g. 14.6 - the source checkout beside the
-//   archive, jsengines/v8/v8: ClearWeaknessProcessor runs as a platform Job
-//   with up to 3 workers when the young list has more than 8 blocks
-//   (--parallel_reclaim_unmodified_wrappers, on by default), and each worker
-//   calls TryResetRoot - "called in parallel for different handles and as
-//   such must be thread-safe" (v8-embedder-heap.h); a handle it answers false
-//   for is processed again on the main thread with ResetRoot. A TryResetRoot
-//   that touched a node there would race the agent's thread on node memory,
-//   which no other thread ever reads (the node pool's owner-thread design,
-//   tmp/redesign/node-memory-architecture.md 3.5) - so it never does,
-//   whatever an upgrade makes cheaper. Blink's TryResetRoot does the work
-//   opportunistically because its ScriptWrappables' slots tolerate it; Crane's
-//   node memory does not.
+// - V8 13.1.203 (linked until lane v8up's port): nothing did.
+//   ProcessYoungObjects was a serial loop on the isolate's thread calling
+//   ResetRoot only.
+// - V8 15.7.112.43, the one Crane links (since b1ea3fc1dbf, 2025-02-24,
+//   "[heap] Parallelize processing of young wrapper reclamation"):
+//   src/handles/traced-handles.cc ProcessWeakYoungObjects runs
+//   ClearWeaknessProcessor as a platform Job - up to 3 tasks, one per 8 young
+//   blocks left (:432-447, --parallel_reclaim_unmodified_wrappers, on by
+//   default, flag-definitions.h:2892). The joining thread - the isolate's -
+//   calls ResetRoot; every worker calls TryResetRoot (:578-586), "called in
+//   parallel for different handles and as such must be thread-safe"
+//   (v8-embedder-heap.h), and a handle it answers false for marks its block
+//   for reprocessing on the isolate's thread with ResetRoot (:592, :683-690).
+//   After a ResetRoot V8 zaps the node itself (:588); the embedder's Reset
+//   is still what frees it (TracedHandles::Destroy -> FreeNode, with
+//   disable_block_handling_on_free_), as Blink's
+//   DOMDataStore::ClearInlineStorageWrapperIfEqualTo Resets `wrapper_`.
+//   A TryResetRoot that touched a node would race the agent's thread on node
+//   memory, which no other thread ever reads (the node pool's owner-thread
+//   design, tmp/redesign/node-memory-architecture.md 3.5) - so it never does,
+//   whatever it would make cheaper. Blink's TryResetRoot does the work
+//   opportunistically because its ScriptWrappables' slots tolerate it;
+//   Crane's node memory does not.
 // Pinned by tests/v8/wr10_young_drop_thread_test.zig: a scavenge that drops
 // more than 8 young blocks' worth of node wrappers empties every slot
-// through ResetRoot on the agent's thread, and the linked V8 calls
-// TryResetRoot for none (v8_test_NodeWrappers_TryResetRootCalls). A V8
-// upgrade re-reads TracedHandles::ProcessYoungObjects and every caller of
-// TryResetRoot before this compiles again.
-static_assert(V8_MAJOR_VERSION == 13 && V8_MINOR_VERSION == 1,
-              "the young-generation EmbedderRootsHandler contract was read from V8 13.1.203: re-read "
-              "TracedHandles::ProcessYoungObjects / TryResetRoot before upgrading");
+// through ResetRoot on the agent's thread, however many of them V8's workers
+// offered to TryResetRoot first (v8_test_NodeWrappers_TryResetRootCalls). A
+// V8 upgrade re-reads TracedHandles::ProcessWeakYoungObjects and every
+// caller of TryResetRoot before this compiles again.
+static_assert(V8_MAJOR_VERSION == 15 && V8_MINOR_VERSION == 7,
+              "the young-generation EmbedderRootsHandler contract was read from V8 15.7.112.43: re-read "
+              "TracedHandles::ProcessWeakYoungObjects / TryResetRoot before upgrading");
 
 class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
  public:
@@ -3700,8 +4196,8 @@ class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
         }
     }
 
-    /// May run on any thread (V8 from b1ea3fc1dbf: the comment above). It
-    /// reads nothing of the handle and touches no node, anchor, registry or
+    /// Runs on V8's worker threads (15.7: the comment above). It reads
+    /// nothing of the handle and touches no node, anchor, registry or
     /// record: it counts the call on the handler's own atomic and answers
     /// false, so the handle goes to ResetRoot on the isolate's thread.
     bool TryResetRoot(const TracedReference<Value>&) final {
@@ -3730,15 +4226,15 @@ static void installNodeWrapperRootsHandler(Isolate* isolate) {
 
 /// Whether the C++ heap holding `handle` is collecting: in its atomic pause,
 /// marking, or sweeping - when cppgc refuses an explicit free and returns
-/// without freeing (13.1.203 src/heap/cppgc/explicit-management.cc InGC:
-/// `in_atomic_pause() || marker() || sweeper().IsSweepingInProgress()`).
+/// without freeing (15.7.112.43 src/heap/cppgc-internal/explicit-management.cc:21-35
+/// InGC: `in_atomic_pause() || marker() || sweeper().IsSweepingInProgress()`).
 /// The public HeapState reads the same three, with one difference: IsMarking
 /// is `marker() && marker->IsMarking()`. The two agree wherever a drain runs:
 /// the marker exists from MarkCompactCollector::StartMarking
 /// (CppHeap::InitializeMarking) and is_marking_ from CppHeap::StartMarking,
 /// and no embedder callback runs between them - an incremental start calls
 /// the prologue callbacks before both and the epilogue callbacks after both
-/// (13.1.203 incremental-marking.cc IncrementalMarking::StartMarkingMajor),
+/// (incremental-marking.cc IncrementalMarking::StartMarkingMajor, heap.cc:3817-3825),
 /// an atomic one calls the prologue before Prepare; the marker goes in the
 /// atomic pause (CppHeap::FinishMarkingAndProcessWeakness) right after
 /// is_marking_ (MarkerBase::LeaveAtomicPause).
@@ -3767,9 +4263,14 @@ static bool cppHeapCollecting(const cppgc::HeapHandle& handle) {
 /// - the dead wrapper's CppHeapPointerTable entry still holds the anchor's
 ///   address, as a number nothing reads: the wrapper is unreachable, so no
 ///   unwrap and no marker visits it, and the table frees the unmarked entry
-///   at the next full collection without reading its payload (13.1.203
-///   src/sandbox/cppheap-pointer-table.cc CppHeapPointerTable::SweepAndCompact,
-///   called only from mark-compact.cc; a scavenge never touches the table);
+///   at the next full collection without reading its payload (15.7.112.43
+///   src/sandbox/cppheap-pointer-table.cc:16 CppHeapPointerTable::SweepAndCompact,
+///   called only from mark-compact.cc:3419; a scavenge never touches the
+///   table). An entry is born unmarked outside a marking cycle
+///   (cppheap-pointer-table-inl.h:17-31, :143-147: mark_as_alive only while
+///   the space allocates black), so a dead wrapper's entry goes at the FIRST
+///   full collection after it - 13.1.203 born-marked every entry and kept it
+///   for two (fixed upstream in 60611ef018b; lane wr1 batch 10);
 /// - a stale word of the stack naming it is harmless: a conservative scan
 ///   ignores free-list entries and the linear allocation buffer
 ///   (BasePage::TryObjectHeaderFromInnerAddress).
@@ -3815,18 +4316,52 @@ static bool drainPending(const IsolateData* record) {
 
 /// The agent's drain, now: the anchors scavenges dropped are freed, and the
 /// releases its collections recorded go (the Zig side defers them while a
-/// walk holds the agent's teardowns).
+/// walk holds the agent's teardowns). Only from the agent's safe point
+/// (`runQueuedFinalizers`) - never inside a collection or one of V8's GC
+/// callbacks.
 static void drainNodeWrappers(IsolateData* record) {
     freeDroppedAnchors(record);
     record->node_wrappers_drain_due = false;
     if (record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
 }
 
-/// The drain after a collection, on the agent's foreground task runner: V8's
-/// own model for the work a collection's weak processing leaves (13.1
-/// GlobalHandles::PostGarbageCollectionProcessing posts its second-pass
-/// callbacks the same way). A task the runner drops at the agent's end
-/// (v8_Isolate_Dispose closes it) never runs: that end drains itself.
+/// The node wrappers' drain is OWED to the agent's next safe point
+/// (`runQueuedFinalizers`: a binding's return into script at DOM-algorithm
+/// depth zero, the pump, a requested collection's return) - lane v8up's
+/// finalizer queue, which the node wrappers' releases join here as its
+/// `nodeWrapperSecondPass` made a weak Global's join it (lane wr1 b11, the
+/// merge onto V8 15.7: before it the drain ran right here, inside V8's GC
+/// callbacks and a task of its own).
+///
+/// WHEN it is owed is still where V8 runs a SECOND pass, not where the
+/// collection found the wrapper dead ("Why the first pass queues", above,
+/// is every other finalizer's rule): WHEN a node wrapper's reference is
+/// released decides what refcount step 7a's net does with a detached tree
+/// that only its own pending work still holds (an <img> whose image update
+/// is pending, in a tree document.open() replaced). Released at its realm's
+/// end, the net frees the tree (node_wrappers.zig endRealm, endedRealmNet);
+/// released earlier, while the realm lives, the net declines, nothing looks
+/// again, and the tree stays to the agent's end (lane v8up b7:
+/// tests/html parser_implied_end_tags_test, 15 of 15 runs with a node
+/// wrapper's release owed by the first pass, 0 of 15 by the second). That
+/// hole is older than the queue - a pump between the collection and the
+/// realm's end opens it too. Until it is closed (feature-queue "THE 7a NET'S
+/// HOLE", R3) a node wrapper's release keeps the timing it had: the three
+/// points below are V8 15.7's for a second pass (src/handles/
+/// global-handles.cc:881-901 PostGarbageCollectionProcessing - synchronously
+/// at the end of a forced collection, else one posted task; src/heap/
+/// heap.cc:1509-1511 - at the next collection's start when that task has not
+/// run).
+static void noteNodeWrappersCollected(IsolateData* record) {
+    record->node_wrappers_collected = true;
+    oweFinalizers(record, record->finalizers_owed_mask);
+}
+
+/// One of the three points: the task V8 would post for its second passes,
+/// on the agent's foreground task runner. It only owes the drain; the pump
+/// that ran it drains right after (v8_Platform_PumpMessageLoop's safe
+/// point). A task the runner drops at the agent's end (v8_Isolate_Dispose
+/// closes it) never runs: that end drains itself.
 class NodeWrappersDrainTask final : public Task {
  public:
     NodeWrappersDrainTask(Isolate* isolate, uint32_t* runs, uint32_t* drops)
@@ -3840,7 +4375,7 @@ class NodeWrappersDrainTask final : public Task {
         IsolateData* record = isolateData(isolate_);
         if (!record) return;
         record->node_wrappers_drain_posted = false;
-        if (drainPending(record)) drainNodeWrappers(record);
+        if (drainPending(record)) noteNodeWrappersCollected(record);
     }
 
  private:
@@ -3851,27 +4386,29 @@ class NodeWrappersDrainTask final : public Task {
 };
 
 /// Before every collection, minor ones included: what an earlier collection
-/// released goes first - where V8 runs the second-pass callbacks still
-/// pending (13.1 src/heap/heap.cc Heap::CollectGarbage, "Ensure that all
-/// pending phantom callbacks are invoked", ahead of the prologue callbacks).
-/// So a long script that collects many times releases as it goes, as P2's
-/// second passes did (tests/html/rc9_document_tasks_test.zig).
+/// released is owed first - where V8 runs the second-pass callbacks still
+/// pending (15.7.112.43 src/heap/heap.cc:1509-1511, ahead of the prologue
+/// callbacks). So a long script that collects many times releases as it
+/// goes, at its bindings' exits (tests/html/rc9_document_tasks_test.zig).
+/// Nothing of Zig's runs here: one flag and one byte.
 static void nodeWrappersPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
     IsolateData* record = static_cast<IsolateData*>(data);
-    if (drainPending(record)) drainNodeWrappers(record);
+    if (drainPending(record)) noteNodeWrappersCollected(record);
 }
 
-/// After every full collection that found node anchors dead: a forced one
-/// drains at once - V8 runs second-pass callbacks synchronously at the end of
-/// a collection made with these flags (GlobalHandles::
-/// PostGarbageCollectionProcessing) - and any other posts one drain task (one
-/// at a time), unless the next collection's start drains first.
+/// After every collection that found node anchors dead or dropped node
+/// wrappers: a forced one owes the drain at once - V8 runs second-pass
+/// callbacks synchronously at the end of a collection made with these flags
+/// (GlobalHandles::PostGarbageCollectionProcessing), and the operation that
+/// forced it runs the agent's safe point when V8 returns
+/// (v8_Isolate_RequestGarbageCollection) - and any other posts one task
+/// (one at a time), unless the next collection's start owes it first.
 static void nodeWrappersEpilogue(Isolate* isolate, GCType, GCCallbackFlags flags, void* data) {
     IsolateData* record = static_cast<IsolateData*>(data);
     if (!drainPending(record)) return;
     if ((flags & (kGCCallbackFlagForced | kGCCallbackFlagCollectAllAvailableGarbage |
                   kGCCallbackFlagSynchronousPhantomCallbackProcessing)) != 0) {
-        drainNodeWrappers(record);
+        noteNodeWrappersCollected(record);
         return;
     }
     if (record->node_wrappers_drain_posted) return;
@@ -4235,7 +4772,9 @@ extern "C" uint64_t v8_test_NodeWrappers_Dropped(Isolate* isolate) {
 
 /// How many times V8 called `isolate`'s NodeWrapperRootsHandler::TryResetRoot
 /// - from any thread - so far; 0 for an isolate with no record. The linked
-/// V8 (13.1.203) never calls it (the rule at NodeWrapperRootsHandler).
+/// V8 (15.7.112.43) calls it from its worker threads when a scavenge has
+/// more than 8 young TracedNode blocks to process (the rule at
+/// NodeWrapperRootsHandler).
 extern "C" uint64_t v8_test_NodeWrappers_TryResetRootCalls(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     return record && record->roots_handler ? record->roots_handler->tryResetRootCalls() : 0;
@@ -4272,15 +4811,6 @@ extern "C" size_t v8_test_CppHeap_LiveBytes(Isolate* isolate) {
     return heap->CollectStatistics(cppgc::HeapStatistics::DetailLevel::kDetailed).used_size_bytes;
 }
 
-/// tests/v8/wr10_idle_tasks_test.zig: whether `isolate`'s C++ heap is still
-/// sweeping - a lazy sweep not yet finalized, during which cppgc refuses an
-/// explicit free (13.1.203 explicit-management.cc InGC). Reads the state
-/// only: unlike v8_test_CppHeap_LiveBytes it finishes nothing.
-extern "C" bool v8_test_CppHeap_IsSweeping(Isolate* isolate) {
-    CppHeap* heap = isolate ? isolate->GetCppHeap() : nullptr;
-    return heap && cppgc::subtle::HeapState::IsSweeping(heap->GetHeapHandle());
-}
-
 /// A full collection of `isolate` (entered by the caller) that V8 does not
 /// force: its answer to critical memory pressure (13.1.203 heap.cc
 /// Heap::CollectGarbageOnMemoryPressure, kReduceMemoryFootprint with no
@@ -4301,11 +4831,11 @@ extern "C" bool v8_test_Isolate_CollectUnforced(Isolate* isolate) {
 
 /// The probe's wrappable: a node wrapper's shape (an API object Wrapped with
 /// a C++-heap object), under a tag of its own.
-static constexpr CppHeapPointerTag kDroppableProbeTag = static_cast<CppHeapPointerTag>(257);
+static constexpr CppHeapPointerTag kDroppableProbeTag = crane_tags::tag(crane_tags::kTestProbeAnchor);
 
-class DroppableProbeAnchor final : public cppgc::GarbageCollected<DroppableProbeAnchor> {
+class DroppableProbeAnchor final : public CraneWrappable {
  public:
-    void Trace(cppgc::Visitor*) const {}
+    DroppableProbeAnchor() = default;
 };
 
 /// The probe's roots handler, for the probe's scavenges only: the probe's
@@ -4526,74 +5056,6 @@ bool v8_Isolate_NextForegroundTaskDelay(Isolate* isolate, uint64_t* nanoseconds)
     return record && record->foreground_tasks->nextDelay(nanoseconds);
 }
 
-bool CranePlatform::IdleTasksEnabled(Isolate* isolate) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return backend_->IdleTasksEnabled(isolate);
-    return record->foreground_tasks->idle_enabled;
-}
-
-/// engine.hasEngineIdleTasks: whether V8 has idle tasks posted for
-/// `isolate` that have not run.
-/// None once the isolate's tasks are closed (its agent's end): what is
-/// still queued then never runs (ForegroundIdleTask::Run), and goes with the
-/// isolate (DefaultPlatform::NotifyIsolateShutdown).
-bool v8_Isolate_HasIdleTasks(Isolate* isolate) {
-    IsolateData* record = isolateData(isolate);
-    if (!record || !record->foreground_tasks->idle_enabled) return false;
-    ForegroundTasks& tasks = *record->foreground_tasks;
-    if (tasks.idle_pending.load(std::memory_order_relaxed) == 0) return false;
-    std::lock_guard<std::mutex> guard(tasks.mutex);
-    return !tasks.closed;
-}
-
-/// engine.runEngineIdleTasks: V8's idle tasks for `isolate` (entered) in
-/// `seconds` of the host's idle period - libplatform runs them, in the order
-/// posted, each with the deadline, until the deadline passes or none is left
-/// (13.1.203 src/libplatform/default-platform.cc DefaultPlatform::
-/// RunIdleTasks); what each does with its time is V8's (cppgc's
-/// SweepForIdleTask sweeps until the deadline, IdleTaskOnContextDispose
-/// collects the young generation if it fits). Blink runs them the same way,
-/// each with its idle period's deadline (bindings/core/v8/
-/// v8_idle_task_runner.h, Chromium 145.0.7608.0), and d8 after each pump
-/// (src/d8/d8.cc ProcessMessages). Whether any idle task ran.
-///
-/// Then the agent's drain, when it now has something to do: the anchors a
-/// scavenge dropped while the C++ heap swept were refused (freeDroppedAnchors)
-/// and wait for the sweep's end, which the idle work may just have reached -
-/// otherwise they would wait for the next collection's prologue. A drain
-/// that would only be refused again is not tried (each try counts its
-/// refusals).
-bool v8_Platform_RunIdleTasks(Isolate* isolate, double seconds) {
-    if (!g_platform.started.load(std::memory_order_acquire) || !isolate) return false;
-    IsolateData* record = isolateData(isolate);
-    if (!record || !record->foreground_tasks->idle_enabled) return false;
-    ForegroundTasks& tasks = *record->foreground_tasks;
-    if (!v8_Isolate_HasIdleTasks(isolate) || seconds <= 0) return false;
-    // An idle task may collect (IdleTaskOnContextDispose's young-generation
-    // collection): the collecting isolate is the current one (collectingRecord).
-    CollectingScope collecting(isolate);
-    const uint64_t runs_before = tasks.idle_runs.load(std::memory_order_relaxed);
-    const auto start = std::chrono::steady_clock::now();
-    platform::RunIdleTasks(defaultPlatform(), isolate, seconds);
-    const auto used = std::chrono::steady_clock::now() - start;
-    record->idle_stats.periods += 1;
-    record->idle_stats.given_ns += static_cast<uint64_t>(seconds * 1e9);
-    record->idle_stats.used_ns += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(used).count());
-    const uint64_t ran = tasks.idle_runs.load(std::memory_order_relaxed) - runs_before;
-    record->idle_stats.tasks_run += ran;
-    CppHeap* heap = isolate->GetCppHeap();
-    const bool cpp_heap_idle = !heap || !cppHeapCollecting(heap->GetHeapHandle());
-    if (record->node_wrappers_drain_due || (!record->dropped_anchors.empty() && cpp_heap_idle)) drainNodeWrappers(record);
-    return ran > 0;
-}
-
-/// The isolate's idle periods so far (v8_Platform_RunIdleTasks), for
-/// diagnosticCounters; zeros for an isolate with no record.
-void v8_Debug_IdleStats(Isolate* isolate, IdleStats* out) {
-    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
-    *out = record ? record->idle_stats : IdleStats{};
-}
-
 /// Test-only owning runner reference. Require the runner V8 requested during
 /// initialization, rather than manufacturing one that could hide that path.
 std::shared_ptr<TaskRunner>* v8_test_ForegroundTaskRunner(Isolate* isolate) {
@@ -4629,15 +5091,15 @@ static void deleteSyntheticExport(SyntheticJsonExport* entry) {
 }
 
 /// What an agent asks of its isolate before it initializes (ffi.zig
-/// IsolateOptions; engine.AgentOptions.random_seed and .clock). Null, or
-/// every field zero: an isolate exactly as v8_Isolate_New made it before.
+/// IsolateOptions; engine.AgentOptions.random_seed and .clock, and the
+/// build's limit for the young generation). Null, or every field zero: an
+/// isolate exactly as v8_Isolate_New made it before.
 struct CraneIsolateOptions {
     bool seeded;
     uint64_t random_seed;
     void* clock_context;
     int64_t (*clock_wall_now)(void*);
-    /// engine.AgentOptions.idle_periods (ForegroundTasks::idle_enabled).
-    bool idle_tasks;
+    size_t max_young_generation_bytes;
 };
 
 /// `options` into the record, before Isolate::Initialize.
@@ -4647,7 +5109,21 @@ static void applyIsolateOptions(IsolateData* record, const CraneIsolateOptions* 
     record->random_seed = options->random_seed;
     record->clock_wall_now = options->clock_wall_now;
     record->clock_context = options->clock_context;
-    record->foreground_tasks->idle_enabled = options->idle_tasks;
+}
+
+/// The build's ceiling for the young generation (-Dv8-young-generation-mb,
+/// young_generation.zig) into the isolate's ResourceConstraints, which
+/// Heap::ConfigureHeap reads once, inside Isolate::Initialize (15.7.112.43
+/// src/heap/heap.cc:4886-4892: max_semi_space_size_ from
+/// constraints.max_young_generation_size_in_bytes; include/v8-isolate.h:
+/// 133-143). 0, or no options: no constraint - V8's own ceiling, 32 MB
+/// semispaces (heap.cc:4844-4860). The embedder API for it: gin sets the
+/// same field through ResourceConstraints::ConfigureDefaults (Chromium
+/// 157.0.8103.50 gin/isolate_holder.cc:186-190). Not a V8 flag string: the
+/// constraint is the isolate's own, set where the isolate is made.
+static void applyHeapConstraints(Isolate::CreateParams& create_params, const CraneIsolateOptions* options) {
+    if (!options || options->max_young_generation_bytes == 0) return;
+    create_params.constraints.set_max_young_generation_size_in_bytes(options->max_young_generation_bytes);
 }
 
 // ---- one read-only heap per process (lane tsanfix1, M1) ----
@@ -4802,7 +5278,7 @@ static void agentCppHeapParams(CppHeapCreateParams& params) {
 static std::unique_ptr<CppHeap> newAgentCppHeap() {
     CppHeapCreateParams params(std::vector<std::unique_ptr<cppgc::CustomSpaceBase>>{});
     agentCppHeapParams(params);
-    return CppHeap::Create(g_platform.platform.get(), params);
+    return CppHeap::Create(g_platform.platform, params);
 }
 
 /// tests/v8: the MarkingType every agent's C++ heap is made with
@@ -4846,8 +5322,9 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
-    // The agent's C++ heap, attached from Isolate::Initialize on; the record
-    // frees it (IsolateData::cpp_heap says why).
+    applyHeapConstraints(create_params, options);
+    // The agent's C++ heap, attached from Isolate::Initialize on and V8's to
+    // free from then (IsolateData::cpp_heap says why).
     record->cpp_heap = newAgentCppHeap();
     create_params.cpp_heap = record->cpp_heap.get();
     // V8's built-in snapshot: always allowed (g_read_only_heap says why).
@@ -4860,8 +5337,10 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
         releaseReadOnlyHeap();
         return nullptr;
     }
-    isolate->SetData(kIsolateDataSlot, record.release());
+    IsolateData* data = record.release();
+    isolate->SetData(kIsolateDataSlot, data);
     Isolate::Initialize(isolate, create_params);
+    adoptCppHeap(data);
     installGCPauseRecorder(isolate);
     installNodeWrapperRootsHandler(isolate);
     return isolate;
@@ -4927,6 +5406,22 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // anchor (none holds a slot any more), and no Persistent of the
             // record outlives the heap.
             releaseNodeAnchors(record);
+            // Finalizers still queued run no more: the isolate is not
+            // entered here and its realms are gone, so nothing of Zig's is
+            // called. An agent's end drained the queue in its last forced
+            // collections (protocol_agents.endAgent); what a test's own
+            // isolate leaves is its owners' - each ends what it still holds
+            // before this (WrapperCache.deinit, the registries). Only the
+            // list goes: the records are freed below, the cancelled ones with
+            // the detached set and the rest with pendingFinalizers().
+            record->queued_finalizers.clear();
+            record->unjudged_finalizers.clear();
+            // No pass of V8's stores into the agent's queue from here on (the
+            // agent's end withdrew the byte already; a test's own isolate
+            // never registered one).
+            record->finalizers_owed = nullptr;
+            record->finalizers_owed_mask = 0;
+            record->fresh_owed_mask = 0;
             record->foreground_tasks->close();
             isolate->SetData(kIsolateDataSlot, nullptr);
             for (SyntheticJsonExport* entry : record->synthetic_json_exports) deleteSyntheticExport(entry);
@@ -4967,11 +5462,11 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // Dispose the isolate first
         isolate->Dispose();
 
-        // Finalizers whose second pass this isolate never ran: V8 dropped its
-        // pending second-pass list with it. Their owners finalized what they
-        // hold before ending the realm (WrapperCache.deinit), so only the
-        // records are left. After Dispose, so a second pass V8 did run during
-        // it found its record intact.
+        // Finalizers this isolate's safe points never ran: the queue's list
+        // went above, uncalled, and an isolate with no record never had one.
+        // Their owners finalized what they hold before ending the realm
+        // (WrapperCache.deinit), so only the records are left. After Dispose,
+        // so a first pass V8 did run during it found its record intact.
         {
             auto& pending = pendingFinalizers();
             for (auto it = pending.begin(); it != pending.end();) {
@@ -4993,8 +5488,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
         // held a pointer to that until Dispose returned ("The embedder owns
         // the blob", v8-isolate.h CreateParams::snapshot_blob). The bytes it
         // points at are the caller's, freed by the caller after this. Its C++
-        // heap goes with it: Dispose detached and terminated it
-        // (IsolateData::cpp_heap).
+        // heap is gone already: Dispose deleted it (IsolateData::cpp_heap).
         delete record;
     }
 }
@@ -5117,6 +5611,217 @@ size_t v8_test_CppgcMemberSize() {
 }
 
 }  // extern "C" - the cppgc registry's declaration below is C++
+
+// CraneWrappable, the base of every anchor, and the anchors' tags (crane_tags)
+// are defined above, before the node anchors that IsolateData holds.
+
+// ----------------------------------------------------------------------------
+// GlobalAnchor: a realm global's native info (lane v8up b3c;
+// tmp/plans/v8-global-object-design.md 1.1-1.2, 2.1-2.5). V8 >= 14 gives the
+// embedder no handle to a context's JSGlobalObject (crbug.com/333672197);
+// what it gives is Object::WrapGlobal, which sets ONE CppHeap pointer on the
+// JSGlobalProxy AND on its hidden prototype, the JSGlobalObject (v8-object.h
+// 662-668). Blink attaches the DOMWindow that way at context creation
+// (LocalWindowProxy::SetupWindowPrototypeChain, local_window_proxy.cc 405-449,
+// V8DOMWrapper::SetNativeInfoForGlobal) and a worker's global scope the same
+// (WorkerOrWorkletScriptController::Initialize...,
+// worker_or_worklet_script_controller.cc 205-213). Crane attaches a
+// GlobalAnchor through one function, `v8_GlobalAnchor_Attach`, for every
+// realm global: Window (fresh or restored from the snapshot - Blink wraps a
+// restored context's global by the same SetupWindowPrototypeChain, 1.5),
+// worker, worklet, ShadowRealm.
+//
+// What it carries:
+// - `instance_`: the Zig global instance (a Window, a WorkerGlobalScope...),
+//   NOT owned - Zig frees it and calls clear() first. Read by the realm's
+//   WindowProperties object, which Blink wraps with the window too
+//   (SetupWindowPrototypeChain 434-437: SetNativeInfo), so one clear() severs
+//   the proxy's, the hidden global's and WindowProperties' link at once.
+// - `retained_`: the realm's retained store, a plain object made in the
+//   realm. What the realm's global keeps alive hangs on it as private
+//   properties - its Window's traced edges (protocol_tracing), and once the
+//   realm is detached its wrappers and callbacks (WrapperCache.detach,
+//   v8_Object_WeakenTaggedHandles). The anchor traces it, so it lives exactly
+//   while the global object does - the hidden global after a navigation
+//   handed the proxy on (Blink 1.2: the old JSGlobalObject keeps its CppHeap
+//   pointer to the OLD window, and tracing keeps what the window holds; no
+//   handle to the old global exists). Crane's Window is a Zig object, not a
+//   cppgc one, so its edges are JS edges from this store - the same graph:
+//   global object -> anchor -> store -> what the Window keeps. Set once, in
+//   the constructor, before the anchor is reachable: a concurrent marker
+//   never reads it mid-write (the contract's concurrency rule).
+//
+// Zig never keeps a raw pointer to the anchor: it keeps a GlobalAnchorRef, a
+// cppgc::WeakPersistent, which cppgc clears in the atomic pause of the
+// collection that finds the anchor dead. That is the signal "the old global
+// object is gone" (it replaces the weak handle to the hidden global that V8
+// >= 14 no longer lets Crane make); a raw pointer told by the finalizer would
+// be stale from the atomic pause to the sweep, while the store's traced node
+// is already freed. The destructor is therefore the base's: it does nothing.
+// ----------------------------------------------------------------------------
+class GlobalAnchor final : public CraneWrappable {
+ public:
+    GlobalAnchor(Isolate* isolate, void* instance, Local<Object> retained)
+        : instance_(instance), retained_(isolate, retained) {}
+
+    void Trace(cppgc::Visitor* visitor) const override {
+        CraneWrappable::Trace(visitor);
+        visitor->Trace(retained_);
+    }
+    const char* GetHumanReadableName() const override { return "Crane GlobalAnchor"; }
+
+    void* instance() const { return instance_; }
+    /// The realm ends - its Zig instance is about to be freed: every JS
+    /// object wrapped with this anchor - the proxy while it is this realm's,
+    /// the hidden global, WindowProperties - finds no instance from now on,
+    /// and the retained store goes now rather than at the collection that
+    /// takes the global (what it kept is the ended realm's: its wrapper cache
+    /// is torn down). Its traced node counts in V8's used global handle bytes,
+    /// which a realm's end must leave as it found them (worklet_realm_test,
+    /// worker_iterator_template_test). Reset is safe while a concurrent
+    /// marker may read the reference (TracedReferenceBase's thread-safe slot,
+    /// as Blink resets a TraceWrapperV8Reference).
+    void clear() {
+        instance_ = nullptr;
+        retained_.Reset();
+    }
+    Local<Object> retained(Isolate* isolate) const { return retained_.Get(isolate); }
+
+ private:
+    void* instance_;
+    TracedReference<Object> retained_;
+};
+
+static_assert(sizeof(GlobalAnchor) == 3 * sizeof(void*), "GlobalAnchor: the vptr, instance_, retained_ (one per realm global)");
+
+/// What Zig holds of an anchor: cleared by cppgc when the anchor dies.
+using GlobalAnchorRef = cppgc::WeakPersistent<GlobalAnchor>;
+
+extern "C" {
+
+/// THE attach function for a realm's global (design 2.1): `instance` (the
+/// Zig global instance, or null for a realm with none - a ShadowRealm's) in
+/// the global proxy's internal field 0, which the bindings read for a
+/// receiver and every conversion reads for a WindowProxy value (as every
+/// Crane wrapper carries its instance until lanes wr1/wrap1 move wrappers to
+/// Object::Wrap), and a new GlobalAnchor set on the proxy and its hidden
+/// global object by Object::WrapGlobal. Returns Zig's reference to the anchor
+/// (v8_GlobalAnchor_Dispose), or null when the isolate has no C++ heap.
+GlobalAnchorRef* v8_GlobalAnchor_Attach(Global<Context>* context, void* instance) {
+    if (!context || context->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    Context::Scope context_scope(ctx);
+    Local<Object> proxy = ctx->Global();
+    if (proxy->InternalFieldCount() >= 1) proxy->SetAlignedPointerInInternalField(0, instance, kCraneEmbedderDataTag);
+    Local<Object> retained = Object::New(isolate);
+    GlobalAnchor* anchor = cppgc::MakeGarbageCollected<GlobalAnchor>(heap->GetAllocationHandle(), isolate, instance, retained);
+    Object::WrapGlobal(isolate, proxy, anchor, crane_tags::tag(crane_tags::kGlobalAnchor));
+    return new GlobalAnchorRef(anchor);
+}
+
+/// A navigation hands `context`'s WindowProxy to a new realm (Blink
+/// LocalWindowProxy::DisposeContext, kGlobalObjectIsDetached, step 2:
+/// ClearNativeInfo, local_window_proxy.cc 205-214): the PROXY's CppHeap
+/// pointer is cleared; the hidden global object keeps the old anchor. Called
+/// before Context::DetachGlobal, while the proxy is still `context`'s.
+void v8_GlobalAnchor_ClearProxy(Global<Context>* context) {
+    if (!context || context->IsEmpty()) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Local<Object> proxy = context->Get(isolate)->Global();
+    Object::Wrap(isolate, proxy, nullptr, crane_tags::tag(crane_tags::kGlobalAnchor));
+}
+
+/// Wrap `object` with `ref`'s anchor (Blink SetupWindowPrototypeChain: the
+/// WindowProperties object gets the window's native info). A no-op once the
+/// anchor is gone.
+void v8_GlobalAnchor_WrapObject(GlobalAnchorRef* ref, Global<Object>* object) {
+    if (!ref || !object || object->IsEmpty()) return;
+    GlobalAnchor* anchor = ref->Get();
+    if (!anchor) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    HandleScope handle_scope(isolate);
+    Object::Wrap(isolate, object->Get(isolate), anchor, crane_tags::tag(crane_tags::kGlobalAnchor));
+}
+
+/// The anchor's instance is about to be freed (GlobalAnchor::clear). A no-op
+/// once the anchor is gone.
+void v8_GlobalAnchor_Clear(GlobalAnchorRef* ref) {
+    if (!ref) return;
+    if (GlobalAnchor* anchor = ref->Get()) anchor->clear();
+}
+
+/// Whether the anchor - and so the global object that holds it - is alive.
+bool v8_GlobalAnchor_IsAlive(GlobalAnchorRef* ref) {
+    return ref && ref->Get() != nullptr;
+}
+
+/// The realm's retained store (see GlobalAnchor), as a Global the caller
+/// releases (v8_Global_Dispose); null once the anchor is gone.
+Global<Value>* v8_GlobalAnchor_Retained(GlobalAnchorRef* ref) {
+    if (!ref) return nullptr;
+    GlobalAnchor* anchor = ref->Get();
+    if (!anchor) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Object> retained = anchor->retained(isolate);
+    if (retained.IsEmpty()) return nullptr;
+    return trackHandle(new Global<Value>(isolate, retained));
+}
+
+/// Zig's reference ends (the realm's end, on the agent's thread - a
+/// WeakPersistent belongs to its heap's thread).
+void v8_GlobalAnchor_Dispose(GlobalAnchorRef* ref) {
+    delete ref;
+}
+
+/// The instance of the GlobalAnchor `info`'s holder is wrapped with - a
+/// WindowProperties object's Window (window_properties.zig) - or null: no
+/// anchor, or one cleared. Only for a holder Crane wrapped (an interceptor
+/// installed on WindowProperties alone): Unwrap reads the object's CppHeap
+/// pointer field, which an arbitrary object does not have.
+void* v8_PropertyCallbackInfo_HolderGlobalAnchorInstance(const PropertyCallbackInfo<Value>* info) {
+    Local<Object> holder = info->Holder();
+    GlobalAnchor* anchor = Object::Unwrap<GlobalAnchor>(info->GetIsolate(), holder, crane_tags::kGlobalAnchorRange);
+    return anchor ? anchor->instance() : nullptr;
+}
+
+/// Tests (tests/v8): the instance of the GlobalAnchor `object` (BORROWED) is
+/// wrapped with - a global proxy, or a WindowProperties object - or null: none,
+/// or one cleared. With `check_global`, `object` must be an ATTACHED global
+/// proxy, and V8's Object::CheckGlobalWrappable first checks that the proxy
+/// and its hidden global object carry the same anchor (a fatal API check when
+/// they do not; on a detached proxy, whose hidden prototype is gone, it is a
+/// CHECK failure - pass false there).
+void* v8_Debug_GlobalAnchorInstanceOf(Global<Object>* object, bool check_global) {
+    if (!object || object->IsEmpty()) return nullptr;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Object> local = object->Get(isolate);
+    if (check_global) (void)Object::CheckGlobalWrappable(isolate, local, crane_tags::kGlobalAnchorRange);
+    GlobalAnchor* anchor = Object::Unwrap<GlobalAnchor>(isolate, local, crane_tags::kGlobalAnchorRange);
+    return anchor ? anchor->instance() : nullptr;
+}
+
+/// Tests: whether `proxy` carries any GlobalAnchor (a cleared one too).
+bool v8_Debug_HasGlobalAnchor(Global<Object>* proxy) {
+    if (!proxy || proxy->IsEmpty()) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return false;
+    HandleScope handle_scope(isolate);
+    return Object::Unwrap<GlobalAnchor>(isolate, proxy->Get(isolate), crane_tags::kGlobalAnchorRange) != nullptr;
+}
+
+}  // extern "C"
 
 // cppgc's own registry of the process's live C++ heaps: every heap registers
 // in its constructor and unregisters in its destructor (13.1.203
@@ -5282,27 +5987,64 @@ void v8_Isolate_GetHeapUsage(Isolate* isolate, size_t* used, size_t* total,
     if (external) *external = stats.external_memory();
 }
 
-// The host's native memory its objects keep alive changed (engine.AgentOptions.
-// external_memory, src/runtime/engines/v8/external_memory.zig): V8 counts it
-// toward its collection schedule - past the low-water mark since the last
-// mark-compact + 64 MB it starts incremental marking (V8 13.1 heap.cc
-// Heap::HandleExternalMemoryInterrupt), as Blink's V8GCController::
-// reportDOMMemoryUsageToV8 told it about the DOM partition (Chromium 45).
-int64_t v8_Isolate_AdjustAmountOfExternalAllocatedMemory(Isolate* isolate, int64_t change_in_bytes) {
-    // V8 may collect here (HandleExternalMemoryInterrupt): the collecting
-    // isolate is the current one (collectingRecord).
-    CollectingScope collecting(isolate);
-    return isolate->AdjustAmountOfExternalAllocatedMemory(change_in_bytes);
+// The host's native memory its objects keep alive (engine.AgentOptions.
+// external_memory, src/runtime/engines/v8/external_memory.zig): one
+// v8::ExternalMemoryAccounter per agent, the API V8 >= 13.x gives an embedder in
+// place of Isolate::AdjustAmountOfExternalAllocatedMemory (deprecated in 15.7;
+// both reach Heap::UpdateExternalMemory, api.cc 9906-9920 and 12660-12690 at
+// 15.7.112.43). V8 counts the figure toward its global allocation limit and
+// starts incremental marking once it is reached (heap.cc UpdateExternalMemory),
+// as Blink's V8GCController::reportDOMMemoryUsageToV8 told it about the DOM
+// partition (Chromium 45). The archive is built without
+// V8_ENABLE_MEMORY_ACCOUNTING_CHECKS (its v8-gn.h refuses the define), so the
+// accounter holds no state of its own: what it reports is external_memory.zig's
+// `external_reported`, which _Delete takes back.
+ExternalMemoryAccounter* v8_ExternalMemoryAccounter_New() {
+    return new (std::nothrow) ExternalMemoryAccounter();
+}
+
+void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isolate* isolate, int64_t change_in_bytes) {
+    {
+        // V8 may collect here (Heap::UpdateExternalMemory): the collecting
+        // isolate is the current one (collectingRecord).
+        CollectingScope collecting(isolate);
+        accounter->Update(isolate, change_in_bytes);
+    }
+    // The agent's safe point inside a task (`runQueuedFinalizers`). The report
+    // is made only where a collection it starts meets no DOM frame below
+    // (external_memory.zig: the binding exit to script at DOM-algorithm depth
+    // zero, the microtask checkpoint), and V8's collector is off the stack
+    // once it returns. What runs here: the finalizers V8's first passes
+    // queued since the last safe point - above all those of the collection
+    // this very report ran (Heap::UpdateExternalMemory's
+    // CollectGarbageWithRetry, 15.7.112.43 src/heap/heap.cc:7021-7038): the
+    // trees and objects it found dead give their native memory back before
+    // the next report measures it. Without a safe point inside the task
+    // they all waited for the pump, and each kept its native state until
+    // then (300,000 dropped Events in one loop: 392 MB at the loop's end
+    // instead of 168 MB, lane v8up b6). The binding exit itself is that safe
+    // point now, for every script (v8_Isolate_RunQueuedFinalizers); this one
+    // runs under the same two rules - not beneath a running finalizer, not
+    // while the returning binding's exception is pending
+    // (`runQueuedFinalizersInTask`).
+    runQueuedFinalizersInTask(isolate);
+}
+
+void v8_ExternalMemoryAccounter_Delete(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t reported) {
+    accounter->Decrease(isolate, static_cast<size_t>(reported));
+    delete accounter;
 }
 
 // All the external memory V8 counts toward its collections: ArrayBuffer backing
-// stores (its ArrayBufferSweeper reports them through the same accounting) and
-// what the host reported. HeapStatistics::external_memory() is the backing
-// stores alone in 13.1 (api.cc: backing_store_bytes()), so it never shows the
-// host's figure. A change of zero reads the total and starts nothing (13.1
-// api.cc: "if (change_in_bytes <= 0) return amount;").
+// stores (its ArrayBufferSweeper reports them through an accounter of its own)
+// and what the host reported. HeapStatistics::external_memory() is the backing
+// stores alone (api.cc: backing_store_bytes()), so it never shows the host's
+// figure. GetTotalAmountOfExternalAllocatedMemoryForTesting reads the same atomic
+// total (Heap::external_memory(), external_memory_total_) that 13.1's
+// AdjustAmountOfExternalAllocatedMemory(0) returned, and starts nothing; it is
+// the one public read of it at 15.7.
 size_t v8_Isolate_GetExternalMemory(Isolate* isolate) {
-    const int64_t amount = isolate->AdjustAmountOfExternalAllocatedMemory(0);
+    const int64_t amount = ExternalMemoryAccounter::GetTotalAmountOfExternalAllocatedMemoryForTesting(isolate);
     return amount < 0 ? 0 : static_cast<size_t>(amount);
 }
 
@@ -5349,12 +6091,12 @@ static void* CraneContextIdOf(Local<Context> ctx) {
     // Only Crane writes embedder data at this index, so a slot within the
     // array's length is ours.
     if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCraneContextIdIndex)) {
-        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex)) return id;
+        if (void* id = ctx->GetAlignedPointerFromEmbedderData(kCraneContextIdIndex, kCraneEmbedderDataTag)) return id;
     }
     // Shifted so the value is an aligned pointer, as the embedder-data API
     // requires; never zero.
     void* id = reinterpret_cast<void*>(g_next_context_id.fetch_add(1, std::memory_order_relaxed) << 3);
-    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id);
+    ctx->SetAlignedPointerInEmbedderData(kCraneContextIdIndex, id, kCraneEmbedderDataTag);
     return id;
 }
 
@@ -5516,49 +6258,102 @@ void v8_Context_DetachGlobal(Global<Context>* context) {
     local_context->DetachGlobal();
 }
 
-/// Notify V8 that a context has been disposed.
+/// Tell V8 a context was disposed, and whether it had dependants - Blink's
+/// V8GCForContextDispose::NotifyContextDisposed (third_party/blink/renderer/
+/// bindings/core/v8/v8_gc_for_context_dispose.cc, Chromium 157.0.8103.51),
+/// which LocalWindowProxy::DisposeContext calls after it detached the global
+/// and exited the context:
 ///
-/// Per Chrome's LocalWindowProxy::DisposeContext, this is called after detaching
-/// the global and exiting the context to hint to V8's garbage collector that
-/// a context is no longer needed. This helps V8 clean up context-associated
-/// objects more eagerly.
+///     isolate->ContextDisposedNotification(
+///         is_main_frame ? v8::ContextDependants::kNoDependants
+///                       : v8::ContextDependants::kSomeDependants);
 ///
-/// @param isolate - The V8 isolate
-/// @param force_gc - If true, perform a full GC immediately (for testing)
-/// @return int - Result from V8 (number of disposed contexts in queue)
-int v8_Isolate_ContextDisposedNotification(Isolate* isolate, bool force_gc) {
-    if (!isolate) return 0;
-    return isolate->ContextDisposedNotification(force_gc);
+/// What V8 15.7 does with it (src/heap/heap.cc Heap::NotifyContextDisposed):
+/// kNoDependants - a page went - forgets the survival statistics, takes the
+/// allocation limits back to their initial values and tells the memory
+/// reducer there may be garbage; kSomeDependants - a frame of a page that
+/// lives on - posts a task that runs a young collection unless one ran since.
+/// Neither collects anything here.
+///
+/// V8 takes the isolate's CURRENT context for the disposed one: with
+/// kNoDependants it aborts that context's asynchronous WebAssembly
+/// compilations (15.7 src/api/api.cc Isolate::ContextDisposedNotification:
+/// "We left the current context, we can abort all WebAssembly compilations
+/// of that context" - WasmEngine::DeleteCompileJobsOnContext), and with
+/// either it drops that context's dirty FinalizationRegistries and retained
+/// maps (Heap::NotifyContextDisposed). Blink is inside a ScriptState::Scope
+/// of the context it disposes for the whole of DisposeContext; so `disposed`
+/// is entered here for the call. Sent with another page's context entered,
+/// it deleted that page's compile jobs, and their promises never settled
+/// (tests/v8/page_realm_operations_test.zig, "a page that ends does not
+/// abort another page's WebAssembly compilation"). A context the collector
+/// already took is not told of: V8 collected it itself.
+///
+/// @param disposed - the context being disposed, still alive.
+/// @param has_dependants - false for a main frame's context, true for a child
+///     frame's.
+void v8_Isolate_ContextDisposedNotification(Isolate* isolate, Global<Context>* disposed, bool has_dependants) {
+    if (!isolate || !disposed || disposed->IsEmpty()) return;
+    HandleScope handle_scope(isolate);
+    Local<Context> context = disposed->Get(isolate);
+    if (context.IsEmpty()) return;
+    Context::Scope entered(context);
+    if (IsolateData* record = isolateData(isolate)) ++record->context_disposals[has_dependants ? 1 : 0];
+    isolate->ContextDisposedNotification(has_dependants ? ContextDependants::kSomeDependants : ContextDependants::kNoDependants);
 }
 
-/// Get the real global object (not the global proxy) from a context.
-///
-/// V8 uses a split global architecture: the global proxy is what JavaScript sees
-/// as `globalThis`, but the real global object (with internal fields) is its
-/// prototype. This function returns the real global object.
-///
-/// Per Chrome's V8BindingDesign: The global proxy has 0 internal fields.
-/// Internal fields are set on the real global object (prototype of proxy).
-///
-/// @param context - The context to get real global from
-/// @return Global<Object>* - The real global object (caller owns), or nullptr
-Global<Object>* v8_Context_GetRealGlobal(Global<Context>* context) {
-    if (!context) return nullptr;
+/// navigation_collection.zig: a navigation replaced a main frame's document
+/// (IsolateData::navigation_collection_owed). On the isolate's thread.
+extern "C" void v8_Isolate_OweNavigationCollection(Isolate* isolate) {
+    if (IsolateData* record = isolateData(isolate)) record->navigation_collection_owed = true;
+}
 
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Context> local_context = context->Get(isolate);
+/// Whether a navigation's collection was owed; it is not any more. Read at
+/// every engine-task step, so it is one field of the isolate's own record,
+/// no lock. On the isolate's thread.
+extern "C" bool v8_Isolate_TakeNavigationCollectionOwed(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->navigation_collection_owed) return false;
+    record->navigation_collection_owed = false;
+    return true;
+}
 
-    // Get the global proxy
-    Local<Object> global_proxy = local_context->Global();
+/// `isolate`'s context disposals so far, by what V8 was told
+/// (IsolateData::context_disposals): 0 for a null isolate or one this file
+/// did not make. On the isolate's thread.
+extern "C" void v8_Debug_ContextDisposals(Isolate* isolate, uint64_t* main_frame, uint64_t* child_frame) {
+    *main_frame = 0;
+    *child_frame = 0;
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    *main_frame = record->context_disposals[0];
+    *child_frame = record->context_disposals[1];
+}
 
-    // Get the prototype, which is the real global object
-    Local<Value> proto = global_proxy->GetPrototype();
-    if (proto.IsEmpty() || !proto->IsObject()) {
-        return nullptr;
-    }
-
-    return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
+/// Tell V8 how short of memory the system is - Isolate::
+/// MemoryPressureNotification, the one signal Blink sends for it
+/// (content/renderer/blink_isolates_pressure_listener.cc OnReleaseMemory ->
+/// blink::MemoryPressureNotificationToAllIsolates; Blink's MemoryPurgeManager
+/// reaches the same call through a critical pressure notice when a renderer
+/// has been in the background). `level`: 0 none, 1 moderate, 2 critical
+/// (v8::MemoryPressureLevel; ffi.zig MemoryPressureLevel). On the isolate's
+/// thread V8 answers at once (15.7 src/heap/heap.cc Heap::CheckMemoryPressure):
+/// moderate starts an incremental collection that reduces the footprint,
+/// which its marking job finishes in foreground tasks; critical drops its
+/// caches and collects everything now, a second time when the first left
+/// much to free (CollectGarbageOnMemoryPressure).
+void v8_Isolate_MemoryPressureNotification(Isolate* isolate, int level) {
+    if (!isolate) return;
+    // A critical notice collects before it returns: the collecting isolate
+    // is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
+    isolate->MemoryPressureNotification(level >= 2 ? MemoryPressureLevel::kCritical
+                                        : level == 1 ? MemoryPressureLevel::kModerate
+                                                     : MemoryPressureLevel::kNone);
+    // A critical notice collected before returning: the finalizers its
+    // first pass queued run now, V8's collector off the stack
+    // (`runQueuedFinalizers`).
+    runQueuedFinalizers(isolate);
 }
 
 Global<Object>* v8_Context_Global(Global<Context>* context) {
@@ -5664,6 +6459,26 @@ void v8_String_Dispose(Global<String>* str) {
     }
 }
 
+/// V8 13.1's `String::WriteUtf8(isolate, buffer, capacity)` - no options - the
+/// contract `v8_String_WriteUtf8`'s callers read (helpers.writtenUtf8,
+/// intl_binding, observable_array, conversions, protocol_values): as many
+/// whole characters as fit; then, if every character was written and a byte
+/// is left, a NUL, COUNTED in the result; a capacity of -1 is unbounded
+/// (13.1 src/api/api.cc WriteUtf8Impl: "Only null-terminate if there's
+/// space"). V8 14 gave the name WriteUtf8 to the former WriteUtf8V2
+/// (v8-primitive.h at 15.7.112.43), which writes no NUL unless asked
+/// (kNullTerminate) and, asked, writes one even where it costs the last
+/// character - so neither flag reproduces 13.1: the NUL is added here.
+/// Lone surrogates stay three-byte sequences (no kReplaceInvalidUtf8), as
+/// 13.1 wrote them without REPLACE_INVALID_UTF8.
+static int writeUtf8NulIfRoom(Isolate* isolate, const String* str, char* buffer, int capacity) {
+    const size_t cap = capacity < 0 ? str->Utf8Length(isolate) + 1 : static_cast<size_t>(capacity);
+    size_t chars = 0;
+    size_t written = str->WriteUtf8(isolate, buffer, cap, String::WriteFlags::kNone, &chars);
+    if (chars == static_cast<size_t>(str->Length()) && written < cap) buffer[written++] = '\0';
+    return static_cast<int>(written);
+}
+
 int v8_String_Utf8Length(Global<String>* str) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -5675,7 +6490,7 @@ int v8_String_WriteUtf8(Global<String>* str, char* buffer, int length) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<String> local_str = str->Get(isolate);
-    return local_str->WriteUtf8(isolate, buffer, length);
+    return writeUtf8NulIfRoom(isolate, *local_str, buffer, length);
 }
 
 Global<String>* v8_String_Empty(Isolate* isolate) {
@@ -6916,7 +7731,7 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
         fprintf(stderr, "FATAL: SetAlignedPointerInInternalField index %d out of bounds (object has %d internal fields)\n", 
                 index, field_count);
         fprintf(stderr, "  This usually means:\n");
-        fprintf(stderr, "  1. Object was not created from a template with SetInternalFieldCount(2)\n");
+        fprintf(stderr, "  1. Object was not created from a template with SetInternalFieldCount(1)\n");
         fprintf(stderr, "  2. Object is the global object (has 0 internal fields by default)\n");
         fprintf(stderr, "  3. Object is from a different isolate/context\n");
         
@@ -6936,7 +7751,7 @@ void v8_Object_SetAlignedPointerInInternalField(Global<Object>* obj, int index, 
         // but we've logged useful debug info
     }
     
-    local_obj->SetAlignedPointerInInternalField(index, value);
+    local_obj->SetAlignedPointerInInternalField(index, value, kCraneEmbedderDataTag);
 }
 
 int v8_Object_InternalFieldCount(Global<Object>* obj) {
@@ -6979,7 +7794,7 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
         return index == 0 ? nodeInstanceOf(isolate, local_obj) : nullptr;
     }
 
-    void* result = local_obj->GetAlignedPointerFromInternalField(index);
+    void* result = local_obj->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
     return result;
 }
 
@@ -7187,8 +8002,8 @@ static char* importTypeAttribute(Isolate* isolate, Local<Context> context, Local
     if (attributes.IsEmpty()) return nullptr;
     char* type = nullptr;
     for (int i = 0; i + 1 < attributes->Length(); i += stride) {
-        Local<Data> key_data = attributes->Get(context, i);
-        Local<Data> value_data = attributes->Get(context, i + 1);
+        Local<Data> key_data = attributes->Get(i);
+        Local<Data> value_data = attributes->Get(i + 1);
         if (key_data.IsEmpty() || !key_data->IsValue() || value_data.IsEmpty() || !value_data->IsValue()) continue;
         String::Utf8Value key(isolate, key_data.As<Value>());
         if (*key && strcmp(*key, "type") == 0) {
@@ -7321,7 +8136,7 @@ char* v8_Module_GetModuleRequest(Global<Module>* module, int index) {
     }
     
     // FixedArray::Get returns Local<Data>, cast to ModuleRequest
-    Local<Data> data = requests->Get(isolate->GetCurrentContext(), index);
+    Local<Data> data = requests->Get(index);
     Local<ModuleRequest> request = data.As<ModuleRequest>();
     Local<String> specifier = request->GetSpecifier();
     
@@ -7512,7 +8327,7 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
     }
 
     Local<Context> context = isolate->GetCurrentContext();
-    Local<ModuleRequest> request = requests->Get(context, index).As<ModuleRequest>();
+    Local<ModuleRequest> request = requests->Get(index).As<ModuleRequest>();
     bool has_unsupported_key = false;
     char* type = importTypeAttribute(isolate, context, request->GetImportAttributes(), 3, &has_unsupported_key);
     if (has_unsupported_key) {
@@ -7540,8 +8355,11 @@ char* v8_Module_GetModuleRequestType(Global<Module>* module, int index, int* sta
 // until the module is disposed unevaluated). Same design as d8's
 // json_module_to_parsed_json_map.
 
-static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
-    Isolate* isolate = context->GetIsolate();
+// V8 >= 15.7: the evaluation steps answer the evaluation's promise
+// (Module::SyntheticModuleEvaluationSteps); the Value-returning form is
+// LegacySyntheticModuleEvaluationSteps, deprecated.
+static MaybeLocal<Promise> JsonModuleEvaluationSteps(Local<Context> context, Local<Module> module) {
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
 
     Local<Value> value;
     bool found = false;
@@ -7557,17 +8375,17 @@ static MaybeLocal<Value> JsonModuleEvaluationSteps(Local<Context> context, Local
     if (!found) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "JSON module has no parsed value")));
-        return MaybeLocal<Value>();
+        return MaybeLocal<Promise>();
     }
 
     Local<String> default_name = String::NewFromUtf8Literal(isolate, "default", NewStringType::kInternalized);
     if (module->SetSyntheticModuleExport(isolate, default_name, value).IsNothing()) {
-        return MaybeLocal<Value>();
+        return MaybeLocal<Promise>();
     }
 
     Local<Promise::Resolver> resolver;
-    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Value>();
-    if (resolver->Resolve(context, Undefined(isolate)).IsNothing()) return MaybeLocal<Value>();
+    if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
+    if (resolver->Resolve(context, Undefined(isolate)).IsNothing()) return MaybeLocal<Promise>();
     return resolver->GetPromise();
 }
 
@@ -7621,7 +8439,7 @@ Global<Module>* v8_Module_CreateJsonModule(
     Local<Module> module = Module::CreateSyntheticModule(
         isolate,
         module_name,
-        MemorySpan<const Local<String>>(&default_name, 1),
+        std::span<const Local<String>>(&default_name, 1),
         JsonModuleEvaluationSteps
     );
 
@@ -7673,7 +8491,7 @@ Global<Module>* v8_Module_CreateDefaultExportSyntheticModule(
     Local<Module> module = Module::CreateSyntheticModule(
         isolate,
         module_name,
-        MemorySpan<const Local<String>>(&default_name, 1),
+        std::span<const Local<String>>(&default_name, 1),
         JsonModuleEvaluationSteps
     );
 
@@ -7701,7 +8519,7 @@ Global<Object>* v8_Context_ErrorPrototype(Global<Context>* context) {
     Context::Scope context_scope(ctx);
     Local<Value> error = Exception::Error(String::Empty(isolate));
     if (!error->IsObject()) return nullptr;
-    Local<Value> proto = error.As<Object>()->GetPrototypeV2();
+    Local<Value> proto = error.As<Object>()->GetPrototype();
     if (!proto->IsObject()) return nullptr;
     return trackHandle(new Global<Object>(isolate, proto.As<Object>()));
 }
@@ -7856,7 +8674,7 @@ Global<Context>* v8_Object_GetCreationContext(Global<Object>* obj) {
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
     
-    MaybeLocal<Context> maybe_ctx = local_obj->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = local_obj->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -7951,6 +8769,18 @@ Global<Value>* v8_Exception_ErrorInContext(Global<Context>* context, Global<Stri
     return trackHandle(new Global<Value>(isolate, exception));
 }
 
+/// A `stack` own property on `object` from the stack as it is now (v8::Exception::CaptureStackTrace), in
+/// `context`'s realm: a DOMException's, as Blink's V8ThrowDOMException::AttachStackProperty gives one. Reads
+/// no global property and runs no script, so it works in a realm whose WindowProxy went on to a new Window
+/// (lane v8up b3e). False when V8 refused.
+bool v8_Exception_CaptureStackTrace(Global<Context>* context, Global<Object>* object) {
+    if (!context || !object) return false;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<Context> ctx = context->Get(isolate);
+    return Exception::CaptureStackTrace(ctx, object->Get(isolate)).FromMaybe(false);
+}
+
 /// Get the holder object from FunctionCallbackInfo.
 /// The holder is the object where the property was found in the prototype chain.
 /// For methods called on an instance, this is typically the prototype object
@@ -8035,7 +8865,7 @@ Global<Context>* v8_Object_GetPrototypeCreationContext(Global<Object>* obj) {
     Local<Object> proto = proto_val.As<Object>();
     
     // Get the prototype's creation context
-    MaybeLocal<Context> maybe_ctx = proto->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = proto->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -8360,7 +9190,7 @@ void v8_FunctionTemplate_SetCallHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data, kCraneExternalTag)) : Local<Value>();
     local_tpl->SetCallHandler(callback, callback_data);
 }
 
@@ -8373,37 +9203,32 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
     return info->Length();
 }
 
-// FunctionCallbackInfo - internal fields 0 (the instance) and 1 (its
-// WrapperTypeInfo) of the receiver (This()), looked through a legacy platform
-// object's proxy to its target as v8_Object_GetAlignedPointerFromInternalField
-// does; a field the receiver lacks - or a receiver that is not an object -
-// reads as nullptr. No Global: This() is a slot of the callback's arguments,
-// and an attribute getter runs once per read - `list.length` ~6e7 times in
-// NodeList-static-length-getter-tampered-[123].html, where
-// v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per call,
-// and a HandleScope per field read were most of the binding's cost. Both
-// fields in one crossing: the getter's brand check reads both, and at -O0
-// (the Debug build) each read is a few kilobytes of sanitized inline V8
-// code. A Local the proxy's target makes lives in the callback's own
-// HandleScope (V8 opens one around every API callback).
-void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value>* info, void** instance, void** type_info) {
-    *instance = nullptr;
-    *type_info = nullptr;
+// FunctionCallbackInfo - internal field 0 (the instance) of the receiver
+// (This()), looked through a legacy platform object's proxy to its target as
+// v8_Object_GetAlignedPointerFromInternalField does; a receiver with no field -
+// or one that is not an object - reads as nullptr. A wrapper has one field: the
+// brand check is the instance's state ancestry (conv.implements), so no
+// WrapperTypeInfo is kept beside it (lane v8up A0; on V8 >= 15.7 every aligned
+// pointer in a field is a cppgc object, d04704a20fc). No Global: This() is a
+// slot of the callback's arguments, and an attribute getter runs once per read
+// - `list.length` ~6e7 times in NodeList-static-length-getter-tampered-[123].html,
+// where v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per
+// call, and a HandleScope per field read were most of the binding's cost. A
+// Local the proxy's target makes lives in the callback's own HandleScope (V8
+// opens one around every API callback).
+void* v8_FunctionCallbackInfo_ThisInstance(const FunctionCallbackInfo<Value>* info) {
     Local<Value> receiver = info->This();
-    if (!receiver->IsObject()) return;
+    if (!receiver->IsObject()) return nullptr;
     Local<Object> self = receiver.As<Object>();
     if (self->IsProxy()) {
         Local<Value> target = self.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return;
+        if (!target->IsObject()) return nullptr;
         self = target.As<Object>();
     }
-    const int count = self->InternalFieldCount();
-    Isolate* isolate = info->GetIsolate();
-    if (count >= 1) *instance = self->GetAlignedPointerFromInternalField(isolate, 0);
-    if (count >= 2) *type_info = self->GetAlignedPointerFromInternalField(isolate, 1);
     // A node wrapper has no internal field (the wrapper redesign's P4): its
-    // instance through its anchor, and no WrapperTypeInfo.
-    if (count == 0) *instance = nodeInstanceOf(isolate, self);
+    // instance through its anchor.
+    if (self->InternalFieldCount() < 1) return nodeInstanceOf(info->GetIsolate(), self);
+    return self->GetAlignedPointerFromInternalField(info->GetIsolate(), 0, kCraneEmbedderDataTag);
 }
 
 // FunctionCallbackInfo - the receiver's node wrapper slot, for a member of a
@@ -8412,7 +9237,7 @@ void v8_FunctionCallbackInfo_ThisInstanceFields(const FunctionCallbackInfo<Value
 // anchor, its slot (design 4.3) - the node and its instance are the Zig
 // side's to find (node_wrappers.instanceOfSlot). Null for a receiver that is
 // no node wrapper, or one whose node's teardown severed it. No Global, no
-// HandleScope (v8_FunctionCallbackInfo_ThisInstanceFields says why).
+// HandleScope (v8_FunctionCallbackInfo_ThisInstance says why).
 void* v8_FunctionCallbackInfo_ThisNodeSlot(const FunctionCallbackInfo<Value>* info) {
     Local<Value> receiver = info->This();
     if (!receiver->IsObject()) return nullptr;
@@ -8504,16 +9329,21 @@ struct ArgumentRead {
     bool boolean;
     bool fits;
     void* instance;
-    void* type_info;
 };
+
+/// sizeof(ArgumentRead), so a test pins ffi.ArgumentRead's layout against it:
+/// the struct crosses the FFI by pointer and both sides must agree.
+size_t v8_ArgumentRead_Size() {
+    return sizeof(ArgumentRead);
+}
 
 /// Argument `index` of the call, read with no handle: its kind; ToBoolean of it
 /// (which runs no script); a Number's value; a String's WTF-8 into `buffer` (the
 /// bytes v8_String_WriteUtf8 gives: no REPLACE_INVALID_UTF8, so a lone surrogate
 /// is its three-byte form, as fromV8String reads it), whole or not at all
 /// (`fits`; `length` is then the bytes a buffer needs); an object's internal
-/// fields 0 and 1 through a legacy platform object's proxy, as `this` is read
-/// (v8_FunctionCallbackInfo_ThisInstanceFields) - none for a function, which no
+/// field 0 through a legacy platform object's proxy, as `this` is read
+/// (v8_FunctionCallbackInfo_ThisInstance) - none for a function, which no
 /// platform object is (conversions.platformObjectOf).
 void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* info, int index, ArgumentRead* out, char* buffer, int capacity) {
     out->kind = 0;
@@ -8522,7 +9352,6 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
     out->boolean = false;
     out->fits = false;
     out->instance = nullptr;
-    out->type_info = nullptr;
     if (index < 0 || index >= info->Length()) return;
     Isolate* isolate = info->GetIsolate();
     Local<Value> value = (*info)[index];
@@ -8539,13 +9368,13 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
     } else if (value->IsString()) {
         out->kind = 5;
         Local<String> str = value.As<String>();
-        int chars = 0;
-        const int written = str->WriteUtf8(isolate, buffer, capacity, &chars, String::NO_NULL_TERMINATION);
-        if (chars == str->Length()) {
+        size_t chars = 0;
+        const size_t written = capacity > 0 ? str->WriteUtf8(isolate, buffer, static_cast<size_t>(capacity), String::WriteFlags::kNone, &chars) : 0;
+        if (chars == static_cast<size_t>(str->Length())) {
             out->fits = true;
-            out->length = written;
+            out->length = static_cast<int>(written);
         } else {
-            out->length = str->Utf8Length(isolate);
+            out->length = static_cast<int>(str->Utf8Length(isolate));
         }
     } else if (value->IsObject()) {
         out->kind = 6;
@@ -8556,11 +9385,12 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
             if (!target->IsObject()) return;
             object = target.As<Object>();
         }
-        const int count = object->InternalFieldCount();
-        if (count >= 1) out->instance = object->GetAlignedPointerFromInternalField(isolate, 0);
-        if (count >= 2) out->type_info = object->GetAlignedPointerFromInternalField(isolate, 1);
-        // A node wrapper (no internal field: P4) - its anchor's instance.
-        if (count == 0) out->instance = nodeInstanceOf(isolate, object);
+        if (object->InternalFieldCount() >= 1) {
+            out->instance = object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
+        } else {
+            // A node wrapper (no internal field: P4) - its anchor's instance.
+            out->instance = nodeInstanceOf(isolate, object);
+        }
     } else {
         out->kind = 7;
     }
@@ -8575,10 +9405,11 @@ int v8_FunctionCallbackInfo_ReadArgumentString(const FunctionCallbackInfo<Value>
     if (!value->IsString()) return -1;
     Isolate* isolate = info->GetIsolate();
     Local<String> str = value.As<String>();
-    int chars = 0;
-    const int written = str->WriteUtf8(isolate, buffer, length, &chars, String::NO_NULL_TERMINATION);
-    if (chars != str->Length()) return -1;
-    return written;
+    if (length < 0) return -1;
+    size_t chars = 0;
+    const size_t written = str->WriteUtf8(isolate, buffer, static_cast<size_t>(length), String::WriteFlags::kNone, &chars);
+    if (chars != static_cast<size_t>(str->Length())) return -1;
+    return static_cast<int>(written);
 }
 
 void v8_FunctionCallbackInfo_SetReturnValue(const FunctionCallbackInfo<Value>* info, Global<Value>* value) {
@@ -8741,83 +9572,25 @@ bool v8_FunctionCallbackInfo_IsConstructCall(const FunctionCallbackInfo<Value>* 
 Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    Local<Value> data = info->Data();
+    Local<Value> data = info->DataV2().As<Value>();
     return trackHandle(new Global<Value>(isolate, data));
 }
 
-/// The callback's target - implicit_args[kTargetIndex] (4), what V8's own
-/// FunctionCallbackInfo::Data() reads: the called function's
-/// FunctionTemplateInfo, or the function - as a Local.
-///
-/// FunctionCallbackInfo stores (v8-function-callback.h):
-///   internal::Address* implicit_args_;   // offset 0
-///   internal::Address* values_;          // offset 8
-///   internal::Address length_;           // offset 16
-struct FCILayout {
-    internal::Address* implicit_args;
-    internal::Address* values;
-    internal::Address length;
-};
-
-static Local<Data> functionCallbackTarget(const FunctionCallbackInfo<Value>* info) {
-    const FCILayout* layout = reinterpret_cast<const FCILayout*>(info);
-    // A Local over the SLOT, as Data() makes one
-    // (Local<Data>::FromSlot(&implicit_args_[kTargetIndex])): in V8 13.1,
-    // without direct handles, a Local is the address of a slot that holds
-    // the tagged pointer. The slot is part of the API callback's frame, so
-    // the Local is good for the whole call, read at its start or after its
-    // impl has run script. This read used to copy the slot's value and
-    // reinterpret THAT as the Local - the tagged pointer taken for a slot -
-    // so every question asked of the target read its first word as an
-    // object: garbage, nearly always "not a function", and once, read late
-    // in a call, a bus error (tests/v8/perf3_function_creation_context_test.zig).
-    internal::Address* target_slot = &layout->implicit_args[4];
-    return *reinterpret_cast<Local<Data>*>(&target_slot);
-}
-
-/// What the callback's target is, read as GetFunctionCreationContext reads it:
-/// 1 a FunctionTemplateInfo, 2 a function, 3 anything else, 0 none. For tests
-/// (tests/v8/perf3_function_creation_context_test.zig).
-extern "C" int v8_Debug_FunctionCallbackTargetKind(const FunctionCallbackInfo<Value>* info) {
-    Local<Data> target = functionCallbackTarget(info);
-    if (target.IsEmpty()) return 0;
-    if (target->IsFunctionTemplate()) return 1;
-    if (target->IsValue() && target.As<Value>()->IsFunction()) return 2;
-    return 3;
-}
-
-/// Get the creation context of the target function being called.
-/// This is critical for cross-realm support: when calling
-/// other.SomeInterface.prototype.method.call(obj), we need the context
-/// where 'method' was instantiated (the iframe's context), not where
-/// 'obj' was created (the main context) or the calling context.
-///
-/// Reads the target at kTargetIndex (functionCallbackTarget), then gets its
-/// creation context.
+/// The realm of the function being called: the current context. Calling a
+/// function enters its realm - the call sequence loads the JSFunction's own
+/// context, and V8's API-callback builtins run the callback in it - so inside
+/// a FunctionCallback the current context IS the callee's [[Realm]], the
+/// realm WebIDL's operations, getters, setters and constructors throw and
+/// create in ("the current realm"; Blink: ScriptState::ForCurrentRealm(info)
+/// reads isolate->GetCurrentContext()). V8 >= 14 flattened
+/// FunctionCallbackInfo into a view of the API exit frame (b9c4e374820) and
+/// keeps its target slot private; the old read of `implicit_args_[kTargetIndex]`
+/// through a copied layout would read garbage there.
 Global<Context>* v8_FunctionCallbackInfo_GetFunctionCreationContext(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
-    Local<Data> target = functionCallbackTarget(info);
-    Local<Value> target_value = target.IsEmpty() || !target->IsValue() ? Local<Value>() : target.As<Value>();
-
-    if (target_value.IsEmpty() || !target_value->IsFunction()) {
-        // Fallback: return current context
-        countContextGlobal();
-        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
-    }
-    
-    Local<Function> target_func = target_value.As<Function>();
-    
-    // Get the creation context of the function
-    // This is the context where the function was instantiated (e.g., iframe context)
-    MaybeLocal<Context> maybe_ctx = target_func->GetCreationContext();
-    if (maybe_ctx.IsEmpty()) {
-        countContextGlobal();
-        return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
-    }
-    
     countContextGlobal();
-    return trackHandle(new Global<Context>(isolate, maybe_ctx.ToLocalChecked()));
+    return trackHandle(new Global<Context>(isolate, isolate->GetCurrentContext()));
 }
 
 /// Get the NewTarget from a constructor call.
@@ -8945,7 +9718,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
     HandleScope handle_scope(isolate);
     Local<Function> local_func = func->Get(isolate);
     
-    MaybeLocal<Context> maybe_ctx = local_func->GetCreationContext();
+    MaybeLocal<Context> maybe_ctx = local_func->GetCreationContext(isolate);
     if (maybe_ctx.IsEmpty()) {
         return nullptr;
     }
@@ -8961,7 +9734,7 @@ Global<Context>* v8_Function_GetCreationContext(Global<Function>* func) {
 // Create External value wrapping a C pointer
 Global<External>* v8_External_New(Isolate* isolate, void* value) {
     HandleScope handle_scope(isolate);
-    Local<External> external = External::New(isolate, value);
+    Local<External> external = External::New(isolate, value, kCraneExternalTag);
     return trackHandle(new Global<External>(isolate, external));
 }
 
@@ -8970,7 +9743,7 @@ void* v8_External_Value(Global<External>* external) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<External> local_ext = external->Get(isolate);
-    return local_ext->Value();
+    return local_ext->Value(kCraneExternalTag);
 }
 
 // Dispose External
@@ -9124,20 +9897,23 @@ void v8_ObjectTemplate_SetCallAsFunctionHandler(
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
-    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data)) : Local<Value>();
+    Local<Value> callback_data = data ? Local<Value>(External::New(isolate, data, kCraneExternalTag)) : Local<Value>();
     local_tpl->SetCallAsFunctionHandler(callback, callback_data);
 }
 
 // Callback types for accessors (using Name instead of String for modern V8 API)
 typedef void (*AccessorNameGetterCallback)(Local<Name> property, const PropertyCallbackInfo<Value>& info);
-typedef void (*AccessorNameSetterCallback)(Local<Name> property, Local<Value> value, const PropertyCallbackInfo<void>& info);
+// V8 >= 14's native data property setter takes the info a setter gets,
+// PropertyCallbackInfo<Boolean> (v8::AccessorNameSetterCallbackV2); the <void>
+// one is deprecated. Named for this file so it is not v8's own typedef's twin.
+using CraneAccessorNameSetterCallback = AccessorNameSetterCallbackV2;
 
 // ObjectTemplate - set accessor (getter/setter) using SetNativeDataProperty
 void v8_ObjectTemplate_SetAccessor(
     Global<ObjectTemplate>* tpl,
     Global<String>* name,
     AccessorNameGetterCallback getter,
-    AccessorNameSetterCallback setter,
+    CraneAccessorNameSetterCallback setter,
     Global<Value>* data
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -9254,12 +10030,26 @@ void v8_ObjectTemplate_SetAccessorPropertyChecked(
     );
 }
 
+// v8::Intercepted as V8 defines it, for the Zig side's pin (ffi.Intercepted;
+// tests/v8/v8up_interceptor_contract_test.zig). The Zig callbacks return the
+// enum by value, so its width and both constants must be V8's: V8 8f35dec9947
+// (2026-01-30, "[ic] Introduce CallNamedInterceptorGetter builtin", in 15.7)
+// redefined it from `uint8_t { kNo = 0, kYes = 1 }` to
+// `uint32_t { kNo = 1, kYes = 0 }`, and a header compile cannot see a Zig enum.
+uint32_t v8_Intercepted_Value(bool yes) {
+    return static_cast<uint32_t>(yes ? Intercepted::kYes : Intercepted::kNo);
+}
+
+size_t v8_Intercepted_Size() {
+    return sizeof(Intercepted);
+}
+
 // ObjectTemplate - set named property handler (intercepts all property access)
 // Using V8's callback types - these use the modern Intercepted return type
 void v8_ObjectTemplate_SetNamedPropertyHandler(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     NamedPropertyQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -9294,7 +10084,7 @@ typedef Intercepted (*InterceptedNamedDescriptorCallback)(Local<Name> property, 
 void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     InterceptedNamedQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -9323,13 +10113,13 @@ void v8_ObjectTemplate_SetNamedPropertyHandlerFull(
 typedef Intercepted (*InterceptedNamedDefinerCallback)(
     Local<Name> property,
     const PropertyDescriptor& desc,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // Named property handler with definer support for [[DefineOwnProperty]] per WebIDL §3.9.3
 void v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
     Global<ObjectTemplate>* tpl,
     NamedPropertyGetterCallback getter,
-    NamedPropertySetterCallback setter,
+    NamedPropertySetterCallbackV2 setter,
     InterceptedNamedQueryCallback query,
     NamedPropertyDeleterCallback deleter,
     NamedPropertyEnumeratorCallback enumerator,
@@ -9357,7 +10147,7 @@ void v8_ObjectTemplate_SetNamedPropertyHandlerWithDefiner(
 // ObjectTemplate - set indexed property handler (for array-like access: obj[0], obj[1], etc.)
 void v8_ObjectTemplate_SetIndexedPropertyHandler(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter
+    IndexedPropertyGetterCallback getter
 ) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -9382,7 +10172,7 @@ using IndexedPropertyEnumeratorCallbackV2 = void (*)(const PropertyCallbackInfo<
 // ObjectTemplate - set indexed property handler with enumerator (for array-like access with Reflect.ownKeys support)
 void v8_ObjectTemplate_SetIndexedPropertyHandlerWithEnumerator(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     IndexedPropertyEnumeratorCallbackV2 enumerator
 ) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -9412,11 +10202,11 @@ typedef Intercepted (*InterceptedIndexedDescriptorCallback)(uint32_t index, cons
 typedef Intercepted (*InterceptedIndexedSetterCallbackFull)(
     uint32_t index,
     Local<Value> value,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     InterceptedIndexedSetterCallbackFull setter,
     InterceptedIndexedQueryCallback query,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
@@ -9446,22 +10236,22 @@ void v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
 typedef Intercepted (*InterceptedIndexedDefinerCallback)(
     uint32_t index,
     const PropertyDescriptor& desc,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // Setter callback type for indexed properties
 typedef Intercepted (*InterceptedIndexedSetterCallback)(
     uint32_t index,
     Local<Value> value,
-    const PropertyCallbackInfo<void>& info);
+    const PropertyCallbackInfo<Boolean>& info);
 
 // ObjectTemplate - set indexed property handler with definer support
 // This enables proper [[DefineOwnProperty]] handling per WebIDL spec
 void v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
     Global<ObjectTemplate>* tpl,
-    IndexedPropertyGetterCallbackV2 getter,
+    IndexedPropertyGetterCallback getter,
     InterceptedIndexedSetterCallback setter,
     InterceptedIndexedQueryCallback query,
-    IndexedPropertyDeleterCallbackV2 deleter,
+    IndexedPropertyDeleterCallback deleter,
     IndexedPropertyEnumeratorCallbackV2 enumerator,
     InterceptedIndexedDefinerCallback definer,
     InterceptedIndexedDescriptorCallback descriptor
@@ -9506,16 +10296,8 @@ Isolate* v8_PropertyCallbackInfo_GetIsolate(const PropertyCallbackInfo<Value>* i
 }
 
 // PropertyCallbackInfo (void) - get isolate (for setters)
-Isolate* v8_PropertyCallbackInfo_Void_GetIsolate(const PropertyCallbackInfo<void>* info) {
+Isolate* v8_PropertyCallbackInfo_Boolean_GetIsolate(const PropertyCallbackInfo<Boolean>* info) {
     return info->GetIsolate();
-}
-
-// PropertyCallbackInfo - get this
-Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* info) {
-    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    return trackHandle(new Global<Object>(isolate, info->This()));
 }
 
 // PropertyCallbackInfo - the aligned pointer in internal field `index` of the
@@ -9534,14 +10316,14 @@ Global<Object>* v8_PropertyCallbackInfo_This(const PropertyCallbackInfo<Value>* 
 // v8_PropertyCallbackInfo_This's Global - made, tracked and disposed per call
 // - was a third of the read (gc_bench profile, 2026-10-11).
 void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
-    Local<Object> holder = info->HolderV2();
+    Local<Object> holder = info->Holder();
     // A node interface's holder (Document's named properties, a form's or a
     // select's indexed ones) has no internal field (P4): its instance is its
     // anchor's.
     if (holder->InternalFieldCount() <= index) return index == 0 ? nodeInstanceOf(info->GetIsolate(), holder) : nullptr;
     // The isolate overload: the one without it finds the isolate from the
     // object's page (GetIsolateForSandbox) on every read.
-    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index);
+    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index, kCraneEmbedderDataTag);
 }
 
 // A deleter interceptor's answer, the value `delete` evaluates to (WebIDL
@@ -9556,7 +10338,7 @@ void v8_PropertyCallbackInfo_SetReturnValueBool(const PropertyCallbackInfo<Boole
 // [[DefineOwnProperty]]): V8 makes it Object.defineProperty's TypeError, or
 // Reflect.defineProperty's false (js-objects.cc OrdinaryDefineOwnProperty:
 // InterceptorResult::kFalse -> CannotCreateProperty with should_throw).
-void v8_PropertyCallbackInfo_Void_SetFalse(const PropertyCallbackInfo<void>* info) {
+void v8_PropertyCallbackInfo_Boolean_SetFalse(const PropertyCallbackInfo<Boolean>* info) {
     info->GetReturnValue().SetFalse();
 }
 
@@ -9575,7 +10357,7 @@ uint8_t v8_LegacyPlatformObject_NamedPropertyState(const PropertyCallbackInfo<Va
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Object> holder = info->HolderV2();
+    Local<Object> holder = info->Holder();
     Local<String> name;
     if (!String::NewFromTwoByte(isolate, units, NewStringType::kNormal, count).ToLocal(&name)) return 0;
     uint8_t bits = 0;
@@ -9603,9 +10385,18 @@ void v8_PropertyCallbackInfo_SetReturnValueInt32(const PropertyCallbackInfo<Inte
     }
 }
 
-// PropertyCallbackInfo - get holder object
-// Returns nullptr if not available (e.g., accessing property on prototype)
+// PropertyCallbackInfo - the object that has the interceptor or accessor.
+// V8 >= 14 gives a property callback no receiver: PropertyCallbackInfo::This()
+// is gone (24eb3c4ba35, "Remove deprecated v8::PropertyCallbackInfo<T>::This()";
+// HolderV2 became Holder, 3d66b2bdda7). WebIDL's legacy platform object
+// algorithms ask O, which is the holder ([[GetOwnProperty]] 3.9.1, [[Set]] 3.9.2
+// step 1: V8 calls a setter, definer or deleter interceptor only when the holder
+// is the receiver - objects.cc SetPropertyInternal, HolderIsReceiverOrHiddenPrototype),
+// and for a property on the global object Holder() is the global proxy, the
+// WindowProxy (v8-function-callback.h). Blink reads info.Holder() the same way.
+// Returns nullptr if not available (e.g., accessing property on prototype).
 Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>* info) {
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> holder = info->Holder();
@@ -9613,8 +10404,10 @@ Global<Object>* v8_PropertyCallbackInfo_Holder(const PropertyCallbackInfo<Value>
     return trackHandle(new Global<Object>(isolate, holder));
 }
 
-// PropertyCallbackInfo (void) - get holder
-Global<Object>* v8_PropertyCallbackInfo_Void_Holder(const PropertyCallbackInfo<void>* info) {
+// A setter, definer or deleter's info (PropertyCallbackInfo<Boolean> in V8 >= 14)
+// - get holder (v8_PropertyCallbackInfo_Holder says why the holder)
+Global<Object>* v8_PropertyCallbackInfo_Boolean_Holder(const PropertyCallbackInfo<Boolean>* info) {
+    g_obj_src[1].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Object> holder = info->Holder();
@@ -9635,14 +10428,6 @@ void v8_PropertyCallbackInfo_SetReturnValue(const PropertyCallbackInfo<Value>* i
     info->GetReturnValue().Set(*value);
 }
 
-// PropertyCallbackInfo (void) - set return value (mostly for Boolean results)
-void v8_PropertyCallbackInfo_Void_SetReturnValue(const PropertyCallbackInfo<void>* info, Global<Value>* value) {
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-    Local<Value> val = value->Get(isolate);
-    info->GetReturnValue().Set(val);
-}
-
 // PropertyCallbackInfo - set return value to undefined
 void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
@@ -9650,15 +10435,20 @@ void v8_PropertyCallbackInfo_SetUndefined(const PropertyCallbackInfo<Value>* inf
     info->GetReturnValue().SetUndefined();
 }
 
-// PropertyCallbackInfo<Value> - check if errors should throw (strict mode)
-// Returns true if we're in strict mode and should throw TypeError on failure
-bool v8_PropertyCallbackInfo_ShouldThrowOnError(const PropertyCallbackInfo<Value>* info) {
+// Whether a [[Set]], [[DefineOwnProperty]] or [[Delete]] interceptor should
+// throw (strict mode). Only those ask, and V8 >= 14 answers only for the
+// instantiation it calls them with: PropertyCallbackInfo<T>::ShouldThrowOnError
+// is `if constexpr (!HasShouldThrowOnError()) return false;` unless T is Boolean
+// or void (v8-function-callback.h:720) - a PropertyCallbackInfo<Value> would
+// say false in strict mode too. So the info is read as the Boolean one V8
+// passes setters, definers and deleters (the same pointer the Zig callback got).
+bool v8_PropertyCallbackInfo_ShouldThrowOnError(const PropertyCallbackInfo<Boolean>* info) {
     return info->ShouldThrowOnError();
 }
 
-// PropertyCallbackInfo<void> - check if errors should throw (strict mode)
+// A setter or definer's info - check if errors should throw (strict mode)
 // Returns true if we're in strict mode and should throw TypeError on failure
-bool v8_PropertyCallbackInfo_Void_ShouldThrowOnError(const PropertyCallbackInfo<void>* info) {
+bool v8_PropertyCallbackInfo_Boolean_ShouldThrowOnError(const PropertyCallbackInfo<Boolean>* info) {
     return info->ShouldThrowOnError();
 }
 
@@ -9709,7 +10499,7 @@ void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int inde
         return nullptr;
     }
 
-    void* result = object_ptr->GetAlignedPointerFromInternalField(index);
+    void* result = object_ptr->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
 
     // Debug: print what we're returning for internal field 0
     if (index == 0) {
@@ -9734,7 +10524,7 @@ int v8_String_Utf8Length_Raw(const void* str) {
 int v8_String_WriteUtf8_Raw(const void* str, char* buffer, int length) {
     Isolate* isolate = Isolate::GetCurrent();
     const String* string_ptr = reinterpret_cast<const String*>(str);
-    return string_ptr->WriteUtf8(isolate, buffer, length);
+    return writeUtf8NulIfRoom(isolate, string_ptr, buffer, length);
 }
 
 // Number value extraction for raw pointers (from callbacks/anyopaque)
@@ -9786,8 +10576,8 @@ int v8_Value_StringWriteUtf8_Raw(const void* value, char* buffer, int buffer_len
     }
     
     Local<String> str = val.As<String>();
-    int flags = String::NO_NULL_TERMINATION;
-    return str->WriteUtf8(isolate, buffer, buffer_len, nullptr, flags);
+    if (buffer_len <= 0) return 0;
+    return static_cast<int>(str->WriteUtf8(isolate, buffer, static_cast<size_t>(buffer_len)));
 }
 
 // ============================================================================
@@ -10012,19 +10802,6 @@ bool v8_PropertyDescriptor_Writable(const PropertyDescriptor* desc) {
     return desc->writable();
 }
 
-// Get the isolate from PropertyCallbackInfo<void>
-// (PropertyCallbackInfo<void> is used for setters and definers)
-Isolate* v8_PropertyCallbackInfo_Void_This_GetIsolate(const PropertyCallbackInfo<void>* info) {
-    return info->GetIsolate();
-}
-
-// Get 'this' object from PropertyCallbackInfo<void>
-Global<Object>* v8_PropertyCallbackInfo_Void_This(const PropertyCallbackInfo<void>* info) {
-    Isolate* isolate = info->GetIsolate();
-    HandleScope handle_scope(isolate);
-    return trackHandle(new Global<Object>(isolate, info->This()));
-}
-
 // Set an object's prototype as immutable
 bool v8_Object_SetImmutableProto(Global<Object>* object, Global<Context>* context) {
     if (!object || !context) return false;
@@ -10071,7 +10848,7 @@ bool v8_Object_SetPrototypeV2(Global<Object>* object, Global<Context>* context, 
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
 
-    return obj->SetPrototypeV2(ctx, proto).FromMaybe(false);
+    return obj->SetPrototype(ctx, proto).FromMaybe(false);
 }
 
 Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {
@@ -10096,7 +10873,7 @@ Global<Value>* v8_Object_GetPrototypeV2(Global<Object>* object) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Object> obj = object->Get(isolate);
-    Local<Value> proto = obj->GetPrototypeV2();
+    Local<Value> proto = obj->GetPrototype();
     if (proto.IsEmpty()) {
         return nullptr;
     }
@@ -10633,7 +11410,7 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
     
     // Create External to hold resolver pointer
     // NOTE: We're storing a raw pointer - caller must ensure resolver outlives handler
-    Local<External> data = External::New(isolate, resolver);
+    Local<External> data = External::New(isolate, resolver, kCraneExternalTag);
     
     // Create callback that resolves the PromiseResolver
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -10641,8 +11418,8 @@ Global<Function>* v8_PromiseResolver_CreateResolveHandler(
         HandleScope scope(isolate);
         
         // Extract resolver from data
-        Local<External> external = Local<External>::Cast(info.Data());
-        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get value argument (or undefined if no args)
         Local<Value> value = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
@@ -10682,7 +11459,7 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
     Local<Context> ctx = context->Get(isolate);
     
     // Create External to hold resolver pointer
-    Local<External> data = External::New(isolate, resolver);
+    Local<External> data = External::New(isolate, resolver, kCraneExternalTag);
     
     // Create callback that rejects the PromiseResolver
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -10690,8 +11467,8 @@ Global<Function>* v8_PromiseResolver_CreateRejectHandler(
         HandleScope scope(isolate);
         
         // Extract resolver from data
-        Local<External> external = Local<External>::Cast(info.Data());
-        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
+        auto* resolver = static_cast<Global<Promise::Resolver>*>(external->Value(kCraneExternalTag));
         
         // Get reason argument (or undefined if no args)
         Local<Value> reason = info.Length() > 0 ? info[0] : Undefined(isolate).As<Value>();
@@ -10767,7 +11544,7 @@ Global<Function>* v8_CreateZigFulfillHandler(
     };
     
     // Store in External
-    Local<External> external = External::New(isolate, data);
+    Local<External> external = External::New(isolate, data, kCraneExternalTag);
     
     // Create callback that invokes the Zig function
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -10775,8 +11552,8 @@ Global<Function>* v8_CreateZigFulfillHandler(
         HandleScope scope(isolate);
         
         // Extract callback data
-        Local<External> external = Local<External>::Cast(info.Data());
-        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->fulfill_callback) {
             // Get value argument (or nullptr if no args/undefined)
@@ -10838,7 +11615,7 @@ Global<Function>* v8_CreateZigRejectHandler(
     };
     
     // Store in External
-    Local<External> external = External::New(isolate, data);
+    Local<External> external = External::New(isolate, data, kCraneExternalTag);
     
     // Create callback that invokes the Zig function
     auto callback = [](const FunctionCallbackInfo<Value>& info) {
@@ -10846,8 +11623,8 @@ Global<Function>* v8_CreateZigRejectHandler(
         HandleScope scope(isolate);
         
         // Extract callback data
-        Local<External> external = Local<External>::Cast(info.Data());
-        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value());
+        Local<External> external = Local<External>::Cast(info.DataV2().As<Value>());
+        auto* data = static_cast<ZigPromiseCallbackData*>(external->Value(kCraneExternalTag));
         
         if (data && data->reject_callback) {
             // Get reason argument (or nullptr if no args/undefined)
@@ -11024,7 +11801,7 @@ bool v8_Value_IsInt32Array(Global<Value>* value) {
     return val->IsInt32Array();
 }
 
-/// Check if Value is a Float16Array (ES2025; installed by --js-float16array)
+/// Check if Value is a Float16Array (ES2025; shipped in V8 13.5)
 bool v8_Value_IsFloat16Array(Global<Value>* value) {
     if (!value) return false;
     Isolate* isolate = Isolate::GetCurrent();
@@ -11340,9 +12117,10 @@ void v8_Global_SetWeak(void* handle, void* user_data, ZigWeakCallbackFn callback
 
 /// Make a Global handle weak with a finalizer that runs after the collection:
 /// `unlink` (may be null) in V8's first pass - bookkeeping, no V8 API - and
-/// `finalize` in the second pass, where V8 API calls are allowed. Disposing
-/// the handle before the second pass cancels `finalize` (`releaseWeakArm`).
-/// Owned by the arm, as v8_Global_SetWeak's record is.
+/// `finalize` at the agent's next safe point after it, where engine work is
+/// allowed (`runQueuedFinalizers`; the first pass queues it). Disposing the
+/// handle before then cancels `finalize` (`releaseWeakArm`). Owned by the
+/// arm, as v8_Global_SetWeak's record is.
 void v8_Global_SetWeakFinalizer(void* handle, void* user_data, ZigWeakCallbackFn unlink, ZigWeakCallbackFn finalize) {
     if (!handle || !finalize) return;
     Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
@@ -11460,7 +12238,7 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     HandleScope handle_scope(isolate);
     
     // Extract iterator data from function's data (passed via External)
-    Local<Value> data_value = info.Data();
+    Local<Value> data_value = info.DataV2().As<Value>();
     if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
@@ -11469,7 +12247,7 @@ static void AsyncIteratorNextCallback(const FunctionCallbackInfo<Value>& info) {
     }
     
     Local<External> external = Local<External>::Cast(data_value);
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value(kCraneExternalTag));
     
 
     
@@ -11511,7 +12289,7 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     HandleScope handle_scope(isolate);
     
     // Extract iterator data from function's data (passed via External)
-    Local<Value> data_value = info.Data();
+    Local<Value> data_value = info.DataV2().As<Value>();
     if (!data_value->IsExternal()) {
         isolate->ThrowException(Exception::TypeError(
             String::NewFromUtf8Literal(isolate, "Invalid async iterator callback data")
@@ -11520,7 +12298,7 @@ static void AsyncIteratorReturnCallback(const FunctionCallbackInfo<Value>& info)
     }
     
     Local<External> external = Local<External>::Cast(data_value);
-    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value());
+    AsyncIteratorData* data = static_cast<AsyncIteratorData*>(external->Value(kCraneExternalTag));
     
     if (!data || !data->return_fn) {
         isolate->ThrowException(Exception::TypeError(
@@ -11596,8 +12374,6 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     // (tests/v8/node_wrapper_inline_test.zig). Chromium's web-test collector
     // runs on an empty stack the same way (content/web_test/renderer/
     // gc_controller.cc AsyncCollectAllWithEmptyStack: kNoHeapPointers).
-    // The node wrappers it collected let their references go at its end
-    // (nodeWrappersEpilogue: a forced collection drains synchronously).
 #ifndef NDEBUG
     if (IsolateData* record = isolateData(isolate); record && record->anchors_in_frames != 0) {
         fprintf(stderr, "v8_wrapper: a requested collection with %d frame(s) holding a NodeAnchor*: it is precise for the C++ heap, and would free what they hold\n",
@@ -11608,9 +12384,15 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
     if (CppHeap* heap = isolate->GetCppHeap()) {
         cppgc::testing::OverrideEmbedderStackStateScope precise(heap->GetHeapHandle(), cppgc::EmbedderStackState::kNoHeapPointers);
         isolate->LowMemoryNotification();
-        return;
+    } else {
+        isolate->LowMemoryNotification();
     }
-    isolate->LowMemoryNotification();
+    // The collection's first pass queued the finalizers of what it found
+    // dead, and its epilogue owed the node wrappers' releases
+    // (nodeWrappersEpilogue: a forced collection owes them at once): they
+    // run now, V8's collector off the stack, so that the caller finds them
+    // run as it always did (`runQueuedFinalizers`).
+    runQueuedFinalizers(isolate);
 }
 
 // ============================================================================
@@ -11709,7 +12491,7 @@ void DeserializeInternalFields(Local<Object> holder, int index,
     // For minimal snapshots, set internal field to nullptr
     // WebIDL objects are registered at runtime, not from snapshot
     if (payload.raw_size == 0) {
-        holder->SetAlignedPointerInInternalField(index, nullptr);
+        holder->SetAlignedPointerInInternalField(index, nullptr, kCraneEmbedderDataTag);
     }
 }
 
@@ -12011,6 +12793,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
         std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
+    applyHeapConstraints(create_params, options);
     // The agent's C++ heap, as v8_Isolate_NewWithOptions gives it.
     isolate_data->cpp_heap = newAgentCppHeap();
     create_params.cpp_heap = isolate_data->cpp_heap.get();
@@ -12023,6 +12806,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     }
     isolate->SetData(kIsolateDataSlot, isolate_data);
     Isolate::Initialize(isolate, create_params);
+    adoptCppHeap(isolate_data);
     installGCPauseRecorder(isolate);
     installNodeWrapperRootsHandler(isolate);
 
@@ -12735,15 +13519,8 @@ int v8_JSON_Stringify_ToBuffer(
     }
     
     // Write UTF-8 to buffer
-    int written = json_str->WriteUtf8(
-        isolate,
-        buffer,
-        buffer_len,
-        nullptr,  // nchars_ref
-        String::NO_NULL_TERMINATION
-    );
-    
-    return written;
+    if (buffer_len <= 0) return 0;
+    return static_cast<int>(json_str->WriteUtf8(isolate, buffer, static_cast<size_t>(buffer_len)));
 }
 
 /// Parse JSON string from buffer and return V8 value
@@ -13359,7 +14136,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     // Whether O implements an interface with a named property setter: the
     // trap's data, set when the proxy is made from the interface's
     // Meta.special_operations (template_registry.hasNamedPropertySetter).
-    const bool has_named_setter = info.Data()->IsTrue();
+    const bool has_named_setter = info.DataV2().As<Value>()->IsTrue();
     const bool via_own_setters = receiver_is_o &&
         (is_index || (property->IsString() && has_named_setter));
 
@@ -13374,7 +14151,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
             // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V,
             // Receiver, ownDesc)" with ownDesc undefined: ES 10.1.9.2 step 1
             // walks the prototype chain for P.
-            Local<Value> proto = target->GetPrototypeV2();
+            Local<Value> proto = target->GetPrototype();
             while (proto->IsObject()) {
                 Local<Object> holder = proto.As<Object>();
                 Local<Value> desc_value;
@@ -13382,7 +14159,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                     return;  // an exception is pending
                 }
                 if (desc_value->IsUndefined()) {
-                    proto = holder->GetPrototypeV2();
+                    proto = holder->GetPrototype();
                     continue;
                 }
                 Local<Object> desc = desc_value.As<Object>();
@@ -13600,7 +14377,7 @@ static std::atomic<ShadowRealmContextDispatch> g_shadow_realm_dispatch{nullptr};
 /// V8 internal callback for ShadowRealm context creation
 /// This is called by V8 when JavaScript code executes `new ShadowRealm()`
 static MaybeLocal<Context> V8HostCreateShadowRealmContextCallback(Local<Context> initiator_context) {
-    Isolate* isolate = initiator_context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     void* result = nullptr;
     if (ShadowRealmContextDispatch dispatch = g_shadow_realm_dispatch.load(std::memory_order_acquire)) {
         // The initiator, for Zig to read during the call.
@@ -13966,7 +14743,7 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
             return Nothing<uint32_t>();
         }
         // 2.
-        MemorySpan<const uint8_t> bytes = module->GetCompiledModule().GetWireBytesRef();
+        std::span<const uint8_t> bytes = module->GetCompiledModule().GetWireBytesRef();
         attachments_.wasm_modules.emplace_back(bytes.data(), bytes.data() + bytes.size());
         return Just(static_cast<uint32_t>(attachments_.wasm_modules.size() - 1));
     }
@@ -14059,7 +14836,7 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
             return MaybeLocal<WasmModuleObject>();
         }
         const std::vector<uint8_t>& bytes = attachments_->wasm_modules[transfer_id];
-        return WasmModuleObject::Compile(isolate, MemorySpan<const uint8_t>(bytes.data(), bytes.size()));
+        return WasmModuleObject::Compile(isolate, std::span<const uint8_t>(bytes.data(), bytes.size()));
     }
 
     MaybeLocal<SharedArrayBuffer> GetSharedArrayBufferFromId(Isolate* isolate, uint32_t id) override {
@@ -15202,7 +15979,7 @@ static MaybeLocal<Module> ProtocolResolveModuleCallback(
     Local<FixedArray> import_attributes,
     Local<Module> referrer
 ) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     ProtocolResolver* resolver = t_protocol_resolver;
     if (!resolver || !resolver->resolve) {
         throwUnresolvedModuleSpecifier(isolate, specifier);
@@ -15303,7 +16080,7 @@ int v8_Module_EvaluateForProtocol(Global<Context>* context, Global<Module>* modu
 static void ProtocolDynamicImportFulfilled(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> data = info.Data().As<Array>();
+    Local<Array> data = info.DataV2().As<Value>().As<Array>();
     Local<Value> resolver, ns;
     if (!data->Get(context, 0).ToLocal(&resolver) || !data->Get(context, 1).ToLocal(&ns)) return;
     (void)resolver.As<Promise::Resolver>()->Resolve(context, ns);
@@ -15312,7 +16089,7 @@ static void ProtocolDynamicImportFulfilled(const FunctionCallbackInfo<Value>& in
 static void ProtocolDynamicImportRejected(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> data = info.Data().As<Array>();
+    Local<Array> data = info.DataV2().As<Value>().As<Array>();
     Local<Value> resolver;
     if (!data->Get(context, 0).ToLocal(&resolver)) return;
     (void)resolver.As<Promise::Resolver>()->Reject(context, info[0]);
@@ -15425,7 +16202,7 @@ static MaybeLocal<Promise> ProtocolHostImportModuleDynamically(
     Local<FixedArray> import_attributes
 ) {
     (void)resource_name;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     EscapableHandleScope handle_scope(isolate);
     Local<Promise::Resolver> resolver;
     if (!Promise::Resolver::New(context).ToLocal(&resolver)) return MaybeLocal<Promise>();
@@ -15484,7 +16261,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
     if (!argument->ToString(context).ToLocal(&specifier)) return;
     // Step 4.2: resolve a module specifier given moduleScript and specifier.
     auto dispatch = g_protocol_import_meta_resolve.load(std::memory_order_acquire);
-    String::Utf8Value base_utf8(isolate, info.Data());
+    String::Utf8Value base_utf8(isolate, info.DataV2().As<Value>());
     String::Utf8Value specifier_utf8(isolate, specifier);
     Global<Context> realm(isolate, context);
     size_t len = 0;
@@ -15508,7 +16285,7 @@ static void ProtocolImportMetaResolve(const FunctionCallbackInfo<Value>& info) {
 static void ProtocolInitializeImportMeta(Local<Context> context, Local<Module> module, Local<Object> meta) {
     auto dispatch = g_protocol_import_meta_url.load(std::memory_order_acquire);
     if (!dispatch) return;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Module> handle(isolate, module);
     size_t len = 0;
     const char* url = dispatch(isolate, &handle, module->GetIdentityHash(), &len);
@@ -15633,7 +16410,7 @@ void v8_RunWithBackupIncumbent(Isolate* isolate, Global<Context>* incumbent, voi
 /// Test-only public lifecycle probe. Context::SetPromiseHooks is unavailable
 /// in the linked build (V8_ENABLE_JAVASCRIPT_PROMISE_HOOKS is disabled).
 static void testPromiseHook(PromiseHookType type, Local<Promise> promise, Local<Value>) {
-    IsolateData* data = isolateData(promise->GetIsolate());
+    IsolateData* data = isolateData(Isolate::GetCurrent());
     if (data && data->test_promise_hook)
         data->test_promise_hook(static_cast<int>(type), data->test_promise_hook_data);
 }
@@ -16007,12 +16784,13 @@ Global<Value>* v8_Object_GetPrivateRef(Global<Object>* holder, const char* key, 
 /// appended to an array held in `holder`'s private property `key`, made on
 /// first use. An edge, never a root - what a Window realm whose navigable was
 /// destroyed, or whose document a navigation replaced, holds its wrappers and
-/// callbacks by: `holder` is its HIDDEN global object (never the global proxy,
-/// which a navigation hands to the next realm - a private property set through
-/// it lands on whichever global object it reaches now), so the collector can
-/// take the realm once nothing reaches it (the engine protocol's Window realm
-/// ends). Runs in `holder`'s creation context. A no-op for an empty holder -
-/// a global object already collected.
+/// callbacks by: `holder` is its retained store, which its global object keeps
+/// through its GlobalAnchor (never the global proxy, which a navigation hands
+/// to the next realm - a private property set through it lands on whichever
+/// global object it reaches now), so the collector can take the realm once
+/// nothing reaches it (the engine protocol's Window realm ends). Runs in
+/// `holder`'s creation context. A no-op for an empty holder - a store already
+/// collected with its global.
 void v8_Object_RetainInPrivateArray(Global<Value>* holder, const char* key, int key_len, Global<Value>* value) {
     if (!holder || holder->IsEmpty() || !value || value->IsEmpty()) return;
     Isolate* isolate = Isolate::GetCurrent();
@@ -16143,8 +16921,8 @@ void v8_Global_TagRealm(Global<Value>* global, uintptr_t realm_key) {
 static void taggedHandleCollected(void*, size_t) {}
 
 /// A Window realm that is detached (`realm_key` its context's key): every
-/// handle tagged with it is kept by an edge from `holder` - its hidden global
-/// object (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
+/// handle tagged with it is kept by an edge from `holder` - its retained store
+/// (v8_Object_RetainInPrivateArray, `key`) - instead, and made weak; its
 /// holder still owns and disposes it, and it reads empty once the realm is
 /// collected. Returns how many it weakened.
 int v8_Object_WeakenTaggedHandles(Global<Value>* holder, uintptr_t realm_key, const char* key, int key_len) {
@@ -16349,7 +17127,7 @@ static ModifyCodeGenerationFromStringsResult ProtocolModifyCodeGenerationFromStr
     result.codegen_allowed = true;
     auto dispatch = g_protocol_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return result;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Context> realm(isolate, context);
     char* code = nullptr;
     size_t code_len = 0;
@@ -16385,7 +17163,7 @@ static bool ProtocolAllowWasmCodeGeneration(Local<Context> context, Local<String
     (void)source;  // V8 passes the empty string (wasm-module.cc IsWasmCodegenAllowed).
     auto dispatch = g_protocol_wasm_code_generation.load(std::memory_order_acquire);
     if (!dispatch) return true;
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Global<Context> realm(isolate, context);
     return dispatch(isolate, &realm);
 }
@@ -16418,14 +17196,27 @@ bool v8_Context_IsCodeGenerationFromStringsAllowed(Global<Context>* context) {
 
 } // extern "C"
 // ---- end lane: cspenforce ----
-// ---- WebAssembly JS API adaptation for V8 13.1 ----
-// V8 13.1 reads the memory64 descriptor's old `index` spelling, not
-// `address`. It also chooses the constructor's own intrinsic prototype when
+// ---- WebAssembly JS API adaptation ----
+// V8 chooses the constructor's own intrinsic prototype when
 // NewTarget.prototype is primitive. Firefox/Safari and WebIDL instead use
 // NewTarget's realm (wpt.fyi stable runs 5195601938743296/5351410937102336/
-// 5184406099853312: proto-from-ctor-realm 45/120, 120/120, 120/120).
-// Remove the address adaptation when upgrading to V8 >= 13.3; independently
-// recheck prototype fallback, which Chrome 156 still fails.
+// 5184406099853312: proto-from-ctor-realm 45/120, 120/120, 120/120);
+// recheck prototype fallback at every V8 upgrade.
+// The memory64 `address` adaptation is gone (lane v8up b3c): V8 13.1 read the
+// descriptor's old `index` spelling, so Memory/Table descriptors went through
+// a Proxy that answered `index` with the converted `address`; V8 15.7 reads
+// `address` itself (wasm-js.cc GetAddressType, 1483-1510 at 15.7.112.43), and
+// the adaptation made it read twice - the shim's read, then V8's through the
+// Proxy, which forwarded every key but `index` (wpt wasm/jsapi/memory/
+// constructor.any.js and table/constructor.any.js "Order of evaluation").
+// The JSPI Suspending adaptation is gone too (lane v8up b3d): V8 13.1 left JSPI
+// "create a suspending function" step 3.15 to it (a Proxy around the callable
+// whose apply trap ran PromiseResolve with the import realm's intrinsics); V8
+// 15.7 runs the step itself (turboshaft wasm-wrappers.h BuildSuspend,
+// PromiseResolve with the importing instance's native context), so the
+// adaptation resolved twice, and a promise returned from another realm was
+// assimilated by the import's realm first (tests/v8/wj1_wasm_constructor_test
+// "resolves through the promising realm's intrinsics": the evidence).
 extern "C" {
 
 static Local<Private> wasmIntrinsicPrototypesKey(Isolate* isolate) {
@@ -16443,7 +17234,7 @@ enum WasmPreparationSlot : uint32_t {
     kWasmConstruct, kWasmGet, kWasmApply, kWasmProxy, kWasmTypeError, kWasmObject,
     kWasmDefine, kWasmOwnKeys, kWasmDescriptor, kWasmSetPrototype, kWasmPrototype,
     kWasmFunctionPrototype, kWasmBind, kWasmHasInstanceKey, kWasmHasInstance, kWasmSlice,
-    kWasmPromise, kWasmPromiseResolve, kWasmPreparationSize,
+    kWasmPreparationSize,
 };
 
 static bool ensureWasmAdapters(Local<Context> context);
@@ -16453,7 +17244,7 @@ static Local<Private> wasmExceptionStackKey(Isolate* isolate) {
 }
 
 static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exception) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Local<String> stack_name = String::NewFromUtf8Literal(isolate, "stack");
     Maybe<bool> captured = exception->HasOwnProperty(context, stack_name);
     if (captured.IsNothing()) return false;
@@ -16499,7 +17290,7 @@ static bool wasmCaptureExceptionStack(Local<Context> context, Local<Object> exce
 static void WasmExceptionStackGet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Context> context = isolate->GetCurrentContext();
-    Local<Array> brand = info.Data().As<Array>();
+    Local<Array> brand = info.DataV2().As<Value>().As<Array>();
     Local<Value> is_exception, tag, ignored, stack;
     if (!brand->Get(context, 0).ToLocal(&is_exception) || !brand->Get(context, 1).ToLocal(&tag)) return;
     // The captured native is() performs the real internal-slot brand check.
@@ -16548,7 +17339,7 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
     Local<Function> original = info[0].As<Function>();
     Local<Array> arguments = info[1].As<Array>();
     Local<Object> new_target = info[2].As<Object>();
-    const uint32_t index = info.Data().As<Uint32>()->Value();
+    const uint32_t index = info.DataV2().As<Value>().As<Uint32>()->Value();
 
     // WebIDL "internally create a new object" steps 3.2-3.3: exactly one
     // Get, before any descriptor conversion; primitive values select the
@@ -16576,42 +17367,15 @@ static void WasmConstructorConstruct(const FunctionCallbackInfo<Value>& info) {
         if (!arguments->Get(context, i).ToLocal(&value)) return;
         args.push_back(value);
     }
-    // Indices 2 and 3 are Memory and Table. No other constructor takes an
-    // address descriptor. V8 still validates every other argument itself.
-    if ((index == 2 || index == 3) && !args.empty() && args[0]->IsObject()) {
-        Local<Object> descriptor = args[0].As<Object>();
-        Local<Value> address;
-        if (!descriptor->Get(context, String::NewFromUtf8Literal(isolate, "address")).ToLocal(&address)) return;
-        Local<String> address_type = String::NewFromUtf8Literal(isolate, "i32");
-        if (!address->IsUndefined()) {
-            Local<String> converted;
-            if (!address->ToString(context).ToLocal(&converted)) return;
-            if (!converted->StringEquals(String::NewFromUtf8Literal(isolate, "i32")) &&
-                !converted->StringEquals(String::NewFromUtf8Literal(isolate, "i64"))) {
-                isolate->ThrowException(Exception::TypeError(
-                    String::NewFromUtf8Literal(isolate, "Descriptor property 'address' must be 'i32' or 'i64'")));
-                return;
-            }
-            address_type = converted;
-        }
-        // WebIDL dictionary conversion 4.1.3.1 is Get(jsDict, key), with
-        // the original receiver. The captured JS factory keeps those reads
-        // inside V8, without a native callback per dictionary member.
-        Local<Value> intrinsics_value, descriptor_factory, adapted;
-        if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value) ||
-            !intrinsics_value->IsArray() || !intrinsics_value.As<Array>()->Get(context, 8).ToLocal(&descriptor_factory) ||
-            !descriptor_factory->IsFunction()) return;
-        Local<Value> factory_args[] = {descriptor, address_type};
-        if (!descriptor_factory.As<Function>()->Call(context, Undefined(isolate), 2, factory_args).ToLocal(&adapted)) return;
-        args[0] = adapted;
-    }
+    // Memory's and Table's descriptors go to V8 as they are: it reads
+    // `address` itself since 13.3 (see the section comment).
     Local<Object> made;
     if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
-    // Index 7 is Exception; 5/6 hold the JSPI Promise intrinsics.
+    // Index 7 is Exception (5/6 held 13.1's JSPI Promise intrinsics: empty).
     if (index == 7 && !wasmCaptureExceptionStack(context, made)) return;
     // WebIDL step 9. The native constructor makes the Wasm internal slots;
     // only its externally observable prototype needs adapting.
-    if (!made->GetPrototypeV2()->StrictEquals(prototype) && !made->SetPrototypeV2(context, prototype).FromMaybe(false)) return;
+    if (!made->GetPrototype()->StrictEquals(prototype) && !made->SetPrototype(context, prototype).FromMaybe(false)) return;
     info.GetReturnValue().Set(made);
 }
 
@@ -16625,81 +17389,14 @@ static void WasmGlobalValueSet(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     Local<Value> argument = info[0];
     Local<Value> result;
-    if (!info.Data().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
+    if (!info.DataV2().As<Value>().As<Function>()->Call(isolate->GetCurrentContext(), info.This(), 1, &argument).ToLocal(&result)) return;
     info.GetReturnValue().Set(result);
-}
-
-static void WasmSuspendingApply(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    Local<Context> context = isolate->GetCurrentContext();
-    Local<Function> target = info[0].As<Function>();
-    Local<Context> import_realm;
-    if (!wasmConstructorRealm(isolate, target).ToLocal(&import_realm)) return;
-    if (!ensureWasmAdapters(import_realm)) return;
-    Local<Value> intrinsics_value;
-    if (!import_realm->Global()->GetPrivate(import_realm, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics_value)) return;
-    if (!intrinsics_value->IsArray()) {
-        isolate->ThrowException(Exception::TypeError(
-            String::NewFromUtf8Literal(isolate, "WebAssembly import realm is not initialized")));
-        return;
-    }
-    Local<Array> intrinsics = intrinsics_value.As<Array>();
-    Local<Value> promise_constructor, promise_resolve;
-    if (!intrinsics->Get(import_realm, 5).ToLocal(&promise_constructor) ||
-        !intrinsics->Get(import_realm, 6).ToLocal(&promise_resolve)) return;
-    Local<Array> arguments = info[2].As<Array>();
-    std::vector<Local<Value>> args;
-    args.reserve(arguments->Length());
-    for (uint32_t i = 0; i < arguments->Length(); ++i) {
-        Local<Value> value;
-        if (!arguments->Get(context, i).ToLocal(&value)) return;
-        args.push_back(value);
-    }
-    // JSPI "create a suspending function" 3.10/3.14: preserve the receiver,
-    // argument list and abrupt completion. An apply trap exposes the actual
-    // receiver; a plain native Function callback would box it as info.This().
-    Local<Value> result;
-    if (!target->Call(context, info[1], static_cast<int>(args.size()), args.data()).ToLocal(&result)) return;
-    // Step 3.15: intrinsic PromiseResolve in the import's realm. Capturing
-    // both intrinsics preserves same-constructor Promise identity, including
-    // when script replaces Promise or Promise.resolve. Resolver::New would
-    // instead allocate a new promise and assimilate the original.
-    Local<Value> promise;
-    if (!promise_resolve.As<Function>()->Call(import_realm, promise_constructor, 1, &result).ToLocal(&promise)) return;
-    info.GetReturnValue().Set(promise);
-}
-
-static void WasmSuspendingConstruct(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    Local<Context> context = isolate->GetCurrentContext();
-    Local<Function> original = info[0].As<Function>();
-    Local<Array> arguments = info[1].As<Array>();
-    std::vector<Local<Value>> args;
-    args.reserve(arguments->Length());
-    for (uint32_t i = 0; i < arguments->Length(); ++i) {
-        Local<Value> value;
-        if (!arguments->Get(context, i).ToLocal(&value)) return;
-        args.push_back(value);
-    }
-    if (!args.empty() && args[0]->IsFunction() && !args[0].As<Function>()->GetScriptOrigin().Options().IsWasm()) {
-        Local<Proxy> callable;
-        if (!Proxy::New(context, args[0].As<Object>(), info.Data().As<Object>()).ToLocal(&callable)) return;
-        args[0] = callable;
-    }
-    // V8 13.1.203 wasm-js.cc:2393-2397 rejects native wasm exports here.
-    // Do not hide their identity behind a Proxy and bypass that check.
-    // Step 3.15 is emulated only for JS callables. Step 3.5 (the pre-call active-suspender check) and catchable
-    // SuspendError still require V8 support: wrappers.cc 1166-1228 and
-    // runtime-wasm.cc 143-159, 329-332 expose no public suspension hook.
-    Local<Object> made;
-    if (!original->NewInstance(context, static_cast<int>(args.size()), args.data()).ToLocal(&made)) return;
-    info.GetReturnValue().Set(made);
 }
 
 // Materialize only on a namespace read or an indirect use of this realm's
 // Wasm intrinsics. Public deletion/assignment never removes the private state.
 static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparation) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Context::Scope context_scope(context);
     NativeStepScope native_step(isolate);
     Local<Value> wasm_value;
@@ -16722,11 +17419,6 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     // OrdinaryHasInstance follows the hidden class, whose private forwarder
     // uses the original's immutable prototype. The exposed function has only
     // the original interface's own properties, with their exact descriptors.
-    //
-    // Memory/Table share a private empty-target descriptor Proxy. Each call
-    // saves/restores its pair, including on nested construction and throws.
-    // No caller descriptor survives an outermost call. The original receiver
-    // is used for every Get; a legacy nonconfigurable `index` is still ignored.
     Local<String> fast_source = String::NewFromUtf8Literal(isolate,
         "(function(saved) { 'use strict';"
         "const construct = saved[1], get = saved[2], apply = saved[3];"
@@ -16735,31 +17427,11 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
         "const setPrototype = saved[10], prototypeOf = saved[11];"
         "const functionPrototype = saved[12], bind = saved[13];"
         "const hasInstanceKey = saved[14], hasInstance = saved[15], slice = saved[16];"
-        "let currentDescriptor, currentAddress;"
-        "const descriptor = new P({__proto__:null}, {__proto__:null, get(_, key) {"
-        "return key === 'index' ? currentAddress : get(currentDescriptor, key, currentDescriptor); }});"
         "return function(target, native, kind) {"
         "const W = {[target.name]: class extends Base { constructor(a0, a1, a2) {"
         "const newTarget = new.target;"
         "if (newTarget !== W) return native(target, apply(slice, arguments, []), newTarget);"
         "const count = arguments.length;"
-        "if (kind === 2 || kind === 3) {"
-        "if (count === 0) return construct(target, arguments);"
-        "const original = a0;"
-        "if ((typeof original !== 'object' || original === null) && typeof original !== 'function') return construct(target, arguments);"
-        "let address = original.address;"
-        // Template substitution applies ToString (including Symbol rejection
-        // and the string primitive hint), unlike String(x) or '' + x.
-        "address = address === undefined ? 'i32' : `${address}`;"
-        "if (address !== 'i32' && address !== 'i64') throw new TypeErrorCtor('Invalid WebAssembly address type');"
-        "const previousDescriptor = currentDescriptor, previousAddress = currentAddress;"
-        "currentDescriptor = original; currentAddress = address;"
-        "try {"
-        "if (count === 1) return new target(descriptor);"
-        "if (count === 2) return new target(descriptor, a1);"
-        "const args = apply(slice, arguments, []); args[0] = descriptor; return construct(target, args);"
-        "} finally { currentDescriptor = previousDescriptor; currentAddress = previousAddress; }"
-        "}"
         // Exception's optional trace requires the captured-string adapter.
         // Missing/null/undefined options request no trace and need no work.
         "if (kind === 5 && count >= 3 && a2 !== undefined && a2 !== null) return native(target, apply(slice, arguments, []), replacement);"
@@ -16797,31 +17469,15 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
         if (!fast_factory.As<Function>()->Call(context, Undefined(isolate), 3, factory_args).ToLocal(&replacement) || !replacement->IsFunction()) return false;
         replacements[i] = replacement.As<Function>();
     }
-    Local<Value> promise_constructor, promise_resolve;
-    if (!preparation->Get(context, kWasmPromise).ToLocal(&promise_constructor) ||
-        !preparation->Get(context, kWasmPromiseResolve).ToLocal(&promise_resolve)) return false;
-    // An empty target avoids Proxy invariants from a user's nonconfigurable
-    // `index`. Both the target and handler have null prototypes; only the
-    // captured Reflect.get and Proxy intrinsics can participate after setup.
-    Local<String> descriptor_source = String::NewFromUtf8Literal(isolate,
-        "(function(get, P) { 'use strict'; return function(original, address) {"
-        "return new P({__proto__:null}, {__proto__:null, get(target, key) {"
-        "return key === 'index' ? address : get(original, key, original); }}); }; })");
-    Local<Script> descriptor_script;
-    Local<Value> descriptor_maker, descriptor_factory;
-    if (!Script::Compile(context, descriptor_source).ToLocal(&descriptor_script) ||
-        !descriptor_script->Run(context).ToLocal(&descriptor_maker) || !descriptor_maker->IsFunction()) return false;
-    Local<Value> descriptor_args[2];
-    if (!preparation->Get(context, kWasmGet).ToLocal(&descriptor_args[0]) ||
-        !preparation->Get(context, kWasmProxy).ToLocal(&descriptor_args[1])) return false;
-    if (!descriptor_maker.As<Function>()->Call(context, Undefined(isolate), 2, descriptor_args).ToLocal(&descriptor_factory) || !descriptor_factory->IsFunction()) return false;
     // The private JS constructor is embedding machinery, not the script
     // responsible for a CSP violation. Retain its unforgeable script ID for
     // running-script attribution below, without retaining a native handle.
     // Slots 10/11 also serve a cloned Module/Memory's lazy constructor. They
     // must not consult the mutable namespace after initialization.
-    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], promise_constructor, promise_resolve, prototypes[5], descriptor_factory,
-        Integer::New(isolate, fast_script->GetUnboundScript()->GetId()), replacements[0], replacements[2]};
+    // Slots 5/6 held V8 13.1's JSPI Promise intrinsics and slot 8 its address
+    // descriptor factory: kept empty, so the slots after them keep their indices.
+    Local<Value> intrinsic_values[] = {prototypes[0], prototypes[1], prototypes[2], prototypes[3], prototypes[4], Undefined(isolate), Undefined(isolate), prototypes[5], Undefined(isolate),
+        Integer::New(isolate, fast_script->GetUnboundScript()->ScriptId()), replacements[0], replacements[2]};
     Local<Array> intrinsics = Array::New(isolate, intrinsic_values, 12);
     if (!intrinsics->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
     if (!context->Global()->SetPrivate(context, wasmIntrinsicPrototypesKey(isolate), intrinsics).FromMaybe(false)) return false;
@@ -16853,8 +17509,11 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     value_descriptor.set_configurable(configurable->IsTrue());
     if (!global_prototype->DefineProperty(context, value_name, value_descriptor).FromMaybe(false)) return false;
 
-    // Golden rule 2: Exception.length remains V8's 1. The spec's 2 dates
-    // to 2019, while Firefox/Safari still expose 1 (pinned runs above).
+    // Exception.length is V8's own: 2 since V8 15.x, the JS API's
+    // Exception(tag, payload, options) and WPT exception/constructor.tentative
+    // "length" - Chrome 156 ships it; Firefox 159 and Safari 27 still answer 1,
+    // behind the spec (golden rule 2: the spec; probe
+    // tmp/probes/v8up-wasm-order, lane v8up b3c). The replacement copies it.
     // For stack, Chrome/Firefox expose a prototype member, but disagree on
     // enumerability; Safari has no member. With no enumerability majority,
     // follow the spec's enumerable getter (exception-handling PR 218, 2022).
@@ -16877,35 +17536,11 @@ static bool initializeWasmAdapters(Local<Context> context, Local<Array> preparat
     stack_descriptor.set_enumerable(true);
     stack_descriptor.set_configurable(true);
     if (!exception_prototype->DefineProperty(context, String::NewFromUtf8Literal(isolate, "stack"), stack_descriptor).FromMaybe(false)) return false;
-
-    // JSPI is optional in this V8 build (disabled under --jitless).
-    Local<String> suspending_name = String::NewFromUtf8Literal(isolate, "Suspending");
-    Local<Value> suspending;
-    if (!wasm->Get(context, suspending_name).ToLocal(&suspending)) return false;
-    if (!suspending->IsFunction()) return true;
-    Local<Function> apply;
-    if (!Function::New(context, WasmSuspendingApply, {}, 3, ConstructorBehavior::kThrow).ToLocal(&apply)) return false;
-    Local<Object> apply_handler = Object::New(isolate);
-    if (!apply_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
-        !apply_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "apply"), apply).FromMaybe(false) ||
-        !apply_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
-    Local<Function> construct;
-    if (!Function::New(context, WasmSuspendingConstruct, apply_handler, 3, ConstructorBehavior::kThrow).ToLocal(&construct)) return false;
-    Local<Object> construct_handler = Object::New(isolate);
-    if (!construct_handler->SetPrototypeV2(context, Null(isolate)).FromMaybe(false) ||
-        !construct_handler->CreateDataProperty(context, String::NewFromUtf8Literal(isolate, "construct"), construct).FromMaybe(false) ||
-        !construct_handler->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false)) return false;
-    Local<Proxy> suspending_adapter;
-    if (!Proxy::New(context, suspending.As<Object>(), construct_handler).ToLocal(&suspending_adapter)) return false;
-    Local<Value> suspending_prototype;
-    if (!suspending.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&suspending_prototype) || !suspending_prototype->IsObject()) return false;
-    if (!suspending_prototype.As<Object>()->DefineOwnProperty(context, String::NewFromUtf8Literal(isolate, "constructor"), suspending_adapter, DontEnum).FromMaybe(false) ||
-        !wasm->DefineOwnProperty(context, suspending_name, suspending_adapter, DontEnum).FromMaybe(false)) return false;
     return true;
 }
 
 static bool ensureWasmAdapters(Local<Context> context) {
-    Isolate* isolate = context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     Local<Value> intrinsics, preparation;
     if (!context->Global()->GetPrivate(context, wasmIntrinsicPrototypesKey(isolate)).ToLocal(&intrinsics)) return false;
     if (intrinsics->IsArray()) return true;
@@ -16919,7 +17554,7 @@ static bool ensureWasmAdapters(Local<Context> context) {
 
 static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    Local<Array> preparation = info.Data().As<Array>();
+    Local<Array> preparation = info.DataV2().As<Value>().As<Array>();
     Local<Context> context;
     // A different realm (or an inheriting receiver) may perform the first
     // read. All adapters and intrinsics must belong to the namespace's realm.
@@ -16932,7 +17567,7 @@ static void WasmNamespaceGet(Local<Name>, const PropertyCallbackInfo<Value>& inf
 
 static void WasmPrototypeConstructorGet(const PropertyCallbackInfo<Value>& info, uint32_t intrinsic_index) {
     Isolate* isolate = info.GetIsolate();
-    Local<Array> preparation = info.Data().As<Array>();
+    Local<Array> preparation = info.DataV2().As<Value>().As<Array>();
     Local<Context> context;
     if (!preparation->GetCreationContext(isolate).ToLocal(&context)) return;
     Context::Scope context_scope(context);
@@ -16971,7 +17606,7 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
             String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked()).ToLocal(value);
     };
     // Capture function references now, not mutable helper objects to inspect
-    // on first access. PromiseResolve must likewise predate script tampering.
+    // on first access.
     if (!get(global, "WebAssembly", &values[kWasmNamespace]) || !values[kWasmNamespace]->IsObject() ||
         !get(global, "Reflect", &reflect) ||
         !get(reflect, "construct", &values[kWasmConstruct]) ||
@@ -16992,9 +17627,7 @@ void v8_WebAssembly_InstallAddressDescriptors(Isolate* isolate, Global<Context>*
         !get(symbol, "hasInstance", &values[kWasmHasInstanceKey]) ||
         !values[kWasmFunctionPrototype].As<Object>()->Get(context, values[kWasmHasInstanceKey]).ToLocal(&values[kWasmHasInstance]) ||
         !get(global, "Array", &array) || !get(array, "prototype", &array_prototype) ||
-        !get(array_prototype, "slice", &values[kWasmSlice]) ||
-        !get(global, "Promise", &values[kWasmPromise]) ||
-        !get(values[kWasmPromise], "resolve", &values[kWasmPromiseResolve])) return;
+        !get(array_prototype, "slice", &values[kWasmSlice])) return;
     Local<Array> preparation = Array::New(isolate, values, kWasmPreparationSize);
     if (!preparation->SetIntegrityLevel(context, IntegrityLevel::kFrozen).FromMaybe(false) ||
         !global->SetPrivate(context, wasmPreparationKey(isolate), preparation).FromMaybe(false)) return;
@@ -17443,7 +18076,7 @@ void ThrowCrossOriginSecurityError(Isolate* isolate) {
 /// or null - a Window freed with its page, a severed global.
 void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
     if (object->InternalFieldCount() < 1) return nullptr;
-    return object->GetAlignedPointerFromInternalField(isolate, 0);
+    return object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
 }
 
 /// IsPlatformObjectSameOrigin (7.2.1.3.3) as V8's access check: whether the
@@ -17451,7 +18084,7 @@ void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
 /// ordinary object.
 bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> accessed_object, Local<Value> data) {
     (void)data;
-    Isolate* isolate = accessing_context->GetIsolate();
+    Isolate* isolate = Isolate::GetCurrent();  // V8 >= 14: no Context::GetIsolate (98282b9b8fa); a callback runs on its isolate
     // A platform object of the current realm itself: same origin-domain by
     // definition. V8 never asks this for a global proxy of the accessing
     // context, but asks it on every access to a Location.
@@ -17479,7 +18112,7 @@ bool CrossOriginAccessCheck(Local<Context> accessing_context, Local<Object> acce
 void CrossOriginFailedAccessCheck(Local<Object> target, AccessType type, Local<Value> data) {
     (void)type;
     (void)data;
-    ThrowCrossOriginSecurityError(target->GetIsolate());
+    ThrowCrossOriginSecurityError(Isolate::GetCurrent());
 }
 
 /// `kind`'s CrossOriginProperties entry named `name`, if any.
@@ -17491,8 +18124,7 @@ const CrossOriginMember* FindCrossOriginMember(Isolate* isolate, int32_t kind, L
     Local<String> string = name.As<String>();
     if (string->Length() > 32) return nullptr;
     char buffer[64];
-    int written = string->WriteUtf8(isolate, buffer, sizeof(buffer) - 1, nullptr, String::NO_NULL_TERMINATION);
-    if (written < 0) return nullptr;
+    const size_t written = string->WriteUtf8(isolate, buffer, sizeof(buffer) - 1);
     for (size_t i = 0; i < count; i++) {
         if (members[i].name_len == static_cast<size_t>(written) && std::memcmp(members[i].name, buffer, members[i].name_len) == 0) {
             if (index_out) *index_out = i;
@@ -17548,12 +18180,12 @@ MaybeLocal<Function> CrossOriginFunction(
 
     Local<Map> map;
     if (current->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kCrossOriginFunctionsIndex)) {
-        Local<Value> slot = current->GetEmbedderData(kCrossOriginFunctionsIndex);
+        Local<Value> slot = current->GetEmbedderDataV2(kCrossOriginFunctionsIndex).As<Value>();
         if (!slot.IsEmpty() && slot->IsMap()) map = slot.As<Map>();
     }
     if (map.IsEmpty()) {
         map = Map::New(isolate);
-        current->SetEmbedderData(kCrossOriginFunctionsIndex, map);
+        current->SetEmbedderDataV2(kCrossOriginFunctionsIndex, map);
     }
     Local<Value> found;
     if (map->Get(current, key).ToLocal(&found) && found->IsFunction()) return found.As<Function>();
@@ -17615,12 +18247,15 @@ bool CrossOriginNamedChild(Isolate* isolate, Local<Object> holder, Local<Name> n
 
 // --- named interceptors ---
 
-/// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet.
+/// [[Get]] (7.2.3.7 step 4, 7.2.4.7 step 2): CrossOriginGet. A getter is
+/// called on the HOLDER, not the Receiver (CrossOriginGet step 5): V8 >= 14
+/// gives an interceptor no receiver - the KNOWN DEVIATION recorded at
+/// CrossOriginNamedSetter, with the V8 lines that were checked.
 Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
-    Local<Object> holder = info.HolderV2();
+    Local<Object> holder = info.Holder();
     size_t index = 0;
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
         // CrossOriginGet step 3: a data descriptor's [[Value]] - an
@@ -17643,7 +18278,7 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
             return Intercepted::kYes;
         }
         Local<Value> result;
-        if (getter->Call(current, info.This(), 0, nullptr).ToLocal(&result)) info.GetReturnValue().Set(result);
+        if (getter->Call(current, info.Holder(), 0, nullptr).ToLocal(&result)) info.GetReturnValue().Set(result);
         return Intercepted::kYes;
     }
     // 7.2.3.5 step 6: a named child navigable.
@@ -17665,11 +18300,48 @@ Intercepted CrossOriginNamedGetter(Local<Name> name, const PropertyCallbackInfo<
 }
 
 /// [[Set]] (7.2.3.8 step 4, 7.2.4.8 step 2): CrossOriginSet - the setter of
-/// a member that has one, called on the receiver; a SecurityError for
-/// anything else (expandos included).
-Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+/// a member that has one; a SecurityError for anything else (expandos
+/// included).
+///
+/// KNOWN DEVIATION (the user's ruling, 2026-11-11; lane v8up b4): CrossOriginSet
+/// step 3.1 is Call(desc.[[Set]], Receiver, V), and here the setter is called
+/// on the HOLDER. V8 removed v8::PropertyCallbackInfo<T>::This() in 14
+/// (24eb3c4ba35, "Remove deprecated v8::PropertyCallbackInfo<T>::This()"); on
+/// V8 13.1 this function passed info.This(). So a write whose receiver only
+/// inherits from a cross-origin Window or Location -
+/// `Object.create(crossOriginWindow).location = url`,
+/// `Object.create(crossOriginWindow.location).href = url` - performs the
+/// navigation the direct write is allowed to perform, where the spec has the
+/// setter's brand check throw a TypeError of the lexical realm. Nothing is
+/// read and no capability is added. WPT
+/// html/browsers/origin/cross-origin-objects/window-location-and-location-href-cross-realm-set.html,
+/// the two "... setter throws TypeError in lexical realm on invalid |this|
+/// value" subtests: Chrome 157 fails both (9/11; Blink reads info.Holder()
+/// too), Firefox 160 and Safari 27.2 pass (11/11; wpt.fyi stable runs of
+/// 2026-11-11). Pinned by tests/wpt/crane/v8up-cross-origin-setter-inherited-receiver-deviation.html.
+///
+/// Checked 2026-11-11 against V8 15.7.112.43 - NO public path gives the
+/// receiver; delete this deviation the day one does:
+/// - PropertyCallbackInfo's argument block has no receiver slot
+///   (v8-function-callback.h 310-332: kPropertyKeyIndex, the frame slots,
+///   kIsolateIndex, kReturnValueIndex, kCallbackInfoIndex, kHolderIndex,
+///   kShouldThrowOnErrorIndex, kValueIndex), and V8 fills it from the holder
+///   alone (js-objects.cc 1404, SetPropertyWithInterceptorInternal:
+///   `PropertyCallbackArguments args(isolate, it->GetHolderForApi(), should_throw)`;
+///   api-arguments.h 60-62 has no constructor that takes a receiver) - the
+///   definer, descriptor and deleter callbacks get the same info;
+/// - v8::AccessCheckCallback gets (accessing_context, accessed_object, data)
+///   (v8-template.h 439-441), and accessed_object is the checked HOLDER
+///   (isolate.cc 2461-2502, Isolate::MayAccess; js-objects.cc 2833,
+///   `checked = it->GetHolder<JSObject>()`);
+/// - PropertyHandlerFlags (v8-template.h 708-746: kNone, kNonMasking,
+///   kOnlyInterceptStrings, kHasNoSideEffect, kHasDontDeleteProperty,
+///   kInternalNewCallbacksSignatures) change which lookups reach the
+///   interceptor, never what it is told;
+/// - no Isolate-level state names the lookup's receiver while the callback runs.
+Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
     size_t index = 0;
     const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index);
@@ -17678,11 +18350,11 @@ Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const P
         return Intercepted::kYes;
     }
     Local<Function> setter;
-    if (!CrossOriginFunction(isolate, current, info.HolderV2(), kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&setter)) {
+    if (!CrossOriginFunction(isolate, current, info.Holder(), kind, index, *member, CrossOriginFunctionKind::kSetter).ToLocal(&setter)) {
         return Intercepted::kYes;
     }
     Local<Value> argv[1] = {value};
-    (void)setter->Call(current, info.This(), 1, argv);
+    (void)setter->Call(current, info.Holder(), 1, argv);
     return Intercepted::kYes;
 }
 
@@ -17691,7 +18363,7 @@ Intercepted CrossOriginNamedSetter(Local<Name> name, Local<Value> value, const P
 /// one read-only; anything else a SecurityError.
 Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, nullptr)) {
         int attributes = PropertyAttribute::DontEnum;
         if (member->method) attributes |= PropertyAttribute::ReadOnly;
@@ -17699,7 +18371,7 @@ Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<I
         return Intercepted::kYes;
     }
     Local<Value> child;
-    if ((kind == kCrossOriginWindow && CrossOriginNamedChild(isolate, info.HolderV2(), name, &child)) || IsCrossOriginFallbackKey(isolate, name)) {
+    if ((kind == kCrossOriginWindow && CrossOriginNamedChild(isolate, info.Holder(), name, &child)) || IsCrossOriginFallbackKey(isolate, name)) {
         info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly));
         return Intercepted::kYes;
     }
@@ -17710,9 +18382,9 @@ Intercepted CrossOriginNamedQuery(Local<Name> name, const PropertyCallbackInfo<I
 /// [[GetOwnProperty]] (7.2.3.5 steps 4-7, 7.2.4.5 steps 2-4).
 Intercepted CrossOriginNamedDescriptor(Local<Name> name, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     Local<Context> current = isolate->GetCurrentContext();
-    Local<Object> holder = info.HolderV2();
+    Local<Object> holder = info.Holder();
     size_t index = 0;
     if (const CrossOriginMember* member = FindCrossOriginMember(isolate, kind, name, &index)) {
         if (member->method) {
@@ -17769,7 +18441,7 @@ Intercepted CrossOriginNamedDeleter(Local<Name> name, const PropertyCallbackInfo
 }
 
 /// [[DefineOwnProperty]] (7.2.3.6 step 3, 7.2.4.6 step 2): a SecurityError.
-Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
     (void)name;
     (void)desc;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -17782,7 +18454,7 @@ Intercepted CrossOriginNamedDefiner(Local<Name> name, const PropertyDescriptor& 
 void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    int32_t kind = CrossOriginKindOf(info.Data());
+    int32_t kind = CrossOriginKindOf(info.DataV2().As<Value>());
     std::vector<Local<Value>> keys;
     if (dispatch) {
         const CrossOriginMember* members = kind == kCrossOriginLocation ? dispatch->location_members : dispatch->window_members;
@@ -17806,7 +18478,7 @@ void CrossOriginNamedEnumerator(const PropertyCallbackInfo<Array>& info) {
 /// cross-origin indexed property.
 Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) return Intercepted::kYes;
         if (info.GetIsolate()->HasPendingException()) return Intercepted::kYes;
     }
@@ -17820,7 +18492,7 @@ Intercepted CrossOriginIndexedGetter(uint32_t index, const PropertyCallbackInfo<
 Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_at) {
         if (dispatch->child_at(index, &info) == Intercepted::kYes) {
             Local<Value> child = info.GetReturnValue().Get();
             info.GetReturnValue().Set(DataDescriptor(isolate, isolate->GetCurrentContext(), child, true));
@@ -17835,8 +18507,8 @@ Intercepted CrossOriginIndexedDescriptor(uint32_t index, const PropertyCallbackI
 Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<Integer>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
-        void* window = CrossOriginPlatformObject(isolate, info.HolderV2());
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+        void* window = CrossOriginPlatformObject(isolate, info.Holder());
         if (window && index < dispatch->child_count(window)) {
             info.GetReturnValue().Set(static_cast<int>(PropertyAttribute::ReadOnly));
             return Intercepted::kYes;
@@ -17848,7 +18520,7 @@ Intercepted CrossOriginIndexedQuery(uint32_t index, const PropertyCallbackInfo<I
 
 /// [[Set]] of an array index: CrossOriginSet finds no setter - a
 /// SecurityError, as are [[Delete]] and [[DefineOwnProperty]].
-Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginIndexedSetter(uint32_t index, Local<Value> value, const PropertyCallbackInfo<Boolean>& info) {
     (void)index;
     (void)value;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -17861,7 +18533,7 @@ Intercepted CrossOriginIndexedDeleter(uint32_t index, const PropertyCallbackInfo
     return Intercepted::kYes;
 }
 
-Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<void>& info) {
+Intercepted CrossOriginIndexedDefiner(uint32_t index, const PropertyDescriptor& desc, const PropertyCallbackInfo<Boolean>& info) {
     (void)index;
     (void)desc;
     ThrowCrossOriginSecurityError(info.GetIsolate());
@@ -17874,8 +18546,8 @@ void CrossOriginIndexedEnumerator(const PropertyCallbackInfo<Array>& info) {
     Isolate* isolate = info.GetIsolate();
     const CrossOriginDispatch* dispatch = g_cross_origin.load(std::memory_order_acquire);
     uint32_t count = 0;
-    if (CrossOriginKindOf(info.Data()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
-        if (void* window = CrossOriginPlatformObject(isolate, info.HolderV2())) count = dispatch->child_count(window);
+    if (CrossOriginKindOf(info.DataV2().As<Value>()) == kCrossOriginWindow && dispatch && dispatch->child_count) {
+        if (void* window = CrossOriginPlatformObject(isolate, info.Holder())) count = dispatch->child_count(window);
     }
     Local<Context> context = isolate->GetCurrentContext();
     Local<Array> keys = Array::New(isolate, static_cast<int>(count));
@@ -18230,10 +18902,10 @@ int v8_RegExpBuiltinExecCaptures(Isolate* isolate, PatternMatcher* matcher, cons
         int32_t length = -1;
         if (element->IsString()) {
             Local<String> string = element.As<String>();
-            length = string->Utf8Length(isolate);
+            length = static_cast<int32_t>(string->Utf8Length(isolate));
             std::memcpy(at, &length, sizeof(length));
             at += sizeof(length);
-            if (length > 0) string->WriteUtf8(isolate, at, length, nullptr, String::NO_NULL_TERMINATION);
+            if (length > 0) string->WriteUtf8(isolate, at, static_cast<size_t>(length));
             at += length;
         } else {
             std::memcpy(at, &length, sizeof(length));
@@ -18288,11 +18960,11 @@ static void RefuseWasmStreaming(Isolate* isolate, CraneWasmResponseCompilation* 
 }
 
 /// Isolate::SetWasmStreamingCallback's callback: `info[0]` is what the call's
-/// source fulfilled with, `info.Data()` the Managed<WasmStreaming>.
+/// source fulfilled with, `info.DataV2().As<Value>()` the Managed<WasmStreaming>.
 static void ProtocolWasmStreamingCallback(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope scope(isolate);
-    auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.Data())};
+    auto* compilation = new CraneWasmResponseCompilation{isolate, WasmStreaming::Unpack(isolate, info.DataV2().As<Value>())};
     Local<Context> context = isolate->GetCurrentContext();
     auto dispatch = g_protocol_wasm_streaming.load(std::memory_order_acquire);
     if (!dispatch || context.IsEmpty()) {
@@ -18331,7 +19003,7 @@ void v8_WasmResponseCompilation_Finish(CraneWasmResponseCompilation* compilation
     {
         HandleScope scope(compilation->isolate);
         if (url_length != 0) compilation->streaming->SetUrl(url, url_length);
-        compilation->streaming->Finish();
+        compilation->streaming->Finish({});  // no code cache: no caching callback (d1834d91d32)
     }
     delete compilation;
 }

@@ -75,8 +75,6 @@ pub const MediaList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            mediaText: typedefs.CSSOMString = undefined,
-            length: u32 = undefined,
             _internal: ?*MediaListImpl.InternalState = null,
         },
     );

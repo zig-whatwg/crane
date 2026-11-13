@@ -18,6 +18,7 @@ const memory = @import("memory");
 // <time.h>, translated by build.zig (addCImport) with the target's libc headers,
 // the iPhoneOS SDK's for aarch64-ios.
 const c_time = @import("c_time");
+const signal_stack = @import("signal_stack.zig");
 
 const log = std.log.scoped(.platform);
 
@@ -235,6 +236,10 @@ fn threadMain(start: *Start) void {
         }
     }
     std.heap.c_allocator.destroy(start);
+    // Every thread the platform starts has its alternate signal stack
+    // (signal_stack.zig), released when its entry returns.
+    const stack = signal_stack.attach();
+    defer signal_stack.detach(stack);
     entry(context);
 }
 
@@ -259,6 +264,16 @@ pub fn joinThread(thread: platform.Thread) void {
     const handle: *std.Thread = @ptrFromInt(thread.handle);
     handle.join();
     std.heap.c_allocator.destroy(handle);
+}
+
+/// The calling thread's alternate signal stack, mapped with guard pages
+/// (signal_stack.zig); 0 when the thread keeps one it already has.
+pub fn attachSignalStack() platform.SignalStack {
+    return .{ .handle = signal_stack.attach() };
+}
+
+pub fn detachSignalStack(stack: platform.SignalStack) void {
+    signal_stack.detach(stack.handle);
 }
 
 // ---------------------------------------------------------------------------
@@ -385,6 +400,222 @@ const Statvfs = if (builtin.os.tag.isDarwin()) extern struct {
 };
 
 extern "c" fn statvfs(path: [*:0]const u8, buf: *Statvfs) c_int;
+
+// ---------------------------------------------------------------------------
+// 6.11 Address space: mmap, mprotect, madvise and munmap, with each OS's own
+// rules (docs/platform-protocol.md 6.11). PartitionAlloc's POSIX page
+// allocator is the model throughout (base/allocator/partition_allocator/src/
+// partition_alloc/page_allocator_internals_posix.h at Chromium 145): reserve
+// inaccessible; commit by protection; decommit by discarding in place,
+// before any protection change; never unmap a part while the range lives.
+// ---------------------------------------------------------------------------
+
+const is_darwin = builtin.os.tag.isDarwin();
+const is_linux = builtin.os.tag == .linux;
+
+pub fn pageSize() usize {
+    return std.heap.pageSize();
+}
+
+/// darwin: the label's VM tag - VM_MEMORY_APPLICATION_SPECIFIC_1 (240) on -
+/// passed in mmap's file descriptor as VM_MAKE_TAG does (tag << 24). vmmap
+/// and footprint show "App-Specific Tag 1" to "4"; Chrome uses 251-255 and V8
+/// 255 (PartitionAlloc's page_allocator.h). Elsewhere -1: anonymous memory.
+fn mapTag(label: platform.AddressLabel) c_int {
+    if (comptime !is_darwin) return -1;
+    return @bitCast(@as(u32, 240 + @as(u32, @backingInt(label))) << 24);
+}
+
+/// Linux's VMA name for a label: /proc/<pid>/maps shows `[anon:<name>]`.
+fn linuxName(label: platform.AddressLabel) [*:0]const u8 {
+    return switch (label) {
+        .node_cage => "crane-node-cage",
+        .objects => "crane-objects",
+        .bytes => "crane-bytes",
+        .heap_metadata => "crane-heap",
+    };
+}
+
+/// prctl's PR_SET_VMA and PR_SET_VMA_ANON_NAME (linux/prctl.h), which
+/// std.os.linux.PR does not name at this Zig (lane h1: the deep review's Z12).
+const PR_SET_VMA: c_int = 0x53564d41;
+const PR_SET_VMA_ANON_NAME: c_ulong = 0;
+
+fn addressError(err: std.c.E) Error {
+    return switch (err) {
+        .NOMEM => error.OutOfMemory,
+        .ACCES, .PERM => error.AccessDenied,
+        else => error.Io,
+    };
+}
+
+fn lastError() std.c.E {
+    return @fromBackingInt(@intCast(std.c._errno().*));
+}
+
+/// An inaccessible anonymous mapping of `length` bytes at `hint` (a hint, not
+/// MAP_FIXED: the kernel may place it elsewhere), or the error the OS gave.
+fn mapInaccessible(hint: usize, length: usize, label: platform.AddressLabel) Error!usize {
+    const flags: std.c.MAP = if (comptime is_linux)
+        .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .NORESERVE = true }
+    else
+        .{ .TYPE = .PRIVATE, .ANONYMOUS = true };
+    const at: ?*align(std.heap.page_size_min) anyopaque = if (hint == 0) null else @ptrFromInt(hint);
+    const mapped = std.c.mmap(at, length, .{}, flags, mapTag(label), 0);
+    if (mapped == std.c.MAP_FAILED) return addressError(lastError());
+    return @intFromPtr(mapped);
+}
+
+fn unmap(base: usize, length: usize) void {
+    if (length == 0) return;
+    if (std.c.munmap(@ptrFromInt(base), length) != 0) @panic("platform: munmap of a reservation's own pages failed");
+}
+
+/// Linux's part of a label, applied once to the whole of a range: its VMA
+/// name (Linux 5.17 and later with CONFIG_ANON_VMA_NAME; silently absent
+/// otherwise, as in PartitionAlloc's NameRegion) and, for the node cage,
+/// MADV_NOHUGEPAGE - a sparse pool of 16 KiB spans in 2 MiB super pages costs
+/// a whole huge page per touched super page under THP `always`, and
+/// khugepaged undoes span decommit (oss review R4, appendix P3: 512 kB live
+/// cost 64 MiB). The advice holds through later mprotects (P3's nohuge case).
+fn linuxLabel(base: usize, length: usize, label: platform.AddressLabel) void {
+    if (comptime !is_linux) return;
+    _ = std.c.prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, @as(c_ulong, base), @as(c_ulong, length), linuxName(label));
+    if (label == .node_cage) {
+        if (std.c.madvise(@ptrFromInt(base), length, std.os.linux.MADV.NOHUGEPAGE) != 0) {
+            log.debug("MADV_NOHUGEPAGE on {x}+{x}: {t}", .{ base, length, lastError() });
+        }
+    }
+}
+
+/// The highest address a random hint may name: 2^46, the half of a 47-bit
+/// user space the kernel can fill (PartitionAlloc's ASLR mask on 64-bit), and
+/// the lowest: 4 GiB, above darwin's page zero. A 39-bit or 42-bit kernel
+/// ignores a hint above its range and places the mapping itself.
+const hint_floor: u64 = 1 << 32;
+const hint_ceiling: u64 = 1 << 46;
+
+/// A random address `alignment_offset` above a multiple of `alignment` for a
+/// reservation of `size`, or null where there is no such room.
+fn randomHint(size: usize, alignment: usize, alignment_offset: usize) ?usize {
+    if (comptime @sizeOf(usize) < 8) return null;
+    const first: u64 = std.math.divCeil(u64, hint_floor, alignment) catch return null;
+    if (@as(u64, size) + alignment > hint_ceiling) return null;
+    const last: u64 = (hint_ceiling - size - alignment) / alignment;
+    if (last <= first) return null;
+    var bytes: [8]u8 = undefined;
+    fillRandom(&bytes);
+    const k = first + std.mem.readInt(u64, &bytes, .little) % (last - first);
+    return @intCast(k * alignment + alignment_offset);
+}
+
+fn checkRange(range: platform.AddressRange, offset: usize, length: usize) void {
+    const page = std.heap.pageSize();
+    if (offset % page != 0 or length % page != 0 or length == 0 or offset > range.size or length > range.size - offset)
+        @panic("platform: a page range outside its reservation, or not page-aligned");
+}
+
+/// Reserve: PartitionAlloc's AllocPagesWithAlignOffset - a few exact-size
+/// hints at random aligned addresses (kExactSizeTries), so a reservation
+/// leaves no holes behind and does not land where the last one was released
+/// (oss R12, appendix P4: over-reserve-and-trim alone got the released
+/// address back 7 of 7 times); then over-reserve by the alignment and trim.
+/// ThreadSanitizer builds skip the hints: a hint can fall outside TSan's
+/// application ranges, and TSan kills a process whose mapping lands there
+/// (tsan_interceptors_posix.cpp; Ladybird's 07a1107b7053).
+pub fn reserveAddressSpace(size: usize, alignment: usize, alignment_offset: usize, label: platform.AddressLabel) Error!platform.AddressRange {
+    const page = std.heap.pageSize();
+    if (size == 0 or size % page != 0 or alignment < page or !std.math.isPowerOfTwo(alignment) or
+        alignment_offset >= alignment or alignment_offset % page != 0)
+        @panic("platform.reserveAddressSpace: size, alignment or offset not page-aligned");
+
+    if (!builtin.sanitize_thread) {
+        var tries: usize = 0;
+        while (tries < 3) : (tries += 1) {
+            const hint = randomHint(size, alignment, alignment_offset) orelse break;
+            const got = try mapInaccessible(hint, size, label);
+            if (got % alignment == alignment_offset) {
+                linuxLabel(got, size, label);
+                return .{ .base = got, .size = size };
+            }
+            unmap(got, size);
+        }
+    }
+
+    const total = std.math.add(usize, size, alignment - page) catch return error.OutOfMemory;
+    const raw = try mapInaccessible(0, total, label);
+    const base = raw + ((alignment_offset -% raw) & (alignment - 1));
+    unmap(raw, base - raw);
+    unmap(base + size, raw + total - (base + size));
+    linuxLabel(base, size, label);
+    return .{ .base = base, .size = size };
+}
+
+/// darwin: a fresh inaccessible mapping over the uncommitted part, with the
+/// new tag (MAP_FIXED over the reservation's own pages, which XNU replaces in
+/// one step and restores if it fails). Linux: the VMA name and the huge-page
+/// advice (linuxLabel).
+pub fn labelAddressSpace(range: platform.AddressRange, offset: usize, length: usize, label: platform.AddressLabel) void {
+    checkRange(range, offset, length);
+    const base = range.base + offset;
+    if (comptime is_darwin) {
+        const mapped = std.c.mmap(@ptrFromInt(base), length, .{}, .{ .TYPE = .PRIVATE, .ANONYMOUS = true, .FIXED = true }, mapTag(label), 0);
+        if (mapped == std.c.MAP_FAILED) {
+            log.debug("labelAddressSpace {x}+{x}: {t}", .{ base, length, lastError() });
+        } else if (@intFromPtr(mapped) != base) {
+            @panic("platform.labelAddressSpace: MAP_FIXED placed the part elsewhere");
+        }
+    } else {
+        linuxLabel(base, length, label);
+    }
+}
+
+/// mprotect read-write; darwin then MADV_FREE_REUSE, so a page decommitted
+/// with MADV_FREE_REUSABLE counts in the footprint again (appendix P1: 64 of
+/// 64 MiB stayed "reusable" when written again without it). PartitionAlloc's
+/// RecommitSystemPagesInternal: "On macOS, to update accounting, we need to
+/// make another syscall" (crbug.com/823915). Harmless on a page never
+/// decommitted, so every commit makes it.
+pub fn commitPages(range: platform.AddressRange, offset: usize, length: usize) Error!void {
+    checkRange(range, offset, length);
+    const at: *align(std.heap.page_size_min) anyopaque = @ptrFromInt(range.base + offset);
+    if (std.c.mprotect(at, length, .{ .READ = true, .WRITE = true }) != 0) return addressError(lastError());
+    if (comptime is_darwin) {
+        if (std.c.madvise(at, length, std.c.MADV.FREE_REUSE) != 0) {
+            log.debug("MADV_FREE_REUSE on {x}+{x}: {t}", .{ range.base + offset, length, lastError() });
+        }
+    }
+}
+
+/// darwin: MADV_FREE_REUSABLE - the footprint drops at once - falling back
+/// to MADV_DONTNEED when it fails (EPERM on an inaccessible page or a range
+/// with one in it; PartitionAlloc: it "sometimes fails"); Linux and other
+/// POSIX systems: MADV_DONTNEED, so the next touch reads zero (never
+/// MADV_FREE, which "makes our memory measurements less predictable").
+pub fn decommitPages(range: platform.AddressRange, offset: usize, length: usize) Error!void {
+    checkRange(range, offset, length);
+    const at: *align(std.heap.page_size_min) anyopaque = @ptrFromInt(range.base + offset);
+    if (comptime is_darwin) {
+        if (std.c.madvise(at, length, std.c.MADV.FREE_REUSABLE) == 0) return;
+        log.debug("MADV_FREE_REUSABLE on {x}+{x}: {t}; falling back to MADV_DONTNEED", .{ range.base + offset, length, lastError() });
+    }
+    if (std.c.madvise(at, length, std.c.MADV.DONTNEED) != 0) return addressError(lastError());
+}
+
+pub fn protectPages(range: platform.AddressRange, offset: usize, length: usize, access: platform.PageAccess) Error!void {
+    checkRange(range, offset, length);
+    const at: *align(std.heap.page_size_min) anyopaque = @ptrFromInt(range.base + offset);
+    const prot: std.c.PROT = switch (access) {
+        .none => .{},
+        .read => .{ .READ = true },
+        .read_write => .{ .READ = true, .WRITE = true },
+    };
+    if (std.c.mprotect(at, length, prot) != 0) return addressError(lastError());
+}
+
+pub fn releaseAddressSpace(range: platform.AddressRange) void {
+    unmap(range.base, range.size);
+}
 
 // ---------------------------------------------------------------------------
 // Identity: today's strings (src/webidl/impls/Navigator.zig,

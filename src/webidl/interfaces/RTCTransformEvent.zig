@@ -68,7 +68,6 @@ pub const RTCTransformEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transformer: *runtime.Instance = undefined,
             _internal: ?*RTCTransformEventImpl.InternalState = null,
         },
     );

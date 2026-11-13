@@ -72,12 +72,6 @@ pub const NotRestoredReasons = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            src: ?runtime.USVString = null,
-            id: ?runtime.DOMString = null,
-            name: ?runtime.DOMString = null,
-            url: ?runtime.USVString = null,
-            reasons: ?runtime.JSValue = null,
-            children: ?runtime.JSValue = null,
             _internal: ?*NotRestoredReasonsImpl.InternalState = null,
         },
     );

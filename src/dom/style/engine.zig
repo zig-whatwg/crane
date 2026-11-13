@@ -27,7 +27,7 @@
 //! rules against the host - ordered by tree context (Cascade 5 6.1: for
 //! normal declarations the outer context wins, for important ones the
 //! inner); the document's sheets do not apply in a shadow tree. Slot
-//! assignment, which can change with no mutation, moves `slot_version`,
+//! assignment, which can change with no mutation, moves the slot version,
 //! part of every cached style's key. ::slotted() rules of a slot's tree
 //! apply to the elements assigned to the slot, after flattening, and
 //! ::part() rules of a host's tree to the elements of its shadow tree with
@@ -72,6 +72,7 @@ const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
 pub const available_images = @import("available_images.zig");
+const matched_properties_cache = @import("matched_properties_cache.zig");
 
 const ComputedStyle = css.computed_style.ComputedStyle;
 const MediaValues = css.media_queries.MediaValues;
@@ -192,10 +193,13 @@ pub const StyleEngine = struct {
     /// DocumentRareData pattern): the engine is embedded in Document's state,
     /// which sits just under its allocation size class.
     rare: ?*Rare = null,
-    /// Moves whenever a slot's assigned nodes change (DOM "assign
-    /// slottables"): part of each cached style's key, since a slotted
-    /// element inherits from its slot.
-    slot_version: u64 = 1,
+    /// The matched-properties cache (matched_properties_cache.zig: Blink's
+    /// MatchedPropertiesCache, WebKit's MatchedDeclarationsCache), made at
+    /// the first style whose cascade wrote a group of its own: nearly every
+    /// document that resolves a style makes one, so it is no Rare state. Its
+    /// word was the slot version's, which moved to Rare: only documents with
+    /// slots move it (tests/dom/style_engine_size_test.zig).
+    matched_properties: ?*matched_properties_cache.MatchedPropertiesCache = null,
     /// Moves on every change to the set of sheets or one of their flags
     /// (owners connecting and disconnecting, media, disabled, title).
     sheets_version: u64 = 1,
@@ -268,6 +272,11 @@ pub const StyleEngine = struct {
         /// document declares any, and what its last step-16 style update saw
         /// (`AnimationGate`).
         animations: AnimationGate = .{},
+        /// Moves whenever a slot's assigned nodes change (DOM "assign
+        /// slottables"): part of each cached style's key, since a slotted
+        /// element inherits from its slot. 1 while the engine has no Rare
+        /// (StyleEngine.slotVersion).
+        slot_version: u64 = 1,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             if (self.resources) |resources| resources.destroy();
@@ -291,6 +300,10 @@ pub const StyleEngine = struct {
     }
 
     pub fn deinit(self: *StyleEngine) void {
+        // The cache's holders first: they hold values only, never the sheets
+        // or anything else this engine owns.
+        if (self.matched_properties) |cache| cache.destroy();
+        self.matched_properties = null;
         if (self.active) |*a| a.deinit(self.allocator);
         self.active = null;
         self.owners.deinit(self.allocator);
@@ -307,6 +320,34 @@ pub const StyleEngine = struct {
         rare.* = .{};
         self.rare = rare;
         return rare;
+    }
+
+    /// The matched-properties cache, made on first use; null when there is
+    /// no room for it (every resolution then runs the cascade, unshared).
+    fn matchedPropertiesCache(self: *StyleEngine) ?*matched_properties_cache.MatchedPropertiesCache {
+        return self.matched_properties orelse {
+            const made = matched_properties_cache.MatchedPropertiesCache.create(self.allocator) catch return null;
+            self.matched_properties = made;
+            return made;
+        };
+    }
+
+    /// The slot version every cached style's key carries.
+    pub fn slotVersion(self: *const StyleEngine) u64 {
+        const rare = self.rare orelse return 1;
+        return rare.slot_version;
+    }
+
+    /// A slot's assigned nodes changed: every cached style's key moves.
+    fn moveSlotVersion(self: *StyleEngine) void {
+        const rare = self.ensureRare() catch {
+            // No room for the version: the generation, in every cached
+            // style's key too, moves instead, so every style - the slotted
+            // ones included - is resolved again.
+            self.generation +%= 1;
+            return;
+        };
+        rare.slot_version +%= 1;
     }
 
     fn ensurePropertyRegistry(self: *StyleEngine) Error!*css.property_registry.Registry {
@@ -975,7 +1016,7 @@ fn colorSchemeMetaContent(element: *runtime.Instance) ?[]const u8 {
     const data = element_data.of(element) orelse return null;
     const ns = data.namespaceSlice() orelse return null;
     if (!std.mem.eql(u8, ns, html_namespace)) return null;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "meta")) return null;
+    if (!std.mem.eql(u8, data.localName(), "meta")) return null;
     const name = data.findAttribute(null, "name") orelse return null;
     if (!std.ascii.eqlIgnoreCase(name.value, "color-scheme")) return null;
     const content = data.findAttribute(null, "content") orelse return null;
@@ -1015,6 +1056,9 @@ const Resolution = struct {
     /// registeredSnapshot), found once per style read; null when none.
     registered: ?*css.registered_properties.Snapshot = null,
     matched: std.ArrayList(Matched) = .empty,
+    /// collectMatched matched a block of the element's own (its style
+    /// attribute's, a presentational hint ElementStyle keeps).
+    own_blocks: bool = false,
     candidates: std.ArrayList(u32) = .empty,
 
     fn deinit(self: *Resolution) void {
@@ -1055,7 +1099,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
     };
     defer res.deinit();
     // CSS Color Adjustment 1 2.1: "the page color scheme is determined by
@@ -1205,7 +1249,7 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
         .document = document,
         .engine = engine,
         .active = active,
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
     };
     defer res.deinit();
     var reads: selector_matching.StateReads = .{};
@@ -1250,7 +1294,7 @@ fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
         if (c != child) return false;
         const e = instanceOf(c) orelse return false;
         const data = element_data.of(e) orelse return false;
-        return std.mem.eql(u8, data.local_name.asSlice(), "button") and std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace);
+        return std.mem.eql(u8, data.localName(), "button") and std.mem.eql(u8, data.namespaceSlice() orelse "", html_namespace);
     }
     return false;
 }
@@ -1317,6 +1361,7 @@ const Resolved = struct {
 /// before the animated cascade, so a new transition's value applies at once.
 fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, parent: ?*const ComputedStyle, is_root: bool, reads: *selector_matching.StateReads, change: StyleChange) Error!Resolved {
     res.matched.clearRetainingCapacity();
+    res.own_blocks = false;
     try collectMatched(res, element, node, state, pseudo, reads);
     var random_context: RandomContext = .{
         .engine = res.engine,
@@ -1358,7 +1403,7 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         // HTML 15.5.16: a select and its picker support base appearance.
         .appearance_support = appearanceSupport(element, pseudo),
     };
-    const base = try css.cascade.cascade(ctx, res.matched.items);
+    const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();
     const rendered = change.parent_rendered and base.display().box != .none;
     var transitions_changed = false;
@@ -1387,6 +1432,83 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         }
     }
     return .{ .style = base, .base = null, .rendered = rendered, .transitions_changed = transitions_changed };
+}
+
+/// The style the cascade computes for `ctx` over res.matched (CSS Cascade 5
+/// section 4.4) - from the matched-properties cache when an element the same
+/// declarations matched under an equal parent has it already, without
+/// running the cascade (Blink StyleResolver::ApplyMatchedCache, WebKit
+/// Resolver::applyMatchedProperties; matched_properties_cache.zig). On a miss
+/// the cascade runs, records what it read, and the cache shares and keeps
+/// the result. The caller owns the style.
+fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8) Error!*ComputedStyle {
+    const cache = res.engine.matchedPropertiesCache() orelse return css.cascade.cascade(ctx, res.matched.items);
+    var lookup: matched_properties_cache.Lookup = .{
+        .key = matched_properties_cache.keyOf(res.matched.items, pseudo, ctx.parent),
+        .generation = res.key.generation,
+        .matched = res.matched.items,
+        .parent = ctx.parent,
+        .inputs = .of(ctx),
+    };
+    // What no entry can stand for (design 3.2): the root and a select or its
+    // picker (WebKit isCacheable: the document element, base appearance) and
+    // a pseudo-element outside ::before/::after/::marker. A resolution that
+    // matched a block of the element's own is looked up by that block's
+    // content (design 3.6; Blink MatchResult::AddMatchedProperties).
+    const pseudo_slot = matched_properties_cache.Pseudo.of(pseudo);
+    const cacheable = ctx.parent != null and !ctx.is_root and ctx.appearance_support == .none and
+        pseudo_slot != null;
+    if (cacheable) {
+        lookup.pseudo = pseudo_slot.?;
+        if (cache.find(lookup)) |held| {
+            const style = try held.clone(ctx.allocator);
+            if (comptime builtin.mode == .debug) selfCheck(ctx, res.matched.items, style);
+            return style;
+        }
+    }
+    var dependencies: css.cascade.Dependencies = .{};
+    var recording = ctx;
+    if (cacheable) recording.dependencies = &dependencies;
+    const style = try css.cascade.cascade(recording, res.matched.items);
+    // A miss with an own block: `add` adopts and admits by its shape key
+    // too (a hit never reads it, so it is made here).
+    if (res.own_blocks) lookup.shape = matched_properties_cache.shapeOf(res.matched.items, pseudo, ctx.parent);
+    cache.add(lookup, if (cacheable) dependencies else null, style);
+    // Debug builds: the style adoption left (its groups and records maybe an
+    // entry's now) reads what the cascade computed. With the check on every
+    // hit, every style - so every parent a key and a correspondence read -
+    // is checked.
+    if (comptime builtin.mode == .debug) missCheck(ctx, res.matched.items, style);
+    return style;
+}
+
+/// Debug builds (the bug-finding WPT runner, the unit tests): a cache hit
+/// is checked against the cascade it skipped - the same values, records and
+/// flags, and a cascade that reads nothing of the element's own. A
+/// difference is a wrong computed value: stop there.
+fn selfCheck(ctx: css.cascade.Context, matched: []const Matched, style: *const ComputedStyle) void {
+    const difference = matched_properties_cache.differenceFromCascade(ctx, matched, style) catch return;
+    if (difference) |d| switch (d) {
+        .longhand => |l| std.debug.panic("matched-properties cache hit differs from the cascade in {s}", .{@tagName(l)}),
+        .custom => |name| std.debug.panic("matched-properties cache hit differs from the cascade in custom property {s}", .{name}),
+        .flags => std.debug.panic("matched-properties cache hit differs from the cascade in its header flags", .{}),
+        .uncacheable => |deps| std.debug.panic("matched-properties cache hit for a cascade that reads its element's own inputs: {any}", .{deps}),
+    };
+}
+
+/// Debug builds: a missed style after adoption (`add` may have replaced its
+/// groups and custom property records with an entry's equal ones) against
+/// the cascade run again - every longhand (Value.eql), every custom property
+/// by name through the readers, the header flags. Unlike a hit, a miss may
+/// read inputs of its own.
+fn missCheck(ctx: css.cascade.Context, matched: []const Matched, style: *const ComputedStyle) void {
+    const difference = matched_properties_cache.differenceFromCascade(ctx, matched, style) catch return;
+    if (difference) |d| switch (d) {
+        .longhand => |l| std.debug.panic("matched-properties cache adoption changed {s}", .{@tagName(l)}),
+        .custom => |name| std.debug.panic("matched-properties cache adoption changed custom property {s}", .{name}),
+        .flags => std.debug.panic("matched-properties cache adoption changed the header flags", .{}),
+        .uncacheable => {},
+    };
 }
 
 /// The @keyframes lookup a resolution gives its CSS animations
@@ -1479,15 +1601,14 @@ fn containerEligibility(raw: *anyopaque, axis: css.math_values.Context.Container
             // container farther outward may still serve a hidden consumer.
             eligible = false;
         } else if (!eligible) {
-            const value = computed.get(.container_type);
-            const supports_axis = if (value == .text) blk: {
-                const text = value.text.bytes;
-                if (std.mem.eql(u8, text, "size") or std.mem.eql(u8, text, "size scroll-state")) break :blk true;
-                if (std.mem.eql(u8, text, "inline-size") or std.mem.eql(u8, text, "inline-size scroll-state")) {
+            // Conditional 5 §5.1: a size or inline-size container, with
+            // or without scroll-state and anchored (Anchor Position 2 §2.1).
+            const supports_axis = if (css.container_values.sizeType(computed.get(.container_type))) |kind| switch (kind) {
+                .size => true,
+                .inline_size => blk: {
                     const vertical = computed.keyword(.writing_mode) != .horizontal_tb;
                     break :blk axis == (if (vertical) css.math_values.Context.ContainerAxis.height else .width);
-                }
-                break :blk false;
+                },
             } else false;
             if (supports_axis and @import("content_visibility.zig").applies(element, computed.display())) eligible = true;
         }
@@ -1702,7 +1823,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
 
     // The keys the rule buckets file rules under.
     var lower_buffer: [64]u8 = undefined;
-    const local = data.local_name.asSlice();
+    const local = data.localName();
     const local_lower = if (local.len <= lower_buffer.len) std.ascii.lowerString(lower_buffer[0..local.len], local) else local;
     var names_storage: [32][]const u8 = undefined;
     var name_buffers: [32][48]u8 = undefined;
@@ -1723,8 +1844,8 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         name_count += 1;
     }
     const keys: sheet_mod.ElementKeys = .{
-        .id = data.id.asSlice(),
-        .class_name = data.class_name.asSlice(),
+        .id = data.idValue(),
+        .class_name = data.classValue(),
         .local_name_lower = local_lower,
         .attribute_names = names_storage[0..name_count],
     };
@@ -1742,10 +1863,12 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
     }
     if (background_eligible) if (try resource_loading.backgroundHint(element, state, background)) |hint| {
-        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } } });
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
+        res.own_blocks = true;
     };
     if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
-        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint } });
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true } });
+        res.own_blocks = true;
     };
 
     // The author origin (CSS Scoping 3): the sheets of the element's own
@@ -1836,7 +1959,8 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         const n = ns.?;
         if (std.mem.eql(u8, n, html_namespace) or std.mem.eql(u8, n, svg_namespace) or std.mem.eql(u8, n, mathml_namespace)) {
             if (try inlineBlock(element, state, quirks)) |block| {
-                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
+                try res.matched.append(res.allocator, .{ .block = block, .source = .{ .origin = .author, .element_attached = true, .per_element = true, .tree_depth = own_depth, .tree_scope = .{ .serial = own_scope } } });
+                res.own_blocks = true;
             }
         }
     }
@@ -2168,7 +2292,7 @@ pub fn recalculateStyles(document: *runtime.Instance) void {
     if (!engine.declaresAnimations()) return;
     const rare = engine.rare orelse return;
     const inputs: AnimationGate.Inputs = .{
-        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slot_version, .singletons = singletonKey(document) },
+        .key = .{ .tree_version = refcount.treeVersion(document) orelse 0, .generation = engine.generation, .slot_version = engine.slotVersion(), .singletons = singletonKey(document) },
         .sheets_version = engine.sheets_version,
     };
     if (rare.animations.updated) |updated| if (updated.eql(inputs) and !rare.animations.updated_volatile) return;
@@ -2450,7 +2574,7 @@ pub fn slotAssignmentChanged(slot: *NodeBase) void {
     const instance = instanceOf(slot) orelse return;
     const document = (interfaces.Node.get_ownerDocument(instance) catch null) orelse return;
     const engine = hooks.engineOf(document) orelse return;
-    engine.slot_version +%= 1;
+    engine.moveSlotVersion();
     if (engine.resourceState()) |resources| resources.invalidate();
 }
 

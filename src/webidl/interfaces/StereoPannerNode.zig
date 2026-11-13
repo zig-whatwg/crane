@@ -83,7 +83,6 @@ pub const StereoPannerNode = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pan: *runtime.Instance = undefined,
             _internal: ?*StereoPannerNodeImpl.InternalState = null,
         },
     );

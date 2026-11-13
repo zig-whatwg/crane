@@ -112,10 +112,9 @@ const Facts = struct {
 /// The HTML elements a name attribute can make a named element or object.
 const NamedType = enum { other, embed, form, iframe, img, object };
 
-fn namedTypeOf(data: *const element_data.ElementData) NamedType {
-    const namespace = data.namespace_uri orelse return .other;
-    if (!std.mem.eql(u8, namespace.asSlice(), html_namespace)) return .other;
-    const local = data.local_name.asSlice();
+fn namedTypeOf(data: element_data.View) NamedType {
+    if (!data.name.isHtml()) return .other;
+    const local = data.localName();
     // Local names are case-sensitive: an HTML element made as "IMG" by
     // createElementNS is no img element.
     inline for (.{ "embed", "form", "iframe", "img", "object" }, .{ NamedType.embed, .form, .iframe, .img, .object }) |name, value| {
@@ -124,10 +123,10 @@ fn namedTypeOf(data: *const element_data.ElementData) NamedType {
     return .other;
 }
 
-fn factsOfData(data: *const element_data.ElementData) Facts {
+fn factsOfData(data: element_data.View) Facts {
     const named_type = namedTypeOf(data);
     const name: []const u8 = if (named_type == .other) "" else if (element_data.getAttributeByNamespaceAndLocalName(data, null, "name")) |attribute| attribute.value else "";
-    return .{ .named_type = named_type, .id = data.id.asSlice(), .name = name };
+    return .{ .named_type = named_type, .id = data.idValue(), .name = name };
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
@@ -590,11 +589,15 @@ pub const Change = struct {
     member: Link,
 };
 
-/// What the element's name attribute was, for `beginChange`.
+/// What changed, for `beginChange`: the element's ID or its name attribute,
+/// and the value it had.
 pub const OldName = union(enum) {
-    /// Its name attribute stands (an ID change).
-    current,
-    /// It changed from this value ("" for none).
+    /// Its ID changed from this value ("" for none); its name attribute
+    /// stands. The ID is read from the attribute list (lane nd2 N3:
+    /// ElementData.idValue), which already holds the new value when the
+    /// change steps run - so the old one is passed, as the name's is.
+    id_was: []const u8,
+    /// Its name attribute changed from this value ("" for none).
     was: []const u8,
 };
 
@@ -602,10 +605,10 @@ pub const OldName = union(enum) {
 /// out of its tree scope's maps as they hold it - its current ID, and
 /// `old_name` or its current name. Null when it is in no tree scope. `data`
 /// is the element's own (Element passes it: no lookup).
-pub fn beginChange(element: *runtime.Instance, data: *const element_data.ElementData, old_name: OldName) ?Change {
+pub fn beginChange(element: *runtime.Instance, data: element_data.View, old_name: OldName) ?Change {
     var facts = factsOfData(data);
     switch (old_name) {
-        .current => {},
+        .id_was => |value| facts.id = value,
         // No kind reads the name of an element of no named type.
         .was => |value| {
             if (facts.named_type == .other) return null;
@@ -624,7 +627,7 @@ pub fn beginChange(element: *runtime.Instance, data: *const element_data.Element
 }
 
 /// After `element`'s ID or name changed: put it back as it is now.
-pub fn endChange(data: *const element_data.ElementData, change: ?Change) void {
+pub fn endChange(data: element_data.View, change: ?Change) void {
     const taken = change orelse return;
     if (taken.maps.degraded) return;
     const facts = factsOfData(data);

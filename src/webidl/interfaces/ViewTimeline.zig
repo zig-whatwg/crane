@@ -71,9 +71,6 @@ pub const ViewTimeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            subject: *runtime.Instance = undefined,
-            startOffset: *runtime.Instance = undefined,
-            endOffset: *runtime.Instance = undefined,
             _internal: ?*ViewTimelineImpl.InternalState = null,
         },
     );

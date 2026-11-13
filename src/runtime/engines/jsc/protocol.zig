@@ -171,14 +171,6 @@ pub fn runEngineTasks(_: *Agent) bool {
 pub fn nextEngineTaskDelay(_: *Agent) ?u64 {
     return null;
 }
-// JavaScriptCore's public API gives an embedder no idle-time work to run
-// (its collector schedules itself on its own run loop timers): nothing posted.
-pub fn hasEngineIdleTasks(_: *Agent) bool {
-    return false;
-}
-pub fn runEngineIdleTasks(_: *Agent, _: u64) bool {
-    return false;
-}
 
 pub fn requestGarbageCollection(_: *Agent) void {}
 // TODO(protocol): JSGarbageCollect(ctx) once the adapter keeps a context per

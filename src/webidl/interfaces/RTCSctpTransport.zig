@@ -80,11 +80,6 @@ pub const RTCSctpTransport = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            transport: *runtime.Instance = undefined,
-            state: enums.RTCSctpTransportState = undefined,
-            maxMessageSize: ?f64 = null,
-            maxChannels: ?u16 = null,
-            onstatechange: typedefs.EventHandler = undefined,
             _internal: ?*RTCSctpTransportImpl.InternalState = null,
         },
     );

@@ -74,9 +74,6 @@ pub const IdentityCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            token: runtime.JSValue = undefined,
-            isAutoSelected: bool = undefined,
-            configURL: runtime.USVString = undefined,
             _internal: ?*IdentityCredentialImpl.InternalState = null,
         },
     );

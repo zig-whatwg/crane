@@ -145,6 +145,26 @@ It drains at a requested collection, at each realm's end and at the agent's
 end (no event loop slices it), and goes with the agent before its isolate is
 disposed. JavaScriptCore, QuickJS and the test adapter answer null.
 
+The same queue carries what the adapter owes for the wrappers its collector
+found dead (`DeferredTeardown.Owed.finalizers`, `finalizer_steps`): an
+engine whose collector may not run a finalizer itself (V8 15.7 runs its
+second pass under DisallowJSObjectModification) only records the dead wrapper
+and sets that bit - a store, no call into the host - and the finalizers run at
+the agent's safe points: between tasks (the engine-task step, a requested
+collection's return) and, inside a task, at the outermost binding exit,
+before the trees it also owes. They never run beneath a running finalizer,
+nor while the returning binding's exception is pending (they stay owed).
+Script inside a callback never reaches that exit, so ONE thing runs at a
+binding's return into a callback's own script (no other binding between the
+two): the finalizer of an object a script-called constructor made since the
+innermost callback invocation on the stack began - no DOM algorithm on the
+stack can hold it. The queue keeps the agent's callback clock for that
+(`DeferredTeardown.Callbacks`: `enterCallback` / `leaveCallback` around each
+of the three callback operations, `freshStamp` for the constructor
+trampoline); everything else - nodes, what an operation returned, older
+objects, the trees, the relief, the drain, the report - waits for depth zero
+(src/runtime/engines/v8/finalizer_safe_point.zig).
+
 **External memory: the engine counts the host's DOM.** The engine collects
 when its own heap grows, and a wrapper of a few dozen bytes keeps a native
 tree alive, so a script that makes and drops trees allocates almost nothing the
@@ -382,7 +402,7 @@ capability the branch compiles out.
 | `host_clock` | native (`AgentOptions.clock` goes into the isolate's record before it initializes; CranePlatform's CurrentClockTimeMillis, CurrentClockTimeMilliseconds and CurrentClockTimeMillisecondsHighResolution - what Date reads, 13.1 JSDate::CurrentTimeValue - answer the clock of the isolate current on the asking thread, else the backend platform's; V8's own MonotonicallyIncreasingTime stays the backend's) | unsupported - the public C API has no clock hook (Date reads WTF's wall clock) | Date reads the engine's clock: a Browser with a virtual clock has virtual timers and HR-Time but a real Date |
 | `seeded_random` | native (`AgentOptions.random_seed` goes into the isolate's record before it initializes; the V8::SetEntropySource callback, installed once by v8_Platform_Start, answers that seed for every random number generator V8 makes while the isolate is current - its own, which seeds each context's Math.random (math-random.cc) - and false otherwise, so an unseeded isolate gets V8's own entropy exactly as before; never the process-wide --random-seed, which gives every isolate one sequence) | unsupported - JSGlobalObject's weak random is seeded by the private, process-wide forceWeakRandomSeed option; emulation is possible by replacing Math.random per global with JSObjectMakeFunctionWithCallback | Math.random keeps the engine's entropy: a seeded Browser replays its timers but not Math.random |
 | `repl_mode` | native (an inspector session of the agent's own - V8Inspector::create on the agent's isolate, made on the console's first use, deleted at the agent's end after its last checkpoint - dispatching Runtime.evaluate with `replMode: true`, as Chrome DevTools' console and Deno's REPL do; V8 13.1's REPL scripts, v8::debug::EvaluateGlobal's repl flag, are public only through the inspector) | unsupported - no REPL mode in the public C API (QuickJS: JS_EVAL_FLAG_ASYNC, not wired) | the console evaluates each input as a classic script of its own (`evaluateClassicScript`) - no top-level await, a re-declaration is a SyntaxError, every line is a whole input - and says so when it starts |
-| `external_memory` | native (`AgentOptions.external_memory`: the figure's change goes to Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding exit and each microtask checkpoint outside a DOM algorithm, in 128 KB steps, and the agent's end takes back what it reported; V8 13.1 starts incremental marking past its low-water mark + 64 MB and collects in full past half its old-generation limit) | unsupported - JSReportExtraMemoryCost is not public API (QuickJS counts only its own allocations) | the option is ignored: the engine collects on its own heap's growth alone, so a dropped wrapper's native tree waits for a collection that growth brings |
+| `external_memory` | native (`AgentOptions.external_memory`: the figure's change goes to Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding exit and each microtask checkpoint outside a DOM algorithm, in 128 KB steps, through the agent's v8::ExternalMemoryAccounter, and the agent's end takes back what it reported; V8 15.7 counts the figure toward its global allocation limit, starts incremental marking when that is reached and collects when it is overshot by a large margin - Heap::UpdateExternalMemory) | unsupported - JSReportExtraMemoryCost is not public API (QuickJS counts only its own allocations) | the option is ignored: the engine collects on its own heap's growth alone, so a dropped wrapper's native tree waits for a collection that growth brings |
 | `wrapper_tracing` | native (the wrapper redesign: the walk, dom.wrapper_tracing reached from NodeAnchor::Trace and the keeps in the collection's atomic pause, and from P6 the holders' traces, reached from each holder wrapper's HolderAnchor; P7 deleted node tracing's JS edges - wrapper_cache.zig drawTreeEdges and the upward closure - so `joinOpaqueRoot` / `leaveOpaqueRoot` / `keepOpaqueRoot` for a node compile out) | unsupported - no node is wrapped (QuickJS's gc_mark would call the hook; public-API JavaScriptCore would emulate with opaque-root edges, design section 5) | only a wrapper script reaches is kept: an expando on a node script reaches only through its tree can be lost |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
@@ -395,7 +415,7 @@ adapter will use Crane's own walker (src/html/structured_clone).
 
 | Area | Operations |
 |---|---|
-| Engine and agents | `initializeBeforeThreadCreation` (a host's first step, in its `main` on the main thread before it - or a test runner - creates any thread: per-process engine state that only threads created after it inherit. V8 makes its platform there, and with it the memory protection key of its thread isolation on x86-64 Linux with PKU, which a thread that already existed cannot read - its first read of V8's JSDispatchTable faults. A process that never calls it runs V8 without thread isolation, which never faults (Node's platform gives V8 no thread-isolated allocator either); Chromium makes the same call first in content main, gin::GetThreadIsolationData().InitializeBeforeThreadCreation(). Called by the crane, repl, wpt_runner, gc_bench and snapshot-generator mains and the Crane test runner; JSC, QuickJS and the test adapter have nothing to do), `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks` and, optionally, its `deferred_teardown` queue, its `clock` [host_clock] - an `AgentClock`, the wall clock Date reads, for a Browser whose clock is not the process's - and its `random_seed` [seeded_random] - Math.random's per-agent seed, for a Browser that replays a run, and its `external_memory` [external_memory] - the native memory its objects keep alive, which the engine counts toward its collections), `destroyAgent`, `releaseNodeWrappers` (the agent runs no more script: every node wrapper's counted reference is let go and its node's slot emptied, so the host's last drain of the agent's deferred teardown queue frees the trees only wrappers held - Browser.deinit calls it after the last realm's end and before that drain; idempotent, and `destroyAgent` does it for a host that did not; the wrapper redesign's P2, a node's wrapper being its agent's and no longer its realm's; JSC, QuickJS and the test adapter keep no node wrapper and do nothing), `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `nextEngineTaskDelay` (nanoseconds until queued work, zero when due, null when empty; foreign posts wake the optional retained `AgentOptions.engine_task_sink`; the host recomputes its wait bound and only the agent thread runs tasks; teardown closes posting before releasing the sink), `hasEngineIdleTasks` and `runEngineIdleTasks` (the engine's idle work, for an agent made with `AgentOptions.idle_periods`: whether it has any posted, and doing it in the `time_left_ns` an idle period of the host's event loop has left - HTML 8.1.7.3 step 5's computeDeadline, the deadline requestIdleCallback gets; the Browser's loop starts an idle period for it when no window waits for one and gives it what the windows' idle callbacks leave (src/browser/event_loop.zig steps 2d-2e). V8 runs its idle tasks there - cppgc's incremental sweep, a young-generation collection after a context's disposal - as Chrome's gin and Blink do (gin's per-isolate EnableIdleTasks, Blink's V8IdleTaskRunner); JSC, QuickJS and the test adapter have none; lane wr1 batch 10), `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentRestoredFromSnapshot` (whether the agent was restored from the engine's snapshot, so its Window realms can be: a restore the adapter refused or that failed answers false, and the host makes its realms afresh - V8 keeps one read-only heap per process, so an agent asked for the snapshot while isolates made without it live is made without it), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `deferredTeardownOf` (the AgentOptions.deferred_teardown queue it was made with, handed back the same way - or, made without one, the adapter's own for it: where the DOM queues a tree whose counts reached zero), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
+| Engine and agents | `initializeBeforeThreadCreation` (a host's first step, in its `main` on the main thread before it - or a test runner - creates any thread: per-process engine state that only threads created after it inherit. V8 makes its platform there, and with it the memory protection key of its thread isolation on x86-64 Linux with PKU, which a thread that already existed cannot read - its first read of V8's JSDispatchTable faults. A process that never calls it runs V8 without thread isolation, which never faults (Node's platform gives V8 no thread-isolated allocator either); Chromium makes the same call first in content main, gin::GetThreadIsolationData().InitializeBeforeThreadCreation(). Called by the crane, repl, wpt_runner, gc_bench and snapshot-generator mains and the Crane test runner; JSC, QuickJS and the test adapter have nothing to do), `initializeEngine`, `deinitializeEngine`, `createAgent` (with the host's `HostHooks` and, optionally, its `deferred_teardown` queue, its `clock` [host_clock] - an `AgentClock`, the wall clock Date reads, for a Browser whose clock is not the process's - and its `random_seed` [seeded_random] - Math.random's per-agent seed, for a Browser that replays a run, and its `external_memory` [external_memory] - the native memory its objects keep alive, which the engine counts toward its collections), `destroyAgent`, `releaseNodeWrappers` (the agent runs no more script: every node wrapper's counted reference is let go and its node's slot emptied, so the host's last drain of the agent's deferred teardown queue frees the trees only wrappers held - Browser.deinit calls it after the last realm's end and before that drain; idempotent, and `destroyAgent` does it for a host that did not; the wrapper redesign's P2, a node's wrapper being its agent's and no longer its realm's; JSC, QuickJS and the test adapter keep no node wrapper and do nothing), `hasRunningScript`, `hasPendingEngineWork`, `runEngineTasks`, `nextEngineTaskDelay` (nanoseconds until queued work, zero when due, null when empty; foreign posts wake the optional retained `AgentOptions.engine_task_sink`; the host recomputes its wait bound and only the agent thread runs tasks; teardown closes posting before releasing the sink), `notifyMemoryPressure` (a page let go: `.critical`; a hint: `.moderate`), `agentRestoredFromSnapshot` (whether the agent was restored from the engine's snapshot, so its Window realms can be: a restore the adapter refused or that failed answers false, and the host makes its realms afresh - V8 keeps one read-only heap per process, so an agent asked for the snapshot while isolates made without it live is made without it), `agentHost` (the AgentOptions.host pointer the agent was made with, handed back; null once destroyed), `deferredTeardownOf` (the AgentOptions.deferred_teardown queue it was made with, handed back the same way - or, made without one, the adapter's own for it: where the DOM queues a tree whose counts reached zero), `requestGarbageCollection` (testing only), `abortRunningScript` [script_abort] (HTML 8.1.4.5 "abort a running script", from any thread: a resource limit's abort "without an exception") and `resumeScripts` [script_abort] (the agent may run script again) |
 | Realms | `createWindowRealm`, `destroyWindowRealm` (how, as `WindowRealmEnd`: `.global_detached` - its page is gone or a navigation replaced its Window, Blink kGlobalObjectIsDetached (a frame realm a navigation replaced is detached and ends once collected or with its page); `.navigable_destroyed` - HTML "destroy a child navigable", Blink kFrameIsDetached: the global stays attached, severed from the Window), `createWorkerRealm` (HTML "run a worker" step 5: `WorkerRealmOptions.global` picks the global object, a DedicatedWorkerGlobalScope, for a shared worker a SharedWorkerGlobalScope, or - Service Workers "Setup ServiceWorkerGlobalScope" step 8.1, `.service` - a ServiceWorkerGlobalScope), `destroyWorkerRealm`, `createWorkletRealm` (HTML 11.3.1.2 "create a worklet global scope" step 3: a realm in the agent of `WorkletRealmOptions.owner` - the worklet's outside settings, its owner Window's, on its thread, as Blink's main-thread worklets run - whose global object is the `WorkletRealmOptions.global` type: a PaintWorkletGlobalScope, LayoutWorkletGlobalScope, AnimationWorkletGlobalScope or AudioWorkletGlobalScope, with no `self`), `destroyWorkletRealm` ("terminate a worklet global scope" step 5: the realm ends, its agent and owner go on; JavaScriptCore, QuickJS and the test adapter answer `error.NotSupported`), `currentRealm`, `entryRealm`, `incumbentRealm`, `functionRealm`, `installWindowOperations`, `defineBuiltinFunction`, `globalBuiltinFunction` (ECMAScript CreateBuiltinFunction for a function the realm's global object is associated with - Streams' byte length and count queuing strategy size functions: made once per realm and key and kept by the global object, an edge not a root; not a constructor, no `prototype`; OWNED hold; JavaScriptCore, QuickJS: NotSupported) |
 | Running script (HTML 8.1.4) | (Every classic-script operation takes a `ScriptSource`: `.utf8` text that is its own resource, a `.string` value - a timer's string handler, every code unit kept - or `.embedded` text that starts at a `SourcePosition` in its document - an inline script, whose errors and violations report the document's lines; V8: ScriptOrigin's resource line and column offsets. `compileEventHandler` compiles the body named by `EventHandlerSource.url` at its `lineno`/`colno`, with no [[ScriptOrModule]], so what a handler throws names the document while an import() in it names no referrer.) `runClassicScript`, `runClassicScriptWithOptions` (classic-script host record and muted-errors flag, copied into the script so later calls into its functions suppress HostPromiseRejectionTracker too; the convenience operation defaults false; V8 host-defined options carry the flag without a new Global or registry; JSC/QuickJS NotSupported), `runClassicScriptRethrowingErrors` ("run a classic script" with rethrow errors true, importScripts()'s: the original exception left pending as thrown - its location kept, so an uncaught one is reported in the imported script; V8: TryCatch::ReThrow, as Blink's V8ScriptRunner - or, with muted errors, cleared as `MutedScriptError` for the host's NetworkError. JavaScriptCore and QuickJS: NotSupported, as runClassicScript; their error objects carry their location, so their own rethrow is the route), `evaluateClassicScript`, `evaluateClassicScriptToString`, `compileEventHandler`, `prepareToRunScript` / `cleanUpAfterRunningScript`, `runInRealm`, `runTaskInRealm`, `performMicrotaskCheckpoint` and `queueMicrotask` (the agent's - an event loop's; no dropped end, so host data that must be freed goes through `queueRealmMicrotask`), `evaluateReplScript` [repl_mode] (console input in REPL mode - Chrome DevTools' `replMode`: top-level await, a `let` or `class` declared again - in a realm's global scope; it completes asynchronously, so its outcome reaches `PromiseReactionSteps` as a promise reaction's does - `fulfilled` with the completion value, never adopted when it is a promise, `rejected` with what it threw or the rejection it awaited, `dropped` when the realm or the agent ends first; returns `.incomplete`, running no step, for input that ends before its syntax does, which is engine-neutral as an answer and per adapter as a detection - V8: the SyntaxError's own message, "Unexpected end of input" or "Unterminated template literal"; nothing of the console goes on the realm's global; JavaScriptCore, QuickJS and the test adapter: NotSupported), `extractErrorInformation`, `runningScriptLocation` (CSP 2.4.1 step 2: the agent's running script's URL - its `//# sourceURL=` for eval and Function code - and 1-based line and column, as a `ScriptLocation` whose URL the caller owns; null when no script runs. V8: StackTrace::CurrentStackTrace's top frame. JavaScriptCore and QuickJS: always null - violations carry no source location there; JSContextCreateBacktrace, public, is the JavaScriptCore route to a URL and line) |
 | Modules [module_scripts] | `parseModule` (with the module's `start`: an inline module script's `SourcePosition`, `.{}` for a fetched one), `parseJSONModule`, `createDefaultExportSyntheticModule` (ECMA-262 CreateDefaultExportSyntheticModule, for HTML "create a CSS module script"), `moduleRequests`, `linkModule`, `evaluateModule`, `finishDynamicImport`, `releaseModuleRecord` |
@@ -536,6 +556,178 @@ from the integrator, who owns engine_protocol.zig. It lands in one change:
   the script still runs, reporting lines from its own first line (quickjs-ng's
   JSEvalOptions.line_num is the route to a line). The test adapter reports
   its parse error at an embedded script's start.
+
+## 7b. The build side: an adapter's build options are declared by the adapter
+
+The protocol has a build side as well as a run-time one. What is one engine's
+alone is not an option of the protocol, and it is not declared by the root
+build.zig either (the user, 2026-11-12: "I don't want any of the v8 code in
+build.zig, the valid flags should be in the js engine protocol"): the adapter
+declares its own `-D` options, in a build file beside its code,
+`src/runtime/engines/<engine>/engine_build.zig`, with a fixed interface:
+
+```zig
+pub const Options = struct { ... };                       // what the command line gave
+pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options   // the adapter's b.option calls
+pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
+```
+
+The protocol's own build file, `src/runtime/engine_build_protocol.zig`, keeps
+the list of adapters that have a build file (`adapters`, by `-Dengine` name)
+and one function, `adapterOptions(b, target, engine)`, which asks only the
+CHOSEN engine's: it declares that adapter's options and puts their values in
+an options module of the adapter's own, which the engine adapter's module
+alone imports as `@import("adapter_options")` - not in the `build_options`
+every module shares. The root build.zig imports the protocol's build file and
+calls that function. So:
+
+- a build of another engine does not have the option at all: nothing declared
+  it, and `zig build` refuses a `-D` nothing declared ("invalid option");
+- no line of the root build.zig names an adapter or an adapter's option, and
+  adding an option to an adapter touches only that adapter's directory;
+- an adapter with no build options has no build file and no row.
+
+The V8 adapter's build file declares:
+
+| Option | What it does |
+|---|---|
+| `-Dv8-young-generation-mb=<n>` | The most memory each isolate's young generation takes at rest - the window agent's and every worker's. Below. |
+| `-Dv8-navigation-collection-mb=<n>` | After a main frame's navigation, collect the page that was left when V8's heap holds at least `n` MB. Below. |
+| `-Dv8-wrapper-trace-check` | A diagnosis build: the node wrapper walk's oracle (src/runtime/engines/v8/node_wrappers.zig `checkWalk`). In every major collection's weak processing it walks, unpruned, the trees every kept node wrapper and every keep holds and logs a `wrapper-trace-check` error for a wrapper in such a tree that the collection dropped, for a kept wrapper whose node the walk did not reach, and for a walked tree whose wrapper was dropped; `engine.diagnosticCounters`' `wrapper_trace_check_failures` counts them. Off by default: a walk of every live tree per collection. |
+
+Still declared by the root build.zig, and V8's alone - to move behind this
+interface (lane build1, with the V8 link lines): `-Dv8` and `-Dv8-build`
+(which V8 archive is linked), `-Djitless` (V8 without its JIT compilers:
+required on iOS, a large slowdown elsewhere), `-Dv8-compilation-cache` (a
+measurement switch: start V8 WITH its compilation cache) and
+`-Dv8-extra-flags="<flags>"` (a measurement route: V8 flags appended to the
+set V8 starts with); the last three travel in the shared `build_options`.
+
+**The young generation's size is a V8 build option:
+`-Dv8-young-generation-mb=<n>`.** A generational collector allocates new
+objects in a young generation (V8's new space) and collects it often. A larger
+one means fewer young collections - faster for allocation-heavy script - and
+more memory held between them: by V8, and by every native object a dead
+wrapper keeps until the collection that finds it. Which is right depends on
+where a build ships - a desktop product, a phone, a server running many
+Browsers - so the build says, and every isolate of that build gets it: the
+window agent's and every worker's, with nothing for a host to configure.
+
+THE UNIT is megabytes of the WHOLE young generation at rest - not a semispace.
+V8 and Chrome quote the figure per semispace, and V8's young generation is
+three semispace-sized parts (two semispaces and its new large object space:
+15.7.112.43 src/heap/heap.cc:406-415), so:
+
+| `-Dv8-young-generation-mb` | V8 semispace | what it is |
+|---|---|---|
+| `24` | 8 MB | V8 13.1's ceiling (its flag scavenger_max_new_space_capacity_mb); Chrome on an Android phone below its high-end threshold (heap.cc:4844-4860) |
+| `48` | 16 MB | |
+| `96` | 32 MB | V8 15.7's own ceiling, given as a number |
+| `0` | V8's own | no constraint: V8 sizes it - 32 MB semispaces in 15.7, which Chrome 157 ships on desktop (gin/isolate_holder.cc ConfigureDefaults) |
+| not given | 8 MB | THE DEFAULT, `default_mb` in src/runtime/engines/v8/young_generation.zig: ONE constant, 24 (the user, 2026-11-12: what Crane shipped on V8 13.1) |
+
+A value that is not three times a power of two rounds DOWN, never up, so the
+value is a promise: V8 gets the largest power-of-two semispace three of which
+fit (20 gives 4 MB semispaces, 12 MB in all; 47 gives 8 MB semispaces), never
+less than 1 MB semispaces (3 MB in all: what every V8 semispace starts at). A
+value above 96 gives semispaces larger than V8's own - nothing Chrome ships
+and nothing Crane has measured. "At rest": V8 lets the young generation take
+pages above its ceiling while a full collection is marking, so as not to end
+that collection early, and gives them back when it ends (heap.cc:5552-5580);
+the ceiling is what it returns to.
+
+Every build that does not say keeps 8 MB semispaces: the WPT runners, the
+published perf consoles, the tests. A host that builds for desktop passes
+`-Dv8-young-generation-mb=0` (V8's own sizing, as Chrome on desktop) on its
+build line - the option goes on every artifact's alike (`repl-exe`,
+`wpt-runner`, `crane`): it is the adapter's, not one binary's.
+
+What the choice costs and buys, measured on the perf suite (lane v8up b7,
+201a4f7c62b, release consoles on chat.local, 7 timed runs of the 48 workloads,
+each build against main 253917157d7 on V8 13.1; geometric means):
+
+| build | time | CPU | instructions | memory at the end mark | peak |
+|---|---|---|---|---|---|
+| the default: 24 MB young generation, 8 MB semispaces | 0.8985 | 0.8877 | 0.9070 | 1.0337 | 1.0226 |
+| `-Dv8-young-generation-mb=0`: V8's own, 32 MB semispaces | 0.8865 | 0.8602 | 0.8920 | 1.1782 | 1.1531 |
+
+The larger young generation is 1.3% faster over the suite and holds 14% more
+memory. Its speed is on the pages that allocate fast and drop at once (time
+against main, default | V8's own): streams.pipe-through-decoder 0.899 | 0.732,
+streams.blob-stream 0.902 | 0.777, streams.transform-chain 0.910 | 0.820,
+timers.queue-microtask 0.917 | 0.837. Its memory is on the same pages and on
+fetch (end memory against main): fetch.loopback-stream 1.455 | 2.669,
+fetch.loopback-json 1.296 | 2.451, fetch.response-text 1.038 | 1.843,
+timers.message-channel 1.031 | 1.739, timers.queue-microtask 1.041 | 1.756,
+the streams rows 1.04 | 1.22 to 1.26. (The V8-own build also sends no
+navigation collection: the load rows read 0.71 to 0.83 of main at the default
+and 1.16 to 1.39 with V8's own.)
+
+How it is applied: the adapter sets the isolate's ResourceConstraints
+(`set_max_young_generation_size_in_bytes`, include/v8-isolate.h) on its
+CreateParams before the isolate initializes, at both isolate-creation sites
+(v8_wrapper.cpp `applyHeapConstraints`) - the embedder API gin configures the
+same ceiling through (gin/isolate_holder.cc:186-190). Never a V8 flag string.
+tests/v8/young_generation_limit_test.zig pins the ceiling at 8 MB and 2 MB
+semispaces, the rounding, V8's own sizing, and that an agent made through the
+protocol has its build's.
+
+**The collection after a main frame's navigation is a V8 build option:
+`-Dv8-navigation-collection-mb=<n>`.** When a page navigates, V8 is told that
+the old page's context was disposed, as Blink tells it
+(`ContextDisposedNotification`, sent by the old realm's end), and V8 15.7 does
+not collect for that: with its preconfigured old generation - Chrome's default
+- the notice resets no limit and only arms the memory reducer, 30 s away. Pages
+left one after another in one tab stay until V8's own 64 MB limit. Blink has
+one more step there for a device short of memory: when the page being left
+used much memory and the main frame will be reused, one critical
+memory-pressure notice at that disposal, "so that the memory usage of the two
+pages would not overlap" (v8_gc_for_context_dispose.cc:69-87, set by
+OomInterventionImpl, oom_intervention_impl.cc:164-166; Chromium 157.0.8103.50).
+The option is that step:
+
+- WHEN: a top-level realm ended because a navigation gave its navigable a new
+  Window. Never a frame's realm, never a page, tab or Browser that closed
+  (nothing is reused), never a page the back/forward cache keeps (its realm
+  does not end).
+- IF: V8's heap then holds at least `n` MB - the objects in its heap, live or
+  not yet collected, plus its ArrayBuffer backing stores (v8::HeapStatistics
+  `used_heap_size + external_memory`; the DOM memory Crane reports to V8 is
+  not in that figure). A page heavy in DOM and light in script reaches it
+  late: V8's own limit - 64 MB of heap plus the reported DOM memory - is the
+  backstop for those.
+- WHAT: one critical memory-pressure notice, from the agent's next
+  engine-task step - the event loop's own turn, not inside the realm's end,
+  where Crane's finalizers and teardowns may not run. Once per navigation; a
+  critical notice the host sends meanwhile pays it.
+
+| `-Dv8-navigation-collection-mb` | what it is |
+|---|---|
+| `0` | never: only the disposal notice, as Chrome on desktop |
+| `n` | when V8's heap holds at least `n` MB |
+| not given | THE DEFAULT (`default_mb` in src/runtime/engines/v8/navigation_collection.zig): 16 when the build's young generation is limited - the default build, configured for little memory - and never when it is V8's own (`-Dv8-young-generation-mb=0`, a desktop build) |
+
+Measured on the perf suite's four pages that navigate (the 8 MB-semispace
+default, chat.local, 7 alternating runs; end memory in MB, time per
+navigation against no collection):
+
+| threshold | load.news | load.docs | load.app | memory.page-growth | time |
+|---|---|---|---|---|---|
+| never | 55.6 | 103.2 | 79.4 | 64.4 | |
+| 32 MB | 55.6 | 105.2 | 79.5 | 64.3 | never reached |
+| 16 MB (the default) | 33.8 | 61.5 | 46.9 | 41.0 | +0.3% to +2.2% |
+| every navigation | 23.6 | 39.3 | 28.3 | 24.6 | +7.6% to +20.6% |
+| main on V8 13.1 | 48.8 | 74.9 | 56.0 | 69.5 | |
+
+At 16 MB one notice is sent in about ten pages, 2.4 to 7 ms each.
+tests/v8/page_realm_operations_test.zig pins when it is owed, when it is
+sent, that it is sent once, and what never owes it.
+
+Why neither is an option of the protocol (the user, 2026-11-12): no other
+engine Crane runs on could honour it. JavaScriptCore's public API has no heap
+sizing - JSBase.h offers `JSGarbageCollect` and nothing else about the heap,
+JSContextRef.h and JSVirtualMachine.h nothing; its eden size is the private
+JSC::Options - and QuickJS's collector has no generations.
 
 ## 8. Transitional pieces
 

@@ -42,6 +42,14 @@ pub const MutationRecord = struct {
             .{ "oldValue", "get_oldValue", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "target",
+            "addedNodes",
+            "removedNodes",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -74,15 +82,6 @@ pub const MutationRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            target: *runtime.Instance = undefined,
-            addedNodes: *runtime.Instance = undefined,
-            removedNodes: *runtime.Instance = undefined,
-            previousSibling: ?*runtime.Instance = null,
-            nextSibling: ?*runtime.Instance = null,
-            attributeName: ?runtime.DOMString = null,
-            attributeNamespace: ?runtime.DOMString = null,
-            oldValue: ?runtime.DOMString = null,
             cached_target: ?*runtime.Instance = null,
             cached_addedNodes: ?*runtime.Instance = null,
             cached_removedNodes: ?*runtime.Instance = null,

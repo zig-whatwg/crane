@@ -65,12 +65,6 @@ pub const LayoutEdges = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            inlineStart: f64 = undefined,
-            inlineEnd: f64 = undefined,
-            blockStart: f64 = undefined,
-            blockEnd: f64 = undefined,
-            @"inline": f64 = undefined,
-            block: f64 = undefined,
             _internal: ?*LayoutEdgesImpl.InternalState = null,
         },
     );

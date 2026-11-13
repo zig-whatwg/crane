@@ -48,6 +48,12 @@ pub const URL = struct {
             .{ "hash", "get_hash", "set_hash" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "searchParams",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "toJSON", "call_toJSON", 0 },
@@ -106,18 +112,6 @@ pub const URL = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            origin: runtime.USVString = undefined,
-            protocol: runtime.USVString = undefined,
-            username: runtime.USVString = undefined,
-            password: runtime.USVString = undefined,
-            host: runtime.USVString = undefined,
-            hostname: runtime.USVString = undefined,
-            port: runtime.USVString = undefined,
-            pathname: runtime.USVString = undefined,
-            search: runtime.USVString = undefined,
-            searchParams: *runtime.Instance = undefined,
-            hash: runtime.USVString = undefined,
             cached_searchParams: ?*runtime.Instance = null,
             _internal: ?*URLImpl.InternalState = null,
         },

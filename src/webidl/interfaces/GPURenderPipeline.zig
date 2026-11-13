@@ -70,7 +70,6 @@ pub const GPURenderPipeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPURenderPipelineImpl.InternalState = null,
         },
     );

@@ -58,8 +58,6 @@ pub const InputDeviceCapabilities = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            firesTouchEvents: bool = undefined,
-            pointerMovementScrolls: bool = undefined,
             _internal: ?*InputDeviceCapabilitiesImpl.InternalState = null,
         },
     );

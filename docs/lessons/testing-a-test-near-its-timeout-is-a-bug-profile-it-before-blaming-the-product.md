@@ -1,0 +1,16 @@
+# Testing: A test near its timeout is a bug - profile it before blaming the product
+
+**Date**: 2026-11-11
+**Lesson**: A test that runs at a large share of the launcher's timeout is a bug even while it passes: the next loaded host tips it over. Measure where its time goes with `sample` before blaming product code or cutting iterations. On aarch64 macOS, a churn test on `std.testing.allocator` can spend 95% of its time in the allocator's stack capture.
+
+**Why**: The Crane test runner's `std.testing.allocator` is Zig's SafeAllocator, which captures 7 frames at every allocation and every free (`stack_trace_frames` is 7 in Debug). Each capture walks the stack with `debug.captureCurrentStackTrace`. On aarch64 macOS that walk is the DWARF self-unwinder (`debug.SelfInfo.MachO.unwindFrameInner`, `Dwarf.Unwind.VirtualMachine`), which reads and evaluates CFI for every frame of every capture. On server1 (x86-64 Linux) the same capture is far cheaper. A loop of a million creates and frees therefore times the unwinder, not the code it tests.
+
+**What Happened**: Batch 2's post-merge gate on chat2 timed out one test at the launcher's 300 s: nd2_element_name_test's "a million createElement('x-' + i), each dropped". It passed when run alone, so the launcher called it FLAKY. It had been taking 213 s on chat.local, against 27 s on server1. Two siblings were slow too: the prefixed createElementNS churn (78 s against 18 s) and attribute_values' "a million distinct values" (73 s against 8 s). A macOS `sample` of the createElement test alone, taken on the test executable itself (the build runner's arguments also name the file, so the first `pgrep` hit was the wrong process), put 9,880 of the churn's 10,394 samples under `heap.SafeAllocator.captureStackTrace`: 95%. createElement and destroyUninserted were about 5%. Reading the product code had suggested a table rehash or a slab release per iteration; there was neither. The churns moved to `poisoning.ChurnAllocator`: the poisoning DebugAllocator with `stack_trace_frames = 0`, its leak check naming the test and how to rerun with frames. The createElement churns keep their counting FailingAllocator on top, and the million iterations stay. tests/AGENTS.md records the exception beside the rule it bends.
+
+**Fix**:
+1. Treat a test past about a fifth of its timeout on any pool host as a bug with an owner, not as a flake.
+2. `sample` the slow host's test child for 15 s: `pgrep -f <test file stem>`, and take the process whose first word is the test executable and which is still alive a few seconds later (the launcher's listing run ends at once).
+3. If the time is under `SafeAllocator.captureStackTrace`, give the test `@import("root").poisoning.ChurnAllocator.init("<test>")` and `try churn.deinit()` at the end. For a leak's allocation sites, set `churn_stack_trace_frames` to 7 in tests/test_runner/poisoning.zig and rerun the one test.
+4. Keep the iterations if the test then fits easily. Prove it still fails with the bug it guards put back.
+
+**Takeaway**: **A test near its timeout is a bug: profile it on the slow host before blaming the product - on macOS the testing allocator's per-allocation stack capture can be nearly all of a churn test.**

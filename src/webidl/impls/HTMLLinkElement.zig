@@ -732,8 +732,8 @@ fn mediaMatches(element: *runtime.Instance, document: *runtime.Instance) bool {
 fn mayIndicate(candidate: *runtime.Instance, fragment: []const u8) bool {
     if (std.mem.indexOfScalar(u8, fragment, '%') != null) return true;
     const data = dom_module.element_data.of(candidate) orelse return false;
-    if (std.mem.eql(u8, data.id.asSlice(), fragment)) return true;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "a")) return false;
+    if (std.mem.eql(u8, data.idValue(), fragment)) return true;
+    if (!std.mem.eql(u8, data.localName(), "a")) return false;
     if (!std.mem.eql(u8, data.namespaceSlice() orelse return false, html_namespace)) return false;
     const name = data.findAttribute(null, "name") orelse return false;
     return std.mem.eql(u8, name.value, fragment);

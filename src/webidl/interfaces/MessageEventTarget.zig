@@ -53,8 +53,6 @@ pub const MessageEventTarget = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            onmessage: typedefs.EventHandler = undefined,
-            onmessageerror: typedefs.EventHandler = undefined,
             _internal: ?*MessageEventTargetImpl.InternalState = null,
         },
     );

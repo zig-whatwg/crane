@@ -72,13 +72,6 @@ pub const GPUAdapterInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            vendor: runtime.DOMString = undefined,
-            architecture: runtime.DOMString = undefined,
-            device: runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
-            subgroupMinSize: u32 = undefined,
-            subgroupMaxSize: u32 = undefined,
-            isFallbackAdapter: bool = undefined,
             _internal: ?*GPUAdapterInfoImpl.InternalState = null,
         },
     );

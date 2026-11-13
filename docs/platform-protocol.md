@@ -42,6 +42,8 @@ src/platform/kit/                    Crane's reusable implementations, one modul
     sfnt/       web fonts in Zig: Crane's sanitizer (OTS's checks) and reader for sfnt,
                 collections, WOFF and WOFF2 - every built-in platform runs it (decision 20)
     inflate/    a zlib inflater (image_decoding/png.zig's image data, WOFF's tables)
+    image_encoding/   the built-in image encoder: PNG in Zig over std.compress.flate - every
+                built-in platform runs it (the integrator, 2026-11-12, D1's pattern)
 ```
 
 The kit is also every platform's static fallback: where a platform links a system library for a
@@ -56,8 +58,9 @@ platform itself that is compiled in will decide if these features are built with
 dynamically link out to existing capabilities on the platform. For example, the clipboard too.").
 Crane's default platforms, darwin and linux - what Crane's own browser (the release console) and the
 production WPT runner compile in - therefore carry built-in implementations of the capabilities every
-browser ships: image decoding through kit/image_decoding (D1) and the clipboard through
-kit/memory_clipboard per Browser (D2), as the testing platform does. Linking one out to the OS
+browser ships: image decoding through kit/image_decoding (D1), image encoding through
+kit/image_encoding (PNG, which HTML requires) and the clipboard through kit/memory_clipboard per
+Browser (D2), as the testing platform does. Linking one out to the OS
 (ImageIO, the system pasteboard) is that adapter's later choice, made in its link plan (section 10).
 
 - Consumers write `const platform = @import("platform");` and call `platform.op(...)`. Dispatch is
@@ -162,6 +165,7 @@ The types are the ownership rule, as in the engine protocol.
 | `MediaDecoder`, `Codec`, `CaptureSource`, `AudioOutput`, `DeviceHandle`, `SensorHandle` | Capability objects, OWNED by Crane from a successful open until its close call. |
 | `FileToken` | A file the user picked (6.10.3), OWNED until `releasePickedFile`. |
 | `Thread` | OWNED by the spawner until `joinThread`. |
+| `SignalStack` | OWNED by the thread that attached it until `detachSignalStack`; handle 0: none was made. |
 | Returned slices | Allocated with the allocator the caller passed; the caller's. |
 
 ## 3. Per-Browser state
@@ -288,6 +292,7 @@ system state (defaults allowed), console output.
 | `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
+| `address_space` | native (kit/posix: VM tags, MADV_FREE_REUSABLE / REUSE) | native (kit/posix: VMA names, MADV_NOHUGEPAGE on the node cage) | native (the host OS's) | no Browser heap: `Browser.init` fails with NotSupported (6.11); no page sees the difference |
 | `layout` | unsupported (headless) | unsupported | unsupported (headless) | CSSOM View with no layout box: zero boxes, no hit (6.9) |
 | `os_permissions` | native: the OS permission system, per app (section 8) | unsupported (no OS permission system: Crane's store and the platform's policy) | emulated (Crane's store; scripted policy, section 9) | a request in the prompt state is denied |
 | `simple_dialogs` | native: system alerts over the key window (NSAlert; UIAlertController), the unsupported path with no window | unsupported | native (dismiss) | HTML 8.9.1 "cannot show simple dialogs" |
@@ -297,6 +302,7 @@ system state (defaults allowed), console output.
 | `media_decoding` | native: kit/media_decoding (WAV linear PCM), built in (D4, the user 2026-11-09); AVFoundation if the adapter links out later | native: kit/media_decoding, built in (D4); GStreamer/FFmpeg if the adapter links out later | native: kit/media_decoding | canPlayType "" |
 | `font_decoding` | native (CoreText after kit/sfnt, decision 20) | native (kit/sfnt; fontconfig loaded at run time for installed faces) | native (kit/sfnt; fixed installed faces) | no web font loads (CSS Font Loading 2.2 step 5.2's failure); no face has metrics, so cap/rcap/ex/ch/ic take CSS Values 4's fallbacks; the system font keywords take CSS Fonts 4 2.7's initial values |
 | `image_decoding` | native: kit/image_decoding (PNG, BMP, GIF; vendored JPEG and SVG), built in (D1, the user 2026-11-09); ImageIO (decision 19) if the adapter links out later | native: kit/image_decoding, built in (D1); the system libpng, libjpeg-turbo, libwebp, libavif if the adapter links out later | native: kit/image_decoding | every image is broken: "update the image data" fires error |
+| `image_encoding` | native: kit/image_encoding (PNG), built in (the integrator 2026-11-12, D1's pattern); ImageIO (CGImageDestination) if the adapter links out later | native: kit/image_encoding, built in; libpng if the adapter links out later | native: kit/image_encoding | every serialization of a bitmap as a file is null (HTML 4.12.5.5's encoder error): toDataURL "data:,", toBlob's callback gets null |
 | `webcodecs`, `media_capabilities`, `encrypted_media` | unsupported | unsupported | unsupported | NotSupportedError |
 | `camera`, `microphone` | unsupported until built (AVFoundation) | unsupported | native (fake devices) | enumerateDevices() empty; getUserMedia NotFoundError |
 | `screen_capture` | unsupported | unsupported | unsupported | getDisplayMedia NotAllowedError |
@@ -359,6 +365,8 @@ today; a lane that implements the capability flips the constant.
 |---|---|---|---|
 | `spawnThread` | `(options: ThreadOptions, entry: *const fn (?*anyopaque) callconv(.c) void, context: ?*anyopaque) Error!Thread` | any | `ThreadOptions{ name, stack_size, qos }` [thread_qos for qos]. Worker agents, IndexedDB's workers, a C embedder's Browser thread (decision 13). |
 | `joinThread` | `(thread: Thread) void` | any | |
+| `attachSignalStack` | `() SignalStack` | any | Gives the calling thread an alternate signal stack (POSIX sigaltstack): where the process's fault handler runs when the thread's own stack ran out, so a stack overflow is reported instead of ending the process silently. OWNED until `detachSignalStack`; handle 0 when the thread keeps one it already has (at least as large) or the platform has none. Every `spawnThread` thread has one; this is for a thread the platform did not start - a root's main thread (first statement of `main`; the root sets `std_options.signal_stack_size = null`, because std's own stack is a 256 KB thread-local every thread that touches a thread-local pays for), a host's own threads, and the worker and IndexedDB threads until they move to `spawnThread`. kit/posix maps it with a guard page each side, as Crashpad's `InitializeSignalStackForThread` does; never thread-local storage. A thread nobody attached (the JavaScript engine's own worker threads) has none, as before: a stack overflow there ends the process without a report. |
+| `detachSignalStack` | `(stack: SignalStack) void` | the thread that attached it | Before that thread ends. Handle 0: nothing. |
 
 Mutexes, conditions, futexes, atomics, `std.Thread.yield` and thread ids stay std - synchronisation,
 not platform policy.
@@ -622,6 +630,8 @@ or background use) the operation drops its Reply and Crane takes the spec's unsu
 | `closeMediaDecoder` | media_decoding | `(decoder) void` | - |
 | `imageMimeTypeSupported` | image_decoding | `(essence: Str) bool` - whether the adapter decodes this parsed, lowercase MIME essence. Pure, no allocation, I/O, state or cache; synchronous on any thread. HTML uses it to select a picture source before fetching. The query and decoder must agree; kit/image_decoding uses one table for both. | false |
 | `decodeImage` | image_decoding | `(allocator, mime: Str, bytes: Bytes, limits: ImageLimits) ImageError!DecodedImage` - one complete resource to `DecodedImage{ width, height, pixels, status, empty }`: RGBA8, straight alpha, rows top down, no colour management (decision 19), an animated image's default image; `pixels` OWNED. Once a decoder knows the dimensions, data that ends early or goes bad is not an error but a PARTIAL image (lane imgpart, as every browser treats it: load fires, the decoded part is drawn): the pixels decoded before that point, the rest transparent black, `status` `ImageDecodeStatus{ complete, truncated, corrupt }`, and `empty` true when the decode reached no pixel data at all (false when the platform cannot tell). Where the dimensions become known is the format's, as the browsers place it (kit/image_decoding's decoders: PNG at its first IDAT chunk, GIF at its first image descriptor, BMP after its headers, masks and colour table). `mime` is the type Crane determined (MIME Sniffing's image rules run above); the platform does not sniff. Stateless, synchronous, any thread, no BrowserPlatform (HTML decodes in parallel). `ImageLimits{ max_dimension, max_pixels }` are Crane's (decision 19): a larger header is `TooLarge` before any pixel memory. `ImageError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }` - `Corrupt` only when the dimensions cannot be obtained (HTML's "corrupted in some fatal way such that the image dimensions cannot be obtained") | every image broken |
+| `imageEncodingMimeTypeSupported` | image_encoding | `(essence: Str) bool` - whether the adapter encodes this lowercase MIME essence (HTML 4.12.5.5 asks before falling back to PNG; Crane lowercases the requested type and compares it whole, unparsed, as Blink and WebKit do). Pure, no allocation, I/O, state or cache; synchronous on any thread. The query and the encoder must agree; kit/image_encoding uses one table for both. | false |
+| `encodeImage` | image_encoding | `(allocator, mime: Str, source: EncodeSource, quality: f64) ImageEncodeError!Bytes` - one bitmap, `EncodeSource{ width, height, pixels }` (RGBA8, straight alpha, rows top down, sRGB; `pixels` BORROWED, width * height * 4 bytes - Crane unpremultiplies a 2D context's bitmap above the protocol), to one file of type `mime`, OWNED by `allocator`. `quality` is HTML's 0.0-1.0 quality level for a format that has one, negative for the platform's default. A format that records resolution or a colour space records 96 dpi and sRGB (HTML 4.12.5.5; kit/image_encoding's PNG: pHYs 3780 px/m and an sRGB chunk). Stateless, synchronous, any thread (HTML serializes "in parallel"). `ImageEncodeError = error{ OutOfMemory, NotSupported, UnsupportedFormat, TooLarge }` - `UnsupportedFormat` for a type the adapter does not encode or pixels of the wrong length, `TooLarge` for dimensions the format cannot hold (PNG: zero or above 2^31 - 1), refused before anything is allocated | NotSupported: the serialization is null |
 | `decodeFont` | font_decoding | `(allocator, bytes: Bytes, postscript_name: Str, limits: FontLimits) FontError!DecodedFont` - one complete web font resource (sfnt, collection, WOFF, WOFF2), validated as the browsers' sanitizers do (kit/sfnt on every built-in platform: OTS's checks of the container and of the tables a face needs; Google woff2's decoder) and described: `DecodedFont{ family, style_name, full_name, postscript_name, weight, style, stretch, metrics, matched_name, strings }`, the names the font's own (the name table's US English record, CSS Fonts 4 4.3.3.1), `strings` OWNED (`deinit`). `FontMetrics{ units_per_em, ascent, descent, line_gap, x_height, cap_height, zero_advance, zero_vertical_advance, ideographic_advance, ideographic_vertical_advance }` in font units; each of the last six a `FontUnits{ value, present }` - absent when the font lacks the table or glyph, and the caller applies CSS's fallback (never a guess). A collection's face is the one whose PostScript name is `postscript_name` (the src URL's fragment, CSS Fonts 4 4.3.2), else the first, `matched_name` saying which - WebKit's behaviour, decided mechanism by mechanism. No partial result: data that ends early is `Corrupt`. `FontLimits{ max_bytes, max_sfnt_bytes }` are Crane's (`TooLarge` before anything is decompressed). `FontError = error{ OutOfMemory, NotSupported, UnsupportedFormat, Corrupt, TooLarge }`. Stateless, synchronous, any thread | the load fails |
 | `genericFontFace` | font_decoding | `(allocator, generic: GenericFontFamily, request: FontRequest) FontError!?DecodedFont` - the face the platform maps a CSS generic family to (CSS Fonts 4 2.1.5), null when none (the ui-* families on platforms without them). `FontRequest{ weight, style, oblique_angle, stretch, language }`; `oblique_angle` in degrees, positive clockwise, meaningful for an oblique style (14 for a plain `oblique`) - the built-in platforms match by style class | no metrics: CSS's fallbacks |
 | `installedFontFace` | font_decoding | `(allocator, family: Str, request: FontRequest) FontError!?DecodedFont` - an installed family's face nearest the request (CSS Fonts 4 5.1: names compared caselessly), null when the family is not installed | no installed family |
@@ -711,6 +721,35 @@ One channel shape for every device kind, with a request union per kind:
 | `queryLocalFonts` | local_fonts | Reply-based (Local Font Access) | an empty list |
 | `showVirtualKeyboard`, `hideVirtualKeyboard` | virtual_keyboard | geometry as events | no-op |
 
+### 6.11 Address space [address_space]
+
+Reserved address space, committed and decommitted in place: what each Browser's heap is made of
+(runtime.BrowserScope.Heap; tmp/redesign/node-memory-architecture.md 6.6 as amended by
+node-memory-plan-v2.md). PartitionAlloc's page allocator is the model (page_allocator.h,
+page_allocator_internals_posix.h at Chromium 145), as V8 takes its pages from the embedder's
+`v8::PageAllocator`. Offsets and lengths are multiples of `pageSize()`, a run-time value (4 to 64 KiB
+on aarch64-linux). Any thread; a range is its owner's.
+
+| Operation | Signature | Notes |
+|---|---|---|
+| `pageSize` | `() usize` | The unit of every offset and length here (std.heap.pageSize). |
+| `reserveAddressSpace` | `(size, alignment, alignment_offset, label: AddressLabel) Error!AddressRange` | Inaccessible and uncommitted; `base` is `alignment_offset` above a multiple of `alignment`. Random exact-size aligned hints first (consecutive reservations do not reuse the released address: oss review R12, appendix P4), then over-reserve and trim (PartitionAlloc's AllocPagesWithAlignOffset); no hints under ThreadSanitizer. OutOfMemory when the address space or RLIMIT_AS has no room. OWNED until released. |
+| `labelAddressSpace` | `(range, offset, length, label) void` | Renames an uncommitted part, once, at reservation: darwin maps it again in place with the label's tag; Linux names the VMA (PR_SET_VMA_ANON_NAME, Linux 5.17+, else absent) and applies the label's huge-page advice. Best effort. |
+| `commitPages` | `(range, offset, length) Error!void` | Readable and writable, memory accounted: mprotect, never MAP_FIXED over a live range (oss R24); darwin then MADV_FREE_REUSE, or a recycled page stays out of the footprint (oss R3; appendix P1 measured 64 of 64 MiB missing). |
+| `decommitPages` | `(range, offset, length) Error!void` | The memory goes back, the pages stay accessible: darwin MADV_FREE_REUSABLE with an MADV_DONTNEED fallback (it "sometimes fails"), Linux MADV_DONTNEED. The part must be committed and writable throughout - REUSABLE fails with EPERM on an inaccessible page or a range with one - so decommit BEFORE protecting, and never across an uncommitted super page. An error when the OS refused both. A decommitted page reads zero on Linux and zero or its old bytes on darwin. |
+| `protectPages` | `(range, offset, length, access: PageAccess) Error!void` | none / read / read_write; contents kept. |
+| `releaseAddressSpace` | `(range) void` | Once, at the owner's end. |
+
+| `AddressLabel` | darwin VM tag (vmmap, footprint) | Linux `/proc/<pid>/maps` | Linux THP |
+|---|---|---|---|
+| `node_cage` | 240 ("App-Specific Tag 1") | `[anon:crane-node-cage]` | MADV_NOHUGEPAGE (oss R4, appendix P3: 512 kB live cost 64 MiB under `always`) |
+| `objects` | 241 | `[anon:crane-objects]` | the system's |
+| `bytes` | 242 | `[anon:crane-bytes]` | the system's |
+| `heap_metadata` | 243 | `[anon:crane-heap]` | the system's |
+
+kit/posix implements the group for darwin and Linux, by the target it is built for; darwin, linux and testing
+alias it. kit/headless answers NotSupported, and a Browser on such a platform fails `Browser.init` cleanly.
+
 ## 7. Platform events
 
 What the platform reports unasked - a screen change, a revoked permission, a camera unplugged, a
@@ -795,6 +834,7 @@ clipboard-write, geolocation, and the rest.
 CommonCrypto and SecKey where they cover an algorithm, kit/crypto for the rest; the clipboard, built in
 today (kit/memory_clipboard per Browser, D2) and the system pasteboard if the adapter links out later;
 image decoding, built in today (kit/image_decoding, D1) and ImageIO if the adapter links out later;
+image encoding, built in today (kit/image_encoding: PNG) and ImageIO if the adapter links out later;
 media decoding, built in today (kit/media_decoding: WAV linear PCM, D4) and AVFoundation if the adapter
 links out later; the OS permission system (section 8); native system alerts and pickers over the key window; screen,
 reachability, memory pressure and app lifecycle observed and reported as events. Capabilities not
@@ -805,8 +845,8 @@ distros' libcurl lacks or varies in WebSockets) with the system zlib and nghttp2
 OpenSSL 3 for TLS and crypto where its link plan accepts it, mbedTLS and kit/crypto otherwise; the
 distro CA bundle; the clipboard, built in today (kit/memory_clipboard per Browser, D2), and the system
 clipboard through X11 or Wayland when a display is present (loaded at run time) if the adapter links
-out later; image decoding, built in today (kit/image_decoding, D1); media decoding, built in today
-(kit/media_decoding: WAV linear PCM, D4).
+out later; image decoding, built in today (kit/image_decoding, D1); image encoding, built in today
+(kit/image_encoding: PNG); media decoding, built in today (kit/media_decoding: WAV linear PCM, D4).
 
 **testing** (decision 2, revised): the build machine's real OS services - darwin's or linux's, chosen by
 `builtin.os.tag` - plus compiled-in test capabilities, with all their state per Browser:
@@ -816,6 +856,7 @@ out later; image decoding, built in today (kit/image_decoding, D1); media decodi
 | media_decoding | kit/media_decoding, as darwin and linux (D4): WAV linear PCM (the WPT runner's WAV decoder, moved into the platform). WebM, Ogg and MP4 answer canPlayType "" and decode nothing: the runner's header-only WebM code was not a decoder and is not claimed; real VP8/VP9/Vorbis/Opus decoding is its own item |
 | font_decoding | kit/sfnt for web fonts, in Zig (decision 20), and a fixed table of installed faces (src/platform/adapters/testing/fonts.zig): Times New Roman (serif), Arial (sans-serif, system-ui, cursive, fantasy, and every system font keyword at no preferred size), Courier New (monospace), read from macOS's copies, and WPT's Ahem; one regular face each; no emoji, math, fangsong or ui-* face. No font file is in Crane. Results do not depend on the machine's fonts. |
 | image_decoding | kit/image_decoding, as darwin and linux (D1): Zig decoders in src/platform/kit/image_decoding/ (decisions 19, 19a, 19c): PNG, BMP and GIF; kit/image_codecs adds pinned libjpeg-turbo 3.1.3 (including partial rows and EXIF orientation) and Expat 2.9.0 + NanoSVG for SVG. Returned pixels belong to the caller. SVG is a rasterizer, not a complete browser renderer: text, filters, masks, embedded resources and full CSS/layout remain unsupported; no scripts or external requests run. The README records exact pins, licences and coverage. Results do not depend on machine image libraries. |
+| image_encoding | kit/image_encoding, as darwin and linux: PNG in Zig (src/platform/kit/image_encoding/png.zig: colour type 6, 8 bits, adaptive per-row filters, zlib level 6 through std.compress.flate, sRGB and pHYs 96 dpi chunks). The file belongs to the caller. Other types (image/jpeg, image/webp) are UnsupportedFormat, so Crane writes PNG; image/jpeg is queued. |
 | camera, microphone | one fake camera "fake_video_0" (640x480, 30 fps) and one fake microphone "fake_audio_0" (48 kHz mono); precedent Chrome's FakeVideoCaptureDeviceFactory, Gecko's MediaEngineFake, WebKit's MockRealtimeMediaSourceCenter |
 | os_permissions | governs no descriptor: Crane's store answers, and a request in the prompt state grants camera and microphone (the fake devices) and denies everything else (decision 9); tests script anything else with `test_driver.set_permission`, which writes the store |
 | simple_dialogs | dismissed at once (alert OK, confirm false, prompt null), logged to the test's output |
@@ -890,6 +931,7 @@ not verified is marked UNVERIFIED.
 | Ed25519, X25519 | - (no 25519 in SecKey.h; CryptoKit has them but is Swift-only, with no C or Objective-C API) | no | no callable API | kit/crypto | static |
 | Intl, collation, IDNA | libicucore.tbd, ICU 78.1 - but only 23 public headers in both SDKs (uchar, uidna, uregex, ustring, utext, ...; no collation, date or number formatting) | both | no - incomplete for Intl, V8 needs its own pinned ICU, and Unicode-version-dependent answers (IDNA, case mapping) would differ by OS version, breaking identical behaviour | V8's ICU, src/intl's CLDR data, src/url's IDNA | static |
 | image decoding | ImageIO (CGImageSource; the formats it covers per OS version UNVERIFIED) | both | yes (decision 19) | kit/image_decoding | static: kit/image_decoding, built in (D1, the user 2026-11-09); ImageIO is the adapter's later choice |
+| image encoding | ImageIO (CGImageDestination; the formats it covers per OS version UNVERIFIED) | both | yes | kit/image_encoding | static: kit/image_encoding, built in (the integrator 2026-11-12); ImageIO is the adapter's later choice |
 | fonts | CoreText (CTFontManagerCreateFontDescriptorFromData, CTFont metrics, CTFontCreateUIFontForLanguage, font descriptor matching) and CoreFoundation | both | yes (decision 20), after kit/sfnt's sanitizing, which every platform runs | kit/sfnt (web fonts; it also gives their names) | dynamic |
 | media decoding | AVFoundation, AudioToolbox, VideoToolbox | both | yes for the formats Apple decodes (H.264, HEVC, AAC, MP3, ...); WebM/VP9/Opus support UNVERIFIED | kit/media_decoding (WAV linear PCM) | static: kit/media_decoding, built in (D4, the user 2026-11-09); AVFoundation is the adapter's later choice |
 | camera, microphone; audio output | AVFoundation; AVFAudio, AudioToolbox | both | yes | none | dynamic |
@@ -928,6 +970,7 @@ RHEL and Arch are UNVERIFIED.
 | Intl | libicu (a versioned soname per release) | all | no - the soname changes per release, V8 needs its pinned ICU, and Unicode-dependent answers would vary by distro | V8's ICU, src/intl | static |
 | clipboard | libxcb / libX11 (X11), libwayland-client (Wayland), loaded at run time | desktops only | yes when a display is present | kit/memory_clipboard | static: kit/memory_clipboard per Browser, built in (D2, the user 2026-11-09); a run-time load with a display is the adapter's later choice |
 | image decoding | libpng, libjpeg-turbo, libwebp, libavif (decision 19) | all (versions UNVERIFIED) | yes (decision 19); BMP, which none of them decodes, is the linux batch's question (decision 19a) | kit/image_decoding | static: kit/image_decoding, built in (D1, the user 2026-11-09); the system libraries are the adapter's later choice |
+| image encoding | libpng (versions UNVERIFIED) | all | yes | kit/image_encoding | static: kit/image_encoding, built in (the integrator 2026-11-12); libpng is the adapter's later choice |
 | fonts | fontconfig (libfontconfig.so.1) for finding installed faces; FreeType not used - Crane renders nothing, and the metric rules Blink and Gecko apply over FreeType's raw values are kit/sfnt's over the same tables (decision 20) | desktops; often absent from minimal server images | yes | kit/sfnt (web fonts, and reading the files fontconfig finds) | run-time load (dlopen, RTLD_NODELETE); without it, no installed faces |
 | media decoding, audio output | GStreamer or FFmpeg (libavcodec); PipeWire / PulseAudio / ALSA - loaded at run time | desktops (UNVERIFIED per distro) | to be decided when the capability is built | none | - |
 | notifications, geolocation, wake lock, file pickers | D-Bus services (org.freedesktop.Notifications, GeoClue2, xdg-desktop-portal), loaded at run time | desktops (UNVERIFIED per distro) | to be decided when built | none | - |

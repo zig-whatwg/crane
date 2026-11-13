@@ -78,9 +78,6 @@ pub const RTCDTMFSender = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            ontonechange: typedefs.EventHandler = undefined,
-            canInsertDTMF: bool = undefined,
-            toneBuffer: runtime.DOMString = undefined,
             _internal: ?*RTCDTMFSenderImpl.InternalState = null,
         },
     );

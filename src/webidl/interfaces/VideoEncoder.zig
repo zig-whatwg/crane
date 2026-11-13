@@ -102,9 +102,6 @@ pub const VideoEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            state: enums.CodecState = undefined,
-            encodeQueueSize: u32 = undefined,
-            ondequeue: typedefs.EventHandler = undefined,
             _internal: ?*VideoEncoderImpl.InternalState = null,
         },
     );

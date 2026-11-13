@@ -63,7 +63,6 @@ pub const GPUBindGroup = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPUBindGroupImpl.InternalState = null,
         },
     );

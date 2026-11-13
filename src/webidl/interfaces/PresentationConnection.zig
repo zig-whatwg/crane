@@ -98,14 +98,6 @@ pub const PresentationConnection = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.USVString = undefined,
-            url: runtime.USVString = undefined,
-            state: enums.PresentationConnectionState = undefined,
-            onconnect: typedefs.EventHandler = undefined,
-            onclose: typedefs.EventHandler = undefined,
-            onterminate: typedefs.EventHandler = undefined,
-            binaryType: enums.BinaryType = undefined,
-            onmessage: typedefs.EventHandler = undefined,
             _internal: ?*PresentationConnectionImpl.InternalState = null,
         },
     );

@@ -68,10 +68,6 @@ pub const MediaDeviceInfo = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            deviceId: runtime.DOMString = undefined,
-            kind: enums.MediaDeviceKind = undefined,
-            label: runtime.DOMString = undefined,
-            groupId: runtime.DOMString = undefined,
             _internal: ?*MediaDeviceInfoImpl.InternalState = null,
         },
     );

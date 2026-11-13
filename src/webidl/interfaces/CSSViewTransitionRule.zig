@@ -61,8 +61,6 @@ pub const CSSViewTransitionRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            navigation: typedefs.CSSOMString = undefined,
-            types: runtime.JSValue = undefined,
             cached_types: ?runtime.JSValue = null,
             _internal: ?*CSSViewTransitionRuleImpl.InternalState = null,
         },

@@ -39,6 +39,13 @@ pub const DataTransfer = struct {
             .{ "files", "get_files", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "items",
+            "files",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setDragImage", "call_setDragImage", 3 },
@@ -77,11 +84,6 @@ pub const DataTransfer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            dropEffect: runtime.DOMString = undefined,
-            effectAllowed: runtime.DOMString = undefined,
-            items: *runtime.Instance = undefined,
-            types: runtime.JSValue = undefined,
-            files: *runtime.Instance = undefined,
             cached_items: ?*runtime.Instance = null,
             cached_files: ?*runtime.Instance = null,
             _internal: ?*DataTransferImpl.InternalState = null,

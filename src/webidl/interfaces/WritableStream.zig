@@ -66,7 +66,6 @@ pub const WritableStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            locked: bool = undefined,
             _internal: ?*WritableStreamImpl.InternalState = null,
         },
     );

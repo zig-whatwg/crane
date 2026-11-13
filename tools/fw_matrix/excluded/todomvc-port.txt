@@ -1,0 +1,31 @@
+# Crane's port of TodoMVC's app spec (tests/frameworks/todomvc/), run on the
+# prebuilt React, Vue, Svelte and Angular apps of tastejs/todomvc at
+# ff43b02e59df: the tests it does not run, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format).
+#
+# No test is excluded. What the port does not run is part of a test, and is
+# said here so a reader finds it beside the lists of the other suites:
+#
+# - Visibility. The spec's `be.visible` / `:visible` (Cypress's visibility
+#   rules) are decided by computed style in the port: no box (display: none
+#   on the element or an ancestor, or not in the document), visibility
+#   hidden or collapse, opacity 0 on the element or an ancestor. Cypress's
+#   layout clauses - zero width or height, clipped by an ancestor's
+#   overflow, scaled to nothing by a transform - are geometry and are not
+#   run. The Chrome run of the port evaluates them beside the style clauses
+#   (?prove=layout) and fails a test when they would change any of its
+#   visibility answers: in headless Chrome 157.0.8103.51 (2026-11-11) every
+#   test of the four apps passed so (React, Vue, Svelte 28 and Angular 27,
+#   the rest skipped by the spec).
+# - Actionability. Cypress scrolls an element into view and checks that it
+#   is not covered (elementFromPoint at its centre) before it acts; the
+#   port acts through DOM events at the element and checks only what is
+#   not geometry (visible by the rules above without opacity, as Cypress's
+#   ensure.ts does for actions; not disabled).
+#
+# Tests TodoMVC's own spec skips for an app run as QUnit.skip, with the
+# spec's reason, and are reported as skipped by the app spec - not listed
+# here: 'should persist its data' for apps that keep nothing in
+# localStorage (spec.cy.js noLocalStorageCheck: all four), and the app's
+# entries of tests/knownIssues.js (Angular: 'should respect the back
+# button').

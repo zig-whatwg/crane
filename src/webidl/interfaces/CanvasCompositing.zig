@@ -53,8 +53,6 @@ pub const CanvasCompositing = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            globalAlpha: f64 = undefined,
-            globalCompositeOperation: runtime.DOMString = undefined,
             _internal: ?*CanvasCompositingImpl.InternalState = null,
         },
     );

@@ -87,13 +87,6 @@ pub const XREquirectLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: *runtime.Instance = undefined,
-            transform: *runtime.Instance = undefined,
-            radius: f32 = undefined,
-            centralHorizontalAngle: f32 = undefined,
-            upperVerticalAngle: f32 = undefined,
-            lowerVerticalAngle: f32 = undefined,
-            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XREquirectLayerImpl.InternalState = null,
         },
     );

@@ -53,7 +53,6 @@ pub const NavigatorStorageBuckets = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            storageBuckets: *runtime.Instance = undefined,
             cached_storageBuckets: ?*runtime.Instance = null,
             _internal: ?*NavigatorStorageBucketsImpl.InternalState = null,
         },

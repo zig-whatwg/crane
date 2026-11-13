@@ -80,11 +80,6 @@ pub const AudioParam = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            value: f32 = undefined,
-            automationRate: enums.AutomationRate = undefined,
-            defaultValue: f32 = undefined,
-            minValue: f32 = undefined,
-            maxValue: f32 = undefined,
             _internal: ?*AudioParamImpl.InternalState = null,
         },
     );

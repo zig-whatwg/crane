@@ -80,10 +80,6 @@ pub const CSSRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssText: typedefs.CSSOMString = undefined,
-            parentRule: ?*runtime.Instance = null,
-            parentStyleSheet: ?*runtime.Instance = null,
-            type: u16 = undefined,
             _internal: ?*CSSRuleImpl.InternalState = null,
         },
     );

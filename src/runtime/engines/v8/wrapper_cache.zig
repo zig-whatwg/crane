@@ -140,8 +140,9 @@ const CacheEntry = struct {
     original_generation: u64,
 
     /// Collected: V8's first pass took the wrapper and `unlinkCollected` took
-    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs in
-    /// the second pass; until then it waits on the cache's pending list.
+    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs at
+    /// the agent's next safe point; until then it waits on the cache's pending
+    /// list.
     collected: bool = false,
 
     /// The first pass found another entry under this instance, or none: this
@@ -149,7 +150,7 @@ const CacheEntry = struct {
     /// but its handle.
     stale: bool = false,
 
-    /// Its second pass ran while its agent's teardowns were held
+    /// Its finalizer ran while its agent's teardowns were held
     /// (engine.deferTeardowns): it waits on the pending list, and on the
     /// agent's TeardownHolds.deferred, for the last resume to tear it down.
     teardown_deferred: bool = false,
@@ -161,16 +162,33 @@ const CacheEntry = struct {
     /// The counted object this wrapper holds a reference on - a node's
     /// NodeBase - as runtime.lifetime.wrapperAcquired answered it in `set`;
     /// null for a type that does not count, and once the reference is let go
-    /// (`releaseCounted`). The second pass hands it back without looking the
+    /// (`releaseCounted`). The finalizer hands it back without looking the
     /// node up again (refcount design 2.1, 5.1).
     counted: ?*anyopaque = null,
+
+    /// When a script-called constructor made the instance, on its agent's
+    /// callback clock (runtime.gc.DeferredTeardown.freshStamp, given by the
+    /// constructor trampoline to `setConstructed`); 0 - the default, and the
+    /// safe answer - for every other wrap: an object an operation returned,
+    /// one wrapped while it was being constructed, one made outside any
+    /// callback. Its finalizer may run at a binding's return into a
+    /// callback's script only when this is at or after that callback's
+    /// beginning (`freshStampOf`; finalizer_safe_point.zig). Four bytes the
+    /// entry's padding already held (the size is pinned below).
+    fresh: u32 = 0,
 };
+
+comptime {
+    // Nothing is added to a live wrapper: the stamp sits in the entry's
+    // padding (8 pointers, a u64, two u32, 8 one-byte flags).
+    if (@sizeOf(usize) == 8) std.debug.assert(@sizeOf(CacheEntry) == 88);
+}
 
 /// Let `entry`'s counted reference go (runtime.lifetime), once - only while
 /// its node is alive. A node whose teardown began under its wrapper had it let
 /// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
 /// or a teardown this cache did not hear because the entry was waiting for
-/// its second pass - is forgotten, never read. Since refcount step 7 the
+/// its finalizer - is forgotten, never read. Since refcount step 7 the
 /// release decides: a tree it leaves with no hold is queued by the counts.
 fn releaseCounted(entry: *CacheEntry) void {
     const target = entry.counted orelse return;
@@ -250,7 +268,6 @@ fn clearFields(object: *v8.Object) void {
     const count = v8.v8_Object_InternalFieldCount(object);
     if (count < 1) return;
     v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
-    if (count >= 2) v8.v8_Object_SetAlignedPointerInInternalField(object, 1, null);
 }
 
 /// What a path that ends an entry did to the entry's instance, for
@@ -602,13 +619,13 @@ fn syncEntry(entry: *CacheEntry) void {
 /// keeps what its cache would otherwise hold strongly.
 const retained_key = "crane:retained";
 
-/// Keep `value` by an edge from `holder`, a detached realm's global object
-/// (the hidden one, never its proxy). A no-op once the global is collected.
+/// Keep `value` by an edge from `holder`, a detached realm's retained store
+/// (which its global object keeps, never its proxy). A no-op once collected.
 pub fn retainOnGlobal(holder: *v8.Value, value: *v8.Value) void {
     v8.v8_Object_RetainInPrivateArray(holder, retained_key.ptr, retained_key.len, value);
 }
 
-/// The global object of `instance`'s realm once that realm is detached
+/// The retained store of `instance`'s realm once that realm is detached
 /// (`WrapperCache.detach`), BORROWED; null while it is attached, or with no
 /// cache. node_wrappers keeps a detached realm's kept nodes by it.
 pub fn detachedHolderOf(instance: *runtime.Instance) ?*v8.Value {
@@ -734,9 +751,13 @@ fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     entry.cache.linkPending(entry);
 }
 
-/// V8's SECOND pass for a collected wrapper (`unlinkCollected` ran): the
-/// collection is over and engine calls are allowed again, so the instance's
-/// teardown runs here - never while the engine is collecting.
+/// The finalizer of a collected wrapper (`unlinkCollected` ran), at its
+/// agent's safe point - never while the engine is collecting: V8's first
+/// pass only queues it (v8_wrapper.cpp `runQueuedFinalizers`: a binding's
+/// return into script, the pump, a forced collection's return) - the
+/// instance's teardown runs here,
+/// and may do any engine work - a dropped Response cancels its open body
+/// transfer, which reports to its page.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
     // A walk holds the agent's teardowns (engine.deferTeardowns): this one
@@ -750,6 +771,19 @@ fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
         }
     }
     finalizeEntry(entry);
+}
+
+/// The stamp of the object a queued finalizer is for (`CacheEntry.fresh`), for
+/// the agent's safe point inside a callback (finalizer_safe_point.zig): 0 -
+/// never fresh - for a finalizer that is not a wrapper cache entry's (an
+/// observable array's, an asynchronous iterator's, a promise reaction's), and
+/// for an entry whose cache is gone. `data` is what the finalizer was armed
+/// with; it has not been cancelled (the caller checked).
+pub fn freshStampOf(finalize: v8.WeakCallbackFn, data: ?*anyopaque) u32 {
+    if (finalize != &finalizeCollected) return 0;
+    const entry: *const CacheEntry = @ptrCast(@alignCast(data orelse return 0));
+    if (entry.is_orphaned) return 0;
+    return entry.fresh;
 }
 
 /// An agent's holds on the teardowns of its collected platform objects
@@ -864,8 +898,8 @@ fn runDeferredTeardowns(holds: *TeardownHolds) void {
 }
 
 /// The teardown of a collected entry: free its instance unless something
-/// still owns it, then its handle and the entry. Run by the second pass, or
-/// by the cache's end for one whose second pass has not come yet.
+/// still owns it, then its handle and the entry. Run by the finalizer, or
+/// by the cache's end for one whose finalizer has not run yet.
 fn finalizeEntry(entry: *CacheEntry) void {
     // Waiting for a hold's end (engine.deferTeardowns) and torn down another
     // way first - its cache's end: it leaves the agent's list.
@@ -982,7 +1016,7 @@ fn finalizeEntry(entry: *CacheEntry) void {
     // [wrap_tracking]) - the slice's, or its tree's later. An agent made
     // without a queue (engine.AgentOptions.deferred_teardown null: a test's
     // own) has nowhere for its counts to queue a tree, and keeps the old
-    // model below: the second pass frees a collected root nothing owns.
+    // model below: the finalizer frees a collected root nothing owns.
     if (counted and entry.cache.deferredQueue() != null) {
         if (!wrappedElsewhere(entry.instance, entry.cache))
             runtime.instance_lifecycle.markWrapperGone(entry.instance);
@@ -1123,16 +1157,16 @@ pub const WrapperCache = struct {
     /// 8,000 test() calls took 1.5 s instead of 0.3 s.
     prune_watermark: usize = small_deferred_map,
 
-    /// Its realm is detached (`detach`): the realm's global object - the
-    /// hidden one behind the global proxy - as a WEAK handle the cache owns,
-    /// empty once collected. Every wrapper that would be held strongly is
+    /// Its realm is detached (`detach`): the realm's retained store - which
+    /// its global object keeps through its GlobalAnchor - as a WEAK handle
+    /// the cache owns, empty once collected. Every wrapper that would be held strongly is
     /// kept by an edge from it instead (`syncEntry`).
     detached_holder: ?*v8.Value = null,
 
     /// Entries whose wrapper was collected and whose finalizer has not run
     /// (`unlinkCollected` -> `finalizeCollected`), most recent first. The
-    /// cache's end finalizes what is still here: V8 drops a second pass its
-    /// isolate never ran.
+    /// cache's end finalizes what is still here: a finalizer its agent's
+    /// safe points never reached does not run.
     pending_head: ?*CacheEntry = null,
 
     /// What this realm's end finalizes that no wrapper owns: its promise
@@ -1150,7 +1184,7 @@ pub const WrapperCache = struct {
     deferred_looked_up: bool = false,
 
     /// The agent's teardown holds (engine.deferTeardowns), looked up by this
-    /// cache's first second pass (`teardownHolds`); null before, or for an
+    /// cache's first finalizer (`teardownHolds`); null before, or for an
     /// isolate createAgent did not make. The agent outlives its realms'
     /// caches.
     holds: ?*TeardownHolds = null,
@@ -1174,7 +1208,7 @@ pub const WrapperCache = struct {
             // Looked up only with the realm's isolate entered: a lookup made
             // without one answers nothing and is not remembered (the realm's
             // end asks too, refcount step 7, and a remembered null would make
-            // every later second pass take the queue-less path).
+            // every later finalizer take the queue-less path).
             const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
             self.deferred_looked_up = true;
             self.deferred = @import("protocol_agents.zig").deferredTeardownOf(isolate);
@@ -1182,8 +1216,8 @@ pub const WrapperCache = struct {
         return self.deferred;
     }
 
-    /// The holds on this realm's agent's teardowns, from a second pass: the
-    /// isolate collecting is entered, as `deferredQueue` finds it.
+    /// The holds on this realm's agent's teardowns, from a finalizer: the
+    /// isolate that collected is entered, as `deferredQueue` finds it.
     fn teardownHolds(self: *Self) ?*TeardownHolds {
         if (self.holds_looked_up) return self.holds;
         const isolate = v8.v8_Isolate_GetCurrent() orelse return null;
@@ -1200,7 +1234,7 @@ pub const WrapperCache = struct {
     }
 
     /// This realm is ending: tear down every node it queued, now, before
-    /// anything of the realm goes - what the second pass would have done had
+    /// anything of the realm goes - what the finalizer would have done had
     /// the teardown not been deferred.
     pub fn drainDeferred(self: *Self) void {
         const queue = self.deferred orelse return;
@@ -1228,7 +1262,7 @@ pub const WrapperCache = struct {
     }
 
     /// Let every wrapper's counted reference go - the live entries' and the
-    /// collected ones waiting for their second pass - at the realm's end,
+    /// collected ones waiting for their finalizer - at the realm's end,
     /// before its sweep frees anything.
     fn releaseAllCounted(self: *Self) void {
         // A walk: since references decide (refcount step 7) a release can
@@ -1284,7 +1318,7 @@ pub const WrapperCache = struct {
         self.linkPending(entry);
     }
 
-    /// Tests: run the finalizers waiting for V8's second pass now.
+    /// Tests: run the finalizers waiting for the agent's safe point now.
     pub fn finalizePendingForTest(self: *Self) void {
         self.finalizePending();
     }
@@ -1297,9 +1331,9 @@ pub const WrapperCache = struct {
         return count;
     }
 
-    /// The cache is ending: run every finalizer still waiting for its second
-    /// pass now - outside any collection - and cancel that pass (disposing
-    /// the entry's handle does). Each runs as the second pass would have.
+    /// The cache is ending: run every finalizer still waiting for its safe
+    /// point now - outside any collection - and cancel its queued record
+    /// (disposing the entry's handle does). Each runs as it would have there.
     fn finalizePending(self: *Self) void {
         while (self.pending_head) |entry| finalizeEntry(entry);
     }
@@ -1324,18 +1358,20 @@ pub const WrapperCache = struct {
     /// navigable", "destroy a document"). A strong handle here would keep it
     /// forever, so each wrapper held strongly - a node in a tree, a window's
     /// Location, a streams object, pending activity - is kept from the
-    /// realm's global object instead, and so is each child waiting for its
-    /// owner's wrapper (`edges_before_wrap`). `global` is that global object
-    /// - the hidden one, never the proxy a navigation hands on - BORROWED:
-    /// the cache keeps a weak clone of it for the entries synced later.
+    /// realm's retained store instead, and so is each child waiting for its
+    /// owner's wrapper (`edges_before_wrap`). `global` is that store - which
+    /// the realm's global object keeps through its GlobalAnchor
+    /// (realm_global.retainedStore), never the proxy a navigation hands on -
+    /// BORROWED: the cache keeps a weak clone of it for the entries synced
+    /// later.
     pub fn detach(self: *Self, global: *v8.Value) void {
         if (self.detached_holder != null) return;
         const holder = v8.v8_Global_Clone(global) orelse return;
         v8.v8_Global_SetWeak(@ptrCast(holder), null, detachedHolderCollected);
         self.detached_holder = holder;
         // A walk: syncEntry makes V8 calls that may allocate, and a
-        // collection they start runs first passes here (removals only); a
-        // forced one would run its second passes - teardowns - too.
+        // collection they start runs first passes here (removals only) and
+        // queues the teardowns for the agent's safe point.
         self.beginWalk();
         defer self.endWalk();
         var iter = self.cache.valueIterator();
@@ -1895,6 +1931,23 @@ pub const WrapperCache = struct {
         wrapper: *v8.Object,
         isolate: *v8.Isolate,
     ) !*v8.Object {
+        return self.setConstructed(instance, wrapper, isolate, 0);
+    }
+
+    /// `set` for the receiver of a script-called constructor, whose
+    /// `instance` that same binding call created: `stamp` is when, on its
+    /// agent's callback clock (`CacheEntry.fresh`; 0: not fresh). Only the
+    /// constructor trampoline calls it, and only for an instance nothing
+    /// wrapped while it was made (interface.adoptExistingWrapper returns
+    /// first). A node takes no stamp: its wrapper is its slot's, and its
+    /// end frees no node.
+    pub fn setConstructed(
+        self: *Self,
+        instance: *runtime.Instance,
+        wrapper: *v8.Object,
+        isolate: *v8.Isolate,
+        stamp: u32,
+    ) !*v8.Object {
         // A cache being torn down takes no wrapper: its sweep (`deinit`)
         // walks the map, and an entry put in now would be met or not as the
         // hash order fell - a wrapper whose instance the sweep then never
@@ -1933,6 +1986,7 @@ pub const WrapperCache = struct {
             .original_vtable = instance.vtable,
             .original_state = instance.state,
             .original_generation = runtime.SlabAllocator.generationOf(instance),
+            .fresh = stamp,
         };
 
         // Store in HashMap.

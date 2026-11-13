@@ -58,8 +58,6 @@ pub const Font = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            glyphsRendered: u32 = undefined,
             _internal: ?*FontImpl.InternalState = null,
         },
     );

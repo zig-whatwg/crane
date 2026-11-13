@@ -63,8 +63,6 @@ pub const IdentityCredentialError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            @"error": runtime.DOMString = undefined,
-            url: runtime.USVString = undefined,
             _internal: ?*IdentityCredentialErrorImpl.InternalState = null,
         },
     );

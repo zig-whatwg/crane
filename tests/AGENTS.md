@@ -18,6 +18,7 @@ Where that is awkward, do it anyway but adapt the form:
 WPT is the bar: `zig build wpt -- <path>`. Unit tests use
 `std.testing.allocator` always, so leaks fail the test. Realistic inputs, spec
 edge cases.
+One exception: a churn test (100k+ allocations in a loop) checks memory on `@import("root").poisoning.ChurnAllocator` (the poisoning DebugAllocator, `stack_trace_frames = 0`, a leak naming its test): std.testing.allocator's 7-frame capture at every alloc and free was 95% of such a test's time on aarch64 macOS (`sample`, chat2, 2026-11-11: 148 s vs 27 s on server1; [lesson](../docs/lessons/testing-a-test-near-its-timeout-is-a-bug-profile-it-before-blaming-the-product.md)).
 
 **A test directory is one executable, and the launcher runs it.** `zig build test`
 compiles each `tests/<dir>/` as ONE test binary, from a root build.zig generates

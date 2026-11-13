@@ -310,11 +310,17 @@ pub const Executor = struct {
         } else {
             if (p.child.stdin) |f| f.close(io);
             p.child.stdin = null;
+            // What it printed after its last result - while it exited - kept
+            // past the reader's end for the report below.
+            var printed_buf: [exit_report_tail]u8 = undefined;
+            const printed = tail(&printed_buf, p.mr.reader(1).buffered());
             p.mr.deinit();
             term = p.child.wait(io) catch null;
             if (how == .exit) {
                 if (term) |tm| if (!tm.success()) {
                     _ = e.exit_failures.fetchAdd(1, .monotonic);
+                    var line_buf: [exit_report_tail + 256]u8 = undefined;
+                    log.warn("{s}", .{exitFailureReport(&line_buf, tm, printed)});
                 };
             }
         }
@@ -391,6 +397,34 @@ pub const FmtError = struct {
         if (errno) |n| try w.print(" ({s})", .{n});
     }
 };
+
+const log = std.log.scoped(.test_launcher);
+
+/// The most of what a process printed while exiting that a report keeps:
+/// its last bytes, where a fatal check or a sanitizer names itself.
+const exit_report_tail = 2048;
+
+/// The last `buf.len` bytes of `text`, copied into `buf`.
+fn tail(buf: []u8, text: []const u8) []const u8 {
+    const kept = text[text.len -| buf.len..];
+    @memcpy(buf[0..kept.len], kept);
+    return buf[0..kept.len];
+}
+
+/// The line `finish` logs for a test process that exited non-zero after its
+/// tests passed and it was asked to exit (Chromium's TEST_FAILURE_ON_EXIT):
+/// how it ended - the exit code or the signal - and what it printed while
+/// exiting. main.zig's count alone said neither (lane v8up b3c: an after-exit
+/// flake on V8 15.7 under load, page_realm_operations_test).
+/// `printed` is at most `exit_report_tail` bytes (`tail`); a `buf` too small
+/// for the line gives an empty one.
+fn exitFailureReport(buf: []u8, term: std.process.Child.Term, printed: []const u8) []const u8 {
+    return std.fmt.bufPrint(buf, "test process {f} after exit; it printed while exiting ({d} bytes): {s}", .{
+        FmtTerm{ .term = term },
+        printed.len,
+        if (printed.len == 0) "nothing" else printed,
+    }) catch buf[0..0];
+}
 
 const FmtTerm = struct {
     term: ?std.process.Child.Term,
@@ -1208,4 +1242,25 @@ test "an error prints with the errno it stands for, where it has one" {
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings("FileNotFound (ENOENT)", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.FileNotFound }}));
     try testing.expectEqualStrings("Unexpected", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.Unexpected }}));
+}
+
+test "a process that exits non-zero after exit is reported with its code or signal and what it printed while exiting" {
+    var buf: [exit_report_tail + 256]u8 = undefined;
+    const by_signal = exitFailureReport(&buf, .{ .signal = .SEGV }, "# Fatal error in v8::Isolate::Dispose\n");
+    try std.testing.expect(std.mem.indexOf(u8, by_signal, "terminated with signal SEGV") != null);
+    try std.testing.expect(std.mem.indexOf(u8, by_signal, "# Fatal error in v8::Isolate::Dispose") != null);
+    const by_code = exitFailureReport(&buf, .{ .exited = 134 }, "");
+    try std.testing.expect(std.mem.indexOf(u8, by_code, "exited with code 134") != null);
+    try std.testing.expect(std.mem.indexOf(u8, by_code, "nothing") != null);
+}
+
+test "the report keeps the last bytes of what a process printed while exiting" {
+    var long: [exit_report_tail * 2]u8 = undefined;
+    @memset(long[0..exit_report_tail], 'a');
+    @memset(long[exit_report_tail..], 'z');
+    var kept_buf: [exit_report_tail]u8 = undefined;
+    const kept = tail(&kept_buf, &long);
+    try std.testing.expectEqual(@as(usize, exit_report_tail), kept.len);
+    try std.testing.expect(std.mem.allEqual(u8, kept, 'z'));
+    try std.testing.expectEqualStrings("short", tail(&kept_buf, "short"));
 }

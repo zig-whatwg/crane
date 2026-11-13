@@ -86,14 +86,6 @@ pub const LargestContentfulPaint = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            loadTime: typedefs.DOMHighResTimeStamp = undefined,
-            renderTime: typedefs.DOMHighResTimeStamp = undefined,
-            size: u32 = undefined,
-            id: runtime.DOMString = undefined,
-            url: runtime.DOMString = undefined,
-            element: ?*runtime.Instance = null,
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*LargestContentfulPaintImpl.InternalState = null,
         },
     );

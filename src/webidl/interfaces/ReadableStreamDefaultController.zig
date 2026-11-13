@@ -63,7 +63,6 @@ pub const ReadableStreamDefaultController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            desiredSize: ?f64 = null,
             _internal: ?*ReadableStreamDefaultControllerImpl.InternalState = null,
         },
     );

@@ -61,12 +61,6 @@ pub const RdfTriple = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            subject: runtime.USVString = undefined,
-            predicate: runtime.USVString = undefined,
-            object: union(enum) {
-                USVString: runtime.USVString,
-                RdfLiteral: RdfLiteral,
-            } = undefined,
             _internal: ?*RdfTripleImpl.InternalState = null,
         },
     );

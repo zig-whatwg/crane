@@ -80,10 +80,6 @@ pub const DOMPoint = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: f64 = undefined,
-            y: f64 = undefined,
-            z: f64 = undefined,
-            w: f64 = undefined,
             _internal: ?*DOMPointImpl.InternalState = null,
         },
     );

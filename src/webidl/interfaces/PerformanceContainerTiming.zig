@@ -87,14 +87,6 @@ pub const PerformanceContainerTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            identifier: runtime.DOMString = undefined,
-            intersectionRect: *runtime.Instance = undefined,
-            size: u64 = undefined,
-            firstRenderTime: typedefs.DOMHighResTimeStamp = undefined,
-            lastPaintedElement: ?*runtime.Instance = null,
-            rootElement: ?*runtime.Instance = null,
-            paintTime: typedefs.DOMHighResTimeStamp = undefined,
-            presentationTime: ?typedefs.DOMHighResTimeStamp = null,
             _internal: ?*PerformanceContainerTimingImpl.InternalState = null,
         },
     );

@@ -252,8 +252,10 @@ pub fn installHooks() void {
         .abort = &lifecycleAbort,
         .abort_for_navigation = &lifecycleAbortForNavigation,
         .end_load = &lifecycleEndLoad,
+        .stop_load = &lifecycleStopLoad,
         .propagate_abort = &lifecyclePropagateAbort,
         .destroy = &lifecycleDestroy,
+        .is_destroyed = &lifecycleIsDestroyed,
         .set_about_base_url = &lifecycleSetAboutBaseUrl,
         .about_fallback_base_url = &lifecycleAboutFallbackBaseUrl,
         .declarative_refresh = &lifecycleDeclarativeRefresh,
@@ -1632,7 +1634,7 @@ pub fn get_fgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     // no body or a frameset returns "". Then DOMString getter steps 1-6.
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "text" });
     defer value.deinit(body.ctx.allocator);
     // An adopted body's realm can differ; this getter's caller frees with
@@ -1646,7 +1648,7 @@ pub fn get_linkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "link" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1658,7 +1660,7 @@ pub fn get_vlinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "vlink" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1670,7 +1672,7 @@ pub fn get_alinkColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "alink" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -1682,7 +1684,7 @@ pub fn get_bgColor(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return runtime.DOMString.initEmpty();
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return runtime.DOMString.initEmpty();
+    if (!std.mem.eql(u8, data.localName(), "body")) return runtime.DOMString.initEmpty();
     var value = try dom.reflection.get(runtime.DOMString, body, .{ .name = "bgcolor" });
     defer value.deinit(body.ctx.allocator);
     return value.clone(instance.ctx.allocator);
@@ -2036,7 +2038,7 @@ pub fn set_body(instance: *runtime.Instance, value: ?*runtime.Instance) anyerror
     }
 
     const value_data = @import("dom").element_data.of(actual_value) orelse return error.HierarchyRequestError;
-    const tag_name = value_data.local_name.asSlice();
+    const tag_name = value_data.localName();
 
     const is_body = if (internal.doc_type == .html)
         std.ascii.eqlIgnoreCase(tag_name, "body")
@@ -2102,7 +2104,7 @@ pub fn set_fgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     // reflection setter: set the corresponding content attribute on body.
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "text" }, value);
 }
 
@@ -2112,7 +2114,7 @@ pub fn set_linkColor(instance: *runtime.Instance, value: runtime.DOMString) anye
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "link" }, value);
 }
 
@@ -2122,7 +2124,7 @@ pub fn set_vlinkColor(instance: *runtime.Instance, value: runtime.DOMString) any
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "vlink" }, value);
 }
 
@@ -2132,7 +2134,7 @@ pub fn set_alinkColor(instance: *runtime.Instance, value: runtime.DOMString) any
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "alink" }, value);
 }
 
@@ -2142,7 +2144,7 @@ pub fn set_bgColor(instance: *runtime.Instance, value: runtime.DOMString) anyerr
     const dom = @import("dom");
     const body = (try interfaces.Document.get_body(instance)) orelse return;
     const data = dom.element_data.of(body) orelse return error.InvalidStateError;
-    if (!std.mem.eql(u8, data.local_name.asSlice(), "body")) return;
+    if (!std.mem.eql(u8, data.localName(), "body")) return;
     try dom.reflection.set(runtime.DOMString, body, .{ .name = "bgcolor" }, value);
 }
 
@@ -2163,10 +2165,30 @@ pub fn call_exitPointerLock(instance: *runtime.Instance) anyerror!void {
     if (internal.rareData()) |rare| rare.pointer_lock_element = null;
 }
 
+/// The editing methods' document check (execCommand and the five
+/// queryCommand* methods): InvalidStateError unless this is an HTML document
+/// or its content type is application/xhtml+xml. No spec text (the Editing
+/// draft's methods have none); golden rule 2 - Chrome 157, Firefox 159 and
+/// Safari 27.2 all throw on an XML document (editing/other/
+/// non-html-document.html, 1/1 in each at wpt.fyi stable). Blink
+/// Document::execCommand and the queryCommand* methods ("... is only
+/// supported on HTML documents", core/dom/document.cc), Gecko
+/// Document::ExecCommand / QueryCommand* (!IsHTMLOrXHTML() ->
+/// NS_ERROR_DOM_INVALID_STATE_ERR, dom/base/Document.cpp), WebKit
+/// Document::execCommand (InvalidStateError when !isHTMLDocument() &&
+/// !isXHTMLDocument()).
+fn requireHtmlOrXhtmlForEditing(instance: *runtime.Instance) error{InvalidStateError}!void {
+    const internal = getInternal(instance) orelse return;
+    if (internal.doc_type == .html) return;
+    if (std.mem.eql(u8, internal.content_type.asSlice(), "application/xhtml+xml")) return;
+    return error.InvalidStateError;
+}
+
 /// Operation: queryCommandState
 /// Returns the state of a toggle command (e.g., bold, italic).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandstate
 pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -2365,7 +2387,7 @@ pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: dictionaries.
 /// Returns whether an editing command is supported by this implementation.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandsupported
 pub fn call_queryCommandSupported(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
-    _ = instance;
+    try requireHtmlOrXhtmlForEditing(instance);
     const command_name = commandId.asSlice();
     return editing.queryCommandSupported(command_name);
 }
@@ -2685,6 +2707,7 @@ pub fn call_hasRedemptionRecord(instance: *runtime.Instance, issuer: runtime.USV
 /// The editing module (html_core) provides command parsing and validation,
 /// but DOM manipulation happens here since impls has access to interfaces.
 pub fn call_execCommand(instance: *runtime.Instance, commandId: runtime.DOMString, showUI: webidl.Opt(bool), value: webidl.Opt(typedefs.TrustedHTMLOrDOMString)) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
 
     // Get command name (case-insensitive per spec)
@@ -2896,6 +2919,7 @@ pub fn call_clear(instance: *runtime.Instance) anyerror!void {
 /// Returns whether an editing command is in an indeterminate state (mixed).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandindeterm
 pub fn call_queryCommandIndeterm(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -3231,6 +3255,7 @@ pub fn call_createCDATASection(instance: *runtime.Instance, data: runtime.DOMStr
 /// Returns whether an editing command is currently enabled.
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandenabled
 pub fn call_queryCommandEnabled(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!bool {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return false;
     const command_name = commandId.asSlice();
 
@@ -3429,6 +3454,7 @@ pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Inst
 /// Returns the current value for a valued command (e.g., fontName, fontSize).
 /// Spec: https://html.spec.whatwg.org/multipage/interaction.html#dom-document-querycommandvalue
 pub fn call_queryCommandValue(instance: *runtime.Instance, commandId: runtime.DOMString) anyerror!runtime.DOMString {
+    try requireHtmlOrXhtmlForEditing(instance);
     const internal = getInternal(instance) orelse return runtime.DOMString.initEmpty();
     const command_name = commandId.asSlice();
 
@@ -3754,6 +3780,49 @@ fn lifecycleAbortForNavigation(document: *runtime.Instance) void {
 fn lifecycleEndLoad(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     if (internal.ready_state != ._complete_) internal.load_aborted = true;
+}
+
+/// dom.document_lifecycle: window.stop() aborted `document` (HTML "stop
+/// loading" step 3) before its load event: its load ends now. Its readiness
+/// becomes "complete", it fires no load, pageshow or container load
+/// (completeLoading's load_aborted branch), and it is ready for post-load
+/// tasks, so its container stops delaying the container's document.
+///
+/// Stated deviation, golden rule 2 mechanism by mechanism (no newer spec;
+/// the three browsers differ, html/browsers/browsing-the-web/
+/// navigating-across-documents/abort-document-load.html at wpt.fyi
+/// 24ddf405a0: Chrome 157 passes, Firefox 160 and Safari 27.2 fail):
+/// - readiness "complete": the spec ("abort a parser" step 5; "the end" step
+///   9.1 once the cancelled fetches stop delaying) and Chrome - Blink's
+///   FrameLoader::StopAllLoaders calls Document::CancelParsing, which sets
+///   the ready state to complete. Safari leaves an aborted parse
+///   "interactive".
+/// - no load event: Chrome (CancelParsing sets load_event_progress_ to
+///   kLoadEventCompleted) and Firefox (the stop ends the load as
+///   NS_BINDING_ABORTED, and nsDocumentViewer::LoadComplete fires load only
+///   for a successful status), against "the end" step 9.5.
+/// - the container's document is not held: all three (each harness
+///   finishes; Blink's DocumentLoader::StopLoading -> LoadFailed ->
+///   DidFinishNavigation runs the parent's CheckCompleted), against HTML
+///   4.8.5's first delay predicate - an aborted parser's document never
+///   reaches "the end" step 11, ready for post-load tasks.
+/// Each majority is Chrome's behaviour, so Crane does what Chrome does.
+fn lifecycleStopLoad(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // Its load already ran, or ended: nothing is left to stop.
+    if (internal.ready_for_post_load_tasks) return;
+    internal.load_aborted = true;
+    internal.ready_for_post_load_tasks = true;
+    const generation = runtime.SlabAllocator.generationOf(document);
+    // readystatechange listeners run here, and may take the frame away.
+    engine.runInRealm(document.ctx, becomeComplete, document) catch {};
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    // Its navigable stops delaying the container's document, which may have
+    // been waiting on this one alone (the container's load event steps,
+    // which would have released it, never run for a stopped load).
+    @import("dom").content_navigables.loadStopped(document);
+    if (runtime.SlabAllocator.generationOf(document) != generation) return;
+    @import("dom").content_navigables.loadDelayMayHaveEnded(document);
 }
 
 /// Only fetch-owner policy distinguishes provisional navigation here;
@@ -4389,6 +4458,13 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.kept_in_bfcache = false;
     @import("html").script_execution.discardDocumentScripts(document);
     discardDocumentParser(internal);
+}
+
+/// dom.document_lifecycle: whether "destroy a document" has run on
+/// `document` (its `destroyed` flag, set by lifecycleDestroy).
+fn lifecycleIsDestroyed(document: *runtime.Instance) bool {
+    const internal = getInternal(document) orelse return false;
+    return internal.destroyed;
 }
 
 /// dom.document_lifecycle: set `document`'s about base URL (a copy).

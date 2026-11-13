@@ -103,18 +103,6 @@ pub const VideoFrame = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            format: ?enums.VideoPixelFormat = null,
-            codedWidth: u32 = undefined,
-            codedHeight: u32 = undefined,
-            codedRect: ?*runtime.Instance = null,
-            visibleRect: ?*runtime.Instance = null,
-            rotation: f64 = undefined,
-            flip: bool = undefined,
-            displayWidth: u32 = undefined,
-            displayHeight: u32 = undefined,
-            duration: ?u64 = null,
-            timestamp: i64 = undefined,
-            colorSpace: *runtime.Instance = undefined,
             _internal: ?*VideoFrameImpl.InternalState = null,
         },
     );

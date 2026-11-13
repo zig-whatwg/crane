@@ -75,7 +75,6 @@ pub const USBPermissionResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devices: runtime.JSValue = undefined,
             _internal: ?*USBPermissionResultImpl.InternalState = null,
         },
     );

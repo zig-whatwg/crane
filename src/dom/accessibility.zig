@@ -39,7 +39,7 @@ fn attribute(node: *Instance, name: []const u8) ?[]const u8 {
 }
 
 fn localName(node: *Instance) []const u8 {
-    return if (data.of(node)) |element| element.local_name.asSlice() else "";
+    return if (data.of(node)) |element| element.localName() else "";
 }
 
 fn isHtml(node: *Instance) bool {

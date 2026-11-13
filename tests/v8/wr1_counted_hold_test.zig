@@ -107,8 +107,8 @@ const Page = struct {
         return engine.convertToPlatformObject(self.realm, held.value) orelse error.NotAPlatformObject;
     }
 
-    /// V8's own full collection, twice: the second pass runs synchronously
-    /// for a forced one; nothing drains the queue.
+    /// V8's own full collection, twice: the finalizers of what each finds dead
+    /// run when it returns; nothing drains the deferred teardown queue.
     fn collect(self: Page) void {
         const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(self.agent));
         v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);

@@ -65,10 +65,6 @@ pub const ImageBitmapRenderingContext = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            canvas: union(enum) {
-                HTMLCanvasElement: HTMLCanvasElement,
-                OffscreenCanvas: OffscreenCanvas,
-            } = undefined,
             _internal: ?*ImageBitmapRenderingContextImpl.InternalState = null,
         },
     );

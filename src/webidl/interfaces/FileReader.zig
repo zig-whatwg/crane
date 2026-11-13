@@ -110,18 +110,6 @@ pub const FileReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            readyState: u16 = undefined,
-            result: ?union(enum) {
-                DOMString: runtime.DOMString,
-                ArrayBuffer: runtime.ArrayBuffer,
-            } = null,
-            @"error": ?*runtime.Instance = null,
-            onloadstart: typedefs.EventHandler = undefined,
-            onprogress: typedefs.EventHandler = undefined,
-            onload: typedefs.EventHandler = undefined,
-            onabort: typedefs.EventHandler = undefined,
-            onerror: typedefs.EventHandler = undefined,
-            onloadend: typedefs.EventHandler = undefined,
             _internal: ?*FileReaderImpl.InternalState = null,
         },
     );

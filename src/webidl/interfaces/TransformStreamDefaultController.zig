@@ -63,7 +63,6 @@ pub const TransformStreamDefaultController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            desiredSize: ?f64 = null,
             _internal: ?*TransformStreamDefaultControllerImpl.InternalState = null,
         },
     );

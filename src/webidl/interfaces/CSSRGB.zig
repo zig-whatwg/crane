@@ -77,10 +77,6 @@ pub const CSSRGB = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            r: typedefs.CSSColorRGBComp = undefined,
-            g: typedefs.CSSColorRGBComp = undefined,
-            b: typedefs.CSSColorRGBComp = undefined,
-            alpha: typedefs.CSSColorPercent = undefined,
             _internal: ?*CSSRGBImpl.InternalState = null,
         },
     );

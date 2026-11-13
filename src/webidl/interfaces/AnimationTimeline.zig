@@ -70,8 +70,6 @@ pub const AnimationTimeline = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            currentTime: ?typedefs.CSSNumberish = null,
-            duration: ?typedefs.CSSNumberish = null,
             _internal: ?*AnimationTimelineImpl.InternalState = null,
         },
     );

@@ -87,8 +87,6 @@ pub const FileSystemHandle = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            kind: enums.FileSystemHandleKind = undefined,
-            name: runtime.USVString = undefined,
             _internal: ?*FileSystemHandleImpl.InternalState = null,
         },
     );

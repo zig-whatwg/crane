@@ -93,7 +93,7 @@ test "HTMLElement's InternalState keeps no allocator copy" {
     try expectNoFields(HTMLElementState, .{"allocator"});
 }
 
-test "Element's InternalState is 136 bytes: the cold fields are rare data, the slot name its attribute" {
+test "Element's InternalState is 40 bytes: the cold fields are rare data, the slot name its attribute" {
     // 416 at dfa8592a878: - 16 (the allocator copy) - 40 (ElementData's
     // prefix and Attr nodes) - 104 (the NamedNodeMap and its generation, the
     // shadow root and its edge, the definition, the is value, the element
@@ -110,13 +110,17 @@ test "Element's InternalState is 136 bytes: the cold fields are rare data, the s
         printLayout(ElementState);
         return error.NoRareData;
     }
-    try expectSize(ElementState, 136);
+    // Lane nd2 N2 the name to one record pointer (nd2_element_name_test):
+    // -48; N3 the ID and classes views (nd2_id_class_index_test): -48.
+    try expectSize(ElementState, 40);
 }
 
-test "ElementData is 112 bytes: its prefix and Attr nodes are rare data" {
-    // 152 at dfa8592a878 (D1): - 32 (the prefix) - 8 (the Attr node list).
+test "ElementData is 16 bytes: its Attr nodes are rare data, its name one record, its ID and classes two indices in its list" {
+    // 152 at dfa8592a878 (D1): - 32 (the prefix) - 8 (the Attr node list);
+    // lane nd2 N2: - 48 (the namespace and local name, one record pointer
+    // now, the prefix in it too); N3: - 48 (the ID and classes views).
     try expectNoFields(ElementData, .{ "prefix", "attr_nodes" });
-    try expectSize(ElementData, 112);
+    try expectSize(ElementData, 16);
 }
 
 test "HTMLElement's InternalState is empty: every field it kept is rare data" {
@@ -126,26 +130,18 @@ test "HTMLElement's InternalState is empty: every field it kept is rare data" {
     try expectSize(HTMLElementState, 0);
 }
 
-test "a div's one block is 352 bytes: 736 less Element's 176 and HTMLElement's 88 (D2), perf2 b7's 8, and the registry association's 40 and the slottable state's 64 (E1), and the wrapper redesign P6's 8 (NodeBase.holds)" {
-    // perf2 b7 (merged after D2): EventTarget's current event (8) is a
-    // Window's, in Window's state now.
-    const S = interfaces.HTMLDivElement.State;
-    try expectSize(S, 352);
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
-    }
-}
+// A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
+// (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).
 
-test "ElementRareData is 344 bytes, made only for the elements that use it" {
+test "the rare data is one sparse block, made only for the elements that use it: 16 bytes for one field" {
     if (comptime !has_rare) return error.NoRareData;
-    // prefix 32, Attr nodes 32 (a std.ArrayList: 24 and a safety field in
-    // the safe builds these run in), NamedNodeMap 16, shadow root + edge 40,
-    // definition 8, is value 32, references 8, HTMLElement's part 72: 240;
-    // E1: + a registry that is not the node document's, 40, + the slottable
-    // state, 64.
-    try expectSize(dom.element_rare_data.ElementRareData, 344);
+    // 312 bytes in one fixed block at d7d5a0be246 (prefix 32 until nd2 N2,
+    // Attr nodes 32, NamedNodeMap 16, shadow root + edge 40, definition 8,
+    // is value 32, references 8, HTMLElement's part 72, E1's registry 40 and
+    // slottable state 64), made for any one field. Since lane rare1 it is
+    // an 8-byte header and an 8-byte slot per field set
+    // (tests/dom/rare1_sparse_rare_data_test.zig).
+    try testing.expectEqual(@as(usize, 16), dom.element_rare_data.blockBytesFor(1));
 }
 
 // ============================================================================
@@ -194,10 +190,10 @@ const Page = struct {
     }
 };
 
-/// `element`'s rare data, or null when it has none (or D2 is not in).
+/// `element`'s rare block, or null when it has none (or D2 is not in).
 fn rareOf(element: *runtime.Instance) ?*anyopaque {
     if (comptime !has_rare) return null;
-    return @ptrCast(dom.element_rare_data.of(element) orelse return null);
+    return @ptrCast(dom.element_rare_data.of(element).block orelse return null);
 }
 
 // ============================================================================
@@ -239,7 +235,7 @@ test "a div made, parsed, cloned and given attributes, an ID and classes has no 
     try testing.expect(rareOf(page.div) == null);
 }
 
-test "each rare field makes the rare data once; it never moves, and every field works" {
+test "each rare field goes into the one block, and every field works" {
     if (comptime !has_rare) return error.NoRareData;
     var page: Page = undefined;
     try page.open(testing.allocator);
@@ -247,7 +243,7 @@ test "each rare field makes the rare data once; it never moves, and every field 
 
     // `attributes` ([SameObject]) makes it.
     const map = try interfaces.Element.get_attributes(page.div);
-    const rare = rareOf(page.div) orelse return error.NoRareData;
+    _ = rareOf(page.div) orelse return error.NoRareData;
     try testing.expect((try interfaces.Element.get_attributes(page.div)) == map);
 
     // An Attr node ([SameObject] per attribute).
@@ -265,13 +261,15 @@ test "each rare field makes the rare data once; it never moves, and every field 
     try page.expectString("n0nce", try interfaces.HTMLElement.get_nonce(page.div));
     const style = try interfaces.HTMLElement.get_style(page.div);
     try testing.expect((try interfaces.HTMLElement.get_style(page.div)) == style);
-    // Every field above went into the same block.
-    try testing.expect(rareOf(page.div).? == rare);
+    // Every field above went into the same block, which moved as it grew
+    // (lane rare1): the map and the shadow root with their generations, the
+    // Attr node list, the nonce, the style object and its generation.
+    try testing.expectEqual(@as(u32, 8), dom.element_rare_data.of(page.div).fieldCount());
 
-    // An element made with a prefix keeps it in rare data of its own.
+    // An element made with a prefix keeps it in its name record (lane nd2
+    // N2; rare data of its own before): it makes no rare data.
     const prefixed = try page.elementNS(infra.namespaces.SVG_NAMESPACE, "s:svg");
-    try testing.expect(rareOf(prefixed) != null);
-    try testing.expect(rareOf(prefixed).? != rare);
+    try testing.expect(rareOf(prefixed) == null);
     try page.expectString("s", (try interfaces.Element.get_prefix(prefixed)).?);
     try page.expectString("s:svg", try interfaces.Element.get_tagName(prefixed));
     // And one made without one has none.
@@ -350,10 +348,12 @@ test "the rare data's bytes are counted in the Browser's DOM memory while they l
     const before = page.scope.dom_memory.live;
     try interfaces.HTMLElement.set_nonce(el, str("n"));
     try testing.expect(rareOf(el) != null);
-    try testing.expectEqual(before + @sizeOf(dom.element_rare_data.ElementRareData), page.scope.dom_memory.live);
-    // A second field goes into the same block: nothing more is counted.
+    // One field: the header and one slot (the nonce's bytes are its own).
+    try testing.expectEqual(before + 16, page.scope.dom_memory.live);
+    // Two more go into the same block, which grows to three slots: its old
+    // bytes are given back, its new ones counted.
     _ = try interfaces.HTMLElement.get_style(el);
-    try testing.expectEqual(before + @sizeOf(dom.element_rare_data.ElementRareData), page.scope.dom_memory.live);
+    try testing.expectEqual(before + 32, page.scope.dom_memory.live);
     // The element's own deinit (its wrapper's collection) gives them back.
     interfaces.HTMLDivElement.deinit(el);
     try testing.expect(page.scope.dom_memory.live <= before);

@@ -104,14 +104,6 @@ pub const PaymentRequestEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            topOrigin: runtime.USVString = undefined,
-            paymentRequestOrigin: runtime.USVString = undefined,
-            paymentRequestId: runtime.DOMString = undefined,
-            methodData: runtime.JSValue = undefined,
-            total: runtime.JSValue = undefined,
-            modifiers: runtime.JSValue = undefined,
-            paymentOptions: ?runtime.JSValue = null,
-            shippingOptions: ?runtime.JSValue = null,
             _internal: ?*PaymentRequestEventImpl.InternalState = null,
         },
     );

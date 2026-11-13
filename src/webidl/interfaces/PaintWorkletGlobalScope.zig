@@ -64,7 +64,6 @@ pub const PaintWorkletGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            devicePixelRatio: f64 = undefined,
             _internal: ?*PaintWorkletGlobalScopeImpl.InternalState = null,
         },
     );

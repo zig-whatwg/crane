@@ -86,6 +86,14 @@ pub const WorkerGlobalScope = struct {
             .{ "crypto", "get_crypto", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "indexedDB",
+            "caches",
+            "crypto",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "importScripts", "call_importScripts", 0 },
@@ -166,25 +174,6 @@ pub const WorkerGlobalScope = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            self: *runtime.Instance = undefined,
-            location: *runtime.Instance = undefined,
-            navigator: *runtime.Instance = undefined,
-            onerror: typedefs.OnErrorEventHandler = undefined,
-            onlanguagechange: typedefs.EventHandler = undefined,
-            onoffline: typedefs.EventHandler = undefined,
-            ononline: typedefs.EventHandler = undefined,
-            onrejectionhandled: typedefs.EventHandler = undefined,
-            onunhandledrejection: typedefs.EventHandler = undefined,
-            fonts: *runtime.Instance = undefined,
-            origin: runtime.USVString = undefined,
-            isSecureContext: bool = undefined,
-            crossOriginIsolated: bool = undefined,
-            indexedDB: *runtime.Instance = undefined,
-            performance: *runtime.Instance = undefined,
-            scheduler: *runtime.Instance = undefined,
-            caches: *runtime.Instance = undefined,
-            trustedTypes: *runtime.Instance = undefined,
-            crypto: *runtime.Instance = undefined,
             cached_indexedDB: ?*runtime.Instance = null,
             cached_caches: ?*runtime.Instance = null,
             cached_crypto: ?*runtime.Instance = null,

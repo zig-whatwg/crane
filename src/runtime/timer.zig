@@ -98,6 +98,18 @@ pub const TimerVTable = struct {
     /// `TimerInterface.setTimeoutOwned` then arms nothing (returns 0).
     setTimeoutOwned: ?*const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId = null,
 
+    /// Schedule a one-shot BACKGROUND timer, which owns `user_data` as
+    /// `setTimeoutOwned`'s does: the engine's own housekeeping - a cache
+    /// dropped some seconds after its last use - that no page waits for. It
+    /// fires as any timer does, when its loop polls after its deadline, but
+    /// an armed one is not pending work: a loop with nothing else to do is
+    /// idle, does not wake for it, and a virtual clock does not move to it
+    /// (libuv's unreferenced handle, uv_unref: "the event loop will exit
+    /// when there are no more active and referenced handles"; Node's
+    /// timeout.unref()). Null for an implementation that has no such timer:
+    /// `TimerInterface.setBackgroundTimeout` then arms nothing (returns 0).
+    setBackgroundTimeout: ?*const fn (ctx: *anyopaque, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId = null,
+
     /// How long until the pending timer `id` is due, in whole milliseconds
     /// rounded up (0 when due already); null when it fired, was cancelled or
     /// is unknown. Null for an implementation that cannot say:
@@ -165,6 +177,18 @@ pub const TimerInterface = struct {
     pub fn setTimeoutOwned(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
         const owned = self.vtable.setTimeoutOwned orelse return 0;
         return owned(self.ctx, ms, callback, user_data, drop);
+    }
+
+    /// Schedule a one-shot background timer that owns `user_data`
+    /// (TimerVTable.setBackgroundTimeout): it fires when its loop polls
+    /// after `ms`, and while armed it keeps no loop busy. `drop(user_data)`
+    /// runs if the timer manager ends with it still armed. 0 when no timer
+    /// was armed - the implementation has no background timers, or it
+    /// failed - and the caller still owns `user_data`. A successful
+    /// clearTimeout hands it back to the caller, as for any timer.
+    pub fn setBackgroundTimeout(self: Self, ms: u64, callback: TimerCallback, user_data: ?*anyopaque, drop: TimerDrop) TimerId {
+        const background = self.vtable.setBackgroundTimeout orelse return 0;
+        return background(self.ctx, ms, callback, user_data, drop);
     }
 
     /// A new id naming no timer (TimerVTable.reserveId); null when the

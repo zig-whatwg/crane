@@ -70,7 +70,6 @@ pub const ReadableStreamBYOBReader = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            closed: runtime.JSValue = undefined,
             _internal: ?*ReadableStreamBYOBReaderImpl.InternalState = null,
         },
     );

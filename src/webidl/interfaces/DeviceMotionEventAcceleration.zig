@@ -60,9 +60,6 @@ pub const DeviceMotionEventAcceleration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            x: ?f64 = null,
-            y: ?f64 = null,
-            z: ?f64 = null,
             _internal: ?*DeviceMotionEventAccelerationImpl.InternalState = null,
         },
     );

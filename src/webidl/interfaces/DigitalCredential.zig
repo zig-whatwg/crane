@@ -75,8 +75,6 @@ pub const DigitalCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            protocol: typedefs.DigitalCredentialProtocol = undefined,
-            data: runtime.JSValue = undefined,
             cached_data: ?runtime.JSValue = null,
             _internal: ?*DigitalCredentialImpl.InternalState = null,
         },

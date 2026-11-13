@@ -67,8 +67,6 @@ pub const ReadableByteStreamController = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            byobRequest: ?*runtime.Instance = null,
-            desiredSize: ?f64 = null,
             _internal: ?*ReadableByteStreamControllerImpl.InternalState = null,
         },
     );

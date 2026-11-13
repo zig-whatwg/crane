@@ -59,8 +59,6 @@ pub const XRViewGeometry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            projectionMatrix: runtime.Float32Array = undefined,
-            transform: *runtime.Instance = undefined,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRViewGeometryImpl.InternalState = null,
         },

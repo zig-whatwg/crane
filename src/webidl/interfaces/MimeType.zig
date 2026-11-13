@@ -63,10 +63,6 @@ pub const MimeType = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            description: runtime.DOMString = undefined,
-            suffixes: runtime.DOMString = undefined,
-            enabledPlugin: *runtime.Instance = undefined,
             _internal: ?*MimeTypeImpl.InternalState = null,
         },
     );

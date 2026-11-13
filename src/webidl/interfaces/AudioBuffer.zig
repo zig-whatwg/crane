@@ -70,10 +70,6 @@ pub const AudioBuffer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sampleRate: f32 = undefined,
-            length: u32 = undefined,
-            duration: f64 = undefined,
-            numberOfChannels: u32 = undefined,
             _internal: ?*AudioBufferImpl.InternalState = null,
         },
     );

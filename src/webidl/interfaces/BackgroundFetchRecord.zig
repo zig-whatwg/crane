@@ -62,8 +62,6 @@ pub const BackgroundFetchRecord = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            request: *runtime.Instance = undefined,
-            responseReady: runtime.JSValue = undefined,
             _internal: ?*BackgroundFetchRecordImpl.InternalState = null,
         },
     );

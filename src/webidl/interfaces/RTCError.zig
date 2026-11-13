@@ -70,12 +70,6 @@ pub const RTCError = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            errorDetail: enums.RTCErrorDetailType = undefined,
-            sdpLineNumber: ?i32 = null,
-            sctpCauseCode: ?i32 = null,
-            receivedAlert: ?u32 = null,
-            sentAlert: ?u32 = null,
-            httpRequestStatusCode: ?i32 = null,
             _internal: ?*RTCErrorImpl.InternalState = null,
         },
     );

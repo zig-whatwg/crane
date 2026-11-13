@@ -84,10 +84,6 @@ pub const ImageDecoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: runtime.DOMString = undefined,
-            complete: bool = undefined,
-            completed: runtime.JSValue = undefined,
-            tracks: *runtime.Instance = undefined,
             _internal: ?*ImageDecoderImpl.InternalState = null,
         },
     );

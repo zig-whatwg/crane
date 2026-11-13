@@ -72,12 +72,6 @@ pub const USBAlternateInterface = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            alternateSetting: u8 = undefined,
-            interfaceClass: u8 = undefined,
-            interfaceSubclass: u8 = undefined,
-            interfaceProtocol: u8 = undefined,
-            interfaceName: ?runtime.DOMString = null,
-            endpoints: runtime.JSValue = undefined,
             _internal: ?*USBAlternateInterfaceImpl.InternalState = null,
         },
     );

@@ -56,7 +56,6 @@ pub const Region = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            regionOverset: typedefs.CSSOMString = undefined,
             _internal: ?*RegionImpl.InternalState = null,
         },
     );

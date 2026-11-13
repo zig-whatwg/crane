@@ -58,7 +58,6 @@ pub const NavigatorCrossOriginStorage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            crossOriginStorage: *runtime.Instance = undefined,
             cached_crossOriginStorage: ?*runtime.Instance = null,
             _internal: ?*NavigatorCrossOriginStorageImpl.InternalState = null,
         },

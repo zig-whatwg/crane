@@ -90,6 +90,14 @@ pub const XRSession = struct {
             .{ "maxRenderLayers", "get_maxRenderLayers", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "renderState",
+            "inputSources",
+            "trackedSources",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "updateRenderState", "call_updateRenderState", 0 },
@@ -187,34 +195,6 @@ pub const XRSession = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            visibilityState: enums.XRVisibilityState = undefined,
-            frameRate: ?f32 = null,
-            supportedFrameRates: ?runtime.Float32Array = null,
-            renderState: *runtime.Instance = undefined,
-            inputSources: *runtime.Instance = undefined,
-            trackedSources: *runtime.Instance = undefined,
-            enabledFeatures: runtime.JSValue = undefined,
-            isSystemKeyboardSupported: bool = undefined,
-            onend: typedefs.EventHandler = undefined,
-            oninputsourceschange: typedefs.EventHandler = undefined,
-            onselect: typedefs.EventHandler = undefined,
-            onselectstart: typedefs.EventHandler = undefined,
-            onselectend: typedefs.EventHandler = undefined,
-            onsqueeze: typedefs.EventHandler = undefined,
-            onsqueezestart: typedefs.EventHandler = undefined,
-            onsqueezeend: typedefs.EventHandler = undefined,
-            onvisibilitychange: typedefs.EventHandler = undefined,
-            onframeratechange: typedefs.EventHandler = undefined,
-            persistentAnchors: runtime.JSValue = undefined,
-            environmentBlendMode: enums.XREnvironmentBlendMode = undefined,
-            interactionMode: enums.XRInteractionMode = undefined,
-            depthUsage: enums.XRDepthUsage = undefined,
-            depthDataFormat: enums.XRDepthDataFormat = undefined,
-            depthType: ?enums.XRDepthType = null,
-            depthActive: ?bool = null,
-            domOverlayState: ?dictionaries.XRDOMOverlayState = null,
-            preferredReflectionFormat: enums.XRReflectionFormat = undefined,
-            maxRenderLayers: u32 = undefined,
             cached_renderState: ?*runtime.Instance = null,
             cached_inputSources: ?*runtime.Instance = null,
             cached_trackedSources: ?*runtime.Instance = null,

@@ -1,0 +1,331 @@
+// The JS framework compatibility matrix's suites (tools/fw_matrix/manifest.zig
+// documents every field). Pins checked 2026-11-11 by lane fw1: each sha256 is
+// of the bytes the URL served then; each npm `integrity` is the project's own
+// package-lock.json pin at its tag, and equal to the registry's.
+.{
+    .suites = .{
+        // jQuery 4.0.0's own QUnit suite: test/index.html, one page per module
+        // as jquery-test-runner's jtr-isolate.yml runs it (its 21 modules), plus
+        // `wrap` and `ready`, which only its all-modules run covers.
+        .{
+            .id = "jquery-qunit",
+            .framework = "jquery",
+            .title = "jQuery",
+            .version = "4.0.0",
+            .kind = .project,
+            .repository = "https://github.com/jquery/jquery",
+            .tag = "4.0.0",
+            .commit = "4f2fae08f23b54ce09322e62e73cce6161b8d3cb",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2 + Sinon 9.2.4",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/jquery/jquery/tar.gz/refs/tags/4.0.0",
+                .sha256 = "76e03838f1acf056339e5ca3c829115365f0ce3a4cd51112d52ad1d8d8cf6abe",
+            },
+            // build/tasks/npmcopy.js's map, from the npm registry at
+            // package-lock.json's versions.
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+                .{
+                    .name = "sinon",
+                    .version = "9.2.4",
+                    .url = "https://registry.npmjs.org/sinon/-/sinon-9.2.4.tgz",
+                    .sha256 = "89913f19c2350919225b7176a61c73e2543ff1eb708c0e5d74702cd78ff067d6",
+                    .integrity = "sha512-zljcULZQsJxVra28qIAL6ow1Z9tpattkCTEJR4RBP3TGc00FcttsP5pK284Nas5WjMZU5Yzy3kAIp3B3KRf5Yg==",
+                    .files = .{
+                        .{ .from = "package/pkg/sinon.js", .to = "external/sinon/sinon.js" },
+                        .{ .from = "package/LICENSE", .to = "external/sinon/LICENSE.txt" },
+                    },
+                },
+                .{
+                    .name = "native-promise-only",
+                    .version = "0.8.1",
+                    .url = "https://registry.npmjs.org/native-promise-only/-/native-promise-only-0.8.1.tgz",
+                    .sha256 = "813009e5b817bbe20570ceb085b7e935e14e34b42806c6b28daaf6fade18be03",
+                    .integrity = "sha512-zkVhZUA3y8mbz652WrL5x0fB0ehrBkulWT3TomAQ9iDtyXZvzKeEA6GPxAItBYeNYl5yngKRX612qHOhvMkDeg==",
+                    .files = .{
+                        .{ .from = "package/lib/npo.src.js", .to = "external/npo/npo.js" },
+                    },
+                },
+                .{
+                    .name = "requirejs",
+                    .version = "2.3.7",
+                    .url = "https://registry.npmjs.org/requirejs/-/requirejs-2.3.7.tgz",
+                    .sha256 = "31f3330c978fb28684622fe71165dc946432cf0210b2ea8a1ca0233e70f2737d",
+                    .integrity = "sha512-DouTG8T1WanGok6Qjg2SXuCMzszOo0eHeH9hDZ5Y4x8Je+9JB38HdTLT4/VA8OaUhBa0JPVHJ0pyBkM1z+pDsw==",
+                    .files = .{
+                        .{ .from = "package/require.js", .to = "external/requirejs/require.js" },
+                    },
+                },
+                .{
+                    .name = "bootstrap",
+                    .version = "5.3.8",
+                    .url = "https://registry.npmjs.org/bootstrap/-/bootstrap-5.3.8.tgz",
+                    .sha256 = "8b02d4a7482e0f0a2b1da58f1c9c86830e96cc2f77f094f89e4681b19886bc38",
+                    .integrity = "sha512-HP1SZDqaLDPwsNiqRqi5NcP0SSXciX2s9E+RyqJIIqGo+vJeN5AJVM98CXmW/Wux0nQ5L7jeWUdplCEf0Ee+tg==",
+                    .files = .{
+                        .{ .from = "package/dist/css/bootstrap.css", .to = "external/bootstrap/bootstrap.css" },
+                        .{ .from = "package/dist/css/bootstrap.min.css", .to = "external/bootstrap/bootstrap.min.css" },
+                        .{ .from = "package/dist/css/bootstrap.min.css.map", .to = "external/bootstrap/bootstrap.min.css.map" },
+                    },
+                },
+                .{
+                    .name = "core-js-bundle",
+                    .version = "3.46.0",
+                    .url = "https://registry.npmjs.org/core-js-bundle/-/core-js-bundle-3.46.0.tgz",
+                    .sha256 = "ef1be97c48ced5bc2c3fd2c9f701c36e1395b494d34d7e694b06e7483df8b11c",
+                    .integrity = "sha512-ukN58lWUS12OqVnYUu4gxkAqv70F7WRqy8+xq85qmPRxIa64KYTzCkCHB5lvjcDQ3XTe80HtHPGuHuD1HTdAGQ==",
+                    .files = .{
+                        .{ .from = "package/minified.js", .to = "external/core-js-bundle/core-js-bundle.js" },
+                        .{ .from = "package/LICENSE", .to = "external/core-js-bundle/LICENSE" },
+                    },
+                },
+            },
+            // Ruling R3: build/tasks/qunit-fixture.js's output, written by
+            // generated.zig.
+            .generated = .{
+                .{ .kind = .qunit_fixture, .from = "test/data/qunit-fixture.html", .to = "test/data/qunit-fixture.js" },
+            },
+            .pages = .{
+                .{ .id = "basic", .path = "test/index.html?module=basic", .module = "basic" },
+                .{ .id = "ajax", .path = "test/index.html?module=ajax", .module = "ajax" },
+                .{ .id = "animation", .path = "test/index.html?module=animation", .module = "animation" },
+                .{ .id = "attributes", .path = "test/index.html?module=attributes", .module = "attributes" },
+                .{ .id = "callbacks", .path = "test/index.html?module=callbacks", .module = "callbacks" },
+                .{ .id = "core", .path = "test/index.html?module=core", .module = "core" },
+                .{ .id = "css", .path = "test/index.html?module=css", .module = "css" },
+                .{ .id = "data", .path = "test/index.html?module=data", .module = "data" },
+                .{ .id = "deferred", .path = "test/index.html?module=deferred", .module = "deferred" },
+                .{ .id = "deprecated", .path = "test/index.html?module=deprecated", .module = "deprecated" },
+                .{ .id = "dimensions", .path = "test/index.html?module=dimensions", .module = "dimensions" },
+                .{ .id = "effects", .path = "test/index.html?module=effects", .module = "effects" },
+                .{ .id = "event", .path = "test/index.html?module=event", .module = "event" },
+                .{ .id = "manipulation", .path = "test/index.html?module=manipulation", .module = "manipulation" },
+                .{ .id = "offset", .path = "test/index.html?module=offset", .module = "offset" },
+                .{ .id = "queue", .path = "test/index.html?module=queue", .module = "queue" },
+                .{ .id = "selector", .path = "test/index.html?module=selector", .module = "selector" },
+                .{ .id = "serialize", .path = "test/index.html?module=serialize", .module = "serialize" },
+                .{ .id = "support", .path = "test/index.html?module=support", .module = "support" },
+                .{ .id = "traversing", .path = "test/index.html?module=traversing", .module = "traversing" },
+                .{ .id = "tween", .path = "test/index.html?module=tween", .module = "tween" },
+                .{ .id = "wrap", .path = "test/index.html?module=wrap", .module = "wrap" },
+                .{ .id = "ready", .path = "test/index.html?module=ready", .module = "ready" },
+            },
+            .excluded = "jquery-4.0.0.txt",
+        },
+        // htmx 4.0.1's own Mocha suite: test/test.html, the project's browser
+        // page (80 of its 88 test files; ruling R5: the 9 files only its
+        // web-test-runner config loads are listed as not run). It loads Chai
+        // and Mocha from unpkg.com by versioned URL (ruling R6: allowed live,
+        // their bytes checked here first).
+        .{
+            .id = "htmx-mocha",
+            .framework = "htmx",
+            .title = "htmx",
+            .version = "4.0.1",
+            .kind = .project,
+            .repository = "https://github.com/bigskysoftware/htmx",
+            .tag = "v4.0.1",
+            .commit = "8d112c71624f2e48e741d740b4531d5010f057ae",
+            .licence = "0BSD",
+            .runner = "Mocha 11.7.5 + Chai 4.5.0",
+            .reader = .mocha,
+            .source = .{
+                .url = "https://codeload.github.com/bigskysoftware/htmx/tar.gz/refs/tags/v4.0.1",
+                .sha256 = "b5a8d7b5424d21e12c1e9a6df443724b83e2e5b96d8dc82620a536fb48d2dbd2",
+                .skip = .{"www"},
+            },
+            .remote = .{
+                .{ .url = "https://unpkg.com/chai@4.5.0/chai.js", .sha256 = "bdc229d660afad0313fc10d6afb5a339956a18c4c6e819d3eb5d8b94f314c202" },
+                .{ .url = "https://unpkg.com/mocha@11.7.5/mocha.js", .sha256 = "3a5dde237edd92b551696f60dbfbbb41224f5bb7beaadb7dd2f3b88b368ea024" },
+                .{ .url = "https://unpkg.com/mocha@11.7.4/mocha.css", .sha256 = "f94c18b964616df2848735fb3a26bf0c04e19744090a887c2793370666aa7c3b" },
+            },
+            .allow_live_loads = true,
+            .pages = .{
+                .{ .id = "test", .path = "test/test.html" },
+            },
+            .excluded = "htmx-4.0.1.txt",
+        },
+        // React, Vue, Svelte and Angular (the user, 2026-11-11 09:57 ET): no
+        // suite of theirs runs without Node, so each row is the framework's
+        // UNMODIFIED, PREBUILT TodoMVC app - the built output committed in
+        // tastejs/todomvc at ff43b02e59df - checked by Crane's in-page port of
+        // TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests), the page in
+        // tests/frameworks/todomvc/ served beside the tree (`overlay`). The
+        // tree is the repository's tarball, served from its root as the
+        // project's own test server serves it (tests/server.js:
+        // express.static(repoRoot)); QUnit is the copy pinned for jQuery.
+        // Versions: each app's package-lock.json, and the bundle's own
+        // version string where it carries one.
+        .{
+            .id = "react-todomvc",
+            .framework = "react",
+            .title = "React",
+            .version = "19.2.5",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/react/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                // Another example's installed node_modules (50 MB); no page
+                // loads them.
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=react" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "vue-todomvc",
+            .framework = "vue",
+            .title = "Vue",
+            .version = "3.5.33",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/vue/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=vue" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "svelte-todomvc",
+            .framework = "svelte",
+            .title = "Svelte",
+            .version = "5.55.5",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/svelte/dist",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=svelte" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+        .{
+            .id = "angular-todomvc",
+            .framework = "angular",
+            .title = "Angular",
+            .version = "21.2.11",
+            .kind = .todomvc_port,
+            .repository = "https://github.com/tastejs/todomvc",
+            .tag = "examples/angular/dist/browser",
+            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .licence = "MIT",
+            .runner = "QUnit 2.24.2",
+            .reader = .qunit,
+            .source = .{
+                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+                .skip = .{"examples/typescript-react/node_modules"},
+            },
+            .dependencies = .{
+                .{
+                    .name = "qunit",
+                    .version = "2.24.2",
+                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                    .files = .{
+                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                    },
+                },
+            },
+            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+            .pages = .{
+                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=angular" },
+            },
+            .excluded = "todomvc-port.txt",
+            .page_budget_s = 300,
+            .page_stall_s = 60,
+        },
+    },
+}

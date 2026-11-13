@@ -72,8 +72,6 @@ pub const PresentationConnectionCloseEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            reason: enums.PresentationConnectionCloseReason = undefined,
-            message: runtime.DOMString = undefined,
             _internal: ?*PresentationConnectionCloseEventImpl.InternalState = null,
         },
     );

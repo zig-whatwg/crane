@@ -104,13 +104,15 @@ test "Node's embedded state keeps no allocator copy: 120 bytes" {
     try expectSize(E, 120);
 }
 
-test "EventTarget's embedded state keeps no allocator and no lazy entry: 24 bytes" {
+test "EventTarget's embedded state keeps no allocator and no lazy entry: 8 bytes" {
     const E = Embedded(interfaces.EventTarget.State);
     try std.testing.expect(E != void);
     try expectNoField(E, .{ "allocator", "lazy" });
     // listener list 8, handler map 8, listeners_watched 1 (padded to 8): 32
-    // at batch 6, less the current event batch 7 moved to Window's state.
-    try expectSize(E, 24);
+    // at batch 6, less the current event batch 7 moved to Window's state:
+    // 24; lane lis1 made the list, the handlers and the flag one block, made
+    // with the first listener: one pointer.
+    try expectSize(E, 8);
 }
 
 test "CharacterData's and Comment's embedded states keep no allocator copy" {
@@ -132,17 +134,8 @@ test "no embedded or empty level keeps an `_internal` pointer; a separate block'
     try std.testing.expect(@hasField(Own(interfaces.Document.State), "_internal"));
 }
 
-test "a div's State spends 72 bytes on pointers and the live word, in an exact-size block" {
-    const S = interfaces.HTMLDivElement.State;
-    // 104 at main: 5 `_internal` pointers + 8 `cached_*`. Now the 8 caches and
-    // the root's live word (4 bytes, padded to 8).
-    if (@sizeOf(S) - embeddedBytes(S) != 72) {
-        printLayout(S);
-        std.debug.print("HTMLDivElement.State: {d} bytes, {d} embedded\n", .{ @sizeOf(S), embeddedBytes(S) });
-        return error.SizePinMoved;
-    }
-    try std.testing.expect(slack(S) < 16);
-}
+// A div's generated part (72 bytes after this batch) is pinned in ONE place since lane cg1:
+// tests/dom/node_block_sizes_test.zig.
 
 test "a text node's State spends 16 bytes on pointers and the live word, in an exact-size block" {
     const S = interfaces.Text.State;

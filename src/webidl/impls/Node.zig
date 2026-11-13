@@ -1416,15 +1416,12 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         NodeType.ELEMENT_NODE => {
             const owner = document orelse node_internal.owner_document orelse
                 return error.InvalidStateError;
-            // The getters below clone into ctx.allocator, so they must be freed
-            // with ctx.allocator - the node's Browser's allocator is not
-            // necessarily the same one.
+            // These getters BORROW the element's own name record (lane nd2
+            // N2, dom.element_name): valid while `node` lives, and their
+            // deinit frees nothing. They stay DOMStrings with a deinit, so a
+            // getter that copies again needs no change here.
             const instance_allocator = node.ctx.allocator;
 
-            // Each of these getters CLONES into ctx.allocator and transfers
-            // ownership to the caller. Script callers are freed by the interface
-            // layer; a Zig caller must free them itself or every clone leaks the
-            // element's name, namespace and prefix.
             var namespace_owned = try interfaces.Element.get_namespaceURI(node);
             defer if (namespace_owned) |*n| n.deinit(instance_allocator);
             var local_name_owned = try interfaces.Element.get_localName(node);
@@ -1460,17 +1457,15 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // Step 3: "For each attribute of node's attribute list: let
             // copyAttribute be the result of cloning a single node given
             // attribute, document, and null; append copyAttribute to copy."
-            // Copied field for field through the list's own hook: going
-            // through setAttributeNS would validate and reject names the list
+            // Copied exactly through the list's own hook: going through
+            // setAttributeNS would validate and reject names the list
             // legitimately holds, and `attributes` makes an Attr node each.
-            // `by_cloning`: the style attribute's change steps skip their CSP
-            // check for a copied attribute, as all three browsers do (Element).
-            var index: usize = 0;
-            while (dom_module.element_attributes.at(node, index)) |attribute| : (index += 1) {
-                var copied = attribute;
-                copied.by_cloning = true;
-                try dom_module.element_attributes.append(copy, copied);
-            }
+            // The copy SHARES node's list until either writes it (lane nd2
+            // batch 4; Blink Element::CloneAttributesFrom, WebKit Element::
+            // cloneAttributesFromElement); each attribute's change steps run
+            // as a copied attribute's (the style attribute skips its CSP
+            // check, as all three browsers do: Element).
+            try dom_module.element_attributes.cloneFrom(copy, node);
 
             try setOwnerDocument(copy, owner);
             return copy;

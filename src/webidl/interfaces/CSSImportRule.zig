@@ -41,6 +41,13 @@ pub const CSSImportRule = struct {
             .{ "supportsText", "get_supportsText", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "media",
+            "styleSheet",
+        };
+
         /// [PutForwards] attributes: setting the attribute forwards to a property on the value
         /// Format: { "attrName", "forwardedProperty" }
         pub const put_forwards_attributes = .{
@@ -75,11 +82,6 @@ pub const CSSImportRule = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            href: runtime.USVString = undefined,
-            media: *runtime.Instance = undefined,
-            styleSheet: ?*runtime.Instance = null,
-            layerName: ?typedefs.CSSOMString = null,
-            supportsText: ?typedefs.CSSOMString = null,
             cached_media: ?*runtime.Instance = null,
             cached_styleSheet: ?*runtime.Instance = null,
             _internal: ?*CSSImportRuleImpl.InternalState = null,

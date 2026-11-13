@@ -41,6 +41,12 @@ pub const Screen = struct {
             .{ "onchange", "get_onchange", "set_onchange" },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "orientation",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -81,15 +87,6 @@ pub const Screen = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            availWidth: i32 = undefined,
-            availHeight: i32 = undefined,
-            width: i32 = undefined,
-            height: i32 = undefined,
-            colorDepth: u32 = undefined,
-            pixelDepth: u32 = undefined,
-            orientation: *runtime.Instance = undefined,
-            isExtended: bool = undefined,
-            onchange: typedefs.EventHandler = undefined,
             cached_orientation: ?*runtime.Instance = null,
             _internal: ?*ScreenImpl.InternalState = null,
         },

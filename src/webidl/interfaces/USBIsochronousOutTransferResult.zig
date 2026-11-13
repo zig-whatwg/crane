@@ -60,7 +60,6 @@ pub const USBIsochronousOutTransferResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            packets: runtime.JSValue = undefined,
             _internal: ?*USBIsochronousOutTransferResultImpl.InternalState = null,
         },
     );

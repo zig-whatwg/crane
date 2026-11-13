@@ -62,7 +62,6 @@ pub const OTPCredential = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            code: runtime.DOMString = undefined,
             _internal: ?*OTPCredentialImpl.InternalState = null,
         },
     );

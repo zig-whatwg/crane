@@ -89,13 +89,6 @@ pub const XPathResult = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            resultType: u16 = undefined,
-            numberValue: f64 = undefined,
-            stringValue: runtime.DOMString = undefined,
-            booleanValue: bool = undefined,
-            singleNodeValue: ?*runtime.Instance = null,
-            invalidIteratorState: bool = undefined,
-            snapshotLength: u32 = undefined,
             _internal: ?*XPathResultImpl.InternalState = null,
         },
     );

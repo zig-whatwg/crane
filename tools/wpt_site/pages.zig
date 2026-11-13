@@ -837,7 +837,9 @@ pub fn writeIndex(w: W, site: *const Site) Error!void {
     try writeRevision(w, site.wpt);
     // The benchmark report beside this one (tools/perf_bench): on the index
     // only, so the frame every page carries stays as it was.
-    try w.writeAll("</dd></div>\n<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari and Lightpanda</a></dd></div>\n<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
+    // The JS framework compatibility matrix (tools/fw_matrix) beside it,
+    // also on the index only.
+    try w.writeAll("</dd></div>\n<div><dt>Performance</dt><dd><a href=\"performance/\">Crane beside Chrome, Firefox, Safari and Lightpanda</a></dd></div>\n<div><dt>Frameworks</dt><dd><a href=\"frameworks/\">jQuery, htmx, React, Vue, Svelte and Angular in Crane</a></dd></div>\n<div class=\"head-history\"><dt>History</dt><dd><a class=\"spark-link\" href=\"#history\">");
     try chart.draw(w, site.history, .{ .width = 168, .height = 30, .spark = true, .class = "spark" });
     try w.writeAll("<span class=\"spark-text\">");
     try html.plural(w, site.history.len, "generation", "generations");

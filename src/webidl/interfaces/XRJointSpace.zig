@@ -70,7 +70,6 @@ pub const XRJointSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            jointName: enums.XRHandJoint = undefined,
             _internal: ?*XRJointSpaceImpl.InternalState = null,
         },
     );

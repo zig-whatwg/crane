@@ -92,7 +92,6 @@ pub const ReadableStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            locked: bool = undefined,
             _internal: ?*ReadableStreamImpl.InternalState = null,
         },
     );

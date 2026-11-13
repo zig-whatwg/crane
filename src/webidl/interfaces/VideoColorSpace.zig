@@ -72,10 +72,6 @@ pub const VideoColorSpace = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            primaries: ?enums.VideoColorPrimaries = null,
-            transfer: ?enums.VideoTransferCharacteristics = null,
-            matrix: ?enums.VideoMatrixCoefficients = null,
-            fullRange: ?bool = null,
             _internal: ?*VideoColorSpaceImpl.InternalState = null,
         },
     );

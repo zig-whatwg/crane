@@ -112,6 +112,12 @@ pub const Source = struct {
     order: u32 = 0,
     /// A style attribute's declarations.
     element_attached: bool = false,
+    /// A block of the element's own - its style attribute's, a
+    /// presentational hint its element state keeps - rather than a rule's:
+    /// its owner rewrites it in place and a freed element's state hands its
+    /// memory on, so the matched-properties cache keys and compares it by
+    /// content, never by address (lane style1 b5).
+    per_element: bool = false,
     /// Shadow-including tree context depth (batch 2; 0 is the document).
     tree_depth: u16 = 0,
     /// Whether this declaration may use Values 5 tree-counting inputs.
@@ -196,6 +202,59 @@ pub const Context = struct {
     /// the UA sheet's -internal-auto-base() (substitution.zig) and the
     /// inherited in-base-appearance bit (ComputedStyle.in_base_appearance).
     appearance_support: AppearanceSupport = .none,
+    /// Where the cascade records the inputs it read (lane style1 b2: the
+    /// matched-properties cache's cacheability). Null: nothing is recorded.
+    dependencies: ?*Dependencies = null,
+};
+
+/// What one cascade read beyond its matched declarations, its parent's
+/// inherited values (the parent's custom property record included) and the
+/// Context scalars a matched-properties cache compares - the root's
+/// metrics, the viewport, the color schemes, the registrations. A style
+/// that read any input below other than `parent_non_inherited` is the
+/// element's own: no other element's cascade can be skipped for it.
+///
+/// Each field is set where the input is read - in the provider the cascade
+/// was handed, so a read deep inside a value's computation (a container
+/// unit inside a calc(), attr() inside a substitution) counts too (lesson
+/// architecture-a-cached-flag-is-a-shortcut-only-once-every-writer-keeps-
+/// it-exact). Blink's StyleResolverState flags that
+/// MatchedPropertiesCache::IsStyleCacheable and IsCacheable read
+/// (core/css/resolver/matched_properties_cache.cc, chromium b41b067a9d87);
+/// WebKit's BuilderState flags that MatchedDeclarationsCache::isCacheable
+/// reads (Source/WebCore/style/MatchedDeclarationsCache.cpp, d49abe63b03f).
+pub const Dependencies = struct {
+    /// attr() (Values 5 §7.7, Content 3): the element's attributes. Blink
+    /// HasAttrFunction, WebKit hasAttrContent.
+    attr: bool = false,
+    /// sibling-index() / sibling-count() (Values 5 §9): the element's place
+    /// among its siblings. Blink HasSiblingFunctions, WebKit
+    /// useTreeCountingFunctions.
+    tree_counts: bool = false,
+    /// random() reading its provider (Values 5 §9.4: an element-dependent
+    /// caching key). Blink HasElementDependentRandomFunctions, WebKit
+    /// hasRandomCachingKeyMap. A `fixed` random() reads none.
+    random: bool = false,
+    /// Container units and queries (Conditional 5 §7): the nearest
+    /// container. Blink HasContainerRelativeValue, WebKit
+    /// isContainerDependent.
+    container: bool = false,
+    /// A system font keyword (Fonts 4 §2.7): the host's font settings.
+    system_font: bool = false,
+    /// A font's own metrics (Fonts 5 font-size-adjust from-font): the faces
+    /// loaded now (WebKit: fontCascade().isCurrent(fontSelector)).
+    font_metrics: bool = false,
+    /// A non-inherited value taken from the parent: explicit `inherit` of
+    /// a non-inherited longhand or of an `inherits: false` registered
+    /// custom property. Cacheable, but a hit then needs the parent's
+    /// non-inherited values too (Blink HasExplicitInheritance +
+    /// NonInheritedEqual, WebKit hasExplicitlyInheritedProperties).
+    parent_non_inherited: bool = false,
+
+    /// No element-specific input was read.
+    pub fn cacheable(self: Dependencies) bool {
+        return !(self.attr or self.tree_counts or self.random or self.container or self.system_font or self.font_metrics);
+    }
 };
 
 /// HTML 15.5.16 / CSS Forms 1 §2: which elements support base appearance.
@@ -364,6 +423,20 @@ fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
     return null;
 }
 
+/// Position 4 §3.4: "User agents must have the following rule in their UA
+/// stylesheet: `* { overlay: none !important; }`" - so "the overlay property
+/// cannot be set by authors or users", and the UA sets `overlay: auto` "via
+/// another UA-!important rule" while an element is in the top layer. Only
+/// that origin's important declarations, and the transition origin above
+/// every important one (Cascade 5 §6.2), can beat the universal rule: any
+/// other declaration of overlay is never a candidate, which is exactly that
+/// rule's effect without a declaration every element would match. (Blink
+/// dropped its universal rule too, OverlayGlobalRuleRemoval: html.css
+/// `dialog:modal, [popover]:popover-open { overlay: auto !important }`.)
+fn overlaySettable(origin: Origin, important: bool) bool {
+    return (origin == .user_agent and important) or origin == .transition;
+}
+
 /// The caller finishes appending matched batches before this call, and
 /// keeps the slice and declaration blocks immutable until cascade returns.
 /// Like Blink's MatchResult/CascadeMap, candidates refer back to their
@@ -378,6 +451,7 @@ pub fn collectCandidates(allocator: Allocator, matched: []const Matched, applies
         var it = m.block.typed();
         while (it.next()) |d| {
             if (applies) |set| if (!set.contains(d.longhand)) continue;
+            if (d.longhand == .overlay and !overlaySettable(m.source.origin, d.important)) continue;
             try candidates.append(allocator, .{
                 .decl = d,
                 .priority = priority(m.source, d.important),
@@ -513,6 +587,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
         .custom_candidates = custom_candidates.items,
     };
     defer builder.deinit();
+    if (ctx.dependencies != null) builder.track();
     // Every longhand starts at its default (Cascade 5 7.1) without a
     // per-longhand step: the inherited groups are the parent's, shared, and
     // the others the initial values (computed_style.zig, storage).
@@ -644,6 +719,72 @@ const Builder = struct {
     /// cycle check. Elements whose declarations use no such function never
     /// leave `.unresolved` here.
     appearance_state: enum { unresolved, resolving, done } = .unresolved,
+    /// The providers `track` replaced with recording wrappers.
+    original: Original = .{},
+
+    const Original = struct {
+        content_attributes: ?@import("generated_content.zig").AttributeLookup = null,
+        random_base: ?@import("random_values.zig").Provider = null,
+        container: ?@import("math_values.zig").ContainerInput = null,
+    };
+
+    /// With Context.dependencies set: the value computations get recording
+    /// wrappers of the providers whose reads make a style the element's
+    /// own, so a read anywhere below - inside a calc(), a substitution, a
+    /// content list - is recorded where it happens. The Builder stays where
+    /// it is for the cascade (cascade() keeps it on its stack).
+    fn track(self: *Builder) void {
+        if (self.ctx.content_attributes) |lookup| {
+            self.original.content_attributes = lookup;
+            self.ctx.content_attributes = .{ .context = self, .get = trackedAttribute, .scoped = if (lookup.scoped != null) trackedScopedAttribute else null };
+        }
+        if (self.ctx.random_base) |provider| {
+            self.original.random_base = provider;
+            self.ctx.random_base = .{ .context = self, .get = trackedRandom };
+        }
+        if (self.ctx.container) |input| {
+            self.original.container = input;
+            self.ctx.container = .{ .context = self, .get = trackedContainer, .note = input.note };
+        }
+    }
+
+    fn record(self: *const Builder, comptime field: []const u8) void {
+        if (self.ctx.dependencies) |deps| @field(deps, field) = true;
+    }
+
+    /// font-size-adjust's metrics provider, recording a from-font read.
+    fn metricRatios(self: *const Builder, value: anytype) ?@import("font_size_adjust.zig").MetricResolver {
+        if (value.fromFont()) self.record("font_metrics");
+        return self.ctx.font_metric_ratios;
+    }
+
+    fn trackedAttribute(raw: *const anyopaque, name: []const u8) ?[]const u8 {
+        const self: *const Builder = @ptrCast(@alignCast(raw));
+        self.record("attr");
+        const lookup = self.original.content_attributes.?;
+        return lookup.get(lookup.context, name);
+    }
+
+    fn trackedScopedAttribute(raw: *const anyopaque, tree_scope: u64, map: ?*const substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?substitution.Attribute {
+        const self: *const Builder = @ptrCast(@alignCast(raw));
+        self.record("attr");
+        const lookup = self.original.content_attributes.?;
+        return lookup.scoped.?(lookup.context, tree_scope, map, prefix, local_name);
+    }
+
+    fn trackedRandom(raw: *anyopaque, key: @import("random_values.zig").CacheKey) Allocator.Error!f64 {
+        const self: *const Builder = @ptrCast(@alignCast(raw));
+        self.record("random");
+        const provider = self.original.random_base.?;
+        return provider.get(provider.context, key);
+    }
+
+    fn trackedContainer(raw: *anyopaque, axis: @import("math_values.zig").Context.ContainerAxis) @import("math_values.zig").Context.ContainerEligibility {
+        const self: *const Builder = @ptrCast(@alignCast(raw));
+        self.record("container");
+        const input = self.original.container.?;
+        return input.get(input.context, axis);
+    }
 
     const CustomState = struct {
         name: *custom_mod.Text,
@@ -902,6 +1043,9 @@ const Builder = struct {
     /// at the root. Borrowed.
     fn parentCustom(self: *const Builder, name: []const u8) ?*custom_mod.Text {
         const parent = self.ctx.parent orelse return self.initialCustom(name);
+        // An `inherits: false` property's parent value is the parent's own
+        // (custom_own): a non-inherited input (Blink HasExplicitInheritance).
+        if (self.registration(name)) |reg| if (!reg.inherits) self.record("parent_non_inherited");
         return parent.customValueIn(name, self.ctx.registered);
     }
 
@@ -1479,7 +1623,7 @@ const Builder = struct {
     /// element's writing mode and direction.
     fn target(self: *const Builder, l: Longhand) Longhand {
         const lg = l.logical() orelse return l;
-        return properties.physicalLonghand(lg.group, properties.physicalSide(lg.side, self.writing_mode, self.direction));
+        return properties.physicalOf(lg, self.writing_mode, self.direction);
     }
 
     /// Cascade 5 sections 6-7.3: the specified value of physical longhand
@@ -1672,6 +1816,9 @@ const Builder = struct {
                 // inherited value is the initial value" (Cascade 5 7.3.2),
                 // CanvasText in the root's own color scheme.
                 if (self.ctx.parent == null and l == .color) return self.computeValue(l, l.info().initial, .{});
+                // Explicit inheritance of a non-inherited property (Blink
+                // HasExplicitInheritance).
+                if (!l.inherited()) self.record("parent_non_inherited");
                 const p = self.parentValue(l);
                 p.retain();
                 return p;
@@ -1698,20 +1845,57 @@ const Builder = struct {
         // Fonts4 §2.7: resolve the pending system value before the scalar
         // font-size/weight/width paths, retaining no borrowed provider data.
         if (v == .font_system) {
+            self.record("system_font");
             const selected = try @import("font_system.zig").compute(self.ctx.allocator, self.ctx.system_fonts, v.font_system, l);
             defer selected.release();
             return self.computeValue(l, selected, source);
         }
+        switch (l) {
+            // Viewport 1 §3.1: "as specified, but with <percentage>
+            // converted to the equivalent <number>". normal and 0 compute to
+            // 1 in all three browsers (zoom-computed.html 13/13, wpt.fyi
+            // 2026-11-11): golden rule 2. A calc() computes first and
+            // returns here as its number.
+            .zoom => switch (v) {
+                .keyword => return .{ .number = 1 },
+                .number => |n| return .{ .number = if (n == 0) 1 else n },
+                .length => |len| return .{ .number = if (len.value == 0) 1 else len.value / 100 },
+                else => {},
+            },
+            // Text Size Adjust 1 §2. Chrome, the one browser shipping the
+            // unprefixed property, computes none to 100%
+            // (text-size-adjust-computed.html 6/6): golden rule 2.
+            .text_size_adjust => if (v.isKeyword(.none)) return .{ .length = Length.percent(100) },
+            // Compat §3.4.6.3: <line-width> computes to an absolute length.
+            // Chrome and Safari make thin, medium and thick 1/48, 3/48 and
+            // 5/48 of the font size (Blink StyleBuilderConverter::
+            // ConvertTextStrokeWidth, WebKit's convertTextStrokeWidth: the
+            // border widths as ems); Firefox uses the border's 1, 3 and 5px.
+            // Golden rule 2: the majority.
+            ._webkit_text_stroke_width => if (v == .keyword) {
+                const lines: f64 = switch (v.keyword) {
+                    .thin => 1,
+                    .thick => 5,
+                    else => 3,
+                };
+                return Value.px(lines / 48 * self.fontSize());
+            },
+            else => {},
+        }
         if (v == .box_numeric) return .{ .box_numeric = try v.box_numeric.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         // Gaps 1 §§4.1-4.3: each value as a plain value of `l` computes.
         if (v == .gap_list) return .{ .gap_list = try v.gap_list.compute(self.ctx.allocator, l, ComponentContext.init(self, source)) };
+        // Color HDR 1 §3.3: a mix computes to its normalized percentages.
+        if (v == .dynamic_range) return v.dynamic_range.compute(self.ctx.allocator, ComponentContext.init(self, source));
         if (v == .animation_list) {
-            const list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source));
             // CSS Scoping 1 tree-scoped references: animation-name keeps the
             // tree scope of its winning declaration (as font-family's named
             // families do, below), for the @keyframes lookup (lane anim1 C2).
-            if (l == .animation_name) list.tree_scope = source.tree_scope;
-            return .{ .animation_list = list };
+            // List.compute stamps it on the list it makes and never writes
+            // the declared list, which an unchanged list computes to (one
+            // block can be matched from two trees: lane style1 b2).
+            const scope: TreeScopeRef = if (l == .animation_name) source.tree_scope else .{};
+            return .{ .animation_list = try v.animation_list.compute(self.ctx.allocator, self.computationContext(l, v, source), scope) };
         }
         if (v == .transform) return .{ .transform = try v.transform.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
         if (v == .transform_list) return .{ .transform_list = try v.transform_list.compute(self.ctx.allocator, self.computationContext(l, v, source)) };
@@ -1833,6 +2017,18 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // Lists 3 §3.3: a counter-style name keeps the tree scope that
+            // named it (list_values.ScopedName). The document's scope (0)
+            // stays the plain name: no allocation for the common case, and
+            // a plain name never equals a scoped one.
+            .list_style_type => if (v == .text and source.tree_scope.serial != 0 and @import("list_values.zig").namesCounterStyle(v.text.bytes))
+                return .{ .scoped_name = try @import("list_values.zig").ScopedName.create(self.ctx.allocator, v.text, source.tree_scope) },
+            // SVG 2 §13.5.6: "numbers converted to absolute lengths first".
+            .stroke_dasharray => if (v == .number) return Value.px(v.number),
+            // Borders 4 §3.7: "the corresponding superellipse() value".
+            .corner_top_left_shape, .corner_top_right_shape, .corner_bottom_right_shape, .corner_bottom_left_shape, .corner_start_start_shape, .corner_start_end_shape, .corner_end_start_shape, .corner_end_end_shape => if (v == .keyword) {
+                if (@import("corner_shape_values.zig").parameter(v.keyword)) |k| return .{ .number = k };
+            },
             .font_size => return Value.px(self.computeFontSize(v)),
             .font_weight => return .{ .number = self.computeFontWeight(v) },
             .font_width => return @import("font_width.zig").compute(v),
@@ -1891,7 +2087,7 @@ const Builder = struct {
             .font_oblique => |value| return value.compute(self.ctx.allocator, self.computationContext(l, v, source)),
             .font_settings => |value| return .{ .font_settings = try value.compute(self.ctx.allocator, self.computationContext(l, v, source)) },
             .font_family => |family| return .{ .font_family = try family.capture(self.ctx.allocator, source.tree_scope) },
-            .font_size_adjust => |font_adjust| return switch (try font_adjust.compute(self.ctx.allocator, self.computationContext(l, v, source), self.ctx.font_metric_ratios, @import("font_request.zig").fromComputed(self.style))) {
+            .font_size_adjust => |font_adjust| return switch (try font_adjust.compute(self.ctx.allocator, self.computationContext(l, v, source), self.metricRatios(font_adjust), @import("font_request.zig").fromComputed(self.style))) {
                 .value => |computed| computed,
                 // The single unavailable decision skips real unavailable
                 // candidates. Q87: a defensive failure computes as unset,
@@ -1926,6 +2122,7 @@ const Builder = struct {
 
     fn pendingTreeCounts(raw: *anyopaque) @import("math_values.zig").TreeCounts {
         const self: *Builder = @ptrCast(@alignCast(raw));
+        self.record("tree_counts");
         if (self.cached_tree_counts == null) {
             self.cached_tree_counts = if (self.ctx.tree_counts) |provider| provider.get(provider.context) else .{ .index = 1, .count = 1 };
         }
@@ -1940,6 +2137,7 @@ const Builder = struct {
             if (!source.tree_count_allowed) {
                 context.tree_counts = .{ .index = 0, .count = 0 };
             } else {
+                self.record("tree_counts");
                 if (self.cached_tree_counts == null) {
                     self.cached_tree_counts = if (self.ctx.tree_counts) |provider|
                         provider.get(provider.context)
@@ -2053,10 +2251,7 @@ const Builder = struct {
         var display = s.display();
         // "A parent with a grid or flex display value blockifies the box's
         // display type."
-        const parent_blockifies = if (self.ctx.parent) |p| blk: {
-            const pd = p.display();
-            break :blk pd.box == .normal and (pd.inner == .flex or pd.inner == .grid);
-        } else false;
+        const parent_blockifies = if (self.ctx.parent) |p| blockifiesChildren(p) else false;
         if (self.ctx.is_root or out_of_flow or floated or parent_blockifies) display = display.blockified();
         // Display 4 2.8: "a display of contents computes to block on the root
         // element."
@@ -2111,6 +2306,15 @@ const Builder = struct {
         s.in_base_appearance = self.hasBaseAppearance();
     }
 };
+
+/// "A parent with a grid or flex display value blockifies the box's display
+/// type" (Display 4 2.7): what adjust() reads of the parent's display, and
+/// what a matched-properties cache hit compares (Blink
+/// StyleAdjuster::IsCacheCompatible: the layout parent's blockifying).
+pub fn blockifiesChildren(parent: *const ComputedStyle) bool {
+    const pd = parent.display();
+    return pd.box == .normal and (pd.inner == .flex or pd.inner == .grid);
+}
 
 fn fixOverflow(k: Keyword) Keyword {
     return switch (k) {

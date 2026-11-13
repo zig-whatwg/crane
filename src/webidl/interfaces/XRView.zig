@@ -44,6 +44,13 @@ pub const XRView = struct {
             .{ "transform", "get_transform", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "camera",
+            "transform",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "requestViewportScale", "call_requestViewportScale", 1 },
@@ -91,13 +98,6 @@ pub const XRView = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            eye: enums.XREye = undefined,
-            index: u32 = undefined,
-            recommendedViewportScale: ?f64 = null,
-            camera: ?*runtime.Instance = null,
-            isFirstPersonObserver: bool = undefined,
-            projectionMatrix: runtime.Float32Array = undefined,
-            transform: *runtime.Instance = undefined,
             cached_camera: ?*runtime.Instance = null,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRViewImpl.InternalState = null,

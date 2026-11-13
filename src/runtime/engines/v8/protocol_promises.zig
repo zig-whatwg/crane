@@ -18,9 +18,10 @@
 //!   disarmed, so a function of it that another realm's promise still runs
 //!   later does nothing, and `dropped` runs;
 //! - the collector takes its functions with the promise unsettled: the
-//!   record's handle of the functions' holder is weak, and its second pass
-//!   runs `dropped` (never the first: v8-weak-callback-info.h allows no
-//!   engine call there). Weak, never strong - a strong handle would keep the
+//!   record's handle of the functions' holder is weak, and its finalizer
+//!   runs `dropped` at the agent's safe point after the collection (never
+//!   inside it: v8-weak-callback-info.h allows no engine call there). Weak,
+//!   never strong - a strong handle would keep the
 //!   realm alive (docs/lessons/architecture-an-api-callback-s-current-context-
 //!   is-the-callee-s-realm.md).
 
@@ -48,7 +49,7 @@ const Reaction = struct {
     const allocator = std.heap.c_allocator;
 
     /// Release what the record holds - its place on the realm's list, its
-    /// holder handle (disposing it cancels a second pass still to come) -
+    /// holder handle (disposing it cancels a finalizer still to come) -
     /// and free it. Returns what the host's step needs.
     fn end(self: *Reaction) struct { steps: *const engine.PromiseReactionSteps, data: ?*anyopaque } {
         const steps = self.steps;
@@ -107,8 +108,10 @@ const Reaction = struct {
         //    promise's value, which nothing observes.
     }
 
-    /// V8's second pass, after the collector took the holder - and with it
-    /// both reaction functions - while the promise was unsettled.
+    /// The agent's safe point after the collector took the holder - and with
+    /// it both reaction functions - while the promise was unsettled (never
+    /// inside V8's collector: ffi.v8_Global_SetWeakFinalizer); `dropped` is the
+    /// host's and may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Reaction = @ptrCast(@alignCast(raw.?));
         const host = self.end();

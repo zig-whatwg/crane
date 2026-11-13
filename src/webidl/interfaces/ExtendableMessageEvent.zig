@@ -82,15 +82,6 @@ pub const ExtendableMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: runtime.JSValue = undefined,
-            origin: runtime.USVString = undefined,
-            lastEventId: runtime.DOMString = undefined,
-            source: ?union(enum) {
-                Client: Client,
-                ServiceWorker: ServiceWorker,
-                MessagePort: MessagePort,
-            } = null,
-            ports: runtime.JSValue = undefined,
             cached_source: ?runtime.JSValue = null,
             _internal: ?*ExtendableMessageEventImpl.InternalState = null,
         },

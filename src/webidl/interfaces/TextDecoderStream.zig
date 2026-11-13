@@ -72,11 +72,6 @@ pub const TextDecoderStream = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            encoding: runtime.DOMString = undefined,
-            fatal: bool = undefined,
-            ignoreBOM: bool = undefined,
-            readable: *runtime.Instance = undefined,
-            writable: *runtime.Instance = undefined,
             _internal: ?*TextDecoderStreamImpl.InternalState = null,
         },
     );

@@ -127,7 +127,6 @@ pub const GPURenderPassEncoder = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            label: runtime.USVString = undefined,
             _internal: ?*GPURenderPassEncoderImpl.InternalState = null,
         },
     );

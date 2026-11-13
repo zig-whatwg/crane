@@ -51,7 +51,6 @@ pub const WindowSessionStorage = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            sessionStorage: *runtime.Instance = undefined,
             _internal: ?*WindowSessionStorageImpl.InternalState = null,
         },
     );

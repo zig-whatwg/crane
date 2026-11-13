@@ -69,6 +69,10 @@ const transform_interpolation = @import("transform_interpolation.zig");
 const color_values = @import("color_values.zig");
 const font_palette_values = @import("font_palette_values.zig");
 const font_settings = @import("font_settings.zig");
+const text_values = @import("text_values.zig");
+const sizing_values = @import("sizing_values.zig");
+const corner_shape_values = @import("corner_shape_values.zig");
+const dynamic_range_values = @import("dynamic_range_values.zig");
 
 const Longhand = properties.Longhand;
 const Value = values.Value;
@@ -81,29 +85,40 @@ pub const AnimationType = enum {
     /// By computed value (and repeatable list: the list rules live with
     /// their value kinds).
     by_computed_value,
-    /// See prose: visibility.
+    /// See prose: visibility, and overlay (Position 4 §3.4: "auto is
+    /// interpolated as a discrete step where values of p such that 0 < p < 1
+    /// map to auto ... This is similar to how visibility animates").
     visibility,
 };
 
 /// The longhands whose "Animation type" line says "not animatable": the
 /// animation and transition controls (Animations 1, Transitions 1), the
-/// bidi and writing-mode properties (Writing Modes 4 2.1-2.4, 5.1),
-/// contain (Contain 2 3), interpolate-size (Values 5 / Sizing 4).
+/// bidi and writing-mode properties (Writing Modes 4 2.1-2.4, 5.1, 9.1),
+/// contain (Contain 2 3), interpolate-size (Values 5 / Sizing 4),
+/// forced-color-adjust (Color Adjustment 1 §4), scroll-behavior (Overflow 3
+/// §5).
 const not_animatable = [_]Longhand{
     .animation_duration,    .animation_timing_function, .animation_delay,            .animation_iteration_count,
     .animation_direction,   .animation_fill_mode,       .animation_play_state,       .animation_name,
     .animation_composition, .animation_timeline,        .animation_range_start,      .animation_range_end,
     .transition_property,   .transition_duration,       .transition_timing_function, .transition_delay,
     .transition_behavior,   .direction,                 .unicode_bidi,               .writing_mode,
-    .text_orientation,      .contain,                   .interpolate_size,
+    .text_orientation,      .contain,                   .interpolate_size,           .forced_color_adjust,
+    .scroll_behavior,       .text_combine_upright,
 };
 
 const type_table: [std.meta.fieldNames(Longhand).len]AnimationType = blk: {
     var table = @as([std.meta.fieldNames(Longhand).len]AnimationType, @splat(.by_computed_value));
     for (not_animatable) |l| table[@backingInt(l)] = .not_animatable;
     table[@backingInt(Longhand.visibility)] = .visibility;
+    table[@backingInt(Longhand.overlay)] = .visibility;
     break :blk table;
 };
+
+/// The value a `.visibility` longhand holds through the whole step.
+fn steppedKeyword(l: Longhand) values.Keyword {
+    return if (l == .overlay) .auto else .visible;
+}
 
 /// The animation type of `l`. Unlisted longhands are "by computed value",
 /// whose combination falls back to discrete for any value kind without a
@@ -136,7 +151,7 @@ pub fn interpolate(allocator: Allocator, l: Longhand, from: Value, to: Value, p:
     if (p == 1 and !keepsInterpolatedForm(from, to)) return retained(to);
     switch (animationType(l)) {
         .not_animatable, .discrete => return discrete(from, to, p),
-        .visibility => return visibility(from, to, p),
+        .visibility => return visibility(steppedKeyword(l), from, to, p),
         .by_computed_value => {},
     }
     if (try smooth(allocator, l, from, to, p)) |v| return v;
@@ -180,8 +195,9 @@ fn pathData(v: Value) bool {
 pub fn transitionable(allocator: Allocator, l: Longhand, from: Value, to: Value) Allocator.Error!bool {
     switch (animationType(l)) {
         .not_animatable, .discrete => return false,
-        // Visibility: discrete unless one of the values is `visible`.
-        .visibility => return (from == .keyword and from.keyword == .visible) or (to == .keyword and to.keyword == .visible),
+        // Visibility: discrete unless one of the values is `visible`
+        // (overlay: `auto`).
+        .visibility => return from.isKeyword(steppedKeyword(l)) or to.isKeyword(steppedKeyword(l)),
         .by_computed_value => {},
     }
     const combined = (try smooth(allocator, l, from, to, 0.5)) orelse return false;
@@ -196,11 +212,9 @@ pub fn discrete(from: Value, to: Value, p: f64) Value {
     return chosen;
 }
 
-fn visibility(from: Value, to: Value, p: f64) Value {
-    const from_visible = from == .keyword and from.keyword == .visible;
-    const to_visible = to == .keyword and to.keyword == .visible;
-    if (!from_visible and !to_visible) return discrete(from, to, p);
-    if (p > 0 and p < 1) return Value.kw(.visible);
+fn visibility(stepped: values.Keyword, from: Value, to: Value, p: f64) Value {
+    if (!from.isKeyword(stepped) and !to.isKeyword(stepped)) return discrete(from, to, p);
+    if (p > 0 and p < 1) return Value.kw(stepped);
     return if (p <= 0) retained(from) else retained(to);
 }
 
@@ -228,6 +242,13 @@ fn roundInteger(x: f64) i32 {
 /// The smooth combination of two values of one kind; null when the pair
 /// has none (the caller combines them discretely).
 fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) Allocator.Error!?Value {
+    switch (l.info().grammar) {
+        // Borders 4 §3.9.6: the parameter in normalized half-corner space.
+        .corner_shape => return corner_shape_values.interpolate(from, to, p),
+        // Color HDR 1 §3.1: "by dynamic-range-limit-mix()".
+        .dynamic_range_limit => return try dynamic_range_values.interpolate(allocator, from, to, p),
+        else => {},
+    }
     switch (from) {
         .number => |a| if (to == .number) return .{ .number = lerp(a, to.number, p) },
         .integer => |a| if (to == .integer) return .{ .integer = roundInteger(lerp(@floatFromInt(a), @floatFromInt(to.integer), p)) },
@@ -268,12 +289,23 @@ fn smooth(allocator: Allocator, l: Longhand, from: Value, to: Value, p: f64) All
 /// `value`.
 pub fn add(allocator: Allocator, l: Longhand, underlying: Value, value: Value) Allocator.Error!Value {
     if (animationType(l) != .by_computed_value) return retained(value);
+    switch (l.info().grammar) {
+        // Defined by interpolation alone, so not additive: a corner shape
+        // (Borders 4 §3.9.6), a dynamic range limit (Color HDR 1 §3.1),
+        // a <ratio> ("Addition of <ratio>s is not possible", Values 4
+        // §5.7.1) and a dash array ("stroke-dasharray is neither additive
+        // nor cumulative", web-animations property-types.js dasharrayType,
+        // after SVG 2 §13.5.6).
+        .corner_shape, .dynamic_range_limit, .aspect_ratio, .dasharray => return retained(value),
+        else => {},
+    }
     // Transforms 2 section 15: addition appends V_b to V_a (`none` is the
     // empty list).
     if (l == .transform) if (try transform_interpolation.add(allocator, underlying, value)) |sum| return sum;
     // A filter list's `none` is the identity list (Filter Effects 1 11):
-    // adding it, or adding to it, changes nothing.
-    if (l == .filter) {
+    // adding it, or adding to it, changes nothing. backdrop-filter is the
+    // same list (Filter Effects 2 §3: "see prose in Filter Effects 1 § 14").
+    if (l == .filter or l == .backdrop_filter) {
         if (isNone(value)) return retained(underlying);
         if (isNone(underlying)) return retained(value);
     }
@@ -331,7 +363,7 @@ pub fn accumulate(allocator: Allocator, l: Longhand, underlying: Value, value: V
         return retained(value);
     }
     // Filter Effects 1 11: filter lists accumulate function by function.
-    if (l == .filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
+    if (l == .filter or l == .backdrop_filter) if (filterList(underlying)) |a| if (filterList(value)) |b| {
         if (try mixFilters(allocator, a, b, 1, .accumulate)) |sum| return sum;
     };
     // translate, rotate and scale accumulate component by component; scale's
@@ -574,6 +606,19 @@ pub fn clampFinal(l: Longhand, v: Value) Value {
             v.release();
             return .{ .color = .{ .rgba = rgba } };
         },
+        // scrollbar-color's pair: each color final as a color property's
+        // (property-types.js colorPairType: rgb(128, 128, 128) + rgb(255, 0,
+        // 0) is carried as 383 and clipped only at the end). A combination
+        // result is its own list (one reference), so it is finalized in
+        // place; a shared list holds computed colors, already final.
+        .text_values => |list| {
+            if (list.property != .scrollbar_color or list.refs.load(.acquire) != 1) return v;
+            for (@constCast(list.items)) |*item| if (item.* == .color) if (color_values.finalLegacy(item.color)) |rgba| {
+                item.release();
+                item.* = .{ .color = .{ .rgba = rgba } };
+            };
+            return v;
+        },
         else => return v,
     }
 }
@@ -582,7 +627,7 @@ fn nonNegativeLengths(grammar: properties.Grammar) bool {
     return switch (grammar) {
         // Rhythm1 §2.1: the final animated <length [0,∞]> is nonnegative.
         .block_step_size => true,
-        .length_percentage_nonneg, .size, .max_size, .line_width, .font_size, .column_size, .gap, .stroke_width, .perspective, .line_height, .flex_basis => true,
+        .length_percentage_nonneg, .size, .max_size, .line_width, .font_size, .column_size, .gap, .stroke_width, .perspective, .line_height, .flex_basis, .contain_intrinsic => true,
         else => false,
     };
 }
@@ -893,6 +938,7 @@ fn mixComposite(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weight
     if (repeatableList(l)) return try mixRepeatable(allocator, l, a, b, w);
     if (a == .corner_radius and b == .corner_radius) return try mixCorners(allocator, a.corner_radius, b.corner_radius, w);
     if (a == .image_quad or b == .image_quad) return try mixQuads(allocator, a, b, w);
+    if (a == .text_values and b == .text_values) return try mixComponents(allocator, l, a, b, w);
     if (a == .font_size_adjust and b == .font_size_adjust) return try mixFontSizeAdjust(allocator, a.font_size_adjust, b.font_size_adjust, w);
     if (a == .indent or b == .indent) return try mixIndents(allocator, a, b, w);
     if (a == .font_settings and b == .font_settings) return try mixFontSettings(allocator, a.font_settings, b.font_settings, w);
@@ -903,6 +949,79 @@ fn mixComposite(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weight
         return .{ .shape = shape };
     }
     return null;
+}
+
+/// The component lists (text_values.Components) that combine by computed
+/// value, component by component; null for the others and for a pair that
+/// does not combine (OWNED):
+/// - clip's rect() (Masking 1 Appendix A): each offset as a length, an
+///   `auto` only with `auto` (Blink CSSClipInterpolationType;
+///   web-animations/responsive/clip.html and property-types.js rectType);
+/// - contain-intrinsic-* `auto <length>` (Sizing 4 §5.2 "by computed value
+///   type"): the lengths, never below zero;
+/// - scrollbar-color's two colors (Scrollbars 1 §3; property-types.js
+///   colorPairType), each as a color property's;
+/// - aspect-ratio's <ratio> (Values 4 §5.7.1, sizing_values.mixRatios);
+/// - stroke-dasharray, a repeatable list of length-percentages (SVG 2
+///   §13.5.6; property-types.js dasharrayType's mismatched lengths repeat to
+///   their least common multiple).
+fn mixComponents(allocator: Allocator, l: Longhand, a: Value, b: Value, w: Weights) Allocator.Error!?Value {
+    const x = a.text_values;
+    const y = b.text_values;
+    const non_negative = switch (l) {
+        .aspect_ratio => return if (w.p == null) null else try sizing_values.mixRatios(allocator, a, b, w.ka, w.kb),
+        .stroke_dasharray => return if (w.p == null) null else try mixDasharrays(allocator, x.items, y.items, w),
+        .clip, .scrollbar_color => false,
+        .contain_intrinsic_width, .contain_intrinsic_height, .contain_intrinsic_inline_size, .contain_intrinsic_block_size => true,
+        else => return null,
+    };
+    if (x.property != y.property or x.items.len != y.items.len or x.items.len > 4) return null;
+    var out: [4]Value = undefined;
+    var n: usize = 0;
+    defer for (out[0..n]) |v| v.release();
+    for (x.items, y.items) |p, q| {
+        const mixed = (try mixComponent(allocator, p, q, w)) orelse return null;
+        out[n] = if (non_negative) nonNegative(mixed) else mixed;
+        n += 1;
+    }
+    return .{ .text_values = try text_values.Components.create(allocator, x.property, out[0..n]) };
+}
+
+/// One component: two colors as the color properties combine them
+/// (unclamped until clampFinal, as a color property's), else mixScalar's
+/// numbers, length-percentages and equal keywords. OWNED.
+fn mixComponent(allocator: Allocator, p: Value, q: Value, w: Weights) Allocator.Error!?Value {
+    if (p == .color and q == .color) {
+        if (w.p) |t| {
+            if (try combineLegacy(allocator, p.color, q.color, t, .interpolate)) |c| return .{ .color = c };
+            return try mixColors(allocator, p.color, q.color, t);
+        }
+        if (try combineLegacy(allocator, p.color, q.color, 1, .accumulate)) |c| return .{ .color = c };
+        return null;
+    }
+    return mixScalar(allocator, p, w.ka, q, w.kb);
+}
+
+/// SVG 2 §13.5.6 stroke-dasharray as a repeatable list (Web Animations 1
+/// 5.2): both lists repeated to their least common multiple, each pair of
+/// length-percentages combined and kept nonnegative. OWNED.
+fn mixDasharrays(allocator: Allocator, a: []const Value, b: []const Value, w: Weights) Allocator.Error!?Value {
+    if (a.len == 0 or b.len == 0) return null;
+    const n = a.len / std.math.gcd(a.len, b.len) * b.len;
+    const items = try allocator.alloc(Value, n);
+    var made: usize = 0;
+    defer {
+        for (items[0..made]) |v| v.release();
+        allocator.free(items);
+    }
+    for (0..n) |i| {
+        const x = a[i % a.len];
+        const y = b[i % b.len];
+        if (!lengthPercentage(x) or !lengthPercentage(y)) return null;
+        items[i] = nonNegative((try mixLengths(allocator, x, w.ka, y, w.kb)) orelse return null);
+        made += 1;
+    }
+    return .{ .text_values = try text_values.Components.create(allocator, .stroke_dasharray, items) };
 }
 
 /// `a` * `ka` + `b` * `kb` of two computed <length-percentage>s (Values 4

@@ -122,6 +122,22 @@ pub const Item = union(enum) {
             },
         };
     }
+    /// Whether `compute` gives back a value no reader can tell from this
+    /// item: a keyword, a name (compute copies the same text), a keyword
+    /// easing (Easing.compute returns it itself), and a literal whose
+    /// computed number has the same unit and the same bits. A calculation or
+    /// any other easing computes to a new object.
+    fn computesToItself(self: Item, allocator: Allocator, context: math.Context) bool {
+        return switch (self) {
+            .keyword, .name => true,
+            .number => |n| literalComputesToItself(n, allocator, context),
+            .easing => |e| e.kind == .keyword,
+            .range => |r| literalComputesToItself(r.offset, allocator, context),
+            .timeline => |t| for (t.insets) |maybe| {
+                if (maybe) |n| if (!literalComputesToItself(n, allocator, context)) break false;
+            } else true,
+        };
+    }
     pub fn serialize(self: Item, l: Longhand, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         switch (self) {
             .keyword => |k| try out.appendSlice(allocator, k.name()),
@@ -278,11 +294,40 @@ pub const List = struct {
         for (self.items.items) |item| if (item.isKeyword(.none)) return false;
         return true;
     }
-    pub fn compute(self: *const List, allocator: Allocator, context: math.Context) Allocator.Error!*List {
+    /// The computed list: each item computes on its own (Animations 1 and
+    /// Transitions 1 "Computed value: list, each item ..."). `tree_scope`
+    /// is the tree scope the computed list carries - animation-name's
+    /// declaration's (CSS Scoping 1 tree-scoped references), the document
+    /// scope for every other list.
+    ///
+    /// When every item computes to itself (keywords, names, keyword easings,
+    /// literals already in their canonical unit) and the scope is this
+    /// list's, the computed list IS this list, one more reference: nothing a
+    /// reader can see differs, and siblings matched by one declaration hold
+    /// one list (lane style1 b2), as Easing.compute keeps a keyword easing and
+    /// grid Line.compute an integer line. (Blink's CSSTransitionData and
+    /// WebKit's AnimationList are built per style on a cascade and shared
+    /// between elements through their matched-properties caches; Crane's
+    /// lists are refcounted values, so an unchanged one is shared at
+    /// compute time as well.) A list is never written
+    /// after it is made: one declaration block can be matched from two trees
+    /// (a constructed sheet adopted by the document and a shadow root), so a
+    /// scope other than this list's makes a new list.
+    pub fn compute(self: *List, allocator: Allocator, context: math.Context, tree_scope: TreeScopeRef) Allocator.Error!*List {
+        if (self.tree_scope.serial == tree_scope.serial and self.computesToItself(allocator, context)) {
+            self.ref();
+            return self;
+        }
         const result = try create(allocator, self.property);
         errdefer result.unref();
+        result.tree_scope = tree_scope;
         for (self.items.items) |item| try result.append(try item.compute(allocator, context));
         return result;
+    }
+
+    fn computesToItself(self: *const List, allocator: Allocator, context: math.Context) bool {
+        for (self.items.items) |item| if (!item.computesToItself(allocator, context)) return false;
+        return true;
     }
     pub fn serialize(self: *const List, out: *std.ArrayList(u8), allocator: Allocator) Allocator.Error!void {
         for (self.items.items, 0..) |item, i| {
@@ -291,6 +336,17 @@ pub const List = struct {
         }
     }
 };
+
+/// A literal computes without allocating (Number.compute resolves it
+/// against the context, then normalizes NaN, the range and -0); it is
+/// unchanged when the result's unit and bits are the literal's.
+fn literalComputesToItself(n: Number, allocator: Allocator, context: math.Context) bool {
+    if (n != .literal) return false;
+    const result = n.compute(allocator, context) catch return false;
+    if (result != .literal) return false;
+    return result.literal.unit == n.literal.unit and
+        @as(u64, @bitCast(result.literal.value)) == @as(u64, @bitCast(n.literal.value));
+}
 
 fn defaultOffset(n: Number, end: bool) bool {
     // Calculations remain calculations at specified time, even calc(0%).

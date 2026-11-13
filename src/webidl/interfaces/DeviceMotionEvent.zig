@@ -85,10 +85,6 @@ pub const DeviceMotionEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            acceleration: ?*runtime.Instance = null,
-            accelerationIncludingGravity: ?*runtime.Instance = null,
-            rotationRate: ?*runtime.Instance = null,
-            interval: f64 = undefined,
             _internal: ?*DeviceMotionEventImpl.InternalState = null,
         },
     );

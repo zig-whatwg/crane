@@ -66,7 +66,6 @@ pub const Memory = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            buffer: runtime.ArrayBuffer = undefined,
             _internal: ?*MemoryImpl.InternalState = null,
         },
     );

@@ -67,7 +67,6 @@ pub const TouchList = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            length: u32 = undefined,
             _internal: ?*TouchListImpl.InternalState = null,
         },
     );

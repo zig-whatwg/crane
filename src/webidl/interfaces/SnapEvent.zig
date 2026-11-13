@@ -71,8 +71,6 @@ pub const SnapEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            snapTargetBlock: ?*runtime.Instance = null,
-            snapTargetInline: ?*runtime.Instance = null,
             _internal: ?*SnapEventImpl.InternalState = null,
         },
     );

@@ -71,11 +71,6 @@ pub const FileSystemEntry = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            isFile: bool = undefined,
-            isDirectory: bool = undefined,
-            name: runtime.USVString = undefined,
-            fullPath: runtime.USVString = undefined,
-            filesystem: *runtime.Instance = undefined,
             _internal: ?*FileSystemEntryImpl.InternalState = null,
         },
     );

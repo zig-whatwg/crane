@@ -21,6 +21,8 @@ const protocol_modules = @import("protocol_modules.zig");
 const isolate_lifecycle = @import("isolate_lifecycle.zig");
 const isolate_allocator = @import("isolate_allocator.zig");
 const shadow_realm = @import("shadow_realm.zig");
+const young_generation = @import("young_generation.zig");
+const navigation_collection = @import("navigation_collection.zig");
 const intl_binding = @import("intl_binding.zig");
 const observable_array = @import("observable_array.zig");
 const context_manager = @import("context_manager.zig");
@@ -181,6 +183,14 @@ const AgentRecord = struct {
     /// host may free them only after the agent is destroyed
     /// (`liveSnapshotAgents`, deinitializeEngine).
     from_snapshot: bool = false,
+    /// navigation_collection.zig: how many bytes V8's heap must hold (its
+    /// objects plus its ArrayBuffer backing stores) for the collection
+    /// after a main frame's navigation; null: none is sent. The build's
+    /// (-Dv8-navigation-collection-mb);
+    /// tests/v8 give an agent another (`setNavigationCollectionThreshold`).
+    navigation_collection_threshold: ?usize = navigation_collection.threshold,
+    /// How many of those collections the agent was sent (tests).
+    navigation_collections: u64 = 0,
     /// The agent's ShadowRealms (shadow_realm.zig): made with the agent,
     /// freed by its end. Null when ShadowRealm support was not installed.
     shadow_realms: ?*shadow_realm.ShadowRealmCallbackData = null,
@@ -565,17 +575,30 @@ pub fn restoredFromSnapshot(agent: *Agent) bool {
 /// was given - with [[CanBlock]] as the options say and the host's hooks
 /// installed. The isolate is not entered.
 pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
+    // Every agent of a build has the build's young generation
+    // (-Dv8-young-generation-mb, young_generation.zig): the window agent's
+    // isolate and every worker's are made here.
+    return createAgentWithYoungGeneration(options, young_generation.limit);
+}
+
+/// `createAgent`, with the young generation's limit given - bytes of the
+/// whole young generation, null for V8's own sizing - instead of read from
+/// the build. The product has one limit, the build's, and calls
+/// `createAgent`; this is the seam tests/v8/young_generation_limit_test.zig
+/// pins other values through, since a test binary is one build.
+pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_generation_limit: ?usize) Error!*Agent {
     // [seeded_random] and [host_clock]: in the isolate's record before it
     // initializes - V8 may make its random number generator then. None of
     // either: an isolate exactly as before (v8_wrapper.cpp IsolateData).
+    // The young generation's limit: the isolate's ResourceConstraints, read
+    // once when its heap is configured (young_generation.zig); null leaves
+    // V8's own ceiling.
     const isolate_options: ffi.IsolateOptions = .{
         .seeded = options.random_seed != null,
         .random_seed = options.random_seed orelse 0,
         .clock_context = if (options.clock) |agent_clock| agent_clock.context else null,
         .clock_wall_now = if (options.clock) |agent_clock| agent_clock.wall_now else null,
-        // A host that gives the agent idle periods: V8 may post idle tasks
-        // for it (v8_wrapper.cpp ForegroundTasks::idle_enabled).
-        .idle_tasks = options.idle_periods,
+        .max_young_generation_bytes = young_generation.maxYoungGenerationBytes(young_generation_limit),
     };
     const isolate: *ffi.Isolate = blk: {
         if (options.from_snapshot) {
@@ -628,6 +651,10 @@ pub fn createAgent(options: engine.AgentOptions) Error!*Agent {
     // [external_memory]: the host's native memory the agent's objects keep
     // alive, reported to V8 at the same safe points (external_memory.zig).
     @import("external_memory.zig").install(isolate, options.external_memory, deferred_teardown);
+    // The finalizers of the agent's collected wrappers: V8's first pass
+    // owes them to the queue, whose next binding exit into script runs them
+    // (finalizer_safe_point.zig) - the safe point inside a task.
+    @import("finalizer_safe_point.zig").install(isolate, deferred_teardown);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
@@ -764,6 +791,9 @@ pub fn endAgent(agent: *Agent) void {
         // No binding entry counts on it from here on.
         @import("dom_algorithm.zig").install(entered.isolate, null);
     }
+    // Nor does a collection owe it finalizers: what the collections below
+    // find dead runs when each returns (finalizer_safe_point.zig).
+    @import("finalizer_safe_point.zig").uninstall(entered.isolate, deferred_teardown);
     // [external_memory]: V8's count goes back to where it was before the
     // agent reported, and the host's figure is no longer the agent's -
     // before the storage it lives on goes with the templates (cleanupAll).
@@ -777,7 +807,7 @@ pub fn endAgent(agent: *Agent) void {
     isolate_lifecycle.cleanupAll(isolate, allocator);
     // The realms' ends drained what they left garbage (context_manager.
     // endRealms): the queue is empty, and closed from here on - what the
-    // collections below find is torn down in the second pass, as before.
+    // collections below find is torn down as each returns, as before.
     if (deferred_teardown) |queue| {
         queue.drainAll();
         std.debug.assert(queue.isEmpty());
@@ -825,6 +855,19 @@ const EnteredIsolate = struct {
     }
 };
 
+/// A full collection of `agent`'s heap now (engine.requestGarbageCollection's
+/// collection), with the agent's isolate entered for it as every other agent
+/// operation here enters it: V8 15.7 checks that a collection runs on the
+/// thread's current isolate (MainAllocator::identity, "Check failed: isolate_
+/// == isolate" in Heap::FreeLinearAllocationAreas), which a worker agent made
+/// on a thread whose current isolate is another, or none, is not - 13.1 did
+/// not check.
+pub fn collectGarbageNow(agent: *Agent) void {
+    const entered = EnteredIsolate.of(agent);
+    defer entered.leave();
+    ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+}
+
 /// HTML "perform a microtask checkpoint" for the agent: V8's microtask queue
 /// is the isolate's, and each microtask runs in its own context.
 pub fn performMicrotaskCheckpoint(agent: *Agent) void {
@@ -865,34 +908,93 @@ pub fn queueMicrotask(agent: *Agent, steps: engine.RealmSteps, data: ?*anyopaque
     ffi.v8_Isolate_EnqueueMicrotask(entered.isolate, @ptrCast(&runQueuedMicrotask), queued);
 }
 
-/// notifyMemoryPressure: `.critical` is LowMemoryNotification - a full,
-/// synchronous collection - three times with checkpoints between, so that
-/// what each pass's weak callbacks let go (and the reactions they queued) is
-/// collected by the next; `.moderate` is the hint V8 takes after a
-/// context is let go (ContextDisposedNotification, not forced), which moves
-/// its next collection up.
+/// notifyMemoryPressure: Isolate::MemoryPressureNotification at both levels,
+/// the one signal Blink sends V8 for memory pressure (content/renderer/
+/// blink_isolates_pressure_listener.cc OnReleaseMemory ->
+/// blink::MemoryPressureNotificationToAllIsolates, Chromium 157.0.8103.51;
+/// Blink's MemoryPurgeManager reaches the same call with a critical notice
+/// for a renderer left in the background). The agent's isolate is entered on
+/// this thread, so V8 answers before the call returns (15.7 src/heap/heap.cc
+/// Heap::CheckMemoryPressure):
+/// - `.moderate` starts an incremental collection that reduces the footprint;
+///   V8's marking job finishes it in foreground tasks, the event loop's
+///   engine-task step. Nothing is collected here.
+/// - `.critical` drops V8's caches and collects everything now - once, and a
+///   second time when the first left much to free
+///   (Heap::CollectGarbageOnMemoryPressure) - with the weak callbacks' second
+///   pass run inside it (kGCCallbackFlagCollectAllAvailableGarbage), so what
+///   the collection found dead is finalized before it returns. Then the
+///   reactions those finalizers queued run (a checkpoint), and the trees the
+///   collection queued are torn down now - the host wants the memory back -
+///   unless a walk holds the agent's teardowns, when they wait for its end or
+///   the next turn (engine.deferTeardowns). What the teardown let go of is
+///   V8's to collect at its next collection, as what a Blink finalizer lets
+///   go of is.
+/// It was three LowMemoryNotifications with checkpoints between at
+/// `.critical` - at least six full collections for every page that ended -
+/// and ContextDisposedNotification at `.moderate`, which starts no collection.
 pub fn notifyMemoryPressure(agent: *Agent, level: engine.MemoryPressure) void {
     const entered = EnteredIsolate.of(agent);
     defer entered.leave();
     switch (level) {
         .critical => {
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
+            // This collection takes the page a navigation left, too: what
+            // that navigation owed is paid (navigation_collection.zig).
+            _ = ffi.v8_Isolate_TakeNavigationCollectionOwed(entered.isolate);
+            ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .critical);
             ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
-            ffi.v8_Isolate_PerformMicrotaskCheckpoint(entered.isolate);
-            // The trees the collections queued are torn down now - the host
-            // wants the memory back - and what their teardown let go of is
-            // collected by the third pass, which also takes what the
-            // second's weak callbacks revived - unless a walk holds the
-            // agent's teardowns, when they wait for its end or the next turn
-            // (engine.deferTeardowns).
-            const queue = if (teardownsHeld(entered.isolate)) null else deferredTeardownOf(entered.isolate);
-            if (queue) |q| q.drainAll();
-            ffi.v8_Isolate_RequestGarbageCollection(entered.isolate);
-            if (queue) |q| q.drainAll();
+            if (!teardownsHeld(entered.isolate)) {
+                if (deferredTeardownOf(entered.isolate)) |queue| queue.drainAll();
+            }
         },
-        .moderate => _ = ffi.v8_Isolate_ContextDisposedNotification(entered.isolate, false),
+        .moderate => ffi.v8_Isolate_MemoryPressureNotification(entered.isolate, .moderate),
     }
+}
+
+/// navigation_collection.zig, WHEN: a navigation gave a main frame's
+/// navigable a new Window, and the old realm's context of `isolate` was
+/// disposed (protocol_realms.zig `detach`). Nothing is collected here, in
+/// the realm's end: the agent's next engine-task step looks.
+pub fn oweNavigationCollection(isolate: *ffi.Isolate) void {
+    ffi.v8_Isolate_OweNavigationCollection(isolate);
+}
+
+/// navigation_collection.zig, IF and WHAT: at the agent's engine-task step
+/// (worker_realm.zig `runEngineTasks`) - the event loop's own turn, no DOM
+/// algorithm on the stack. When a navigation's collection is owed and V8's
+/// heap holds at least the agent's threshold (v8::HeapStatistics
+/// used_heap_size + external_memory), one critical memory-pressure notice
+/// (`notifyMemoryPressure`), as Blink sends
+/// at a main frame's context disposal when the page being left used much
+/// memory (v8_gc_for_context_dispose.cc:69-87, Chromium 157.0.8103.50).
+/// Below the threshold, or with none, what was owed is forgotten: V8 was
+/// told of the disposal, and collects by its own limits.
+pub fn payNavigationCollection(agent: *Agent) void {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    // Almost always false: one read of the isolate's own record.
+    if (!ffi.v8_Isolate_TakeNavigationCollectionOwed(isolate)) return;
+    const record = recordOf(isolate) orelse return;
+    const threshold = record.navigation_collection_threshold orelse return;
+    var used: usize = 0;
+    var external: usize = 0;
+    ffi.v8_Isolate_GetHeapUsage(isolate, &used, null, &external);
+    if (used + external < threshold) return;
+    record.navigation_collections += 1;
+    notifyMemoryPressure(agent, .critical);
+}
+
+/// For tests/v8: give `isolate`'s agent another threshold than the build's
+/// (bytes; null: never) - a test binary is one build.
+pub fn setNavigationCollectionThreshold(isolate: *ffi.Isolate, threshold: ?usize) void {
+    const record = recordOf(isolate) orelse return;
+    record.navigation_collection_threshold = threshold;
+}
+
+/// For tests/v8: the navigation collections `isolate`'s agent was sent; 0
+/// for an isolate createAgent did not make.
+pub fn navigationCollectionsOf(isolate: *ffi.Isolate) u64 {
+    const record = recordOf(isolate) orelse return 0;
+    return record.navigation_collections;
 }
 
 /// Whether a walk holds the agent's teardowns now (engine.deferTeardowns).

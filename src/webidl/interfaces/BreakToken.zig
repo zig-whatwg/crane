@@ -58,8 +58,6 @@ pub const BreakToken = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            childBreakTokens: runtime.JSValue = undefined,
-            data: runtime.JSValue = undefined,
             _internal: ?*BreakTokenImpl.InternalState = null,
         },
     );

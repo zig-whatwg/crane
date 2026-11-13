@@ -102,15 +102,6 @@ pub const BackgroundFetchRegistration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            uploadTotal: u64 = undefined,
-            uploaded: u64 = undefined,
-            downloadTotal: u64 = undefined,
-            downloaded: u64 = undefined,
-            result: enums.BackgroundFetchResult = undefined,
-            failureReason: enums.BackgroundFetchFailureReason = undefined,
-            recordsAvailable: bool = undefined,
-            onprogress: typedefs.EventHandler = undefined,
             _internal: ?*BackgroundFetchRegistrationImpl.InternalState = null,
         },
     );

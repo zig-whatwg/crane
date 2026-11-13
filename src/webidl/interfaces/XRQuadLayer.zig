@@ -83,11 +83,6 @@ pub const XRQuadLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            space: *runtime.Instance = undefined,
-            transform: *runtime.Instance = undefined,
-            width: f32 = undefined,
-            height: f32 = undefined,
-            onredraw: typedefs.EventHandler = undefined,
             _internal: ?*XRQuadLayerImpl.InternalState = null,
         },
     );

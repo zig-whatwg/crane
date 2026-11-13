@@ -108,13 +108,6 @@ pub const PaymentRequest = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            id: runtime.DOMString = undefined,
-            shippingAddress: ?*runtime.Instance = null,
-            shippingOption: ?runtime.DOMString = null,
-            shippingType: ?enums.PaymentShippingType = null,
-            onshippingaddresschange: typedefs.EventHandler = undefined,
-            onshippingoptionchange: typedefs.EventHandler = undefined,
-            onpaymentmethodchange: typedefs.EventHandler = undefined,
             _internal: ?*PaymentRequestImpl.InternalState = null,
         },
     );

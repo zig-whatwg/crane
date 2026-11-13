@@ -59,9 +59,6 @@ pub const GamepadButton = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            pressed: bool = undefined,
-            touched: bool = undefined,
-            value: f64 = undefined,
             _internal: ?*GamepadButtonImpl.InternalState = null,
         },
     );

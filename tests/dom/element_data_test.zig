@@ -65,13 +65,14 @@ test "an element's data answers its qualified name, ID, classes and attributes i
 
     const data = dom.element_data.of(page.div) orelse return error.NoElementData;
     // The qualified name "create an element" gave it.
-    try testing.expectEqualStrings("div", data.local_name.asSlice());
-    try testing.expectEqualStrings(infra.namespaces.HTML_NAMESPACE, data.namespace_uri.?.asSlice());
-    // Its prefix is rare data since lane perf3 D2: read through the IDL getter.
+    try testing.expectEqualStrings("div", data.localName());
+    try testing.expectEqualStrings(infra.namespaces.HTML_NAMESPACE, data.namespaceSlice().?);
+    // Its prefix is its name record's since lane nd2 N2; read through the
+    // IDL getter.
     try testing.expect((try interfaces.Element.get_prefix(page.div)) == null);
     // The ID and classes, as the attribute change steps keep them.
-    try testing.expectEqualStrings("main", data.id.asSlice());
-    try testing.expectEqualStrings("a b", data.class_name.asSlice());
+    try testing.expectEqualStrings("main", data.idValue());
+    try testing.expectEqualStrings("a b", data.classValue());
     try testing.expectEqual(@as(usize, 4), data.getAttributeCount());
 
     // DOM "get an attribute by namespace and local name": a namespace of ""
@@ -105,10 +106,10 @@ test "writes go through Element: set and remove run the attribute change steps" 
     try dom.element_attributes.set(page.div, "id", "first", .{});
     try dom.element_attributes.set(page.div, "data-x", "1", .{});
     const data = dom.element_data.of(page.div) orelse return error.NoElementData;
-    try testing.expectEqualStrings("first", data.id.asSlice());
+    try testing.expectEqualStrings("first", data.idValue());
     // ... and changed in place when present: the list keeps its order.
     try dom.element_attributes.set(page.div, "id", "second", .{});
-    try testing.expectEqualStrings("second", data.id.asSlice());
+    try testing.expectEqualStrings("second", data.idValue());
     try testing.expectEqualStrings("id", data.attributeAt(0).?.local_name);
     try testing.expectEqualStrings("data-x", data.attributeAt(1).?.local_name);
     // The IDL getter sees the same attribute.
@@ -118,13 +119,13 @@ test "writes go through Element: set and remove run the attribute change steps" 
 
     // With a namespace and prefix, a different attribute.
     try dom.element_attributes.set(page.div, "id", "other", .{ .prefix = "p", .namespace = "urn:p" });
-    try testing.expectEqualStrings("second", data.id.asSlice());
+    try testing.expectEqualStrings("second", data.idValue());
     try testing.expectEqualStrings("other", dom.element_data.getAttributeValue(data, "id", "urn:p"));
 
     // DOM "remove an attribute by namespace and local name": the null
     // namespace's, not the namespaced one; the ID is unset.
     dom.element_attributes.remove(page.div, null, "id");
-    try testing.expectEqualStrings("", data.id.asSlice());
+    try testing.expectEqualStrings("", data.idValue());
     try testing.expect(dom.element_data.getAttributeByNamespaceAndLocalName(data, null, "id") == null);
     try testing.expectEqualStrings("other", dom.element_data.getAttributeValue(data, "id", "urn:p"));
     // A namespace of "" is null here too; removing an absent one is nothing.

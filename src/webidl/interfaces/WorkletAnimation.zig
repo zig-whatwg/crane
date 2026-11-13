@@ -84,7 +84,6 @@ pub const WorkletAnimation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            animatorName: runtime.DOMString = undefined,
             _internal: ?*WorkletAnimationImpl.InternalState = null,
         },
     );

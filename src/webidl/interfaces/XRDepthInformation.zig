@@ -41,6 +41,13 @@ pub const XRDepthInformation = struct {
             .{ "transform", "get_transform", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "normDepthBufferFromNormView",
+            "transform",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{};
 
@@ -83,12 +90,6 @@ pub const XRDepthInformation = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            width: u32 = undefined,
-            height: u32 = undefined,
-            normDepthBufferFromNormView: *runtime.Instance = undefined,
-            rawValueToMeters: f32 = undefined,
-            projectionMatrix: runtime.Float32Array = undefined,
-            transform: *runtime.Instance = undefined,
             cached_normDepthBufferFromNormView: ?*runtime.Instance = null,
             cached_transform: ?*runtime.Instance = null,
             _internal: ?*XRDepthInformationImpl.InternalState = null,

@@ -83,9 +83,6 @@ pub const CSSStyleDeclaration = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cssText: typedefs.CSSOMString = undefined,
-            length: u32 = undefined,
-            parentRule: ?*runtime.Instance = null,
             _internal: ?*CSSStyleDeclarationImpl.InternalState = null,
         },
     );

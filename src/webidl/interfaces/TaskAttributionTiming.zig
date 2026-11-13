@@ -77,14 +77,6 @@ pub const TaskAttributionTiming = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            startTime: typedefs.DOMHighResTimeStamp = undefined,
-            duration: typedefs.DOMHighResTimeStamp = undefined,
-            name: runtime.DOMString = undefined,
-            entryType: runtime.DOMString = undefined,
-            containerType: runtime.DOMString = undefined,
-            containerSrc: runtime.DOMString = undefined,
-            containerId: runtime.DOMString = undefined,
-            containerName: runtime.DOMString = undefined,
             _internal: ?*TaskAttributionTimingImpl.InternalState = null,
         },
     );

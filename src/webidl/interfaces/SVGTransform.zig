@@ -35,6 +35,12 @@ pub const SVGTransform = struct {
             .{ "angle", "get_angle", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "matrix",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "setMatrix", "call_setMatrix", 0 },
@@ -86,9 +92,6 @@ pub const SVGTransform = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            type: u16 = undefined,
-            matrix: typedefs.SVGMatrix = undefined,
-            angle: f32 = undefined,
             cached_matrix: ?SVGMatrix = null,
             _internal: ?*SVGTransformImpl.InternalState = null,
         },

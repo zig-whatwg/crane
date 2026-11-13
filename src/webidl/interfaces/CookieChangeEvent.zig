@@ -72,8 +72,6 @@ pub const CookieChangeEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            changed: runtime.JSValue = undefined,
-            deleted: runtime.JSValue = undefined,
             cached_changed: ?runtime.JSValue = null,
             cached_deleted: ?runtime.JSValue = null,
             _internal: ?*CookieChangeEventImpl.InternalState = null,

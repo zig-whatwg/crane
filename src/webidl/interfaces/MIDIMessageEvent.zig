@@ -72,7 +72,6 @@ pub const MIDIMessageEvent = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            data: ?runtime.Uint8Array = null,
             _internal: ?*MIDIMessageEventImpl.InternalState = null,
         },
     );

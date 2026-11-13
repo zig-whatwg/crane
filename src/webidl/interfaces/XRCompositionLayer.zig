@@ -87,13 +87,6 @@ pub const XRCompositionLayer = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            layout: enums.XRLayerLayout = undefined,
-            blendTextureSourceAlpha: bool = undefined,
-            forceMonoPresentation: bool = undefined,
-            opacity: f32 = undefined,
-            mipLevels: u32 = undefined,
-            quality: enums.XRLayerQuality = undefined,
-            needsRedraw: bool = undefined,
             _internal: ?*XRCompositionLayerImpl.InternalState = null,
         },
     );

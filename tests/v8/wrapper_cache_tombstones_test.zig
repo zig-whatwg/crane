@@ -101,8 +101,8 @@ const Page = struct {
         try testing.expectEqual(@as(usize, 0), reports.count);
     }
 
-    /// V8's own full collection, twice: the second pass runs synchronously
-    /// for a forced one; the deferred queue keeps what it is given.
+    /// V8's own full collection, twice: the finalizers of what each finds dead
+    /// run when it returns; the deferred queue keeps what it is given.
     fn collect(self: Page) void {
         const isolate: *v8.ffi.Isolate = @ptrCast(@alignCast(self.agent));
         v8.ffi.v8_Isolate_RequestGarbageCollection(isolate);

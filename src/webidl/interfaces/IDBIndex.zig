@@ -43,6 +43,12 @@ pub const IDBIndex = struct {
             .{ "unique", "get_unique", null },
         };
 
+        /// [SameObject] attributes whose child the owner keeps (in its State, its rare
+        /// data or its impl): the binding ties the child's wrapper to the owner's.
+        pub const same_object_attributes = .{
+            "objectStore",
+        };
+
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
             .{ "get", "call_get", 1 },
@@ -89,11 +95,6 @@ pub const IDBIndex = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            name: runtime.DOMString = undefined,
-            objectStore: *runtime.Instance = undefined,
-            keyPath: runtime.JSValue = undefined,
-            multiEntry: bool = undefined,
-            unique: bool = undefined,
             cached_objectStore: ?*runtime.Instance = null,
             _internal: ?*IDBIndexImpl.InternalState = null,
         },

@@ -76,7 +76,6 @@ pub const StylePropertyMapReadOnly = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            size: u32 = undefined,
             _internal: ?*StylePropertyMapReadOnlyImpl.InternalState = null,
         },
     );

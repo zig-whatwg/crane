@@ -50,7 +50,6 @@ pub const NetworkInformationSaveData = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            saveData: bool = undefined,
             cached_saveData: ?bool = null,
             _internal: ?*NetworkInformationSaveDataImpl.InternalState = null,
         },
