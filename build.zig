@@ -8384,7 +8384,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .mimesniff = mimesniff_mod,
     });
     const platform_mod = platform_binding.facade;
-    engine_impl_mod.addImport("platform", platform_mod);
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);
@@ -8676,6 +8675,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .{ .name = "streams_async_promise", .module = streams_async_promise_mod },
         .{ .name = "intl", .module = intl_mod },
         .{ .name = "fetch", .module = fetch_mod },
+        .{ .name = "platform", .module = platform_mod },
     };
     const options_offered_to_engine = [_]struct { name: []const u8, options: *std.Build.Step.Options }{
         .{ .name = "build_options", .options = build_options },

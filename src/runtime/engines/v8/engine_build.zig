@@ -143,9 +143,9 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         // 522 files x3 on server1: summed per-file time 0.997. Its cost is confined to the adapter's own internal
         // compiles: a page's scripts each carry their own host-defined options, so V8's script cache never hit across
         // them in Crane, but a script the adapter itself compiles more than once is now a real compile every time -
-        // which is why the adapter may evaluate a script of its own only where the adapter's script-compiles check
-        // lists it (lane v8up b8, 2026-11-13, which brings that check: the per-call compile behind ReadableStream's
-        // values() cost 21% of that row before it was removed).
+        // which is why the adapter may evaluate a script of its own only where the adapter's script-compiles check,
+        // tests/infra/v8up_adapter_script_compiles_test.zig, lists it (lane v8up b8, 2026-11-13: the per-call
+        // compile behind ReadableStream's values() cost 21% of that row before it was removed).
         // -Dv8-compilation-cache turns the cache back on, for measurement only (tmp/plans/feature-queue.md says
         // when to re-measure).
         .compilation_cache = b.option(
@@ -450,6 +450,9 @@ pub const facts: engine_build.Facts = .{
         // operations (streams, promises).
         "event_loop",
         "streams_async_promise",
+        // The platform protocol: the adapter's Intl asks it for local time
+        // (intl_binding.zig, platform.localDateTime).
+        "platform",
         // For the pure Zig Intl.DateTimeFormat implementation.
         "intl",
         // For ES module loading from HTTP URLs.
