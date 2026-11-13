@@ -1,7 +1,5 @@
-//! A platform object's wrapper on V8 15.7 names its instance and nothing else: no WrapperTypeInfo beside it
-//! (lane v8up b3b, "A0"; tmp/plans/object-wrap-design.md 3.2-3.3, tmp/plans/v8-global-object-design.md 3.3).
-//! Since lane wrap1 b2 the instance is behind v8::Object::Wrap for every platform object, a node or not, and
-//! no wrapper but a realm's global has an internal field at all (tests/v8/wrap1_platform_anchor_test.zig).
+//! A platform object's wrapper on V8 15.7 keeps ONE internal field, its instance (lane v8up b3b, "A0";
+//! tmp/plans/object-wrap-design.md 3.2-3.3, tmp/plans/v8-global-object-design.md 3.3).
 //!
 //! Field 1 held a WrapperTypeInfo for dom_type_info's 24 interfaces, which the receiver checks walked before
 //! the real brand check: whether the instance's state ancestry has the interface's State (`conv.implements`,
@@ -16,7 +14,7 @@
 //! The first two tests pin what script observes of the brand check - a receiver of another interface is a
 //! TypeError for an accessor, a method and a constructor's result, between two interfaces, typed (Crane-made
 //! wrappers had field 1) or not (constructed ones never had it), and across two realms - and pass before and
-//! after. The last two were A0's RED: one pointer, and one cppgc object per kept typed wrapper.
+//! after. The last two are the RED: one field, and one cppgc box per kept typed wrapper.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -194,7 +192,7 @@ test "another realm's accessor and method take this realm's object of their inte
     try expectOk(here, "delete globalThis.other ? 'ok' : 'not deleted'");
 }
 
-test "a platform object's wrapper has no internal field: its anchor reaches the instance, a node's or not" {
+test "a platform object's wrapper has one internal field, its instance - and a node's has none: its anchor reaches the instance" {
     test_process.start();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
@@ -202,20 +200,19 @@ test "a platform object's wrapper has no internal field: its anchor reaches the 
     defer protocol.destroyWindowRealm(realm, .global_detached);
     (try evalOwned(realm, objects)).release();
 
-    // A node's wrapper has had NO internal field since the wrapper redesign's
-    // P4 (lane wr1; merged onto V8 15.7 in its batch 11), and every other
-    // platform object's since lane wrap1 b2: each points at an anchor through
-    // Object::Wrap, and the binding's one read of a platform object's
-    // instance answers through the anchor. So no wrapper pays V8 15.7's
-    // EmbedderDataSlotWrapper at all.
+    // A node's wrapper has NO internal field since the wrapper redesign's P4
+    // (lane wr1; merged onto V8 15.7 in its batch 11): it points at its
+    // node's anchor through Object::Wrap, and the binding's one read of a
+    // platform object's instance answers through the anchor. So no node
+    // wrapper pays V8 15.7's EmbedderDataSlotWrapper at all.
     const names = [_]struct { name: []const u8, fields: c_int }{
         .{ .name = "div", .fields = 0 },
         .{ .name = "text", .fields = 0 },
-        .{ .name = "made", .fields = 0 },
-        .{ .name = "url", .fields = 0 },
-        .{ .name = "event", .fields = 0 },
-        .{ .name = "disguised", .fields = 0 },
-        .{ .name = "params", .fields = 0 },
+        .{ .name = "made", .fields = 1 },
+        .{ .name = "url", .fields = 1 },
+        .{ .name = "event", .fields = 1 },
+        .{ .name = "disguised", .fields = 1 },
+        .{ .name = "params", .fields = 1 },
     };
     var wrong: usize = 0;
     for (names) |expected| {
@@ -224,7 +221,7 @@ test "a platform object's wrapper has no internal field: its anchor reaches the 
         defer got.release();
         const object: *ffi.Object = @ptrCast(@alignCast(got.value.handle.ptr));
         const count = ffi.v8_Object_InternalFieldCount(object);
-        const instance = ffi.v8_Object_Instance(object);
+        const instance = ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0);
         if (count != expected.fields or instance == null) {
             std.debug.print("o.{s}: {d} internal fields (expected {d}), instance {s}\n", .{ expected.name, count, expected.fields, if (instance == null) "not found" else "found" });
             wrong += 1;
@@ -252,11 +249,11 @@ const HeapBytes = struct {
     }
 };
 
-test "a kept wrapper Crane made costs one cppgc object: its anchor" {
-    // design 3.3 / object-wrap-design 3.1: one aligned pointer in an internal field was one cppgc
+test "a kept wrapper Crane made costs one cppgc object: V8's slot wrapper for a non-node, its anchor for a node" {
+    // design 3.3 / object-wrap-design 3.1: one aligned pointer in an internal field is one cppgc
     // EmbedderDataSlotWrapper of 24 B with its header; field 1 was a second for every typed wrapper.
-    // No wrapper has a field now: a non-node's one cppgc object is its PlatformAnchor, 24 B with its
-    // header (lane wrap1 b2), a node's its NodeAnchor, 32 B (lane wr1's P4; tests/v8/node_anchor_test.zig).
+    // A node's wrapper has no field (lane wr1's P4): its one cppgc object is its NodeAnchor, 32 B with
+    // its header (tests/v8/node_anchor_test.zig pins it).
     test_process.start();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);

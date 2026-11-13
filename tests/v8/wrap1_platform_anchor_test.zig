@@ -1,24 +1,38 @@
-//! A non-node platform object's wrapper reaches its instance through `v8::Object::Wrap` (lane wrap1 b2, "the
-//! link"; tmp/plans/object-wrap-design.md 3.4 and 5, the memory program's row R1).
+//! A non-node platform object's wrapper reaches its instance through `v8::Object::Wrap` (lane wrap1, "the link";
+//! tmp/plans/object-wrap-design.md 3.4 and 5, the memory program's row R1) - THE NEXT BATCH'S, pinned here at
+//! today's values.
 //!
-//! Until this batch every non-node wrapper kept its instance in an internal field. On V8 15.7 an aligned pointer
-//! in an internal field is a cppgc object of V8's own (EmbedderDataSlotWrapper, 24 B with its header: 15.7.112.43
+//! Today every non-node wrapper keeps its instance in an internal field. On V8 15.7 an aligned pointer in an
+//! internal field is a cppgc object of V8's own (EmbedderDataSlotWrapper, 24 B with its header: 15.7.112.43
 //! src/objects/embedder-data-slot-inl.h:209-227) plus a CppHeapPointerTable entry, and the field itself is 8 B of
 //! the wrapper. Blink's wrappers have no internal field: the bindings generator reserves none, and
 //! V8DOMWrapper::SetNativeInfo is `v8::Object::Wrap(isolate, wrapper, wrappable, this_tag)`
 //! (third_party/blink/renderer/platform/bindings/v8_dom_wrapper.h:103-110, Chromium 157.0.8103.51); a node's
-//! wrapper in Crane has had that shape since the wrapper redesign's P4 (tests/v8/node_anchor_test.zig). Here the
-//! same holds for every other platform object: its interface's template has no internal field, the wrapper
-//! points at a PlatformAnchor on the agent's C++ heap, and a holder of nodes (a NodeList, an HTMLCollection)
-//! has ONE anchor, which also traces what it holds - not V8's slot wrapper and a HolderAnchor beside it.
+//! wrapper in Crane has had that shape since the wrapper redesign's P4 (tests/v8/node_anchor_test.zig). With the
+//! link the same holds for every other platform object: its interface's template has no internal field, the
+//! wrapper points at a PlatformAnchor on the agent's C++ heap, and a holder of nodes (a NodeList, an
+//! HTMLCollection) has ONE anchor, which also traces what it holds - not V8's slot wrapper and a HolderAnchor
+//! beside it.
 //!
-//! What script observes does not change, and is pinned here too: the brand check stays the instance's state
-//! ancestry (tests/v8/v8up_a0_wrapper_field_test.zig), a legacy platform object's proxy still unwraps to its
-//! target's instance, and a wrapper whose realm ended answers a TypeError, never a freed instance (Blink:
-//! V8DOMWrapper::ClearNativeInfo).
+//! WHY IT IS NOT IN THE TREE (the integrator's ruling, 2026-11-13). The link was written and measured in lane
+//! wrap1's batch 2 (lane/wrap1 cd17108630e, reverted on the branch) and it works: a kept wrapper is 8 B smaller
+//! on V8's heap, a kept holder 24 B smaller on the C++ heap as well. But the wrapper is then 16 B in V8's young
+//! space instead of 24, so the scavenger runs less often in a loop that makes and drops such objects (650,000
+//! Events: 15 scavenges before, 12 or 13 after), and each dead wrapper keeps its instance - 1.7 KB for an Event,
+//! which V8 is told nothing about - until a scavenge finds it. The loop ended with 12% to 21% more resident
+//! memory (tmp/plans/wrap1-evidence/meas1-c.out, meas1-l.out; lesson
+//! architecture-a-smaller-wrapper-is-a-slower-scavenge.md). So the link lands in the next batch TOGETHER with the
+//! anchor that replaces the weak-handle machinery and with the accounting that tells V8 what a dead wrapper's
+//! instance holds. That batch changes `non_node_wrappers_use_object_wrap` to true, and each test that reads it
+//! then holds the link's value; until then it holds today's.
 //!
-//! The last test is batch b3's first RED, pinned at today's value: what a dead wrapper leaves on the C++ heap
-//! until the next full collection - the cause of the perf suite's dom.event-ctor rows.
+//! What script observes does not change with the link, and is pinned here as plain tests: the brand check stays
+//! the instance's state ancestry (tests/v8/v8up_a0_wrapper_field_test.zig), a legacy platform object's proxy
+//! unwraps to its target's instance, and a wrapper whose realm ended answers a TypeError, never a freed instance
+//! (Blink: V8DOMWrapper::ClearNativeInfo).
+//!
+//! The last test is the same batch's other first RED, pinned at today's value: what a dead wrapper leaves on the
+//! C++ heap until the next full collection - the cause of the perf suite's dom.event-ctor rows.
 //!
 //! The collections are V8's own. The file shares tests/v8's process: it starts the engine as any file may and
 //! makes its own agent per test.
@@ -231,13 +245,20 @@ const checks =
 
 const non_node_names = [_][]const u8{ "made", "url", "event", "disguised", "tokens", "list", "children", "attrs", "dataset", "params" };
 
-test "a non-node platform object's wrapper has no internal field, and the binding's read still finds its instance" {
+/// The next batch changes this to true (the file's header says why the link waits for it), and each test that
+/// reads it then holds the link's value.
+const non_node_wrappers_use_object_wrap = false;
+
+test "the next batch's, pinned at today's value: a non-node platform object's wrapper has one internal field (none with the link), and the binding's read finds its instance" {
     const page = try Page.open();
     defer page.close();
     try page.run(objects);
 
     var wrong: usize = 0;
-    for ([_][]const u8{ "doc", "div" } ++ non_node_names) |name| {
+    for ([_][]const u8{ "doc", "div" } ++ non_node_names, 0..) |name, index| {
+        // A node's wrapper has had no field since the wrapper redesign's P4; every other wrapper has one today.
+        const is_node = index < 2;
+        const expected: c_int = if (is_node or non_node_wrappers_use_object_wrap) 0 else 1;
         var source: [64]u8 = undefined;
         const got = try page.evalOwned(try std.fmt.bufPrint(&source, "o.{s}", .{name}));
         defer got.release();
@@ -246,8 +267,8 @@ test "a non-node platform object's wrapper has no internal field, and the bindin
         // instance is the binding's own read of a platform object (engine.convertToPlatformObject).
         const count = ffi.v8_Object_InternalFieldCount(object);
         const instance = protocol.convertToPlatformObject(page.realm, got.value);
-        if (count != 0 or instance == null) {
-            std.debug.print("o.{s}: {d} internal fields (expected 0), instance {s}\n", .{ name, count, if (instance == null) "not found" else "found" });
+        if (count != expected or instance == null) {
+            std.debug.print("o.{s}: {d} internal fields (expected {d}), instance {s}\n", .{ name, count, expected, if (instance == null) "not found" else "found" });
             wrong += 1;
         }
     }
@@ -302,19 +323,21 @@ test "members still reach their receivers' and arguments' instances, a proxy's t
     );
 }
 
-test "a kept wrapper costs one cppgc object: a plain platform object's anchor, and a holder's one anchor too" {
-    // Per kept wrapper on the agent's C++ heap, before this batch: V8's slot wrapper for the field (24 B), and
-    // for a holder of nodes wr1's HolderAnchor beside it (32 B): 56 B. With the link the anchor is the one
-    // object: 24 B {vptr, instance}, 32 B for a holder {vptr, instance, generation}.
+test "the next batch's, pinned at today's value: a kept holder of nodes costs two cppgc objects (one with the link), a plain platform object one" {
+    // Per kept wrapper on the agent's C++ heap today: V8's slot wrapper for the field (24 B), and for a holder
+    // of nodes wr1's HolderAnchor beside it (32 B): 56 B. With the link the anchor is the one object: 24 B
+    // {vptr, instance}, 32 B for a holder {vptr, instance, generation}.
     const page = try Page.open();
     defer page.close();
     try page.run(objects);
     const n = 4000;
 
-    const kinds = [_]struct { name: []const u8, make: []const u8, most: f64 }{
-        .{ .name = "createEvent's Event (a plain platform object)", .make = "o.keep.push(doc2.createEvent('Event'))", .most = 26.0 },
-        .{ .name = "a constructed URLSearchParams (a plain platform object)", .make = "o.keep.push(new URLSearchParams('a=b'))", .most = 26.0 },
-        .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .most = 34.0 },
+    const holder_least: f64 = if (non_node_wrappers_use_object_wrap) 16.0 else 50.0;
+    const holder_most: f64 = if (non_node_wrappers_use_object_wrap) 34.0 else 58.0;
+    const kinds = [_]struct { name: []const u8, make: []const u8, least: f64, most: f64 }{
+        .{ .name = "createEvent's Event (a plain platform object)", .make = "o.keep.push(doc2.createEvent('Event'))", .least = 16.0, .most = 26.0 },
+        .{ .name = "a constructed URLSearchParams (a plain platform object)", .make = "o.keep.push(new URLSearchParams('a=b'))", .least = 16.0, .most = 26.0 },
+        .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .least = holder_least, .most = holder_most },
     };
     var wrong: usize = 0;
     for (kinds) |kind| {
@@ -325,14 +348,14 @@ test "a kept wrapper costs one cppgc object: a plain platform object's anchor, a
         const after = page.cppHeapUsed();
         const per = @as(f64, @floatFromInt(after -| before)) / @as(f64, n);
         std.debug.print("{s}: {d:.1} B of CppHeap per kept wrapper ({d} -> {d})\n", .{ kind.name, per, before, after });
-        if (per > kind.most or per < 16.0) wrong += 1;
+        if (per > kind.most or per < kind.least) wrong += 1;
         try page.run("o.keep = null; 0");
     }
     try testing.expectEqual(@as(usize, 0), wrong);
 }
 
-test "a kept non-node wrapper is a 16-byte object on V8's heap" {
-    // 12 B of header and the 4 B CppHeap pointer handle (Blink's wrapper: design 1.1); the internal field was 8
+test "the next batch's, pinned at today's value: a kept non-node wrapper is a 24-byte object on V8's heap (16 with the link)" {
+    // 12 B of header and the 4 B CppHeap pointer handle (Blink's wrapper: design 1.1); the internal field is 8
     // more, 24 B. Kept in an array made at its full length before the first reading, so the difference between
     // the readings is the wrappers alone.
     const page = try Page.open();
@@ -345,8 +368,11 @@ test "a kept non-node wrapper is a 16-byte object on V8's heap" {
     const after = page.heapUsed();
     const per = @as(f64, @floatFromInt(after -| before)) / @as(f64, n);
     std.debug.print("a kept Event: {d:.1} B of V8 heap per wrapper ({d} -> {d})\n", .{ per, before, after });
-    try testing.expect(per < 20.0);
-    try testing.expect(per > 12.0);
+    if (non_node_wrappers_use_object_wrap) {
+        try testing.expect(per > 12.0 and per < 20.0);
+    } else {
+        try testing.expect(per > 20.0 and per < 28.0);
+    }
     try page.run("globalThis.keep = null; 0");
 }
 
@@ -415,28 +441,29 @@ test "a wrapper whose realm ended answers a TypeError, through a proxy too" {
     }
 }
 
-test "the snapshot generator refuses an API object that points at a C++-heap object" {
+test "the next batch's, pinned at today's value: the snapshot generator has no guard for an API object that points at a C++-heap object (it refuses one with the link)" {
     // No platform object's wrapper is in the snapshot (the generator wraps none: the blob holds templates and
-    // intrinsics). Before the link one that got there kept a null internal field; an anchor cannot be written
-    // at all, and V8 calls the embedder's API wrapper serializer for it - a null callback when none is
-    // registered (15.7.112.43 src/snapshot/context-serializer.cc:237-252). Blink's serializer aborts on any
-    // wrappable but the one kind it expects (bindings/core/v8/v8_context_snapshot_impl.cc). Crane's refuses
-    // every one: a guard, not a path. An API object nothing was wrapped with has nothing to write.
+    // intrinsics). Today one that got there keeps a null internal field. With the link it would point at an
+    // anchor, which cannot be written at all, and V8 calls the embedder's API wrapper serializer for it - a
+    // null callback when none is registered (15.7.112.43 src/snapshot/context-serializer.cc:237-252). Blink's
+    // serializer aborts on any wrappable but the one kind it expects
+    // (bindings/core/v8/v8_context_snapshot_impl.cc). The link's refuses every one: a guard, not a path. An API
+    // object nothing was wrapped with has nothing to write, with the guard or without.
     try testing.expect(!ffi.v8_test_SnapshotRefusesApiWrapper(null));
     var anchor_stand_in: u64 = 0;
-    try testing.expect(ffi.v8_test_SnapshotRefusesApiWrapper(&anchor_stand_in));
+    try testing.expectEqual(non_node_wrappers_use_object_wrap, ffi.v8_test_SnapshotRefusesApiWrapper(&anchor_stand_in));
 }
 
-/// Batch b3 changes this to true, and the test below then holds the fixed value.
+/// The next batch changes this to true too, and the test below then holds the fixed value.
 const dead_wrappers_freed_ahead_of_the_collector = false;
 
-test "b3's first RED, pinned at today's value: a dead non-node wrapper leaves a cppgc object until the next full collection" {
+test "the next batch's, pinned at today's value: a dead non-node wrapper leaves a cppgc object until the next full collection" {
     // The perf suite's dom.event-ctor and dom.event-ctor-dict each make and drop 650,000 Events
     // (tests/perf/workloads/attributes.html). A scavenge takes each dead wrapper and its finalizer frees the
     // Event, but the wrapper's cppgc object - V8's slot wrapper before the link, the PlatformAnchor after it,
     // 24 B either way - and its 8 B CppHeapPointerTable entry wait for a FULL collection, which V8 does not
     // schedule for them: 20.8 MB at the row's mark when none lands in the page (lane wrap1 b2 step 0, gc_bench:
-    // 8.77 MB of C++ heap after 650,000 dropped Events and one full collection). b3 frees the anchor at the
+    // 8.77 MB of C++ heap after 650,000 dropped Events and one full collection). The next batch frees the anchor at the
     // agent's safe point after the scavenge and tells V8 of the table entry, as wr1 does for a node's
     // (v8_wrapper.cpp freeDroppedAnchors, reportDroppedTableEntries).
     const page = try Page.open();

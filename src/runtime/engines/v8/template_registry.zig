@@ -12,7 +12,7 @@
 //! 1. Looking up the interface name from the instance
 //! 2. Finding the FunctionTemplate for that interface
 //! 3. Creating a new V8 object with that template
-//! 4. Binding the object to the Zig instance (platform_anchor.zig: its anchor)
+//! 4. Storing the Zig instance in the object's internal fields
 //!
 //! ## Usage
 //!
@@ -38,7 +38,6 @@ const instance_bridge = @import("dom").instance_bridge;
 const ownership = @import("isolate_ownership.zig");
 const interfaces = @import("interfaces");
 const specialBinding = @import("interface.zig").specialBinding;
-const platform_anchor = @import("platform_anchor.zig");
 
 const log = std.log.scoped(.template_registry);
 
@@ -163,7 +162,7 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
 ///
 /// This is the key function for returning interface instances from methods.
 /// It creates a V8 object with the correct FunctionTemplate (prototype chain)
-/// and binds it to the Zig instance (the wrapper's anchor).
+/// and stores the Zig instance pointer in the internal fields.
 ///
 /// **Now with wrapper identity caching!** Returns the same V8 wrapper for the
 /// same Zig instance, solving the querySelector identity problem.
@@ -347,15 +346,17 @@ pub fn wrapInstanceAsV8Object(
         }
     }
 
-    // The link: the wrapper reaches its instance through an anchor on the
-    // agent's C++ heap (v8::Object::Wrap; platform_anchor.zig, Blink's
-    // V8DOMWrapper::SetNativeInfo) - no template but a realm's global's has
-    // an internal field. Not a node's here: its anchor is made at the cache
-    // step below (WrapperCache.set -> node_wrappers.adopt, design 4.2).
-    if (!platform_anchor.bind(isolate, v8_object, instance)) {
-        v8.v8_Object_Dispose(v8_object);
-        return error.ObjectCreationFailed;
-    }
+    // Store the Zig instance in internal field 0 - not a node's: a node
+    // interface's template has no internal field (the wrapper redesign's
+    // P4), and its wrapper reaches the node through its anchor, made at the
+    // cache step below (WrapperCache.set -> node_wrappers.adopt: Object::Wrap,
+    // design 4.2).
+    const is_node = instance.vtable.counted != null;
+    if (!is_node) v8.v8_Object_SetAlignedPointerInInternalField(
+        v8_object,
+        0,
+        @ptrCast(instance),
+    );
     // [wrap_tracking]: an object reaches the instance from here, whatever
     // the cache step below makes of it - cached, discarded after a failed
     // insert, or bound to the NodeBase with no cache at all.
@@ -441,11 +442,19 @@ pub fn wrapInstanceAsV8Object(
     return final_object;
 }
 
-/// A wrapper `wrapInstanceAsV8Object` made but could not cache: severed (a
-/// proxy's target is), so script that already reached it - nothing has yet -
-/// finds no instance through it, and its handle released.
+/// A wrapper `wrapInstanceAsV8Object` made but could not cache: its internal
+/// fields cleared (a proxy's on its target), so script that already reached
+/// it - nothing has yet - finds no instance through it, and its handle
+/// released.
 fn discardUncachedWrapper(wrapper: *v8.Object) void {
-    platform_anchor.sever(wrapper);
+    var object: *v8.Object = wrapper;
+    var target: ?*v8.Value = null;
+    if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
+        target = v8.v8_Proxy_GetTarget(wrapper);
+        if (target) |t| object = @ptrCast(t);
+    }
+    defer if (target) |t| v8.v8_Value_Dispose(t);
+    if (v8.v8_Object_InternalFieldCount(object) >= 1) v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
     v8.v8_Object_Dispose(wrapper);
 }
 

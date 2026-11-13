@@ -1,6 +1,7 @@
 # Architecture: On V8 15.7 an Object::Wrap anchor pays only for what it replaces
 
 **Date**: 2026-11-13
+**Status (2026-11-13)**: The measurements stand. The move itself (lane/wrap1 cd17108630e) was reverted on the branch before the merge and lands in the next batch with the lifetime work: a smaller wrapper slowed the scavenger and a make-and-drop loop ended with 12% to 21% more resident memory (lesson architecture-a-smaller-wrapper-is-a-slower-scavenge.md).
 **Lesson**: A `v8::Object::Wrappable` anchor per wrapper costs exactly what V8 15.7's own box for one aligned pointer costs, so moving a wrapper's instance from an internal field to `Object::Wrap` saves only the field - unless the anchor also replaces something else the wrapper carries.
 
 **Why**: Since V8 15.5, `SetAlignedPointerInInternalField` boxes the pointer in a cppgc `EmbedderDataSlotWrapper` `{void*, tag}` (15.7.112.43 src/objects/embedder-data-slot-inl.h:209-227): 16 B and an 8 B header, plus a CppHeapPointerTable entry. A Wrappable has a vptr (it is a `cppgc::NameProvider`), so a minimal anchor `{vptr, instance}` is also 16 + 8 and also needs one table entry. The wrapper itself loses the 8 B field.

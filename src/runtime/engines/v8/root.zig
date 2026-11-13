@@ -114,10 +114,10 @@ pub const zig_callbacks = @import("zig_callbacks.zig");
 /// V8 Type Conversion Helpers - Safe type checking before pointer casts
 pub const helpers = @import("helpers.zig");
 
-/// A realm's global has one internal field, its instance; no other wrapper
-/// has any - a platform object's instance is behind v8::Object::Wrap
-/// (interface.zig GLOBAL_INTERNAL_FIELD_COUNT; platform_anchor.zig).
-pub const GLOBAL_INTERNAL_FIELD_COUNT = interface_mod.GLOBAL_INTERNAL_FIELD_COUNT;
+/// A platform object's wrapper has one internal field, its instance: the
+/// brand check is the instance's state ancestry, not a WrapperTypeInfo (lane
+/// v8up A0; interface.zig INTERNAL_FIELD_COUNT).
+pub const INTERNAL_FIELD_COUNT = interface_mod.INTERNAL_FIELD_COUNT;
 
 /// V8 Callback Wrapper for callback interfaces (EventListener, NodeFilter, etc.)
 pub const callback_wrapper_mod = @import("callback_wrapper.zig");

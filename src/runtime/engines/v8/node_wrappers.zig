@@ -887,16 +887,20 @@ fn traceHolder(raw_registry: ?*anyopaque, raw_instance: ?*anyopaque, generation:
     registry.holder_traces += 1;
 }
 
-/// A holder's wrapper is about to be bound to its HolderAnchor
-/// (platform_anchor.bind, for a type with VTable.trace_held_nodes), so that
-/// a collection that keeps the wrapper traces what the holder holds (the
-/// redesign's P6): the agent's registry is made first if this is its first
-/// wrap - the anchor's Trace reaches the walk's per-collection set through
-/// it. Without one (no memory, an isolate with no record) the anchor is
-/// bound all the same and traces nothing: its holder's nodes are counted
-/// holds, never freed under it.
-pub fn prepareHolderTracing(isolate: *ffi.Isolate) void {
-    _ = ensureRegistry(isolate) catch {};
+/// A holder's wrapper `box` was made (WrapperCache.set, for a type with
+/// VTable.trace_held_nodes): its HolderAnchor, so a collection that keeps
+/// the wrapper traces what the holder holds (the redesign's P6). The agent's
+/// registry is made first if this is its first wrap: the anchor's Trace
+/// reaches the walk's per-collection set through it.
+pub fn attachHolder(isolate: *ffi.Isolate, instance: *runtime.Instance, box: *ffi.Object) void {
+    _ = ensureRegistry(isolate) catch return;
+    _ = ffi.v8_HolderAnchor_Attach(isolate, box, instance, runtime.SlabAllocator.generationOf(instance));
+}
+
+/// The holder's instance goes while its wrapper may live on (a realm's end
+/// severing it, WrapperCache's `severWrapper`): its anchor traces nothing.
+pub fn clearHolder(box: *ffi.Object) void {
+    ffi.v8_HolderAnchor_Clear(box);
 }
 
 /// The kept nodes' trees (design 4.4 "Kept nodes", rule 3.2 c), from the

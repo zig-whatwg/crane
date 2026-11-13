@@ -2942,13 +2942,11 @@ constexpr uint16_t kPlatformAnchorLast = 0x00ff;
 /// A node's wrapper today: one tag for every node interface (NodeAnchor says
 /// why), the first of the node range.
 constexpr uint16_t kNodeAnchor = kNodeAnchorFirst;
-/// A HOLDER's wrapper (HolderAnchor; the wrapper redesign's P6): a platform
-/// object that holds nodes for script. The first tag of the platform range.
+/// A HOLDER's wrapper (lane wr1's HolderAnchor, the wrapper redesign's P6): a
+/// platform object that holds nodes for script. The first tag of the
+/// platform range; lane wrap1's PlatformAnchor takes the holder's trace over
+/// when non-node wrappers move to Object::Wrap.
 constexpr uint16_t kHolderAnchor = kPlatformAnchorFirst;
-/// Every other non-node platform object's wrapper (PlatformAnchor; lane wrap1
-/// b2): one tag for every interface - Crane's brand check is the instance's
-/// state ancestry, as for a node's (kNodeAnchor).
-constexpr uint16_t kPlatformAnchor = kPlatformAnchorFirst + 1;
 /// tests/v8's droppable probe (DroppableProbeAnchor): the platform range's
 /// last tag, which no production anchor uses.
 constexpr uint16_t kTestProbeAnchor = kPlatformAnchorLast;
@@ -2965,13 +2963,6 @@ constexpr CppHeapPointerTag tag(uint16_t value) { return static_cast<CppHeapPoin
 constexpr CppHeapPointerTagRange kGlobalAnchorRange{tag(kGlobalAnchor), tag(kGlobalAnchor)};
 [[maybe_unused]] constexpr CppHeapPointerTagRange kNodeAnchorRange{tag(kNodeAnchorFirst), tag(kNodeAnchorLast)};
 [[maybe_unused]] constexpr CppHeapPointerTagRange kPlatformAnchorRange{tag(kPlatformAnchorFirst), tag(kPlatformAnchorLast)};
-/// The tags a platform object's wrapper is Wrapped with - a holder's and a
-/// plain one's - and so the range the binding unwraps it under: both are a
-/// PlatformAnchor. (Not the whole platform range: its last tag is a test
-/// probe's, which is none.)
-constexpr CppHeapPointerTagRange kPlatformObjectAnchorRange{tag(kHolderAnchor), tag(kPlatformAnchor)};
-static_assert(kPlatformAnchor == kHolderAnchor + 1 && kPlatformAnchor < kTestProbeAnchor,
-              "a platform object's anchors are two adjacent tags below the test probe's");
 }  // namespace crane_tags
 
 class CraneWrappable : public v8::Object::Wrappable {
@@ -3138,81 +3129,47 @@ class NodeAnchor final : public CraneWrappable {
 static_assert(sizeof(NodeAnchor) == 3 * sizeof(void*), "a node anchor is the vptr, its slot, its registry index and its roots: 24 bytes");
 static_assert(sizeof(TracedReference<Object>) == sizeof(void*), "a node's wrapper slot holds exactly one TracedReference<Object>");
 
-/// The CppHeapPointerTags a non-node platform object's wrapper is Wrapped
-/// with: a holder of nodes' (crane_tags::kHolderAnchor) and every other's
-/// (crane_tags::kPlatformAnchor); the binding unwraps under both
-/// (crane_tags::kPlatformObjectAnchorRange).
+/// The CppHeapPointerTag a holder wrapper's anchor is wrapped with
+/// (crane_tags::kHolderAnchor, in the platform range).
 static constexpr CppHeapPointerTag kHolderAnchorTag = crane_tags::tag(crane_tags::kHolderAnchor);
-static constexpr CppHeapPointerTag kPlatformAnchorTag = crane_tags::tag(crane_tags::kPlatformAnchor);
+static constexpr CppHeapPointerTagRange kHolderAnchorTagRange(kHolderAnchorTag, kHolderAnchorTag);
 
 static void traceHolderNodes(IsolateData* record, void* instance, uint64_t generation, cppgc::Visitor* visitor);
 
-/// What a non-node platform object's wrapper points at (lane wrap1 b2,
-/// tmp/plans/object-wrap-design.md 3.4): a cppgc object behind the wrapper's
-/// CppHeap pointer that names the Zig instance - the link the binding reads
-/// (`instanceOfObject`). Blink's wrapper points at the DOM object itself,
-/// which is its cppgc object (V8DOMWrapper::SetNativeInfo: Object::Wrap with
-/// the ScriptWrappable; platform/bindings/v8_dom_wrapper.h:103-110, Chromium
-/// 157.0.8103.51); Crane's instances are Zig objects that live by their own
-/// counts, so the wrapper points at this anchor and the anchor at the
-/// instance. The interface's instance template has no internal field
-/// (interface.zig), as Blink's has none.
-///
-/// It replaces V8 15.7's own box for an aligned pointer in an internal field
-/// (EmbedderDataSlotWrapper {pointer, tag}: 16 bytes and cppgc's header,
-/// 15.7.112.43 src/objects/embedder-data-slot-inl.h:209-227) byte for byte:
-/// the Wrappable's vptr and the instance, 16 bytes of payload, 24 with the
-/// header - and the wrapper loses its 8-byte field.
-///
-/// `instance_` is null once the instance went while the wrapper may live on
-/// (its realm's end, a wrap that failed: v8_PlatformObject_Sever) - Blink's
-/// ClearNativeInfo; the binding's read then answers null, a TypeError, never
-/// the freed instance. The anchor owns nothing: the instance's lifetime is
-/// the wrapper cache's (wrapper_cache.zig), whose weak handle on the wrapper
-/// decides when it goes - until that lifetime moves here too (design 3.4,
-/// the batch after this one). Its destructor is the base's and does nothing
-/// (the CraneWrappable contract).
-class PlatformAnchor : public CraneWrappable {
- public:
-    explicit PlatformAnchor(void* instance) : instance_(instance) {}
-    const char* GetHumanReadableName() const override { return "Crane PlatformAnchor"; }
-
-    void* instance_;
-};
-
-static_assert(sizeof(PlatformAnchor) == 2 * sizeof(void*), "a platform anchor is the vptr and its instance: 16 bytes");
-
 /// What a HOLDER's wrapper points at (the wrapper redesign's P6, design 4.4
-/// "Holders"): the platform anchor of an object that holds nodes for script
-/// - a static NodeList's nodes, a MutationRecord's, a live collection's root
-/// (runtime.VTable.trace_held_nodes) - so V8's marker consults the host
-/// about what the holder holds. Blink's holders are themselves cppgc objects
-/// whose Trace visits their `Member<Node>`s (StaticNodeTypeList::Trace,
-/// ChildListRecord::Trace; Chromium 131.0.6778.0); Crane's holders are Zig
-/// instances, reached through this anchor. Until lane wrap1 b2 it stood
-/// beside the instance in an internal field: a holder's wrapper paid V8's
-/// box for the field and this anchor, and now pays this anchor alone.
+/// "Holders"): a cppgc object behind the wrapper's CppHeap pointer, so V8's
+/// marker consults the host about what the holder holds - a static
+/// NodeList's nodes, a MutationRecord's, a live collection's root
+/// (runtime.VTable.trace_held_nodes). Blink's holders are themselves cppgc
+/// objects whose Trace visits their `Member<Node>`s (StaticNodeTypeList::
+/// Trace, ChildListRecord::Trace; Chromium 131.0.6778.0); Crane's holders
+/// are Zig instances, reached through this anchor. The wrapper keeps its
+/// internal fields (the instance): a JS API object carries both.
 ///
-/// It adds the holder's slab generation to the platform anchor - 24 bytes,
-/// 32 with cppgc's header, one per holder wrapper, none per node. Its Trace
-/// runs in the collection's atomic pause, under the node anchors' rule
+/// It holds the holder's instance and its slab generation after the
+/// Wrappable's vptr - 24 bytes, 32 with cppgc's header, one per holder
+/// wrapper, none per node. Its Trace runs
+/// in the collection's atomic pause, under the node anchors' rule
 /// (collectingRecord: kAtomic marking, the collecting isolate's record):
 /// the host reads its holder's state, which has no write barrier either.
-/// `instance_` null (PlatformAnchor) traces nothing; the generation is the
-/// net for any other way the instance went - the Zig side compares it before
-/// it reads the instance. Its destructor is the base's and does nothing.
-class HolderAnchor final : public PlatformAnchor {
+/// `instance_` is null once the instance went while the wrapper lived (its
+/// realm's end: v8_HolderAnchor_Clear from the wrapper cache's severing);
+/// the generation is the net for any other way the instance went - the
+/// Zig side compares it before it reads the instance. Its destructor is
+/// the base's and does nothing (the CraneWrappable contract).
+class HolderAnchor final : public CraneWrappable {
  public:
-    HolderAnchor(void* instance, uint64_t generation) : PlatformAnchor(instance), generation_(generation) {}
+    HolderAnchor(void* instance, uint64_t generation) : instance_(instance), generation_(generation) {}
 
     void Trace(cppgc::Visitor* visitor) const override {
-        PlatformAnchor::Trace(visitor);
+        CraneWrappable::Trace(visitor);
         if (!instance_) return;
         IsolateData* record = collectingRecord(this);
         if (record) traceHolderNodes(record, instance_, generation_, visitor);
     }
     const char* GetHumanReadableName() const override { return "Crane HolderAnchor"; }
 
+    void* instance_;
     uint64_t generation_;
 };
 
@@ -4000,54 +3957,16 @@ static NodeAnchor* nodeAnchorOf(Isolate* isolate, Local<Object> object) {
     return Object::Unwrap<NodeAnchor>(isolate, object, kNodeAnchorTagRange);
 }
 
-/// The platform anchor `object` - a wrapper, or a legacy platform object's
-/// proxy around one - points at, or null: not an API wrapper, never bound, a
-/// node's wrapper (its anchor is a NodeAnchor), or a realm's global.
-static PlatformAnchor* platformAnchorOf(Isolate* isolate, Local<Object> object) {
-    if (object->IsProxy()) {
-        Local<Value> target = object.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return nullptr;
-        object = target.As<Object>();
-    }
-    if (!object->IsApiWrapper()) return nullptr;
-    return Object::Unwrap<PlatformAnchor>(isolate, object, crane_tags::kPlatformObjectAnchorRange);
-}
-
-/// THE read of a platform object's instance: what `object` - a wrapper of any
-/// kind, or a legacy platform object's proxy around one - reaches, or null.
-/// Blink's ToAnyScriptWrappable is one Object::Unwrap under the range of every
-/// wrappable's tag (platform/bindings/wrapper_type_info.h:206-223); Crane has
-/// three kinds of wrapper, asked in this order:
-/// 1. a non-node platform object's: its PlatformAnchor's instance (null once
-///    severed);
-/// 2. a node's: its NodeAnchor's slot, the node, its instance (design 4.3);
-/// 3. a realm's global: internal field 0, which a [Global] interface's
-///    template alone still has (realm_global.zig; v8_GlobalAnchor_Attach) -
-///    and so any object made from a template with a field whose field 0 was
-///    given an instance (tests/v8's own mock platform objects).
-/// Which interface the instance implements is the caller's brand check, the
-/// instance's state ancestry. `IsApiWrapper()` guards the Unwraps: only an
-/// API object has the CppHeap pointer field they read.
-static void* instanceOfObject(Isolate* isolate, Local<Object> object) {
-    if (object->IsProxy()) {
-        Local<Value> target = object.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return nullptr;
-        object = target.As<Object>();
-    }
-    if (object->IsApiWrapper()) {
-        if (PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, object, crane_tags::kPlatformObjectAnchorRange)) {
-            return anchor->instance_;
-        }
-        NODE_ANCHOR_IN_FRAME(isolate);
-        if (NodeAnchor* anchor = Object::Unwrap<NodeAnchor>(isolate, object, kNodeAnchorTagRange)) {
-            if (!anchor->slot_) return nullptr;
-            IsolateData* record = isolateData(isolate);
-            if (!record || !record->node_wrapper_instance) return nullptr;
-            return record->node_wrapper_instance(anchor->slot_);
-        }
-    }
-    if (object->InternalFieldCount() < 1) return nullptr;
-    return object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
+/// The instance a node wrapper `object` reaches (design 4.3: Unwrap, the
+/// anchor, its slot, the node, its instance), or null: no node wrapper, or
+/// one whose node's teardown or agent's end severed it.
+static void* nodeInstanceOf(Isolate* isolate, Local<Object> object) {
+    NODE_ANCHOR_IN_FRAME(isolate);
+    NodeAnchor* anchor = nodeAnchorOf(isolate, object);
+    if (!anchor || !anchor->slot_) return nullptr;
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->node_wrapper_instance) return nullptr;
+    return record->node_wrapper_instance(anchor->slot_);
 }
 
 /// NodeAnchor::Trace's step 2: the walk from the anchor's node, through the
@@ -4619,70 +4538,40 @@ static Local<Object> anchorHolderOf(Local<Object> object) {
     return object;
 }
 
-/// THE LINK (lane wrap1 b2; Blink's V8DOMWrapper::SetNativeInfo): `box`'s
-/// object - a wrapper the binding made from an interface's instance template,
-/// or the receiver V8 made for a constructor's NewTarget; a legacy platform
-/// object's proxy stands for its target - reaches `instance` from here. Its
-/// anchor is made on the isolate's C++ heap and the object Wrapped with it: a
-/// HolderAnchor with the instance's slab `generation` when `holds_nodes` (its
-/// type has VTable.trace_held_nodes), from which a collection that marks the
-/// wrapper traces the nodes the instance holds; a PlatformAnchor otherwise.
-/// A realm's global, whose template keeps internal field 0, has the instance
-/// written there (its GlobalAnchor is v8_GlobalAnchor_Attach's).
-///
-/// False - and nothing bound - for an object that is no API object
-/// (Object::Wrap needs one; every template's instance is) or an isolate with
-/// no C++ heap. Made on the isolate's thread; `box` holds the object, so a
-/// collection the anchor's allocation starts runs before the anchor exists
-/// and takes nothing of it, and the Wrap's write barrier marks the anchor if
-/// the wrapper is already marked.
-extern "C" bool v8_PlatformObject_Bind(Isolate* isolate, Global<Object>* box, void* instance, uint64_t generation, bool holds_nodes) {
+/// A holder's new wrapper `box` (its type has VTable.trace_held_nodes) gets
+/// its HolderAnchor (the wrapper redesign's P6, design 4.4 "Holders"):
+/// from here a collection that marks the wrapper traces the nodes
+/// `instance` holds. False - and no anchor - for an isolate with no C++
+/// heap or record (the snapshot creator's), or an object that is no API
+/// object (Object::Wrap needs one; every binding wrapper is). Made on the
+/// isolate's thread; a collection the allocation starts runs before the
+/// anchor exists, and the Wrap's write barrier marks it if the wrapper is
+/// already marked.
+extern "C" bool v8_HolderAnchor_Attach(Isolate* isolate, Global<Object>* box, void* instance, uint64_t generation) {
+    IsolateData* record = isolateData(isolate);
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!record || !heap || !record->node_wrapper_trace_holder) return false;
     HandleScope scope(isolate);
     Local<Object> wrappable = anchorHolderOf(box->Get(isolate));
-    if (wrappable->InternalFieldCount() >= 1) {
-        wrappable->SetAlignedPointerInInternalField(0, instance, kCraneEmbedderDataTag);
-        return true;
-    }
-    CppHeap* heap = isolate->GetCppHeap();
-    if (!heap || !wrappable->IsApiWrapper()) return false;
-    if (holds_nodes) {
-        HolderAnchor* anchor = cppgc::MakeGarbageCollected<HolderAnchor>(heap->GetAllocationHandle(), instance, generation);
-        Object::Wrap<kHolderAnchorTag>(isolate, wrappable, anchor);
-    } else {
-        PlatformAnchor* anchor = cppgc::MakeGarbageCollected<PlatformAnchor>(heap->GetAllocationHandle(), instance);
-        Object::Wrap<kPlatformAnchorTag>(isolate, wrappable, anchor);
-    }
+    if (!wrappable->IsApiWrapper()) return false;
+    HolderAnchor* anchor = cppgc::MakeGarbageCollected<HolderAnchor>(heap->GetAllocationHandle(), instance, generation);
+    Object::Wrap<kHolderAnchorTag>(isolate, wrappable, anchor);
     return true;
 }
 
-/// `box`'s object reaches no instance from here (Blink's
-/// V8DOMWrapper::ClearNativeInfo): its instance goes while the wrapper may
-/// live on - its realm's end severing it (wrapper_cache.zig severWrapper, on
-/// the realm's thread with its isolate current) - or the wrap that bound it
-/// failed. One write on its anchor: the binding's next read answers null, and
-/// a holder's anchor traces nothing. A realm's global has its field cleared.
-/// Nothing for an object never bound, or a node's wrapper.
-extern "C" void v8_PlatformObject_Sever(Global<Object>* box) {
+/// The holder's instance goes while its wrapper may live on (its realm's
+/// end severs the wrapper: wrapper_cache.zig severWrapper, on the realm's
+/// thread with its isolate current, as the fields' severing reads it):
+/// its anchor traces nothing from here. Nothing for a wrapper with no
+/// holder anchor.
+extern "C" void v8_HolderAnchor_Clear(Global<Object>* box) {
     Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate || !box || box->IsEmpty()) return;
+    if (!isolate || !isolate->GetCppHeap()) return;
     HandleScope scope(isolate);
     Local<Object> wrappable = anchorHolderOf(box->Get(isolate));
-    if (wrappable->InternalFieldCount() >= 1) {
-        wrappable->SetAlignedPointerInInternalField(0, nullptr, kCraneEmbedderDataTag);
-        return;
-    }
-    if (!isolate->GetCppHeap() || !wrappable->IsApiWrapper()) return;
-    PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+    if (!wrappable->IsApiWrapper()) return;
+    HolderAnchor* anchor = Object::Unwrap<HolderAnchor>(isolate, wrappable, kHolderAnchorTagRange);
     if (anchor) anchor->instance_ = nullptr;
-}
-
-/// The instance `obj` reaches, or null (`instanceOfObject`: the binding's one
-/// read of a platform object's instance). The isolate is the current one.
-extern "C" void* v8_Object_Instance(Global<Object>* obj) {
-    Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate || !obj || obj->IsEmpty()) return nullptr;
-    HandleScope scope(isolate);
-    return instanceOfObject(isolate, obj->Get(isolate));
 }
 
 /// engine.traceNodeWrapper on V8 (design 3.3): the walk's visitor traces the
@@ -7948,10 +7837,16 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
         }
     }
 
-    // An object with no such field has no pointer there. Only a realm's
-    // global keeps one (field 0, its instance): a platform object's instance
-    // is read through its anchor (v8_Object_Instance).
-    if (local_obj->InternalFieldCount() <= index) return nullptr;
+    // Safety check: verify object has enough internal fields before access
+    // This prevents crashes when accessing prototype objects or other objects
+    // that don't have internal fields set up
+    if (local_obj->InternalFieldCount() <= index) {
+        // Field 0 is the platform object's instance: a node wrapper has no
+        // internal field (the wrapper redesign's P4) and reaches its
+        // instance through its anchor. Field 1, the WrapperTypeInfo, it has
+        // none of: the state ancestry is the brand.
+        return index == 0 ? nodeInstanceOf(isolate, local_obj) : nullptr;
+    }
 
     void* result = local_obj->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
     return result;
@@ -9362,12 +9257,14 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
     return info->Length();
 }
 
-// FunctionCallbackInfo - the instance the receiver (This()) reaches
-// (`instanceOfObject`: its platform anchor's, looked through a legacy platform
-// object's proxy to its target; a node's; a realm's global's field); a
-// receiver that is no wrapper - or not an object - reads as nullptr. The
-// brand check is the instance's state ancestry (conv.implements). No Global:
-// This() is a slot of the callback's arguments, and an attribute getter runs once per read
+// FunctionCallbackInfo - internal field 0 (the instance) of the receiver
+// (This()), looked through a legacy platform object's proxy to its target as
+// v8_Object_GetAlignedPointerFromInternalField does; a receiver with no field -
+// or one that is not an object - reads as nullptr. A wrapper has one field: the
+// brand check is the instance's state ancestry (conv.implements), so no
+// WrapperTypeInfo is kept beside it (lane v8up A0; on V8 >= 15.7 every aligned
+// pointer in a field is a cppgc object, d04704a20fc). No Global: This() is a
+// slot of the callback's arguments, and an attribute getter runs once per read
 // - `list.length` ~6e7 times in NodeList-static-length-getter-tampered-[123].html,
 // where v8_FunctionCallbackInfo_This's Global, made, tracked and disposed per
 // call, and a HandleScope per field read were most of the binding's cost. A
@@ -9376,7 +9273,16 @@ int v8_FunctionCallbackInfo_Length(const FunctionCallbackInfo<Value>* info) {
 void* v8_FunctionCallbackInfo_ThisInstance(const FunctionCallbackInfo<Value>* info) {
     Local<Value> receiver = info->This();
     if (!receiver->IsObject()) return nullptr;
-    return instanceOfObject(info->GetIsolate(), receiver.As<Object>());
+    Local<Object> self = receiver.As<Object>();
+    if (self->IsProxy()) {
+        Local<Value> target = self.As<Proxy>()->GetTarget();
+        if (!target->IsObject()) return nullptr;
+        self = target.As<Object>();
+    }
+    // A node wrapper has no internal field (the wrapper redesign's P4): its
+    // instance through its anchor.
+    if (self->InternalFieldCount() < 1) return nodeInstanceOf(info->GetIsolate(), self);
+    return self->GetAlignedPointerFromInternalField(info->GetIsolate(), 0, kCraneEmbedderDataTag);
 }
 
 // FunctionCallbackInfo - the receiver's node wrapper slot, for a member of a
@@ -9527,8 +9433,18 @@ void v8_FunctionCallbackInfo_ReadArgument(const FunctionCallbackInfo<Value>* inf
     } else if (value->IsObject()) {
         out->kind = 6;
         if (value->IsFunction()) return;
-        // The platform object it is, if any: its wrapper's instance.
-        out->instance = instanceOfObject(isolate, value.As<Object>());
+        Local<Object> object = value.As<Object>();
+        if (object->IsProxy()) {
+            Local<Value> target = object.As<Proxy>()->GetTarget();
+            if (!target->IsObject()) return;
+            object = target.As<Object>();
+        }
+        if (object->InternalFieldCount() >= 1) {
+            out->instance = object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
+        } else {
+            // A node wrapper (no internal field: P4) - its anchor's instance.
+            out->instance = nodeInstanceOf(isolate, object);
+        }
     } else {
         out->kind = 7;
     }
@@ -10453,11 +10369,15 @@ Isolate* v8_PropertyCallbackInfo_Boolean_GetIsolate(const PropertyCallbackInfo<B
 // dom/nodes/NodeList-static-length-getter-tampered-*.html), where
 // v8_PropertyCallbackInfo_This's Global - made, tracked and disposed per call
 // - was a third of the read (gc_bench profile, 2026-10-11).
-void* v8_PropertyCallbackInfo_HolderInstance(const PropertyCallbackInfo<Value>* info) {
-    // The holder's instance: its platform anchor's, or - a node interface's
-    // holder (Document's named properties, a form's or a select's indexed
-    // ones) - its node anchor's; a realm's global's is its field.
-    return instanceOfObject(info->GetIsolate(), info->Holder());
+void* v8_PropertyCallbackInfo_HolderAlignedPointer(const PropertyCallbackInfo<Value>* info, int index) {
+    Local<Object> holder = info->Holder();
+    // A node interface's holder (Document's named properties, a form's or a
+    // select's indexed ones) has no internal field (P4): its instance is its
+    // anchor's.
+    if (holder->InternalFieldCount() <= index) return index == 0 ? nodeInstanceOf(info->GetIsolate(), holder) : nullptr;
+    // The isolate overload: the one without it finds the isolate from the
+    // object's page (GetIsolateForSandbox) on every read.
+    return holder->GetAlignedPointerFromInternalField(info->GetIsolate(), index, kCraneEmbedderDataTag);
 }
 
 // A deleter interceptor's answer, the value `delete` evaluates to (WebIDL
@@ -10606,6 +10526,47 @@ bool v8_Name_IsString(const void* name) {
 
 // Object internal field functions for raw/local pointers (from callbacks)
 // Used in property interceptors where we have Local<Object> not Global<Object>
+int v8_Object_InternalFieldCount_Raw(const void* obj) {
+    // Cast to non-const since V8 API requires it
+    Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+    // Look through a legacy platform object's proxy, as the _Raw field read does.
+    if (object_ptr->IsProxy()) {
+        Value* target = *Proxy::Cast(object_ptr)->GetTarget();
+        if (target->IsObject()) object_ptr = Object::Cast(target);
+    }
+    return object_ptr->InternalFieldCount();
+}
+
+void* v8_Object_GetAlignedPointerFromInternalField_Raw(const void* obj, int index) {
+    Object* object_ptr = const_cast<Object*>(reinterpret_cast<const Object*>(obj));
+
+    // CROSS-REALM FIX: Unwrap Proxy to get target with internal fields
+    if (object_ptr->IsProxy()) {
+        Proxy* proxy = Proxy::Cast(object_ptr);
+        Value* target = *proxy->GetTarget();
+        if (target->IsObject()) {
+            object_ptr = Object::Cast(target);
+        }
+    }
+
+    if (object_ptr->InternalFieldCount() <= index) {
+        return nullptr;
+    }
+
+    void* result = object_ptr->GetAlignedPointerFromInternalField(index, kCraneEmbedderDataTag);
+
+    // Debug: print what we're returning for internal field 0
+    if (index == 0) {
+        Isolate* isolate = Isolate::GetCurrent();
+        Local<String> constructor_name = object_ptr->GetConstructorName();
+        String::Utf8Value name_utf8(isolate, constructor_name);
+        fprintf(stderr, "[GetInternalField0_Raw] obj=%p, constructor=%s, result=%p\n",
+                obj, *name_utf8, result);
+    }
+
+    return result;
+}
+
 // String functions for raw pointers (from callbacks)
 int v8_String_Utf8Length_Raw(const void* str) {
     Isolate* isolate = Isolate::GetCurrent();
@@ -12592,41 +12553,13 @@ void DeserializeInternalFields(Local<Object> holder, int index,
     }
 }
 
-/// Whether the snapshot may not hold an API object whose CppHeap pointer is
-/// `cpp_heap_pointer`: any that has one. The blob carries templates and
-/// intrinsics; an object Wrapped with a C++-heap object - a platform object's
-/// wrapper (its PlatformAnchor or NodeAnchor), a realm's global (its
-/// GlobalAnchor) - names an instance of this process, which no blob can.
-static bool snapshotRefusesApiWrapper(void* cpp_heap_pointer) {
-    return cpp_heap_pointer != nullptr;
-}
-
-/// The snapshot creator's serializer for API wrappers (v8-snapshot.h
-/// SerializeAPIWrapperCallback): V8 calls it for every API object of a
-/// context it writes, with the object's CppHeap pointer. It writes nothing,
-/// and stops the generator on an object that has one - a guard, not a path:
-/// the generator wraps no platform object. Without a serializer V8 calls a
-/// null callback for such an object (15.7.112.43
+/// tests/v8/wrap1_platform_anchor_test.zig: whether the snapshot generator refuses to write an API object whose
+/// CppHeap pointer is `cpp_heap_pointer` into a blob. No serializer for API wrappers is registered yet, so
+/// nothing is refused: V8 would call a null callback for such an object (15.7.112.43
 /// src/snapshot/context-serializer.cc:237-252).
-/// Blink's aborts likewise on any wrappable but the one kind it expects
-/// (bindings/core/v8/v8_context_snapshot_impl.cc).
-static StartupData RefuseApiWrapperInSnapshot(Local<Object> holder, void* cpp_heap_pointer, void* data) {
-    (void)holder;
-    (void)data;
-    if (snapshotRefusesApiWrapper(cpp_heap_pointer)) {
-        fprintf(stderr, "v8_wrapper: the snapshot would hold an API object wrapped with a C++-heap object - a platform "
-                        "object's wrapper, or a realm's global. A blob carries templates and intrinsics only: the "
-                        "generator must wrap no platform object in a context it snapshots.\n");
-        abort();
-    }
-    return {nullptr, 0};
-}
-
-/// tests/v8/wrap1_platform_anchor_test.zig: whether the snapshot generator
-/// refuses to write an API object whose CppHeap pointer is `cpp_heap_pointer`
-/// into a blob (RefuseApiWrapperInSnapshot's rule).
 extern "C" bool v8_test_SnapshotRefusesApiWrapper(void* cpp_heap_pointer) {
-    return snapshotRefusesApiWrapper(cpp_heap_pointer);
+    (void)cpp_heap_pointer;
+    return false;
 }
 
 /// Create a context and set it as default for snapshot
@@ -12659,7 +12592,7 @@ bool v8_SnapshotCreator_CreateAndSetDefaultContext(void* creator) {
     context->Enter();
     context->Exit();
     
-    sc->SetDefaultContext(context, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
+    sc->SetDefaultContext(context);
     return true;
 }
 
@@ -12693,7 +12626,7 @@ size_t v8_SnapshotCreator_CreateAndAddContext(void* creator) {
     context->Enter();
     context->Exit();
     
-    size_t index = sc->AddContext(context, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
+    size_t index = sc->AddContext(context);
     return index;
 }
 
@@ -12725,7 +12658,7 @@ void v8_SnapshotCreator_SetDefaultContext(void* creator, Global<Context>* contex
     }
     
     fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Setting default context\n");
-    sc->SetDefaultContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
+    sc->SetDefaultContext(ctx);
     fprintf(stderr, "[v8_SnapshotCreator_SetDefaultContext] Default context set successfully\n");
 }
 
@@ -12755,7 +12688,7 @@ size_t v8_SnapshotCreator_AddContext(void* creator, Global<Context>* context) {
     }
     
     fprintf(stderr, "[v8_SnapshotCreator_AddContext] Adding context to snapshot\n");
-    size_t index = sc->AddContext(ctx, SerializeInternalFieldsCallback(), SerializeContextDataCallback(), SerializeAPIWrapperCallback(RefuseApiWrapperInSnapshot));
+    size_t index = sc->AddContext(ctx);
     fprintf(stderr, "[v8_SnapshotCreator_AddContext] Context added at index %zu\n", index);
     return index;
 }
@@ -14792,7 +14725,7 @@ class DataCloneErrorDelegate final : public ValueSerializer::Delegate {
 
     Maybe<bool> IsHostObject(Isolate* isolate, Local<Object> object) override {
         NODE_ANCHOR_IN_FRAME(isolate);
-        return Just(object->InternalFieldCount() > 0 || platformAnchorOf(isolate, object) != nullptr || nodeAnchorOf(isolate, object) != nullptr);
+        return Just(object->InternalFieldCount() > 0 || nodeAnchorOf(isolate, object) != nullptr);
     }
 
     Maybe<bool> WriteHostObject(Isolate* isolate, Local<Object> object) override {
@@ -18170,11 +18103,11 @@ void ThrowCrossOriginSecurityError(Isolate* isolate) {
     isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(isolate, "SecurityError: blocked a cross-origin access")));
 }
 
-/// The platform object behind a WindowProxy (internal field 0) or a Location
-/// (its platform anchor), or null - a Window freed with its page, a severed
-/// global or Location.
+/// The platform object behind a WindowProxy or Location (internal field 0),
+/// or null - a Window freed with its page, a severed global.
 void* CrossOriginPlatformObject(Isolate* isolate, Local<Object> object) {
-    return instanceOfObject(isolate, object);
+    if (object->InternalFieldCount() < 1) return nullptr;
+    return object->GetAlignedPointerFromInternalField(isolate, 0, kCraneEmbedderDataTag);
 }
 
 /// IsPlatformObjectSameOrigin (7.2.1.3.3) as V8's access check: whether the

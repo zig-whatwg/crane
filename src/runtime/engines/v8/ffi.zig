@@ -137,11 +137,12 @@ pub const FunctionCallbackInfo = opaque {
     /// Get the 'this' object for the function call
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
-    /// The instance the receiver reaches (v8_Object_Instance's rule: its
-    /// platform anchor's, looked through a legacy platform object's proxy; a
-    /// node's; a realm's global's field); null for a receiver that is no
-    /// wrapper, a severed one, or one that is not an object. Makes no handle.
-    /// The brand check is the instance's state ancestry (`conv.implements`).
+    /// Internal field 0 of the receiver, its instance, looked through a
+    /// legacy platform object's proxy; null for a receiver with no instance
+    /// or one that is not an object. A node wrapper (no internal field: the
+    /// wrapper redesign's P4) reads as its anchor's instance. Makes no
+    /// handle. The brand check is the instance's state ancestry
+    /// (`conv.implements`), not a WrapperTypeInfo beside it (lane v8up A0).
     pub extern fn v8_FunctionCallbackInfo_ThisInstance(self: *const FunctionCallbackInfo) ?*anyopaque;
 
     /// The receiver's node wrapper slot (Object::Unwrap under the node
@@ -272,11 +273,11 @@ pub const PropertyCallbackInfo = opaque {
     /// why the holder is what the algorithms ask for.
     pub extern fn v8_PropertyCallbackInfo_Holder(self: *const PropertyCallbackInfo) ?*Object;
 
-    /// The instance of the object that has the interceptor (V8's HolderV2) -
-    /// WebIDL's O for an indexed [[Get]] or [[HasProperty]], the list for
-    /// `heir[i]` too - by v8_Object_Instance's rule, or null when it reaches
-    /// none. Makes no handle (the C++ side says why that matters).
-    pub extern fn v8_PropertyCallbackInfo_HolderInstance(self: *const PropertyCallbackInfo) ?*anyopaque;
+    /// The aligned pointer in internal field `index` of the object that has
+    /// the interceptor (V8's HolderV2) - WebIDL's O for an indexed [[Get]]
+    /// or [[HasProperty]], the list for `heir[i]` too - or null when it has
+    /// no such field. Makes no handle (the C++ side says why that matters).
+    pub extern fn v8_PropertyCallbackInfo_HolderAlignedPointer(self: *const PropertyCallbackInfo, index: c_int) ?*anyopaque;
 
     /// Whether the return value set so far is undefined. Makes no handle.
     pub extern fn v8_PropertyCallbackInfo_ReturnValueIsUndefined(self: *const PropertyCallbackInfo) bool;
@@ -312,8 +313,8 @@ pub const PropertyCallbackInfo = opaque {
         return v8_PropertyCallbackInfo_Holder(self);
     }
 
-    pub inline fn holderInstance(self: *const PropertyCallbackInfo) ?*anyopaque {
-        return v8_PropertyCallbackInfo_HolderInstance(self);
+    pub inline fn holderAlignedPointer(self: *const PropertyCallbackInfo, index: c_int) ?*anyopaque {
+        return v8_PropertyCallbackInfo_HolderAlignedPointer(self, index);
     }
 
     pub inline fn returnValueIsUndefined(self: *const PropertyCallbackInfo) bool {
@@ -1543,42 +1544,14 @@ pub extern fn v8_Object_GetOwnPropertyNames(context: *Context, obj: *Object) ?*A
 pub extern fn v8_Object_GetOwnPropertyNamesAsStrings(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetOwnPropertySymbols(context: *Context, obj: *Object) ?*Array;
 pub extern fn v8_Object_GetPropertyNames(context: *Context, obj: *Object) ?*Array;
-/// Internal fields: a realm's global keeps one, field 0, its instance
-/// (realm_global.zig); no other wrapper has any since lane wrap1 b2 - a
-/// platform object's instance is its anchor's (v8_Object_Instance).
 /// `value` may be null: clearing field 0 is how a discarded Window is severed
 /// from its global proxy (realm_global.clearInstance).
 pub extern fn v8_Object_SetAlignedPointerInInternalField(object: *Object, index: c_int, value: ?*anyopaque) void;
-/// The object's internal field count - of a legacy platform object's proxy,
-/// its target's.
 pub extern fn v8_Object_InternalFieldCount(object: *Object) c_int;
-/// The aligned pointer in internal field `index` (a proxy's target's), or
-/// null when the object has no such field. A field read and nothing else:
-/// the instance a wrapper reaches is v8_Object_Instance.
 pub extern fn v8_Object_GetAlignedPointerFromInternalField(object: *Object, index: c_int) ?*anyopaque;
-/// The instance `object` reaches, or null - the binding's ONE read of a
-/// platform object's instance (v8_wrapper.cpp instanceOfObject; Blink's
-/// ToAnyScriptWrappable): looked through a legacy platform object's proxy to
-/// its target, a non-node platform object's PlatformAnchor (Object::Unwrap
-/// under the platform anchors' tags; null once severed), a node's NodeAnchor
-/// (its slot's node), or a realm's global's internal field 0. Null for any
-/// other object. The isolate is the current one.
-pub extern fn v8_Object_Instance(object: *Object) ?*anyopaque;
-/// THE LINK (platform_anchor.zig `bind`; Blink's V8DOMWrapper::SetNativeInfo):
-/// `box`'s object - through a legacy platform object's proxy, its target -
-/// reaches `instance` from here, by a new anchor on `isolate`'s C++ heap that
-/// the object is Wrapped with (v8::Object::Wrap): a HolderAnchor carrying the
-/// instance's slab `generation` when `holds_nodes` (a collection that marks
-/// the wrapper then calls the record's `trace_holder`: the wrapper
-/// redesign's P6), a PlatformAnchor otherwise. An object that has an
-/// internal field (a realm's global) has the instance written there. False,
-/// with nothing bound, for an object that is no API object.
-pub extern fn v8_PlatformObject_Bind(isolate: *Isolate, box: *Object, instance: *anyopaque, generation: u64, holds_nodes: bool) bool;
-/// `box`'s object reaches no instance from here (platform_anchor.zig `sever`;
-/// Blink's V8DOMWrapper::ClearNativeInfo): its anchor's instance is cleared -
-/// or its internal field 0, where it has one. Nothing for an object never
-/// bound. The isolate is the current one.
-pub extern fn v8_PlatformObject_Sever(box: *Object) void;
+// Raw versions for property interceptors (take raw Local pointers not Global handles)
+pub extern fn v8_Object_InternalFieldCount_Raw(object: *const anyopaque) c_int;
+pub extern fn v8_Object_GetAlignedPointerFromInternalField_Raw(object: *const anyopaque, index: c_int) ?*anyopaque;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 
@@ -3049,6 +3022,19 @@ pub extern fn v8_Isolate_SetNodeWrapperTracing(
     check: ?*const fn (registry: ?*anyopaque, live: ?[*]const ?*anyopaque, live_len: usize, dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void,
     trace_holder: *const fn (registry: ?*anyopaque, instance: ?*anyopaque, generation: u64, visitor: ?*anyopaque) callconv(.c) void,
 ) bool;
+
+/// A holder's new wrapper `box` (a type with VTable.trace_held_nodes) gets
+/// its HolderAnchor on `isolate`'s C++ heap, holding `instance` and its
+/// slab `generation` (the wrapper redesign's P6, design 4.4 "Holders"); a
+/// collection that marks the wrapper then calls the record's `trace_holder`.
+/// False, with no anchor, for an isolate with no C++ heap or tracing
+/// callbacks, or an object that is no API object.
+pub extern fn v8_HolderAnchor_Attach(isolate: *Isolate, box: *Object, instance: *anyopaque, generation: u64) bool;
+
+/// The holder's instance went while its wrapper `box` may live on (a realm's
+/// end severing it): its HolderAnchor, if any, traces nothing from here. The
+/// isolate is the current one.
+pub extern fn v8_HolderAnchor_Clear(box: *Object) void;
 
 /// engine.traceNodeWrapper on V8: `visitor` (a cppgc::Visitor in a
 /// collection's atomic pause, the walk's) traces the TracedReference in the
