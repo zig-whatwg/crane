@@ -401,6 +401,11 @@ pub const Browser = struct {
         @import("back_forward_cache.zig").evictAllIn(self.scope);
         // Destroy current context if any
         if (self.current_context) |ctx| {
+            // HTML "destroy a top-level traversable" step 2: "destroy a
+            // document and its descendants" - every frame's document is
+            // destroyed and its fetches aborted before the realms end
+            // (dom.navigables.destroyDocumentsAtBrowserEnd).
+            if (ctx.browsing_context) |bc| @import("dom").navigables.destroyDocumentsAtBrowserEnd(bc);
             ctx.deinit();
             self.allocator.destroy(ctx);
             self.current_context = null;

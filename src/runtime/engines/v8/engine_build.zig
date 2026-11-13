@@ -71,6 +71,14 @@ pub const Options = struct {
     /// null, not given, is the adapter's default (navigation_collection.zig,
     /// which says what it is and why).
     navigation_collection_mb: ?u32,
+    /// `-Dv8-wrapper-trace-check`: compile in the node wrapper walk's oracle
+    /// (node_wrappers.zig `checkWalk`, the wrapper redesign's P5): in every
+    /// major collection's weak processing the trees every kept node wrapper
+    /// keeps are walked unpruned, each wrapper they hold must have been kept
+    /// and each kept wrapper's node reached by the walk. A diagnosis build's
+    /// option: it costs a walk of every live tree per collection. Not given:
+    /// off.
+    wrapper_trace_check: bool,
 };
 
 /// Declare the V8 adapter's build options. `target`: what the build is for -
@@ -158,6 +166,11 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
             "v8-navigation-collection-mb",
             "V8: after a main frame's navigation, collect the page that was left when V8's heap holds at least this many MB (default: 16 with a limited young generation, never with V8's own sizing, -Dv8-young-generation-mb=0); 0 = never",
         ),
+        .wrapper_trace_check = b.option(
+            bool,
+            "v8-wrapper-trace-check",
+            "V8: check the node wrapper walk in every major collection (the wrapper redesign's oracle; logs wrapper-trace-check errors, costs a walk of every live tree per collection)",
+        ) orelse false,
     };
 }
 
@@ -165,6 +178,7 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
     adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
+    adapter_options.addOption(bool, "wrapper_trace_check", options.wrapper_trace_check);
 }
 
 /// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the

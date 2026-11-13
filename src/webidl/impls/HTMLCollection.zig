@@ -71,6 +71,14 @@ pub const InternalState = struct {
     named_items_name: ?runtime.DOMString = null,
     named_items_kind: live_collections.NamedKind = .document,
 
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the root, in the collector's atomic pause (Blink's
+    /// LiveNodeListBase traces owner_node_). Its members are found again in
+    /// the root's tree on every read: not held, not traced.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
+        const self = getInternal(instance) orelse return;
+        self.root_hold.trace(tracer);
+    }
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,

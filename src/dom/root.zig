@@ -300,6 +300,9 @@ pub const node_base = @import("node_base.zig");
 /// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
 /// production code until step 3.
 pub const refcount = @import("refcount.zig");
+/// The walk the engine's collector runs to keep node wrappers (the wrapper
+/// redesign's P5): runtime.lifetime's traceTree hook.
+pub const wrapper_tracing = @import("wrapper_tracing.zig");
 /// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
 pub const refcount_audit = @import("refcount_audit.zig");
 pub const refcount_teardown = @import("refcount_teardown.zig");

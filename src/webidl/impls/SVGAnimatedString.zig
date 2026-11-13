@@ -24,6 +24,15 @@ pub const InternalState = struct {
     element: dom.node_holds.MemberHold = .{},
     attribute: []u8,
     deprecated_namespace: ?[]u8,
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the reflected element, in the collector's atomic
+    /// pause (Blink: an SVG animated property keeps its context element).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const self = state.own._internal orelse return;
+        self.element.trace(tracer);
+    }
 };
 
 const element_slot: engine.TracedSlot = .{ .name = "svg-animated-string:element" };

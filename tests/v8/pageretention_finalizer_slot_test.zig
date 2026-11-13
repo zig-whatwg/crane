@@ -114,8 +114,9 @@ const Page = struct {
     /// object script has seen; nothing else holds it.
     fn wrapIn(self: *Page, cache: *v8.WrapperCache, instance: *runtime.Instance) !*ffi.Object {
         runtime.instance_lifecycle.markWrapped(instance);
-        const wrapper = ffi.v8_Object_New(self.isolate) orelse return error.ObjectFailed;
-        // A node's wrapper moves into its slot: the handle `set` answers.
+        // A node's wrapper is an API object (P4: its anchor is Wrapped onto
+        // it), and its slot holds it: the handle `set` answers.
+        const wrapper = test_process.nodeWrapperObject(self.isolate, @ptrCast(@alignCast(self.realm.engine_ctx.?))) orelse return error.ObjectFailed;
         return try cache.set(instance, @ptrCast(wrapper), self.isolate);
     }
 
@@ -176,6 +177,9 @@ test "a detached wrapped tree collected during a teardown gives its nodes' slots
     var page = try Page.open();
     defer page.close();
     const tree = try Tree.make(page.realm);
+    // Both nodes wrapped: since the wrapper redesign's P7 a wrap no longer
+    // wraps the node's ancestors, so the root is wrapped here itself.
+    _ = try page.wrapIn(page.cache, tree.root);
     _ = try page.wrapIn(page.cache, tree.child);
     try testing.expect(page.cache.get(tree.root) != null);
     const child = Made.of(tree.child);

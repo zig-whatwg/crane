@@ -122,6 +122,13 @@ pub const capabilities: engine.Capabilities = .{
     // that is reached and collects when it is overshot by a large margin
     // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
+    // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
+    // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
+    // HolderAnchor::Trace and the anchors' registry in cppgc's atomic pause:
+    // Blink's Node::Trace). P7 deleted node tracing's JS edges, so the host's
+    // joinOpaqueRoot / leaveOpaqueRoot / keepOpaqueRoot calls for nodes
+    // compile out here (they are the .emulated engines' path).
+    .wrapper_tracing = .native,
 };
 
 /// Every operation is V8 code: a test binary that compiles them all links V8.
@@ -130,6 +137,8 @@ pub const links_engine = true;
 /// HTML "prepare to run script" entered `realm`: undone by "clean up".
 pub const ScriptScope = protocol_scripts.ScriptScope;
 pub const NodeWrapperSlot = @import("node_wrappers.zig").NodeWrapperSlot;
+/// engine.Tracer: the collection's cppgc visitor and the agent's registry.
+pub const Tracer = @import("node_wrappers.zig").Tracer;
 
 // ============================================================================
 // Helpers
@@ -1055,6 +1064,13 @@ pub const joinOpaqueRoot = @import("wrapper_cache.zig").joinOpaqueRoot;
 pub const leaveOpaqueRoot = @import("wrapper_cache.zig").leaveOpaqueRoot;
 pub const keepOpaqueRoot = @import("wrapper_cache.zig").keepOpaqueRoot;
 
+/// engine.traceNodeWrapper / traceVisitOnce (the wrapper redesign's P5,
+/// design 4.4): the walk names wrappers through the cppgc visitor of the
+/// collection's atomic pause, deduplicated per collection in the agent's
+/// registry (node_wrappers.zig "The walk").
+pub const traceNodeWrapper = @import("node_wrappers.zig").traceNodeWrapper;
+pub const traceVisitOnce = @import("node_wrappers.zig").traceVisitOnce;
+
 // ============================================================================
 // 4.13 Diagnostics tier
 // ============================================================================
@@ -1089,6 +1105,9 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   in its node's own slot and holding one counted reference on the node
 ///   (node_wrappers.zig; never in a wrapper cache since the wrapper
 ///   redesign's P2);
+/// - `node_wrapper_net_waiting`: the detached roots the current isolate's
+///   agent remembers for their realm's end (refcount step 7a's net,
+///   node_wrappers.zig `Registry.net_waiting`), stale entries included;
 /// - `full_gc_count`, `full_gc_pause_max_us`, `full_gc_pause_p95_us`: the
 ///   current isolate's (its agent's) full collections since it was made, the
 ///   longest pause and the 95th percentile of the last 1,024, in
@@ -1096,6 +1115,35 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   mark-compact, which brackets the atomic pause (v8_wrapper.cpp
 ///   GCPauses); 0 with no isolate current. The wrapper redesign's baseline
 ///   (tmp/redesign/wrapper-redesign-design.md section 7, P0);
+/// - `minor_gc_count`: the current isolate's young-generation collections
+///   (scavenges and minor mark-sweeps) since it was made, cumulative - where
+///   V8 may drop an unmodified node wrapper (design 4.11, P8); 0 with no
+///   isolate current;
+/// - `node_wrapper_walks`, `wrapper_trace_check_failures`: the current
+///   isolate's walks so far - anchors and keeps whose tree the collector
+///   asked the host about (the wrapper redesign's P5, node_wrappers.zig "The
+///   walk") - and the walk oracle's findings (-Dv8-wrapper-trace-check; 0 in
+///   every other build), cumulative; 0 with no isolate current;
+/// - `node_wrapper_table_bytes`: what the current isolate's V8 is told, as
+///   external memory, of the pointer-table entries left by node wrappers
+///   dropped since its last full collection began (v8_wrapper.cpp
+///   `reportDroppedTableEntries`); 0 with no isolate current;
+/// - `node_anchors_registered`: the current isolate's node anchors in its
+///   registry - those whose wrapper may still live - now;
+/// - `node_anchors_dropped_waiting`, `node_anchors_freed`,
+///   `node_anchor_frees_deferred`: anchors whose wrapper a scavenge dropped
+///   and that wait for their free now, those freed so far, and the frees
+///   cppgc refused because its heap was collecting (v8_wrapper.cpp
+///   freeDroppedAnchors);
+/// - `node_anchor_weak_ns_max`, `node_anchor_weak_slots_max`: the anchors'
+///   weak processing in one full collection at most - its walk over the
+///   registry's slots, and the slots (v8_wrapper.cpp GCPhaseStats);
+/// - `gc_atomic_*_us_max`, `cpp_atomic_*_us_max`: one full collection's
+///   atomic pause at most, whole and by phase (mark, weak, compact, sweep),
+///   for the whole heap and for the C++ heap's share, as V8 reports them to
+///   the isolate's metrics recorder (GCPhaseStats; gc_bench's build only,
+///   0 in every other) - with the two above, where a pause goes (lane wr1
+///   batch 8); 0 with no isolate current;
 /// - `globals_created`: Globals made through the wrapper's tracked path,
 ///   cumulative - 0 unless v8_wrapper.cpp is built with
 ///   -DCRANE_TRACK_GLOBALS=1, as gc_bench's is;
@@ -1120,6 +1168,9 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
     var full_gc_max_us: u64 = 0;
     var full_gc_p95_us: u64 = 0;
     ffi.v8_Debug_FullGCPauses(ffi.v8_Isolate_GetCurrent(), &full_gcs, &full_gc_max_us, &full_gc_p95_us);
+    var anchors: ffi.NodeAnchorStats = .{};
+    ffi.v8_Debug_NodeAnchorStats(ffi.v8_Isolate_GetCurrent(), &anchors);
+    const walk_counts = @import("node_wrappers.zig").walkCountsOfCurrent();
     const handles = [_]engine.Counter{
         .{ .name = "live_string_globals", .value = ffi.v8_Debug_LiveStringGlobals() },
         .{ .name = "live_context_globals", .value = ffi.v8_Debug_LiveContextGlobals() },
@@ -1131,9 +1182,31 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
         .{ .name = "node_wrappers", .value = @intCast(@import("node_wrappers.zig").liveCount()) },
+        .{ .name = "node_wrapper_net_waiting", .value = @intCast(@import("node_wrappers.zig").netWaitingOfCurrent()) },
         .{ .name = "full_gc_count", .value = @intCast(full_gcs) },
         .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
+        .{ .name = "minor_gc_count", .value = @intCast(ffi.v8_Debug_MinorGCCount(ffi.v8_Isolate_GetCurrent())) },
+        .{ .name = "node_wrapper_walks", .value = @intCast(walk_counts.walks) },
+        .{ .name = "node_wrapper_holder_traces", .value = @intCast(walk_counts.holder_traces) },
+        .{ .name = "wrapper_trace_check_failures", .value = @intCast(walk_counts.check_failures) },
+        .{ .name = "node_anchors_registered", .value = @intCast(anchors.registered) },
+        .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
+        .{ .name = "node_wrapper_table_bytes", .value = @intCast(ffi.v8_Debug_NodeWrapperTableBytes(ffi.v8_Isolate_GetCurrent())) },
+        .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
+        .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
+        .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },
+        .{ .name = "node_anchor_weak_slots_max", .value = @intCast(anchors.weak_slots_max) },
+        .{ .name = "gc_atomic_us_max", .value = anchors.atomic_us_max },
+        .{ .name = "gc_atomic_mark_us_max", .value = anchors.atomic_mark_us_max },
+        .{ .name = "gc_atomic_weak_us_max", .value = anchors.atomic_weak_us_max },
+        .{ .name = "gc_atomic_compact_us_max", .value = anchors.atomic_compact_us_max },
+        .{ .name = "gc_atomic_sweep_us_max", .value = anchors.atomic_sweep_us_max },
+        .{ .name = "cpp_atomic_us_max", .value = anchors.cpp_us_max },
+        .{ .name = "cpp_atomic_mark_us_max", .value = anchors.cpp_mark_us_max },
+        .{ .name = "cpp_atomic_weak_us_max", .value = anchors.cpp_weak_us_max },
+        .{ .name = "cpp_atomic_compact_us_max", .value = anchors.cpp_compact_us_max },
+        .{ .name = "cpp_atomic_sweep_us_max", .value = anchors.cpp_sweep_us_max },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
         // v8_wrapper.cpp's g_obj_src slots, in its order.
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },

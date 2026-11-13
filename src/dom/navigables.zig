@@ -519,6 +519,48 @@ pub fn destroyWindowDocuments(bc: *BrowsingContext, fate: window_documents.Windo
     }
 }
 
+/// HTML "close a top-level traversable" -> "destroy a top-level traversable"
+/// step 2, at a Browser's end, for `bc` - its active top-level browsing
+/// context: "destroy a document and its descendants" for its active
+/// document. Each descendant navigable's document is destroyed - "destroy a
+/// document": step 2, "abort a document", cancels the fetches it started,
+/// firing nothing (dom.document_fetches), and step 5 runs its unloading
+/// document cleanup steps (dom.window_documents) - and the top-level
+/// document's fetches are aborted the same way; its cleanup steps are its
+/// page's end (the browser Context's deinit runs them before its realm
+/// ends). The browser layer's realm teardown ended an iframe's realm without
+/// this, so an <img> whose update was in flight in a frame document kept its
+/// counted hold on the element past every realm's end (tests/html/
+/// wr7_browser_end_destroys_documents_test.zig).
+///
+/// Order: each navigable's own document before its children's, as
+/// `destroyWindowDocuments` does. HTML destroys a document's children first
+/// ("wait until numberDestroyed equals childNavigables's size", then
+/// "destroy document"); Blink's LocalFrame::DetachImpl stops the frame's own
+/// loaders (loader_.StopAllLoaders()) before DetachChildren(), Gecko's
+/// nsDocShell::Destroy stops its own loads (Stop) before destroying its
+/// children, and WebKit's FrameLoader::detachFromParent stops all loaders
+/// first too - the browsers agree, so their order (golden rule 2). No event
+/// fires and no script runs in either order: the abort is "firing nothing".
+pub fn destroyDocumentsAtBrowserEnd(bc: *BrowsingContext) void {
+    var tree: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+    defer tree.deinit(std.heap.page_allocator);
+    tree.append(std.heap.page_allocator, bc) catch return;
+    bc.collectDescendants(std.heap.page_allocator, &tree) catch {};
+    for (tree.items) |navigable| {
+        const window: *runtime.Instance = @ptrCast(@alignCast(navigable.getActiveWindow() orelse continue));
+        // A document the back/forward cache keeps: as destroyWindowDocuments.
+        if (navigable.getActiveDocument()) |active| {
+            if (@import("bfcache.zig").isKept(@ptrCast(@alignCast(active)))) continue;
+        }
+        // "Destroy a document" step 2: "abort a document".
+        document_fetches.abortAll(window.ctx);
+        // Step 5 for a descendant's document; the top-level one's are its
+        // page's end.
+        if (navigable != bc) window_documents.destroyed(window.ctx);
+    }
+}
+
 /// HTML "destroy a child navigable", for the realm: a navigable whose
 /// container goes takes its realm with it, and the realm ends at a task
 /// queued here - never with the frame's own script on the stack (a frame

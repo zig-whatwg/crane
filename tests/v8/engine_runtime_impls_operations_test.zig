@@ -513,7 +513,10 @@ test "the protocol is bound to V8, with explicit native and emulated capabilitie
     defer test_agent.close();
     try std.testing.expectEqualStrings("V8", protocol.name);
     inline for (@typeInfo(protocol.Capabilities).@"struct".field_names) |field_name| {
-        const expected: protocol.Support = if (std.mem.eql(u8, field_name, "cross_origin_objects")) .emulated else .native;
+        // wrapper_tracing is native since the wrapper redesign's P7 (the
+        // walk alone keeps trees; node tracing's JS edges are gone).
+        const emulated = std.mem.eql(u8, field_name, "cross_origin_objects");
+        const expected: protocol.Support = if (emulated) .emulated else .native;
         try std.testing.expectEqual(expected, @field(protocol.capabilities, field_name));
     }
 }
