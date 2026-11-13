@@ -6292,6 +6292,59 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_platform_tests, "tools-lint_platform", null).step);
 
     // ========================================================================
+    // LINT: the build's neutrality, as a ratchet
+    // ========================================================================
+    // The user, 2026-11-12: this file holds no code of one engine or of one
+    // platform - an adapter declares its build in its own build file, behind
+    // the build side of its protocol. tools/lint_build_neutral.zig counts what
+    // this file and the neutral files it imports still name of either, per
+    // file, per word and per kind of text (code, comment, embedded script),
+    // and fails if any count rises above tools/build_neutral_baseline.txt or a
+    // new one appears. The baseline only goes down, a slice with each batch of
+    // the migration: `zig build lint-build -- --update` records it and refuses
+    // an increase; `-- --list` prints every site. `zig build test` depends on
+    // it.
+    //
+    // The words it looks for, a list per class. Until the protocols' build
+    // files supply them from their own lists of adapters, they are spelled
+    // here - and counted like every other line of this file.
+    const lint_build_words = [_][]const u8{
+        "--engine=v8,jsc,javascriptcore,quickjs",
+        "--platform=darwin,linux,macos,word:ios,iphoneos,xcrun,homebrew,.testing",
+        "--target=os.tag,isDarwin,.abi ==",
+        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
+    };
+    const lint_build_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_build_neutral.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_build_exe = b.addExecutable(.{
+        .name = "lint_build_neutral",
+        .root_module = lint_build_module,
+    });
+
+    const lint_build_step = b.step("lint-build", "Fail when build.zig or a neutral file it imports names an engine, an operating system or a platform library more often than the baseline (use -- --update after moving a slice out; -- --list prints every site)");
+    const lint_build = b.addRunArtifact(lint_build_exe);
+    // It reads this file, the files it imports and the baseline, which the build graph does not track.
+    lint_build.has_side_effects = true;
+    lint_build.setCwd(b.path("."));
+    lint_build.addArgs(&lint_build_words);
+    lint_build.addPassthruArgs();
+    lint_build_step.dependOn(&lint_build.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_build_check = b.addRunArtifact(lint_build_exe);
+    lint_build_check.has_side_effects = true;
+    lint_build_check.setCwd(b.path("."));
+    lint_build_check.addArgs(&lint_build_words);
+    test_step.dependOn(&lint_build_check.step);
+    const lint_build_tests = b.addTest(.{ .root_module = lint_build_module });
+    test_step.dependOn(&addSuiteRun(b, launch, lint_build_tests, "tools-lint_build", null).step);
+
+    // ========================================================================
     // LINT: global state, as a ratchet
     // ========================================================================
     // docs/instances.md: several isolated instances run in one process, each
