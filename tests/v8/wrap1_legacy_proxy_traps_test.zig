@@ -240,6 +240,28 @@ test "the internal methods' answers are WebIDL's: indices, names, own properties
         \\check("define collection[0]", attempt(() => saved.defineProperty(c, "0", { value: 1 })), "threw TypeError");
         \\check("define collection[5]", attempt(() => saved.defineProperty(c, "5", { value: 1 })), "threw TypeError");
         \\check("define collection.first", attempt(() => saved.defineProperty(c, "first", { value: 1 })), "threw TypeError");
+        \\// 3.9.2 [[Set]] with another Receiver - an object whose prototype is the collection. Step 2's ownDesc
+        \\// ignores named properties (LegacyPlatformObjectGetOwnProperty(O, P, true)), so a supported name is
+        \\// no property of O here and the value becomes the Receiver's own (step 3, ES OrdinarySetWithOwnDescriptor
+        \\// 2.e); a supported index is O's read-only data property (no indexed setter): refused.
+        \\const heir = saved.create(collection());
+        \\heir.first = "x";
+        \\check("an heir's assignment over a supported name is the heir's own property", saved.hasOwn.call(heir, "first") && heir.first, "x");
+        \\check("and the collection's named property is untouched", typeof saved.getPrototypeOf(heir).first, "object");
+        \\heir[0] = "y";
+        \\check("an heir's assignment over a supported index is refused", saved.hasOwn.call(heir, "0"), false);
+        \\check("in strict code it throws", attempt(() => { "use strict"; heir[0] = "y"; }), "threw TypeError");
+        \\heir[5] = "z";
+        \\check("an heir's assignment to an unsupported index is the heir's own property", saved.hasOwn.call(heir, "5") && heir[5], "z");
+        \\// ES OrdinarySetWithOwnDescriptor steps 2.b-d, on the Receiver.
+        \\const c2 = collection();
+        \\check("a Receiver that is no object", Reflect.set(c2, "first", 1, 5), false);
+        \\check("a Receiver with a read-only own property", Reflect.set(c2, "first", 1, Object.freeze({ first: 0 })), false);
+        \\check("a Receiver with an own accessor", Reflect.set(c2, "first", 1, { get first() { return 0; }, set first(v) {} }), false);
+        \\const writable = { first: 0 };
+        \\check("a Receiver with a writable own property", Reflect.set(c2, "first", 9, writable) && writable.first, 9);
+        \\const hidden = {}; saved.defineProperty(hidden, "first", { value: 0, writable: true, enumerable: false, configurable: true });
+        \\check("keeps that property's attributes", Reflect.set(c2, "first", 9, hidden) && describe(hidden, "first"), "value:number w c");
         \\// 3.9.5 [[PreventExtensions]]: step 1, return false.
         \\check("Object.preventExtensions(collection)", attempt(() => saved.preventExtensions(c)), "threw TypeError");
         \\check("Reflect.preventExtensions(collection)", Reflect.preventExtensions(c), false);
