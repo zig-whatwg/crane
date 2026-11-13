@@ -8675,6 +8675,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .mimesniff = mimesniff_mod,
     });
     const platform_mod = platform_binding.facade;
+    engine_impl_mod.addImport("platform", platform_mod);
     compression_mod.addImport("platform", platform_mod);
     fetch_mod.addImport("platform", platform_mod);
     dom_mod.addImport("platform", platform_mod);

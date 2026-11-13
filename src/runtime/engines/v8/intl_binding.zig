@@ -34,6 +34,8 @@ const protocol_agents = @import("protocol_agents.zig");
 // Import CLDR data via intl module
 const intl = @import("intl");
 const clock = @import("clock");
+/// The platform protocol: the host's local time (getLocalTimezoneOffset).
+const platform = @import("platform");
 const cldr = intl.cldr;
 const cldr_embedded = cldr.embedded;
 
@@ -41,25 +43,55 @@ const cldr_embedded = cldr.embedded;
 // Timezone Helper
 // ============================================================================
 
-/// Get the local timezone offset in minutes from UTC
-/// Uses V8's Date.prototype.getTimezoneOffset() via JavaScript evaluation
-/// Returns negative offset for timezones ahead of UTC (e.g., -60 for UTC+1)
-fn getLocalTimezoneOffset(isolate: *v8.Isolate, context: *v8.Context) i32 {
-    // Create a Date object and get its timezone offset
-    // getTimezoneOffset() returns the offset in minutes from UTC
-    // For UTC-5, it returns +300 (positive). For UTC+1, it returns -60 (negative).
-    // The source, the script and its result are each an owned Global.
-    const script_str = v8.v8_String_NewFromUtf8(isolate, "new Date().getTimezoneOffset()", 30) orelse return 0;
-    defer release(script_str);
-    const script = v8.v8_Script_Compile(context, script_str) orelse return 0;
-    defer release(script);
-    const result = v8.v8_Script_Run(context, script) orelse return 0;
-    defer release(result);
-    const offset = v8.v8_Value_NumberValue(result, context);
-    if (std.math.isNan(offset)) return 0;
-    // getTimezoneOffset returns minutes from local to UTC
-    // We need the inverse (UTC to local), so negate it
-    return -@as(i32, @intFromFloat(offset));
+/// The host's local time zone's offset from UTC AT the instant
+/// `timestamp_ms` (a time value), in minutes, positive east of UTC: what
+/// LocalTime(t) adds to t (ECMA-262 21.4.1.25), for a DateTimeFormat whose
+/// time zone is the default one (ECMA-402 DefaultTimeZone()).
+///
+/// From the platform: the local calendar fields the OS gives that instant
+/// (platform.localDateTime - the OS's zone and its rules, the operation
+/// document.lastModified reads too), against the instant's own UTC fields.
+/// Asked for the instant being formatted, so a date on the other side of a
+/// daylight saving transition has that side's offset.
+///
+/// It was `new Date().getTimezoneOffset()`, compiled and run in the page's
+/// realm on every call: the page's Date (a page that replaced it, or
+/// Date.prototype.getTimezoneOffset, changed what Intl answered), the offset
+/// in force NOW whatever the instant, and a script compile per call. No
+/// browser's Intl reads the page: V8's own asks ICU's default zone, which
+/// Blink's embedder sets from the OS. Crane's Intl is its own (CLDR data, no
+/// ICU), so its zone is the platform's - whose rules are libc's, where V8's
+/// Date has ICU's: the two agree for every zone's current rules, and the
+/// platform's time zone is to become the one V8's Date is given
+/// (docs/lessons, "Intl's local time is the platform's").
+fn getLocalTimezoneOffset(timestamp_ms: i64) i32 {
+    // The platform's wall time is nanoseconds in 64 bits (1677 to 2262); a
+    // time value reaches 275,760 years either way. An instant outside the
+    // range gets the nearest representable instant's offset.
+    const last_ms: i64 = @divFloor(std.math.maxInt(i64), std.time.ns_per_ms);
+    const first_ms: i64 = -last_ms;
+    const probe_ms = std.math.clamp(timestamp_ms, first_ms, last_ms);
+    const local = platform.localDateTime(.{ .ns_since_epoch = probe_ms * std.time.ns_per_ms });
+    const local_seconds = daysFromCivil(local.year, local.month, local.day) * std.time.s_per_day +
+        @as(i64, local.hour) * 3600 + @as(i64, local.minute) * 60 + local.second;
+    const utc_seconds = @divFloor(probe_ms, std.time.ms_per_s);
+    // Whole minutes: every zone's offset is, since its standard time began
+    // (a local mean time before that is rounded down).
+    return @intCast(@divFloor(local_seconds - utc_seconds, 60));
+}
+
+/// Days from 1970-01-01 to the proleptic Gregorian date `year`-`month`-`day`
+/// (months and days one-based): the inverse of the calendar fields
+/// platform.localDateTime answers with. Howard Hinnant's days_from_civil
+/// (https://howardhinnant.github.io/date_algorithms.html#days_from_civil).
+fn daysFromCivil(year: i32, month: u8, day: u8) i64 {
+    const y: i64 = if (month <= 2) @as(i64, year) - 1 else year;
+    const era = @divFloor(y, 400);
+    const year_of_era = y - era * 400;
+    const month_from_march: i64 = @mod(@as(i64, month) + 9, 12);
+    const day_of_year = @divFloor(153 * month_from_march + 2, 5) + @as(i64, day) - 1;
+    const day_of_era = year_of_era * 365 + @divFloor(year_of_era, 4) - @divFloor(year_of_era, 100) + day_of_year;
+    return era * 146097 + day_of_era - 719468;
 }
 
 // ============================================================================
@@ -958,7 +990,7 @@ fn dateTimeFormatFormatCallback(info: *const v8.FunctionCallbackInfo) callconv(.
     const timestamp_ms = timestampArgument(info, context);
 
     // Format using CLDR patterns with local timezone
-    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const tz_offset = getLocalTimezoneOffset(timestamp_ms);
     const dt = DateTime.fromTimestampMillisWithOffset(timestamp_ms, tz_offset);
     var buf: [256]u8 = undefined;
 
@@ -1109,7 +1141,7 @@ fn dateTimeFormatToPartsCallback(info: *const v8.FunctionCallbackInfo) callconv(
     const timestamp_ms = timestampArgument(info, context);
 
     // Convert to local timezone
-    const tz_offset = getLocalTimezoneOffset(isolate, context);
+    const tz_offset = getLocalTimezoneOffset(timestamp_ms);
     const dt = DateTime.fromTimestampMillisWithOffset(timestamp_ms, tz_offset);
     const locale_data = entry.locale_data orelse cldr_embedded.getLocale("en").?;
 
@@ -2187,8 +2219,9 @@ fn dateToLocale(info: *const v8.FunctionCallbackInfo, default_date: ?DateStyle, 
     }
 
     // Format the date with local timezone
-    const tz_offset = getLocalTimezoneOffset(isolate, context);
-    const dt = DateTime.fromTimestampMillisWithOffset(@intFromFloat(timestamp), tz_offset);
+    const instant_ms: i64 = @intFromFloat(timestamp);
+    const tz_offset = getLocalTimezoneOffset(instant_ms);
+    const dt = DateTime.fromTimestampMillisWithOffset(instant_ms, tz_offset);
     var buf: [256]u8 = undefined;
     const formatted = formatDateTime(&buf, dt, locale_data, date_style, time_style);
 

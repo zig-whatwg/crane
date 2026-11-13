@@ -17,7 +17,10 @@
 //!   once-per-realm script with it: both ask V8 for the intrinsic by name
 //!   now, ffi.v8_Context_AsyncIteratorPrototype).
 //! - It runs in the PAGE's realm with the page's globals. A script that says
-//!   `new Date()` gets whatever the page made of Date. A browser reaches an
+//!   `new Date()` gets whatever the page made of Date - intl_binding.zig's
+//!   getLocalTimezoneOffset did, for Intl's local time, and left the list
+//!   when it took the platform's (tests/v8/v8up_intl_local_time_test.zig).
+//!   A browser reaches an
 //!   intrinsic by name (v8::Intrinsic, include/v8-template.h; Blink's
 //!   SetupIDLIteratorTemplate, Chromium 157.0.8103.50 third_party/blink/
 //!   renderer/bindings/core/v8/generated_code_helper.cc:166-206), never by
@@ -34,7 +37,6 @@ const adapter_dir = "src/runtime/engines/v8";
 /// The adapter's own script evaluations: the file, how many call sites it
 /// has, and whose defect each is.
 const listed = [_]struct { file: []const u8, sites: usize, why: []const u8 }{
-    .{ .file = "intl_binding.zig", .sites = 1, .why = "DEFECT, owner lane v8up b8: getLocalTimezoneOffset evaluates `new Date().getTimezoneOffset()` in the page's realm on every call" },
     .{ .file = "interface.zig", .sites = 1, .why = "DEFECT, owner lane wr1 (queued by the integrator, 2026-11-13): an iterable's entries fallback compiles a forEach-collecting helper on every call" },
 };
 
