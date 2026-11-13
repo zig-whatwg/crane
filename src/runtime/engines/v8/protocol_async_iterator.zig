@@ -151,9 +151,28 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
     const isolate = entered.isolate;
 
     // The asynchronous iterator prototype object: its [[Prototype]] is
-    // %AsyncIteratorPrototype%.
-    const async_iterator_prototype = try support.asyncIteratorPrototype(entered);
-    defer ffi.v8_Global_Dispose(async_iterator_prototype);
+    // %AsyncIteratorPrototype% - the realm's own, which V8 names and the
+    // adapter asks for by that name, never by evaluating script. The realm's
+    // record has it from when the realm was made (realm_v8.zig
+    // populateIntrinsics: BORROWED here, the record's for the realm's life);
+    // a realm with no record - a ShadowRealm's context today
+    // (shadow_realm.zig registers it without one) - is asked now, and that
+    // answer is OWNED here.
+    var asked: ?*ffi.Value = null;
+    defer if (asked) |owned| ffi.v8_Global_Dispose(owned);
+    const async_iterator_prototype: *ffi.Value = recorded: {
+        if (realm.getRealm()) |record| {
+            if (record.getIntrinsics().async_iterator_prototype) |handle| {
+                const value: *ffi.Value = @ptrCast(@alignCast(handle));
+                // Weak once the realm's navigable is destroyed
+                // (realm_v8.weakenIntrinsics), and empty only after the
+                // collector took the realm - when nothing runs in it.
+                if (!ffi.v8_Global_IsEmpty(value)) break :recorded value;
+            }
+        }
+        asked = ffi.v8_Context_AsyncIteratorPrototype(isolate, context) orelse return error.OperationFailed;
+        break :recorded asked.?;
+    };
     const prototype: *ffi.Value = @ptrCast(ffi.v8_Object_NewInContext(context) orelse return error.OperationFailed);
     defer ffi.v8_Global_Dispose(prototype);
     if (!ffi.v8_Object_SetPrototypeV2(@ptrCast(prototype), context, async_iterator_prototype)) return error.OperationFailed;

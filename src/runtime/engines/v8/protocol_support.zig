@@ -479,36 +479,3 @@ fn isPromiseConstructor(at: anytype, candidate: *ffi.Value) Error!bool {
     defer ffi.v8_Global_Dispose(intrinsic);
     return ffi.v8_Value_StrictEquals(candidate, intrinsic);
 }
-
-/// %AsyncIteratorPrototype% of the realm `at` is in: the [[Prototype]] of
-/// %AsyncGeneratorPrototype%, reached from an async generator function the
-/// realm evaluates (the embedder API names no such intrinsic). Microtasks
-/// are held off for it, so no checkpoint runs here. OWNED.
-pub fn asyncIteratorPrototype(at: anytype) Error!*ffi.Value {
-    var body: struct {
-        isolate: *ffi.Isolate,
-        context: *ffi.Context,
-        result: ?*ffi.Value = null,
-        pub fn run(self: *@This()) void {
-            const code = "(async function* () {}).prototype";
-            const text = ffi.v8_String_NewFromUtf8(self.isolate, code.ptr, code.len) orelse return;
-            defer ffi.v8_String_Dispose(text);
-            const script = ffi.v8_Script_Compile(self.context, text) orelse return;
-            defer ffi.v8_Script_Dispose(script);
-            self.result = ffi.v8_Script_Run(self.context, script);
-        }
-        fn call(data: ?*anyopaque) callconv(.c) void {
-            const self: *@This() = @ptrCast(@alignCast(data.?));
-            self.run();
-        }
-    } = .{ .isolate = at.isolate, .context = at.context() };
-    ffi.v8_RunWithMicrotasksSuppressed(at.isolate, @TypeOf(body).call, &body);
-    // The generator function's prototype: an object whose [[Prototype]] is
-    // %AsyncGeneratorPrototype%, whose [[Prototype]] is
-    // %AsyncIteratorPrototype%.
-    const generator_prototype = body.result orelse return error.OperationFailed;
-    defer ffi.v8_Global_Dispose(generator_prototype);
-    const async_generator_prototype = ffi.v8_Object_GetPrototypeV2(@ptrCast(generator_prototype)) orelse return error.OperationFailed;
-    defer ffi.v8_Global_Dispose(async_generator_prototype);
-    return ffi.v8_Object_GetPrototypeV2(@ptrCast(async_generator_prototype)) orelse error.OperationFailed;
-}

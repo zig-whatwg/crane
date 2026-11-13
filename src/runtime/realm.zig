@@ -273,9 +273,10 @@ pub const Intrinsics = struct {
     promise: ?*anyopaque,
 
     /// %AsyncIteratorPrototype% (ECMA-262 27.1.3): the [[Prototype]] of
-    /// %AsyncGeneratorPrototype%, which no global names and V8's API cannot
-    /// reach - recorded here, as `promise` is, for the protocol's async
-    /// iterators (WebIDL's %AsyncIteratorPrototype% is this object).
+    /// %AsyncGeneratorPrototype%, which no global names; the adapter asks V8
+    /// for it by name (v8::Intrinsic::kAsyncIteratorPrototype, through a
+    /// template) and records it here, as `promise` is, for the protocol's
+    /// async iterators (WebIDL's %AsyncIteratorPrototype% is this object).
     async_iterator_prototype: ?*anyopaque,
 
     const Self = @This();
