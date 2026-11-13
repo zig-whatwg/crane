@@ -243,14 +243,17 @@ zig build repl-exe -j2 -Dwpt-runner-release-fast -Dcpu=apple_m1 # the ReleaseFas
 
 # Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
 # and `target_cpu` are the build's own repl.modes lines. For the ReleaseFast build:
-# name=crane_fast, <fast>/.
+# name=crane_fast, <fast>/. `v8` is the LINKED archive's version - the directory -Dv8 selects,
+# jsengines/v8/15.7.112.43/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
+# linked by nothing) - checked in the console's own bytes before the pin is written:
+LC_ALL=C grep -a -q -F 15.7.112.43 <safe>/repl
 cat > crane.pin <<PIN
 name=crane
 version=$(git rev-parse --short=11 HEAD)
 commit=$(git rev-parse --short=11 HEAD)
 build=release: -Dwpt-runner-release -Dcpu=apple_m1 (ReleaseSafe everywhere, C .trap, libc malloc)
 $(cat <safe>/repl.modes)
-v8=13.1.203 static
+v8=15.7.112.43 static
 binary=<safe>/repl
 sha256=$(shasum -a 256 <safe>/repl | cut -d' ' -f1)
 PIN
@@ -431,7 +434,9 @@ points (`report.zig` `progress`).
   script is needed. The line's colour is the first categorical slot of the dataviz reference
   palette, with its own step for dark (`report.zig` `style`).
 - **What each round changed** is one line in `report.zig` `round_notes`, written when the round is
-  published (a test holds every round to one); every figure beside it is the journals'.
+  published (a test holds every round to one, BY NUMBER through the latest: publishing round N
+  extends the test's range to N first, then writes the line - rounds 3-6 went out with none while
+  the test only walked the lines that existed); every figure beside it is the journals'.
 
 ## The browsers on chat.local
 
