@@ -12549,6 +12549,15 @@ void DeserializeInternalFields(Local<Object> holder, int index,
     }
 }
 
+/// tests/v8/wrap1_platform_anchor_test.zig: whether the snapshot generator refuses to write an API object whose
+/// CppHeap pointer is `cpp_heap_pointer` into a blob. No serializer for API wrappers is registered yet, so
+/// nothing is refused: V8 would call a null callback for such an object (15.7.112.43
+/// src/snapshot/context-serializer.cc:237-252).
+extern "C" bool v8_test_SnapshotRefusesApiWrapper(void* cpp_heap_pointer) {
+    (void)cpp_heap_pointer;
+    return false;
+}
+
 /// Create a context and set it as default for snapshot
 ///
 /// This function creates a new context using Local handles (not Global) and
