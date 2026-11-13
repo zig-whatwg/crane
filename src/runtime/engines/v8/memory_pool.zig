@@ -63,12 +63,12 @@
 //! the rows whose workloads outlast the heartbeat moved: the mark is read at
 //! 0.5 s. Ten seconds after the work the three read the same.
 //!
-//! What that suite does not measure is what V8 built the pool for: isolates
-//! started and stopped (V8's own figure for the shared pool: JetStream
-//! bomb-workers +3% on an M1, +4.5% on a Pixel 6, V8 f96fb79e95a; large
-//! pages +0.3%, e5a7515627d), and another operating system's cost of mapping
-//! and faulting a page. tests/perf/workloads/workers.html is the suite's
-//! workload for the first, from round 8.
+//! What V8 built the pool for is isolates started and stopped (its own figure:
+//! JetStream bomb-workers +3% on an M1, V8 f96fb79e95a). Measured with the
+//! suite's worker workloads (tests/perf/workloads/workers.html, from round 9):
+//! off costs them nothing on macOS or Linux. But LINUX is not macOS: off costs
+//! json.stringify +12% and timers.queue-microtask +5.5% in time there; 1 s is
+//! free on both. docs/engine-protocol.md, 7b, has the two-system table.
 //!
 //! Why a build option of this adapter and not an option of the engine
 //! protocol: it is one engine's allocator. JavaScriptCore's public API has no
