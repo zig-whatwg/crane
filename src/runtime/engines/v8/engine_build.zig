@@ -68,6 +68,12 @@ pub const Options = struct {
     /// null, not given, is the adapter's default (navigation_collection.zig,
     /// which says what it is and why).
     navigation_collection_mb: ?u32,
+    /// `-Dv8-memory-pool-timeout-s`: how many seconds V8's page pool keeps a
+    /// page a collection freed before the operating system gets it back; 0
+    /// is no pool; null, not given, is the adapter's default - V8's own pool
+    /// and no flag (memory_pool.zig, which has the values and what each
+    /// measured).
+    memory_pool_timeout_s: ?u32,
 };
 
 /// Declare the V8 adapter's build options. `target`: what the build is for -
@@ -147,6 +153,11 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
             "v8-navigation-collection-mb",
             "V8: after a main frame's navigation, collect the page that was left when V8's heap holds at least this many MB (default: 16 with a limited young generation, never with V8's own sizing, -Dv8-young-generation-mb=0); 0 = never",
         ),
+        .memory_pool_timeout_s = b.option(
+            u32,
+            "v8-memory-pool-timeout-s",
+            "V8: how many seconds its page pool keeps a page a collection freed before the operating system gets it back (default: not given = V8's own pool, 8 s, as Chrome ships - src/runtime/engines/v8/memory_pool.zig default_timeout_s); 0 = no pool: memory back at once, for a host of many short-lived pages",
+        ),
     };
 }
 
@@ -154,6 +165,7 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
     adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
+    adapter_options.addOption(?u32, "memory_pool_timeout_s", options.memory_pool_timeout_s);
 }
 
 /// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the

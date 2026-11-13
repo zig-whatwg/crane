@@ -611,6 +611,7 @@ The V8 adapter's build file declares:
 | `-Dv8-extra-flags="<flags>"` | A measurement route: V8 flags appended to the set V8 starts with. |
 | `-Dv8-young-generation-mb=<n>` | The most memory each isolate's young generation takes at rest - the window agent's and every worker's. Below. |
 | `-Dv8-navigation-collection-mb=<n>` | After a main frame's navigation, collect the page that was left when V8's heap holds at least `n` MB. Below. |
+| `-Dv8-memory-pool-timeout-s=<n>` | How many seconds V8's page pool keeps a page a collection freed before the operating system gets it back; 0 is no pool. Not given: V8's own, as Chrome ships. Below. |
 
 `-Djitless`, `-Dv8-compilation-cache` and `-Dv8-extra-flags` still travel in
 the shared `build_options`, where the adapter reads them
@@ -747,6 +748,54 @@ engine Crane runs on could honour it. JavaScriptCore's public API has no heap
 sizing - JSBase.h offers `JSGarbageCollect` and nothing else about the heap,
 JSContextRef.h and JSVirtualMachine.h nothing; its eden size is the private
 JSC::Options - and QuickJS's collector has no generations.
+
+**V8's page pool is a V8 build option: `-Dv8-memory-pool-timeout-s=<n>`.**
+When a collection frees a page of V8's heap, V8 15.7 keeps it in a pool the
+whole process shares - every isolate, the window agent's and each worker's -
+and gives it back to the operating system 8 to 16 seconds later (`MemoryPool`,
+15.7.112.43 src/heap/memory-pool.h:69-73, memory-pool.cc:491-528; a
+memory-pressure notice empties it at once). The next page any isolate needs
+then comes without a system call or first-touch faults, and a worker can start
+on the pages another gave up. Until the pool lets go, a process's footprint is
+V8's heap plus what the pool holds: read half a second after a burst of work,
+it is higher than on V8 13.1 (which pooled semispace pages only, until the
+next full collection) though the heap is not.
+
+| `-Dv8-memory-pool-timeout-s` | V8 is started with | what it is |
+|---|---|---|
+| not given | nothing | THE DEFAULT (`default_timeout_s` in src/runtime/engines/v8/memory_pool.zig, ONE constant: null): V8's own - the pool, 8 s. What Chrome ships (the user, 2026-11-13: "Option, Chrome default") |
+| `0` | `--no-memory-pool` | no pool: a freed page goes back at once. For a host of many short-lived pages, where 8 to 16 seconds is a page's whole life |
+| `n` (1 and up) | `--memory-pool-timeout=n` | the pool, a page kept `n` to `2n` seconds |
+
+A default build passes V8 no flag for it, so nothing it measures moves because
+the option exists; tests/v8/v8up_memory_pool_option_test.zig holds that, and
+each value to exactly its one flag. It is a flag because V8 has no other way:
+the pool's configuration is read from V8's flags when the process's isolate
+group is made (src/init/isolate-group.cc:211-218). Chrome sets neither flag
+(its one switch for the pool, kV8MemoryPoolReleaseOnMallocFailures, is off:
+Chromium 157.0.8103.50 gin/gin_features.cc:93-94).
+
+Measured on the perf suite (lane v8up b8: chat.local, one console with the
+flags as arms, 48 workloads, 7 alternating runs; geometric means against V8's
+own; memory at the suite's steady mark, 0.5 s after each workload):
+
+| pool | time | instructions | steady memory | peak | rows over 1.03 of V8 13.1 |
+|---|---|---|---|---|---|
+| V8's own (8 s) | 1 | 1 | 1 | 1 | 25 of 48 |
+| 1 s | 0.9981 | 0.9976 | 0.9586 | 0.9646 | 21 |
+| off (`0`) | 0.9996 | 1.0007 | 0.9118 | 0.9359 | 16 |
+
+Off, the rows that free the most just before the mark give it back
+(fetch.loopback-stream 102.7 -> 69.5 MB, the streams page's later rows 381-386
+-> 200-210 MB, timers.queue-microtask 77.8 -> 50.4 MB), and one row moved over
+3% on time or instructions: fetch.loopback-json, +0.8% instructions. At 1 s
+only workloads longer than the pool's heartbeat moved. Ten seconds after the
+work the three read the same: V8 returns the memory by itself. What that suite
+did not measure is what V8 built the pool for - isolates started and stopped
+(V8's own figure: JetStream bomb-workers +3% on an M1, +4.5% on a Pixel 6) -
+which `workers.*` (tests/perf/workloads/workers.html) measures from round 8.
+Not a protocol option for the reason the two above are not: it is one
+engine's allocator, set for the process when the engine starts.
 
 ## 8. Transitional pieces
 
