@@ -10,3 +10,5 @@
 **Fix**: Size a footprint run to cover several of the workload's own GC intervals - count `full_gc_count` during it - and compare plateaus (max RSS over the run, tip against base), not one edge.
 
 **Takeaway**: **Before reading growth as a leak, count the engine's full collections in the window: a window with none measures one tooth of the sawtooth.**
+
+**Status (2026-11-13, lane wr1 batch 11)**: the condition this lesson restated was met on V8 15.7 by its one-interval formula and was still not acceptable - 137 MiB against main's 82 on the user's own workload - and the integrator said so. A bound that proves "memory is bounded by the collector" does not say the bound is a good one: report the PEAK beside the formula, against the base's peak, and the number of full collections each side ran. With the dropped wrappers' table entries reported to V8 the same run peaks at 75.8 MiB with 14 full collections.
