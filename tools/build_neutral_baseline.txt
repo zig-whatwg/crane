@@ -40,17 +40,17 @@ build.zig platform:ios comment 44
 build.zig platform:ios script 1
 build.zig platform:iphoneos code 4
 build.zig platform:iphoneos comment 7
-build.zig platform:linux code 31
+build.zig platform:linux code 30
 build.zig platform:linux comment 27
 build.zig platform:linux script 1
 build.zig platform:macos code 7
-build.zig platform:macos comment 15
+build.zig platform:macos comment 14
 build.zig platform:macos script 2
 build.zig platform:xcrun code 3
 build.zig platform:xcrun comment 4
 build.zig target:.abi == code 2
 build.zig target:isDarwin code 4
-build.zig target:os.tag code 28
+build.zig target:os.tag code 27
 tests/wpt_runner/build_mode.zig engine:v8 comment 3
 tests/wpt_runner/build_mode.zig library:brotli comment 2
 tests/wpt_runner/build_mode.zig library:curl comment 3

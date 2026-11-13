@@ -2199,11 +2199,17 @@ fn addCompileCheck(
 
 /// The system libraries a module graph names (configureStorageBackends:
 /// sqlite3 and leveldb on Linux) are resolved when the compiler starts, even
-/// for a compile that links nothing (-fno-emit-bin), and a Linux cross-compile
-/// from macOS has no sysroot to find them in: "unable to find dynamic system
-/// library 'sqlite3' ... searched paths: none", before any Zig is analysed.
+/// for a compile that links nothing (-fno-emit-bin). The compiler searches
+/// the build machine's own library directories only for a target that leaves
+/// both its OS and its ABI to the build machine; a target that names either
+/// has no sysroot to find them in: "unable to find dynamic system library
+/// 'sqlite3' ... searched paths: none", before any Zig is analysed. That is
+/// every cross-compile, and also a target that names the build machine's own
+/// triple: the x86-64 half of check-linux failed that way on an x86-64 host
+/// until this function stopped asking whether the host is another OS or
+/// architecture (lane build3, 2026-11-13).
 ///
-/// So a compile-only check of a foreign Linux target gets empty shared
+/// So a compile-only check of such a Linux target gets empty shared
 /// libraries of those names, built from an empty file into the build's own
 /// output (the cache, never the source tree) and put on that check's own root
 /// module, which nothing else imports. They satisfy name resolution and
@@ -2212,8 +2218,10 @@ fn addCompileCheck(
 /// linked for Linux needs the real libraries. A real Linux sysroot replaces
 /// them - pass its libraries instead and delete this function.
 fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-    const host = b.graph.host.result;
-    if (target.result.os.tag != .linux or (host.os.tag == .linux and host.cpu.arch == target.result.cpu.arch)) return;
+    // What the target's query names, not what the host is: `-Dtarget` with
+    // the build machine's own triple names both, and gets no search path.
+    const names_os_or_abi = target.query.os_tag != null or target.query.abi != null;
+    if (target.result.os.tag != .linux or !names_os_or_abi) return;
     const empty = b.addWriteFiles().add("stub.zig", "");
     for ([_][]const u8{ "sqlite3", "leveldb" }) |library| {
         const stub = b.addLibrary(.{
