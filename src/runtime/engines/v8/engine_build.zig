@@ -37,8 +37,6 @@
 //!     archives, their C++ runtime and system libraries. The request is in
 //!     the build's words (engine_build.LinkRequest); what each field means
 //!     for V8 is decided here.
-//!   - `linkedInto(module)`: whether `link` put the wrapper's source on a
-//!     module.
 //!   - `facts`: what the neutral build asks about the adapter.
 //!
 //! A build file is run by `zig build`'s configure step, not compiled into
@@ -277,7 +275,10 @@ fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const
 ///
 /// What the build's words mean for V8:
 ///   - `request.thread_sanitized`: the wrapper is compiled apart, as a static
-///     library of its own, uninstrumented (`addSource`);
+///     library of its own, uninstrumented (`addSource`) - so its source is
+///     then not among the module's own, and nothing may take "this module
+///     compiles v8_wrapper.cpp" for "this artifact links V8" (the protocol's
+///     `Engine.isLinkedInto` is the build's record of the call);
 ///   - `request.handle_accounting`: the wrapper counts live Global<T> handles
 ///     (-DCRANE_TRACK_GLOBALS=1). It runs on every handle creation, so only
 ///     the binary that reports the count pays for it, never a browser;
@@ -287,25 +288,6 @@ pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved,
     const extra: []const []const u8 = if (request.handle_accounting) &.{"-DCRANE_TRACK_GLOBALS=1"} else &.{};
     addSource(b, module, resolved, request.thread_sanitized, extra);
     if (request.link) addArchives(module, resolved);
-}
-
-/// Whether `module` compiles the wrapper itself: `link` put v8_wrapper.cpp on
-/// it.
-///
-/// KNOWN DEFECT, kept as it answers today (this function moved here with the
-/// link code, a move that changed no build; found by lane build3,
-/// 2026-11-13): for a thread-sanitized artifact the wrapper is on a library
-/// of its own (`addSource`), so this answers false although the artifact
-/// links V8, and the test executables of a -Dsanitize-thread build are told
-/// they have no engine. The fix is the neutral build's own record of what it
-/// linked the engine into, in place of this inspection of sources.
-pub fn linkedInto(module: *std.Build.Module) bool {
-    for (module.link_objects.items) |object| {
-        if (object != .c_source_file) continue;
-        const file = object.c_source_file.file;
-        if (file == .src_path and std.mem.eql(u8, file.src_path.sub_path, wrapper_source)) return true;
-    }
-    return false;
 }
 
 /// The V8 wrapper's source and headers on `module`: v8_wrapper.cpp with

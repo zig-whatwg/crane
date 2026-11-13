@@ -24,7 +24,6 @@
 //!   pub const Resolved = struct { ... };      // what this build links
 //!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
 //!   pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: LinkRequest) void
-//!   pub fn linkedInto(module: *std.Build.Module) bool
 //!   pub const facts: Facts = .{ ... };
 //!
 //! An adapter that is not the build's engine is never asked to declare its
@@ -148,7 +147,6 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "isDefaultFor", fn (std.Target) bool);
     conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options) Resolution(A.Resolved));
     conforms(who, A, "link", fn (*std.Build, *std.Build.Module, *const A.Resolved, LinkRequest) void);
-    conforms(who, A, "linkedInto", fn (*std.Build.Module) bool);
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: engine_build.Facts`");
 }
 
@@ -195,12 +193,14 @@ pub const Engine = struct {
     /// The chosen adapter's `StateOf`.
     state: *const anyopaque,
     vtable: *const VTable,
+    /// The modules this build linked the engine into (`link`, with a request
+    /// that links): what `isLinkedInto` answers from.
+    linked: *std.AutoHashMapUnmanaged(*std.Build.Module, void),
 
     const VTable = struct {
         apply: *const fn (state: *const anyopaque, adapter_options: *std.Build.Step.Options) void,
         applyTransitional: *const fn (state: *const anyopaque, shared: *std.Build.Step.Options) void,
         link: *const fn (state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void,
-        linkedInto: *const fn (module: *std.Build.Module) bool,
     };
 
     /// The adapter's own options module: its compile-time values, which only
@@ -235,12 +235,20 @@ pub const Engine = struct {
     pub fn link(engine: *const Engine, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void {
         if (engine.unavailable != null) return engine.failModule(b, module);
         engine.vtable.link(engine.state, b, module, request);
+        if (request.link) engine.linked.put(b.allocator, module, {}) catch @panic("OOM");
     }
 
-    /// Whether `module` holds the engine: asked of the adapter, which looks
-    /// for what its `link` puts on a module.
+    /// Whether this build linked the engine into `module`: its own record of
+    /// the `link` calls it made with a request that links - never a look at
+    /// what the adapter put where. An adapter may compile its sources into
+    /// the module or apart, into a library beside it (as the V8 adapter does
+    /// for a thread-sanitized artifact), and the artifact links the engine
+    /// either way: a predicate that inspected the module's own sources
+    /// answered "no" for every test executable of a -Dsanitize-thread build
+    /// (docs/lessons/architecture-a-predicate-that-inspects-sources-answers-wrong-when-the-build-compiles-them-apart.md).
+    /// The root build's `check-suite-facts` holds the result.
     pub fn isLinkedInto(engine: *const Engine, module: *std.Build.Module) bool {
-        return engine.vtable.linkedInto(module);
+        return engine.linked.contains(module);
     }
 
     /// Make every compile that takes `module` fail with the reason this
@@ -303,7 +311,7 @@ fn vtableOf(comptime A: type) *const Engine.VTable {
                 .unavailable => unreachable,
             }
         }
-        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link, .linkedInto = A.linkedInto };
+        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link };
     };
     return &functions.table;
 }
@@ -366,6 +374,8 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
                 .ready => null,
                 .unavailable => |reason| reason,
             };
+            const linked = b.allocator.create(std.AutoHashMapUnmanaged(*std.Build.Module, void)) catch @panic("OOM");
+            linked.* = .empty;
             return .{
                 .name = tag,
                 .unavailable = unavailable,
@@ -373,6 +383,7 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
                 .option_names = option_names,
                 .state = state,
                 .vtable = vtableOf(A),
+                .linked = linked,
             };
         },
     }

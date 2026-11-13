@@ -1514,6 +1514,11 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// read as leavers in the joined "tests" executable). Empty for an
 /// executable of one suite, which keeps `standalone` for every test.
 ///
+/// What it says of the engine and of the busy Browser (`suite_engine_line`,
+/// `suite_browser_line`) is what the build did - it linked the engine into
+/// the executable, it gave it the browser module - whatever the flags, and
+/// `check-suite-facts` holds it to that.
+///
 /// `log_level` (-Dtest-log-level): the runner's `std_options.log_level`, the
 /// level below which every `std.log` call is compiled out, and the level it
 /// prints at while a test runs (`testing.log_level`). Unset, a test
@@ -1523,6 +1528,57 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// `testing.log_level` to .info and read info logs; to read debug logs, build
 /// with -Dtest-log-level=debug, which compiles and prints them. The WPT
 /// runner, the library and the tools keep their own levels.
+/// suite.zig's line for a test executable that links the engine, and its line
+/// for one that can run the many-Browsers variant's busy Browser
+/// (`useCraneTestRunner` writes them; `check-suite-facts` counts them in the
+/// build's configurations).
+const suite_engine_line = "pub const engine: ?type = @import(\"engine\");";
+const suite_browser_line = "pub const browser: ?type = @import(\"browser\");";
+
+/// One configure of this build root with `flags` and this build's engine -
+/// nothing is built: the file the path of its binary configuration is printed
+/// into. `display`: the flags as a check's report names them.
+const FlaggedConfiguration = struct {
+    display: []const u8,
+    path_file: std.Build.LazyPath,
+
+    fn of(b: *std.Build, engine: *const engine_build.Engine, flags: []const []const u8) FlaggedConfiguration {
+        const display = std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
+        const configure = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--print-configuration-path", b.fmt("-Dengine={t}", .{engine.name}) });
+        configure.setName(b.fmt("configure this build with {s}", .{if (flags.len == 0) "no flag" else display}));
+        configure.addArgs(flags);
+        // The parent's local cache; the global one travels in the
+        // environment (the build command takes no --global-cache-dir).
+        configure.addArg("--cache-dir");
+        configure.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        configure.setCwd(b.path("."));
+        // The sub-configure decides; this step always asks it.
+        configure.has_side_effects = true;
+        return .{ .display = display, .path_file = configure.captureStdOut(.{}) };
+    }
+};
+
+/// A check that `needle`, a text this file writes into a generated file, is
+/// in each of `configurations` equally often, and in each at least once
+/// (tools/configurations_agree.zig, built as `tool`): the fact it stands for
+/// - `what`, for the report - does not depend on the flags that tell the
+/// configurations apart.
+fn addConfigurationsAgree(b: *std.Build, tool: *std.Build.Step.Compile, what: []const u8, needle: []const u8, configurations: []const FlaggedConfiguration) *std.Build.Step.Run {
+    const check = b.addRunArtifact(tool);
+    check.setName(b.fmt("configurations agree: {s}", .{what}));
+    check.addArg(b.fmt("--what={s}", .{what}));
+    check.addArg(b.fmt("--needle={s}", .{needle}));
+    for (configurations) |configuration| {
+        check.addArg(b.fmt("--name={s}", .{configuration.display}));
+        check.addFileArg(configuration.path_file);
+    }
+    check.setCwd(b.path("."));
+    // The configurations are read through the paths the captures hold, which
+    // the build graph does not track.
+    check.has_side_effects = true;
+    return check;
+}
+
 fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: *const engine_build.Engine, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
@@ -1590,9 +1646,9 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: 
     w.print("pub const dom: ?type = {s};\n", .{if (has_dom) "@import(\"dom\")" else "null"}) catch @panic("OOM");
     w.print("pub const runtime: ?type = {s};\n", .{if (has_runtime) "@import(\"runtime\")" else "null"}) catch @panic("OOM");
     const has_engine = root.import_table.get("engine") != null and engine.isLinkedInto(root);
-    w.print("/// The engine, where the executable links V8.\npub const engine: ?type = {s};\n", .{if (has_engine) "@import(\"engine\")" else "null"}) catch @panic("OOM");
+    w.print("/// The engine, where the executable links V8.\n{s}\n", .{if (has_engine) suite_engine_line else "pub const engine: ?type = null;"}) catch @panic("OOM");
     const has_browser = many_browsers and root.import_table.get("browser") != null and engine.isLinkedInto(root);
-    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\npub const browser: ?type = {s};\n", .{if (has_browser) "@import(\"browser\")" else "null"}) catch @panic("OOM");
+    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\n{s}\n", .{if (has_browser) suite_browser_line else "pub const browser: ?type = null;"}) catch @panic("OOM");
     _ = wf.add("suite.zig", suite.written());
 
     const runner = wf.getDirectory().path(b, "runner.zig");
@@ -5909,6 +5965,52 @@ pub fn build(b: *std.Build) void {
     // engine adapter declared is one nothing declared, and is refused. Part
     // of this lint's step and of the test step.
     engine.addOptionOwnershipChecks(b, &.{ lint_build_step, test_step });
+
+    // ========================================================================
+    // CHECK: what a test executable is told about the engine depends on no flag
+    // ========================================================================
+    // A test executable's suite.zig says whether it links the engine and
+    // whether it can run the many-Browsers variant's busy Browser, and the
+    // Crane test runner acts on both (the engine's start before the first
+    // thread, its counters in the process-state check, the Browser itself).
+    // Both are what this build did, so no flag may change them - but until
+    // lane build3 (2026-11-13) -Dsanitize-thread did: the question was
+    // answered by looking for the engine adapter's source on the executable's
+    // own module, and under the sanitizer the adapter compiles it apart. 9 of
+    // the 10 engine-running test executables of a sanitizer build were told
+    // they had no engine, and nothing failed.
+    //
+    // So the configurations themselves are compared: this build root is
+    // configured once per flag set - nothing is built - and each fact's line
+    // is counted in the generated files the configurations hold
+    // (tools/configurations_agree.zig). The same count with and without the
+    // sanitizer, and never zero. Part of the whole test run.
+    const configurations_agree_module = b.createModule(.{
+        .root_source_file = b.path("tools/configurations_agree.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const configurations_agree_exe = b.addExecutable(.{
+        .name = "configurations_agree",
+        .root_module = configurations_agree_module,
+    });
+    const suite_facts_step = b.step("check-suite-facts", "Check that what a test executable is told about the engine and the busy Browser is the same with and without -Dsanitize-thread (configures only; nothing is built)");
+    // An engine that cannot be built links into nothing: there is no fact to
+    // compare.
+    if (engine.unavailable == null) {
+        const plain = FlaggedConfiguration.of(b, &engine, &.{});
+        const sanitized = FlaggedConfiguration.of(b, &engine, &.{"-Dsanitize-thread"});
+        const many = FlaggedConfiguration.of(b, &engine, &.{"-Dmany-browsers"});
+        const many_sanitized = FlaggedConfiguration.of(b, &engine, &.{ "-Dmany-browsers", "-Dsanitize-thread" });
+        suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine", suite_engine_line, &.{ plain, sanitized }).step);
+        suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine, in the many-Browsers variant", suite_engine_line, &.{ many, many_sanitized }).step);
+        suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables that can run the many-Browsers variant's busy Browser", suite_browser_line, &.{ many, many_sanitized }).step);
+    }
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        test_step.dependOn(suite_facts_step);
+    }
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = configurations_agree_module }), "tools-configurations_agree", null).step);
 
     // ========================================================================
     // LINT: global state, as a ratchet

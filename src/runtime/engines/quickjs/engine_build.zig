@@ -63,12 +63,6 @@ pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved,
     _ = request;
 }
 
-/// `link` puts nothing on a module.
-pub fn linkedInto(module: *std.Build.Module) bool {
-    _ = module;
-    return false;
-}
-
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"quickjs"},
