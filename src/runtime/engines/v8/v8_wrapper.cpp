@@ -6123,6 +6123,32 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
     return stats.used_global_handles_size();
 }
 
+/// A CONTEXT'S EMBEDDER-DATA SLOTS: ALL OF THEM, IN THIS ONE LIST. Each later
+/// enumerator takes the next index, so a new slot is a new line here and
+/// cannot take an index in use. They were constants beside their users, each
+/// with a comment listing "all" the others: lane wrap1 b2's proxy handlers and
+/// lane v8up b8's %AsyncIteratorPrototype% both took 3 on their branches, the
+/// merge was textually clean, and every legacy platform object's proxy then
+/// had the async iterator prototype for its handler (no trap at all, and
+/// Object.prototype's properties for traps). 0 is V8's own
+/// (Context::kDebugIdIndex).
+enum CraneContextSlot : int {
+    /// The context's Crane id (CraneContextIdOf), an aligned pointer.
+    kCraneContextIdIndex = 1,
+    /// The context's cross-origin functions, a Map (CrossOriginFunction).
+    kCrossOriginFunctionsIndex,
+    /// %AsyncIteratorPrototype% of the context's realm (lane v8up b8).
+    kAsyncIteratorPrototypeIndex,
+    /// The handler of the realm's legacy platform object proxies whose
+    /// interface has no named property setter (LegacyPlatformObjectHandlerOf),
+    /// and the one for those with one.
+    kLegacyProxyHandlerIndex,
+    kLegacyProxyNamedSetterHandlerIndex,
+};
+static_assert(kCrossOriginFunctionsIndex == 2 && kAsyncIteratorPrototypeIndex == 3 &&
+                  kLegacyProxyHandlerIndex == 4 && kLegacyProxyNamedSetterHandlerIndex == 5,
+              "a context's embedder-data slots are 1..5, one user each");
+
 // Get the raw internal address of a context (for stable identity)
 // Returns a unique identifier for the context that stays constant across Global/Local conversions
 // A context's identity for Crane's realm registry (context_manager and every
@@ -6135,7 +6161,6 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
 // embedder data). Index 0 is V8's old debugger slot. Contexts made while a
 // snapshot is being built get no id: a snapshot must not carry pointer
 // embedder data, and nothing compacts during generation.
-static constexpr int kCraneContextIdIndex = 1;
 // process-wide: an id counter whose only property is uniqueness in the process (an id is compared only as a key of its agent's realm registry); every agent's thread draws from it with an atomic fetch-add, and it carries no state of any instance.
 static std::atomic<uintptr_t> g_next_context_id{1};
 
@@ -6409,11 +6434,6 @@ void v8_Isolate_MemoryPressureNotification(Isolate* isolate, int level) {
     // (`runQueuedFinalizers`).
     runQueuedFinalizers(isolate);
 }
-
-/// The adapter's context embedder-data indices, ALL of them (0 is V8's own,
-/// Context::kDebugIdIndex): 1 kCraneContextIdIndex (CraneContextIdOf), 2
-/// kCrossOriginFunctionsIndex (the cross-origin functions' map), 3 this one.
-static constexpr int kAsyncIteratorPrototypeIndex = 3;
 
 /// %AsyncIteratorPrototype% of `context`'s realm (ECMA-262 27.1.3), by NAME.
 /// No global names it, but V8 does: v8::Intrinsic::kAsyncIteratorPrototype
@@ -14253,13 +14273,10 @@ void LegacyPlatformObjectPreventExtensions(const FunctionCallbackInfo<Value>& in
 
 extern "C" {
 
-/// The embedder data slots of a context that hold its legacy platform object
-/// proxies' handlers: the one for interfaces with no named property setter,
-/// and the one for those with one. (Index 1 is the context's Crane id,
-/// kCraneContextIdIndex; 2 its cross-origin functions,
-/// kCrossOriginFunctionsIndex; 0 is V8's old debugger slot.)
-constexpr int kLegacyProxyHandlerIndex = 3;
-constexpr int kLegacyProxyNamedSetterHandlerIndex = 4;
+/// A context's legacy platform object proxies' handlers are kept in two of
+/// its embedder-data slots, kLegacyProxyHandlerIndex and
+/// kLegacyProxyNamedSetterHandlerIndex (CraneContextSlot, the one list of
+/// those slots).
 
 /// A new handler for legacy platform object proxies made in `ctx`:
 /// `named_setter` says whether its "set" trap serves an interface with a
@@ -18137,9 +18154,9 @@ std::atomic<const CrossOriginDispatch*> g_cross_origin{nullptr};
 constexpr int32_t kCrossOriginWindow = 0;
 constexpr int32_t kCrossOriginLocation = 1;
 
-/// The embedder data slot of a context that holds its cross-origin
-/// functions (a Map); index 1 is the context's Crane id.
-constexpr int kCrossOriginFunctionsIndex = 2;
+/// A context's cross-origin functions (a Map) are kept in its embedder-data
+/// slot kCrossOriginFunctionsIndex (CraneContextSlot, the one list of those
+/// slots).
 
 int32_t CrossOriginKindOf(Local<Value> data) {
     if (!data.IsEmpty() && data->IsInt32()) return data.As<Int32>()->Value();
