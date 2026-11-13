@@ -2,7 +2,7 @@
 # Build V8 13.1.203 - the V8 Crane links (jsengines/v8/include/v8-version.h) - the way Chrome's
 # official build compiles it: ThinLTO and clang PGO with Chrome's own mac-arm64 profile, plus V8's
 # builtins PGO. Output: jsengines/v8/out/official, linked with `zig build ... -Dv8-build=official`
-# (tools/v8_archives.zig). The default build (out/static) is untouched. The output exists on
+# (src/runtime/engines/v8/build/archives.zig). The default build (out/static) is untouched. The output exists on
 # chat.local only (the integrator, 2026-11-04): a build with -Dv8-build=official runs there.
 #
 # Measured 2026-11-04 (lane v8opt1, the same Crane tree, the default runner): WPT identical over
