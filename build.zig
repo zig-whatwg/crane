@@ -3041,7 +3041,6 @@ pub fn build(b: *std.Build) void {
     var v8_tests_link = v8;
     v8_tests_link.wrapper_apart = sanitize_thread_option;
     const v8_tests = v8_tests_link;
-    const v8_monolith_path = v8.archives.monolith;
 
     // ========================================================================
     // BUILD OPTIONS
@@ -4912,105 +4911,6 @@ pub fn build(b: *std.Build) void {
     //
     // Build: zig build browser
     // Output: zig-out/bin/crane (executable) + zig-out/lib/libcrane.a (library)
-    //
-    // V8 is built from source in jsengines/v8/ using depot_tools.
-    // First run will fetch V8 (~1.1GB) and build it (~30-60 min).
-    // Subsequent builds use cached artifacts.
-
-    // Step 1: Fetch V8 source if not present (also installs depot_tools if needed)
-    const fetch_v8 = b.addSystemCommand(&.{
-        "bash", "-c",
-        \\set -e
-        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
-        \\V8_DIR="jsengines/v8"
-        \\
-        \\# Install depot_tools if not present
-        \\if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
-        \\  echo "==> Installing depot_tools..."
-        \\  git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
-        \\fi
-        \\export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
-        \\
-        \\# Fetch V8 source if not present
-        \\if [ ! -f "$V8_DIR/.gclient" ]; then
-        \\  echo "==> Fetching V8 source (this may take 5-10 minutes)..."
-        \\  mkdir -p "$V8_DIR"
-        \\  cd "$V8_DIR"
-        \\  fetch v8
-        \\  gclient sync
-        \\else
-        \\  echo "==> V8 source already present"
-        \\fi
-        \\
-    });
-
-    // Step 2: Build V8 static monolith if not present
-    const build_v8 = b.addSystemCommand(&.{
-        "bash", "-c",
-        \\set -e
-        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
-        \\V8_DIR="jsengines/v8"
-        \\V8_LIB="$V8_DIR/out/static/obj/libv8_monolith.a"
-        \\
-        \\export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
-        \\
-        \\if [ ! -f "$V8_LIB" ]; then
-        \\  echo "==> Building V8 static library (this may take 30-60 minutes)..."
-        \\  cd "$V8_DIR"
-        \\  
-        \\  # Detect architecture
-        \\  ARCH=$(uname -m)
-        \\  if [ "$ARCH" = "arm64" ]; then
-        \\    V8_TARGET_CPU="arm64"
-        \\  else
-        \\    V8_TARGET_CPU="x64"
-        \\  fi
-        \\  
-        \\  # Generate build configuration
-        \\  mkdir -p out/static
-        \\  cat > out/static/args.gn << 'ARGS'
-        \\is_component_build = false
-        \\v8_monolithic = true
-        \\v8_use_external_startup_data = false
-        \\is_debug = false
-        \\symbol_level = 0
-        \\v8_enable_sandbox = true
-        \\v8_enable_pointer_compression = true
-        \\v8_enable_gdbjit = false
-        \\v8_enable_disassembler = false
-        \\v8_enable_object_print = false
-        \\v8_enable_verify_heap = false
-        \\v8_enable_trace_maps = false
-        \\v8_enable_test_features = false
-        \\v8_enable_v8_checks = false
-        \\v8_enable_i18n_support = false
-        \\clang_use_chrome_plugins = false
-        \\treat_warnings_as_errors = false
-        \\use_custom_libcxx = false
-        \\ARGS
-        \\  echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
-        \\  
-        \\  # Build
-        \\  gn gen out/static
-        \\  ninja -C out/static v8_monolith v8_libplatform v8_libbase
-        \\  
-        \\  # Convert thin archives to fat archives (Zig can't parse thin archives)
-        \\  LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
-        \\  cd out/static
-        \\  echo "==> Converting thin archives to fat archives..."
-        \\  $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
-        \\  $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
-        \\  $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
-        \\  $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
-        \\  cd ../..
-        \\  
-        \\  echo "==> V8 static library built: $V8_LIB"
-        \\else
-        \\  echo "==> V8 static library already present"
-        \\fi
-        \\
-    });
-    build_v8.step.dependOn(&fetch_v8.step);
 
     // Create crane module
     const crane_mod = b.createModule(.{
@@ -5117,27 +5017,11 @@ pub fn build(b: *std.Build) void {
         crane_exe.root_module.linkFramework("SystemConfiguration", .{});
     }
 
-    // Build step - depends on V8 being built first
+    // Build step
     const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
 
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
-
-    // Fetch and build V8 only when the static library these artifacts link is
-    // missing - a checkout bootstrapping V8 from source. With the prebuilt
-    // present (every artifact that links V8 links it, and only these two ran
-    // the scripts), fetch_v8 still cloned depot_tools, 772 MB, into a checkout
-    // without one: every `zig build crane` in a lane mirror on chat.
-    // A configure-time file probe: Zig 0.17 caches the configuration, and its
-    // cache cannot see this file appear or go, so the probe poisons it.
-    // Only for out/static, the build these scripts make: an official build is
-    // scripts/build-v8-official.sh's, never built here.
-    b.graph.poisonCache();
-    const v8_prebuilt_present = if (b.root.root_dir.handle.access(b.graph.io, v8_monolith_path, .{})) true else |_| false;
-    if (!v8_prebuilt_present and v8_build == .static and v8_version == .@"13.1") {
-        install_crane_lib.step.dependOn(&build_v8.step);
-        install_crane_exe.step.dependOn(&build_v8.step);
-    }
 
     browser_step.dependOn(&install_crane_lib.step);
     browser_step.dependOn(&install_crane_exe.step);
