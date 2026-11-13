@@ -3,10 +3,9 @@
 //! teardown (`freeAllDescendants`, Node.deinit) - in constant stack either
 //! way, whatever the tree's depth.
 //!
-//! A tree nothing owns any more - its root's wrapper was collected, and no
-//! node of it has a wrapper (wrappers in a tree are upward-closed and linked
-//! both ways, so one live wrapper anywhere would have kept the root) - is
-//! freed by its root's teardown, which walks the whole subtree. For a tree of
+//! A tree nothing owns any more - its root's total of held nodes is zero, so
+//! no node of it has a wrapper (a wrapper holds its node: refcount step 7) -
+//! is freed by its root's teardown, which walks the whole subtree. For a tree of
 //! thousands of nodes that is one long pause wherever it runs. The agent's
 //! deferred teardown queue (runtime.gc.DeferredTeardown) frees such a tree in
 //! slices instead: `freeDescendants` frees at most a budget of the root's
@@ -58,8 +57,8 @@ pub fn freeDescendants(root: *NodeBase, position: *Position, budget: usize) usiz
     // deinit, its registries, its storage when no wrapper holds it - and the
     // end of its creator's reference, should it still have one (a collected
     // tree's nodes go the way an uninserted node goes:
-    // dom.node_creation.destroyUninserted). (Lane nodeholds'
-    // node_holds.nodeReleased runs inside it, in Node.deinit - at the real
+    // dom.node_creation.destroyUninserted). (Node.deinit marks the node's
+    // teardown begun, which every hold on it reads as gone - at the real
     // free, as it must.)
     const walk = freeLeavesFirst(root, resumePoint(root, position.*), budget, &node_creation.destroyUninserted);
     position.* = if (walk.at == root) .{} else positionOf(walk.at);

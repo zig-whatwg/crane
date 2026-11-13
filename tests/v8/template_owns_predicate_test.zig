@@ -126,15 +126,22 @@ test "templateOwns: a live template's content outlives its own wrapper's collect
     const template = try page.instance("globalThis.d = new Document(); globalThis.t = d.createElementNS('" ++ xhtml ++ "', 'template'); t.content.append('a'); t");
     const content = try interfaces.HTMLTemplateElement.get_content(template);
     const generation = runtime.SlabAllocator.generationOf(content);
-    // Without the edge between the wrappers - as when the template's wrapper
-    // was replaced or collected - nothing keeps the content's wrapper.
-    protocol.forgetTracedChild(template, .{ .name = "content" });
+    // The template held natively only - its wrapper dropped, as when a tree
+    // nothing in script reaches still lives - so nothing keeps the content's
+    // wrapper: no edge, and no walk (the wrapper redesign's P5 walks a
+    // template's contents from a reached wrapper of its tree, as Blink's
+    // HTMLTemplateElement::Trace visits content_).
+    const template_node = dom.instance_bridge.getNodeBase(@ptrCast(template)) orelse return error.NotANode;
+    dom.refcount.holderRef(template_node);
+    defer dom.refcount.holderDeref(template_node);
+    _ = try page.instance("globalThis.t = null; d");
     try page.collect();
+    try testing.expect(!protocol.hasWrapper(template));
     try testing.expect(!protocol.hasWrapper(content));
     // The fragment is still the template's.
     try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(content));
     try testing.expectEqual(content, try interfaces.HTMLTemplateElement.get_content(template));
-    try testing.expectEqual(content, try page.instance("t.content.textContent === 'a' ? t.content : null"));
+    try testing.expect(templateOwns(content));
 }
 
 test "templateOwns: the default - an ordinary fragment, a shadow root and a non-node answer false" {

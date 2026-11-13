@@ -15,8 +15,15 @@
 //! - A node's pending-activity keep is the agent's (its keep table): the
 //!   slot's Global is strong while one remains.
 //!
-//! The collections are V8's own (LowMemoryNotification through the FFI): the
-//! finalizers of what one finds dead run when it returns; nothing drains
+//! (2026-11-09, lane wr1 batch 3, the wrapper redesign's P4: the slot holds a
+//! TracedReference and the wrapper points at its node's anchor on the agent's
+//! C++ heap - tests/v8/node_anchor_test.zig. What this file pins holds the
+//! same: the collection empties the slot, the drain after it releases the
+//! count, and a keep is a traced root on the anchor.)
+//!
+//! The collections are V8's own (LowMemoryNotification through the FFI,
+//! precise for the C++ heap): the finalizers of what one finds dead - the
+//! node wrappers' releases among them - run when it returns; nothing drains
 //! the deferred teardown queue (engine.requestGarbageCollection would).
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may

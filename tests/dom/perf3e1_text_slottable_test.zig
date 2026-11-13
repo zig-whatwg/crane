@@ -64,14 +64,15 @@ test "Text's InternalState keeps no slottable state: it is empty" {
     try expectSize(TextState, 0);
 }
 
-test "a text node's one block is 168 bytes: 280 less the slottable state, the inline buffer and EventTarget's lists" {
+test "a text node's one block is 160 bytes: 280 less the slottable state, the inline buffer, EventTarget's lists and NodeBase.holds" {
     // 280 after perf2 b7: 16 of pointers and the live word, EventTarget's 24,
     // Node's 128, CharacterData's 48 and Text's 64 - its slottable state.
     // 216 after perf3 E1; 184 since lane nd1 batch 1 took CharacterData's
     // data to 16 bytes (tests/dom/nd1_text_data_layout_test.zig); 168 since
-    // lane lis1 made EventTarget's 24 one pointer (8).
+    // lane lis1 made EventTarget's 24 one pointer (8); 160 since the wrapper
+    // redesign's P6 took NodeBase.holds (8).
     const S = interfaces.Text.State;
-    try expectSize(S, 168);
+    try expectSize(S, 160);
     const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
     if (held - @sizeOf(S) >= 16) {
         std.debug.print("Text.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });

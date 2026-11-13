@@ -18,6 +18,9 @@
 //!   attributes, part, children) and HTMLElement (style, attributeStyleMap,
 //!   dataset) left the generated State, 56 bytes (tests/dom/
 //!   cg1_element_same_object_test.zig pins the levels: 0 bytes of own fields).
+//! - 184 after the wrapper redesign's P6 (lane wr1): NodeBase.holds, the
+//!   node_holds chain's head, went (88 -> 80 bytes; tests/dom/
+//!   perf2b6_node_layout_test.zig pins NodeBase).
 //!
 //! They name generated States only, and compile at any base.
 const std = @import("std");
@@ -58,10 +61,10 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 /// a State - Node's childNodes (lane wr1 holds NodeRareData) and a
 /// DocumentFragment's children.
 const pins = [_]Pin{
-    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 192, .generated = 16 },
-    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 192, .generated = 16 },
-    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 192, .generated = 16 },
-    .{ .name = "Element", .State = interfaces.Element.State, .block = 192, .generated = 16 },
+    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 184, .generated = 16 },
+    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 184, .generated = 16 },
+    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 184, .generated = 16 },
+    .{ .name = "Element", .State = interfaces.Element.State, .block = 184, .generated = 16 },
 };
 
 test "a div's, a span's, an HTMLElement's and an Element's one block, whole and generated" {

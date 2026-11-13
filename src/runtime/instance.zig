@@ -332,6 +332,19 @@ pub const VTable = struct {
     /// reaches it only through `runtime.lifetime`.
     counted: ?*const @import("lifetime.zig").Counted = null,
 
+    /// The nodes an instance of this type holds for script, named to the
+    /// engine's collector while it marks (the wrapper redesign's P6,
+    /// tmp/redesign/wrapper-redesign-design.md 3.3 and 4.4 "Holders"):
+    /// Blink's holders trace their `Member<Node>`s, WebKit's
+    /// `visitNodesInGCThread`. Null - the default - for a type that holds
+    /// none. `buildVTable` fills it at comptime from a
+    /// `pub fn traceHeldNodes(instance, tracer)` on any level's InternalState
+    /// (`lifetime.heldNodesOf`). Runs INSIDE the collection's atomic pause:
+    /// read-only, no allocation, no engine operation but the walk's
+    /// (dom.wrapper_tracing). The adapter calls it from a holder wrapper's
+    /// anchor, and the walk for a node that holds nodes.
+    trace_held_nodes: ?*const fn (*Instance, *@import("engine").Tracer) void = null,
+
     /// Cleanup function (called by GC finalizer)
     /// Points directly to the interface's deinit function
     /// Signature: fn(instance: *Instance) void

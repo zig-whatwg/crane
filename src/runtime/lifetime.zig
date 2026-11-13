@@ -55,6 +55,19 @@ pub const Hooks = struct {
     /// The engine's wrapper slot of `target` - what `acquire` answers for a
     /// counted object (a node's NodeBase): `slotOf`.
     slot_of: ?*const fn (target: *anyopaque) *engine.NodeWrapperSlot = null,
+    /// The counted object whose slot `slot` is - `slot_of`'s inverse
+    /// (`targetOfSlot`).
+    target_of_slot: ?*const fn (slot: *engine.NodeWrapperSlot) *anyopaque = null,
+    /// The walk (the wrapper redesign's P5, tmp/redesign/wrapper-redesign-
+    /// design.md 3.3 and 4.4): `target` - a counted object, as `acquire`
+    /// answers it - has a wrapper the engine's collector reached, or is
+    /// kept; name every wrapper it keeps to the engine (engine.
+    /// traceNodeWrapper), deduplicated per collection (engine.
+    /// traceVisitOnce). `target`'s own wrapper is the engine's to keep (it
+    /// reached it, or roots a kept one). Runs INSIDE the collection's atomic
+    /// pause: read-only, no allocation, no other engine operation
+    /// (dom.wrapper_tracing).
+    trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -79,6 +92,8 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.release) |f| next.release = f;
     if (owned.forget) |f| next.forget = f;
     if (owned.slot_of) |f| next.slot_of = f;
+    if (owned.target_of_slot) |f| next.target_of_slot = f;
+    if (owned.trace_tree) |f| next.trace_tree = f;
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -100,6 +115,13 @@ test "installing the hooks already installed writes nothing; a new or changed on
     const changed = merged(installed, .{ .release = &T.otherRelease }) orelse return error.TestExpectedWrite;
     try std.testing.expect(changed.release == &T.otherRelease);
     try std.testing.expect(changed.acquire == &T.acquire);
+}
+
+/// The hooks as installed (or as a live override has them): a test's
+/// starting point for `overrideHooksForTest` - the process start's hooks
+/// with one field changed.
+pub fn installedHooks() Hooks {
+    return hooks.get();
 }
 
 /// A test's override of the hooks (`overrideHooksForTest`).
@@ -144,6 +166,36 @@ pub fn slotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     return slot_of(target);
 }
 
+/// The counted object (a node's NodeBase) whose engine wrapper slot `slot`
+/// is: `slotOf`'s inverse, for an adapter that keeps the slot's address and
+/// not the node's - V8's node anchor (the wrapper redesign's P4,
+/// tmp/redesign/wrapper-redesign-design.md 4.1), whose marking reads its
+/// slot with no call into the host - and still never names a node's field.
+/// Installed with `slot_of`, at process start.
+pub fn targetOfSlot(slot: *engine.NodeWrapperSlot) *anyopaque {
+    const target_of_slot = hooks.read().target_of_slot orelse @panic("runtime.lifetime.targetOfSlot: no owner of the counts installed its target_of_slot hook");
+    return target_of_slot(slot);
+}
+
+/// The walk (`Hooks.trace_tree`) from `target`, a counted object with a
+/// reachable wrapper or a keep, inside the engine's collector: every wrapper
+/// it keeps is named to `tracer`. False, and nothing walked, when no owner
+/// of the counts installed the walk (or a test's override removed it): the
+/// engine then keeps only what its own edges keep.
+pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) bool {
+    const trace_tree = hooks.read().trace_tree orelse return false;
+    trace_tree(target, tracer);
+    return true;
+}
+
+/// Whether the walk is installed (`Hooks.trace_tree`): always, outside a
+/// test's override that removes it (tests/v8/wrapper_walk_test.zig's
+/// negative control). The holders' traces (VTable.trace_held_nodes) walk
+/// through it too, so the adapter skips them when it is absent.
+pub fn walkInstalled() bool {
+    return hooks.read().trace_tree != null;
+}
+
 /// A wrapper's reference is dropped without `wrapperReleased`, because its
 /// target is gone: the collector freed the node while the wrapper waited for
 /// its finalizer, or the realm's objects go with a batch free. Since step 7 a
@@ -176,6 +228,61 @@ pub fn countedOf(comptime State: type) ?*const Counted {
             if (Base == void) return null;
             Level = Base;
         }
+    }
+}
+
+/// The VTable's `trace_held_nodes` for an interface whose generated `State`
+/// is `State` (the wrapper redesign's P6, design 3.3 "new VTable entry"):
+/// every level of its chain whose impl's InternalState declares
+/// `pub fn traceHeldNodes(instance: *Instance, tracer: *engine.Tracer)
+/// void` is called, the most derived first; null when none does. Found
+/// through the generated State's own fields, as `countedOf` finds a node -
+/// `own._internal`'s pointee, or `_embedded` - so nothing names an impl. The
+/// function gets the INSTANCE and finds its own state however its impl
+/// keeps it; it runs in the collector's atomic pause (VTable.
+/// trace_held_nodes).
+pub fn heldNodesOf(comptime State: type) ?*const fn (*Instance, *engine.Tracer) void {
+    comptime {
+        var found: []const type = &.{};
+        var Level: type = State;
+        while (true) {
+            if (@typeInfo(Level) != .@"struct") break;
+            if (@hasField(Level, "_embedded")) {
+                if (tracerOf(@FieldType(Level, "_embedded"))) |T| found = found ++ &[_]type{T};
+            }
+            if (@hasField(Level, "own")) {
+                const Own = @FieldType(Level, "own");
+                if (@typeInfo(Own) == .@"struct" and @hasField(Own, "_internal")) {
+                    if (tracerOf(@FieldType(Own, "_internal"))) |T| {
+                        if (std.mem.indexOfScalar(type, found, T) == null) found = found ++ &[_]type{T};
+                    }
+                }
+            }
+            if (!@hasField(Level, "base")) break;
+            const Base = @FieldType(Level, "base");
+            if (Base == void) break;
+            Level = Base;
+        }
+        if (found.len == 0) return null;
+        const levels = found;
+        const Thunk = struct {
+            fn trace(instance: *Instance, tracer: *engine.Tracer) void {
+                inline for (levels) |T| T.traceHeldNodes(instance, tracer);
+            }
+        };
+        return &Thunk.trace;
+    }
+}
+
+/// The InternalState type behind `Field` - an `_internal` pointer (optional
+/// or not) or an `_embedded` value - when it declares `traceHeldNodes`.
+fn tracerOf(comptime Field: type) ?type {
+    comptime {
+        var T: type = Field;
+        if (@typeInfo(T) == .optional) T = @typeInfo(T).optional.child;
+        if (@typeInfo(T) == .pointer) T = @typeInfo(T).pointer.child;
+        if (@typeInfo(T) != .@"struct") return null;
+        return if (@hasDecl(T, "traceHeldNodes")) T else null;
     }
 }
 

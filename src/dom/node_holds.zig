@@ -1,102 +1,72 @@
 //! Node holds: native references to nodes that keep them alive without a
 //! wrapper per node, for any holder - a MutationRecord, a static NodeList, a
-//! live parser.
+//! live collection's root, a queued task.
 //!
-//! Blink keeps such nodes with a traced `Member<Node>` (MutationRecord's
-//! target_ and siblings, StaticNodeList's HeapVector<Member<Node>>,
-//! HTMLConstructionSite's open elements) and WebKit with a `Ref<Node>`; both
-//! make a wrapper only when script asks for the node. Crane has no tracing of
-//! native objects, and tracing each node from the holder's wrapper wraps
-//! every node the moment the holder is filled
-//! (docs/lessons/architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md).
-//! Two facts of Crane's collector make a native hold enough
-//! (tests/v8/parser_holds_invariants_test.zig pins both):
+//! Every hold is a COUNTED reference on its node (`refcount.holderRef`;
+//! refcount step 5): WebKit's holders keep a `Ref<Node>` (ChildListRecord,
+//! StaticNodeList, RangeBoundaryPoint), and since refcount step 7 the counts
+//! decide every free - a held node is never freed under its hold during its
+//! realm's life.
 //!
-//! - L1: the collector frees a node only as the root of its tree, or inside a
-//!   freed root's subtree (`wrapper_cache.treeOwns`).
-//! - L2: wrappers in a tree are upward-closed and linked both ways, so a
-//!   rooted wrapper anywhere in a tree keeps the tree's root and every wrapper
-//!   in it.
+//! What a holder holds FOR SCRIPT - a node script can read back from it - it
+//! also names to the engine's collector, so the holder's wrapper keeps the
+//! held nodes' wrappers and their trees' (the wrapper redesign's P6,
+//! tmp/redesign/wrapper-redesign-design.md 3.2 rule (d) and 4.4
+//! "Holders"; refcount step 9b): the holder's type declares `pub fn
+//! traceHeldNodes(instance, tracer)` on its InternalState
+//! (runtime.lifetime.heldNodesOf puts it in its VTable), which calls `trace`
+//! on its holds, and `trace` asks the walk (dom.wrapper_tracing.traceHeld)
+//! for each node: its own wrapper and every wrapper of its host-including
+//! tree and its node document's tree. It runs in the collector's atomic
+//! pause, so it only reads. No wrapper is made for a held node - the cost
+//! lesson docs/lessons/architecture-tracing-a-holders-nodes-makes-a-
+//! wrapper-per-node.md: the trace names the wrappers that exist. Blink's
+//! holders trace their `Member<Node>`s the same way (Chromium 131.0.6778.0:
+//! StaticNodeTypeList::Trace `nodes_`, ChildListRecord::Trace `target_` and
+//! siblings, IntersectionObserverEntry::Trace `target_`, XPathResult::Trace
+//! `node_set_` and `document_`, HTMLConstructionSite::Trace `open_elements_`,
+//! `active_formatting_elements_`, `head_` and `form_`).
 //!
-//! So a held node is safe while its host-including root is a Document the host
-//! keeps - one with a default view, whose window holds its wrapper strongly
-//! (`isKeptRoot`) - or a node whose wrapper the HOLDER rooted. Every other
-//! root is RESCUED: one wrapper, rooted from the holder, never one per node.
-//! A held node leaves a kept tree only by a removal, so the removing steps -
-//! one callback, installed at process start - hear every way it can happen.
+//! Until the redesign's P7 the V8 adapter also keeps the holders' JS edges
+//! (engine.keepOpaqueRoot, called only while the engine's wrapper tracing
+//! is `.emulated`): `MemberHold` draws one. The node holds' chain on each
+//! node (`NodeBase.holds`), its rescues of detached roots, the scanning
+//! holders' registry and the removing-steps callback that asked them are
+//! gone with P6 - tracing finds a held node wherever its tree went.
 //!
-//! Two kinds of holder:
-//!
-//! - **Marked holds** (`Holder`, `Hold`): each held node carries the head of
-//!   a chain of the holds on it (`NodeBase.holds`). A removal pays one field
-//!   test per node it visits when nothing in the subtree is held, and when
-//!   something is, the chain names exactly the holders to ask.
-//! - **Scanning holders** (`Registry`): a holder whose held set changes too
-//!   often to mark - a parser's stack of open elements - registers with its
-//!   Browser, and is asked on each removal ROOT whether that root contains a
-//!   node it holds (pholds' O(stack depth) walk).
-//!
-//! A rescue is an edge from the holder's wrapper to the root's
-//! (engine.keepOpaqueRoot into "node-holds:root", then a dense array traced in
-//! "node-holds:roots"), never a root of its own: a holder and a tree that
-//! reach each other still collect together. A holder script has not seen yet
-//! (a record still queued) holds its edges strongly in its realm's wrapper
-//! cache until it is wrapped, and lets them go in its teardown
-//! (forgetTracedChild) when it is freed unwrapped.
-//!
-//! REFERENCE COUNTING, STEP 5 (tmp/plans/refcount-design.md section 7; lane
-//! rc5): every hold is also a COUNTED reference on its node
-//! (`refcount.holderRef`), taken when the hold is linked and released when it
-//! is unlinked - WebKit's ChildListRecord and StaticNodeList hold `Ref<Node>`.
-//! The counts decide frees since step 7 (dom.refcount's header): a held node
-//! is never freed under its hold during its realm's life. This module's
-//! chain, its rescues and its generation net stay for wrapper IDENTITY (the
-//! rescue's edge keeps a held tree's wrappers) and for the frees still made
-//! whatever the counts say (a forced realm end's coordinated teardown): a node
-//! freed under its hold there has its reference FORGOTTEN (`nodeReleased`),
-//! never released. The
-//! design retires the chain and the rescues in step 9b; keepOpaqueRoot is
-//! their identity edge, and wrapping a root that has no wrapper yet is the
-//! shadow-mode net that closes keepOpaqueRoot's stated gap
-//! (crane/rc5-record-node-wrapped-later.html).
-//!
-//! Design: tmp/plans/lane-nodeholds-handoff.md; the parser's half,
-//! tmp/plans/parser-holds-design.md and
-//! docs/lessons/architecture-parser-holds-are-its-structures-and-detached-trees-are-rescued.md.
+//! A node freed under its hold - only a forced realm end's coordinated
+//! teardown or the Browser's final sweep frees a node whatever the counts
+//! say - is recognised the way the wrapper's own reference recognises one:
+//! its slab slot freed or reissued (the generation), or its teardown begun
+//! (`instance_lifecycle.isCleanupStarted`: Node.deinit, and the final
+//! sweep's release of the NodeBase, mark it). Its reference is then
+//! FORGOTTEN, never released. The slab outlives every node of its Browser,
+//! so the check reads nothing freed; a hold must not outlive its node's
+//! Browser.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.node_holds);
 const runtime = @import("runtime");
-const address_map = @import("infra").address_map;
 const interfaces = @import("interfaces");
 const engine = @import("engine");
 const NodeBase = @import("node_base.zig").NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const template_contents = @import("template_contents.zig");
 const refcount = @import("refcount.zig");
+const wrapper_tracing = @import("wrapper_tracing.zig");
 
-/// One holder's hold on one node: a link in the node's chain
-/// (`NodeBase.holds`), and one counted reference on the node
-/// (`refcount.holderRef`) for as long as it is linked. Embedded by its
-/// holder and never moved while linked.
+/// One hold on one node: one counted reference on it (`refcount.holderRef`)
+/// for as long as it holds it. No link: it may move while it holds - only
+/// its holder names it.
 pub const Hold = struct {
     /// The held node; null when this hold holds nothing (released, or a null
     /// member such as a record's absent sibling).
     node: ?*runtime.Instance = null,
-    /// The node's slab generation when it was held. A node freed outside the
-    /// collector (its realm's end, `clearChildren`, a fragment's explicit
-    /// teardown) reads dead here: its chain is gone with its storage, and
-    /// every hold in it is skipped the same way, never walked.
+    /// The node's slab generation when it was held.
     generation: u64 = 0,
     base: *NodeBase = undefined,
-    /// The marked holder whose removal rescues this hold names; null for a
-    /// `MemberHold`, whose owner keeps the member's own wrapper and needs no
-    /// rescue.
-    holder: ?*Holder = null,
-    prev: ?*Hold = null,
-    next: ?*Hold = null,
 
     /// The held node, or null when it was freed outside the collector - a
     /// teardown net, never the behaviour: the hold is what keeps it.
@@ -106,97 +76,63 @@ pub const Hold = struct {
         return node;
     }
 
-    /// Whether `node` is still the node held at `generation`. A teardown can
-    /// free a node's NodeBase and leave its slab slot - and generation - live
-    /// (coordinated teardown, a wrapper still cached), so the generation
-    /// alone cannot say; `nodeReleased` nulls the hold first, and this check
-    /// covers a slot freed and reissued.
+    /// Whether `node` is still the node held at `generation`: its slot not
+    /// freed or reissued, and its teardown not begun - a forced realm end's
+    /// coordinated teardown (Node.deinit) or the final sweep can release a
+    /// node's NodeBase while its slab slot, and its generation, stay live.
     fn stillHeld(node: *runtime.Instance, generation: u64) bool {
-        return runtime.SlabAllocator.generationOf(node) == generation;
+        if (runtime.SlabAllocator.generationOf(node) != generation) return false;
+        return !runtime.instance_lifecycle.isCleanupStarted(node);
     }
 
-    fn link(self: *Hold, holder: ?*Holder, node: *runtime.Instance, base: *NodeBase) void {
+    fn link(self: *Hold, node: *runtime.Instance, base: *NodeBase) void {
         self.* = .{
             .node = node,
             .generation = runtime.SlabAllocator.generationOf(node),
             .base = base,
-            .holder = holder,
-            .prev = null,
-            .next = base.holds,
         };
-        if (base.holds) |head| head.prev = self;
-        base.holds = self;
         refcount.holderRef(base);
     }
 
     fn unlink(self: *Hold) void {
         const node = self.node orelse return;
         self.node = null;
-        // A dead node's chain is never walked again: leave it - and its
-        // reference, which went with it (forgotten, never released).
+        // A node freed under it took its reference with it: forgotten.
         if (!stillHeld(node, self.generation)) return;
-        if (self.prev) |prev| prev.next = self.next else self.base.holds = self.next;
-        if (self.next) |next| next.prev = self.prev;
-        self.prev = null;
-        self.next = null;
         refcount.holderDeref(self.base);
+    }
+
+    /// The collector's pause (a holder's `traceHeldNodes`): the held node's
+    /// wrapper and every wrapper of its trees are kept (design 3.2 (d)).
+    /// Reads only.
+    pub fn trace(self: *const Hold, tracer: *engine.Tracer) void {
+        _ = self.get() orelse return;
+        wrapper_tracing.traceHeld(self.base, tracer);
     }
 };
 
-/// `node`'s storage is going (Node.deinit and the final registry sweep,
-/// beside the release of its registered observers, just before its NodeBase
-/// is freed): every hold on it now holds nothing, and its counted reference
-/// is FORGOTTEN - it went with the node, and is never released. Its holders
-/// read null from then on and skip it when they let go - a teardown net for
-/// the ways a node is freed outside the collector (its realm's coordinated
-/// teardown, the final registry sweep), where its slab generation can stay
-/// live. Those are the only frees left under a holder since step 7: the
-/// counts never free a held node.
-///
-/// Touches only the native hold records - no engine call, no allocation - so
-/// it may run inside any teardown, including one a collector's finalizer
-/// path started.
-pub fn nodeReleased(node: *NodeBase) void {
-    var current = node.holds;
-    node.holds = null;
-    while (current) |held| {
-        current = held.next;
-        held.node = null;
-        held.prev = null;
-        held.next = null;
-    }
-}
-
-/// `owner`'s wrapper keeps `member`'s opaque root, in `slot`
-/// (engine.keepOpaqueRoot: an edge to `member`'s own wrapper, else to its
-/// tree's wrapped root). SHADOW-MODE NET, deleted with the chain in step 9b: a
-/// node with no wrapper is wrapped first (engine.traceChild makes it). Until
-/// counts decide, the collector frees a tree whose wrappers die, and
-/// keepOpaqueRoot keeps nothing for a tree with no wrapper - so a tree script
-/// wraps only later, through the holder, and drops again, was freed under it
-/// (keepOpaqueRoot's stated gap; crane/rc5-record-node-wrapped-later.html).
-/// A member that is not a node is kept as engine.traceChild keeps it.
-pub fn keepMember(owner: *runtime.Instance, member: *runtime.Instance, slot: engine.TracedSlot) void {
-    keepMemberOf(owner, member, instance_bridge.getNodeBase(@ptrCast(member)) != null, slot);
-}
-
-/// `keepMember`, told whether `member` is a node.
-fn keepMemberOf(owner: *runtime.Instance, member: *runtime.Instance, is_node: bool, slot: engine.TracedSlot) void {
-    if (!owner.ctx.hasEngine() or !member.ctx.hasEngine()) return;
-    if (is_node and !engine.hasWrapper(member)) {
-        engine.traceChild(owner, member, slot);
-        return;
-    }
+/// `owner`'s wrapper keeps `member` while the engine keeps node tracing's
+/// edges (`.emulated` wrapper tracing: V8 until the redesign's P7; the
+/// JavaScriptCore public-API path, design 5.2): engine.keepOpaqueRoot, an
+/// edge to `member`'s own wrapper, else to its tree's wrapped root. Makes no
+/// wrapper - the holder's trace keeps what an edge cannot reach (P6 deleted
+/// the wrap-first net). A member that is not a node is kept as
+/// engine.traceChild keeps it, whatever the engine. Whether a keep was
+/// taken (the slot may hold an edge to forget).
+fn keepMemberOf(owner: *runtime.Instance, member: *runtime.Instance, is_node: bool, slot: engine.TracedSlot) bool {
+    if (!owner.ctx.hasEngine() or !member.ctx.hasEngine()) return false;
+    if (is_node and engine.capabilities.wrapper_tracing != .emulated) return false;
     engine.keepOpaqueRoot(owner, member, slot);
+    return true;
 }
 
-/// One node a holder holds and keeps itself: a live collection's root
+/// One node a holder holds and keeps for script: a live collection's root
 /// (refcount design 5h; WebKit's collections hold `Ref<ContainerNode>
-/// m_ownerNode`). A counted hold in the node's chain - so a node freed under
-/// it is forgotten, never released, exactly as a `Holder`'s - plus the
-/// holder's keep of the member's opaque root (`keepMember`), which follows
-/// the member wherever it moves: no removal rescues it. A member that is not
-/// a node (a collection that roots a RadioNodeList) is kept, not counted.
+/// m_ownerNode`), an entry's target, a saved focus. A counted hold, traced
+/// by its owner's `traceHeldNodes` (`trace`), plus - while the engine keeps
+/// node edges - the owner's keep of the member's opaque root. A member that
+/// is not a node (a collection that roots a RadioNodeList) is kept, not
+/// counted.
 pub const MemberHold = struct {
     hold: Hold = .{},
     /// The member when it is not a node (kept, not counted), with its
@@ -211,20 +147,15 @@ pub const MemberHold = struct {
         std.debug.assert(self.hold.node == null and self.other == null);
         const base = instance_bridge.getNodeBase(@ptrCast(member));
         if (base) |node| {
-            self.hold.link(null, member, node);
+            self.hold.link(member, node);
         } else {
             self.other = member;
             self.other_generation = runtime.SlabAllocator.generationOf(member);
         }
-        if (owner.ctx.hasEngine() and member.ctx.hasEngine()) {
-            keepMemberOf(owner, member, base != null, slot);
-            self.kept = true;
-        }
+        self.kept = keepMemberOf(owner, member, base != null, slot);
     }
 
     /// The member's tree node while it is alive and a node; null otherwise.
-    /// By the slab generation alone, with no registry read: `nodeReleased`
-    /// empties the hold before the tree node is freed.
     pub fn liveBase(self: *const MemberHold) ?*NodeBase {
         _ = self.hold.get() orelse return null;
         return self.hold.base;
@@ -246,6 +177,12 @@ pub const MemberHold = struct {
         if (self.kept) engine.forgetTracedChild(owner, slot);
         self.kept = false;
     }
+
+    /// The collector's pause: the member node's wrappers (`Hold.trace`). A
+    /// member that is not a node is kept by its edge.
+    pub fn trace(self: *const MemberHold, tracer: *engine.Tracer) void {
+        self.hold.trace(tracer);
+    }
 };
 
 // ============================================================================
@@ -263,17 +200,15 @@ pub const MemberHold = struct {
 /// (dom/TreeWalker.h), Event `RefPtr<EventTarget> m_target` (dom/Event.h),
 /// EventContext `RefPtr<Node> m_node` (dom/EventContext.h).
 ///
-/// A link in the node's chain (`Hold`, with no holder: a removal has nothing
-/// to rescue) plus one `refcount.holderRef` while it is linked. A node freed
-/// under it - its realm's end, the final sweep - is FORGOTTEN by
-/// `nodeReleased`, never released, so a later `set` or `release` writes
-/// nothing to the freed node. A member that is not a node (a Window, an
+/// A `Hold`: one `refcount.holderRef` while it holds the node. A node freed
+/// under it - its realm's forced end, the final sweep - is FORGOTTEN, never
+/// released (`Hold.stillHeld`), so a later `set` or `release` writes nothing
+/// to the freed node. A member that is not a node (a Window, an
 /// XMLHttpRequest) is not counted - decision D3, nodes first - and this
 /// holds nothing for it.
 ///
-/// Embedded by its holder and never moved while it holds a node; let go
-/// once, at the holder's end (`release` on one never taken, or again, does
-/// nothing).
+/// Let go once, at the holder's end (`release` on one never taken, or
+/// again, does nothing).
 pub const RefHold = struct {
     hold: Hold = .{},
 
@@ -284,7 +219,7 @@ pub const RefHold = struct {
         if (self.holds(target)) return;
         self.hold.unlink();
         const base = instance_bridge.getNodeBase(@ptrCast(target)) orelse return;
-        self.hold.link(null, target, base);
+        self.hold.link(target, base);
     }
 
     /// `set` for a caller that has `member`'s tree node already: `base`, or
@@ -292,10 +227,10 @@ pub const RefHold = struct {
     pub fn setNode(self: *RefHold, member: *runtime.Instance, base: ?*NodeBase) void {
         if (self.holds(member)) return;
         self.hold.unlink();
-        self.hold.link(null, member, base orelse return);
+        self.hold.link(member, base orelse return);
     }
 
-    /// Whether this holds `member` now: linked to it, at the slab generation
+    /// Whether this holds `member` now: taken on it, at the slab generation
     /// it was held at.
     pub fn holds(self: *const RefHold, member: *runtime.Instance) bool {
         return self.hold.node == member and Hold.stillHeld(member, self.hold.generation);
@@ -307,13 +242,12 @@ pub const RefHold = struct {
     }
 };
 
-/// A counted reference with no chain, for a holder that lives a short,
-/// bounded time and may move - the items of an event's path while dispatch
-/// runs: WebKit's EventContext `RefPtr<Node> m_node`. A node freed under it
-/// is recognised the way the wrapper's own reference recognises one
+/// A counted reference for a holder that has the node's tree node at hand
+/// and lives a short, bounded time - the items of an event's path while
+/// dispatch runs: WebKit's EventContext `RefPtr<Node> m_node`. A node freed
+/// under it is recognised the way the wrapper's own reference recognises one
 /// (wrapper_cache `releaseCounted`): its slot reissued, or its teardown
-/// begun - and then it is forgotten, never released. No chain link, so no
-/// address to keep stable and nothing for `nodeReleased` to walk. Counted
+/// begun - and then it is forgotten, never released. 16 bytes. Counted
 /// only: since step 7 the count keeps the node (tests/v8/
 /// wr1_counted_hold_test.zig), and the guards in `release` answer for the
 /// free made whatever the counts say (dom.refcount's header).
@@ -356,14 +290,14 @@ pub const CountedRef = struct {
 /// posts such a task with `WrapPersistent(element)`
 /// (HTMLElement::QueuePopoverToggleEvent).
 ///
-/// A node is held twice over: a counted hold in its chain (`Hold`, with no
-/// holder: nothing to rescue on a removal) and ONE counted pending-activity
-/// keep of its wrapper (`engine.keepPlatformObjectAlive`). A node with no
-/// wrapper is wrapped first - the shadow-mode net `keepMember` uses, deleted
-/// with the chain in step 9b: the keep waits for a wrapper, and an unwrapped
-/// node whose wrapped ancestor root is collected goes with that tree (L1).
-/// Wrapped and kept, by L2 its wrapper keeps its tree wherever the node
-/// moves. A member that is not a node (a CloseWatcher) is kept, not counted.
+/// A node is held twice over: a counted hold (`Hold`) and ONE counted
+/// pending-activity keep of its wrapper (`engine.keepPlatformObjectAlive`).
+/// A node with no wrapper is wrapped first, so the keep has a wrapper to
+/// keep - in a detached realm too, where a kept wrapper hangs from the
+/// realm's global object. (Since the redesign's P5 the agent's keeps also
+/// walk a kept node's tree whether or not it is wrapped, rule 3.2 (c); the
+/// net stays until the keeps need no wrapper in a detached realm either.)
+/// A member that is not a node (a CloseWatcher) is kept, not counted.
 ///
 /// Its ends are its owner's: `take` when the task is queued, `release`
 /// exactly once when it ends - after its steps when it runs, or when it is
@@ -383,7 +317,7 @@ pub const TaskHold = struct {
     pub fn take(self: *TaskHold, member: *runtime.Instance) void {
         std.debug.assert(self.state != .held);
         if (instance_bridge.getNodeBase(@ptrCast(member))) |base| {
-            self.hold.link(null, member, base);
+            self.hold.link(member, base);
         } else {
             self.other = member;
             self.other_generation = runtime.SlabAllocator.generationOf(member);
@@ -454,28 +388,25 @@ pub const TaskHold = struct {
 /// 2.4's `GCReachableRef` in shadow mode, for a holder whose node something
 /// else keeps from the collector meanwhile - so, unlike `TaskHold`, it never
 /// wraps. A MutationObserver's pending targets are the case (lane refcount5,
-/// step 5c): the queued record that names a target holds it and rescues its
-/// tree (5b), and wrapping every record's target is the cost lane edges
-/// measured (2.55x on an observed parse;
+/// step 5c): the queued record that names a target holds it, and its
+/// observer traces it (the redesign's P6), and wrapping every record's
+/// target is the cost lane edges measured (2.55x on an observed parse;
 /// docs/lessons/architecture-tracing-a-holders-nodes-makes-a-wrapper-per-node.md).
 ///
 /// WebKit's GCReachableRef (Source/WebCore/dom/GCReachableRef.h) is a RefPtr
 /// plus an entry in GCReachableRefMap, a HashCountedSet that
 /// JSNodeOwner::isReachableFromOpaqueRoots reads to keep a disconnected
-/// node's wrapper (bindings/js/JSNodeCustom.cpp). Here: a counted hold in the
-/// node's chain (`Hold`, with no holder: a removal has nothing to rescue) and
-/// ONE counted pending-activity keep of the node's wrapper
-/// (engine.keepPlatformObjectAlive). A node with no wrapper yet keeps the
-/// keep waiting in its realm's wrapper cache, and the wrapper made later
-/// takes it - so its expandos last until the holder lets go, as WebKit's
-/// GC-time read of the map does.
+/// node's wrapper (bindings/js/JSNodeCustom.cpp). Here: a counted hold
+/// (`Hold`) and ONE counted pending-activity keep of the node
+/// (engine.keepPlatformObjectAlive): the agent's keeps walk the kept node's
+/// tree whether or not it is wrapped (rule 3.2 (c)), and a wrapper made
+/// later is kept with it - so its expandos last until the holder lets go, as
+/// WebKit's GC-time read of the map does.
 ///
-/// A link in someone's chain: embedded where it does not move while it
-/// holds a node (docs/lessons/architecture-an-intrusive-hold-must-not-move.md).
 /// A node freed under it - its realm's coordinated teardown, the final sweep
-/// - is emptied by `nodeReleased`: its keep went with the node's wrapper
-/// cache, and its `release` then makes no engine call. Released once; a
-/// release of a hold that holds nothing does nothing.
+/// - reads as gone (`Hold.stillHeld`): its keep went with the node, and its
+/// `release` then makes no engine call. Released once; a release of a hold
+/// that holds nothing does nothing.
 pub const ReachableHold = struct {
     hold: Hold = .{},
     /// Whether this hold took a pending-activity keep.
@@ -485,7 +416,7 @@ pub const ReachableHold = struct {
     /// The hold holds nothing before.
     pub fn take(self: *ReachableHold, member: *runtime.Instance, base: *NodeBase) void {
         std.debug.assert(self.hold.node == null and !self.kept);
-        self.hold.link(null, member, base);
+        self.hold.link(member, base);
         if (!member.ctx.hasEngine()) return;
         engine.keepPlatformObjectAlive(member);
         self.kept = true;
@@ -497,7 +428,7 @@ pub const ReachableHold = struct {
         return self.hold.get();
     }
 
-    /// Whether this holds `member` now: linked to it at the slab generation
+    /// Whether this holds `member` now: taken on it at the slab generation
     /// it was held at.
     pub fn holds(self: *const ReachableHold, member: *runtime.Instance) bool {
         return self.hold.node == member and Hold.stillHeld(member, self.hold.generation);
@@ -770,48 +701,34 @@ pub fn ElementTask(comptime Payload: type) type {
     };
 }
 
-/// The edge slots a holder's rescues hang from, on its owner's wrapper.
-pub const root_slot: engine.TracedSlot = .{ .name = "node-holds:root" };
-pub const roots_slot: engine.TracedSlot = .{ .name = "node-holds:roots" };
-
-/// Below this many rescues a holder never prunes them.
-const min_prune = 64;
-
-/// A holder of marked holds, embedded in its owner's state: a MutationRecord,
-/// a static NodeList.
+/// A holder of many nodes, embedded in its owner's state: a MutationRecord's
+/// target, siblings and added and removed nodes, a static NodeList's nodes,
+/// an XPathResult's snapshot. One counted hold per node, in the holder's own
+/// order; its owner's `traceHeldNodes` calls `trace`.
 pub const Holder = struct {
-    /// What the holds and rescues are allocated with.
+    /// What the holds are allocated with.
     allocator: Allocator,
-    /// Whose wrapper the rescues hang from: the holder's own instance.
-    owner: *runtime.Instance,
-    owner_generation: u64,
     /// The holds, in the holder's own order; owned.
     holds: []Hold = &.{},
-    rescues: Rescues = .{},
-    /// Rescues that make a prune (see `maybePrune`).
-    prune_at: usize = min_prune,
 
-    pub fn init(allocator: Allocator, owner: *runtime.Instance) Holder {
-        return .{ .allocator = allocator, .owner = owner, .owner_generation = runtime.SlabAllocator.generationOf(owner) };
+    pub fn init(allocator: Allocator) Holder {
+        return .{ .allocator = allocator };
     }
 
     /// Hold `nodes`, in order (`T` is `*runtime.Instance`,
-    /// `?*runtime.Instance` - a null holds nothing - or `*NodeBase`, the
-    /// tree nodes themselves, which spares a lookup each), then rescue every root of
-    /// theirs that is not a kept document. `root_hint`: the host-including
-    /// root they all share, when the caller knows it (querySelectorAll's
-    /// receiver's), so it is found once. The holder holds nothing yet.
-    pub fn hold(self: *Holder, comptime T: type, nodes: []const T, root_hint: ?*NodeBase) Allocator.Error!void {
+    /// `?*runtime.Instance` - a null holds nothing - or `*NodeBase`, the tree
+    /// nodes themselves, which spares a lookup each). The holder holds
+    /// nothing yet.
+    pub fn hold(self: *Holder, comptime T: type, nodes: []const T) Allocator.Error!void {
         std.debug.assert(self.holds.len == 0);
         if (nodes.len == 0) return;
         const holds = try self.allocator.alloc(Hold, nodes.len);
         for (nodes, holds) |item, *slot| {
             slot.* = .{};
             const held = resolve(T, item) orelse continue;
-            slot.link(self, held.node, held.base);
+            slot.link(held.node, held.base);
         }
         self.holds = holds;
-        self.rescueUnkeptRoots(root_hint);
     }
 
     const Resolved = struct { node: *runtime.Instance, base: *NodeBase };
@@ -838,240 +755,45 @@ pub const Holder = struct {
         return self.holds[index].get();
     }
 
-    /// Let every node go, and every rescue: the holder is cleared or going.
-    /// Safe in any teardown (4.12: a teardown may end traced edges); makes no
-    /// engine call unless the holder rescued something.
+    /// Let every node go: the holder is cleared or going. No engine call, so
+    /// safe in any teardown.
     pub fn release(self: *Holder) void {
-        const allocator = self.allocator;
         for (self.holds) |*held| held.unlink();
-        if (self.holds.len != 0) allocator.free(self.holds);
+        if (self.holds.len != 0) self.allocator.free(self.holds);
         self.holds = &.{};
-        if (self.rescues.made()) {
-            engine.forgetTracedChild(self.owner, root_slot);
-            engine.forgetTracedChild(self.owner, roots_slot);
-        }
-        self.rescues.deinit(allocator);
-        self.rescues = .{};
-        self.prune_at = min_prune;
     }
 
-    /// Rescue the root of every held node whose tree is not a kept document.
-    fn rescueUnkeptRoots(self: *Holder, root_hint: ?*NodeBase) void {
-        if (!self.owner.ctx.hasEngine()) return;
-        var memo: RootMemo = .{};
-        var last_root: ?*NodeBase = null;
+    /// The collector's pause: every held node's wrappers (`Hold.trace`). A
+    /// connected node's tree is its document's, named once per holder; a
+    /// node whose parent is the previous held node's parent, or the previous
+    /// held node itself, is in a tree already named - querySelectorAll's
+    /// tree order makes that the common case - so its trees are not looked
+    /// up again; its own wrapper, if it has one, was named with that tree
+    /// (a wrapped node is held, so the walk enters it).
+    pub fn trace(self: *const Holder, tracer: *engine.Tracer) void {
+        var last: ?*NodeBase = null;
+        var last_document: ?*NodeBase = null;
         for (self.holds) |*held| {
-            if (held.node == null) continue;
-            const root = root_hint orelse memo.rootOf(held.base);
-            if (root == last_root) continue;
-            last_root = root;
-            if (isKeptRoot(root)) continue;
-            if (!self.rescue(root)) return;
-        }
-    }
-
-    /// Rescue(holder, R): root `root`'s wrapper from this holder's until it
-    /// is released - one wrapper at most, never one per node. Whether the
-    /// holder is still there afterwards (engine work can tear down objects).
-    pub fn rescue(self: *Holder, root: *NodeBase) bool {
-        const root_instance: *runtime.Instance = @ptrCast(@alignCast(instance_bridge.getInstance(root) orelse return true));
-        const generation = runtime.SlabAllocator.generationOf(root_instance);
-        if (self.rescues.contains(root_instance, generation)) return true;
-        if (!root_instance.ctx.hasEngine() or !self.owner.ctx.hasEngine()) return true;
-        const allocator = self.allocator;
-        self.rescues.entries.ensureUnusedCapacity(allocator, 1) catch return true;
-        const owner = self.owner;
-        const owner_generation = self.owner_generation;
-        const index: usize = if (!self.rescues.single_taken) blk: {
-            // The first rescue: one edge, one call.
-            self.rescues.single_taken = true;
-            keepMemberOf(owner, root_instance, true, root_slot);
-            break :blk single_index;
-        } else blk: {
-            const index = self.rescues.next_index;
-            self.rescues.next_index += 1;
-            putRoot(owner, roots_slot, index, root_instance) catch |err| {
-                log.warn("node hold rescue failed: {}", .{err});
-                return runtime.SlabAllocator.generationOf(owner) == owner_generation;
-            };
-            break :blk index;
-        };
-        if (runtime.SlabAllocator.generationOf(owner) != owner_generation) return false;
-        self.rescues.append(allocator, .{ .node = root_instance, .base = root, .generation = generation, .index = index });
-        self.maybePrune();
-        return true;
-    }
-
-    /// A long-lived holder whose nodes move through many trees would keep
-    /// every tree it ever rescued. Once its rescues reach `prune_at`, drop
-    /// each whose tree holds none of its nodes any more, or is now a kept
-    /// document's (a rescue inside a tree script moved elsewhere stays: by L2
-    /// it keeps the tree it is in, which holds the node). `prune_at` then
-    /// doubles over what is kept, and never falls below a quarter of the
-    /// holds, so a large list that rescues many trees at once does not prune
-    /// on every one.
-    fn maybePrune(self: *Holder) void {
-        if (self.rescues.entries.items.len < self.prune_at) return;
-        const allocator = self.allocator;
-        var needed: std.AutoHashMapUnmanaged(*NodeBase, void) = .empty;
-        defer needed.deinit(allocator);
-        var memo: RootMemo = .{};
-        for (self.holds) |*held| {
-            if (held.get() == null) continue;
-            const root = memo.rootOf(held.base);
-            if (isKeptRoot(root)) continue;
-            needed.put(allocator, root, {}) catch return;
-        }
-        var kept: usize = 0;
-        for (self.rescues.entries.items) |entry| {
-            const alive = runtime.SlabAllocator.generationOf(entry.node) == entry.generation;
-            if (alive and needed.contains(hostIncludingRoot(entry.base))) {
-                self.rescues.entries.items[kept] = entry;
-                kept += 1;
+            _ = held.get() orelse continue;
+            const base = held.base;
+            // Connected: its tree is its document's, named once.
+            if (wrapper_tracing.connectedDocument(base)) |document| {
+                if (document != last_document) wrapper_tracing.traceHeld(document, tracer);
+                last_document = document;
                 continue;
             }
-            self.dropRescue(entry);
-        }
-        self.rescues.entries.shrinkRetainingCapacity(kept);
-        self.rescues.reindex(allocator);
-        self.prune_at = @max(min_prune, 2 * kept, self.holds.len / 4);
-    }
-
-    fn dropRescue(self: *Holder, entry: Rescues.Entry) void {
-        if (entry.index == single_index) {
-            engine.forgetTracedChild(self.owner, root_slot);
-            self.rescues.single_taken = false;
-            return;
-        }
-        clearRoot(self.owner, roots_slot, entry.index);
-    }
-};
-
-/// The index a holder's first rescue takes: its own slot, not the array.
-const single_index = std.math.maxInt(usize);
-
-/// The roots a holder rescued, deduplicated.
-pub const Rescues = struct {
-    entries: std.ArrayListUnmanaged(Entry) = .empty,
-    /// Membership, once there are enough entries for a scan to cost.
-    index: address_map.AddressHashMapUnmanaged(*runtime.Instance, u64) = .empty,
-    single_taken: bool = false,
-    next_index: usize = 0,
-
-    pub const Entry = struct {
-        node: *runtime.Instance,
-        base: *NodeBase,
-        generation: u64,
-        /// Its index in the owner's container, or `single_index`.
-        index: usize,
-    };
-
-    const index_from = 16;
-
-    fn made(self: *const Rescues) bool {
-        return self.single_taken or self.next_index != 0;
-    }
-
-    pub fn contains(self: *const Rescues, node: *runtime.Instance, generation: u64) bool {
-        const items = self.entries.items;
-        if (items.len == 0) return false;
-        // Consecutive held nodes of one removal share their root.
-        const last = items[items.len - 1];
-        if (last.node == node and last.generation == generation) return true;
-        if (items.len > index_from) {
-            const found = self.index.get(node) orelse return false;
-            return found == generation;
-        }
-        for (items) |entry| {
-            if (entry.node == node and entry.generation == generation) return true;
-        }
-        return false;
-    }
-
-    fn append(self: *Rescues, allocator: Allocator, entry: Entry) void {
-        self.entries.appendAssumeCapacity(entry);
-        if (self.entries.items.len > index_from) {
-            if (self.entries.items.len == index_from + 1) {
-                self.reindex(allocator);
-            } else {
-                self.index.put(allocator, entry.node, entry.generation) catch {};
+            const parent = base.parent_node;
+            if (last) |previous| {
+                if (parent != null and (parent == previous.parent_node or parent == previous)) {
+                    last = base;
+                    continue;
+                }
             }
+            last = base;
+            wrapper_tracing.traceHeld(base, tracer);
         }
     }
-
-    fn reindex(self: *Rescues, allocator: Allocator) void {
-        self.index.clearRetainingCapacity();
-        if (self.entries.items.len <= index_from) return;
-        for (self.entries.items) |entry| self.index.put(allocator, entry.node, entry.generation) catch {};
-    }
-
-    pub fn deinit(self: *Rescues, allocator: Allocator) void {
-        self.entries.deinit(allocator);
-        self.index.deinit(allocator);
-    }
 };
-
-/// The dense array `owner` keeps in `slot`, OWNED: made on first use and
-/// published as a traced value, verified by reading it back while the
-/// constructor's hold still roots it.
-pub fn container(owner: *runtime.Instance, slot: engine.TracedSlot) !engine.Owned {
-    if (engine.tracedValue(owner, slot)) |existing| return existing;
-    const made = try engine.createSequenceOfValues(owner.ctx, &.{});
-    errdefer made.release();
-    engine.traceValue(owner, made.borrow(), slot);
-    const published = engine.tracedValue(owner, slot) orelse {
-        engine.forgetTracedChild(owner, slot);
-        return error.OutOfMemory;
-    };
-    defer published.release();
-    if (!engine.sameValue(owner.ctx, made.borrow(), published.borrow())) {
-        engine.forgetTracedChild(owner, slot);
-        return error.InvalidStateError;
-    }
-    return made;
-}
-
-/// Root `root`'s wrapper - made if it has none, in its relevant realm - at
-/// `index` of the container `owner` keeps in `slot`: a dense numeric own
-/// property, so no prototype setter runs. One engine step makes the wrapper
-/// and stores it.
-pub fn putRoot(owner: *runtime.Instance, slot: engine.TracedSlot, index: usize, root: *runtime.Instance) !void {
-    const array = try container(owner, slot);
-    defer array.release();
-    var buffer: [32]u8 = undefined;
-    const key = std.fmt.bufPrint(&buffer, "{d}", .{index}) catch unreachable;
-    try engine.defineOwnProperty(owner.ctx, array.borrow(), key, .{ .instance = root }, .{
-        .writable = true,
-        .enumerable = true,
-        .configurable = true,
-    });
-}
-
-/// Let the root at `index` of `owner`'s container in `slot` go.
-pub fn clearRoot(owner: *runtime.Instance, slot: engine.TracedSlot, index: usize) void {
-    const array = engine.tracedValue(owner, slot) orelse return;
-    defer array.release();
-    var buffer: [32]u8 = undefined;
-    const key = std.fmt.bufPrint(&buffer, "{d}", .{index}) catch unreachable;
-    engine.defineOwnProperty(owner.ctx, array.borrow(), key, .undefined, .{
-        .writable = true,
-        .enumerable = true,
-        .configurable = true,
-    }) catch {};
-}
-
-/// Whether `root` - the host-including root of a held node's tree - is kept
-/// by the host whatever its wrapper does: a Document with a default view
-/// (its window holds its wrapper strongly - wrapper_cache.engineHoldsWrapper
-/// - as Blink's LocalDOMWindow traces document_). The default is false: any
-/// other root is rescued.
-pub fn isKeptRoot(root: *NodeBase) bool {
-    if (root.node_type != NodeBase.DOCUMENT_NODE) return false;
-    const opaque_instance = instance_bridge.getInstance(root) orelse return false;
-    const document: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
-    const view = interfaces.Document.get_defaultView(document) catch return false;
-    return view != null;
-}
 
 /// The root of `node`'s host-including tree: the root of its tree, or - when
 /// that root is a fragment with a host (a template's contents, a shadow root)
@@ -1124,227 +846,4 @@ fn isShadowRoot(node: *NodeBase) bool {
     const opaque_instance = instance_bridge.getInstance(node) orelse return false;
     const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
     return instance.stateAs(interfaces.ShadowRoot.State) != null;
-}
-
-/// Roots of nodes visited in tree order: a node whose parent is the last
-/// node's parent, or the last node itself, shares its root.
-const RootMemo = struct {
-    last_node: ?*NodeBase = null,
-    last_parent: ?*NodeBase = null,
-    last_root: ?*NodeBase = null,
-
-    fn rootOf(self: *RootMemo, node: *NodeBase) *NodeBase {
-        const parent = node.parent_node;
-        const root = blk: {
-            if (self.last_root) |known| {
-                if (parent != null and (parent == self.last_parent or parent == self.last_node)) break :blk known;
-            }
-            break :blk hostIncludingRoot(node);
-        };
-        self.last_node = node;
-        self.last_parent = parent;
-        self.last_root = root;
-        return root;
-    }
-};
-
-// ============================================================================
-// Scanning holders
-// ============================================================================
-
-/// A holder whose held set changes too often to mark - a live parser's stack
-/// of open elements, which changes on every push and pop. The removing steps
-/// ask it on each removal root.
-pub const Scanner = struct {
-    context: *anyopaque,
-    /// Whether `root` - left parentless by a removal - is a host-including
-    /// inclusive ancestor of a node this holder holds. Reads only.
-    holds_node_under: *const fn (context: *anyopaque, root: *NodeBase) bool,
-    /// Rescue `root`. May make wrappers and run engine work.
-    rescue: *const fn (context: *anyopaque, root: *runtime.Instance) void,
-    /// Keep the holder alive across its rescue.
-    retain: *const fn (context: *anyopaque) void,
-    release: *const fn (context: *anyopaque) void,
-    /// The owner of the container its rescues share with other scanners
-    /// (a parser's Document), with its generation, and where this scanner
-    /// records one past the highest index it reserved there.
-    container_owner: *runtime.Instance,
-    container_generation: u64,
-    slot_end: *usize,
-};
-
-/// A Browser's scanning holders: a supplement of its scope
-/// (runtime.BrowserScope, docs/instances.md rule 2), reached through the
-/// realm of the node a removal detaches.
-///
-/// The DOM and its parsers live on the Browser's window agent thread: every
-/// registration, every walk and every rescue happens there. The mutex guards
-/// the list as a supplement must, and is never held across a rescue, which
-/// makes wrappers and may let the collector finalize objects.
-pub const Registry = struct {
-    allocator: Allocator,
-    mutex: std.Io.Mutex = .init,
-    scanners: std.ArrayListUnmanaged(Scanner) = .empty,
-
-    pub fn init(allocator: Allocator) Registry {
-        return .{ .allocator = allocator };
-    }
-
-    /// The scope's end. A scanner still registered outlives the Browser's
-    /// scope only by leaking.
-    pub fn deinit(self: *Registry) void {
-        self.scanners.deinit(self.allocator);
-    }
-
-    /// The registry of the Browser `realm` belongs to, made on first use;
-    /// null for a realm with no Browser scope (a test realm).
-    pub fn of(realm: runtime.Context) ?*Registry {
-        const scope = realm.browser_scope orelse return null;
-        return scope.of(Registry) catch null;
-    }
-
-    /// The registry of the Browser `realm` belongs to, if one was made.
-    pub fn existingOf(realm: runtime.Context) ?*Registry {
-        const scope = realm.browser_scope orelse return null;
-        return scope.existing(Registry);
-    }
-
-    pub fn register(self: *Registry, scanner: Scanner) Allocator.Error!void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        try self.scanners.append(self.allocator, scanner);
-    }
-
-    pub fn unregister(self: *Registry, context: *anyopaque) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.scanners.items, 0..) |registered, i| {
-            if (registered.context != context) continue;
-            _ = self.scanners.orderedRemove(i);
-            return;
-        }
-    }
-
-    /// Reserve the next index of the container `context`'s rescues share
-    /// with every registered scanner of the same container owner: one past
-    /// the highest any of them reserved. A scanner clears its slots before it
-    /// unregisters, so no live scanner's slot is ever reused. Reserved before
-    /// any engine allocation: a rescue that reenters cannot take the same
-    /// index.
-    pub fn reserveIndex(self: *Registry, context: *anyopaque) ?usize {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        const mine = for (self.scanners.items) |scanner| {
-            if (scanner.context == context) break scanner;
-        } else return null;
-        var next = mine.slot_end.*;
-        for (self.scanners.items) |other| {
-            if (other.container_owner != mine.container_owner or other.container_generation != mine.container_generation) continue;
-            next = @max(next, other.slot_end.*);
-        }
-        mine.slot_end.* = next + 1;
-        return next;
-    }
-
-    fn hasScanners(self: *Registry) bool {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        return self.scanners.items.len != 0;
-    }
-
-    /// The removing steps' question to every scanner: does `root` contain a
-    /// node you hold? Each that does rescues `root`. The walks only read; the
-    /// rescues run after the lock is released, each scanner retained across
-    /// its own.
-    fn rescueTreesContaining(self: *Registry, root: *runtime.Instance, root_base: *NodeBase) void {
-        var start: usize = 0;
-        while (true) {
-            var batch: [8]Scanner = undefined;
-            var count: usize = 0;
-            var done = true;
-            {
-                std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-                defer std.Io.Threaded.mutexUnlock(&self.mutex);
-                var i = start;
-                while (i < self.scanners.items.len) : (i += 1) {
-                    if (count == batch.len) {
-                        done = false;
-                        break;
-                    }
-                    const scanner = self.scanners.items[i];
-                    if (!scanner.holds_node_under(scanner.context, root_base)) continue;
-                    scanner.retain(scanner.context);
-                    batch[count] = scanner;
-                    count += 1;
-                }
-                start = i;
-            }
-            for (batch[0..count]) |scanner| {
-                scanner.rescue(scanner.context, root);
-                scanner.release(scanner.context);
-            }
-            if (done) return;
-        }
-    }
-};
-
-// ============================================================================
-// The removing steps
-// ============================================================================
-
-/// Installed once, at process start, by each owner of holds (NodeList,
-/// MutationRecord, the HTML parser; docs/instances.md "Hooks"). The callback
-/// list it joins is dom.mutation's own, which takes a function once.
-pub fn installHooks() void {
-    @import("mutation.zig").registerRemovingStepsCallback(onRemovingSteps) catch {};
-}
-
-/// DOM "removing steps", for the removal root (remove step 11) and each of
-/// its shadow-including descendants (step 14).
-fn onRemovingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
-    _ = old_parent;
-    if (node.holds != null) rescueForHolds(node);
-    // The scanners are asked about the removal root only: a descendant still
-    // has its parent; a shadow root, the other parentless node step 14
-    // visits, is inside the removed tree through its host.
-    if (node.parent_node != null) return;
-    if (isShadowRoot(node)) return;
-    const opaque_instance = instance_bridge.getInstance(node) orelse return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
-    const registry = Registry.existingOf(instance.ctx) orelse return;
-    if (!registry.hasScanners()) return;
-    registry.rescueTreesContaining(instance, node);
-}
-
-/// `node`, in a subtree a removal just detached, is held: every holder of it
-/// rescues the subtree's root. The chain is copied first, with each holder's
-/// owner generation, so a holder that engine work tears down during an
-/// earlier rescue is skipped rather than reached.
-fn rescueForHolds(node: *NodeBase) void {
-    const root = hostIncludingRoot(node);
-    if (isKeptRoot(root)) return;
-    const Entry = struct { holder: *Holder, owner: *runtime.Instance, generation: u64 };
-    var stack_entries: [16]Entry = undefined;
-    var heap_entries: std.ArrayListUnmanaged(Entry) = .empty;
-    const allocator = node.allocator();
-    defer heap_entries.deinit(allocator);
-    var count: usize = 0;
-    var current = node.holds;
-    while (current) |held| : (current = held.next) {
-        // A member hold's owner keeps the member's own wrapper: nothing to rescue.
-        const holder = held.holder orelse continue;
-        const entry: Entry = .{ .holder = holder, .owner = holder.owner, .generation = holder.owner_generation };
-        if (count < stack_entries.len) {
-            stack_entries[count] = entry;
-        } else {
-            if (count == stack_entries.len) heap_entries.appendSlice(allocator, &stack_entries) catch return;
-            heap_entries.append(allocator, entry) catch return;
-        }
-        count += 1;
-    }
-    const entries = if (count <= stack_entries.len) stack_entries[0..count] else heap_entries.items;
-    for (entries) |entry| {
-        if (runtime.SlabAllocator.generationOf(entry.owner) != entry.generation) continue;
-        _ = entry.holder.rescue(root);
-    }
 }

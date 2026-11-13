@@ -102,7 +102,9 @@ const Realm = struct {
     /// Wrap `instance` as the binding leaves an object script has seen.
     fn wrap(self: Realm, instance: *runtime.Instance) !void {
         runtime.instance_lifecycle.markWrapped(instance);
-        const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+        // A node's wrapper is an API object (P4: its anchor is Wrapped onto
+        // it).
+        const wrapper = test_process.nodeWrapperObject(test_isolate.?, test_context.?) orelse return error.ObjectFailed;
         _ = try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };
