@@ -3413,6 +3413,9 @@ struct IsolateData {
     /// tests/v8 (engine.diagnosticCounters).
     uint64_t node_anchors_freed = 0;
     uint64_t node_anchor_frees_deferred = 0;
+    /// What V8 was told of the pointer-table entries dropped wrappers left
+    /// behind, in bytes (v8_Debug_NodeWrapperTableBytes).
+    size_t table_bytes_reported = 0;
 #ifndef NDEBUG
     /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
     /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
@@ -4705,6 +4708,14 @@ extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
 
 /// The node wrappers V8 has dropped in `isolate`'s young-generation
 /// collections so far (NodeWrapperRootsHandler::ResetRoot).
+/// The bytes V8 holds now as external memory for the pointer-table entries
+/// of wrappers dropped since the last full collection began. 0 for a null
+/// isolate or one the adapter did not make.
+extern "C" uint64_t v8_Debug_NodeWrapperTableBytes(Isolate* isolate) {
+    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
+    return record ? record->table_bytes_reported : 0;
+}
+
 extern "C" uint64_t v8_test_NodeWrappers_Dropped(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
     return record ? record->node_wrappers_dropped : 0;

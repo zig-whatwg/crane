@@ -377,6 +377,96 @@ test "wr11: a free refused while the C++ heap swept is made once the pump has ru
     page.fullGC();
 }
 
+/// What a full collection's end saw of the table-entry figure.
+const TableAtEpilogue = struct {
+    isolate: *ffi.Isolate,
+    seen: usize = 0,
+    bytes: u64 = std.math.maxInt(u64),
+
+    fn onEpilogue(data: ?*anyopaque) callconv(.c) void {
+        const self: *TableAtEpilogue = @ptrCast(@alignCast(data.?));
+        self.seen += 1;
+        self.bytes = ffi.v8_Debug_NodeWrapperTableBytes(self.isolate);
+    }
+};
+
+test "wr11: V8 is told of the pointer-table entry each dropped wrapper leaves, and a full collection takes the figure back before it ends" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    try testing.expectEqual(@as(i64, 0), try counter(page, "node_wrapper_table_bytes"));
+    const dropped_before = page.dropped();
+
+    // 5,000 wrappers made and let go, dropped by young-generation
+    // collections: each leaves its 8-byte CppHeapPointerTable entry until a
+    // full collection sweeps the table, and V8 counts the table toward no
+    // limit of its own. The agent's drain reports them.
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(5000); }");
+    try page.minorGC(2);
+    const dropped = page.dropped() - dropped_before;
+    try testing.expect(dropped >= 4990);
+    try testing.expectEqual(@as(i64, @intCast(dropped * 8)), try counter(page, "node_wrapper_table_bytes"));
+
+    // A second batch adds to the figure.
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(3000); }");
+    try page.minorGC(2);
+    const dropped_twice = page.dropped() - dropped_before;
+    try testing.expect(dropped_twice >= dropped + 2990);
+    try testing.expectEqual(@as(i64, @intCast(dropped_twice * 8)), try counter(page, "node_wrapper_table_bytes"));
+
+    // A full collection sweeps the table. The figure is taken back as that
+    // collection BEGINS - V8 sets its next limit before its epilogue, from
+    // what it is told then - so the collection's own end already reads 0.
+    var at_end: TableAtEpilogue = .{ .isolate = page.isolate() };
+    const probe = ffi.v8_test_FullGCEpilogueProbe_New(page.isolate(), &TableAtEpilogue.onEpilogue, &at_end);
+    defer ffi.v8_test_FullGCEpilogueProbe_Delete(probe);
+    page.fullGC();
+    try testing.expect(at_end.seen >= 1);
+    try testing.expectEqual(@as(u64, 0), at_end.bytes);
+    try testing.expectEqual(@as(i64, 0), try counter(page, "node_wrapper_table_bytes"));
+
+    // And the count starts again from there.
+    const dropped_at_full = page.dropped();
+    try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(1000); }");
+    try page.minorGC(2);
+    try testing.expect(page.dropped() - dropped_at_full >= 990);
+    try testing.expectEqual(@as(i64, @intCast((page.dropped() - dropped_at_full) * 8)), try counter(page, "node_wrapper_table_bytes"));
+}
+
+test "wr11: wrapper churn alone makes V8 run a full collection - the entries dropped wrappers leave are counted toward its limit" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const page = try Page.open(&queue);
+    defer page.close();
+    try page.run("globalThis.d = new Document();");
+    page.fullGC();
+    const fulls = try counter(page, "full_gc_count");
+    const dropped_before = page.dropped();
+
+    // Nothing but elements made and dropped: no script object survives, the
+    // anchors are freed after each young collection, the nodes by the
+    // counts. What grows is V8's pointer table, 8 bytes a wrapper, swept by
+    // full collections only. Reported, it reaches V8's global limit (at
+    // least 8 MB above what the last collection left: 1,048,576 wrappers)
+    // and V8 starts a marking cycle, which its tasks - the pump - finish.
+    // Unreported, the same loop ran 8,000,000 wrappers before a full
+    // collection came (gc_bench, lane wr1 b11).
+    var batches: usize = 0;
+    while (batches < 60 and try counter(page, "full_gc_count") == fulls) : (batches += 1) {
+        try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(50000); }");
+        page.pump();
+        queue.drainAll();
+    }
+    const dropped = page.dropped() - dropped_before;
+    std.debug.print("wr11 fact: V8's own full collection came after {d} dropped wrappers ({d} batches of 50,000)\n", .{ dropped, batches });
+    try testing.expect(try counter(page, "full_gc_count") > fulls);
+    try testing.expect(dropped <= 2_500_000);
+    page.fullGC();
+}
+
 test "wr8 b8: a node whose wrapper was dropped is wrapped again with a fresh anchor, and each anchor is freed exactly once" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();

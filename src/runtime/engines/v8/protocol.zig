@@ -1124,6 +1124,10 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   asked the host about (the wrapper redesign's P5, node_wrappers.zig "The
 ///   walk") - and the walk oracle's findings (-Dv8-wrapper-trace-check; 0 in
 ///   every other build), cumulative; 0 with no isolate current;
+/// - `node_wrapper_table_bytes`: what the current isolate's V8 is told, as
+///   external memory, of the pointer-table entries left by node wrappers
+///   dropped since its last full collection began (v8_wrapper.cpp
+///   `reportDroppedTableEntries`); 0 with no isolate current;
 /// - `node_anchors_registered`: the current isolate's node anchors in its
 ///   registry - those whose wrapper may still live - now;
 /// - `node_anchors_dropped_waiting`, `node_anchors_freed`,
@@ -1188,6 +1192,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "wrapper_trace_check_failures", .value = @intCast(walk_counts.check_failures) },
         .{ .name = "node_anchors_registered", .value = @intCast(anchors.registered) },
         .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
+        .{ .name = "node_wrapper_table_bytes", .value = @intCast(ffi.v8_Debug_NodeWrapperTableBytes(ffi.v8_Isolate_GetCurrent())) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
         .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
         .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },

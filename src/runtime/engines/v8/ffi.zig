@@ -1030,6 +1030,12 @@ pub const NodeAnchorStats = extern struct {
 /// All 0 for a null isolate or one the adapter did not make. On the
 /// isolate's thread.
 pub extern fn v8_Debug_NodeAnchorStats(isolate: ?*Isolate, out: *NodeAnchorStats) void;
+/// The bytes V8 holds as external memory for the CppHeapPointerTable entries
+/// of node wrappers dropped since the last full collection began: 8 a
+/// wrapper, reported at the agent's drain and taken back in a full
+/// collection's prologue (v8_wrapper.cpp `reportDroppedTableEntries`). 0 for
+/// a null isolate or one the adapter did not make.
+pub extern fn v8_Debug_NodeWrapperTableBytes(isolate: ?*Isolate) u64;
 /// Bytes of V8's global handle table in use - every live `Global<T>`, counted
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
