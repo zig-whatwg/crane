@@ -10,9 +10,11 @@
 //! script_wrappable.h). A wrapper V8's marker reaches keeps its anchor, whose
 //! Trace keeps the slot; a dead anchor's slot is emptied in the collection's
 //! atomic pause (the registry's weak callback), and its counted reference is
-//! released after the collection: a posted foreground task, or a requested
-//! collection's end - V8's own model for what weak processing leaves (13.1
-//! GlobalHandles::PostGarbageCollectionProcessing).
+//! released after the collection, at the agent's next safe point: a
+//! binding's return into script, the pump, a requested collection's end
+//! (lane v8up's finalizer queue, which the collection itself owes the
+//! releases to since lane wr1 b11; until then they waited where V8 runs a
+//! second pass - a posted task, or the next collection's start).
 //!
 //! The collections are V8's own (LowMemoryNotification through the FFI). The
 //! file shares tests/v8's process: it starts the engine as any file may and
@@ -459,76 +461,72 @@ test "a node anchor is 32 bytes of its agent's C++ heap, and a node wrapper keep
     try testing.expectEqual(wrappers_before, try counter("node_wrappers"));
 }
 
-test "an agent that ends with a drain task pending: the task never runs, and the agent's end releases what it would have" {
+test "an agent that ends with a collection's releases still owed: its end releases what the safe point would have" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
-    var runs: u32 = 0;
-    var drops: u32 = 0;
     var watched: Watched = undefined;
     {
         const page = try Page.open(&queue);
         defer page.close();
-        ffi.v8_test_NodeWrappers_ObserveDrainTasks(page.isolate(), &runs, &drops);
         const made = try detachedDiv(page);
         watched = made.div;
         try page.run("globalThis.x = null;");
-        // A full collection no one requested (script allocating, as any
-        // page's does) posts the drain of what it found dead: its releases
-        // wait for that task - or for the next collection's start.
-        var rounds: usize = 0;
-        while (rounds < 60 and !ffi.v8_test_NodeWrappers_DrainPosted(page.isolate())) : (rounds += 1) {
-            try page.run("{ const junk = []; for (let i = 0; i < 40000; i++) junk.push({ i, s: 'x' + i }); }");
+        // A full collection with no safe point after it - as one V8 runs by
+        // itself in the middle of a script: the slot is emptied in its
+        // pause, and the wrapper's reference waits for the agent's next safe
+        // point.
+        {
+            const isolate = page.isolate();
+            ffi.v8_Isolate_Enter(isolate);
+            defer ffi.v8_Isolate_Exit(isolate);
+            ffi.v8_test_Isolate_CollectWithoutDrain(isolate);
         }
-        try testing.expect(ffi.v8_test_NodeWrappers_DrainPosted(page.isolate()));
         try testing.expect(runtime.lifetime.slotOf(made.node).isEmpty());
-        // The page ends with it still posted (nothing pumped its tasks).
+        try testing.expect(made.div.alive());
+        try testing.expectEqual(@as(u32, 1), dom.refcount.count(made.node));
+        try testing.expect(queue.isEmpty());
+        // The page ends with it still owed: no script ran, nothing pumped.
     }
     // The realm's and the agent's ends released the reference and freed the
-    // tree; the task was dropped with the isolate's runner, never run.
+    // tree.
     try testing.expect(!watched.alive());
     try testing.expect(queue.isEmpty());
-    // Run or dropped exactly once - and a run comes only before the
-    // isolate's runner closes (a closed runner's task never runs: it is
-    // dropped), so none ran after Isolate::Dispose.
-    try testing.expectEqual(@as(u32, 1), runs + drops);
 }
 
-test "wrappers dropped with no requested collection are released by the drain task the event loop's pumping runs" {
+test "wrappers a collection of V8's own found dead are released at the next binding's return into script: no task, no pump, no later collection" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
-    var runs: u32 = 0;
-    var drops: u32 = 0;
     const page = try Page.open(&queue);
     defer page.close();
-    ffi.v8_test_NodeWrappers_ObserveDrainTasks(page.isolate(), &runs, &drops);
     try page.run("globalThis.d = new Document();");
-    queue.drainAll();
-    const collections = try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count");
-    const queued = queue.queued_total;
-    // wrapper-churn-nogc's shape: elements made and dropped at once, script
-    // allocating until V8 runs a collection of its own. Since P8 that is a
-    // scavenge, which drops the unmodified wrappers and posts the drain;
-    // until lane wr1 batch 8 the anchors those wrappers left waited on the C++
-    // heap and grew it until V8 ran a full collection, which this loop waited
-    // for - their free after the scavenge took that growth away.
-    var rounds: usize = 0;
-    while (rounds < 40 and try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count") == collections) : (rounds += 1) {
-        try page.run("{ for (let i = 0; i < 20000; i++) d.createElement('div'); const junk = []; for (let i = 0; i < 20000; i++) junk.push({ i, s: 'x' + i }); }");
-    }
-    try testing.expect(try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count") > collections);
-    // A collection dropped wrappers or found dead anchors and posted the
-    // drain (nothing has run it unless the scripts' own turns pumped the
-    // agent's tasks).
-    try testing.expect(runs >= 1 or ffi.v8_test_NodeWrappers_DrainPosted(page.isolate()));
-    // The event loop's pumping of the agent's platform tasks runs it: the
-    // released references made the dropped elements garbage, queued.
     const isolate = page.isolate();
-    ffi.v8_Isolate_Enter(isolate);
-    while (ffi.v8_Platform_PumpMessageLoop(isolate)) {}
-    ffi.v8_Isolate_Exit(isolate);
-    try testing.expect(runs >= 1);
-    try testing.expect(!ffi.v8_test_NodeWrappers_DrainPosted(page.isolate()));
-    try testing.expect(queue.queued_total > queued);
+    // wrapper-churn-nogc's shape: elements made and dropped at once, script
+    // allocating until V8 runs a collection of its own - since P8 a
+    // scavenge, which drops the unmodified wrappers. Looked for: a script in
+    // which exactly ONE collection ran. (Until lane wr1 b11 its releases
+    // waited for a posted task or for the next collection's start, so a
+    // script with two collections released the first one's either way.)
+    var proved = false;
+    var rounds: usize = 0;
+    while (rounds < 80 and !proved) : (rounds += 1) {
+        // From a settled agent: nothing owed, nothing queued.
+        ffi.v8_Isolate_Enter(isolate);
+        while (ffi.v8_Platform_PumpMessageLoop(isolate)) {}
+        ffi.v8_Isolate_Exit(isolate);
+        queue.drainAll();
+        const collections = try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count");
+        const queued = queue.queued_total;
+        try page.run("{ for (let i = 0; i < 20000; i++) d.createElement('div'); const junk = []; for (let i = 0; i < 20000; i++) junk.push({ i, s: 'x' + i }); }");
+        if (try counterOf(page, "full_gc_count") + try counterOf(page, "minor_gc_count") != collections + 1) continue;
+        // One more binding call returns into script: the agent's safe
+        // point. No platform task has run since the collection and no other
+        // collection has begun.
+        try page.run("d.nodeType;");
+        // The released references made the dropped elements garbage: queued.
+        try testing.expect(queue.queued_total > queued);
+        proved = true;
+    }
+    try testing.expect(proved);
     queue.drainAll();
 }
 
