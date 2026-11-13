@@ -1,0 +1,15 @@
+# Architecture: A walk over memory with no write barrier must run in the collector's atomic pause - pin the marking type and check it where the walk runs
+
+**Date**: 2026-11-09
+**Lesson**: A Trace method that walks host memory the collector cannot see changing (Crane's node trees: no write barrier) is correct only if it runs after the last mutation of the cycle, which for cppgc means only in the atomic pause - and that is a property of the heap's marking type, not of the Trace method.
+
+**Why**: cppgc calls an object's Trace once, whenever its marker pops the object from a worklist: in incremental steps on the main thread, on concurrent marker threads, or in the atomic pause. A walk run in an incremental step sees the tree as it was then; a subtree appended or moved afterwards is never walked (the object is already marked, so it is never traced again), and with no write barrier on the tree nothing tells the marker. In V8 13.1.203 C++ marking is atomic only because Crane passes `CppHeapCreateParams.marking_support = kAtomic`: `CppHeap::UpdateGCCapabilitiesFromFlags` only lowers it (std::min), and 13.1's `DEFINE_WEAK_IMPLICATION(incremental_marking, cppheap_incremental_marking)` turns the flag ON by default - a heap made with the default `kIncrementalAndConcurrent` would trace incrementally. With kAtomic, `IncrementalMarking::EmbedderStep` returns at once and V8's own markers (steps, concurrent threads, the Object::Wrap write barrier) only `MarkAndPush`, so every anchor marked in the cycle is traced once, in the pause.
+
+**What Happened**: The wrapper redesign's P5 put the tree walk in NodeAnchor::Trace. The integrator asked how an anchor traced outside the pause gets its tree walked; reading cpp-heap.cc, marker.cc, incremental-marking.cc and concurrent-marking.cc at 13.1.203 showed it never is traced outside the pause - but only because of the explicit kAtomic, which nothing pinned. Two tests (tests/v8/wrapper_walk_test.zig (a) and (b)) start V8's incremental marking (a moderate memory-pressure notification), append or move a wrapped subtree while `cppgc::subtle::HeapState::IsMarking` holds, finish the collection and check every expando: green with the walk alone. A third pins the heap's marking type.
+
+**Fix**:
+1. Make the marking type explicit where the heap is made (`agentCppHeapParams`) and pin it with a test.
+2. Where the walk runs, check `HeapState::IsMarking` and `IsInAtomicPause` on the object's own heap (`cppgc::internal::BasePageHandle::FromPayload(this)->heap_handle()`): not marking (a heap snapshot's graph builder) walks nothing; marking outside the pause aborts with a message - a V8 upgrade that changes the scheduling fails loudly, never silently.
+3. Write the source lines the guarantee rests on beside the check, so an upgrade knows what to re-read.
+
+**Takeaway**: **A Trace that reads unbarriered state is correct only in the atomic pause: make the heap's marking type explicit, pin it with a test, and check the pause where the Trace runs - never assume the collector's default scheduling.**

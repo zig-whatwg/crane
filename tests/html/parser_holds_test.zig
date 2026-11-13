@@ -1,10 +1,12 @@
 //! The live parser holds the nodes its own structures name - the stack of
-//! open elements, the head and form element pointers - natively, with no
-//! wrapper per node (tmp/plans/parser-holds-design.md 5.1). When script
-//! detaches a tree that contains one of them, the parser rescues that tree's
-//! ROOT: it roots that one wrapper from a fixed, collectible member of its
-//! Document until it ends (5.3). Blink traces the same structures
-//! (HTMLConstructionSite::Trace); WebKit's stack records own their nodes.
+//! open elements, the head and form element pointers, the formatting list -
+//! natively, with no wrapper per node (tmp/plans/parser-holds-design.md
+//! 5.1), each counted. When script detaches a tree that contains one of
+//! them, nothing is rooted for it: since the wrapper redesign's P6 its
+//! Document traces the parser's held nodes and their trees (the rescue that
+//! rooted the detached tree's root from a Document member is gone). Blink
+//! traces the same structures (HTMLConstructionSite::Trace); WebKit's stack
+//! records own their nodes.
 //!
 //! Each test runs a real Browser on a thread of its own: tests/html is one
 //! executable, and a Browser's agent belongs to the thread that made it.
@@ -103,22 +105,20 @@ test "a parsed node no script touched has no wrapper" {
     try onFreshThread(untouchedNodesStayUnwrapped);
 }
 
-fn detachedHeldTreeIsRescuedByItsRoot() !void {
+fn detachedHeldTreeIsKept() !void {
     const browser = try openBrowser();
     defer browser.deinit();
     const page = browser.current_context.?;
     try page.runScript("document.open(); document.write('<!doctype html><body><div id=a><p id=b><span id=c>')");
     const document = page.document_instance orelse return error.NoDocument;
-    const parser = try activeParser(document);
+    _ = try activeParser(document);
     const a = Saved.of(try byId(document, "a"));
     const b = Saved.of(try byId(document, "b"));
     const c = Saved.of(try byId(document, "c"));
-    try testing.expectEqual(@as(usize, 0), parser.rescues.items.len);
     // Replace all removes #a without script ever seeing it.
     try page.runScript("document.body.innerHTML = ''");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
-    try testing.expect(engine.hasWrapper(a.node));
-    // The root's wrapper alone keeps the tree: no wrapper below it.
+    // Nothing is wrapped for it: the parser's counted holds keep the tree.
+    try testing.expect(!engine.hasWrapper(a.node));
     try testing.expect(!engine.hasWrapper(b.node));
     try testing.expect(!engine.hasWrapper(c.node));
     try collect(browser);
@@ -135,36 +135,38 @@ fn detachedHeldTreeIsRescuedByItsRoot() !void {
     try testing.expect(!a.alive());
 }
 
-test "a held subtree script detaches is rescued through its root alone, until the parser ends" {
-    try onFreshThread(detachedHeldTreeIsRescuedByItsRoot);
+test "a held subtree script detaches is kept, unwrapped, until the parser ends" {
+    try onFreshThread(detachedHeldTreeIsKept);
 }
 
-fn removalsOfUnheldNodesRescueNothing() !void {
+fn removalsRootNothing() !void {
     const browser = try openBrowser();
     defer browser.deinit();
     const page = browser.current_context.?;
     try page.runScript("document.open(); document.write('<!doctype html><body><p id=done>closed</p><div id=open>')");
     const document = page.document_instance orelse return error.NoDocument;
-    const parser = try activeParser(document);
-    // A popped element and a node the parser never made.
+    const open = Saved.of(try byId(document, "open"));
+    // A popped element, a node the parser never made, and - by replace all,
+    // unseen by script - an element the parser holds.
     try page.runScript(
         \\document.getElementById('done').remove();
         \\document.body.appendChild(document.createElement('i')).remove();
+        \\document.body.innerHTML = '';
     );
-    try testing.expectEqual(@as(usize, 0), parser.rescues.items.len);
-    try page.runScript("window.stash = document.getElementById('open'); stash.remove()");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
-    // The same root detached again is already rescued.
-    try page.runScript("document.body.appendChild(stash); stash.remove()");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
-    // One fixed Document member holds the parser's rescued roots.
-    const kept = engine.tracedValue(document, .{ .name = "document-parser:kept-roots" }) orelse return error.NoKeptRoots;
-    kept.release();
+    // No wrapper is made for the held element, and no Document member
+    // roots anything (the parsers' kept-roots array went with the rescue).
+    try testing.expect(!engine.hasWrapper(open.node));
+    if (engine.tracedValue(document, .{ .name = "document-parser:kept-roots" })) |kept| {
+        kept.release();
+        return error.KeptRootsMade;
+    }
+    try collect(browser);
+    try testing.expect(open.alive());
     try page.runScript("document.close()");
 }
 
-test "removing nodes the parser does not hold rescues nothing, and a root is rescued once" {
-    try onFreshThread(removalsOfUnheldNodesRescueNothing);
+test "removing nodes the parser holds, or does not, roots nothing and wraps nothing" {
+    try onFreshThread(removalsRootNothing);
 }
 
 fn templateOnTheStack() !void {
@@ -173,13 +175,11 @@ fn templateOnTheStack() !void {
     const page = browser.current_context.?;
     try page.runScript("document.open(); document.write('<!doctype html><body><template id=t><div id=in>')");
     const document = page.document_instance orelse return error.NoDocument;
-    const parser = try activeParser(document);
     const template = Saved.of(try byId(document, "t"));
     // The held div is in the template's contents: its host-including
     // ancestor is the template that replace all removes.
     try page.runScript("document.body.innerHTML = ''");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
-    try testing.expect(engine.hasWrapper(template.node));
+    try testing.expect(!engine.hasWrapper(template.node));
     try collect(browser);
     try testing.expect(template.alive());
     try page.runScript("document.write('<span id=s></span></div></template>'); document.close()");
@@ -197,11 +197,9 @@ fn headElementPointer() !void {
     const page = browser.current_context.?;
     try page.runScript("document.open(); document.write('<!doctype html><head><title>x</title></head>')");
     const document = page.document_instance orelse return error.NoDocument;
-    const parser = try activeParser(document);
     const head = Saved.of((try interfaces.Document.get_head(document)) orelse return error.NoHead);
     // The head is popped; only the head element pointer holds it.
     try page.runScript("document.documentElement.innerHTML = ''");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
     try collect(browser);
     try testing.expect(head.alive());
     // "After head": a meta goes into the head element pointer's element.
@@ -217,7 +215,7 @@ test "the head element pointer holds a popped head that script removes" {
     try onFreshThread(headElementPointer);
 }
 
-fn frameRemovedWithRescuedRoot() !void {
+fn frameRemovedWithDetachedHeldTree() !void {
     const browser = try openPage("<!doctype html><body><iframe id=f></iframe></body>", "http://example.test/holds");
     defer browser.deinit();
     const page = browser.current_context.?;
@@ -231,17 +229,16 @@ fn frameRemovedWithRescuedRoot() !void {
     const parent = page.document_instance orelse return error.NoDocument;
     const frame = try byId(parent, "f");
     const child = (try interfaces.HTMLIFrameElement.get_contentDocument(frame)) orelse return error.NoFrameDocument;
-    const parser = try activeParser(child);
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
-    // The frame's realm ends with a suspended parser and a rescued root: its
-    // list is freed without engine calls, and std.testing.allocator sees no leak.
+    _ = try activeParser(child);
+    // The frame's realm ends with a suspended parser holding a detached
+    // tree: std.testing.allocator sees no leak.
     try page.runScript("document.getElementById('f').remove()");
     _ = try browser.runEventLoopBlocking(20);
     try collect(browser);
 }
 
-test "a removed frame's suspended parser frees its rescued roots without a leak" {
-    try onFreshThread(frameRemovedWithRescuedRoot);
+test "a removed frame's suspended parser holding a detached tree ends without a leak" {
+    try onFreshThread(frameRemovedWithDetachedHeldTree);
 }
 
 const DiscardedOnStack = struct {
@@ -249,7 +246,6 @@ const DiscardedOnStack = struct {
     parser: *scripted_parser.DocumentParser,
     held: [2]Saved,
     calls: usize = 0,
-    rescues_seen: usize = 0,
     alive_after_collection: bool = false,
 
     fn steps(data: ?*anyopaque, _: []const runtime.JSValue) runtime.EngineError!runtime.JSValue {
@@ -259,7 +255,6 @@ const DiscardedOnStack = struct {
         // its tree; the parser is still on the native stack, unreleased.
         engine.requestGarbageCollection(self.browser.getAgent().?);
         engine.requestGarbageCollection(self.browser.getAgent().?);
-        self.rescues_seen = self.parser.rescues.items.len;
         self.alive_after_collection = self.held[0].alive() and self.held[1].alive();
         return .undefined;
     }
@@ -282,7 +277,8 @@ fn discardedParserOnTheStackStillHolds() !void {
     // A reaction to the parser's own insertion opens the document: the
     // writing parser is discarded while its write still runs it. It keeps
     // its stack - and so its holds - until it is released (design 5.6), and
-    // the removing steps of the open's replace all still ask it.
+    // its Document traces it while it is on the stack (the wrapper
+    // redesign's P6: DocumentParser.on_stack).
     try page.runScript(
         \\customElements.define('x-open', class extends HTMLElement {
         \\  connectedCallback() {
@@ -295,7 +291,6 @@ fn discardedParserOnTheStackStillHolds() !void {
         \\document.write('<x-open></x-open><b id=after>after</b>');
     );
     try testing.expectEqual(@as(usize, 1), probe.calls);
-    try testing.expectEqual(@as(usize, 1), probe.rescues_seen);
     try testing.expect(probe.alive_after_collection);
     // The write returned and released the old parser: its tree is garbage.
     try collect(browser);
@@ -378,7 +373,7 @@ test "a creation that ran script keeps its wrapper check and pending hold; one t
     try onFreshThread(creationsThatRanScriptAreChecked);
 }
 
-fn retainedDestroyedDocumentRescues() !void {
+fn retainedDestroyedDocumentKeeps() !void {
     const browser = try openBrowser();
     defer browser.deinit();
     const page = browser.current_context.?;
@@ -388,10 +383,9 @@ fn retainedDestroyedDocumentRescues() !void {
     // A document whose navigable is gone can still be opened and parsed.
     dom.document_lifecycle.destroy(document);
     try page.runScript("retired.open(); retired.write('<!doctype html><body><div id=a><span id=s>')");
-    const parser = try activeParser(document);
+    _ = try activeParser(document);
     const span = Saved.of(try byId(document, "s"));
     try page.runScript("retired.body.innerHTML = ''");
-    try testing.expectEqual(@as(usize, 1), parser.rescues.items.len);
     try collect(browser);
     try testing.expect(span.alive());
     try page.runScript("retired.write('kept</span></div>'); retired.close()");
@@ -400,6 +394,6 @@ fn retainedDestroyedDocumentRescues() !void {
     try testing.expectEqualStrings("kept", text);
 }
 
-test "a retained document whose navigable was destroyed still rescues what its new parser holds" {
-    try onFreshThread(retainedDestroyedDocumentRescues);
+test "a retained document whose navigable was destroyed still keeps what its new parser holds" {
+    try onFreshThread(retainedDestroyedDocumentKeeps);
 }

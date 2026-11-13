@@ -10,7 +10,7 @@
 //! wrapper redesign's P2 in every agent: the V8 adapter frees no node, and
 //! gives an agent made without a queue (a test's own) one of its own. One
 //! free is still made whatever the counts say, and the holders' nets
-//! (generation checks, `node_holds.nodeReleased`) stay for it: a FORCED realm
+//! (generation and teardown-begun checks, `node_holds.Hold`) stay for it: a FORCED realm
 //! end's coordinated teardown (7a keeps it as the net: a page's end, a
 //! removed iframe, a back/forward cache eviction, the Browser's end). Lane wr1
 //! batch 2: tests/v8/wr1_counted_hold_test.zig, node_wrapper_inline_test.zig.
@@ -62,6 +62,7 @@ const shadow_hosts = @import("shadow_hosts.zig");
 const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
 const refcount_teardown = @import("refcount_teardown.zig");
+const wrapper_tracing = @import("wrapper_tracing.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -297,6 +298,13 @@ fn hostOf(node: *NodeBase) ?*NodeBase {
     const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
     const host = template_contents.host(instance) orelse return null;
     return instance_bridge.getNodeBaseUnaudited(host);
+}
+
+/// `node`'s host-including parent - its parent, else the live host of a
+/// shadow root or a template's contents (`hosted`), else null: the climb of
+/// dom.wrapper_tracing's walk, read-only and allocation-free.
+pub fn hostIncludingParent(node: *NodeBase) ?*NodeBase {
+    return up(null, node);
 }
 
 /// The root of `node`'s host-including tree.
@@ -578,7 +586,15 @@ pub fn install(owned: Hooks) void {
     // Through install even when nothing changes: the slot refuses a write
     // outside the process start either way.
     hooks.install(merged(current, owned) orelse current);
-    runtime.lifetime.install(.{ .acquire = wrapperAcquire, .release = wrapperRelease, .slot_of = wrapperSlotOf });
+    runtime.lifetime.install(.{
+        .acquire = wrapperAcquire,
+        .release = wrapperRelease,
+        .slot_of = wrapperSlotOf,
+        .target_of_slot = wrapperTargetOfSlot,
+        // The wrapper redesign's P5: the walk the engine's collector runs
+        // from a reachable or kept node (dom.wrapper_tracing).
+        .trace_tree = wrapper_tracing.traceTree,
+    });
 }
 
 /// `current` with `owned`'s non-null entries, or null when that changes
@@ -650,6 +666,14 @@ pub fn wrapperRelease(target: *anyopaque) void {
 pub fn wrapperSlotOf(target: *anyopaque) *engine.NodeWrapperSlot {
     const node: *NodeBase = @ptrCast(@alignCast(target));
     return &node.wrapper;
+}
+
+/// runtime.lifetime's targetOfSlot hook: the node whose wrapper slot `slot`
+/// is - `wrapperSlotOf`'s inverse (the wrapper redesign's P4: V8's node
+/// anchor holds the slot, tmp/redesign/wrapper-redesign-design.md 4.1).
+pub fn wrapperTargetOfSlot(slot: *engine.NodeWrapperSlot) *anyopaque {
+    const node: *NodeBase = @fieldParentPtr("wrapper", slot);
+    return node;
 }
 
 /// A wrapper's reference on `node` (`ref` without a ledger): a count going

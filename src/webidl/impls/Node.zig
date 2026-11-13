@@ -106,7 +106,8 @@ pub const InternalState = struct {
     /// Document nodes return null from ownerDocument getter
     owner_document: ?*runtime.Instance = null,
     /// `owner_document`'s slab generation when it was set: the net under the
-    /// rule that a node keeps its document (dom.node_document.traced_slot).
+    /// rule that a node keeps its document (its referencing-node count, and
+    /// for its wrappers the walk's D6 rule, dom.wrapper_tracing).
     /// A document freed under a node that names it - a hole in that rule -
     /// reads as an error and a log line, never as the freed object.
     owner_document_generation: u64 = 0,
@@ -175,11 +176,18 @@ fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
 
 /// runtime.orphan_roots' check, for a recorded root whose generation and
 /// cleanup flags still name it: still parentless, and still reached by no
-/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]).
+/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]) -
+/// nor any node of its tree. Since the wrapper redesign's P7 a wrap reaches
+/// no ancestor, so a node of the tree can be wrapped under an unwrapped
+/// root: its wrapper's reference holds the tree, and the counts (refcount
+/// step 7) free it once that wrapper goes. Only a wrapper refuses: a tree
+/// held by holders' counts alone is freed here as before P7 (dom.mutation
+/// orphanRemoved says why; refcount step 7b owns that drain).
 fn stillOrphan(instance: *runtime.Instance) bool {
     const internal = Registry.get(instance) orelse return false;
     const node_base = internal.node_base orelse return false;
     if (node_base.parent_node != null or !node_base.wrapper.isEmpty()) return false;
+    if (dom_module.wrapper_tracing.holdsWrapper(node_base)) return false;
     return runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance);
 }
 
@@ -1922,7 +1930,6 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
             }
         }
         if (doc != previous) {
-            keepNodeDocument(instance, internal.node_type, base, doc);
             // The node's reference - and, a detached root, its holds - move
             // to the new document's counts (refcount design 1.5, D6).
             dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
@@ -1959,34 +1966,6 @@ fn releaseDocumentCounts(internal: *InternalState, base: *NodeBase) void {
         if (dom_module.refcount.diagnosticsOn()) refcount_log.warn("a node outlived its node document's storage (node type {d})", .{base.node_type});
     }
     dom_module.refcount.nodeFreed(base, counts);
-}
-
-/// A node keeps its node document alive for as long as the node lives
-/// (dom.node_document.traced_slot): a wrapped root's upward edge, which the
-/// engine adapter's node tracing points at the document, is redrawn here when
-/// adopt changes the root's document, and REPLACES the old target, so the node
-/// lets its old document go. Adopt removes a node from its parent first, so
-/// the adopted node is a root here; its wrapped descendants keep their
-/// parents, whose chain reaches it. Blink moves the traced tree scope
-/// (TreeScopeAdopter); WebKit moves the node's count from the old document
-/// to the new (Node::moveTreeToNewScope,
-/// Document::decrementReferencingNodeCount).
-///
-/// A node script has not seen draws nothing - never engine.traceChild for an
-/// unwrapped owner, which would hold the document strongly until a wrapper
-/// that may never come (every node a parser makes): its wrapper, when made,
-/// points at the document it has then. The pointer test comes first, so a
-/// node being created pays one field read (refcount design 2.2).
-fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase, doc: ?*runtime.Instance) void {
-    // A node in a tree reaches its document through its parent: the slot
-    // holds the parent there (node tracing), and a root's holds its document.
-    if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
-    if (base.wrapper.isEmpty() or !engine.hasWrapper(instance)) return;
-    if (doc) |document| {
-        engine.traceChild(instance, document, dom_module.node_document.traced_slot);
-    } else {
-        engine.forgetTracedChild(instance, dom_module.node_document.traced_slot);
-    }
 }
 
 /// Get the node type
@@ -2103,16 +2082,32 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 ///    (dom.observer_registrations.releaseList), while the bridge still names
 ///    the node;
 /// 2. the rare data that held them goes, an owned node name with it;
-/// 3. every hold on the node is emptied (dom.node_holds.nodeReleased: the
-///    slab generation can outlive the NodeBase);
+/// 3. its teardown is marked begun (instance_lifecycle.markCleanupStarted,
+///    which Node.deinit made already; the final sweep's release makes it
+///    here): the slab generation can outlive the NodeBase, and a hold on
+///    the node (dom.node_holds) reads it as gone from here and forgets its
+///    reference - the redesign's P6 deleted the per-node chain of holds;
 /// 4. the node document's counts let it go (not in the final sweep, whose
 ///    documents go in no order);
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
 ///    here - and the NodeBase is freed.
+///
+/// Before any of it, in a Debug build: the node's wrapper slot is empty. No
+/// node is released while its engine wrapper is bound - an engine's
+/// reference to the slot (V8's node anchor, `slot_`) would outlive the bytes
+/// it names (tmp/redesign/wrapper-redesign-design.md 4.9 "Browser end": "a
+/// Debug check in the batch free asserts every slot is empty"; risk 8 of
+/// tmp/redesign/node-memory-architecture.md). A node's own teardown ends its
+/// wrapper first (engine.platformObjectDestroyed); the Browser's end ends
+/// every one (engine.releaseNodeWrappers) before its sweeps reach
+/// `sweepOne`. Debug only (`builtin.optimize`, never std.debug.assert, which
+/// ReleaseSafe keeps: the deep review's Z3).
 fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
+    if (@import("builtin").optimize == .debug and !node_base.wrapper.isEmpty())
+        std.debug.panic("Node: a {s} was released with its wrapper slot still bound - its wrapper must end first (engine.platformObjectDestroyed; at the Browser's end engine.releaseNodeWrappers, before the teardown sweeps)", .{instance.vtable.name});
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
-    dom_module.node_holds.nodeReleased(node_base);
+    _ = runtime.instance_lifecycle.markCleanupStarted(instance);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
     // The NodeBase is the State block's (`InternalState.base`): released, not

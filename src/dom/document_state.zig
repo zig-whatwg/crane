@@ -407,6 +407,17 @@ pub const InternalState = struct {
     /// parser until EOF, cancellation, replacement, or destruction.
     active_parser: ?*@import("html").scripted_parser.DocumentParser,
 
+    /// The parsers of this Document running a call now (the head of a list
+    /// through `DocumentParser.next_on_stack`): the active one, and an old
+    /// one document.open() replaced while its frames still unwind - which
+    /// still works on its stack of open elements (abort step 4; Blink's
+    /// HTMLConstructionSite::Detach keeps the stack "because
+    /// HTMLConstructionSite might be on the callstack", and Blink's stack
+    /// scan keeps that parser and what it traces). Traced with the active
+    /// parser (`traceHeldNodes`; the wrapper redesign's P6). Linked and
+    /// unlinked by the parser's outermost call, which holds the Document.
+    parsers_on_stack: ?*@import("html").scripted_parser.DocumentParser = null,
+
     /// Distinguishes successive parsers of the same Document across script
     /// callbacks, including a replacement that already finished again.
     parser_epoch: u64 = 0,
@@ -533,6 +544,27 @@ pub const InternalState = struct {
     /// `rareData`, make it through `ensureRareData`.
     rare: ?*DocumentRareData = null,
 
+    /// runtime.VTable.trace_held_nodes for a Document (the wrapper
+    /// redesign's P6, design 4.4 "Holders"; refcount step 9a): the nodes it
+    /// holds for script in its own structures - its active parser's (the
+    /// stack of open elements, the list of active formatting elements, the
+    /// head and form element pointers: HTMLConstructionSite::Trace, reached
+    /// from Document::Trace's parser_), its top layer's and its autofocus
+    /// candidates' (Blink's Document traces top_layer_elements_ and
+    /// autofocus_candidates_; Chromium 131.0.6778.0). Called where the walk
+    /// visits the Document (NodeBase.traces_held), in the collector's atomic
+    /// pause: reads only, creates no state.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *@import("engine").Tracer) void {
+        const self = Registry.get(instance) orelse return;
+        if (self.active_parser) |parser| parser.traceHeldNodes(tracer);
+        var on_stack = self.parsers_on_stack;
+        while (on_stack) |parser| : (on_stack = parser.next_on_stack) {
+            if (parser != self.active_parser) parser.traceHeldNodes(tracer);
+        }
+        const shared = self.interaction_state orelse return;
+        if (shared.top_layer) |layer| layer.trace(tracer);
+        if (shared.autofocus) |candidates| candidates.trace(tracer);
+    }
     pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,

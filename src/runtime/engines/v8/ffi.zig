@@ -138,11 +138,18 @@ pub const FunctionCallbackInfo = opaque {
     pub extern fn v8_FunctionCallbackInfo_This(self: *const FunctionCallbackInfo) *Object;
 
     /// Internal field 0 of the receiver, its instance, looked through a
-    /// legacy platform object's proxy; null for a receiver with no field or
-    /// one that is not an object. Makes no handle. A wrapper has one field:
-    /// the brand check is the instance's state ancestry (`conv.implements`),
-    /// not a WrapperTypeInfo beside it (lane v8up A0).
+    /// legacy platform object's proxy; null for a receiver with no instance
+    /// or one that is not an object. A node wrapper (no internal field: the
+    /// wrapper redesign's P4) reads as its anchor's instance. Makes no
+    /// handle. The brand check is the instance's state ancestry
+    /// (`conv.implements`), not a WrapperTypeInfo beside it (lane v8up A0).
     pub extern fn v8_FunctionCallbackInfo_ThisInstance(self: *const FunctionCallbackInfo) ?*anyopaque;
+
+    /// The receiver's node wrapper slot (Object::Unwrap under the node
+    /// anchors' tag, the anchor's slot), for a member of a node interface;
+    /// null for a receiver that is no node wrapper or one severed. Makes no
+    /// handle.
+    pub extern fn v8_FunctionCallbackInfo_ThisNodeSlot(self: *const FunctionCallbackInfo) ?*anyopaque;
 
     /// A primitive return value, written into the return slot: no handle.
     pub extern fn v8_FunctionCallbackInfo_SetReturnValueDouble(self: *const FunctionCallbackInfo, value: f64) void;
@@ -984,6 +991,51 @@ pub extern fn v8_Isolate_GetHeapUsage(
 /// being the GC prologue to the GC epilogue (v8_wrapper.cpp GCPauses). All 0
 /// for a null isolate or one the adapter did not make. In every build.
 pub extern fn v8_Debug_FullGCPauses(isolate: ?*Isolate, count: *u64, max_us: *u64, p95_us: *u64) void;
+/// `isolate`'s young-generation collections so far - scavenges and minor
+/// mark-sweeps, counted at their prologue (v8_wrapper.cpp GCPauses::
+/// minor_count). 0 for a null isolate or one the adapter did not make.
+pub extern fn v8_Debug_MinorGCCount(isolate: ?*Isolate) u64;
+/// `isolate`'s node anchors and where its full collections' atomic pauses go
+/// (v8_wrapper.cpp GCPhaseStats); mirrors CraneNodeAnchorStats. Each `_max`
+/// is the largest of one full collection so far.
+pub const NodeAnchorStats = extern struct {
+    /// Anchors in the agent's registry: their wrapper may live.
+    registered: u64 = 0,
+    /// Anchors whose wrapper a scavenge dropped, waiting for their free.
+    dropped_waiting: u64 = 0,
+    /// Anchors freed after a scavenge dropped their wrapper, so far.
+    freed: u64 = 0,
+    /// Frees cppgc refused so far - its heap was collecting - each anchor
+    /// counted once per refusal.
+    frees_deferred: u64 = 0,
+    /// The anchors' weak processing (NodeWrapperRegistry::ProcessWeak): its
+    /// walk over the slots, and the slots.
+    weak_ns_max: u64 = 0,
+    weak_slots_max: u64 = 0,
+    /// The atomic pause's phases as V8 reports them (metrics::Recorder's
+    /// GarbageCollectionFullCycle): the whole heap's, then the C++ heap's.
+    /// gc_bench's build only (v8_wrapper.cpp CRANE_GC_PHASE_METRICS); 0 in
+    /// every other.
+    atomic_us_max: i64 = 0,
+    atomic_mark_us_max: i64 = 0,
+    atomic_weak_us_max: i64 = 0,
+    atomic_compact_us_max: i64 = 0,
+    atomic_sweep_us_max: i64 = 0,
+    cpp_us_max: i64 = 0,
+    cpp_mark_us_max: i64 = 0,
+    cpp_weak_us_max: i64 = 0,
+    cpp_compact_us_max: i64 = 0,
+    cpp_sweep_us_max: i64 = 0,
+};
+/// All 0 for a null isolate or one the adapter did not make. On the
+/// isolate's thread.
+pub extern fn v8_Debug_NodeAnchorStats(isolate: ?*Isolate, out: *NodeAnchorStats) void;
+/// The bytes V8 holds as external memory for the CppHeapPointerTable entries
+/// of node wrappers dropped since the last full collection began: 8 a
+/// wrapper, reported at the agent's drain and taken back in a full
+/// collection's prologue (v8_wrapper.cpp `reportDroppedTableEntries`). 0 for
+/// a null isolate or one the adapter did not make.
+pub extern fn v8_Debug_NodeWrapperTableBytes(isolate: ?*Isolate) u64;
 /// Bytes of V8's global handle table in use - every live `Global<T>`, counted
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
@@ -2847,40 +2899,166 @@ pub extern fn v8_Debug_PumpMessageLoopHoldingFinalizers(isolate: *Isolate) bool;
 /// `v8_Isolate_RequestGarbageCollection`.
 pub extern fn v8_Debug_CollectHoldingFinalizers(isolate: *Isolate) void;
 
-// ---- Node wrappers in the node's own slot (the wrapper redesign's P2;
-// node_wrappers.zig, v8_wrapper.cpp "Node wrappers in the node's own slot") ----
+// ---- Node wrappers on the agent's C++ heap (the wrapper redesign's P4;
+// node_wrappers.zig, v8_wrapper.cpp "Node wrappers on the agent's C++ heap") ----
 
 /// The isolate's node wrapper registry (node_wrappers.Registry), or null
 /// before its first node wrap and for an isolate v8_wrapper.cpp did not make.
 pub extern fn v8_Isolate_NodeWrappers(isolate: *Isolate) ?*anyopaque;
 
-/// The isolate's record takes `registry` over: `collected` is a node
-/// wrapper's first pass (answers the node's slot, which the C++ side
-/// Resets), `drain` its second, `end` the registry's end at the start of
-/// v8_Isolate_Dispose. False for an isolate with no record.
+/// The isolate's record takes `registry` over, and its node anchors'
+/// registry is made on its C++ heap: `collected` is told the slot of each
+/// node wrapper whose anchor a collection found dead (in its atomic pause:
+/// it writes the slot empty and records the release), `drain` releases what
+/// was recorded (after the collection), `end` is the registry's end at the
+/// start of v8_Isolate_Dispose, `instance_of` the instance of the node whose
+/// slot it is given (a node wrapper's unwrap). False for an isolate with no
+/// record or no C++ heap.
 pub extern fn v8_Isolate_SetNodeWrappers(
     isolate: *Isolate,
     registry: *anyopaque,
-    collected: *const fn (registry: ?*anyopaque, cell: ?*anyopaque) callconv(.c) ?*anyopaque,
+    collected: *const fn (registry: ?*anyopaque, slot: ?*anyopaque) callconv(.c) void,
     drain: *const fn (registry: ?*anyopaque) callconv(.c) void,
     end: *const fn (registry: ?*anyopaque) callconv(.c) void,
+    instance_of: *const fn (slot: ?*anyopaque) callconv(.c) ?*anyopaque,
 ) bool;
 
-/// Move the fresh, unarmed `Global<Object>` `box` holds into the empty node
-/// slot `slot` (constructed in place) and delete the box: from here the
-/// slot's address is the wrapper's handle.
-pub extern fn v8_NodeWrapper_Adopt(box: *Object, slot: *anyopaque) void;
+/// Whether `box`'s object is an API object a node's anchor can be Wrapped
+/// onto (the binding's wrappers always are).
+pub extern fn v8_NodeWrapper_Wrappable(isolate: *Isolate, box: *Object) bool;
 
-/// Arm the slot's wrapper weak, `cell` its parameter.
-pub extern fn v8_NodeWrapper_SetWeak(slot: *anyopaque, cell: *anyopaque) void;
+/// The node wrap's steps 3-6 (design 4.2): an anchor for the empty node slot
+/// `slot`, the wrapper `box` holds (no internal field) Wrapped with it, the
+/// slot made a TracedReference to it, the anchor registered. `box` stays the
+/// caller's: it holds the wrapper strongly until the caller disposes it.
+pub extern fn v8_NodeWrapper_Attach(isolate: *Isolate, box: *Object, slot: *anyopaque) void;
 
-/// Hold the slot's wrapper strongly (no weak arm). Answers the arm's
-/// parameter (the node's registry cell), or null when it was not weak.
-pub extern fn v8_NodeWrapper_ClearWeak(slot: *anyopaque) ?*anyopaque;
+/// A traced root for a kept node's wrapper (a cppgc::Persistent on its
+/// anchor), OWNED until v8_NodeWrapper_Unroot; null for an empty slot.
+pub extern fn v8_NodeWrapper_Root(isolate: *Isolate, slot: *anyopaque) ?*anyopaque;
 
-/// End the slot's wrapper outside a collection - with `sever`, its internal
-/// fields cleared first - and leave the slot empty.
-pub extern fn v8_NodeWrapper_Reset(isolate: ?*Isolate, slot: *anyopaque, sever: bool) void;
+/// The root v8_NodeWrapper_Root made goes.
+pub extern fn v8_NodeWrapper_Unroot(root: *anyopaque) void;
+
+/// End the slot's wrapper outside a collection: its anchor lets go of the
+/// slot (the wrapper reaches no node from here) and the slot is Reset, empty.
+pub extern fn v8_NodeWrapper_End(isolate: ?*Isolate, slot: *anyopaque) void;
+
+/// The agent's end: every live anchor lets go of its slot, which is Reset,
+/// and `ended` is told each slot.
+pub extern fn v8_NodeWrappers_EndAll(
+    isolate: *Isolate,
+    registry: *anyopaque,
+    ended: *const fn (registry: ?*anyopaque, slot: ?*anyopaque) callconv(.c) void,
+) void;
+
+/// tests/v8/node_anchor_test.zig: what v8_test_NodeWrapper_Probe saw of the
+/// wrapper in a node slot; mirrors v8_wrapper.cpp's CraneNodeWrapperProbe.
+pub const NodeWrapperProbe = extern struct {
+    has_wrapper: bool,
+    api_wrapper: bool,
+    internal_fields: i32,
+    anchor: ?*anyopaque,
+    anchor_slot: ?*anyopaque,
+    registered_anchors: u64,
+    anchor_capacity: u64,
+};
+pub extern fn v8_test_NodeWrapper_Probe(isolate: *Isolate, slot: *anyopaque, out: *NodeWrapperProbe) void;
+
+/// tests/v8: `callback(data)` at the end of every full collection of
+/// `isolate`, until v8_test_FullGCEpilogueProbe_Delete.
+pub const FullGCEpilogueProbe = opaque {};
+pub extern fn v8_test_FullGCEpilogueProbe_New(isolate: *Isolate, callback: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) *FullGCEpilogueProbe;
+pub extern fn v8_test_FullGCEpilogueProbe_Delete(probe: *FullGCEpilogueProbe) void;
+
+/// tests/v8: a full collection with no conservative stack scan and no safe
+/// point at its end (what it collected waits for the agent's next one).
+pub extern fn v8_test_Isolate_CollectWithoutDrain(isolate: *Isolate) void;
+
+/// tests/v8: the node wrappers V8 dropped in `isolate`'s young-generation
+/// collections so far (the EmbedderRootsHandler's ResetRoot, design 4.11).
+pub extern fn v8_test_NodeWrappers_Dropped(isolate: *Isolate) u64;
+
+/// tests/v8: how many times V8 called `isolate`'s roots handler's
+/// TryResetRoot - from any thread - so far. It answers false and touches no
+/// node (v8_wrapper.cpp NodeWrapperRootsHandler); the linked V8 never calls it.
+pub extern fn v8_test_NodeWrappers_TryResetRootCalls(isolate: *Isolate) u64;
+
+/// tests/v8: at least `n` young-generation collections of `isolate`
+/// (entered), by filling its young generation with unreachable arrays.
+pub extern fn v8_test_Isolate_MinorGC(isolate: *Isolate, n: u32) void;
+/// tests/v8/wr8_anchor_free_test.zig: a full collection V8 does not force
+/// (critical memory pressure), after which the C++ heap sweeps lazily; whether
+/// the C++ heap is still collecting when it returns.
+pub extern fn v8_test_Isolate_CollectUnforced(isolate: *Isolate) bool;
+/// tests/v8/wr8_anchor_free_test.zig: the bytes of the objects alive on the
+/// isolate's C++ heap, object by object (cppgc's detailed statistics; it
+/// finishes a running sweep and gives back the allocation buffers first).
+pub extern fn v8_test_CppHeap_LiveBytes(isolate: ?*Isolate) usize;
+
+/// tests/v8: whether V8 drops in a scavenge an unreachable object made from
+/// `tpl`'s instance template - with `prototype` set as its prototype when
+/// given, a private property when `add_private`, and script's `apply(object)`
+/// when given (then the job's end: ClearKeptObjects) - Wrapped with a
+/// C++-heap object and held by a droppable TracedReference only. 1 dropped,
+/// 0 kept, -1 inconclusive.
+pub extern fn v8_test_NodeTemplateWrapperDroppable(isolate: *Isolate, context: *Context, tpl: *FunctionTemplate, prototype: ?*Object, add_private: bool, apply: ?*Value) c_int;
+
+// ---- The walk (the wrapper redesign's P5, design 4.4; node_wrappers.zig
+// "The walk") ----
+
+/// The walk's callbacks, beside the node wrappers' (v8_Isolate_SetNodeWrappers
+/// first), in the isolate's record: `trace_anchor(registry, slot, visitor)`
+/// from a node anchor's Trace in a collection's atomic pause (the record
+/// found as the current isolate's, checked); `trace_keeps(registry,
+/// visitor)` from the anchors' registry's Trace in a collection's atomic
+/// pause - the kept nodes' trees; `marked(registry)` at the end of each
+/// marking, from its weak processing - the per-collection sets end;
+/// `check` (null unless -Dv8-wrapper-trace-check) in the same weak processing
+/// before any slot is emptied, with the slots of the live and of the dead
+/// anchors. False for an isolate with no record.
+pub extern fn v8_Isolate_SetNodeWrapperTracing(
+    isolate: *Isolate,
+    trace_anchor: *const fn (registry: ?*anyopaque, slot: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
+    trace_keeps: *const fn (registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void,
+    marked: *const fn (registry: ?*anyopaque) callconv(.c) void,
+    check: ?*const fn (registry: ?*anyopaque, live: ?[*]const ?*anyopaque, live_len: usize, dead: ?[*]const ?*anyopaque, dead_len: usize) callconv(.c) void,
+    trace_holder: *const fn (registry: ?*anyopaque, instance: ?*anyopaque, generation: u64, visitor: ?*anyopaque) callconv(.c) void,
+) bool;
+
+/// A holder's new wrapper `box` (a type with VTable.trace_held_nodes) gets
+/// its HolderAnchor on `isolate`'s C++ heap, holding `instance` and its
+/// slab `generation` (the wrapper redesign's P6, design 4.4 "Holders"); a
+/// collection that marks the wrapper then calls the record's `trace_holder`.
+/// False, with no anchor, for an isolate with no C++ heap or tracing
+/// callbacks, or an object that is no API object.
+pub extern fn v8_HolderAnchor_Attach(isolate: *Isolate, box: *Object, instance: *anyopaque, generation: u64) bool;
+
+/// The holder's instance went while its wrapper `box` may live on (a realm's
+/// end severing it): its HolderAnchor, if any, traces nothing from here. The
+/// isolate is the current one.
+pub extern fn v8_HolderAnchor_Clear(box: *Object) void;
+
+/// engine.traceNodeWrapper on V8: `visitor` (a cppgc::Visitor in a
+/// collection's atomic pause, the walk's) traces the TracedReference in the
+/// non-empty node slot `slot` - Blink's ScriptWrappable::Trace of its
+/// `wrapper_`.
+pub extern fn v8_NodeTracer_TraceSlot(visitor: *anyopaque, slot: *anyopaque) void;
+
+/// tests/v8: the MarkingType newAgentCppHeap gives every agent's C++ heap
+/// (cppgc::Heap::MarkingType: 0 kAtomic, 1 kIncremental, 2
+/// kIncrementalAndConcurrent) - kAtomic, which keeps every C++ Trace, and so
+/// the walk, inside the atomic pause.
+pub extern fn v8_test_AgentCppHeapMarkingSupport() u8;
+
+/// tests/v8: start V8's incremental marking on `isolate` (entered), as a
+/// moderate memory pressure notification does (13.1 Heap::
+/// CheckMemoryPressure), and answer whether its C++ heap is marking now
+/// (cppgc::subtle::HeapState::IsMarking).
+pub extern fn v8_test_Isolate_StartIncrementalMarking(isolate: *Isolate) bool;
+
+/// tests/v8: whether `isolate`'s C++ heap is marking now.
+pub extern fn v8_test_Isolate_CppHeapIsMarking(isolate: *Isolate) bool;
 
 /// Clear weak reference and restore strong reference
 ///

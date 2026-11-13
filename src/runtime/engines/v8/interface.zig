@@ -2198,6 +2198,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
+    // A node interface - every instance a node (its State keeps a NodeBase:
+    // the VTable's `counted`, runtime.lifetime.countedOf) - has wrappers with
+    // NO internal field: each points at its node's anchor on the agent's C++
+    // heap through Object::Wrap, and its members unwrap their receiver with
+    // Object::Unwrap (the wrapper redesign's P4, design 4.2-4.3). Every other
+    // interface keeps its one field, the instance (INTERNAL_FIELD_COUNT).
+    const node_interface = comptime runtime.lifetime.countedOf(Interface.State) != null;
 
     // WebIDL 2.5.6: the special operations, from codegen's table
     // (specialBinding). The indexed getter is `call_item` for `getter T?
@@ -3438,9 +3445,12 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // The instance template's one internal field: the Zig instance
             // (*runtime.Instance; INTERNAL_FIELD_COUNT says why there is no other).
+            // A node interface's: none (`node_interface`: the wrapper points at
+            // its node's anchor through Object::Wrap; the snapshot holds the
+            // templates, so it is regenerated with them - design 4.8).
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
             defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);
-            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, INTERNAL_FIELD_COUNT);
+            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, if (node_interface) 0 else INTERNAL_FIELD_COUNT);
 
             // Per WebIDL spec, platform objects of [Global] interfaces have immutable [[Prototype]].
             // Also some specific interfaces like Location.
@@ -3977,6 +3987,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// attribute of every interface.
                 const plumbing: binding_plumbing.Getter = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .getter_name = getter_name,
                     .kind = kind,
                     .checks_receiver = std.mem.eql(u8, iface_name, "Location") and
@@ -4213,6 +4224,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// shared by every operation of every interface.
                 const plumbing: binding_plumbing.Operation = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .operation_name = if (std.mem.startsWith(u8, zig_name, "call_static_")) zig_name["call_static_".len..] else if (std.mem.startsWith(u8, zig_name, "call_")) zig_name["call_".len..] else zig_name,
                     .returns_promise = returnsPromise(Interface, zig_name),
                     .ce_reactions = dispatchRunsCEReactions(Interface, zig_name),
@@ -7835,6 +7847,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// attribute of every interface.
                 const plumbing: binding_plumbing.Setter = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .ce_reactions = runsCEReactions(Interface, setter_name_param),
                     // Released unless converting the value may keep it - the
                     // allowlist every other binding path consults.
@@ -8581,13 +8594,19 @@ pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
 /// The pointer can later be retrieved via getInstance(), which also returns
 /// it untagged. This bypasses the pointer tagging system entirely.
 pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
+    // [wrap_tracking]: the object reaches the instance from here.
+    if (T == runtime.Instance) {
+        runtime.instance_lifecycle.markWrapped(instance);
+        // A node's wrapper has no internal field (the wrapper redesign's
+        // P4): it reaches the node through its anchor, which the wrap makes
+        // (WrapperCache.set -> node_wrappers.adopt).
+        if (instance.vtable.counted != null) return;
+    }
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,
         0,
         @ptrCast(instance),
     );
-    // [wrap_tracking]: the object reaches the instance from here.
-    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
 }
 
 // ============================================================================

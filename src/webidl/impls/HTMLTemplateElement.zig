@@ -119,9 +119,15 @@ pub fn deinit(instance: *runtime.Instance) void {
         if (internal.content) |content| {
             if (runtime.SlabAllocator.generationOf(content) == internal.content_generation) {
                 dom.template_contents.releaseHost(content);
+                // The content's own wrapper state answers only for the
+                // content since the wrapper redesign's P7 (a wrap wraps no
+                // ancestor): a wrapped node inside it leaves it to the counts
+                // (refcount step 7) - its last wrapper's release makes it
+                // garbage, and the agent's queue frees it.
+                const wrapped_inside = if (dom.instance_bridge.getNodeBase(content)) |base| dom.wrapper_tracing.holdsWrapper(base) else false;
                 const unreachable_now = runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, content);
-                if (!instance.ctx.hasEngine() or unreachable_now or
-                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(content)))
+                if (!instance.ctx.hasEngine() or (!wrapped_inside and (unreachable_now or
+                    (!runtime.cleanup_coordinator.isContextTearingDown() and !engine.hasWrapper(content)))))
                     dom.node_creation.destroyUninserted(content);
             }
             internal.content = null;

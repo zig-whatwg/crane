@@ -116,9 +116,54 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 /// first caller's base URL and nonce. -Dv8-compilation-cache leaves the flag
 /// out, for measurement only.
 ///
+/// `--no-handle-weak-ref-weakly-in-minor-gc`: a FinalizationRegistry callback
+/// must not run for a node that is still in its document (the integrator's
+/// ruling, 2026-11-13, golden rule 2: the browsers split, the majority and
+/// the spec agree). V8 15.7 treats WeakRef and FinalizationRegistry targets
+/// WEAKLY in a young-generation collection (flag
+/// handle_weak_ref_weakly_in_minor_gc, on by default: 15.7.112.43
+/// src/flags/flag-definitions.h:3901-3908; src/heap/scavenger.cc:1659-1661
+/// and ScavengerWeakObjectsProcessor, :205-276; 13.1.203 held them strongly
+/// in a scavenge and left them to full collections). A node's wrapper is a
+/// droppable reference (the wrapper redesign's P8, v8_wrapper.cpp
+/// NodeWrapperRootsHandler), which V8 reclaims in a scavenge while it is an
+/// "unmodified API object" nothing else reaches - and being registered in a
+/// FinalizationRegistry does not modify it (a WeakRef target is spared only
+/// because Heap::KeepDuringJob gives it an identity hash). So with the flag
+/// on, script that registers `document.body.firstChild` and lets the wrapper
+/// go sees the callback run at the next scavenge although the node, and a
+/// wrapper for it on its next access, are still there.
+/// - ECMA-262 9.9.2 (Liveness): a set of objects is live while "there
+///   exists a valid future hypothetical WeakRef-oblivious execution ... that
+///   observes the identity of any value" in it - script can reach the node
+///   through its tree and compare what it gets; and 9.9.3 (Execution) lets an
+///   implementation empty a registry's cell, and enqueue its cleanup, only
+///   for objects that are NOT live.
+/// - Firefox 159.0.1 does not run it (measured, lane wr1 b11's probe: an
+///   in-tree span registered and dropped, 30 tasks of allocation: only the
+///   detached, dropped control was finalized); Gecko preserves a DOM
+///   wrapper that becomes a weak target, on purpose (bugzilla.mozilla.org
+///   1642685, "WeakRef and FinalizationRegistry should preserve DOM
+///   wrappers", fixed).
+/// - Safari: WebKit keeps a wrapper whose node is reachable from an opaque
+///   root marked in every collection (WebCore/bindings/js/JSNodeCustom.cpp
+///   JSNodeOwner::isReachableFromOpaqueRoots); not measured - a hidden Safari
+///   did not run the probe.
+/// - Chrome 157.0.8103.51 DOES run it (measured, the same probe:
+///   "span-in-tree: FinalizationRegistry only" was finalized). It links this
+///   V8 with the flag on and Blink's wrappers are droppable the same way
+///   (platform/bindings/dom_data_store.h SetWrapperInInlineStorage): the
+///   in-tree run arrived with this V8 change and is the one behaviour here
+///   the spec forbids, which is why Crane sets a flag Chrome does not.
+/// With the flag off such a target survives scavenges, as on 13.1, and a full
+/// collection decides through the walk (a node's wrapper lives while its
+/// tree's does). Pinned by tests/v8/wr8_young_generation_test.zig and
+/// tests/wpt/crane/wr11-finalization-registry-live-node.html.
+///
 /// `measurement_v8_flags` come last: nothing in a default build.
 pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
     (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
+    " --no-handle-weak-ref-weakly-in-minor-gc" ++
     (if (build_options.jitless) " --jitless" else "") ++
     memory_pool.flag ++ // -Dv8-memory-pool-timeout-s (memory_pool.zig): empty unless the build gives it
     (if (measurement_v8_flags.len != 0) " " ++ measurement_v8_flags else "");

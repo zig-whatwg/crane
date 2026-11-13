@@ -37,6 +37,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const infra = @import("infra");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const engine = @import("engine");
 const NodeList = interfaces.NodeList;
 const node_holds = @import("dom").node_holds;
 const live_collections = @import("dom").live_collections;
@@ -73,10 +74,10 @@ pub const InternalState = struct {
     /// A static list's nodes, which it HOLDS for as long as it lives,
     /// whatever happens to the trees they came from: Blink's StaticNodeList
     /// holds HeapVector<Member<Node>> (core/dom/static_node_list.h), WebKit's
-    /// Vector<Ref<Node>>. Native holds, no wrapper per node: the list roots
-    /// only the root of a tree holding one of them that is not a document
-    /// with a window (src/dom/node_holds.zig). Held as bare pointers, a node
-    /// whose detached tree was collected was freed under the list
+    /// Vector<Ref<Node>>. Counted holds, no wrapper per node, traced while
+    /// the list's wrapper is kept (`traceHeldNodes`; the wrapper redesign's
+    /// P6, src/dom/node_holds.zig). Held as bare pointers, a node whose
+    /// detached tree was collected was freed under the list
     /// (crane/ed-static-nodelist-gc.html). Live lists query on demand and
     /// hold nothing here.
     held: node_holds.Holder,
@@ -108,11 +109,22 @@ pub const InternalState = struct {
     /// Namespace URI for elements_by_ns filter
     filter_namespace: ?[]const u8 = null,
 
-    pub fn init(allocator: std.mem.Allocator, list: *runtime.Instance) InternalState {
+    pub fn init(allocator: std.mem.Allocator) InternalState {
         return .{
             .allocator = allocator,
-            .held = node_holds.Holder.init(allocator, list),
+            .held = node_holds.Holder.init(allocator),
         };
+    }
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): a static list's nodes (Blink's StaticNodeTypeList::
+    /// Trace visits nodes_, core/dom/static_node_list.h, Chromium
+    /// 131.0.6778.0) and a live list's root (LiveNodeListBase traces its
+    /// owner node), in the collector's atomic pause. Makes no wrapper.
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const self = Accessor.get(instance) orelse return;
+        self.held.trace(tracer);
+        self.root_hold.trace(tracer);
     }
 
     pub fn deinit(self: *InternalState, list: *runtime.Instance) void {
@@ -136,8 +148,6 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // Other impls fill a static list they created (an element's labels).
     @import("dom").node_lists.install(.{ .set_static = &setStaticNodes, .set_static_bases = &setStaticBases, .labels = &makeLabels, .named_controls = &makeNamedControls, .named_form_images = &makeNamedFormImages, .elements_by_name = &makeElementsByName, .child_nodes = &makeChildNodes });
-    // A static list holds its nodes; the removing steps rescue a held tree.
-    node_holds.installHooks();
 }
 
 fn makeElementsByName(list: *runtime.Instance, document: *runtime.Instance, name: []const u8) !void {
@@ -222,7 +232,7 @@ pub fn init(
     // Initialize internal state
     const state = instance.getState(State);
     const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = InternalState.init(allocator, instance);
+    internal.* = InternalState.init(allocator);
     state.own._internal = internal;
 
     // Initialize length to 0
@@ -232,24 +242,23 @@ pub fn init(
 }
 
 /// dom.node_lists: make an empty list the static list of `nodes`, held.
-/// `within`: a node they all descend from, whose root they share.
+/// `within`: a node they all descend from (no longer needed: the list's
+/// trace finds their trees in the collector's pause).
 fn setStaticNodes(list: *runtime.Instance, nodes: []const *runtime.Instance, within: ?*runtime.Instance) anyerror!void {
+    _ = within;
     clear(list);
     const internal = getInternal(list) orelse return error.InvalidState;
-    const root_hint: ?*@import("dom").NodeBase = if (within) |node|
-        if (@import("dom").instance_bridge.getNodeBase(@ptrCast(node))) |base| node_holds.hostIncludingRoot(base) else null
-    else
-        null;
-    try internal.held.hold(*runtime.Instance, nodes, root_hint);
+    try internal.held.hold(*runtime.Instance, nodes);
     list.getState(State).own.length = @intCast(internal.held.holds.len);
 }
 
 /// dom.node_lists: `setStaticNodes`, given the tree nodes, all descendants
 /// of `within`.
 fn setStaticBases(list: *runtime.Instance, nodes: []const *@import("dom").NodeBase, within: *@import("dom").NodeBase) anyerror!void {
+    _ = within;
     clear(list);
     const internal = getInternal(list) orelse return error.InvalidState;
-    try internal.held.hold(*@import("dom").NodeBase, nodes, node_holds.hostIncludingRoot(within));
+    try internal.held.hold(*@import("dom").NodeBase, nodes);
     list.getState(State).own.length = @intCast(internal.held.holds.len);
 }
 
