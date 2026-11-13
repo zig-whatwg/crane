@@ -211,8 +211,9 @@ test "the proxies of a realm share one handler, frozen and with no prototype; an
         \\  check(name + " is frozen", Object.isFrozen(h), true);
         \\  check(name + " has no prototype", Object.getPrototypeOf(h), null);
         \\  check(name + " has no get trap", "get" in h, false);
-        \\  check(name + " traps", Reflect.ownKeys(h).sort().join(),
-        \\        "defineProperty,deleteProperty,getOwnPropertyDescriptor,getPrototypeOf,has,isExtensible,ownKeys,preventExtensions,set,setPrototypeOf");
+        \\  // The three internal methods the target's interceptors do not answer as WebIDL says (3.9.6, 3.9.5,
+        \\  // 3.9.2); the proxy forwards every other one to its target (wrap1_legacy_proxy_traps_test.zig).
+        \\  check(name + " traps", Reflect.ownKeys(h).sort().join(), "ownKeys,preventExtensions,set");
         \\}
         \\delete globalThis.handlerSeen; delete globalThis.setterHandlerSeen;
         \\failures.join("; ") || "ok"

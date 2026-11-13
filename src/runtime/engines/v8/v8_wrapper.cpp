@@ -10812,22 +10812,26 @@ Global<Object>* v8_CreateDataPropertyDescriptor(
     Local<Context> ctx = context->Get(isolate);
     Context::Scope context_scope(ctx);
     
-    Local<Object> desc = Object::New(isolate);
-    
-    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "value").ToLocalChecked(), val).Check();
-    
-    // Set writable
-    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "writable").ToLocalChecked(),
-              Boolean::New(isolate, writable)).Check();
-    
-    // Set enumerable
-    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "enumerable").ToLocalChecked(),
-              Boolean::New(isolate, enumerable)).Check();
-    
-    // Set configurable
-    desc->Set(ctx, v8::String::NewFromUtf8(isolate, "configurable").ToLocalChecked(),
-              Boolean::New(isolate, configurable)).Check();
-    
+    // WebIDL 3.9.7 LegacyPlatformObjectGetOwnProperty's "newly created
+    // Property Descriptor": a record. V8 takes it from an interceptor as an
+    // object and reads it back with ToPropertyDescriptor - HasProperty and
+    // Get of each field - so the object has NO prototype and its fields are
+    // own data properties made by CreateDataProperty. An ordinary object
+    // filled by [[Set]] was the page's to change: a `get` on
+    // Object.prototype made every index's and name's descriptor "Invalid
+    // property descriptor. Cannot both specify accessors and a value", and a
+    // setter there named "value" was called instead of the field being made
+    // (lane wrap1 b2, finding 3; the cross-origin descriptors below were
+    // already made this way, NewCrossOriginDescriptor).
+    Local<Object> desc = Object::New(isolate, Null(isolate), nullptr, nullptr, 0);
+    auto field = [&](const char* name, Local<Value> field_value) {
+        desc->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name, NewStringType::kInternalized).ToLocalChecked(), field_value).Check();
+    };
+    field("value", val);
+    field("writable", Boolean::New(isolate, writable));
+    field("enumerable", Boolean::New(isolate, enumerable));
+    field("configurable", Boolean::New(isolate, configurable));
+
     return trackHandle(new Global<Object>(isolate, desc));
 }
 
@@ -13926,285 +13930,116 @@ bool v8_Proxy_IsRevoked(Global<Object>* proxy) {
 // ============================================================================
 // Legacy Platform Object Proxy Support
 // ============================================================================
-// 
-// WebIDL §3.9.6 requires [[OwnPropertyKeys]] to return keys in order:
-// 1. Indexed property keys (ascending numeric order)
-// 2. Named property keys (in definition order)
-// 3. Own property keys (strings, then symbols)
 //
-// V8's default enumeration order is: own → interceptors
-// We use a Proxy to override [[OwnPropertyKeys]] while forwarding all other
-// operations transparently to the target.
+// A legacy platform object with named properties is an API object - whose
+// indexed and named interceptors are its [[GetOwnProperty]],
+// [[DefineOwnProperty]] and [[Delete]] (WebIDL 3.9.1, 3.9.3, 3.9.4;
+// interface.zig) - behind a Proxy that supplies the two internal methods V8's
+// interceptors cannot: [[OwnPropertyKeys]] in WebIDL's order (3.9.6; V8 lists
+// a named interceptor's names after the object's own string keys) and [[Set]]
+// (3.9.2; V8 runs a named setter interceptor before a prototype's accessor).
+// And [[PreventExtensions]] (3.9.5), which is one line.
+//
+// Every other internal method has NO trap, so the proxy forwards it to its
+// target (ES 10.5: "If trap is undefined, return ? target.[[X]](...)"):
+// - [[GetPrototypeOf]], [[SetPrototypeOf]], [[IsExtensible]], [[HasProperty]]
+//   and [[Get]] are ordinary for a legacy platform object (WebIDL defines
+//   none), and the ordinary ones are built on [[GetOwnProperty]];
+// - [[GetOwnProperty]], [[DefineOwnProperty]] and [[Delete]] are WebIDL's, and
+//   the target's interceptors are those steps.
+//
+// NOTHING HERE READS THE PAGE'S OBJECTS. The traps used to forward through
+// the page's own `Reflect` - looked up on the current realm's global object
+// when a trap ran, and cast unchecked - for seven internal methods a missing
+// trap forwards natively, and for ownKeys, getOwnPropertyDescriptor and set:
+// a page that deleted or replaced `Reflect` aborted the process at its next
+// `"x" in collection` (an empty MaybeLocal into ToLocalChecked), and one that
+// replaced `Reflect.has` was called for it with the proxy's raw target (lane
+// wrap1 b2, finding 3; tests/v8/wrap1_legacy_proxy_traps_test.zig,
+// tests/wpt/crane/wrap1-legacy-platform-object-no-script-calls.html). No
+// browser calls script there: Blink's legacy platform objects are the API
+// objects themselves. What the traps need of the target they ask V8's API,
+// which reads the object and never a global.
 // ============================================================================
 
 namespace {
 
-// Helper to get indexed property keys from an object with length property
-Local<Array> GetIndexedPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
-    Local<String> length_key = String::NewFromUtf8Literal(isolate, "length");
-    
-    MaybeLocal<Value> maybe_length = target->Get(context, length_key);
-    if (maybe_length.IsEmpty()) {
-        return Array::New(isolate, 0);
-    }
-    
-    Local<Value> length_val = maybe_length.ToLocalChecked();
-    if (!length_val->IsNumber()) {
-        return Array::New(isolate, 0);
-    }
-    
-    uint32_t length = length_val->Uint32Value(context).FromMaybe(0);
-    Local<Array> indices = Array::New(isolate, length);
-    
-    for (uint32_t i = 0; i < length; i++) {
-        Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(i).c_str()).ToLocalChecked();
-        indices->Set(context, i, idx_str).Check();
-    }
-    
-    return indices;
-}
-
-// Helper to get named property keys by calling the named property enumerator
-// This works by triggering Object.keys which will call our interceptor
-Local<Array> GetNamedPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
-    // Get property names that would be returned by the named property enumerator
-    // We use GetPropertyNames with ONLY_ENUMERABLE to get interceptor keys
-    PropertyFilter filter = static_cast<PropertyFilter>(
-        PropertyFilter::ONLY_ENUMERABLE | 
-        PropertyFilter::SKIP_SYMBOLS
-    );
-    
-    MaybeLocal<Array> maybe_names = target->GetPropertyNames(
-        context,
-        KeyCollectionMode::kOwnOnly,
-        filter,
-        IndexFilter::kSkipIndices  // Skip indices, we handle them separately
-    );
-    
-    if (maybe_names.IsEmpty()) {
-        return Array::New(isolate, 0);
-    }
-    
-    return maybe_names.ToLocalChecked();
-}
-
-// Helper to get own property keys (non-interceptor, non-indexed)
-Local<Array> GetOwnPropertyKeys(Isolate* isolate, Local<Context> context, Local<Object> target) {
-    // Get ALL own property names including non-enumerable
-    MaybeLocal<Array> maybe_names = target->GetOwnPropertyNames(
-        context,
-        static_cast<PropertyFilter>(PropertyFilter::ALL_PROPERTIES),
-        KeyConversionMode::kConvertToString
-    );
-    
-    if (maybe_names.IsEmpty()) {
-        return Array::New(isolate, 0);
-    }
-    
-    return maybe_names.ToLocalChecked();
-}
-
-// The ownKeys trap implementation for legacy platform objects
-// Uses Reflect.ownKeys(target) to get all keys, then reorders them per WebIDL §3.9.6
+// The Proxy "ownKeys" trap: WebIDL 3.9.6, a legacy platform object's
+// [[OwnPropertyKeys]]. The trap receives (target); O is the target.
+//
+// Its lists come from the target's own keys as V8 collects them
+// (KeyAccumulator, own only, every property, numbers kept - what
+// Reflect.ownKeys(target) reads): the elements and the indexed interceptor's
+// enumerator as Numbers, the own string keys in creation order, the own
+// symbols, then the named interceptor's enumerator as Strings. An object that
+// supports indexed properties has no own property named by an array index
+// ([[DefineOwnProperty]] step 1 refuses or sets the indexed property), so a
+// Number is a supported property index; a String the target has no real own
+// property for is a supported property name, visible by the interceptor's
+// own rule (interface.zig isVisible, 3.9.7). No `length` is read: that is a
+// property a page can replace, and Storage's is no index bound at all.
 void LegacyPlatformObjectOwnKeys(const FunctionCallbackInfo<Value>& info) {
     Isolate* isolate = info.GetIsolate();
     HandleScope handle_scope(isolate);
     Local<Context> context = isolate->GetCurrentContext();
-    
+
     if (info.Length() < 1 || !info[0]->IsObject()) {
         info.GetReturnValue().Set(Array::New(isolate, 0));
         return;
     }
-    
     Local<Object> target = info[0].As<Object>();
-    
-    // Get Reflect.ownKeys(target) to get V8's native key list
-    Local<Object> reflect = context->Global()
-        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
-        .ToLocalChecked().As<Object>();
-    
-    Local<Function> ownKeys_fn = reflect
-        ->Get(context, String::NewFromUtf8Literal(isolate, "ownKeys"))
-        .ToLocalChecked().As<Function>();
-    
-    Local<Value> args[] = { target };
-    MaybeLocal<Value> maybe_keys = ownKeys_fn->Call(context, reflect, 1, args);
-    
-    if (maybe_keys.IsEmpty()) {
-        info.GetReturnValue().Set(Array::New(isolate, 0));
-        return;
+
+    Local<Array> target_keys;
+    if (!target->GetOwnPropertyNames(context, PropertyFilter::ALL_PROPERTIES, KeyConversionMode::kKeepNumbers).ToLocal(&target_keys)) {
+        return;  // an enumerator's exception is pending
     }
-    
-    Local<Array> all_keys = maybe_keys.ToLocalChecked().As<Array>();
-    
-    // Categorize keys into: indices, named, own strings, symbols
+
+    // 1. Let keys be a new empty list of JavaScript String and Symbol values.
     std::vector<uint32_t> indices;
-    std::vector<Local<Value>> named_props;
-    std::vector<Local<Value>> own_props;
-    std::vector<Local<Value>> symbols;
-    
-    // Get the length for determining index range
-    Local<String> length_key = String::NewFromUtf8Literal(isolate, "length");
-    uint32_t length = 0;
-    MaybeLocal<Value> maybe_length = target->Get(context, length_key);
-    if (!maybe_length.IsEmpty()) {
-        Local<Value> length_val = maybe_length.ToLocalChecked();
-        if (length_val->IsNumber()) {
-            length = length_val->Uint32Value(context).FromMaybe(0);
-        }
-    }
-    
-    // NOTE: We intentionally do NOT call target->GetPropertyNames() here.
-    // V8's KeyAccumulator::FilterForEnumerableProperties expects all keys to be
-    // Name objects (String or Symbol), but indexed property interceptors return
-    // integer indices. This causes a crash: "Check failed: IsName(*element)".
-    // Instead, we use the keys from Reflect.ownKeys(target) which we already have,
-    // and use HasRealNamedProperty to distinguish own vs interceptor-provided keys.
-    
-    // Categorize each key
-    // V8's ownKeys trap requires all returned values to be Name objects (String or Symbol).
-    // Reflect.ownKeys can return numeric indices as integers, so we must convert them.
-    for (uint32_t i = 0; i < all_keys->Length(); i++) {
-        MaybeLocal<Value> maybe_key = all_keys->Get(context, i);
-        if (maybe_key.IsEmpty()) continue;
-        
-        Local<Value> key = maybe_key.ToLocalChecked();
-        
+    std::vector<Local<Value>> named;
+    std::vector<Local<Value>> own_strings;
+    std::vector<Local<Value>> own_symbols;
+    const uint32_t count = target_keys->Length();
+    for (uint32_t i = 0; i < count; i++) {
+        Local<Value> key;
+        if (!target_keys->Get(context, i).ToLocal(&key)) return;
         if (key->IsSymbol()) {
-            symbols.push_back(key);
+            own_symbols.push_back(key);
         } else if (key->IsNumber()) {
-            // Numeric keys must be converted to strings for V8's KeyAccumulator
-            // which expects all keys to be Name objects (String or Symbol).
-            // This handles indexed properties returned as integers.
-            double num_val = key->NumberValue(context).FromMaybe(0);
-            if (num_val >= 0 && num_val < 0xFFFFFFFF) {
-                uint32_t idx = static_cast<uint32_t>(num_val);
-                if (idx < length) {
-                    indices.push_back(idx);
-                } else {
-                    // Index out of range - treat as own property string
-                    Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(idx).c_str()).ToLocalChecked();
-                    own_props.push_back(idx_str);
-                }
-            }
+            const double number = key.As<Number>()->Value();
+            if (number >= 0 && number < 4294967295.0) indices.push_back(static_cast<uint32_t>(number));
         } else if (key->IsString()) {
-            String::Utf8Value utf8(isolate, key);
-            std::string key_str(*utf8);
-            
-            // Check if it's a numeric index within range
-            bool is_index = false;
-            if (!key_str.empty() && std::all_of(key_str.begin(), key_str.end(), ::isdigit)) {
-                uint32_t idx = std::stoul(key_str);
-                if (idx < length) {
-                    indices.push_back(idx);
-                    is_index = true;
-                }
-            }
-            
-            if (!is_index) {
-                // Use HasRealNamedProperty to distinguish actual own properties
-                // from named properties provided by the interceptor.
-                // HasRealNamedProperty returns true only for actual own properties,
-                // not for properties from the named property handler.
-                Local<String> key_string = key.As<String>();
-                Maybe<bool> has_real = target->HasRealNamedProperty(context, key_string);
-                if (has_real.FromMaybe(false)) {
-                    own_props.push_back(key);
-                } else {
-                    named_props.push_back(key);
-                }
+            if (target->HasRealNamedProperty(context, key.As<String>()).FromMaybe(false)) {
+                own_strings.push_back(key);
+            } else {
+                named.push_back(key);
             }
         }
-        // Note: Keys that are not Symbol, Number, or String are silently ignored.
-        // This should not happen with well-formed ownKeys results.
     }
-    
-    // Sort indices
+
+    std::vector<Local<Value>> keys;
+    keys.reserve(indices.size() + named.size() + own_strings.size() + own_symbols.size());
+    // 2. If O supports indexed properties, then for each index of O's
+    //    supported property indices, in ascending numerical order, append
+    //    ! ToString(index) to keys.
     std::sort(indices.begin(), indices.end());
-    
-    // Build result in WebIDL order: indices, named, own, symbols
-    std::vector<Local<Value>> result_keys;
-    
-    for (uint32_t idx : indices) {
-        Local<String> idx_str = String::NewFromUtf8(isolate, std::to_string(idx).c_str()).ToLocalChecked();
-        result_keys.push_back(idx_str);
+    for (uint32_t index : indices) {
+        keys.push_back(String::NewFromUtf8(isolate, std::to_string(index).c_str()).ToLocalChecked());
     }
-    for (const auto& key : named_props) {
-        result_keys.push_back(key);
-    }
-    for (const auto& key : own_props) {
-        result_keys.push_back(key);
-    }
-    for (const auto& key : symbols) {
-        result_keys.push_back(key);
-    }
-    
-    Local<Array> result = Array::New(isolate, static_cast<int>(result_keys.size()));
-    for (size_t i = 0; i < result_keys.size(); i++) {
-        result->Set(context, static_cast<uint32_t>(i), result_keys[i]).Check();
-    }
-    
-    info.GetReturnValue().Set(result);
-}
-
-// The getOwnPropertyDescriptor trap - must be consistent with ownKeys
-void LegacyPlatformObjectGetOwnPropertyDescriptor(const FunctionCallbackInfo<Value>& info) {
-    Isolate* isolate = info.GetIsolate();
-    HandleScope handle_scope(isolate);
-    Local<Context> context = isolate->GetCurrentContext();
-    
-    if (info.Length() < 2 || !info[0]->IsObject()) {
-        info.GetReturnValue().SetUndefined();
-        return;
-    }
-    
-    Local<Object> target = info[0].As<Object>();
-    Local<Value> key = info[1];
-    
-    // Forward to Reflect.getOwnPropertyDescriptor(target, key)
-    Local<Object> reflect = context->Global()
-        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
-        .ToLocalChecked().As<Object>();
-    
-    Local<Function> getOwnPropertyDescriptor = reflect
-        ->Get(context, String::NewFromUtf8Literal(isolate, "getOwnPropertyDescriptor"))
-        .ToLocalChecked().As<Function>();
-    
-    Local<Value> args[] = { target, key };
-    MaybeLocal<Value> result = getOwnPropertyDescriptor->Call(context, reflect, 2, args);
-    
-    if (result.IsEmpty()) {
-        info.GetReturnValue().SetUndefined();
-    } else {
-        info.GetReturnValue().Set(result.ToLocalChecked());
-    }
-}
-
-// Generic trap that forwards to Reflect
-void ForwardToReflect(const FunctionCallbackInfo<Value>& info, const char* method_name) {
-    Isolate* isolate = info.GetIsolate();
-    HandleScope handle_scope(isolate);
-    Local<Context> context = isolate->GetCurrentContext();
-    
-    Local<Object> reflect = context->Global()
-        ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
-        .ToLocalChecked().As<Object>();
-    
-    Local<Function> method = reflect
-        ->Get(context, String::NewFromUtf8(isolate, method_name).ToLocalChecked())
-        .ToLocalChecked().As<Function>();
-    
-    std::vector<Local<Value>> args;
-    for (int i = 0; i < info.Length(); i++) {
-        args.push_back(info[i]);
-    }
-    
-    MaybeLocal<Value> result = method->Call(context, reflect, 
-        static_cast<int>(args.size()), args.data());
-    
-    if (!result.IsEmpty()) {
-        info.GetReturnValue().Set(result.ToLocalChecked());
-    }
+    // 3. If O supports named properties, then for each P of O's supported
+    //    property names that is visible according to the named property
+    //    visibility algorithm, append P to keys.
+    keys.insert(keys.end(), named.begin(), named.end());
+    // 4. For each P of O's own property keys that is a String, in ascending
+    //    chronological order of property creation, append P to keys.
+    keys.insert(keys.end(), own_strings.begin(), own_strings.end());
+    // 5. For each P of O's own property keys that is a Symbol, in ascending
+    //    chronological order of property creation, append P to keys.
+    keys.insert(keys.end(), own_symbols.begin(), own_symbols.end());
+    // 6. Assert: keys has no duplicate items. (V8's list has none.)
+    // 7. Return keys. Made with its elements: a [[Set]] per element would
+    //    run a setter a page put on Array.prototype.
+    info.GetReturnValue().Set(Array::New(isolate, keys.data(), keys.size()));
 }
 
 // Whether `key` is an array index (ES 6.1.7: a canonical numeric string for an
@@ -14224,7 +14059,7 @@ bool IsArrayIndexKey(Isolate* isolate, Local<Value> key) {
     return n < 0xFFFFFFFFull;
 }
 
-// The Proxy "set" trap: WebIDL 3.9.3 legacy platform object [[Set]](P, V,
+// The Proxy "set" trap: WebIDL 3.9.2 legacy platform object [[Set]](P, V,
 // Receiver). The trap receives (target, P, V, Receiver); O is the target, and
 // "O and Receiver are the same object" means Receiver is this proxy.
 //
@@ -14291,10 +14126,14 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                     proto = holder->GetPrototype();
                     continue;
                 }
+                // V8's descriptor object (FromPropertyDescriptor): its OWN
+                // fields say what it is. Asked with [[HasProperty]], a `get`
+                // a page put on Object.prototype made every data property
+                // an accessor here.
                 Local<Object> desc = desc_value.As<Object>();
                 Local<Value> getter, setter;
-                const bool has_get = desc->Has(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false);
-                const bool has_set = desc->Has(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
+                const bool has_get = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false);
+                const bool has_set = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
                 if (has_get || has_set) {
                     // ES 10.1.9.2 step 4: an accessor descriptor. "Let setter
                     // be ownDesc.[[Set]]. If setter is undefined, return
@@ -14325,18 +14164,19 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
         }
         if (!receiver_is_o) {
             // Receiver is another object that has this proxy on its prototype
-            // chain: the data property is Receiver's own (ES 10.1.9.2 step
-            // 2.c-e), which ordinary [[Set]] with that receiver does.
-            Local<Object> reflect = context->Global()
-                ->Get(context, String::NewFromUtf8Literal(isolate, "Reflect"))
-                .ToLocalChecked().As<Object>();
-            Local<Function> reflect_set = reflect
-                ->Get(context, String::NewFromUtf8Literal(isolate, "set"))
-                .ToLocalChecked().As<Function>();
-            Local<Value> args[] = { target, property, value, receiver };
-            Local<Value> result;
-            if (!reflect_set->Call(context, reflect, 4, args).ToLocal(&result)) return;
-            info.GetReturnValue().Set(result);
+            // chain: the data property is Receiver's own (ES 10.1.9.2 steps
+            // 2.b-e), which the target's ordinary [[Set]] with that receiver
+            // does - V8's own (Object::Set with a receiver), never the
+            // page's Reflect.set.
+            // ES 10.1.9.2 step 2.b: "If Receiver is not an Object, return
+            // false."
+            if (!receiver->IsObject()) {
+                info.GetReturnValue().Set(false);
+                return;
+            }
+            Maybe<bool> stored = target->Set(context, property, value, receiver.As<Object>());
+            if (stored.IsNothing()) return;  // an exception is pending
+            info.GetReturnValue().Set(stored.FromJust());
             return;
         }
     }
@@ -14363,13 +14203,14 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
     if (defined.IsNothing()) return;  // an exception is pending
     info.GetReturnValue().Set(defined.FromJust());
 }
-void TrapHas(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "has"); }
-void TrapDeleteProperty(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "deleteProperty"); }
-void TrapDefineProperty(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "defineProperty"); }
-void TrapGetPrototypeOf(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "getPrototypeOf"); }
-void TrapSetPrototypeOf(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "setPrototypeOf"); }
-void TrapIsExtensible(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "isExtensible"); }
-void TrapPreventExtensions(const FunctionCallbackInfo<Value>& info) { ForwardToReflect(info, "preventExtensions"); }
+
+// The Proxy "preventExtensions" trap: WebIDL 3.9.5, a legacy platform
+// object's [[PreventExtensions]]. "This keeps legacy platform objects
+// extensible by making [[PreventExtensions]] fail for them."
+void LegacyPlatformObjectPreventExtensions(const FunctionCallbackInfo<Value>& info) {
+    // 1. Return false.
+    info.GetReturnValue().Set(false);
+}
 
 } // anonymous namespace
 
@@ -14423,7 +14264,6 @@ static Local<Object> NewLegacyPlatformObjectHandler(Isolate* isolate, Local<Cont
         handler->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
     };
 
-    // Set all traps
     // No "get" trap. A proxy with one makes V8 check the trap's result
     // against the target's own property descriptor on EVERY read
     // (JSProxy::CheckGetSetTrapResult, ES 10.5.8 step 9) - for a NodeList that
@@ -14432,16 +14272,12 @@ static Local<Object> NewLegacyPlatformObjectHandler(Isolate* isolate, Local<Cont
     // forwards [[Get]] to the target natively with the proxy as receiver, and
     // every path that unwraps a receiver's instance looks through a proxy to
     // its target.
+    // The three internal methods the target's interceptors do not answer
+    // as WebIDL says ("Legacy Platform Object Proxy Support", above); every
+    // other one has no trap and is the target's.
     set_trap("set", TrapSet, Boolean::New(isolate, named_setter));
-    set_trap("has", TrapHas);
-    set_trap("deleteProperty", TrapDeleteProperty);
     set_trap("ownKeys", LegacyPlatformObjectOwnKeys);
-    set_trap("getOwnPropertyDescriptor", LegacyPlatformObjectGetOwnPropertyDescriptor);
-    set_trap("defineProperty", TrapDefineProperty);
-    set_trap("getPrototypeOf", TrapGetPrototypeOf);
-    set_trap("setPrototypeOf", TrapSetPrototypeOf);
-    set_trap("isExtensible", TrapIsExtensible);
-    set_trap("preventExtensions", TrapPreventExtensions);
+    set_trap("preventExtensions", LegacyPlatformObjectPreventExtensions);
     return handler;
 }
 
