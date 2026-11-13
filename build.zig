@@ -5,15 +5,11 @@ const runner_build_mode = @import("tests/wpt_runner/build_mode.zig");
 /// Which tests/<dir>/ directories hold tests no suite runs, std-only and
 /// pinned by `zig build test` (`checkEveryTestDirectoryIsASuite`).
 const test_suites = @import("tools/test_suites.zig");
-/// Which V8 archives -Dv8-build and the target select (out/static,
-/// out/official, out/ios-arm64), std-only and pinned by `zig build test`
-/// (tools-v8_archives).
-const v8_archives = @import("tools/v8_archives.zig");
 
-/// THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b): an engine adapter's build options are
-/// declared by the adapter, in its own build file, never here (the user, 2026-11-12: "the valid flags should be in
-/// the js engine protocol"). The protocol's build file lists the adapters and asks the chosen one; this file names
-/// no adapter and no adapter's option.
+/// THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b): an engine adapter's build options, its
+/// sources and its link inputs are declared by the adapter, in its own build file, never here (the user,
+/// 2026-11-12: "the valid flags should be in the js engine protocol"). The protocol's build file lists the adapters
+/// and asks the chosen one; this file names no adapter, no adapter's option and nothing an adapter links.
 const engine_build = @import("src/runtime/engine_build_protocol.zig");
 
 // Crane builds with a Zig from the 0.17.x branch pinned at 77c319a0f00a
@@ -945,8 +941,8 @@ const TestSelection = struct {
     /// beside its wiring (`recordSuiteDir`), whether or not -Dspec selects
     /// it. `checkEveryTestDirectoryIsASuite` reads it.
     suite_dirs: *std.ArrayList([]const u8) = undefined,
-    /// The V8 archives every test that links V8 links (-Dv8-build).
-    v8: V8Link,
+    /// How every test executable that links the engine links it.
+    engine_link: engine_build.Link,
     /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
     /// executable (`OneBinary`) instead of one each. Null: one executable per
     /// directory.
@@ -995,8 +991,8 @@ const OneBinary = struct {
     /// The step whose directories join (`test`): one added to another step
     /// (test-browser, bench, test-eventsource) keeps its own executable.
     step: *std.Build.Step,
-    /// The V8 archives the executables it makes link (-Dv8-build).
-    v8: V8Link,
+    /// How the executables it makes link the engine.
+    engine_link: engine_build.Link,
     members: std.ArrayList(Member) = .empty,
 
     const Member = struct {
@@ -1104,6 +1100,9 @@ const TestLaunch = struct {
     many_browsers: bool,
     /// -Dtest-log-level: the test executables' log level (`useCraneTestRunner`).
     log_level: ?std.log.Level,
+    /// The build's engine: asked whether a test executable links it
+    /// (`useCraneTestRunner`).
+    engine: *const engine_build.Engine,
     /// The browser module, which the many-Browsers variant adds to every
     /// test executable that links V8 and lacks it (`addTestRoot`).
     browser_module: ?*std.Build.Module = null,
@@ -1394,7 +1393,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
-    const many_browsers = useCraneTestRunner(b, test_exe, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers, launch.log_level);
+    const many_browsers = useCraneTestRunner(b, test_exe, launch.engine, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers, launch.log_level);
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s}", .{name}));
     // The build runner speaks the test-runner protocol to the launcher.
@@ -1524,7 +1523,7 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// `testing.log_level` to .info and read info logs; to read debug logs, build
 /// with -Dtest-log-level=debug, which compiles and prints them. The WPT
 /// runner, the library and the tools keep their own levels.
-fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
+fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: *const engine_build.Engine, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
     _ = wf.addCopyDirectory(b.path("tests/test_runner"), "", .{ .include_extensions = &.{".zig"} });
@@ -1590,9 +1589,9 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
     w.writeAll("};\n\n") catch @panic("OOM");
     w.print("pub const dom: ?type = {s};\n", .{if (has_dom) "@import(\"dom\")" else "null"}) catch @panic("OOM");
     w.print("pub const runtime: ?type = {s};\n", .{if (has_runtime) "@import(\"runtime\")" else "null"}) catch @panic("OOM");
-    const has_engine = root.import_table.get("engine") != null and linksV8(root);
+    const has_engine = root.import_table.get("engine") != null and engine.isLinkedInto(root);
     w.print("/// The engine, where the executable links V8.\npub const engine: ?type = {s};\n", .{if (has_engine) "@import(\"engine\")" else "null"}) catch @panic("OOM");
-    const has_browser = many_browsers and root.import_table.get("browser") != null and linksV8(root);
+    const has_browser = many_browsers and root.import_table.get("browser") != null and engine.isLinkedInto(root);
     w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\npub const browser: ?type = {s};\n", .{if (has_browser) "@import(\"browser\")" else "null"}) catch @panic("OOM");
     _ = wf.add("suite.zig", suite.written());
 
@@ -1600,16 +1599,6 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, name: []
     test_exe.test_runner = .{ .path = runner.dupe(b.graph), .mode = .server };
     runner.addStepDependencies(&test_exe.step);
     return has_browser;
-}
-
-/// Whether `module` links V8 itself (`linkV8`): its own C++ wrapper.
-fn linksV8(module: *std.Build.Module) bool {
-    for (module.link_objects.items) |object| {
-        if (object != .c_source_file) continue;
-        const file = object.c_source_file.file;
-        if (file == .src_path and std.mem.eql(u8, file.src_path.sub_path, "src/runtime/engines/v8/v8_wrapper.cpp")) return true;
-    }
-    return false;
 }
 
 /// Fails the configuration if any step runs a test executable other than
@@ -1746,9 +1735,10 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// this build links as separate artifacts - brotli, the image codecs,
 /// nghttp2 - which are not modules of the graph) - and never the V8
 /// prebuilt, which is an archive. The C++ of a Crane module is instrumented
-/// with it - except v8_wrapper.cpp, compiled apart against Chromium's libc++
-/// (addV8Source, V8Link.wrapper_apart). Run at the end of `build`,
-/// when every import is in place. A module the tests share with another
+/// with it - except the engine adapter's own, where the adapter compiles it
+/// apart (an artifact says it is thread-sanitized when it links the engine:
+/// engine_build.LinkRequest). Run at the end of `build`, when every import is
+/// in place. A module the tests share with another
 /// artifact of the same build is instrumented there too.
 ///
 /// What the uninstrumented code does is invisible to TSAN except through
@@ -1835,7 +1825,7 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch, select.v8);
+        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch, select.engine_link);
         return;
     }
 
@@ -1899,7 +1889,7 @@ fn addTestFilesFromDir(
         });
         return;
     };
-    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch, select.v8);
+    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
@@ -1966,7 +1956,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             continue;
         }
         const root_path = b.fmt("{s}/{s}", .{ m.dir_path, test_root_name });
-        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.link_v8, launch, one.v8);
+        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.link_v8, launch, one.engine_link);
         addTestVerify(b, launch, exe, m.name, m.dir_path, m.files);
     }
     if (joined.items.len == 0) return;
@@ -1998,7 +1988,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             if (std.mem.eql(u8, have.name, imp.name)) break;
         } else try imports.append(allocator, imp);
     };
-    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, link_v8, launch, one.v8, groups.items);
+    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, link_v8, launch, one.engine_link, groups.items);
     for (joined.items, groups.items) |m, g| addTestVerifyIn(b, launch, exe, m.name, m.dir_path, m.files, g);
 }
 
@@ -2012,9 +2002,9 @@ fn addTestRoot(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-    v8: V8Link,
+    engine_link: engine_build.Link,
 ) *std.Build.Step.Compile {
-    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, v8, &.{});
+    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, engine_link, &.{});
 }
 
 /// `addTestRoot` for an executable that holds several suites' tests
@@ -2029,7 +2019,7 @@ fn addTestRootWith(
     modules: []const std.Build.Module.Import,
     link_v8: bool,
     launch: *const TestLaunch,
-    v8: V8Link,
+    engine_link: engine_build.Link,
     groups: []const SuiteGroup,
 ) *std.Build.Step.Compile {
     const test_exe = builder.addTest(.{
@@ -2050,8 +2040,8 @@ fn addTestRootWith(
         .target = target,
     }));
 
-    // Link V8 libraries if requested (for V8 tests)
-    if (link_v8) linkV8(builder, test_exe.root_module, v8);
+    // Link the engine if requested (for the tests that run it)
+    if (link_v8) engine_link.into(builder, test_exe.root_module);
 
     // The many-Browsers variant's busy Browser needs the browser module: a
     // suite that links V8 without it (tests/dom, tests/v8) gets the testing
@@ -2125,8 +2115,9 @@ fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Bui
 
 /// An executable that is compiled and never linked - nothing asks for its
 /// binary, so Zig analyses all the Zig it reaches (-fno-emit-bin) and still
-/// compiles v8_wrapper.cpp, but links nothing: no V8 archive, no system
-/// library is read. For a check (check-target, crane-check), never installed.
+/// compiles the engine adapter's own sources, but links nothing: no archive
+/// of the engine, no system library is read. For a check (check-target,
+/// crane-check), never installed.
 fn addCompileCheck(
     b: *std.Build,
     name: []const u8,
@@ -2134,7 +2125,7 @@ fn addCompileCheck(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     imports: []const std.Build.Module.Import,
-    v8: V8Link,
+    engine: *const engine_build.Engine,
 ) *std.Build.Step.Compile {
     const check = b.addExecutable(.{
         .name = name,
@@ -2145,7 +2136,7 @@ fn addCompileCheck(
             .imports = imports,
         }),
     });
-    addV8Source(b, check.root_module, v8, &.{});
+    engine.link(b, check.root_module, .{ .link = false });
     addCrossLibraryStubs(b, check.root_module, target);
     return check;
 }
@@ -2178,241 +2169,24 @@ fn addCrossLibraryStubs(b: *std.Build, module: *std.Build.Module, target: std.Bu
     }
 }
 
-/// The flags every compile of v8_wrapper.cpp passes: C++20 without exceptions
-/// or RTTI, and the defines V8's public headers must see to agree with the
-/// archive the artifact links - the V8 ones (pointer compression, the
-/// sandbox) and the cppgc ones, in this one place.
-///
-/// An archive built against Chromium's libc++ (-Dv8=15.7) says all of them
-/// itself: its include/ holds the build's v8-gn.h, which v8config.h includes
-/// under -DV8_GN_HEADER (V8 BUILD.gn v8_generate_external_defines_header), and
-/// its libcxx/flags.txt the defines GN compiles every consumer of that libc++
-/// with (`V8Link.libcxx_flags`, read by `loadV8Link`). Nothing is kept by hand
-/// for it. What follows is 13.1's list:
-///
-/// The cppgc defines are the archive's ABI, not a choice (the wrapper
-/// redesign, tmp/redesign/wrapper-redesign-design.md 2.6 and 4.12; risk R7).
-/// The headers inline `cppgc::Member`'s pointer compression, the write
-/// barrier's fast path and the cage constants, so they must see what the
-/// library was built with or a Member reads back another address than it was
-/// given. 13.1.203's BUILD.gn sets cppgc_enable_caged_heap on 64-bit, which
-/// forces CPPGC_YOUNG_GENERATION and CPPGC_POINTER_COMPRESSION, and its
-/// gni/v8.gni defaults cppgc_enable_slim_write_barrier and
-/// cppgc_enable_larger_cage to true; no args.gn Crane builds with
-/// (scripts/build-v8-official.sh control_args, scripts/build-v8-linux.sh)
-/// changes them. Read from the archives themselves (lane wr2, .wr2/abi-check.sh
-/// in its handoff): out/static on macOS and on Linux define
-/// CagedHeapBase::g_heap_base_, AgeTable, CombinedWriteBarrierSlow and
-/// CageBaseGlobal::g_base_, whose initial value - the cage alignment's mask -
-/// is 0x3ffffffff: the 16 GB "larger cage", compression shift 3
-/// (include/cppgc/internal/api-constants.h). out/ios-arm64's is 0xffffffff:
-/// built without the larger cage (shift 1), so an iOS compile leaves
-/// CPPGC_ENABLE_LARGER_CAGE out. tests/v8/cpp_heap_test.zig checks the result:
-/// a Member is 4 bytes and reads back what it was given.
-///
-/// `archive_os`: the OS whose archive the artifact links (tools/v8_archives.zig
-/// selects it by the target's OS). `extra`: flags of the artifact's own.
-fn v8WrapperFlags(b: *std.Build, v8: V8Link, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
-    if (v8.archives.chromium != null) {
-        const from_archive = [_][]const u8{ "-std=c++20", "-fno-exceptions", "-fno-rtti", "-DV8_GN_HEADER" };
-        return std.mem.concat(b.allocator, []const u8, &.{ &from_archive, v8.libcxx_flags, extra }) catch @panic("OOM");
-    }
-    const common = [_][]const u8{
-        "-std=c++20",
-        "-fno-exceptions",
-        "-fno-rtti",
-        "-DV8_COMPRESS_POINTERS",
-        "-DV8_ENABLE_SANDBOX",
-        "-DCPPGC_CAGED_HEAP",
-        "-DCPPGC_YOUNG_GENERATION",
-        "-DCPPGC_POINTER_COMPRESSION",
-        "-DCPPGC_SLIM_WRITE_BARRIER",
-    };
-    const larger_cage: []const []const u8 = if (archive_os == .ios) &.{} else &.{"-DCPPGC_ENABLE_LARGER_CAGE"};
-    return std.mem.concat(b.allocator, []const u8, &.{ &common, larger_cage, extra }) catch @panic("OOM");
-}
-
-/// How a build links V8: the archives -Dv8, -Dv8-build and the target's OS
-/// select (tools/v8_archives.zig) and, for an archive built against
-/// Chromium's libc++ (-Dv8=15.7), what `loadV8Link` reads from beside it at
-/// configure time: that libc++'s consumer flags and the system libraries the
-/// archive's own link names. Passed in, so every artifact links the same V8.
-const V8Link = struct {
-    archives: v8_archives.Archives,
-    /// libcxx/flags.txt's -D defines and -nostdinc++ (its directories are
-    /// added by `addV8Source`, relative and as -I).
-    libcxx_flags: []const []const u8 = &.{},
-    /// system-libs.txt's `-framework X` entries.
-    frameworks: []const []const u8 = &.{},
-    /// system-libs.txt's `-lX` entries.
-    system_libs: []const []const u8 = &.{},
-    /// -Dsanitize-thread with an archive built against Chromium's libc++: the
-    /// V8-facing C++ (v8_wrapper.cpp) is compiled apart, as a static library
-    /// of its own, uninstrumented (`addV8Source`).
-    wrapper_apart: bool = false,
-    /// The build's engine, when it cannot be built (another adapter that
-    /// links nothing yet, or no V8 for this target or these options): nothing
-    /// of `archives` is read, and what would link V8 fails with the engine's
-    /// reason instead (`addV8Source`).
-    unavailable: ?*const engine_build.Engine = null,
-};
-
-/// The V8Link of the build's engine: the archives the V8 adapter resolved
-/// (its build file: -Dv8, -Dv8-build and the target's OS) and, for an archive
-/// built against Chromium's libc++, the facts it keeps beside itself
-/// (scripts/build-v8-15.7.sh writes them from GN's own compile and d8's own
-/// link). A configure-time read the configuration cache cannot see change, so
-/// it is poisoned; a host without the archive gets the reason and how to get
-/// it, and the build stops. An engine that cannot be built - another adapter,
-/// or no V8 for this build - has no archives: its link is `unavailable`.
-/// TRANSITIONAL: this and the link functions below move into the V8
-/// adapter's build file with the design's batch E2, behind the protocol.
-fn loadV8Link(b: *std.Build, engine: *const engine_build.Engine) V8Link {
-    const resolved = engine.resolvedOf(.v8) orelse return .{
-        .archives = .{ .dir = "", .monolith = "", .libplatform = "", .libbase = "" },
-        .unavailable = engine,
-    };
-    const archives = resolved.archives;
-    const chromium = archives.chromium orelse return .{ .archives = archives };
-    b.graph.poisonCache();
-    const dir = b.root.root_dir.handle;
-    const flags_text = dir.readFileAlloc(b.graph.io, chromium.libcxx_flags, b.allocator, .limited(1 << 16)) catch |err| noV8Archive(chromium.libcxx_flags, err);
-    const libs_text = dir.readFileAlloc(b.graph.io, chromium.system_libs, b.allocator, .limited(1 << 16)) catch |err| noV8Archive(chromium.system_libs, err);
-    var flags: std.ArrayList([]const u8) = .empty;
-    var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
-    while (lines.next()) |line| {
-        if (std.mem.startsWith(u8, line, "-D") or std.mem.eql(u8, line, "-nostdinc++")) flags.append(b.allocator, line) catch @panic("OOM");
-    }
-    var frameworks: std.ArrayList([]const u8) = .empty;
-    var system_libs: std.ArrayList([]const u8) = .empty;
-    lines = std.mem.tokenizeScalar(u8, libs_text, '\n');
-    while (lines.next()) |line| {
-        if (std.mem.startsWith(u8, line, "-framework ")) {
-            frameworks.append(b.allocator, std.mem.trim(u8, line["-framework ".len..], " ")) catch @panic("OOM");
-        } else if (std.mem.startsWith(u8, line, "-l")) {
-            system_libs.append(b.allocator, line[2..]) catch @panic("OOM");
-        }
-    }
-    return .{ .archives = archives, .libcxx_flags = flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items };
-}
-
-fn noV8Archive(path: []const u8, err: anyerror) noreturn {
-    std.debug.print("Error: -Dv8=15.7 needs {s} ({s}) on this host: build the archive with scripts/build-v8-15.7.sh, or copy jsengines/v8/15.7.112.43 from a host of the same OS and check it with its SHA256SUMS\n", .{ path, @errorName(err) });
-    std.process.exit(1);
-}
-
-/// The V8 wrapper's source and headers on `module`: v8_wrapper.cpp with
-/// v8WrapperFlags, then the include directories. For an archive built against
-/// Chromium's libc++ that libc++'s three directories come first, as -I
-/// (addIncludePath): Zig puts its own -isystem directories (clang's builtins,
-/// the C library's) before any a module adds, so as -isystem they would follow
-/// the C library's and <cstdio> would find its <stdio.h> instead of libc++'s
-/// (scripts/build-v8-15.7.sh, step_smoke). Then V8's include/. Zig's own
-/// libc++ only for 13.1: with 15.7 the binary holds Chromium's, alone.
-///
-/// -Dsanitize-thread (`V8Link.wrapper_apart`) with such an archive: Zig links
-/// its ThreadSanitizer runtime with its own libc++ (std::__1) into every
-/// compilation that has an instrumented module, and puts that libc++'s -D
-/// macros and -isystem directories on every C++ file the compilation builds -
-/// against Chromium's libc++ headers v8_wrapper.cpp is compiled with
-/// ("_LIBCPP_ABI_NAMESPACE macro redefined"; errno and FP_NAN undeclared).
-/// So the wrapper is its own compilation: a static library with no
-/// instrumented module and no Zig libc++ - built exactly as without the
-/// sanitizer, Chromium's libc++ alone (std::__Cr) - linked into the
-/// artifact, where the two libc++ coexist by inline namespace. V8's archive
-/// and Chromium's libc++ are uninstrumented too. Chromium's own TSAN builds
-/// instrument everything, libc++ and V8 included (build/config/sanitizers/
-/// BUILD.gn, use_custom_libcxx with is_tsan), because they look for races in
-/// V8 and Blink; verify mode looks for races in Crane's Zig code, which stays
-/// instrumented (instrumentForThreadSanitizer). What this gives up: races
-/// inside v8_wrapper.cpp itself, which 13.1's build instrumented, and its
-/// UBSan checks in the sanitizer build (sanitize_c off for the library: the
-/// UBSan runtime would be a second one beside the artifact's). On Linux the
-/// runtime and Chromium's libc++abi both define the __cxa_guard functions:
-/// CRANE_V8_WRAPPER_APART_FOR_TSAN gives v8_wrapper.cpp weak ones that keep
-/// libc++abi's from being linked, so the runtime's win (see there).
-fn addV8Source(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
-    // An engine that cannot be built: whatever takes this module fails with
-    // the adapter's reason, and nothing of V8 is added.
-    if (v8.unavailable) |engine| return engine.failModule(builder, module);
-    if (v8.wrapper_apart and v8.archives.chromium != null) {
-        const wrapper = builder.addLibrary(.{
-            .name = "v8_wrapper",
-            .linkage = .static,
-            .root_module = builder.createModule(.{
-                .target = module.resolved_target,
-                .optimize = module.optimize orelse .Debug,
-                .link_libc = true,
-                .sanitize_c = .off,
-            }),
-        });
-        const flags = std.mem.concat(builder.allocator, []const u8, &.{ extra, &.{"-DCRANE_V8_WRAPPER_APART_FOR_TSAN=1"} }) catch @panic("OOM");
-        addV8SourceTo(builder, wrapper.root_module, v8, flags);
-        module.linkLibrary(wrapper);
-        module.link_libc = true;
-        return;
-    }
-    addV8SourceTo(builder, module, v8, extra);
-}
-
-/// `addV8Source`'s compile of v8_wrapper.cpp into `module`.
-fn addV8SourceTo(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
-    module.addCSourceFile(.{
-        .file = builder.path("src/runtime/engines/v8/v8_wrapper.cpp"),
-        .flags = v8WrapperFlags(builder, v8, module.resolved_target.?.result.os.tag, extra),
-    });
-    if (v8.archives.chromium) |chromium| for (chromium.libcxx_include) |dir| module.addIncludePath(.{ .cwd_relative = dir });
-    module.addIncludePath(.{ .cwd_relative = v8.archives.include });
-    if (v8.archives.chromium == null) module.link_libcpp = true else module.link_libc = true;
-}
-
-/// V8's archives on `module`, and the C++ runtime and system libraries they
-/// need: Zig's libc++ for 13.1; for 15.7 Chromium's libc++ (libc++_chromium.a),
-/// Temporal's Rust (librust_v8.a) and the archive's frameworks and libraries.
-fn addV8Archives(module: *std.Build.Module, v8: V8Link) void {
-    if (v8.unavailable != null) return;
-    module.addObjectFile(.{ .cwd_relative = v8.archives.monolith });
-    module.addObjectFile(.{ .cwd_relative = v8.archives.libplatform });
-    module.addObjectFile(.{ .cwd_relative = v8.archives.libbase });
-    if (v8.archives.chromium) |chromium| {
-        module.addObjectFile(.{ .cwd_relative = chromium.libcxx });
-        module.addObjectFile(.{ .cwd_relative = chromium.rust });
-        for (v8.frameworks) |framework| module.linkFramework(framework, .{});
-        for (v8.system_libs) |library| module.linkSystemLibrary(library, .{});
-    }
-}
-
-/// Link the V8 C++ wrapper and V8's archives into `module`.
-///
-/// `module` must be one the caller owns exclusively - a module created for a
-/// single artifact, never one shared through `addImport`. A module's link
-/// objects belong to every artifact downstream of it, so linking V8 into a
-/// shared module puts a second `v8_wrapper.cpp` into each consumer that
-/// already compiles one: 844 duplicate symbol definitions, measured.
-///
-/// `v8`: what `build()` selected (-Dv8, -Dv8-build and the target's OS,
-/// tools/v8_archives.zig) - passed in, so every artifact links the same V8.
-fn linkV8(builder: *std.Build, module: *std.Build.Module, v8: V8Link) void {
-    addV8Source(builder, module, v8, &.{});
-    addV8Archives(module, v8);
-}
-
-/// A `zig test` artifact for an existing module's own test tree, with V8 linked.
+/// A `zig test` artifact for an existing module's own test tree, with the
+/// engine linked.
 ///
 /// `b.addTest(.{ .root_module = mod })` does **not** give the test its own
 /// module: the Compile's `root_module` *is* `mod`, shared with every artifact
-/// that imports it. Linking V8 there would add `v8_wrapper.cpp` and the three
-/// archives to `crane`, `wpt_runner`, `full_static_lib` and the rest - each of
-/// which already adds them - and the link would fail on duplicate symbols.
+/// that imports it. Linking the engine there would add the adapter's sources
+/// and the engine's archives to `crane`, `wpt_runner`, `full_static_lib` and
+/// the rest - each of which already adds them - and the link would fail on
+/// duplicate symbols.
 ///
 /// So clone: same root source file, same import table, its own link objects.
 /// Call this only after the module's last `addImport`, or the clone's import
 /// table comes out short.
-fn addModuleTestWithV8(
+fn addModuleTestWithEngine(
     builder: *std.Build,
     mod: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    v8: V8Link,
+    engine_link: engine_build.Link,
 ) *std.Build.Step.Compile {
     const test_mod = builder.createModule(.{
         .root_source_file = mod.root_source_file,
@@ -2421,7 +2195,7 @@ fn addModuleTestWithV8(
     for (mod.import_table.keys(), mod.import_table.values()) |name, dep| {
         test_mod.addImport(name, dep);
     }
-    linkV8(builder, test_mod, v8);
+    engine_link.into(builder, test_mod);
     return builder.addTest(.{ .root_module = test_mod });
 }
 
@@ -3020,17 +2794,16 @@ pub fn build(b: *std.Build) void {
     const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
     const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
 
-    // -Dsanitize-thread, read before any artifact links V8: under it the V8
-    // wrapper is compiled apart (V8Link.wrapper_apart, addV8Source).
+    // -Dsanitize-thread, read before any artifact links the engine: an
+    // artifact with instrumented modules says so when it links it
+    // (engine_build.LinkRequest.thread_sanitized).
     const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the V8 prebuilt or the V8 wrapper) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
-    const v8 = loadV8Link(b, &engine);
-    // What the test executables and the snapshot generator link: the same V8,
-    // with the wrapper compiled apart under -Dsanitize-thread. Never the
-    // production artifacts' (wpt_runner, repl, gc_bench: checkLinkedC holds
-    // every C library they link to their modes).
-    var v8_tests_link = v8;
-    v8_tests_link.wrapper_apart = sanitize_thread_option;
-    const v8_tests = v8_tests_link;
+    // How the test executables and the snapshot generator link the engine:
+    // the same engine as the products, linked as into a thread-sanitized
+    // artifact under -Dsanitize-thread. Never the production artifacts' way
+    // (wpt_runner, repl, gc_bench: checkLinkedC holds every C library they
+    // link to their modes).
+    const tests_engine_link: engine_build.Link = .{ .engine = &engine, .request = .{ .thread_sanitized = sanitize_thread_option } };
 
     // ========================================================================
     // BUILD OPTIONS
@@ -3047,7 +2820,7 @@ pub fn build(b: *std.Build) void {
             "test-file",
             "Build and run only this tests/**/*_test.zig file, as its own executable (with -Dspec=<its directory's spec>)",
         ),
-        .v8 = v8_tests,
+        .engine_link = tests_engine_link,
     };
 
     // WHATWG TestUtils Standard - Build-time gating
@@ -3458,7 +3231,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, state_fixture, "test_state_fixture", .fail, .per_test, &.{}, false, test_log_level);
+        _ = useCraneTestRunner(b, state_fixture, &engine, "test_state_fixture", .fail, .per_test, &.{}, false, test_log_level);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A joined executable as -Dtest-binaries=v8 makes one (tests/
         // test_runner_fixture/joined_fixture.zig): two members, "start."
@@ -3475,7 +3248,7 @@ pub fn build(b: *std.Build) void {
                 },
             }),
         });
-        _ = useCraneTestRunner(b, joined_fixture, "test_joined_fixture", .fail, .per_test, &.{
+        _ = useCraneTestRunner(b, joined_fixture, &engine, "test_joined_fixture", .fail, .per_test, &.{
             .{ .prefix = "start.", .config = .{ .standalone_runtime = .process_start }, .plain = false },
             .{ .prefix = "held.", .config = .{}, .plain = false },
         }, false, test_log_level);
@@ -3495,7 +3268,7 @@ pub fn build(b: *std.Build) void {
                 .link_libc = true,
             }),
         });
-        _ = useCraneTestRunner(b, poison_fixture, "test_poison_fixture", .fail, .per_test, &.{}, false, test_log_level);
+        _ = useCraneTestRunner(b, poison_fixture, &engine, "test_poison_fixture", .fail, .per_test, &.{}, false, test_log_level);
         launcher_fixture_options.addOptionPath("poison_path", poison_fixture.getEmittedBin());
         // A test that races, built with ThreadSanitizer: child.zig's tests
         // check that the launcher's TSAN_OPTIONS make the race a crash of
@@ -3526,8 +3299,8 @@ pub fn build(b: *std.Build) void {
                     },
                 }),
             });
-            linkV8(b, many_fixture.root_module, v8_tests);
-            _ = useCraneTestRunner(b, many_fixture, "test_many_browsers_fixture", .fail, .per_test, &.{}, true, test_log_level);
+            tests_engine_link.into(b, many_fixture.root_module);
+            _ = useCraneTestRunner(b, many_fixture, &engine, "test_many_browsers_fixture", .fail, .per_test, &.{}, true, test_log_level);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
         }
         const launcher_test_module = b.createModule(.{
@@ -3557,6 +3330,7 @@ pub fn build(b: *std.Build) void {
             .sanitize_thread = sanitize_thread_option,
             .many_browsers = many_browsers,
             .log_level = test_log_level,
+            .engine = &engine,
             .browser_module = testing_graph.browser,
             .test_exes = test_exes: {
                 const list = b.allocator.create(std.ArrayList(*std.Build.Step.Compile)) catch @panic("OOM");
@@ -3572,7 +3346,7 @@ pub fn build(b: *std.Build) void {
     const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
     if (test_binaries == .v8 and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
-        one.* = .{ .step = test_step, .v8 = v8_tests };
+        one.* = .{ .step = test_step, .engine_link = tests_engine_link };
         test_selection.one = one;
     }
     test_selection.suite_dirs = suite_dirs: {
@@ -3999,7 +3773,7 @@ pub fn build(b: *std.Build) void {
         //   at `src/html/full.zig` and so is `testing_graph.html`, and both end up in the
         //   one compilation: `-Mroot=src/html/full.zig ... -Mhtml=src/html/full.zig`.
         //
-        //   `linkV8(b, testing_graph.html, v8)` - link it in place:
+        //   `engine.link(b, testing_graph.html, .{})` - link it in place:
         //     844 `error: duplicate symbol definition:` (_crane_callback_*,
         //     CallbackManager::instance_, ...)
         //   because `testing_graph.html` is a dependency of `wpt_runner`, `full_static_lib`,
@@ -4090,13 +3864,13 @@ pub fn build(b: *std.Build) void {
     // V8-linked, and it has to be: `Browser.init` creates an isolate, and
     // `testing_graph.browser` imports `v8`, `runtime` and `impls`. Unlike `testing_graph.html`
     // above, nothing imports `testing_graph.browser`, so it is not a dependency of itself
-    // and `addModuleTestWithV8` can clone it without two modules claiming
+    // and `addModuleTestWithEngine` can clone it without two modules claiming
     // `src/browser/root.zig`.
     //
     // tests/browser/ is a directory suite of its own, run by the separate
     // `test-browser` step (below), not by `test`.
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
-        const browser_tests = addModuleTestWithV8(b, testing_graph.browser, target, v8_tests);
+        const browser_tests = addModuleTestWithEngine(b, testing_graph.browser, target, tests_engine_link);
         const run_browser_tests = addSuiteRun(b, launch, browser_tests, "src-browser", null);
         test_step.dependOn(&run_browser_tests.step);
     }
@@ -4786,8 +4560,8 @@ pub fn build(b: *std.Build) void {
     // Zig does not resolve the iOS SDK itself; without this the C sources below
     // fail on <stdio.h> and the link fails on libSystem.
     addIosSdkPaths(full_static_lib.root_module, ios_sdk);
-    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
-    linkV8(b, full_static_lib.root_module, v8);
+    // The engine: its adapter's sources, its archives and their C++ runtime.
+    engine.link(b, full_static_lib.root_module, .{});
 
     // Configure storage backends
     configureStorageBackends(lib_exports_mod, target);
@@ -4863,10 +4637,8 @@ pub fn build(b: *std.Build) void {
         .root_module = crane_mod,
     });
 
-    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8). The archives'
-    // libplatform and libbase are regular ("fat") archives: GN's thin ones
-    // cannot be read by Zig's linker.
-    linkV8(b, crane_lib.root_module, v8);
+    // The engine: its adapter's sources, its archives and their C++ runtime.
+    engine.link(b, crane_lib.root_module, .{});
 
     // System frameworks (macOS)
     if (target.result.os.tag == .macos) {
@@ -4904,8 +4676,8 @@ pub fn build(b: *std.Build) void {
     };
     for (crane_exe_imports) |import| crane_exe.root_module.addImport(import.name, import.module);
 
-    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
-    linkV8(b, crane_exe.root_module, v8);
+    // The engine: its adapter's sources, its archives and their C++ runtime.
+    engine.link(b, crane_exe.root_module, .{});
 
     // Configure storage backends for executable
     configureStorageBackends(crane_exe.root_module, target);
@@ -4934,7 +4706,7 @@ pub fn build(b: *std.Build) void {
     // graph analysed, v8_wrapper.cpp compiled, nothing linked. Nothing else
     // compiles either for the build machine - every test binds `testing` -
     // which is how src/webdriver sat out the Zig 0.16 migration.
-    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports, v8);
+    const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports, &engine);
     b.step("crane-check", "Compile crane (src/webdriver + the target platform's graph) without linking").dependOn(&crane_check.step);
     check_target_step.dependOn(&crane_check.step);
     // Part of the whole test run (the integrator, 2026-10-23: about 78 s and
@@ -5126,8 +4898,8 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
-    linkV8(b, snapshot_gen_exe.root_module, v8_tests);
+    // The engine, linked as the test executables link it.
+    tests_engine_link.into(b, snapshot_gen_exe.root_module);
 
     // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
     // Debug-built C libraries links the full UBSan runtime they call into.
@@ -5242,8 +5014,8 @@ pub fn build(b: *std.Build) void {
     // release console's are `.trap`, so it links none.
     if (repl_c.compilesFull()) repl_exe.bundle_ubsan_rt = true;
 
-    // The V8 wrapper, V8's archives and their C++ runtime (-Dv8).
-    linkV8(b, repl_exe.root_module, v8);
+    // The engine: its adapter's sources, its archives and their C++ runtime.
+    engine.link(b, repl_exe.root_module, .{});
 
     // The snapshot the console's Browser starts from (zig-out/bin/
     // whatwg_snapshot.bin, read beside the binary when it RUNS): its install
@@ -5399,10 +5171,9 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
-    // Only this binary pays for Global<T> accounting. It runs on every
-    // handle creation, so a browser should not carry it.
-    addV8Source(b, gc_bench_exe.root_module, v8, &.{"-DCRANE_TRACK_GLOBALS=1"});
-    addV8Archives(gc_bench_exe.root_module, v8);
+    // Only this binary pays for the engine's live-handle accounting. It runs
+    // on every handle creation, so a browser should not carry it.
+    engine.link(b, gc_bench_exe.root_module, .{ .handle_accounting = true });
     // As the runner's: the full C sanitizer, and its runtime bundled for the
     // C libraries a release root links when they are built with the full
     // sanitizer (the shared graph's: -Doptimize's mode; see addWptRunner).
@@ -5531,7 +5302,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "permissions", .module = testing_graph.permissions },
         };
-        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, v8_tests);
+        _ = addTestRoot(b, test_step, command_lifetime_test, "ar3-command-lifetime", null, target, &command_test_imports, true, launch, tests_engine_link);
     }
 
     // The WPT runner's two builds (build_mode.zig `RunnerBuild`, the graphs
@@ -5565,7 +5336,7 @@ pub fn build(b: *std.Build) void {
         .install_snapshot = &install_snapshot.step,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
-        .v8 = v8,
+        .engine = &engine,
     });
     const wpt_runner_check = wpt_runner_exe.check;
     // Build ONLY wpt_runner. A bare `zig build` compiles all 19 installed
@@ -5586,7 +5357,7 @@ pub fn build(b: *std.Build) void {
         .install_snapshot = &install_snapshot.step,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
-        .v8 = v8,
+        .engine = &engine,
     });
     // The two runs compared (tests/wpt_runner/build_compare.zig): the
     // bug-finding run's gate - no crash, poison read, leak, double free,
@@ -7195,8 +6966,8 @@ const WptRunnerContext = struct {
     /// -Dwpt-debug.
     wpt_debug: bool,
     check_target: *std.Build.Step,
-    /// The V8 the runner links (-Dv8, `linkV8`).
-    v8: V8Link,
+    /// The build's engine, which the runner links.
+    engine: *const engine_build.Engine,
 };
 
 /// One built WPT runner (`addWptRunner`).
@@ -7264,7 +7035,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
             .imports = imports,
         }),
     });
-    linkV8(b, exe.root_module, ctx.v8);
+    ctx.engine.link(b, exe.root_module, .{});
     // v8_wrapper.cpp's sanitizer (build_mode.zig, RunnerModes.sanitize_c):
     // the production run's is its release mode's own (.trap), as the
     // console's; the bug-finding run's is `.full`, so a failed check names
@@ -7300,7 +7071,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     options.addOption([]const u8, "modes", b.dupe(runner_build_mode.describe(&described, config.modes) catch @panic("modes")));
     exe.root_module.addOptions("wpt_options", options);
 
-    const check = addCompileCheck(b, b.fmt("{s}_check", .{which.binaryName()}), "tests/wpt_runner/main.zig", ctx.target, config.modes.root, imports, ctx.v8);
+    const check = addCompileCheck(b, b.fmt("{s}_check", .{which.binaryName()}), "tests/wpt_runner/main.zig", ctx.target, config.modes.root, imports, ctx.engine);
     check.root_module.addOptions("wpt_options", options);
     ctx.check_target.dependOn(&check.step);
     return .{ .exe = exe, .install = install, .check = check };
