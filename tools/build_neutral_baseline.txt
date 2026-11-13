@@ -4,17 +4,16 @@
 # count rises or a new line appears. After a batch moves a slice behind the
 # build side of a protocol (src/runtime/engine_build_protocol.zig), lower it
 # with `zig build lint-build -- --update`. Never raise it by hand.
-build.zig engine:javascriptcore code 5
-build.zig engine:javascriptcore comment 6
+build.zig engine:javascriptcore comment 2
 build.zig engine:javascriptcore script 4
-build.zig engine:jsc code 8
-build.zig engine:jsc comment 2
+build.zig engine:jsc code 1
+build.zig engine:jsc comment 1
 build.zig engine:jsc script 3
-build.zig engine:quickjs code 9
-build.zig engine:quickjs comment 3
+build.zig engine:quickjs code 1
+build.zig engine:quickjs comment 2
 build.zig engine:quickjs script 6
-build.zig engine:v8 code 283
-build.zig engine:v8 comment 278
+build.zig engine:v8 code 229
+build.zig engine:v8 comment 257
 build.zig engine:v8 script 81
 build.zig library:brotli code 62
 build.zig library:brotli comment 14
@@ -40,22 +39,22 @@ build.zig platform:darwin comment 8
 build.zig platform:homebrew code 5
 build.zig platform:homebrew comment 5
 build.zig platform:homebrew script 1
-build.zig platform:ios code 71
-build.zig platform:ios comment 58
+build.zig platform:ios code 65
+build.zig platform:ios comment 47
 build.zig platform:ios script 1
 build.zig platform:iphoneos code 4
 build.zig platform:iphoneos comment 7
 build.zig platform:linux code 31
 build.zig platform:linux comment 30
 build.zig platform:linux script 1
-build.zig platform:macos code 8
-build.zig platform:macos comment 17
+build.zig platform:macos code 7
+build.zig platform:macos comment 16
 build.zig platform:macos script 2
 build.zig platform:xcrun code 3
 build.zig platform:xcrun comment 4
 build.zig target:.abi == code 2
 build.zig target:isDarwin code 4
-build.zig target:os.tag code 31
+build.zig target:os.tag code 29
 tests/wpt_runner/build_mode.zig engine:v8 comment 3
 tests/wpt_runner/build_mode.zig library:brotli comment 2
 tests/wpt_runner/build_mode.zig library:curl comment 3
