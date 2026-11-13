@@ -27,7 +27,9 @@
 //!    since the redesign's P7 a wrapped node wraps no ancestor, so the ROOT's
 //!    empty slot does not answer for its tree (dom.wrapper_tracing
 //!    .holdsWrapper does);
-//! 4. the remembered roots are bounded by the trees that still wait.
+//! 4. a wrapper released inside a shadow tree answers for its HOST's tree
+//!    (the host-including tree is what the counts and the walk keep);
+//! 5. the remembered roots are bounded by the trees that still wait.
 //!
 //! Each test has its own agent with two Window realms: `page`, which keeps
 //! the agent alive, and a frame that ends inside the test. The collections
@@ -415,6 +417,54 @@ test "a root whose release waits at its realm's end is not freed while a wrapper
         queue.drainAll();
     }
     try testing.expect(!root.watched.alive());
+    try testing.expect(!span.watched.alive());
+}
+
+test "a wrapper released inside a shadow tree answers for its host's tree: the net frees the host-including tree of an ended realm" {
+    var queue = DeferredTeardown.init(testing.allocator);
+    defer queue.deinit();
+    const fx = try Fixture.open(&queue);
+    defer fx.close();
+    const frame = try fx.frame();
+    var frame_ended = false;
+    defer if (!frame_ended) engine.destroyWindowRealm(frame, .global_detached);
+
+    // A detached host <div> the realm's pending work holds, with a shadow
+    // root and a <span> in it. Script keeps the span only.
+    const host = try nodeOf(frame,
+        \\globalThis.d = new Document();
+        \\globalThis.h = d.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+        \\globalThis.x = h.attachShadow({ mode: 'open' }).appendChild(d.createElementNS('http://www.w3.org/1999/xhtml', 'span'));
+        \\h
+    );
+    const span = try nodeOf(frame, "x");
+    queue.drainAll();
+    var pending: dom.node_holds.CountedRef = .{};
+    pending.take(host.watched.instance, host.node);
+    defer pending.release(host.watched.instance);
+    defer queue.drainAll();
+
+    // The host's wrapper goes while the realm lives; the span's stays.
+    try run(frame, "globalThis.h = null;");
+    fx.collect();
+    try testing.expect(runtime.lifetime.slotOf(host.node).isEmpty());
+    try testing.expect(!runtime.lifetime.slotOf(span.node).isEmpty());
+
+    // The realm ends with the span's wrapper there: the tree stays whole.
+    engine.destroyWindowRealm(frame, .global_detached);
+    frame_ended = true;
+    queue.drainAll();
+    try testing.expect(host.watched.alive());
+    try testing.expect(span.watched.alive());
+
+    // Then that wrapper goes. Its release names a node whose root is a
+    // shadow root: the tree to look at is its host's.
+    var turns: usize = 0;
+    while (turns < 6 and host.watched.alive()) : (turns += 1) {
+        fx.collect();
+        queue.drainAll();
+    }
+    try testing.expect(!host.watched.alive());
     try testing.expect(!span.watched.alive());
 }
 
