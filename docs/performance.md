@@ -102,9 +102,9 @@ statement, the workload says so: that is its browser equivalent.
 | `timers.promise-chain` | a chain of 100,000 `then` | |
 | `timers.queue-microtask` | 100,000 `queueMicrotask` one after another | |
 | `timers.message-channel` | 2,000 `MessageChannel` round trips | |
-| `workers.start-stop` | 8 dedicated workers one after another, each started, sent one message, answered and terminated: an engine instance's whole life, the worker doing nothing (from round 8) | |
+| `workers.start-stop` | 8 dedicated workers one after another, each started, sent one message, answered and terminated: an engine instance's whole life, the worker doing nothing (from round 9) | |
 | `workers.start-work-stop` | the same, each worker allocating 4,000 arrays of 1,024 numbers and keeping every second one until it answers: its heap grows and is given back at its end | |
-| `workers.four-at-once` | four allocating workers alive together, then terminated, twice. The three rows exist from round 8 (rounds 0 to 7 have no value for them); an engine that has `Worker` but never runs one - no message, no error within 5 s of the page's first worker - reads `unsupported` (Lightpanda's nightly of 2026-11-05 as the suite launches it: its log says "resource skipped ... resource=worker") | |
+| `workers.four-at-once` | four allocating workers alive together, then terminated, twice. The three rows exist from round 9 (rounds 0 to 8 have no value for them); an engine that has `Worker` but never runs one - no message, no error within 5 s of the page's first worker - reads `unsupported` (Lightpanda's nightly of 2026-11-05 as the suite launches it: its log says "resource skipped ... resource=worker") | |
 | `load.news`, `load.docs`, `load.app` | a real-world-shaped page loaded 10 times in one tab: from the document's time origin to its load event, or to when its script says it is ready (the app's data rendered) | |
 | `memory.idle-page` | one small page, left alone 3 s: the footprint | |
 | `startup.idle-page` | from launching the engine to that page's load event: start-up, reported apart so no other row includes it | |

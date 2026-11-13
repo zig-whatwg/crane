@@ -818,7 +818,19 @@ group is made (src/init/isolate-group.cc:211-218). Chrome sets neither flag
 (its one switch for the pool, kV8MemoryPoolReleaseOnMallocFailures, is off:
 Chromium 157.0.8103.50 gin/gin_features.cc:93-94).
 
-Measured on the perf suite (lane v8up b8: chat.local, one console with the
+**Which value for which host** (lane v8up b8, 2026-11-13; every figure is
+against V8's own pool, the default):
+
+| value | macOS (Apple silicon) | Linux (x86-64) |
+|---|---|---|
+| `0`, no pool | free: no workload over 3% on time or instructions; 9% of steady memory back | NOT free: json.stringify +12% and timers.queue-microtask +5.5% in time; 10% of resident memory back |
+| `1`, one second | free; 4% of steady memory back | free: no workload over 3%; 5% of resident memory back |
+
+So a host that wants the memory back sooner takes `1` anywhere, and `0` where
+it has measured its own workloads. Starting and stopping workers - what V8
+built the pool for - does not pay with the pool off on either system (below).
+
+Measured on macOS, the perf suite (chat.local, one console with the
 flags as arms, 48 workloads, 7 alternating runs; geometric means against V8's
 own; memory at the suite's steady mark, 0.5 s after each workload):
 
@@ -833,10 +845,36 @@ Off, the rows that free the most just before the mark give it back
 -> 200-210 MB, timers.queue-microtask 77.8 -> 50.4 MB), and one row moved over
 3% on time or instructions: fetch.loopback-json, +0.8% instructions. At 1 s
 only workloads longer than the pool's heartbeat moved. Ten seconds after the
-work the three read the same: V8 returns the memory by itself. What that suite
-did not measure is what V8 built the pool for - isolates started and stopped
-(V8's own figure: JetStream bomb-workers +3% on an M1, +4.5% on a Pixel 6) -
-which `workers.*` (tests/perf/workloads/workers.html) measures from round 8.
+work the three read the same: V8 returns the memory by itself.
+
+What V8 built the pool for is isolates started and stopped (V8's own figure:
+JetStream bomb-workers +3% on an M1, +4.5% on a Pixel 6). The suite's three
+`workers.*` workloads (tests/perf/workloads/workers.html, in the published
+suite from round 9) measure that; timed on chat.local, 7 alternating runs,
+against V8's own pool:
+
+| pool | time | CPU | instructions | steady memory | peak |
+|---|---|---|---|---|---|
+| 1 s | 0.994 | 1.000 | 1.0000 | 1.003 | 0.988 |
+| off (`0`) | 0.986 | 0.988 | 1.0008 | 0.991 | 0.920 |
+
+No workload over 3%: with the pool off an idle worker's start costs 0.1% more
+instructions (about 44,000 for one worker), and four workers at once end 35 MB
+lower (97 -> 62 MB).
+
+Measured on Linux (server1, x86-64, a quiet host, the per-mark driver: no
+instruction counts there, memory is the resident set; 26 workloads on seven
+pages, 7 alternating runs):
+
+| pool | time | CPU | resident memory | peak |
+|---|---|---|---|---|
+| 1 s | 0.986 | 0.999 | 0.954 | 0.976 |
+| off (`0`) | 0.991 | 1.034 | 0.903 | 0.929 |
+
+Off, two workloads cost more than 3% in time there: json.stringify 4.25 ->
+4.75 ms (+12%, the seven runs of each side apart) and timers.queue-microtask
+227 -> 240 ms (+5.5%); the three worker workloads read 0.999, 0.986 and 0.953.
+At 1 s no workload is over 3%.
 Not a protocol option for the reason the two above are not: it is one
 engine's allocator, set for the process when the engine starts.
 
