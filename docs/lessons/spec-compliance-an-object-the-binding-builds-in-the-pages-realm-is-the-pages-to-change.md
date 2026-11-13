@@ -14,7 +14,7 @@ WebIDL 3.9's algorithms for these internal methods read the object's supported p
 **Fix**:
 1. A helper object handed to the engine has NO prototype (`Object::New(isolate, Null(isolate), nullptr, nullptr, 0)`) and gets its fields by CreateDataProperty, never [[Set]]. If it lives longer than one call, freeze it.
 2. Read a field of an engine-made record object with HasOwnProperty, not [[HasProperty]].
-3. Never resolve an intrinsic by name on the global at call time. Ask the engine's API for the operation on the object (Object::GetOwnPropertyNames, Object::GetOwnPropertyDescriptor, Object::Set with a receiver), or capture the intrinsic when the realm is made, before any script runs.
+3. Never resolve an intrinsic by name on the global at call time. Ask the engine's API for the operation on the object (Object::GetOwnPropertyNames, Object::GetOwnPropertyDescriptor, Object::DefineProperty, Object::CreateDataProperty), or capture the intrinsic when the realm is made, before any script runs.
 4. A Proxy trap that only forwards is a liability: delete it. ES 10.5 forwards a missing trap to the target natively.
 5. Build a result array with its elements (`Array::New(isolate, elements, n)`): a [[Set]] per index runs a setter the page put on Array.prototype.
 6. Test it by tampering: delete and replace the global's `Reflect`, put functions and accessors named like trap names and descriptor fields on Object.prototype, then ask every internal method and compare with the untampered answers. A browser passes that test by construction.

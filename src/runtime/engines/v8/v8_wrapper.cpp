@@ -14106,78 +14106,129 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
         (is_index || (property->IsString() && has_named_setter));
 
     if (!via_own_setters && property->IsName()) {
-        // Step 2: "Let ownDesc be LegacyPlatformObjectGetOwnProperty(O, P,
-        // true)" - own properties, supported indices, never named properties.
-        // A real own property (an expando) keeps today's path below.
+        Local<Name> name = property.As<Name>();
+        // Step 2: "Let ownDesc be ? LegacyPlatformObjectGetOwnProperty(O, P,
+        // true)" - own properties and supported indices, NEVER named
+        // properties (ignoreNamedProps is true).
         const bool own = property->IsString()
             ? target->HasRealNamedProperty(context, property.As<String>()).FromMaybe(false)
-            : target->HasOwnProperty(context, property.As<Name>()).FromMaybe(false);
-        if (!own) {
-            // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V,
-            // Receiver, ownDesc)" with ownDesc undefined: ES 10.1.9.2 step 1
-            // walks the prototype chain for P.
-            Local<Value> proto = target->GetPrototype();
-            while (proto->IsObject()) {
-                Local<Object> holder = proto.As<Object>();
-                Local<Value> desc_value;
-                if (!holder->GetOwnPropertyDescriptor(context, property.As<Name>()).ToLocal(&desc_value)) {
-                    return;  // an exception is pending
-                }
-                if (desc_value->IsUndefined()) {
-                    proto = holder->GetPrototype();
-                    continue;
-                }
-                // V8's descriptor object (FromPropertyDescriptor): its OWN
-                // fields say what it is. Asked with [[HasProperty]], a `get`
-                // a page put on Object.prototype made every data property
-                // an accessor here.
-                Local<Object> desc = desc_value.As<Object>();
-                Local<Value> getter, setter;
-                const bool has_get = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false);
-                const bool has_set = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
-                if (has_get || has_set) {
-                    // ES 10.1.9.2 step 4: an accessor descriptor. "Let setter
-                    // be ownDesc.[[Set]]. If setter is undefined, return
-                    // false. Perform ? Call(setter, Receiver, « V »). Return
-                    // true." - false is a TypeError in strict code.
-                    if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter)) return;
-                    if (!setter->IsFunction()) {
-                        info.GetReturnValue().Set(false);
-                        return;
-                    }
-                    Local<Value> args[] = { value };
-                    if (setter.As<Function>()->Call(context, receiver, 1, args).IsEmpty()) return;
-                    info.GetReturnValue().Set(true);
+            : target->HasOwnProperty(context, name).FromMaybe(false);
+        // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V, Receiver,
+        // ownDesc)" (ES 10.1.9.2). Where its ownDesc is looked for first:
+        // - Receiver is O and P is a real own property (an expando): nowhere -
+        //   the property is redefined on the target, below, as before;
+        // - Receiver is another object: on the target itself when it answers
+        //   for P by step 2 - a real own property, or an array index (a
+        //   supported index's descriptor is the indexed interceptor's:
+        //   read-only unless there is an indexed setter; an unsupported one
+        //   has none) - and never for a supported NAME, which step 2 ignores:
+        //   `Object.create(collection).named = v` makes the heir's own
+        //   property. V8's ordinary [[Set]] on the target, which this used
+        //   to call (through the page's Reflect.set), asks the named
+        //   interceptor, finds a read-only property and refuses.
+        //   Golden rule 2: the spec with Firefox and Safari against Chrome.
+        //   dom/collections/HTMLCollection-as-prototype.html "HTMLCollection
+        //   as a prototype and setting own properties", wpt.fyi 2026-11-13:
+        //   Firefox 162 and Safari 256 preview pass (2 of 2), Chrome 160
+        //   fails it (1 of 2: 'expected (string) "foo" but got (object)
+        //   Element node') - Blink's objects are API objects whose named
+        //   query interceptor V8 asks on the prototype chain, as ours did;
+        // - else on O's prototype chain (ES 10.1.9.2 step 1: ownDesc
+        //   undefined, parent.[[Set]]).
+        const bool walk = !(receiver_is_o && own);
+        Local<Value> holder_value = (!receiver_is_o && (own || is_index)) ? Local<Value>(target) : target->GetPrototype();
+        while (walk && holder_value->IsObject()) {
+            Local<Object> holder = holder_value.As<Object>();
+            Local<Value> desc_value;
+            if (!holder->GetOwnPropertyDescriptor(context, name).ToLocal(&desc_value)) {
+                return;  // an exception is pending
+            }
+            if (desc_value->IsUndefined()) {
+                holder_value = holder->GetPrototype();
+                continue;
+            }
+            // V8's descriptor object (FromPropertyDescriptor): its OWN
+            // fields say what it is. Asked with [[HasProperty]], a `get` a
+            // page put on Object.prototype made every data property an
+            // accessor here.
+            Local<Object> desc = desc_value.As<Object>();
+            Local<Value> setter;
+            const bool has_get = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false);
+            const bool has_set = desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
+            if (has_get || has_set) {
+                // ES 10.1.9.2 steps 3-6: an accessor descriptor. "Let setter
+                // be ownDesc.[[Set]]. If setter is undefined, return false.
+                // Perform ? Call(setter, Receiver, « V »). Return true." -
+                // false is a TypeError in strict code.
+                if (!has_set || !desc->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter)) {
+                    if (!has_set) info.GetReturnValue().Set(false);
                     return;
                 }
-                // ES 10.1.9.2 step 2.a: "If ownDesc.[[Writable]] is false,
-                // return false."
-                Local<Value> writable;
-                if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&writable)) return;
-                if (!writable->BooleanValue(isolate)) {
+                if (!setter->IsFunction()) {
                     info.GetReturnValue().Set(false);
                     return;
                 }
-                // A writable data property further up: the value lands on
-                // Receiver, below.
-                break;
+                Local<Value> args[] = { value };
+                if (setter.As<Function>()->Call(context, receiver, 1, args).IsEmpty()) return;
+                info.GetReturnValue().Set(true);
+                return;
             }
+            // ES 10.1.9.2 step 2.a: "If ownDesc.[[Writable]] is false,
+            // return false."
+            Local<Value> writable;
+            if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&writable)) return;
+            if (!writable->BooleanValue(isolate)) {
+                info.GetReturnValue().Set(false);
+                return;
+            }
+            // A writable data property: the value lands on Receiver, below.
+            break;
         }
         if (!receiver_is_o) {
             // Receiver is another object that has this proxy on its prototype
-            // chain: the data property is Receiver's own (ES 10.1.9.2 steps
-            // 2.b-e), which the target's ordinary [[Set]] with that receiver
-            // does - V8's own (Object::Set with a receiver), never the
-            // page's Reflect.set.
+            // chain, and ownDesc is a writable data descriptor (found above,
+            // or the default one of ES 10.1.9.2 step 1.c): the value becomes
+            // Receiver's own, by Receiver's own internal methods - nothing
+            // here asks the target again, or the page's Reflect.set.
             // ES 10.1.9.2 step 2.b: "If Receiver is not an Object, return
             // false."
             if (!receiver->IsObject()) {
                 info.GetReturnValue().Set(false);
                 return;
             }
-            Maybe<bool> stored = target->Set(context, property, value, receiver.As<Object>());
-            if (stored.IsNothing()) return;  // an exception is pending
-            info.GetReturnValue().Set(stored.FromJust());
+            Local<Object> receiver_object = receiver.As<Object>();
+            // 2.c: "Let existingDescriptor be ? Receiver.[[GetOwnProperty]](P)."
+            Local<Value> existing_value;
+            if (!receiver_object->GetOwnPropertyDescriptor(context, name).ToLocal(&existing_value)) return;
+            if (existing_value->IsObject()) {
+                // 2.d: "If existingDescriptor is not undefined, then
+                //   i. If IsAccessorDescriptor(existingDescriptor) is true,
+                //      return false.
+                //   ii. If existingDescriptor.[[Writable]] is false, return
+                //       false.
+                //   iii. Let valueDesc be the PropertyDescriptor
+                //        { [[Value]]: V }.
+                //   iv. Return ? Receiver.[[DefineOwnProperty]](P, valueDesc)."
+                Local<Object> existing = existing_value.As<Object>();
+                Local<Value> existing_writable;
+                if (existing->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false) ||
+                    existing->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false) ||
+                    !existing->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&existing_writable) ||
+                    !existing_writable->BooleanValue(isolate)) {
+                    if (!isolate->HasPendingException()) info.GetReturnValue().Set(false);
+                    return;
+                }
+                PropertyDescriptor value_descriptor(value);
+                Maybe<bool> defined = receiver_object->DefineProperty(context, name, value_descriptor);
+                if (defined.IsNothing()) return;  // an exception is pending
+                info.GetReturnValue().Set(defined.FromJust());
+                return;
+            }
+            // 2.e: "Else, i. Assert: Receiver does not currently have a
+            // property P. ii. Return ? CreateDataProperty(Receiver, P, V)."
+            Maybe<bool> created = receiver_object->CreateDataProperty(context, name, value);
+            if (created.IsNothing()) return;  // an exception is pending
+            info.GetReturnValue().Set(created.FromJust());
             return;
         }
     }
