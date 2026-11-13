@@ -4823,6 +4823,58 @@ void v8_Isolate_MemoryPressureNotification(Isolate* isolate, int level) {
     runQueuedFinalizers(isolate);
 }
 
+/// The adapter's context embedder-data indices, ALL of them (0 is V8's own,
+/// Context::kDebugIdIndex): 1 kCraneContextIdIndex (CraneContextIdOf), 2
+/// kCrossOriginFunctionsIndex (the cross-origin functions' map), 3 this one.
+static constexpr int kAsyncIteratorPrototypeIndex = 3;
+
+/// %AsyncIteratorPrototype% of `context`'s realm (ECMA-262 27.1.3), by NAME.
+/// No global names it, but V8 does: v8::Intrinsic::kAsyncIteratorPrototype
+/// (include/v8-template.h, the native context's
+/// initial_async_iterator_prototype), which a template may ask for as a data
+/// property and V8 resolves from the context the template is instantiated in.
+/// Blink reaches it the same way when it builds an interface's asynchronous
+/// iterator prototype (Chromium 157.0.8103.50 third_party/blink/renderer/
+/// bindings/core/v8/generated_code_helper.cc:166-206, SetupIDLIteratorTemplate
+/// -> SetIntrinsicDataProperty). No script is compiled or run - the adapter
+/// evaluated "(async function* () {}).prototype" for this, on every
+/// `stream.values()` - so no microtask checkpoint can follow and nothing of
+/// the realm's that script can replace is read.
+///
+/// Asked once per context: the answer is kept in the context's embedder data
+/// (kAsyncIteratorPrototypeIndex), a reference from a context to an object of
+/// its own that goes with it. A template per call would not do - V8 caches
+/// each template's instantiation in the context, by the template's serial
+/// number, for up to a million of them (15.7.112.43 src/api/api-natives.cc
+/// InstantiateObject, src/objects/templates.h
+/// kMaxTemplateInstantiationsCacheSize). A context restored from the snapshot
+/// has the slot empty: the generator makes no realm record and runs no script
+/// that makes an iterator. OWNED by the caller; null on failure.
+Global<Value>* v8_Context_AsyncIteratorPrototype(Isolate* isolate, Global<Context>* context) {
+    if (!isolate || !context || context->IsEmpty()) return nullptr;
+    HandleScope handle_scope(isolate);
+    Local<Context> realm = context->Get(isolate);
+    if (realm.IsEmpty()) return nullptr;
+    if (realm->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(kAsyncIteratorPrototypeIndex)) {
+        Local<Value> kept = realm->GetEmbedderDataV2(kAsyncIteratorPrototypeIndex).As<Value>();
+        if (!kept.IsEmpty() && kept->IsObject()) return new Global<Value>(isolate, kept);
+    }
+    Context::Scope entered(realm);
+    // Nothing here runs script; an exception could only be V8's own (out of
+    // memory), and it does not outlive this call.
+    TryCatch failure(isolate);
+    Local<String> name = String::NewFromUtf8Literal(isolate, "intrinsic", NewStringType::kInternalized);
+    Local<ObjectTemplate> holder = ObjectTemplate::New(isolate);
+    holder->SetIntrinsicDataProperty(name, kAsyncIteratorPrototype);
+    Local<Object> instance;
+    if (!holder->NewInstance(realm).ToLocal(&instance)) return nullptr;
+    // An own data property of an object script has never seen.
+    Local<Value> intrinsic;
+    if (!instance->Get(realm, name).ToLocal(&intrinsic) || !intrinsic->IsObject()) return nullptr;
+    realm->SetEmbedderDataV2(kAsyncIteratorPrototypeIndex, intrinsic);
+    return new Global<Value>(isolate, intrinsic);
+}
+
 Global<Object>* v8_Context_Global(Global<Context>* context) {
     g_obj_src[2].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
