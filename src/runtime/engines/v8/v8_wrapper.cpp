@@ -14309,6 +14309,128 @@ void TrapPreventExtensions(const FunctionCallbackInfo<Value>& info) { ForwardToR
 
 extern "C" {
 
+/// The embedder data slots of a context that hold its legacy platform object
+/// proxies' handlers: the one for interfaces with no named property setter,
+/// and the one for those with one. (Index 1 is the context's Crane id,
+/// kCraneContextIdIndex; 2 its cross-origin functions,
+/// kCrossOriginFunctionsIndex; 0 is V8's old debugger slot.)
+constexpr int kLegacyProxyHandlerIndex = 3;
+constexpr int kLegacyProxyNamedSetterHandlerIndex = 4;
+
+/// A new handler for legacy platform object proxies made in `ctx`:
+/// `named_setter` says whether its "set" trap serves an interface with a
+/// named property setter (WebIDL 3.9.2 [[Set]] step 1.2).
+///
+/// It has NO prototype. A proxy finds each trap with GetMethod(handler,
+/// name) (ES 10.5.x), which reads the handler's prototype chain, and the
+/// handler has no own "get" on purpose (below): made by Object::New it
+/// inherited from the realm's %Object.prototype%, so a page's
+/// `Object.prototype.get = f` became the [[Get]] trap of every legacy
+/// platform object in the realm, called with the handler as `this` and the
+/// proxy's target as its first argument. Blink has no such object to reach
+/// (its legacy platform objects are API objects with interceptors).
+static Local<Object> NewLegacyPlatformObjectHandler(Isolate* isolate, Local<Context> ctx, bool named_setter) {
+    Local<Object> handler = Object::New(isolate);
+    // Object::SetPrototype on a JSObject enters V8 with no script and no
+    // callbacks (15.7.112.43 src/api/api.cc SetPrototypeImpl,
+    // EnterV8NoScriptNoExceptionScope).
+    handler->SetPrototype(ctx, Null(isolate)).Check();
+
+    // Helper to create and set a function trap.
+    //
+    // CreateDataProperty, not Set: this runs from native code with no script
+    // on the stack whenever a realm's first legacy platform object is wrapped
+    // there (a tree mutation's record, a collection traced from a DOM
+    // algorithm). Object::Set enters V8 with do_callback=true (13.1
+    // api.cc:4469, ENTER_V8), and leaving that scope at call depth 0 fires
+    // the call-completed callbacks - under kAuto a microtask checkpoint
+    // (api-inl.h CallDepthScope::~CallDepthScope, isolate.cc
+    // FireCallCompletedCallbackInternal), run from inside the DOM algorithm.
+    // On a JSObject CreateDataProperty enters with ENTER_V8_NO_SCRIPT (13.1
+    // api.cc:4526): do_callback=false. It also defines the trap as an own
+    // data property whatever Object.prototype holds - a [[Set]] would have run
+    // an accessor script installed there. GetFunction (PREPARE_FOR_EXECUTION,
+    // api.cc:7503), Object::New and Proxy::New (api.cc:8866) fire nothing.
+    auto set_trap = [&](const char* name, FunctionCallback callback, Local<Value> data = Local<Value>()) {
+        Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback, data);
+        Local<Function> fn = tmpl->GetFunction(ctx).ToLocalChecked();
+        handler->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
+    };
+
+    // Set all traps
+    // No "get" trap. A proxy with one makes V8 check the trap's result
+    // against the target's own property descriptor on EVERY read
+    // (JSProxy::CheckGetSetTrapResult, ES 10.5.8 step 9) - for a NodeList that
+    // is the indexed descriptor interceptor building a descriptor object per
+    // `list[i]`, two thirds of the cost of the read. Without the trap V8
+    // forwards [[Get]] to the target natively with the proxy as receiver, and
+    // every path that unwraps a receiver's instance looks through a proxy to
+    // its target.
+    set_trap("set", TrapSet, Boolean::New(isolate, named_setter));
+    set_trap("has", TrapHas);
+    set_trap("deleteProperty", TrapDeleteProperty);
+    set_trap("ownKeys", LegacyPlatformObjectOwnKeys);
+    set_trap("getOwnPropertyDescriptor", LegacyPlatformObjectGetOwnPropertyDescriptor);
+    set_trap("defineProperty", TrapDefineProperty);
+    set_trap("getPrototypeOf", TrapGetPrototypeOf);
+    set_trap("setPrototypeOf", TrapSetPrototypeOf);
+    set_trap("isExtensible", TrapIsExtensible);
+    set_trap("preventExtensions", TrapPreventExtensions);
+    return handler;
+}
+
+/// The handler of the legacy platform object proxies of `ctx` with
+/// (`named_setter`) or without a named property setter: ONE object per realm
+/// and kind, made with the realm's first such proxy and kept in the context's
+/// embedder data - so it lives exactly as long as the realm's context, and
+/// each proxy keeps it besides.
+///
+/// A handler holds nothing of a proxy. ES 10.5 calls every trap as
+/// Call(trap, handler, << target, ... >>): the traps read their target - the
+/// API object whose interceptors answer for the platform object - as their
+/// first argument, and the only datum a trap carries is "set"'s
+/// `named_setter`, a fact of the interface. A handler per proxy - an object
+/// and ten FunctionTemplates with their Functions - was 3,860 B of V8's heap
+/// for every wrapped HTMLCollection, NamedNodeMap, DOMStringMap,
+/// CSSStyleDeclaration or Storage (gc_bench, lane wrap1 b2 step 0).
+///
+/// Script cannot tell one handler from many: no ES operation returns a
+/// proxy's [[ProxyHandler]], and a trap is an API function, which V8 leaves
+/// out of Error.stack, Error.prepareStackTrace's call sites and
+/// Function.prototype.caller (15.7.112.43 src/execution/isolate.cc
+/// IsNotHidden: hidden unless --experimental-stack-trace-frames, which is off
+/// by default and not among Crane's flags). A debugger does see a proxy's
+/// [[Handler]] (the console's inspector session), so the handler is frozen:
+/// what is reached that way cannot give another object's proxy a trap, or
+/// change one. Each trap's realm is the handler's, the realm its platform
+/// objects are of, as it was when each proxy made its own
+/// (tests/v8/wrap1_legacy_proxy_handler_test.zig).
+///
+/// Not while the snapshot is being built: a context's embedder data goes into
+/// the blob, and the traps' callbacks are no external references of it; the
+/// generator wraps no platform object, and one made there would get a handler
+/// of its own, as before.
+static Local<Object> LegacyPlatformObjectHandlerOf(Isolate* isolate, Local<Context> ctx, bool named_setter) {
+    if (g_snapshot_mode) return NewLegacyPlatformObjectHandler(isolate, ctx, named_setter);
+    const int index = named_setter ? kLegacyProxyNamedSetterHandlerIndex : kLegacyProxyHandlerIndex;
+    // Only Crane writes embedder data at these indices, so a slot within the
+    // array's length is ours.
+    if (ctx->GetNumberOfEmbedderDataFields() > static_cast<uint32_t>(index)) {
+        Local<Value> slot = ctx->GetEmbedderDataV2(index).As<Value>();
+        if (!slot.IsEmpty() && slot->IsObject()) return slot.As<Object>();
+    }
+    Local<Object> handler = NewLegacyPlatformObjectHandler(isolate, ctx, named_setter);
+    {
+        // Object::SetIntegrityLevel enters V8 as a script call would
+        // (EnterV8Scope, api.cc), and this can be native code at call depth
+        // 0: no kAuto microtask checkpoint when it leaves (NativeStepScope).
+        NativeStepScope native_step(isolate);
+        handler->SetIntegrityLevel(ctx, IntegrityLevel::kFrozen).Check();
+    }
+    ctx->SetEmbedderDataV2(index, handler);
+    return handler;
+}
+
 /// Create a transparent Proxy for a legacy platform object
 /// 
 /// This wraps the target in a Proxy that forwards all operations to the target
@@ -14329,51 +14451,10 @@ Global<Object>* v8_CreateLegacyPlatformObjectProxy(Global<Context>* context, Glo
     Context::Scope context_scope(ctx);
     Local<Object> local_target = target->Get(isolate);
 
-    // Create the handler object with all traps
-    Local<Object> handler = Object::New(isolate);
-    
-    // Helper to create and set a function trap.
-    //
-    // CreateDataProperty, not Set: this runs from native code with no script
-    // on the stack whenever a legacy platform object is first wrapped there
-    // (a tree mutation's record, a collection traced from a DOM algorithm).
-    // Object::Set enters V8 with do_callback=true (13.1 api.cc:4469,
-    // ENTER_V8), and leaving that scope at call depth 0 fires the
-    // call-completed callbacks - under kAuto a microtask checkpoint
-    // (api-inl.h CallDepthScope::~CallDepthScope, isolate.cc
-    // FireCallCompletedCallbackInternal), run from inside the DOM algorithm.
-    // On a JSObject CreateDataProperty enters with ENTER_V8_NO_SCRIPT (13.1
-    // api.cc:4526): do_callback=false. It also defines the trap as an own
-    // data property whatever Object.prototype holds - a [[Set]] would have run
-    // an accessor script installed there. GetFunction (PREPARE_FOR_EXECUTION,
-    // api.cc:7503), Object::New and Proxy::New (api.cc:8866) fire nothing.
-    auto set_trap = [&](const char* name, FunctionCallback callback, Local<Value> data = Local<Value>()) {
-        Local<FunctionTemplate> tmpl = FunctionTemplate::New(isolate, callback, data);
-        Local<Function> fn = tmpl->GetFunction(ctx).ToLocalChecked();
-        handler->CreateDataProperty(ctx, String::NewFromUtf8(isolate, name).ToLocalChecked(), fn).Check();
-    };
-    
-    // Set all traps
-    // No "get" trap. A proxy with one makes V8 check the trap's result
-    // against the target's own property descriptor on EVERY read
-    // (JSProxy::CheckGetSetTrapResult, ES 10.5.8 step 9) - for a NodeList that
-    // is the indexed descriptor interceptor building a descriptor object per
-    // `list[i]`, two thirds of the cost of the read. Without the trap V8
-    // forwards [[Get]] to the target natively with the proxy as receiver, and
-    // every path that unwraps a receiver's internal fields
-    // (GetAlignedPointerFromInternalField, InternalFieldCount, both variants)
-    // looks through a proxy to its target.
-    set_trap("set", TrapSet, Boolean::New(isolate, named_setter));
-    set_trap("has", TrapHas);
-    set_trap("deleteProperty", TrapDeleteProperty);
-    set_trap("ownKeys", LegacyPlatformObjectOwnKeys);
-    set_trap("getOwnPropertyDescriptor", LegacyPlatformObjectGetOwnPropertyDescriptor);
-    set_trap("defineProperty", TrapDefineProperty);
-    set_trap("getPrototypeOf", TrapGetPrototypeOf);
-    set_trap("setPrototypeOf", TrapSetPrototypeOf);
-    set_trap("isExtensible", TrapIsExtensible);
-    set_trap("preventExtensions", TrapPreventExtensions);
-    
+    // The handler: the realm's, shared by every proxy of this kind in it
+    // (LegacyPlatformObjectHandlerOf).
+    Local<Object> handler = LegacyPlatformObjectHandlerOf(isolate, ctx, named_setter);
+
     // Create the Proxy
     MaybeLocal<Proxy> maybe_proxy = Proxy::New(ctx, local_target, handler);
     if (maybe_proxy.IsEmpty()) {
