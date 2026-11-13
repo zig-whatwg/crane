@@ -1105,6 +1105,9 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   in its node's own slot and holding one counted reference on the node
 ///   (node_wrappers.zig; never in a wrapper cache since the wrapper
 ///   redesign's P2);
+/// - `node_wrapper_net_waiting`: the detached roots the current isolate's
+///   agent remembers for their realm's end (refcount step 7a's net,
+///   node_wrappers.zig `Registry.net_waiting`), stale entries included;
 /// - `full_gc_count`, `full_gc_pause_max_us`, `full_gc_pause_p95_us`: the
 ///   current isolate's (its agent's) full collections since it was made, the
 ///   longest pause and the 95th percentile of the last 1,024, in
@@ -1175,6 +1178,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
         .{ .name = "node_wrappers", .value = @intCast(@import("node_wrappers.zig").liveCount()) },
+        .{ .name = "node_wrapper_net_waiting", .value = @intCast(@import("node_wrappers.zig").netWaitingOfCurrent()) },
         .{ .name = "full_gc_count", .value = @intCast(full_gcs) },
         .{ .name = "full_gc_pause_max_us", .value = @intCast(full_gc_max_us) },
         .{ .name = "full_gc_pause_p95_us", .value = @intCast(full_gc_p95_us) },
