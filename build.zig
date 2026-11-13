@@ -3352,7 +3352,12 @@ pub fn build(b: *std.Build) void {
         // -Dmany-browsers: a test that assumes it is the only Browser of its
         // process, and one that assumes nothing - child.zig's tests check that
         // the variant's busy Browser runs beside them and works cleanly. It
-        // links V8, so it is built only in that build.
+        // links V8, so it is built only in that build. It imports the engine
+        // as every test executable that links it does (`addTestRootWith`),
+        // so the Crane test runner treats it as one: the engine's process
+        // start before its first test, the engine's counters in its state
+        // check - and child.zig can ask of it what it asks of them (that a
+        // run which only lists its tests starts no engine).
         if (many_browsers) {
             const many_fixture = b.addTest(.{
                 .name = "test_many_browsers_fixture",
@@ -3362,12 +3367,19 @@ pub fn build(b: *std.Build) void {
                     .imports = &.{
                         .{ .name = "runtime", .module = testing_graph.runtime },
                         .{ .name = "browser", .module = testing_graph.browser },
+                        .{ .name = "engine", .module = testing_graph.engine },
                     },
                 }),
             });
             tests_engine_link.into(b, many_fixture.root_module);
             _ = useCraneTestRunner(b, many_fixture, &engine, "test_many_browsers_fixture", .fail, .per_test, &.{}, true, test_log_level);
             launcher_fixture_options.addOptionPath("many_browsers_path", many_fixture.getEmittedBin());
+            // Under -Dsanitize-thread the fixture shares the tests'
+            // instrumented modules: child.zig's tests run it as the launcher
+            // runs any test child of that build - with its TSAN_OPTIONS, the
+            // suppression file among them.
+            launcher_fixture_options.addOption(bool, "many_browsers_sanitized", sanitize_thread_option);
+            launcher_fixture_options.addOptionPath("tsan_suppressions_path", b.path(tsan_suppressions_path));
         }
         const launcher_test_module = b.createModule(.{
             .root_source_file = b.path("tools/test_launcher/main.zig"),
