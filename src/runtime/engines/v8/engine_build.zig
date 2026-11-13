@@ -124,8 +124,12 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         // compilation-cache.h IsEnabledScriptAndEval reads v8_flags.compilation_cache), and the flag turns off the
         // script cache too. Measured before the ruling, flag against no flag at 7ebd08c5001: all 9 subtests of the
         // two files pass x3; the perf suite x5 on chat.local: time 0.9998, memory 0.9987; WPT dom/nodes + html/dom,
-        // 522 files x3 on server1: summed per-file time 0.997. It costs nothing today because every script carries
-        // its own host-defined options, so V8's script cache never hits across scripts in Crane.
+        // 522 files x3 on server1: summed per-file time 0.997. Its cost is confined to the adapter's own internal
+        // compiles: a page's scripts each carry their own host-defined options, so V8's script cache never hit across
+        // them in Crane, but a script the adapter itself compiles more than once is now a real compile every time -
+        // which is why the adapter may evaluate a script of its own only where the adapter's script-compiles check
+        // lists it (lane v8up b8, 2026-11-13, which brings that check: the per-call compile behind ReadableStream's
+        // values() cost 21% of that row before it was removed).
         // -Dv8-compilation-cache turns the cache back on, for measurement only (tmp/plans/feature-queue.md says
         // when to re-measure).
         .compilation_cache = b.option(
