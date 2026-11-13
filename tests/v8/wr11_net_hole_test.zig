@@ -33,9 +33,10 @@
 //!
 //! Each test has its own agent with two Window realms: `page`, which keeps
 //! the agent alive, and a frame that ends inside the test. The collections
-//! are V8's own, through the FFI: `collect` runs the agent's safe point when
-//! it returns (the releases are drained), `collectHolding` does not (they
-//! stay recorded). The file shares tests/v8's process.
+//! are V8's own, through the FFI: `collect` (full) runs the agent's safe
+//! point when it returns (the releases are drained); `scavengeHolding`
+//! (young generation) does not (they stay recorded until `safePoint`). The
+//! file shares tests/v8's process.
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -128,14 +129,27 @@ const Fixture = struct {
         ffi.v8_Isolate_RequestGarbageCollection(self.isolate());
     }
 
-    /// A full collection with NO safe point after it: the releases of the
-    /// wrappers it found dead stay recorded - as when V8 collects in the
-    /// middle of a DOM algorithm, before the binding that runs it returns.
-    fn collectHolding(self: Fixture) void {
+    /// One young-generation collection with NO safe point after it: it drops
+    /// the wrappers script let go of and could not tell from fresh ones (the
+    /// redesign's P8) - whatever else of their tree is wrapped, which a full
+    /// collection's walk would keep them for - and their releases stay
+    /// recorded, as when V8 collects in the middle of a DOM algorithm, before
+    /// the binding that runs it returns.
+    fn scavengeHolding(self: Fixture) !void {
         const entered = ffi.v8_Isolate_GetCurrent() != self.isolate();
         if (entered) ffi.v8_Isolate_Enter(self.isolate());
         defer if (entered) ffi.v8_Isolate_Exit(self.isolate());
-        ffi.v8_Debug_CollectHoldingFinalizers(self.isolate());
+        const before = ffi.v8_Debug_MinorGCCount(self.isolate());
+        ffi.v8_test_Isolate_MinorGC(self.isolate(), 1);
+        try testing.expect(ffi.v8_Debug_MinorGCCount(self.isolate()) > before);
+    }
+
+    /// The agent's safe point: the recorded releases run.
+    fn safePoint(self: Fixture) void {
+        const entered = ffi.v8_Isolate_GetCurrent() != self.isolate();
+        if (entered) ffi.v8_Isolate_Enter(self.isolate());
+        defer if (entered) ffi.v8_Isolate_Exit(self.isolate());
+        _ = ffi.v8_Isolate_RunQueuedFinalizers(self.isolate());
     }
 };
 
@@ -392,10 +406,10 @@ test "a root whose release waits at its realm's end is not freed while a wrapper
     queue.drainAll();
     defer queue.drainAll();
 
-    // The root's wrapper is collected in the middle of something: its
-    // release is recorded and has not run when the realm ends.
+    // The root's wrapper is dropped in the middle of something: its release
+    // is recorded and has not run when the realm ends.
     try run(frame, "globalThis.x = null;");
-    fx.collectHolding();
+    try fx.scavengeHolding();
     try testing.expect(runtime.lifetime.slotOf(root.node).isEmpty());
     try testing.expect(!runtime.lifetime.slotOf(span.node).isEmpty());
 
@@ -444,9 +458,12 @@ test "a wrapper released inside a shadow tree answers for its host's tree: the n
     defer pending.release(host.watched.instance);
     defer queue.drainAll();
 
-    // The host's wrapper goes while the realm lives; the span's stays.
+    // The host's wrapper goes while the realm lives (a young-generation
+    // collection: a full one's walk keeps it for the span's); the span's
+    // stays.
     try run(frame, "globalThis.h = null;");
-    fx.collect();
+    try fx.scavengeHolding();
+    fx.safePoint();
     try testing.expect(runtime.lifetime.slotOf(host.node).isEmpty());
     try testing.expect(!runtime.lifetime.slotOf(span.node).isEmpty());
 
