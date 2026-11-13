@@ -714,6 +714,11 @@ pub const round_notes = [_]RoundNote{
     .{ .round = 0, .note = "The baseline: the suite's first measurement, of main 9b0f1b1f382, built for its build host's CPU." },
     .{ .round = 1, .note = "Lane perf1: DOM memory reported to V8, and a garbage tree's deferred teardown weighed by its nodes. Lane perf2: getElementsBy* return one live list per document, and querySelector, matches and closest parse through a per-document selector cache with Blink's ID path." },
     .{ .round = 2, .note = "Lane perf2: each node type's state in its own generated State, read with no hash lookup; a generated State that holds only its internal pointers (a kept div 4,683 -> 2,782 B); NodeBase 472 -> 208 B, and every block a node holds reported to V8. Lane perf3: a DOM call's values are V8 Locals - no Global per getter, setter or method call - and a Global's dispose takes no lock. Lane anim1: CSS transitions and animations from style." },
+    .{ .round = 3, .note = "Lane perf2: one block per node (a div's five arena requests become one) in exact size classes; NodeBase 208 -> 88 B (the sibling links are the child list, and the per-node allocator copies are gone); Document rare data. Lane perf3: an element's attributes out of line in an exact-size list, ElementRareData made on first use, and the custom element registry association as two bits (Element state 848 -> 136 B). By this page's own measure a kept div 2,259 -> 782 B." },
+    .{ .round = 4, .note = "No size phase, and flat against round 3 as expected: the wrapper redesign's groundwork (lane wr1: a node's wrapper slot as an engine-protocol type, with its identity tests; lane wr2: a cppgc heap per agent, used by nothing yet) and lane perf2's byte-by-byte breakdown of a kept node." },
+    .{ .round = 5, .note = "Lane wr1, the wrapper redesign's second phase: a node's wrapper leaves the wrapper cache - a weak handle constructed in the node's own slot, and an 8-B cell in a per-agent registry. A kept div 778 -> 546 B, a text node 637 -> 401 B." },
+    .{ .round = 6, .note = "The node-data lanes. nd1: a CharacterData node's data 48 -> 16 B. nd2: an element's name is one pointer to a shared record, its attributes one block of 8-B entries whose values are interned, counted records, and a class value's token list is made once per value. rare1: one sparse rare block per element. lis1: a target's listeners and handlers in one lazily made block. cg1: [SameObject] caches in the rare block, and a generated State keeps only the slots its impl uses. style1: a per-document matched-properties cache. h1: the per-Browser address-space reservation. A kept div 546 -> 368 B." },
+    .{ .round = 7, .note = "Lane v8up: V8 13.1.203 -> 15.7.112.43, the V8 Chrome 157 ships, with wrapper finalizers run at binding exits and inside callbacks; Crane's builds take the V8 adapter's default build options, a 24 MB young generation (8 MB semispaces) and a collection after a main frame's navigation once V8's heap holds 16 MB. Lane nd2: equal attribute lists share one block at parse and clone, through a cache their Document owns. Lane style1: a style's own blocks keyed by content in the matched-properties cache. Against round 6's build run again in this round's window (the drift control), time fell by more than 5% on 31 of 45 workloads and rose on none, and the pages that navigate hold 0.61-0.82x the memory. Memory rose by more than 5% on 18 workloads, 2.8% over the suite: V8 15.7 allocates a cppgc object per wrapper (the attribute and Event-dictionary rows 1.17x; a kept div 368 -> 386 B), a detached tree waits one collection longer (cloneNode 1.39x, document.write 1.25x), and 15.7 collects later than 13.1 did (fetch over loopback 1.31-1.47x, streams.reader 1.41x, each further instance 1.12x). Accepted for this round by the user's ruling of 2026-11-12, each row queued with an owner (lanes wrap1, wr1 and v8up)." },
 };
 
 pub fn roundNote(round: u32) ?[]const u8 {
@@ -2802,6 +2807,10 @@ test "every round has its note, in order" {
     }
     try testing.expect(roundNote(1) != null);
     try testing.expect(roundNote(2) != null);
+    // Every published round, through the latest (round 7): rounds 3-6 went
+    // out with no line, which the loop above cannot see - it holds only the
+    // lines that exist.
+    for (3..8) |round| try testing.expect(roundNote(@intCast(round)) != null);
     try testing.expect(roundNote(99) == null);
 }
 
