@@ -12,8 +12,8 @@ build.zig engine:jsc script 3
 build.zig engine:quickjs code 1
 build.zig engine:quickjs comment 2
 build.zig engine:quickjs script 6
-build.zig engine:v8 code 100
-build.zig engine:v8 comment 147
+build.zig engine:v8 code 96
+build.zig engine:v8 comment 144
 build.zig engine:v8 script 81
 build.zig library:brotli code 62
 build.zig library:brotli comment 14
@@ -66,10 +66,3 @@ tests/wpt_runner/build_mode.zig platform:linux comment 1
 tools/snapshot_generator_mode.zig engine:v8 comment 4
 tools/test_suites.zig engine:v8 comment 1
 tools/test_suites.zig engine:v8 script 2
-tools/v8_archives.zig engine:javascriptcore comment 2
-tools/v8_archives.zig engine:jsc comment 1
-tools/v8_archives.zig engine:v8 code 14
-tools/v8_archives.zig engine:v8 comment 49
-tools/v8_archives.zig platform:ios code 5
-tools/v8_archives.zig platform:ios comment 7
-tools/v8_archives.zig platform:macos comment 2

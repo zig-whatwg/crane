@@ -102,6 +102,32 @@ pub const Facts = struct {
     /// The words that name this engine: what `zig build lint-build` looks for
     /// in the root build.zig and the neutral files it imports.
     words: []const []const u8,
+    /// The std-only files of the adapter's build side that hold tests of
+    /// their own - its build file's helpers - relative to the build root.
+    /// The test step runs each (`build_tests`).
+    build_tests: []const []const u8 = &.{},
+};
+
+/// One std-only file of an adapter's build side whose tests the test step
+/// runs.
+pub const BuildTest = struct {
+    /// Its suite's name: "<adapter>-build-<the file's stem>".
+    suite: []const u8,
+    /// The file, relative to the build root.
+    root: []const u8,
+};
+
+/// Every listed adapter's `facts.build_tests`, whichever engine the build
+/// binds: they test build files, and every configure compiles every listed
+/// adapter's.
+pub const build_tests: []const BuildTest = tests: {
+    var list: []const BuildTest = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        for (@field(adapters, name).facts.build_tests) |root| {
+            list = list ++ &[_]BuildTest{.{ .suite = name ++ "-build-" ++ std.fs.path.stem(root), .root = root }};
+        }
+    }
+    break :tests list;
 };
 
 // The build side's conformance check, as engine_protocol.zig's is for

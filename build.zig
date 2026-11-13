@@ -5672,13 +5672,17 @@ pub fn build(b: *std.Build) void {
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, test_suites_tests, "tools-test_suites", null).step);
 
-    // tools/v8_archives.zig: the V8 archives -Dv8-build selects, std-only.
-    const v8_archives_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("tools/v8_archives.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    }) });
-    test_step.dependOn(&addSuiteRun(b, launch, v8_archives_tests, "tools-v8_archives", null).step);
+    // The build side of the engine adapters: the std-only helpers of each
+    // listed adapter's build file that hold tests of their own (the
+    // protocol's `build_tests`), whichever engine this build binds.
+    for (engine_build.build_tests) |build_test| {
+        const build_side_tests = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path(build_test.root),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        }) });
+        test_step.dependOn(&addSuiteRun(b, launch, build_side_tests, build_test.suite, null).step);
+    }
 
     // ========================================================================
     // COMPREHENSIVE BUILD TEST

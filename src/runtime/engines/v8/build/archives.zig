@@ -2,7 +2,8 @@
 //!
 //! `-Dv8` picks the V8 version. 15.7 is 15.7.112.43, the V8 Chrome 157 ships (the
 //! user, 2026-11-10; tmp/plans/v8-update-plan.md) and the default since the
-//! adapter was ported to it (build.zig refuses 13.1.203 now), built by
+//! adapter was ported to it (`resolve` in ../engine_build.zig refuses 13.1.203
+//! now), built by
 //! scripts/build-v8-15.7.sh into jsengines/v8/15.7.112.43/ beside 13.1's
 //! directories. 15.7's sandbox requires libc++ hardening (V8 BUILD.gn:896), so
 //! that archive is compiled against Chromium's own libc++ (std::__Cr) and
@@ -10,9 +11,9 @@
 //! consumer compiles with, Temporal's Rust as librust_v8.a, and the system
 //! libraries its link needs; its include/ holds the build's v8-gn.h.
 //!
-//! build.zig links three static archives from one V8 output directory under
-//! jsengines/v8/out/ (`linkV8`, and the artifacts that add them by hand). Two
-//! macOS builds of the same V8, 13.1.203, exist side by side:
+//! The adapter's build file (../engine_build.zig, `link`) links three static
+//! archives from one V8 output directory under jsengines/v8/out/. Two macOS
+//! builds of the same V8, 13.1.203, exist side by side:
 //!
 //! - `static` (the default): out/static, the release build of
 //!   scripts/build-v8-static.sh's GN arguments - no ThinLTO, no PGO.
@@ -38,7 +39,9 @@
 //! quiet fallback to another archive. iOS builds wait for the JavaScriptCore
 //! adapter (src/runtime/engines/jsc/).
 //!
-//! std-only, so `zig build test` pins the paths (tools-v8_archives).
+//! A helper of the V8 adapter's build file (../engine_build.zig), run by the
+//! configure step. std-only, so the test step pins the paths: the adapter
+//! lists this file in its `facts.build_tests` (suite v8-build-archives).
 
 const std = @import("std");
 

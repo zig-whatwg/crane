@@ -47,7 +47,7 @@
 const std = @import("std");
 const engine_build = @import("../../engine_build_protocol.zig");
 /// Which archives -Dv8, -Dv8-build and the target select.
-const archives = @import("../../../../tools/v8_archives.zig");
+const archives = @import("build/archives.zig");
 
 /// What the command line gave the adapter's options.
 pub const Options = struct {
@@ -82,7 +82,7 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
         // -Dv8-build picks between two macOS builds of the same V8 (13.1.203):
         // `static` (the default) and `official`, the build with Chrome's official
         // ThinLTO and PGO (scripts/build-v8-official.sh, whose control build
-        // reproduces out/static byte for byte). tools/v8_archives.zig holds the
+        // reproduces out/static byte for byte). build/archives.zig holds the
         // paths and pins them. An iOS target has none: iOS is JavaScriptCore's (the
         // user, 2026-11-10, ruling R4 - no V8 for iOS in any form), and the user
         // paused every iOS build until the JavaScriptCore adapter exists (15:55 ET:
@@ -95,7 +95,7 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
             "v8-build",
             "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
         ) orelse archives.Build.default,
-        // -Dv8: the V8 version (tools/v8_archives.zig Version): 13.1 until the
+        // -Dv8: the V8 version (build/archives.zig Version): 13.1 until the
         // switch commit; 15.7 is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
         // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/.
         .version = b.option(archives.Version, "v8", "The V8 to link: 15.7 (default: 15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh); 13.1 is refused, the adapter is ported") orelse archives.Version.default,
@@ -184,7 +184,7 @@ pub fn isDefaultFor(target: std.Target) bool {
 }
 
 /// What this build links: the archives -Dv8, -Dv8-build and the target's OS
-/// select (tools/v8_archives.zig) and, for an archive built against
+/// select (build/archives.zig) and, for an archive built against
 /// Chromium's libc++ (-Dv8=15.7), what `resolve` reads from beside it at
 /// configure time: that libc++'s consumer flags and the system libraries the
 /// archive's own link names. Resolved once, so every artifact links the same
@@ -281,7 +281,7 @@ const wrapper_source = "src/runtime/engines/v8/v8_wrapper.cpp";
 /// CPPGC_ENABLE_LARGER_CAGE out. tests/v8/cpp_heap_test.zig checks the result:
 /// a Member is 4 bytes and reads back what it was given.
 ///
-/// `archive_os`: the OS whose archive the artifact links (tools/v8_archives.zig
+/// `archive_os`: the OS whose archive the artifact links (build/archives.zig
 /// selects it by the target's OS). `extra`: flags of the artifact's own.
 fn wrapperFlags(b: *std.Build, resolved: *const Resolved, archive_os: std.Target.Os.Tag, extra: []const []const u8) []const []const u8 {
     if (resolved.archives.chromium != null) {
@@ -423,4 +423,5 @@ fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
+    .build_tests = &.{"src/runtime/engines/v8/build/archives.zig"},
 };
