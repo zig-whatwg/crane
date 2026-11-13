@@ -289,10 +289,11 @@ test "wr8 b8: a free refused while the C++ heap is collecting is counted, and it
 
     // A full collection V8 does not force - its answer to critical memory
     // pressure - of 100,000 dead wrappers: its C++ heap sweeps on after it,
-    // concurrently and then on the agent's thread (13.1.203 cpp-heap.cc
-    // CppHeap::SelectSweepingType; sweeper.cc SweeperImpl::Start posts its
-    // first task to reschedule itself 100 ms later), so cppgc refuses every
-    // free until its pages are finalized.
+    // concurrently and then on the agent's thread (15.7.112.43 cpp-heap.cc
+    // CppHeap::SelectSweepingType; cppgc-internal/sweeper.cc SweeperImpl::Start
+    // posts a low-priority foreground task and a regular one 100 ms later;
+    // the anchors' finalizers run only on the agent's thread), so cppgc
+    // refuses every free until its pages are finalized.
     try page.run("globalThis.keep = (() => { const a = []; for (let i = 0; i < 100000; i++) a.push(d.createElement('div')); return a; })();");
     try page.run("globalThis.keep = null;");
     {
@@ -300,13 +301,22 @@ test "wr8 b8: a free refused while the C++ heap is collecting is counted, and it
         defer page.leave(entered);
         try testing.expect(ffi.v8_test_Isolate_CollectUnforced(page.isolate()));
     }
-    // Wrappers dropped in a scavenge meanwhile; the drain it posts runs while
-    // the C++ heap still sweeps: each refused free is counted, and its anchor
-    // waits.
+    // Wrappers dropped in a scavenge meanwhile, and the agent's safe point
+    // INSIDE the task (a binding's return into script: the next scavenge's
+    // start owed the drain, as V8's own second passes would run there) while
+    // the C++ heap still sweeps: each refused free is counted, and its
+    // anchor waits. Not the pump: on V8 15.7 the sweeper's own foreground
+    // task is ahead of the drain's in the agent's queue, so a pump finishes
+    // the sweep first and no free is refused (lane wr1 b11, the merge onto
+    // 15.7; on 13.1.203 the sweep waited for an idle task or 100 ms).
     try page.run("{ const make = (n) => { for (let i = 0; i < n; i++) d.createElement('div'); }; make(5000); }");
-    try page.scavenge(1);
+    try page.scavenge(2);
     const waiting = try counter(page, "node_anchors_dropped_waiting");
-    page.pump();
+    {
+        const entered = page.enter();
+        defer page.leave(entered);
+        _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
+    }
     const deferred = try counter(page, "node_anchor_frees_deferred") - deferred_before;
     std.debug.print("wr8 b8 fact: {d} anchors waiting after the scavenge; {d} frees refused while the C++ heap swept; {d} still waiting\n", .{ waiting, deferred, try counter(page, "node_anchors_dropped_waiting") });
     try testing.expect(waiting > 0);
