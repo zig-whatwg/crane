@@ -3414,8 +3414,13 @@ struct IsolateData {
     uint64_t node_anchors_freed = 0;
     uint64_t node_anchor_frees_deferred = 0;
     /// What V8 was told of the pointer-table entries dropped wrappers left
-    /// behind, in bytes (v8_Debug_NodeWrapperTableBytes).
+    /// behind (`reportDroppedTableEntries`): the accounter, the bytes it
+    /// holds now, and `node_wrappers_dropped` as it stood at the last full
+    /// collection's start (the entries of every wrapper dropped before it
+    /// were swept in it).
+    ExternalMemoryAccounter table_accounter;
     size_t table_bytes_reported = 0;
+    uint64_t table_dropped_base = 0;
 #ifndef NDEBUG
     /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
     /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
@@ -4309,12 +4314,119 @@ static void freeDroppedAnchors(IsolateData* record) {
     }
 }
 
-/// The agent's drain, now: the anchors scavenges dropped are freed, and the
-/// releases its collections recorded go (the Zig side defers them while a
-/// walk holds the agent's teardowns). Only from the agent's safe point
+// ---- The pointer-table entries dropped wrappers leave (lane wr1 b11) ----
+//
+// A node wrapper is Wrapped (v8::Object::Wrap): V8 keeps its anchor's address
+// in the isolate's CppHeapPointerTable, 8 bytes an entry. A young-generation
+// collection that drops the wrapper leaves the entry: the table is swept by
+// full collections only (15.7.112.43 src/heap/mark-compact.cc:3419, the one
+// call of CppHeapPointerTable::SweepAndCompact; src/heap/scavenger.cc never
+// names the table). And V8 counts the table toward no limit: what it weighs
+// against its global limit is the old generation, the C++ heap and the
+// external memory an embedder reports (src/heap/heap.cc:5353-5360
+// GlobalSizeOfObjects).
+//
+// In Blink that is harmless, because a dropped wrapper's ScriptWrappable
+// stays on the C++ heap until a full collection - BlinkRootsHandler::ResetRoot
+// only clears the reference (third_party/blink/renderer/platform/heap/
+// thread_state.cc:38-66, Chromium 157) - and the C++ heap's growth is what
+// V8's limits see (src/heap/cppgc-js/cpp-heap.cc:1094-1150,
+// CppHeap::ReportBufferedAllocationSizeIfPossible): the collection that
+// frees those objects sweeps their entries. Crane frees a dropped wrapper's
+// anchor at once (`freeDroppedAnchors`) and its node by the counts (WebKit's
+// model: a dead wrapper's Weak is finalized at its block's sweep,
+// Source/JavaScriptCore/heap/WeakBlock.cpp:176-199, and the node is
+// reference-counted), so nothing V8 counts grows, no collection is asked
+// for, and the entries pile up: 12,000,000 dropped wrappers ran 2 full
+// collections and peaked at 135.7 MB where main ran 30 and peaked at 87.0
+// (server1, gc_bench, 2026-11-13) - the table swept once, 64 MB at a time,
+// in a 22.5 ms pause.
+//
+// So the adapter tells V8 what it cannot see: one table entry's size for
+// every wrapper dropped since the last full collection, as external memory,
+// through a v8::ExternalMemoryAccounter of its own (v8-external-memory-
+// accounter.h: one per reporting owner; JavaScriptCore's counterpart is
+// Heap::reportExtraMemoryAllocated, "to report non-GC memory referenced by
+// GC objects", Source/JavaScriptCore/heap/Heap.h:448-459, WebKit main
+// b7262265dfd). NEITHER Blink nor WebKit reports its wrapper table, and the
+// reason Crane does what neither does is stated here because the user's
+// standard is the browsers' behaviour: neither frees the wrapper's native
+// half ahead of the collector; Crane does, and this is the account of what
+// that leaves behind. (The alternative that IS Blink's shape - keep every
+// dropped anchor until a full collection - was the redesign's state before
+// lane wr1 b8 and cost 32 bytes a dropped wrapper instead of 8.) V8's own
+// limit then paces the full collection that sweeps the table: the same run
+// peaks at 74.3 MB with 14 full collections on server1, and on chat.local
+// at 75.8 MiB against 137.2 without it and main's 82.3-82.7; over the perf
+// suite x7 it reads time 0.978 and instructions 0.989 of main, no row
+// slower (the integrator's ruling of 2026-11-13, measured first as a
+// patch).
+//
+// The figure is an estimate, bounded both ways by one marking cycle's
+// wrappers: an entry made while a full collection marks is born marked and
+// outlives that collection (cppheap-pointer-table-inl.h:17-31), though its
+// wrapper's drop was reported and taken back with the rest.
+//
+// Reported at the agent's drain (the report may start a collection: never
+// from ResetRoot, which runs inside one). Taken back in the PROLOGUE of the
+// next full collection - the entries are about to be swept in it - and not
+// after it: V8 recomputes its limits before its epilogue callbacks
+// (src/heap/heap.cc:1514 prologue callbacks, :1604 RecomputeLimits, :1621
+// epilogue), so a figure taken back afterwards is still in the size the new
+// limit is set from, and the limit ratchets (measured: the global limit
+// alternated 20.2 / 27.8 MB against a steady 20.2, peak 83.4 against 74.3 MB;
+// lane v8up b8's reading of heap-controller.cc:186-207).
+
+/// The bytes of one CppHeapPointerTable entry; 0 in a build with no pointer
+/// table (no pointer compression: an Object::Wrap pointer is stored in the
+/// object itself).
+#ifdef V8_COMPRESS_POINTERS
+static constexpr size_t kWrapperTableEntryBytes = static_cast<size_t>(internal::kCppHeapPointerTableEntrySize);
+#else
+static constexpr size_t kWrapperTableEntryBytes = 0;
+#endif
+
+/// V8 is told of the entries the wrappers dropped since the last report
+/// left. At the agent's safe point, the isolate entered: the report may run
+/// a collection (Heap::UpdateExternalMemory), whose prologue takes the whole
+/// figure back - so the figure is recorded before V8 is called.
+static void reportDroppedTableEntries(IsolateData* record) {
+    const size_t owed = static_cast<size_t>(record->node_wrappers_dropped - record->table_dropped_base) * kWrapperTableEntryBytes;
+    if (owed <= record->table_bytes_reported) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    const size_t more = owed - record->table_bytes_reported;
+    record->table_bytes_reported = owed;
+    // The collecting isolate is the current one (collectingRecord).
+    CollectingScope collecting(isolate);
+    record->table_accounter.Increase(isolate, more);
+}
+
+/// The figure goes back to V8: a full collection is about to sweep the
+/// table (its prologue), or the agent ends. A decrease starts no collection
+/// (Heap::UpdateExternalMemory returns at `delta <= 0`), so it is safe in a
+/// GC callback.
+static void takeBackTableEntries(IsolateData* record, Isolate* isolate) {
+    const size_t back = record->table_bytes_reported;
+    record->table_bytes_reported = 0;
+    record->table_dropped_base = record->node_wrappers_dropped;
+    if (back) record->table_accounter.Decrease(isolate, back);
+}
+
+/// Before every full collection (kGCTypeMarkSweepCompact; an incremental
+/// one calls it when its marking starts and again before its atomic pause).
+static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data) {
+    takeBackTableEntries(static_cast<IsolateData*>(data), isolate);
+}
+
+/// The agent's drain, now: V8 is told of the table entries the dropped
+/// wrappers left, the anchors scavenges dropped are freed, and the releases
+/// its collections recorded go (the Zig side defers them while a walk holds
+/// the agent's teardowns). Only from the agent's safe point
 /// (`runQueuedFinalizers`) - never inside a collection or one of V8's GC
 /// callbacks.
 static void drainNodeWrappers(IsolateData* record) {
+    reportDroppedTableEntries(record);
     freeDroppedAnchors(record);
     if (record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
 }
@@ -4385,6 +4497,9 @@ extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, voi
     CppHeap* heap = isolate->GetCppHeap();
     if (!heap) return false;
     record->node_anchors = cppgc::MakeGarbageCollected<NodeWrapperRegistry>(heap->GetAllocationHandle(), record);
+    // The dropped wrappers' table entries leave V8's account as a full
+    // collection begins (`reportDroppedTableEntries`).
+    isolate->AddGCPrologueCallback(tableEntriesPrologue, record, kGCTypeMarkSweepCompact);
     record->node_wrappers = registry;
     record->node_wrapper_collected = collected;
     record->node_wrappers_drain = drain;
@@ -4709,8 +4824,9 @@ extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
 /// The node wrappers V8 has dropped in `isolate`'s young-generation
 /// collections so far (NodeWrapperRootsHandler::ResetRoot).
 /// The bytes V8 holds now as external memory for the pointer-table entries
-/// of wrappers dropped since the last full collection began. 0 for a null
-/// isolate or one the adapter did not make.
+/// of wrappers dropped since the last full collection began
+/// (`reportDroppedTableEntries`). 0 for a null isolate or one the adapter
+/// did not make.
 extern "C" uint64_t v8_Debug_NodeWrapperTableBytes(Isolate* isolate) {
     IsolateData* record = isolate ? isolateData(isolate) : nullptr;
     return record ? record->table_bytes_reported : 0;
@@ -5336,6 +5452,9 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // may not have), so no weak callback can find the record gone.
             if (record->node_wrappers && record->node_wrappers_end) record->node_wrappers_end(record->node_wrappers);
             record->node_wrappers = nullptr;
+            // What V8 was told of dropped wrappers' table entries is taken
+            // back: the accounter ends holding nothing.
+            takeBackTableEntries(record, isolate);
             // Its anchors' registry, unrooted while the heap lives: the
             // heap's termination in Isolate::Dispose collects it and every
             // anchor (none holds a slot any more), and no Persistent of the
