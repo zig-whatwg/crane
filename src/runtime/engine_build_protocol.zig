@@ -1,9 +1,9 @@
 //! THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b).
 //!
-//! What is one engine's in the build - its `-D` options today; its sources,
-//! link inputs, startup data and tests as the migration goes
-//! (tmp/plans/build-protocol-design.md) - is declared by the engine's
-//! adapter, in a build file beside its code,
+//! What is one engine's in the build - its `-D` options, its sources, its
+//! link inputs and its Zig module today; its startup data and tests as the
+//! migration goes (tmp/plans/build-protocol-design.md) - is declared by the
+//! engine's adapter, in a build file beside its code,
 //! `engines/<engine>/engine_build.zig`, and never by the root build.zig (the
 //! user, 2026-11-12: "I don't want any of the v8 code in build.zig, the valid
 //! flags should be in the js engine protocol"). This file is the protocol's
@@ -23,6 +23,7 @@
 //!   pub fn isDefaultFor(target: std.Target) bool
 //!   pub const Resolved = struct { ... };      // what this build links
 //!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
+//!   pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: LinkRequest) void
 //!   pub const facts: Facts = .{ ... };
 //!
 //! An adapter that is not the build's engine is never asked to declare its
@@ -62,13 +63,89 @@ pub fn Resolution(comptime Resolved: type) type {
     };
 }
 
+/// What one artifact asks when the build's engine is linked into it
+/// (`Engine.link`). It says what the artifact is, in the build's own words;
+/// what each field means for an engine - a source compiled apart, a define -
+/// is its adapter's business.
+pub const LinkRequest = struct {
+    /// False: the adapter's own sources are compiled into the artifact and
+    /// nothing is linked - a compile-only check, whose binary nobody asks
+    /// for.
+    link: bool = true,
+    /// The artifact has modules instrumented for ThreadSanitizer
+    /// (-Dsanitize-thread: the test executables and what shares their
+    /// modules).
+    thread_sanitized: bool = false,
+    /// Compile in the engine's live-handle accounting: for the one binary
+    /// that reports it, never a product.
+    handle_accounting: bool = false,
+};
+
+/// How a set of artifacts links the build's engine: the engine, and what
+/// each of them asks of it. The root build makes one for its products and
+/// one for its test executables, and passes them where artifacts are made.
+pub const Link = struct {
+    engine: *const Engine,
+    request: LinkRequest = .{},
+
+    /// Link the engine into `module`: see `Engine.link`.
+    pub fn into(link: Link, b: *std.Build, module: *std.Build.Module) void {
+        link.engine.link(b, module, link.request);
+    }
+};
+
 /// What the neutral build asks about an adapter. It grows with the
-/// migration: the adapter module's root file, the modules it imports, its
-/// test directory.
+/// migration: its test directory is next.
 pub const Facts = struct {
     /// The words that name this engine: what `zig build lint-build` looks for
     /// in the root build.zig and the neutral files it imports.
     words: []const []const u8,
+    /// The root file of the adapter's Zig module, relative to the build root:
+    /// the module the engine protocol's facade binds as `engine_impl`.
+    module_root: []const u8,
+    /// The name the adapter's module is registered under, and the import name
+    /// the adapter's own tests and tools reach it by.
+    module_name: []const u8,
+    /// What the adapter's module imports, by import name, in the order the
+    /// imports are added. The order is part of every compile that takes the
+    /// module (a compile is cached on its command line), so a new import goes
+    /// at the end unless its cost is known. Each name is a module the root
+    /// build offers an adapter (its `addCraneModules`): Crane's own modules,
+    /// the engine protocol's facade ("engine") and the options modules
+    /// ("build_options", "debug_options" and the adapter's own,
+    /// "adapter_options").
+    imports: []const []const u8,
+    /// The facade compiles against this adapter with no engine linked: while
+    /// the adapter cannot be built nothing else compiles its protocol root,
+    /// so the engine protocol's tests are compiled against it, in a compile
+    /// of its own (`engineless`).
+    engineless: bool,
+    /// The std-only files of the adapter's build side that hold tests of
+    /// their own - its build file's helpers - relative to the build root.
+    /// The test step runs each (`build_tests`).
+    build_tests: []const []const u8 = &.{},
+};
+
+/// One std-only file of an adapter's build side whose tests the test step
+/// runs.
+pub const BuildTest = struct {
+    /// Its suite's name: "<adapter>-build-<the file's stem>".
+    suite: []const u8,
+    /// The file, relative to the build root.
+    root: []const u8,
+};
+
+/// Every listed adapter's `facts.build_tests`, whichever engine the build
+/// binds: they test build files, and every configure compiles every listed
+/// adapter's.
+pub const build_tests: []const BuildTest = tests: {
+    var list: []const BuildTest = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        for (@field(adapters, name).facts.build_tests) |root| {
+            list = list ++ &[_]BuildTest{.{ .suite = name ++ "-build-" ++ std.fs.path.stem(root), .root = root }};
+        }
+    }
+    break :tests list;
 };
 
 // The build side's conformance check, as engine_protocol.zig's is for
@@ -88,6 +165,7 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "applyTransitional", fn (A.Options, *std.Build.Step.Options) void);
     conforms(who, A, "isDefaultFor", fn (std.Target) bool);
     conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options) Resolution(A.Resolved));
+    conforms(who, A, "link", fn (*std.Build, *std.Build.Module, *const A.Resolved, LinkRequest) void);
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: engine_build.Facts`");
 }
 
@@ -96,6 +174,24 @@ fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u
     const Actual = @TypeOf(@field(A, decl));
     if (Actual != Expected) @compileError(who ++ ": `" ++ decl ++ "` is " ++ @typeName(Actual) ++ "; the build protocol's is " ++ @typeName(Expected));
 }
+
+/// A listed adapter the facade compiles against with no engine linked.
+pub const Engineless = struct {
+    /// The adapter's `-Dengine` name.
+    name: []const u8,
+    /// Its module's root file, relative to the build root.
+    module_root: []const u8,
+};
+
+/// The listed adapters whose `facts.engineless` is true, in the list's order.
+pub const engineless: []const Engineless = list: {
+    var found: []const Engineless = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        const facts = @field(adapters, name).facts;
+        if (facts.engineless) found = found ++ &[_]Engineless{.{ .name = name, .module_root = facts.module_root }};
+    }
+    break :list found;
+};
 
 /// Every listed adapter's words, comma-separated: the engine keys of
 /// `zig build lint-build`, from the list itself - so the root build.zig spells
@@ -131,13 +227,20 @@ pub const Engine = struct {
     /// The names of the `-D` options the chosen adapter declared, in its
     /// order.
     option_names: []const []const u8,
+    /// What the neutral build asks about the chosen adapter: its module's
+    /// root file, name and imports.
+    facts: Facts,
     /// The chosen adapter's `StateOf`.
     state: *const anyopaque,
     vtable: *const VTable,
+    /// The modules this build linked the engine into (`link`, with a request
+    /// that links): what `isLinkedInto` answers from.
+    linked: *std.AutoHashMapUnmanaged(*std.Build.Module, void),
 
     const VTable = struct {
         apply: *const fn (state: *const anyopaque, adapter_options: *std.Build.Step.Options) void,
         applyTransitional: *const fn (state: *const anyopaque, shared: *std.Build.Step.Options) void,
+        link: *const fn (state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void,
     };
 
     /// The adapter's own options module: its compile-time values, which only
@@ -155,6 +258,37 @@ pub const Engine = struct {
     /// neutral fields.
     pub fn applyTransitional(engine: *const Engine, shared: *std.Build.Step.Options) void {
         engine.vtable.applyTransitional(engine.state, shared);
+    }
+
+    /// Link the engine into `module`: the adapter's own sources, their
+    /// flags and include paths, and - unless `request.link` is false - the
+    /// engine's archives, frameworks and system libraries. An engine that
+    /// cannot be built adds nothing of itself: whatever takes the module
+    /// fails with the adapter's reason (`failModule`).
+    ///
+    /// `module` must be one the caller owns exclusively - a module created
+    /// for a single artifact, never one shared through `addImport`. A
+    /// module's link objects belong to every artifact downstream of it, so
+    /// linking the engine into a shared module puts a second copy of the
+    /// adapter's sources into each consumer that already compiles one: 844
+    /// duplicate symbol definitions, measured.
+    pub fn link(engine: *const Engine, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void {
+        if (engine.unavailable != null) return engine.failModule(b, module);
+        engine.vtable.link(engine.state, b, module, request);
+        if (request.link) engine.linked.put(b.allocator, module, {}) catch @panic("OOM");
+    }
+
+    /// Whether this build linked the engine into `module`: its own record of
+    /// the `link` calls it made with a request that links - never a look at
+    /// what the adapter put where. An adapter may compile its sources into
+    /// the module or apart, into a library beside it (as the V8 adapter does
+    /// for a thread-sanitized artifact), and the artifact links the engine
+    /// either way: a predicate that inspected the module's own sources
+    /// answered "no" for every test executable of a -Dsanitize-thread build
+    /// (docs/lessons/architecture-a-predicate-that-inspects-sources-answers-wrong-when-the-build-compiles-them-apart.md).
+    /// The root build's `check-suite-facts` holds the result.
+    pub fn isLinkedInto(engine: *const Engine, module: *std.Build.Module) bool {
+        return engine.linked.contains(module);
     }
 
     /// Make every compile that takes `module` fail with the reason this
@@ -196,18 +330,6 @@ pub const Engine = struct {
             }
         }
     }
-
-    /// TRANSITIONAL (batch E2 ends it, when the link lines that read it leave
-    /// the root build.zig for the adapter): what the adapter `name` resolved,
-    /// when it is this build's engine and can be built.
-    pub fn resolvedOf(engine: *const Engine, comptime name: Name) ?*const @field(adapters, @tagName(name)).Resolved {
-        if (engine.name != name) return null;
-        const state: *const StateOf(@field(adapters, @tagName(name))) = @ptrCast(@alignCast(engine.state));
-        return switch (state.resolution) {
-            .ready => |*resolved| resolved,
-            .unavailable => null,
-        };
-    }
 };
 
 fn vtableOf(comptime A: type) *const Engine.VTable {
@@ -221,7 +343,15 @@ fn vtableOf(comptime A: type) *const Engine.VTable {
             const typed: *const State = @ptrCast(@alignCast(state));
             A.applyTransitional(typed.options, shared);
         }
-        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional };
+        fn link(state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void {
+            const typed: *const State = @ptrCast(@alignCast(state));
+            switch (typed.resolution) {
+                .ready => |*resolved| A.link(b, module, resolved, request),
+                // `Engine.link` asks only an engine that can be built.
+                .unavailable => unreachable,
+            }
+        }
+        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link };
     };
     return &functions.table;
 }
@@ -284,13 +414,17 @@ pub fn choose(b: *std.Build, target: std.Build.ResolvedTarget) Engine {
                 .ready => null,
                 .unavailable => |reason| reason,
             };
+            const linked = b.allocator.create(std.AutoHashMapUnmanaged(*std.Build.Module, void)) catch @panic("OOM");
+            linked.* = .empty;
             return .{
                 .name = tag,
                 .unavailable = unavailable,
                 .unavailable_step = if (unavailable) |reason| &b.addFail(reason).step else null,
                 .option_names = option_names,
+                .facts = A.facts,
                 .state = state,
                 .vtable = vtableOf(A),
+                .linked = linked,
             };
         },
     }

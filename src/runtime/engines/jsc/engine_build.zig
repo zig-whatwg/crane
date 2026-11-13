@@ -56,7 +56,24 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
     return .{ .unavailable = "the JavaScriptCore adapter (src/runtime/engines/jsc/) links no engine yet: nothing that runs script can be built with -Dengine=jsc, or for iOS, whose engine it is (the user, 2026-11-10: iOS builds wait for this adapter)" };
 }
 
+/// Nothing to link yet: the protocol links only an engine that can be built.
+pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: engine_build.LinkRequest) void {
+    _ = b;
+    _ = module;
+    _ = resolved;
+    _ = request;
+}
+
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{ "jsc", "javascriptcore" },
+    // The adapter's module is its protocol root: it binds the protocol and
+    // calls the facade back, and has no option of its own to read yet.
+    .module_root = "src/runtime/engines/jsc/protocol.zig",
+    .module_name = "jsc",
+    .imports = &.{ "engine", "adapter_options" },
+    // No engine is linked: the engine protocol's tests are compiled against
+    // this root in a compile of their own, which is what checks it against
+    // the protocol while the adapter cannot be built.
+    .engineless = true,
 };
