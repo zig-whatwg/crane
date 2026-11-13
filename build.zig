@@ -2250,14 +2250,29 @@ const V8Link = struct {
     /// V8-facing C++ (v8_wrapper.cpp) is compiled apart, as a static library
     /// of its own, uninstrumented (`addV8Source`).
     wrapper_apart: bool = false,
+    /// The build's engine, when it cannot be built (another adapter that
+    /// links nothing yet, or no V8 for this target or these options): nothing
+    /// of `archives` is read, and what would link V8 fails with the engine's
+    /// reason instead (`addV8Source`).
+    unavailable: ?*const engine_build.Engine = null,
 };
 
-/// The V8Link for `archives`: for an archive built against Chromium's libc++,
-/// the facts it keeps beside itself (scripts/build-v8-15.7.sh writes them from
-/// GN's own compile and d8's own link). A configure-time read the configuration
-/// cache cannot see change, so it is poisoned; a host without the archive gets
-/// the reason and how to get it, and the build stops.
-fn loadV8Link(b: *std.Build, archives: v8_archives.Archives) V8Link {
+/// The V8Link of the build's engine: the archives the V8 adapter resolved
+/// (its build file: -Dv8, -Dv8-build and the target's OS) and, for an archive
+/// built against Chromium's libc++, the facts it keeps beside itself
+/// (scripts/build-v8-15.7.sh writes them from GN's own compile and d8's own
+/// link). A configure-time read the configuration cache cannot see change, so
+/// it is poisoned; a host without the archive gets the reason and how to get
+/// it, and the build stops. An engine that cannot be built - another adapter,
+/// or no V8 for this build - has no archives: its link is `unavailable`.
+/// TRANSITIONAL: this and the link functions below move into the V8
+/// adapter's build file with the design's batch E2, behind the protocol.
+fn loadV8Link(b: *std.Build, engine: *const engine_build.Engine) V8Link {
+    const resolved = engine.resolvedOf(.v8) orelse return .{
+        .archives = .{ .dir = "", .monolith = "", .libplatform = "", .libbase = "" },
+        .unavailable = engine,
+    };
+    const archives = resolved.archives;
     const chromium = archives.chromium orelse return .{ .archives = archives };
     b.graph.poisonCache();
     const dir = b.root.root_dir.handle;
@@ -2317,6 +2332,9 @@ fn noV8Archive(path: []const u8, err: anyerror) noreturn {
 /// CRANE_V8_WRAPPER_APART_FOR_TSAN gives v8_wrapper.cpp weak ones that keep
 /// libc++abi's from being linked, so the runtime's win (see there).
 fn addV8Source(builder: *std.Build, module: *std.Build.Module, v8: V8Link, extra: []const []const u8) void {
+    // An engine that cannot be built: whatever takes this module fails with
+    // the adapter's reason, and nothing of V8 is added.
+    if (v8.unavailable) |engine| return engine.failModule(builder, module);
     if (v8.wrapper_apart and v8.archives.chromium != null) {
         const wrapper = builder.addLibrary(.{
             .name = "v8_wrapper",
@@ -2352,6 +2370,7 @@ fn addV8SourceTo(builder: *std.Build, module: *std.Build.Module, v8: V8Link, ext
 /// need: Zig's libc++ for 13.1; for 15.7 Chromium's libc++ (libc++_chromium.a),
 /// Temporal's Rust (librust_v8.a) and the archive's frameworks and libraries.
 fn addV8Archives(module: *std.Build.Module, v8: V8Link) void {
+    if (v8.unavailable != null) return;
     module.addObjectFile(.{ .cwd_relative = v8.archives.monolith });
     module.addObjectFile(.{ .cwd_relative = v8.archives.libplatform });
     module.addObjectFile(.{ .cwd_relative = v8.archives.libbase });
@@ -2703,7 +2722,7 @@ const ModuleConfig = struct {
     debug_options: *std.Build.Step.Options,
     /// The dom module's own options (refcount_audit).
     dom_options: *std.Build.Step.Options,
-    /// The engine adapter's own options, from its build file (`engine_build.adapterOptions`).
+    /// The engine adapter's own options, from its build file (the engine's `adapterOptions`).
     engine_adapter_options: *std.Build.Step.Options,
     engine_choice: []const u8,
     use_system_curl: bool,
@@ -2980,42 +2999,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Where this target's V8 archives live.
-    //
-    // -Dv8-build picks between two macOS builds of the same V8 (13.1.203):
-    // `static` (the default) and `official`, the build with Chrome's official
-    // ThinLTO and PGO (scripts/build-v8-official.sh, whose control build
-    // reproduces out/static byte for byte). tools/v8_archives.zig holds the
-    // paths and pins them. An iOS target has none: iOS is JavaScriptCore's (the
-    // user, 2026-11-10, ruling R4 - no V8 for iOS in any form), and the user
-    // paused every iOS build until the JavaScriptCore adapter exists (15:55 ET:
-    // "skip ios builds and tests for now until we get js core implemented").
-    // So an aarch64-ios configure - check-ios's sub-build, or -Dtarget=aarch64-ios
-    // with any -Dengine - stops here with that reason; nothing else changes for
-    // a host build, and no gate builds for iOS.
-    const v8_build = b.option(
-        v8_archives.Build,
-        "v8-build",
-        "Which V8 13.1.203 build to link on macOS: static (default; jsengines/v8/out/static) or official (opt-in: jsengines/v8/out/official, ThinLTO + PGO as Chrome's official build, scripts/build-v8-official.sh; on chat.local only - build with it there)",
-    ) orelse v8_archives.Build.default;
-    // -Dv8: the V8 version (tools/v8_archives.zig Version): 13.1 until the
-    // switch commit; 15.7 is 15.7.112.43, Chrome 157's (the user, 2026-11-10;
-    // tmp/plans/v8-update-plan.md), from jsengines/v8/15.7.112.43/.
-    const v8_version = b.option(v8_archives.Version, "v8", "The V8 to link: 15.7 (default: 15.7.112.43, Chrome 157's - jsengines/v8/15.7.112.43, scripts/build-v8-15.7.sh); 13.1 is refused, the adapter is ported") orelse v8_archives.Version.default;
-    if (v8_version == .@"13.1") {
-        std.debug.print("Error: -Dv8=13.1: the V8 adapter (src/runtime/engines/v8/v8_wrapper.cpp) is ported to V8 15.7.112.43 and no longer compiles against 13.1.203; drop -Dv8\n", .{});
-        std.process.exit(1);
-    }
-    const v8_selected = v8_archives.selectVersion(v8_version, v8_build, target.result.os.tag) catch |err| switch (err) {
-        error.NoOfficialBuild => {
-            std.debug.print("Error: -Dv8=15.7 has no official build: out/official is retired until roadmap item v8-pgo (the user, 2026-11-10); drop -Dv8-build\n", .{});
-            std.process.exit(1);
-        },
-        error.NoV8ForIos => {
-            std.debug.print("Error: an iOS target builds nothing yet: iOS uses JavaScriptCore, never V8 (the user, 2026-11-10), and iOS builds wait for the JavaScriptCore adapter (src/runtime/engines/jsc/)\n", .{});
-            std.process.exit(1);
-        },
-    };
+    // The build's JavaScript engine: -Dengine, and with it every option the
+    // chosen adapter declares in its own build file - no other adapter's
+    // exists in this build (src/runtime/engine_build_protocol.zig). An engine
+    // that cannot be built for this target or with these options still
+    // configures: each step that needs it fails with the adapter's reason.
+    const engine = engine_build.choose(b, target);
+
     // Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
     // trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
     // found, with or without --sysroot. That surfaces far from the cause, as 15
@@ -3033,7 +3023,7 @@ pub fn build(b: *std.Build) void {
     // -Dsanitize-thread, read before any artifact links V8: under it the V8
     // wrapper is compiled apart (V8Link.wrapper_apart, addV8Source).
     const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the V8 prebuilt or the V8 wrapper) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
-    const v8 = loadV8Link(b, v8_selected);
+    const v8 = loadV8Link(b, &engine);
     // What the test executables and the snapshot generator link: the same V8,
     // with the wrapper compiled apart under -Dsanitize-thread. Never the
     // production artifacts' (wpt_runner, repl, gc_bench: checkLinkedC holds
@@ -3041,51 +3031,10 @@ pub fn build(b: *std.Build) void {
     var v8_tests_link = v8;
     v8_tests_link.wrapper_apart = sanitize_thread_option;
     const v8_tests = v8_tests_link;
-    const v8_monolith_path = v8.archives.monolith;
 
     // ========================================================================
     // BUILD OPTIONS
     // ========================================================================
-
-    // JavaScript Engine Selection
-    // Default: v8 (fully implemented)
-    // Future: jsc (JavaScriptCore), quickjs
-    const engine_choice = b.option(
-        []const u8,
-        "engine",
-        "JavaScript engine backend: v8 (default), jsc, quickjs",
-    ) orelse "v8";
-
-    // Validate engine choice
-    const valid_engines = [_][]const u8{ "v8", "jsc", "quickjs" };
-    var engine_valid = false;
-    for (valid_engines) |e| {
-        if (std.mem.eql(u8, engine_choice, e)) {
-            engine_valid = true;
-            break;
-        }
-    }
-    if (!engine_valid) {
-        std.debug.print("Error: Invalid engine '{s}'\n", .{engine_choice});
-        std.debug.print("Valid engines: v8 (default), jsc, quickjs\n", .{});
-        std.debug.print("\nUsage:\n", .{});
-        std.debug.print("  zig build -Dengine=v8      # Build with V8 (default)\n", .{});
-        std.debug.print("  zig build -Dengine=jsc     # Build with JavaScriptCore\n", .{});
-        std.debug.print("  zig build -Dengine=quickjs # Build with QuickJS\n", .{});
-        std.process.exit(1);
-    }
-
-    // Check if selected engine is implemented
-    const engine_implemented = std.mem.eql(u8, engine_choice, "v8");
-    if (!engine_implemented) {
-        std.debug.print("Error: Engine '{s}' is not yet fully implemented.\n", .{engine_choice});
-        std.debug.print("\nCurrently supported engines:\n", .{});
-        std.debug.print("  v8       Google V8 (fully implemented)\n", .{});
-        std.debug.print("\nPlanned engines (see issue whatwg-qfv3a):\n", .{});
-        std.debug.print("  jsc      JavaScriptCore (WebKit) - partial\n", .{});
-        std.debug.print("  quickjs  QuickJS - partial\n", .{});
-        std.process.exit(1);
-    }
 
     const spec_filter = b.option(
         []const u8,
@@ -3187,62 +3136,12 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "interface_allowlist", interface_allowlist);
 
-    // Phase 8 (mobile): iOS forbids JIT outright - no W^X exception for third-party
-    // apps - so V8 must run in its interpreter-only mode there or the process is
-    // killed on first code generation. Defaults ON for iOS targets and OFF everywhere
-    // else, because --jitless costs a large amount of JS throughput and nothing but
-    // the platform restriction justifies paying it.
-    const target_os = target.result.os.tag;
-    const jitless_default = target_os == .ios;
-    const jitless = b.option(
-        bool,
-        "jitless",
-        "Run V8 without JIT (required on iOS; large JS slowdown elsewhere)",
-    ) orelse jitless_default;
-    build_options.addOption(bool, "jitless", jitless);
-
-    // Crane starts V8 WITHOUT its compilation cache (the user's ruling, 2026-11-11 16:12 UTC; lane v8up b4).
-    // V8 15.7's eval cache serves `new Function(...)` and eval by source text alone (EvalCacheKey: source, outer
-    // function, language mode, position - no host-defined options; compiler.cc LookupEval) and stores a compile
-    // on its FIRST sighting (13.1: on its second, behind a dummy entry), so a Function built from the same text
-    // by a second script imports with the FIRST script's base URL and nonce. WPT
-    // html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-base-url.html ("beta -
-    // Function", "gamma - Function") and code-cache-nonce.html ("Second" and "Third dynamic import should use
-    // nonce=...") fail that way in Chrome 157 and pass in Firefox 160 and Safari 27.2 (wpt.fyi stable runs of
-    // 2026-11-11): golden rule 2, the majority and the spec. V8 15.7's public API has nothing narrower than the
-    // flag (ScriptCompiler::CompileOptions has no cache bypass; Isolate::ClearCachesForTesting is test-only;
-    // compilation-cache.h IsEnabledScriptAndEval reads v8_flags.compilation_cache), and the flag turns off the
-    // script cache too. Measured before the ruling, flag against no flag at 7ebd08c5001: all 9 subtests of the
-    // two files pass x3; the perf suite x5 on chat.local: time 0.9998, memory 0.9987; WPT dom/nodes + html/dom,
-    // 522 files x3 on server1: summed per-file time 0.997. It costs nothing today because every script carries
-    // its own host-defined options, so V8's script cache never hits across scripts in Crane.
-    // -Dv8-compilation-cache turns the cache back on, for measurement only (tmp/plans/feature-queue.md says
-    // when to re-measure).
-    const v8_compilation_cache = b.option(
-        bool,
-        "v8-compilation-cache",
-        "Start V8 WITH its compilation cache (a measurement switch; default off: the cache answers Function() with another script's base URL and nonce)",
-    ) orelse false;
-    build_options.addOption(bool, "v8_compilation_cache", v8_compilation_cache);
-
-    // -Dv8-extra-flags="<flags>": V8 flags a MEASUREMENT build starts V8 with, after the product's (lane v8up
-    // b5: the collector's cadence and the young generation's size cannot be read or changed any other way -
-    // V8 freezes its flags when it starts). Empty by default, pinned by tests/v8/v8_flags_test.zig; never an
-    // environment variable. Chromium's route is the --js-flags switch (gin/v8_initializer.cc).
-    const v8_extra_flags = b.option(
-        []const u8,
-        "v8-extra-flags",
-        "V8 flags appended to the set V8 starts with (a measurement route; default none), e.g. \"--trace-gc --max-semi-space-size=8\"",
-    ) orelse "";
-    build_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, v8_extra_flags, " "));
-
-    // The engine adapter's own build options: declared and carried by the adapter's build file, which the
-    // protocol's build file asks (`engine_build`, above), not here.
-    const engine_adapter_options = engine_build.adapterOptions(b, target, engine_choice);
-
-    build_options.addOption([]const u8, "engine_name", engine_choice);
-    build_options.addOption(bool, "has_snapshot_support", std.mem.eql(u8, engine_choice, "v8"));
-    build_options.addOption(bool, "has_isolate_per_thread", std.mem.eql(u8, engine_choice, "v8"));
+    // What the shared module still carries of the engine, written by the
+    // adapter where this file used to write it (TRANSITIONAL: the design's
+    // batch E5 moves it to the adapter's own module), and the adapter's own
+    // options module, which the engine adapter's module alone imports.
+    engine.applyTransitional(build_options);
+    const engine_adapter_options = engine.adapterOptions(b);
 
     // Validate spec filter.
     //
@@ -3353,7 +3252,7 @@ pub fn build(b: *std.Build) void {
         .dom_options = dom_options,
         .engine_adapter_options = engine_adapter_options,
         .debug_options = debug_options,
-        .engine_choice = engine_choice,
+        .engine_choice = @tagName(engine.name),
         .use_system_curl = use_system_curl,
         .enable_http2 = enable_http2,
         .static_libcurl = static_libcurl,
@@ -4912,105 +4811,6 @@ pub fn build(b: *std.Build) void {
     //
     // Build: zig build browser
     // Output: zig-out/bin/crane (executable) + zig-out/lib/libcrane.a (library)
-    //
-    // V8 is built from source in jsengines/v8/ using depot_tools.
-    // First run will fetch V8 (~1.1GB) and build it (~30-60 min).
-    // Subsequent builds use cached artifacts.
-
-    // Step 1: Fetch V8 source if not present (also installs depot_tools if needed)
-    const fetch_v8 = b.addSystemCommand(&.{
-        "bash", "-c",
-        \\set -e
-        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
-        \\V8_DIR="jsengines/v8"
-        \\
-        \\# Install depot_tools if not present
-        \\if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
-        \\  echo "==> Installing depot_tools..."
-        \\  git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
-        \\fi
-        \\export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
-        \\
-        \\# Fetch V8 source if not present
-        \\if [ ! -f "$V8_DIR/.gclient" ]; then
-        \\  echo "==> Fetching V8 source (this may take 5-10 minutes)..."
-        \\  mkdir -p "$V8_DIR"
-        \\  cd "$V8_DIR"
-        \\  fetch v8
-        \\  gclient sync
-        \\else
-        \\  echo "==> V8 source already present"
-        \\fi
-        \\
-    });
-
-    // Step 2: Build V8 static monolith if not present
-    const build_v8 = b.addSystemCommand(&.{
-        "bash", "-c",
-        \\set -e
-        \\DEPOT_TOOLS_DIR="jsengines/depot_tools"
-        \\V8_DIR="jsengines/v8"
-        \\V8_LIB="$V8_DIR/out/static/obj/libv8_monolith.a"
-        \\
-        \\export PATH="$(pwd)/$DEPOT_TOOLS_DIR:$PATH"
-        \\
-        \\if [ ! -f "$V8_LIB" ]; then
-        \\  echo "==> Building V8 static library (this may take 30-60 minutes)..."
-        \\  cd "$V8_DIR"
-        \\  
-        \\  # Detect architecture
-        \\  ARCH=$(uname -m)
-        \\  if [ "$ARCH" = "arm64" ]; then
-        \\    V8_TARGET_CPU="arm64"
-        \\  else
-        \\    V8_TARGET_CPU="x64"
-        \\  fi
-        \\  
-        \\  # Generate build configuration
-        \\  mkdir -p out/static
-        \\  cat > out/static/args.gn << 'ARGS'
-        \\is_component_build = false
-        \\v8_monolithic = true
-        \\v8_use_external_startup_data = false
-        \\is_debug = false
-        \\symbol_level = 0
-        \\v8_enable_sandbox = true
-        \\v8_enable_pointer_compression = true
-        \\v8_enable_gdbjit = false
-        \\v8_enable_disassembler = false
-        \\v8_enable_object_print = false
-        \\v8_enable_verify_heap = false
-        \\v8_enable_trace_maps = false
-        \\v8_enable_test_features = false
-        \\v8_enable_v8_checks = false
-        \\v8_enable_i18n_support = false
-        \\clang_use_chrome_plugins = false
-        \\treat_warnings_as_errors = false
-        \\use_custom_libcxx = false
-        \\ARGS
-        \\  echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
-        \\  
-        \\  # Build
-        \\  gn gen out/static
-        \\  ninja -C out/static v8_monolith v8_libplatform v8_libbase
-        \\  
-        \\  # Convert thin archives to fat archives (Zig can't parse thin archives)
-        \\  LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
-        \\  cd out/static
-        \\  echo "==> Converting thin archives to fat archives..."
-        \\  $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
-        \\  $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
-        \\  $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
-        \\  $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
-        \\  cd ../..
-        \\  
-        \\  echo "==> V8 static library built: $V8_LIB"
-        \\else
-        \\  echo "==> V8 static library already present"
-        \\fi
-        \\
-    });
-    build_v8.step.dependOn(&fetch_v8.step);
 
     // Create crane module
     const crane_mod = b.createModule(.{
@@ -5117,27 +4917,11 @@ pub fn build(b: *std.Build) void {
         crane_exe.root_module.linkFramework("SystemConfiguration", .{});
     }
 
-    // Build step - depends on V8 being built first
+    // Build step
     const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
 
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
-
-    // Fetch and build V8 only when the static library these artifacts link is
-    // missing - a checkout bootstrapping V8 from source. With the prebuilt
-    // present (every artifact that links V8 links it, and only these two ran
-    // the scripts), fetch_v8 still cloned depot_tools, 772 MB, into a checkout
-    // without one: every `zig build crane` in a lane mirror on chat.
-    // A configure-time file probe: Zig 0.17 caches the configuration, and its
-    // cache cannot see this file appear or go, so the probe poisons it.
-    // Only for out/static, the build these scripts make: an official build is
-    // scripts/build-v8-official.sh's, never built here.
-    b.graph.poisonCache();
-    const v8_prebuilt_present = if (b.root.root_dir.handle.access(b.graph.io, v8_monolith_path, .{})) true else |_| false;
-    if (!v8_prebuilt_present and v8_build == .static and v8_version == .@"13.1") {
-        install_crane_lib.step.dependOn(&build_v8.step);
-        install_crane_exe.step.dependOn(&build_v8.step);
-    }
 
     browser_step.dependOn(&install_crane_lib.step);
     browser_step.dependOn(&install_crane_exe.step);
@@ -5189,9 +4973,9 @@ pub fn build(b: *std.Build) void {
     // and iOS ships on JavaScriptCore). -Dios-sdk passes through: the merge
     // check runs `zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk -j2`.
     // PAUSED (the user, 2026-11-10 15:55 ET: "skip ios builds and tests for now
-    // until we get js core implemented"): the sub-build's configure stops at the
-    // V8 archive selection (no V8 for iOS) with that reason, so this step fails
-    // with it until the JavaScriptCore adapter builds lib-full; it is no gate.
+    // until we get js core implemented"): the sub-build's engine links nothing
+    // yet for iOS, so its lib-full fails with that adapter's reason, and this
+    // step with it, until the adapter builds lib-full; it is no gate.
     const check_ios_step = b.step("check-ios", "lib-full for aarch64-ios (a static library: built, not linked); -Dios-sdk passes through");
     const ios_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib-full", "-Dtarget=aarch64-ios", "-j2" });
     if (ios_sdk_option) |sdk| ios_build.addArg(b.fmt("-Dios-sdk={s}", .{sdk}));
@@ -6290,6 +6074,66 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_platform_check.step);
     const lint_platform_tests = b.addTest(.{ .root_module = lint_platform_module });
     test_step.dependOn(&addSuiteRun(b, launch, lint_platform_tests, "tools-lint_platform", null).step);
+
+    // ========================================================================
+    // LINT: the build's neutrality, as a ratchet
+    // ========================================================================
+    // The user, 2026-11-12: this file holds no code of one engine or of one
+    // platform - an adapter declares its build in its own build file, behind
+    // the build side of its protocol. tools/lint_build_neutral.zig counts what
+    // this file and the neutral files it imports still name of either, per
+    // file, per word and per kind of text (code, comment, embedded script),
+    // and fails if any count rises above tools/build_neutral_baseline.txt or a
+    // new one appears. The baseline only goes down, a slice with each batch of
+    // the migration: `zig build lint-build -- --update` records it and refuses
+    // an increase; `-- --list` prints every site. `zig build test` depends on
+    // it.
+    //
+    // The words it looks for, a list per class. An engine's words are its
+    // adapter's own, from the engine protocol's list of adapters. Until the
+    // platform protocol's build file supplies the rest the same way, they are
+    // spelled here - and counted like every other line of this file.
+    const lint_build_words = [_][]const u8{
+        "--engine=" ++ engine_build.lint_words,
+        "--platform=darwin,linux,macos,word:ios,iphoneos,xcrun,homebrew,.testing",
+        "--target=os.tag,isDarwin,.abi ==",
+        "--library=curl,mbedtls,nghttp2,brotli,zlib,sqlite,leveldb,jpeg,expat,nanosvg",
+    };
+    const lint_build_module = b.createModule(.{
+        .root_source_file = b.path("tools/lint_build_neutral.zig"),
+        // Build-time tool: runs on the host, as codegen does.
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const lint_build_exe = b.addExecutable(.{
+        .name = "lint_build_neutral",
+        .root_module = lint_build_module,
+    });
+
+    const lint_build_step = b.step("lint-build", "Fail when build.zig or a neutral file it imports names an engine, an operating system or a platform library more often than the baseline (use -- --update after moving a slice out; -- --list prints every site)");
+    const lint_build = b.addRunArtifact(lint_build_exe);
+    // It reads this file, the files it imports and the baseline, which the build graph does not track.
+    lint_build.has_side_effects = true;
+    lint_build.setCwd(b.path("."));
+    lint_build.addArgs(&lint_build_words);
+    lint_build.addPassthruArgs();
+    lint_build_step.dependOn(&lint_build.step);
+
+    // Part of `zig build test`: the check itself (never with --update) and the
+    // tool's own tests.
+    const lint_build_check = b.addRunArtifact(lint_build_exe);
+    lint_build_check.has_side_effects = true;
+    lint_build_check.setCwd(b.path("."));
+    lint_build_check.addArgs(&lint_build_words);
+    test_step.dependOn(&lint_build_check.step);
+    const lint_build_tests = b.addTest(.{ .root_module = lint_build_module });
+    test_step.dependOn(&addSuiteRun(b, launch, lint_build_tests, "tools-lint_build", null).step);
+
+    // And the rule that an option belongs to its adapter, shown by the
+    // configure step itself: under any other engine, each option this build's
+    // engine adapter declared is one nothing declared, and is refused. Part
+    // of this lint's step and of the test step.
+    engine.addOptionOwnershipChecks(b, &.{ lint_build_step, test_step });
 
     // ========================================================================
     // LINT: global state, as a ratchet
@@ -7785,7 +7629,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .target = target,
     });
     engine_impl_mod.addImport("engine", engine_mod);
-    // The adapter's own build options (its build file's, `engine_build.adapterOptions`): this module alone
+    // The adapter's own build options (its build file's, the engine's `adapterOptions`): this module alone
     // imports them.
     engine_impl_mod.addOptions("adapter_options", config.engine_adapter_options);
     engine_mod.addImport("engine_impl", engine_impl_mod);
