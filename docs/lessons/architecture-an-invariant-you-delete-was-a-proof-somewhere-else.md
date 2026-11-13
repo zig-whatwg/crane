@@ -13,3 +13,5 @@
 3. Put the replacement at the caller that drew the conclusion. A hook shared by several callers carries only what is true for all of them.
 
 **Takeaway**: **Deleting an invariant deletes the proofs that cited it. Grep for its words, re-ask each proof's real question at its own caller, and ask exactly that question - no broader.**
+
+**Status (2026-11-13, lane wr1 batch 11)**: a fourth proof that leaned on the upward closure, missed by the grep because it never used the closure's words: refcount step 7a's net (node_wrappers.zig `endedRealmNet`, `runNetRoot`, `endRealm`) read "no wrapper reaches this tree" from the ROOT's own empty slot. Two batches after P7 a red test wrote the case down - a root whose release waited at its realm's end, a child still wrapped: the tree was freed under the child's live wrapper (tests/v8/wr11_net_hole_test.zig). The net asks dom.wrapper_tracing.holdsWrapper(root) now, once a tree, where it is about to free one. For step 1 of the fix: grep for the CHECK as well as the wording - every `slotOf(root).isEmpty()` (or `hasWrapper(root)`) used as an answer about a tree.
