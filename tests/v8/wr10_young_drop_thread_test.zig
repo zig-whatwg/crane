@@ -116,8 +116,8 @@ const Page = struct {
         self.queue.drainAll();
     }
 
-    /// At least `n` scavenges, then the agent's posted tasks (the drain a
-    /// scavenge posts) and its queue.
+    /// At least `n` scavenges, then the agent's pump - its posted tasks and
+    /// its safe point, where the drain a scavenge owes runs - and its queue.
     fn minorGC(self: Page, n: u32) !void {
         const entered = self.enter();
         defer self.leave(entered);

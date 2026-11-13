@@ -2962,12 +2962,9 @@ pub const FullGCEpilogueProbe = opaque {};
 pub extern fn v8_test_FullGCEpilogueProbe_New(isolate: *Isolate, callback: *const fn (?*anyopaque) callconv(.c) void, data: ?*anyopaque) *FullGCEpilogueProbe;
 pub extern fn v8_test_FullGCEpilogueProbe_Delete(probe: *FullGCEpilogueProbe) void;
 
-/// tests/v8: a full collection with no conservative stack scan and no drain
-/// at its end (what it collected waits for the posted drain task).
+/// tests/v8: a full collection with no conservative stack scan and no safe
+/// point at its end (what it collected waits for the agent's next one).
 pub extern fn v8_test_Isolate_CollectWithoutDrain(isolate: *Isolate) void;
-
-/// tests/v8: whether a node wrappers' drain task is posted and has not run.
-pub extern fn v8_test_NodeWrappers_DrainPosted(isolate: *Isolate) bool;
 
 /// tests/v8: the node wrappers V8 dropped in `isolate`'s young-generation
 /// collections so far (the EmbedderRootsHandler's ResetRoot, design 4.11).
@@ -2997,10 +2994,6 @@ pub extern fn v8_test_CppHeap_LiveBytes(isolate: ?*Isolate) usize;
 /// C++-heap object and held by a droppable TracedReference only. 1 dropped,
 /// 0 kept, -1 inconclusive.
 pub extern fn v8_test_NodeTemplateWrapperDroppable(isolate: *Isolate, context: *Context, tpl: *FunctionTemplate, prototype: ?*Object, add_private: bool, apply: ?*Value) c_int;
-
-/// tests/v8: drain tasks posted from now on count their runs and their drops
-/// (destroyed without running) in the caller's two counters.
-pub extern fn v8_test_NodeWrappers_ObserveDrainTasks(isolate: *Isolate, runs: *u32, drops: *u32) void;
 
 // ---- The walk (the wrapper redesign's P5, design 4.4; node_wrappers.zig
 // "The walk") ----

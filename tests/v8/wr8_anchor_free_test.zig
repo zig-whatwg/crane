@@ -154,8 +154,8 @@ const Page = struct {
         self.queue.drainAll();
     }
 
-    /// At least `n` scavenges, nothing run after them: the drain the last
-    /// one posted waits for `pump`.
+    /// At least `n` scavenges, nothing run after them: the drain they owe
+    /// waits for the agent's next safe point (`pump`'s).
     fn scavenge(self: Page, n: u32) !void {
         const entered = self.enter();
         defer self.leave(entered);
@@ -164,8 +164,8 @@ const Page = struct {
         try testing.expect(ffi.v8_Debug_MinorGCCount(self.isolate()) >= before + n);
     }
 
-    /// At least `n` scavenges, then the agent's posted tasks (the drain a
-    /// scavenge posts) and its queue.
+    /// At least `n` scavenges, then the agent's pump - its posted tasks and
+    /// its safe point, where the drain a scavenge owes runs - and its queue.
     fn minorGC(self: Page, n: u32) !void {
         try self.scavenge(n);
         self.pump();

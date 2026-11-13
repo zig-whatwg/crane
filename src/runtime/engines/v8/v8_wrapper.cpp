@@ -803,6 +803,7 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
 
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data);
 static bool runQueuedFinalizers(Isolate* isolate);
+static void oweWaitingAnchorFrees(Isolate* isolate);
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
@@ -954,9 +955,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
 // collection that found its wrapper dead, not after V8's later task or next
 // collection), and the ORDER within one collection (the first pass's own
 // order; V8's second pass handed them over reversed, global-handles.cc:850,
-// 765-767). The safe points and their rules are the same. NOT a node
-// wrapper's release: that keeps its second pass (`nodeWrapperSecondPass`
-// says why).
+// 765-767). The safe points and their rules are the same. A node wrapper's
+// release joins the queue the same way - owed in the collection that found
+// its wrapper dead (`noteNodeWrappersCollected`) - since lane wr1 b11 closed
+// the hole in refcount step 7a's net that had made its timing matter.
 
 // ============================================================================
 // V8 Exception Information Structure
@@ -2668,6 +2670,9 @@ bool v8_Platform_PumpMessageLoop(Isolate* isolate) {
     CollectingScope collecting(isolate);
     const bool task_ran = platform::PumpMessageLoop(defaultPlatform(), isolate,
                                                     platform::MessageLoopBehavior::kDoNotWait);
+    // The task may have been the C++ heap's sweeper finishing: node anchors
+    // whose free it refused meanwhile are tried again (`oweWaitingAnchorFrees`).
+    if (task_ran) oweWaitingAnchorFrees(isolate);
     const bool finalizers_ran = runQueuedFinalizers(isolate);
     return task_ran || finalizers_ran;
 }
@@ -3333,9 +3338,9 @@ struct IsolateData {
     /// (its drain).
     void (*node_wrappers_drain)(void* registry) = nullptr;
     /// The node wrappers' drain is owed to the agent's next safe point
-    /// (`noteNodeWrappersCollected`): the registry holds releases a
-    /// collection recorded, or anchors a scavenge dropped wait for their
-    /// free.
+    /// (`noteNodeWrappersCollected`, set by the collection itself): the
+    /// registry holds releases a collection recorded, or anchors a scavenge
+    /// dropped wait for their free.
     bool node_wrappers_collected = false;
     /// THE AGENT'S FINALIZER QUEUE: the records of collected wrappers, queued
     /// by V8's first pass (`WeakCallbackWrapper`), oldest first, each
@@ -3388,12 +3393,6 @@ struct IsolateData {
     /// (v8_Isolate_SetNodeWrappers to v8_Isolate_Dispose's start, which
     /// clears it before Isolate::Dispose terminates the heap).
     cppgc::Persistent<NodeWrapperRegistry> node_anchors;
-    /// A collection found node anchors dead or dropped node wrappers: their
-    /// releases wait to be owed to the agent's safe point - where V8 would
-    /// run a second pass (nodeWrappersPrologue, nodeWrappersEpilogue).
-    bool node_wrappers_drain_due = false;
-    /// The task that owes them is posted and has not run.
-    bool node_wrappers_drain_posted = false;
     /// The isolate's EmbedderRootsHandler (design 4.11, P8: Blink's
     /// BlinkRootsHandler), installed right after Isolate::Initialize
     /// (installNodeWrapperRootsHandler) and uninstalled before
@@ -3421,11 +3420,6 @@ struct IsolateData {
     /// (v8_Isolate_RequestGarbageCollection asserts it).
     int anchors_in_frames = 0;
 #endif
-    /// tests/v8 only (v8_test_NodeWrappers_ObserveDrainTasks): counters a
-    /// posted drain task bumps when it runs, or when it is destroyed without
-    /// running - the test's own, which outlive the agent.
-    uint32_t* test_drain_task_runs = nullptr;
-    uint32_t* test_drain_task_drops = nullptr;
     /// The walk (the wrapper redesign's P5; v8_Isolate_SetNodeWrapperTracing):
     /// a reached anchor's node's trees, from its Trace in the atomic pause
     /// (the record found as the current isolate's: collectingRecord); the
@@ -3542,13 +3536,15 @@ extern "C" uint64_t v8_Debug_MinorGCCount(Isolate* isolate) {
 // Every dead wrapper's Zig-side work waits here for the agent's safe point:
 // a wrapper-cache entry's finalizer, queued by V8's first pass
 // (`WeakCallbackWrapper`), and the node wrappers' releases, which the anchors'
-// weak processing and the young generation's ResetRoot record ("Node wrappers
-// on the agent's C++ heap", below) and `noteNodeWrappersCollected` owes.
+// weak processing and the young generation's ResetRoot record and owe in
+// the same collection ("Node wrappers on the agent's C++ heap", below;
+// `noteNodeWrappersCollected`).
 
 static void drainNodeWrappers(IsolateData* record);
+static void noteNodeWrappersCollected(IsolateData* record);
 
-/// The first pass queued a finalizer, or a node wrapper's second pass said
-/// one died: the agent's queue owes them to its next safe point - the
+/// The first pass queued a finalizer, or a collection recorded a node
+/// wrapper's release: the agent's queue owes them to its next safe point - the
 /// binding's return into script that finds the bit (dom_algorithm.zig
 /// leaveToScript -> DeferredTeardown.leaveAlgorithmToScript). One store into
 /// the agent's own byte; nothing of Zig's is called from V8's pass.
@@ -3892,8 +3888,8 @@ extern "C" void v8_Debug_NodeAnchorStats(Isolate* isolate, CraneNodeAnchorStats*
 //   TracedReference::Reset would free it twice) and records the release. No
 //   V8 call, no count change, no free. The drain - the counts' release -
 //   runs after the collection, at the agent's safe point
-//   (`runQueuedFinalizers`: lane v8up's finalizer queue), owed to it where
-//   V8 would run a second pass (`noteNodeWrappersCollected`).
+//   (`runQueuedFinalizers`: lane v8up's finalizer queue), owed to it by the
+//   collection that recorded them (`noteNodeWrappersCollected`).
 // - Keeps (a node's pending activity): a cppgc::Persistent on the anchor
 //   (v8_NodeWrapper_Root) - a traced root, its own slot only (design 7 P4).
 // - The node's teardown under a live wrapper, and the agent's end: the
@@ -4050,7 +4046,10 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     const uint64_t ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
     if (ns > record->gc_phases.anchor_weak_ns_max) record->gc_phases.anchor_weak_ns_max = ns;
     if (slots > record->gc_phases.anchor_weak_slots_max) record->gc_phases.anchor_weak_slots_max = slots;
-    if (released) record->node_wrappers_drain_due = true;
+    // The releases recorded above - and the frees of anchors still waiting
+    // (one a stale word of the stack kept) - are owed to the agent's next
+    // safe point: one flag and one byte, nothing of Zig's runs in the pause.
+    if (released || !dropped.empty()) noteNodeWrappersCollected(record);
     // Marking is over: the walk's per-collection sets end.
     if (record->node_wrappers && record->node_wrappers_marked) record->node_wrappers_marked(record->node_wrappers);
 }
@@ -4188,12 +4187,11 @@ class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
         if (NodeWrapperRegistry* registry = record->node_anchors.Get()) {
             registry->remove(anchor);
             record->dropped_anchors.push_back(anchor);
-            record->node_wrappers_drain_due = true;
         }
-        if (record->node_wrappers && record->node_wrapper_collected) {
-            record->node_wrapper_collected(record->node_wrappers, slot);
-            record->node_wrappers_drain_due = true;
-        }
+        if (record->node_wrappers && record->node_wrapper_collected) record->node_wrapper_collected(record->node_wrappers, slot);
+        // The anchor's free and the wrapper's release are owed to the agent's
+        // next safe point (one flag and one byte: no V8 call, no allocation).
+        noteNodeWrappersCollected(record);
     }
 
     /// Runs on V8's worker threads (15.7: the comment above). It reads
@@ -4308,12 +4306,6 @@ static void freeDroppedAnchors(IsolateData* record) {
     }
 }
 
-/// Whether the drain has work: releases a collection recorded, or anchors a
-/// scavenge dropped and not yet freed.
-static bool drainPending(const IsolateData* record) {
-    return record->node_wrappers_drain_due || !record->dropped_anchors.empty();
-}
-
 /// The agent's drain, now: the anchors scavenges dropped are freed, and the
 /// releases its collections recorded go (the Zig side defers them while a
 /// walk holds the agent's teardowns). Only from the agent's safe point
@@ -4321,100 +4313,54 @@ static bool drainPending(const IsolateData* record) {
 /// callbacks.
 static void drainNodeWrappers(IsolateData* record) {
     freeDroppedAnchors(record);
-    record->node_wrappers_drain_due = false;
     if (record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
 }
 
 /// The node wrappers' drain is OWED to the agent's next safe point
 /// (`runQueuedFinalizers`: a binding's return into script at DOM-algorithm
 /// depth zero, the pump, a requested collection's return) - lane v8up's
-/// finalizer queue, which the node wrappers' releases join here as its
-/// `nodeWrapperSecondPass` made a weak Global's join it (lane wr1 b11, the
-/// merge onto V8 15.7: before it the drain ran right here, inside V8's GC
-/// callbacks and a task of its own).
+/// finalizer queue, which the node wrappers' releases join where every other
+/// finalizer does: in the collection that found the wrapper dead ("Why the
+/// first pass queues", above). Called by that collection itself - the
+/// anchors' weak processing in a full collection's atomic pause
+/// (NodeWrapperRegistry::ProcessWeak) and the roots handler in a young one
+/// (NodeWrapperRootsHandler::ResetRoot), both on the agent's thread - and it
+/// only stores a flag and the agent's owed byte: no V8 call, no allocation,
+/// nothing of Zig's.
 ///
-/// WHEN it is owed is still where V8 runs a SECOND pass, not where the
-/// collection found the wrapper dead ("Why the first pass queues", above,
-/// is every other finalizer's rule): WHEN a node wrapper's reference is
-/// released decides what refcount step 7a's net does with a detached tree
-/// that only its own pending work still holds (an <img> whose image update
-/// is pending, in a tree document.open() replaced). Released at its realm's
-/// end, the net frees the tree (node_wrappers.zig endRealm, endedRealmNet);
-/// released earlier, while the realm lives, the net declines, nothing looks
-/// again, and the tree stays to the agent's end (lane v8up b7:
-/// tests/html parser_implied_end_tags_test, 15 of 15 runs with a node
-/// wrapper's release owed by the first pass, 0 of 15 by the second). That
-/// hole is older than the queue - a pump between the collection and the
-/// realm's end opens it too. Until it is closed (feature-queue "THE 7a NET'S
-/// HOLE", R3) a node wrapper's release keeps the timing it had: the three
-/// points below are V8 15.7's for a second pass (src/handles/
-/// global-handles.cc:881-901 PostGarbageCollectionProcessing - synchronously
-/// at the end of a forced collection, else one posted task; src/heap/
-/// heap.cc:1509-1511 - at the next collection's start when that task has not
-/// run).
+/// Until lane wr1 b11 the releases were owed later, at the three points
+/// where V8 runs a SECOND pass (the next collection's start, a forced
+/// collection's end, a posted task: 15.7.112.43 src/handles/
+/// global-handles.cc:874-903, src/heap/heap.cc:1509-1511), because WHEN a
+/// node wrapper's reference was released decided what refcount step 7a's net
+/// did with a detached tree only its realm's pending work still held:
+/// released while the realm lived, the net declined and nothing looked
+/// again (feature-queue "THE 7a NET'S HOLE"; lane v8up b7:
+/// tests/html parser_implied_end_tags_test, 15 of 15 runs with the release
+/// owed by the first pass). The net remembers such a tree now and looks
+/// again at its realm's end (node_wrappers.zig `Registry.net_waiting`,
+/// tests/v8/wr11_net_hole_test.zig), so the timing is the queue's own: a
+/// dead tree's nodes go back to the allocator one collection sooner
+/// (dom.clone-node 145.5 -> 126.7 MB, dom.create-element 84.0 -> 72.0 MB,
+/// chat.local, 2026-11-13, x7). Nothing here depends on V8's second pass -
+/// not on its being a task either (Isolate::SetMemorySaverMode makes it
+/// synchronous, global-handles.cc:881-889).
 static void noteNodeWrappersCollected(IsolateData* record) {
     record->node_wrappers_collected = true;
     oweFinalizers(record, record->finalizers_owed_mask);
 }
 
-/// One of the three points: the task V8 would post for its second passes,
-/// on the agent's foreground task runner. It only owes the drain; the pump
-/// that ran it drains right after (v8_Platform_PumpMessageLoop's safe
-/// point). A task the runner drops at the agent's end (v8_Isolate_Dispose
-/// closes it) never runs: that end drains itself.
-class NodeWrappersDrainTask final : public Task {
- public:
-    NodeWrappersDrainTask(Isolate* isolate, uint32_t* runs, uint32_t* drops)
-        : isolate_(isolate), runs_(runs), drops_(drops) {}
-    ~NodeWrappersDrainTask() override {
-        if (!ran_ && drops_) ++*drops_;
-    }
-    void Run() override {
-        ran_ = true;
-        if (runs_) ++*runs_;
-        IsolateData* record = isolateData(isolate_);
-        if (!record) return;
-        record->node_wrappers_drain_posted = false;
-        if (drainPending(record)) noteNodeWrappersCollected(record);
-    }
-
- private:
-    Isolate* isolate_;
-    uint32_t* runs_;
-    uint32_t* drops_;
-    bool ran_ = false;
-};
-
-/// Before every collection, minor ones included: what an earlier collection
-/// released is owed first - where V8 runs the second-pass callbacks still
-/// pending (15.7.112.43 src/heap/heap.cc:1509-1511, ahead of the prologue
-/// callbacks). So a long script that collects many times releases as it
-/// goes, at its bindings' exits (tests/html/rc9_document_tasks_test.zig).
-/// Nothing of Zig's runs here: one flag and one byte.
-static void nodeWrappersPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
-    IsolateData* record = static_cast<IsolateData*>(data);
-    if (drainPending(record)) noteNodeWrappersCollected(record);
-}
-
-/// After every collection that found node anchors dead or dropped node
-/// wrappers: a forced one owes the drain at once - V8 runs second-pass
-/// callbacks synchronously at the end of a collection made with these flags
-/// (GlobalHandles::PostGarbageCollectionProcessing), and the operation that
-/// forced it runs the agent's safe point when V8 returns
-/// (v8_Isolate_RequestGarbageCollection) - and any other posts one task
-/// (one at a time), unless the next collection's start owes it first.
-static void nodeWrappersEpilogue(Isolate* isolate, GCType, GCCallbackFlags flags, void* data) {
-    IsolateData* record = static_cast<IsolateData*>(data);
-    if (!drainPending(record)) return;
-    if ((flags & (kGCCallbackFlagForced | kGCCallbackFlagCollectAllAvailableGarbage |
-                  kGCCallbackFlagSynchronousPhantomCallbackProcessing)) != 0) {
-        noteNodeWrappersCollected(record);
-        return;
-    }
-    if (record->node_wrappers_drain_posted) return;
-    record->node_wrappers_drain_posted = true;
-    g_platform.platform->GetForegroundTaskRunner(isolate)->PostTask(
-        std::make_unique<NodeWrappersDrainTask>(isolate, record->test_drain_task_runs, record->test_drain_task_drops));
+/// Node anchors whose free cppgc refused - its lazy sweep was running
+/// (`freeDroppedAnchors`) - are owed another try once a platform task has
+/// run: V8 15.7's C++ heap finishes its sweep in foreground tasks
+/// (src/heap/cppgc-internal/sweeper.cc:1028-1075, :1553-1576), so the pump
+/// that ran one is where the refused free can succeed
+/// (v8_Platform_PumpMessageLoop). Otherwise they wait for the next
+/// collection that records anything, or for the full collection that takes
+/// them (ProcessWeak).
+static void oweWaitingAnchorFrees(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (record && !record->dropped_anchors.empty()) noteNodeWrappersCollected(record);
 }
 
 /// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
@@ -4426,10 +4372,9 @@ extern "C" void* v8_Isolate_NodeWrappers(Isolate* isolate) {
 
 /// The isolate takes `registry` over (IsolateData::node_wrappers), with its
 /// collection callback, its drain, its end and its unwrap's last step - and
-/// its anchors' registry is made on its C++ heap, rooted by the record, with
-/// the full collections' epilogue that posts the drain. False for an isolate
-/// with no record or no C++ heap (the snapshot creator's): no node is
-/// wrapped there.
+/// its anchors' registry is made on its C++ heap, rooted by the record.
+/// False for an isolate with no record or no C++ heap (the snapshot
+/// creator's): no node is wrapped there.
 extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, void (*collected)(void*, void*),
                                            void (*drain)(void*), void (*end)(void*), void* (*instance_of)(void*)) {
     IsolateData* record = isolateData(isolate);
@@ -4437,11 +4382,6 @@ extern "C" bool v8_Isolate_SetNodeWrappers(Isolate* isolate, void* registry, voi
     CppHeap* heap = isolate->GetCppHeap();
     if (!heap) return false;
     record->node_anchors = cppgc::MakeGarbageCollected<NodeWrapperRegistry>(heap->GetAllocationHandle(), record);
-    isolate->AddGCPrologueCallback(nodeWrappersPrologue, record, kGCTypeAll);
-    // Every type: a young-generation collection drops node wrappers too
-    // (NodeWrapperRootsHandler), and V8 posts its second passes after one
-    // as after a full collection (GlobalHandles::PostGarbageCollectionProcessing).
-    isolate->AddGCEpilogueCallback(nodeWrappersEpilogue, record, kGCTypeAll);
     record->node_wrappers = registry;
     record->node_wrapper_collected = collected;
     record->node_wrappers_drain = drain;
@@ -4750,8 +4690,8 @@ extern "C" void v8_test_FullGCEpilogueProbe_Delete(CraneFullGCEpilogueProbe* pro
 /// A full collection of `isolate` (entered by the caller) with no
 /// conservative scan of the stack - a stale anchor pointer in a frame must not
 /// keep a test's wrapper (cppgc::testing::OverrideEmbedderStackStateScope) -
-/// and, unlike v8_Isolate_RequestGarbageCollection, no drain at its end: what
-/// it collected waits for the posted drain task.
+/// and, unlike v8_Isolate_RequestGarbageCollection, no safe point at its end:
+/// what it collected waits for the agent's next one (the pump's, say).
 extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
     CollectingScope collecting(isolate);
     CppHeap* heap = isolate->GetCppHeap();
@@ -4942,22 +4882,6 @@ extern "C" int v8_test_NodeTemplateWrapperDroppable(Isolate* isolate, Global<Con
     probe->Reset();
     delete probe;
     return 0;
-}
-
-/// Whether a drain task is posted and has not run.
-extern "C" bool v8_test_NodeWrappers_DrainPosted(Isolate* isolate) {
-    IsolateData* record = isolateData(isolate);
-    return record && record->node_wrappers_drain_posted;
-}
-
-/// Drain tasks posted from now on bump `runs` when they run and `drops` when
-/// they are destroyed without running; both are the caller's and must
-/// outlive the agent.
-extern "C" void v8_test_NodeWrappers_ObserveDrainTasks(Isolate* isolate, uint32_t* runs, uint32_t* drops) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return;
-    record->test_drain_task_runs = runs;
-    record->test_drain_task_drops = drops;
 }
 
 /// The host's wall clock of the isolate current on this thread (ns since the
@@ -12388,10 +12312,10 @@ void v8_Isolate_RequestGarbageCollection(Isolate* isolate) {
         isolate->LowMemoryNotification();
     }
     // The collection's first pass queued the finalizers of what it found
-    // dead, and its epilogue owed the node wrappers' releases
-    // (nodeWrappersEpilogue: a forced collection owes them at once): they
-    // run now, V8's collector off the stack, so that the caller finds them
-    // run as it always did (`runQueuedFinalizers`).
+    // dead, and its weak processing owed the node wrappers' releases
+    // (`noteNodeWrappersCollected`): they run now, V8's collector off the
+    // stack, so that the caller finds them run as it always did
+    // (`runQueuedFinalizers`).
     runQueuedFinalizers(isolate);
 }
 
