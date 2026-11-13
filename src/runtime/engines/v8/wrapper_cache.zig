@@ -69,6 +69,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 const node_wrappers = @import("node_wrappers.zig");
+const platform_anchor = @import("platform_anchor.zig");
 const tombstones = @import("webidl").utils.tombstones;
 /// Every map keyed by an instance hashes it under a seed of its own
 /// (infra.address_map): this cache's end frees objects by walking `cache`,
@@ -236,38 +237,25 @@ fn shouldBeStrong(entry: *const CacheEntry) bool {
 }
 
 /// The realm is ending and `entry`'s instance is freed (or already was, or
-/// its slot went to another object): clear the wrapper's internal fields
-/// first - what severWindow does for a Window's global, for every wrapper.
-/// Script elsewhere - another realm, which is how a removed frame's objects
-/// are usually held - can outlive this realm and keep the wrapper; the next
-/// read through it then fails the binding's unwrap with a TypeError instead
-/// of reaching an impl with a freed instance (23 impls unwrap `_internal`
-/// unchecked; crane/fl-xhr-frame-removed-mid-request.html panicked in
-/// XMLHttpRequest.getXHRState). Blink clears a wrapper's native pointer when
+/// its slot went to another object): sever the wrapper from it first - its
+/// anchor's instance is cleared, as severWindow clears a Window's global's
+/// field - for every wrapper. Script elsewhere - another realm, which is how
+/// a removed frame's objects are usually held - can outlive this realm and
+/// keep the wrapper; the next read through it then fails the binding's unwrap
+/// with a TypeError instead of reaching an impl with a freed instance (23
+/// impls unwrap `_internal` unchecked;
+/// crane/fl-xhr-frame-removed-mid-request.html panicked in
+/// XMLHttpRequest.getXHRState), and a holder's anchor (the redesign's P6)
+/// traces nothing from here. Blink clears a wrapper's native pointer when
 /// the object it names goes (V8DOMWrapper::ClearNativeInfo). Only a wrapper
 /// whose instance goes: a node its tree owns, or an instance another realm
-/// still wraps, keeps its fields.
+/// still wraps, keeps its link.
 fn severWrapper(entry: *CacheEntry) void {
     // A wrapper the collector already took has nothing to sever.
     if (v8.v8_Global_IsEmpty(@ptrCast(entry.wrapper))) return;
-    const wrapper: *v8.Object = @ptrCast(@alignCast(entry.wrapper));
-    // A holder's anchor (the redesign's P6) traces nothing from here.
-    if (entry.original_vtable.trace_held_nodes != null) node_wrappers.clearHolder(wrapper);
-    // A legacy platform object's wrapper is a proxy whose target holds the
-    // fields (the unwrap reads them through it): sever the target.
-    if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
-        const target = v8.v8_Proxy_GetTarget(wrapper) orelse return;
-        defer v8.v8_Value_Dispose(target);
-        if (v8.v8_Value_IsObject(target)) clearFields(@ptrCast(target));
-        return;
-    }
-    clearFields(wrapper);
-}
-
-fn clearFields(object: *v8.Object) void {
-    const count = v8.v8_Object_InternalFieldCount(object);
-    if (count < 1) return;
-    v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+    // A legacy platform object's wrapper is a proxy; its target is the bound
+    // object, and the sever looks through it as the unwrap does.
+    platform_anchor.sever(@ptrCast(@alignCast(entry.wrapper)));
 }
 
 /// What a path that ends an entry did to the entry's instance, for
@@ -2027,11 +2015,10 @@ pub const WrapperCache = struct {
         }
         // Edges traced from the instance before script saw it.
         self.drawDeferredEdges(instance, entry.original_generation, wrapper);
-        // A holder of nodes: its anchor, so a collection that keeps this
-        // wrapper keeps the wrappers of what it holds for script (the
-        // redesign's P6, design 4.4 "Holders"; Blink's holders trace their
-        // Member<Node>s). Its nodes are counted holds; nothing is wrapped.
-        if (instance.vtable.trace_held_nodes != null) node_wrappers.attachHolder(isolate, instance, wrapper);
+        // (A holder of nodes was bound to its HolderAnchor with the wrapper -
+        // platform_anchor.bind - so a collection that keeps this wrapper
+        // keeps the wrappers of what it holds for script: the redesign's P6,
+        // design 4.4 "Holders"; Blink's holders trace their Member<Node>s.)
         // (A node never gets here: its wrapper is its agent's, in its own
         // slot - `setNode` - a constructor's included, and the walk keeps it.)
         if (shouldBeStrong(entry) and self.detached_holder == null) {

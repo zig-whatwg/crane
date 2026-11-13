@@ -43,20 +43,25 @@ const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
 const value_operations = @import("value_operations.zig");
 const binding_plumbing = @import("binding_plumbing.zig");
+const platform_anchor = @import("platform_anchor.zig");
 const CallFrame = @import("call_frame.zig").CallFrame;
 const ArgumentRead = @import("call_frame.zig").ArgumentRead;
 
 /// Import webidl for Opt type checking
 const webidl = @import("webidl");
 
-/// The internal fields of a platform object's wrapper: one, the Zig instance
-/// (*runtime.Instance). The brand check is the instance's state ancestry
-/// (`conv.implements`), so no WrapperTypeInfo is kept beside it: on V8 >= 15.7
-/// every aligned pointer in a field is a cppgc EmbedderDataSlotWrapper of its
-/// own (d04704a20fc), and the second field cost one per typed wrapper for a
-/// check the ancestry makes (lane v8up A0; tmp/plans/object-wrap-design.md
-/// 3.3). Blink keeps one CppHeap pointer (Object::Wrap) and checks its tag.
-pub const INTERNAL_FIELD_COUNT: c_int = 1;
+/// The internal fields of a realm's global - the instance template of a
+/// [Global] interface (Window, the worker and worklet global scopes): one,
+/// the Zig instance (*runtime.Instance), which the global proxy and the
+/// hidden global object carry beside their GlobalAnchor (realm_global.zig,
+/// lane v8up). No other wrapper has an internal field: a platform object's
+/// instance is behind v8::Object::Wrap (platform_anchor.zig, lane wrap1 b2;
+/// a node's since the wrapper redesign's P4), as Blink's is - on V8 >= 15.7
+/// every aligned pointer in a field is a cppgc EmbedderDataSlotWrapper of
+/// V8's own (d04704a20fc). The brand check is the instance's state ancestry
+/// (`conv.implements`), never a WrapperTypeInfo beside the instance (lane
+/// v8up A0; tmp/plans/object-wrap-design.md 3.3).
+pub const GLOBAL_INTERNAL_FIELD_COUNT: c_int = 1;
 
 /// Check if a type is a webidl.Opt (Optional) wrapper type by checking for notPassed() declaration
 fn isWebIdlOpt(comptime T: type) bool {
@@ -2199,11 +2204,13 @@ pub fn V8Interface(comptime Interface: type) type {
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
     // A node interface - every instance a node (its State keeps a NodeBase:
-    // the VTable's `counted`, runtime.lifetime.countedOf) - has wrappers with
-    // NO internal field: each points at its node's anchor on the agent's C++
-    // heap through Object::Wrap, and its members unwrap their receiver with
-    // Object::Unwrap (the wrapper redesign's P4, design 4.2-4.3). Every other
-    // interface keeps its one field, the instance (INTERNAL_FIELD_COUNT).
+    // the VTable's `counted`, runtime.lifetime.countedOf) - has wrappers that
+    // each point at their node's anchor on the agent's C++ heap through
+    // Object::Wrap, and its members unwrap their receiver as a node wrapper
+    // only (the wrapper redesign's P4, design 4.2-4.3). Every other
+    // interface's members read their receiver's instance by the one rule for
+    // any wrapper (platform_anchor.instanceOf): an EventTarget member's
+    // receiver may be a node, a Window or an XMLHttpRequest.
     const node_interface = comptime runtime.lifetime.countedOf(Interface.State) != null;
 
     // WebIDL 2.5.6: the special operations, from codegen's table
@@ -3443,14 +3450,20 @@ pub fn V8Interface(comptime Interface: type) type {
             // that's a V8 limitation we cannot work around without V8 internal APIs.
             v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
 
-            // The instance template's one internal field: the Zig instance
-            // (*runtime.Instance; INTERNAL_FIELD_COUNT says why there is no other).
-            // A node interface's: none (`node_interface`: the wrapper points at
-            // its node's anchor through Object::Wrap; the snapshot holds the
-            // templates, so it is regenerated with them - design 4.8).
+            // The instance template has NO internal field: a wrapper points
+            // at its anchor on the agent's C++ heap through Object::Wrap - a
+            // node's at its NodeAnchor (the wrapper redesign's P4), every
+            // other platform object's at its PlatformAnchor (lane wrap1 b2,
+            // platform_anchor.zig) - as Blink's bindings generator reserves
+            // none (bind_gen/interface.py at 157.0.8103.51 has no
+            // SetInternalFieldCount: its wrapper is the 16-byte API object).
+            // Only a [Global] interface's keeps one: a realm's global object
+            // and its proxy carry their instance in field 0 beside their
+            // GlobalAnchor (GLOBAL_INTERNAL_FIELD_COUNT). The snapshot holds
+            // the templates, so it is regenerated with them (design 4.8).
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
             defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);
-            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, if (node_interface) 0 else INTERNAL_FIELD_COUNT);
+            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, if (is_global_interface) GLOBAL_INTERNAL_FIELD_COUNT else 0);
 
             // Per WebIDL spec, platform objects of [Global] interfaces have immutable [[Prototype]].
             // Also some specific interfaces like Location.
@@ -5169,10 +5182,10 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // The instance: WebIDL's O, the object that has the interceptor
             // (the list, for `list[i]` and for `heir[i]` whose prototype is
-            // the list), read from its internal field without a handle - a
+            // the list), read from its anchor without a handle - a
             // Global for `this`, made and disposed per read, was a third of
             // `list[i]` (gc_bench profile, 2026-10-11).
-            const instance_ptr = info.holderAlignedPointer(0);
+            const instance_ptr = info.holderInstance();
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - let V8 continue normal lookup
                 return .kNo;
@@ -5305,8 +5318,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getHolder() orelse return;
             defer v8.v8_Object_Dispose(this_obj);
 
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The holder's instance (its wrapper's anchor's)
+            const instance_ptr = platform_anchor.instanceOf(this_obj);
             if (instance_ptr == null) {
                 // Called on prototype, not an instance - return empty array
                 const empty_arr = v8.v8_Array_New(isolate, 0);
@@ -5361,7 +5374,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // The instance: the object that has the interceptor (`i in list`,
             // and `i in heir` for an object whose prototype is the list),
             // read without a handle, as the getter reads it.
-            const instance_ptr = info.holderAlignedPointer(0);
+            const instance_ptr = info.holderInstance();
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5417,7 +5430,7 @@ pub fn V8Interface(comptime Interface: type) type {
             // [[HasProperty]] that answers false asks this too (its
             // invariant check, ES 10.5.7 step 9), for every index past the
             // end of an HTMLCollection.
-            const instance_ptr = info.holderAlignedPointer(0);
+            const instance_ptr = info.holderInstance();
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5521,7 +5534,7 @@ pub fn V8Interface(comptime Interface: type) type {
             info: *const v8.PropertyCallbackInfo,
         ) callconv(.c) v8.Intercepted {
             if (comptime !has_indexed_getter or !@hasDecl(Interface, "get_length")) return .kNo;
-            const instance = instanceOf(info.holderAlignedPointer(0)) orelse return .kNo;
+            const instance = instanceOf(info.holderInstance()) orelse return .kNo;
             const length = Interface.get_length(instance) catch return .kNo;
             if (index >= length) {
                 info.setReturnValueBool(true);
@@ -5556,8 +5569,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The holder's instance (its wrapper's anchor's)
+            const instance_ptr = platform_anchor.instanceOf(this_obj);
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5623,8 +5636,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
-            // Extract instance pointer from internal field
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            // The holder's instance (its wrapper's anchor's)
+            const instance_ptr = platform_anchor.instanceOf(this_obj);
             if (instance_ptr == null) {
                 return .kNo;
             }
@@ -5743,11 +5756,11 @@ pub fn V8Interface(comptime Interface: type) type {
             // Step 1.4-1.6: Ignore writable, enumerable, configurable flags for indexed setters per WebIDL §3.9.3
 
             // Step 1.7: Invoke indexed property setter with value
-            // Extract instance pointer from internal field of the actual instance (This)
+            // The instance of the actual object (This), its wrapper's anchor's
             // The holder: V8 calls a definer only on the object it defines on (the receiver)
             const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
-            const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
+            const instance_ptr = platform_anchor.instanceOf(this_obj);
             if (instance_ptr) |ptr| {
                 const instance: *runtime.Instance = @ptrCast(@alignCast(ptr));
                 if (v8.v8_PropertyDescriptor_GetValue(desc)) |value| {
@@ -5891,7 +5904,7 @@ pub fn V8Interface(comptime Interface: type) type {
 
         /// O for a read: the interceptor's holder, without a handle.
         fn holderInstance(info: *const v8.PropertyCallbackInfo) ?*runtime.Instance {
-            return instanceOf(info.holderAlignedPointer(0));
+            return instanceOf(info.holderInstance());
         }
 
         /// O for a write: the holder, which is the receiver (V8 runs a setter
@@ -5899,7 +5912,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn receiverInstance(info: anytype) ?*runtime.Instance {
             const this_obj = info.getHolder() orelse return null;
             defer v8.v8_Object_Dispose(this_obj);
-            return instanceOf(v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0));
+            return instanceOf(platform_anchor.instanceOf(this_obj));
         }
 
         /// The named property visibility algorithm's step 1 (WebIDL 3.9.7):
@@ -6937,8 +6950,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Try to get entries directly from the Interface if it has getEntriesForIterable
             if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
-                // Get the instance from the V8 object's internal field
-                const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target, 0);
+                // The instance the target reaches (its wrapper's anchor's).
+                const instance_ptr = platform_anchor.instanceOf(target);
                 if (instance_ptr) |ptr| {
                     // Safety check: detect use-after-free by checking for poison patterns
                     const ptr_as_int = @intFromPtr(ptr);
@@ -7080,7 +7093,7 @@ pub fn V8Interface(comptime Interface: type) type {
             if (comptime @hasDecl(Interface, "getEntriesForIterable")) {
                 const Entries = @typeInfo(@typeInfo(@TypeOf(Interface.getEntriesForIterable)).@"fn".return_type.?).optional.child;
                 const entries: ?Entries = entry_blk: {
-                    const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(target_obj, 0);
+                    const instance_ptr = platform_anchor.instanceOf(target_obj);
                     if (instance_ptr) |ptr| {
                         // Safety check: detect use-after-free
                         const ptr_as_int = @intFromPtr(ptr);
@@ -8393,25 +8406,25 @@ pub fn V8Interface(comptime Interface: type) type {
 // ## Summary
 //
 // The getInstance/setInstance family of functions are SAFE from pointer tagging
-// issues because they operate directly on V8 internal fields, NOT on values
-// returned from conv.fromV8Value().
+// issues because they read and write a wrapper's anchor (v8::Object::Wrap;
+// platform_anchor.zig), NOT values returned from conv.fromV8Value().
 //
 // ## Pointer Flow Analysis
 //
 // ### SAFE Paths (no tagging involved):
 //
-// 1. getInstance(object) -> v8_Object_GetAlignedPointerFromInternalField
-//    - Extracts raw Zig pointer from V8 internal storage
-//    - This pointer was stored by setInstance, never passed through fromV8Value
+// 1. getInstance(object) -> v8_Object_Instance
+//    - Reads the raw Zig pointer from the wrapper's anchor
+//    - This pointer was stored by the wrap, never passed through fromV8Value
 //    - NO TAGGING: Direct V8 API call returns raw pointer
 //
-// 2. setInstance(object, instance) -> v8_Object_SetAlignedPointerInInternalField
-//    - Stores raw Zig pointer into V8 internal storage
+// 2. setInstance(isolate, object, instance) -> v8_PlatformObject_Bind
+//    - Stores the raw Zig pointer in a new anchor the object is Wrapped with
 //    - NO TAGGING: Direct storage, pointer identity preserved
 //
 // 3. constructorCallback -> info.getThis() -> getInstance()
 //    - `this` object comes from V8 callback, not fromV8Value
-//    - Internal field extraction is untagged
+//    - The anchor's read is untagged
 //
 // ### POTENTIALLY TAGGED Paths (require attention):
 //
@@ -8556,19 +8569,19 @@ pub const OverloadArg = struct {
     }
 };
 
-/// The Zig instance in `object`'s internal field, its only one; null for an
-/// object with none, or a poisoned (freed) pointer. Whether it implements an
+/// The Zig instance `object` reaches - its wrapper's anchor's
+/// (platform_anchor.instanceOf: the binding's one read of a platform
+/// object's instance); null for an object that wraps none, a severed
+/// wrapper, or a poisoned (freed) pointer. Whether it implements an
 /// interface is the caller's brand check, the instance's state ancestry
-/// (`conv.implements`): a wrapper keeps no WrapperTypeInfo beside it (lane
-/// v8up A0).
+/// (`conv.implements`): a wrapper's tag says only what kind of wrapper it is.
 ///
 /// ## Pointer Tagging Note
 ///
-/// This function returns an UNTAGGED pointer. The pointer is extracted directly
-/// from V8's internal field storage, not from conv.fromV8Value(). No untagging
-/// is required by callers.
+/// This function returns an UNTAGGED pointer, read from the wrapper's anchor,
+/// not from conv.fromV8Value(). No untagging is required by callers.
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
+    const ptr = platform_anchor.instanceOf(object);
     if (ptr == null) return null;
 
     // Safety check: detect use-after-free by checking for poison patterns
@@ -8584,29 +8597,18 @@ pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     return @ptrCast(@alignCast(ptr));
 }
 
-/// Store the Zig instance in `object`'s internal field, its only one (lane
-/// v8up A0: no WrapperTypeInfo beside it; on V8 >= 15.7 each aligned pointer
-/// in a field is a cppgc object of its own, d04704a20fc).
-///
-/// ## Pointer Tagging Note
-///
-/// This function stores an UNTAGGED pointer directly into V8's internal field.
-/// The pointer can later be retrieved via getInstance(), which also returns
-/// it untagged. This bypasses the pointer tagging system entirely.
-pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
+/// Bind `object` - the receiver V8 made for a constructor's NewTarget - to
+/// `instance`: the link (platform_anchor.bind; Blink's
+/// V8DOMWrapper::SetNativeInfo), read back by getInstance(). A node's
+/// receiver is bound when the wrapper cache takes it (WrapperCache.set ->
+/// node_wrappers.adopt: its NodeAnchor). False when the receiver cannot be
+/// bound - it is no API object, which no receiver V8 makes from an
+/// interface's template is - and then it reaches nothing.
+pub fn setInstance(isolate: *v8.Isolate, object: *v8.Object, instance: *runtime.Instance) bool {
+    if (!platform_anchor.bind(isolate, object, instance)) return false;
     // [wrap_tracking]: the object reaches the instance from here.
-    if (T == runtime.Instance) {
-        runtime.instance_lifecycle.markWrapped(instance);
-        // A node's wrapper has no internal field (the wrapper redesign's
-        // P4): it reaches the node through its anchor, which the wrap makes
-        // (WrapperCache.set -> node_wrappers.adopt).
-        if (instance.vtable.counted != null) return;
-    }
-    v8.v8_Object_SetAlignedPointerInInternalField(
-        object,
-        0,
-        @ptrCast(instance),
-    );
+    runtime.instance_lifecycle.markWrapped(instance);
+    return true;
 }
 
 // ============================================================================

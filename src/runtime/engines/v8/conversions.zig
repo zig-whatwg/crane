@@ -749,10 +749,9 @@ pub fn fromV8ValueTyped(
         const obj: *v8.Object = @ptrCast(value);
 
         // Check if this V8 object wraps a Zig instance: the binding's one
-        // read of a platform object's instance - internal field 0, or a node
-        // wrapper's anchor (it has no internal field since the wrapper
-        // redesign's P4) - null for anything else.
-        if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
+        // read of a platform object's instance - its wrapper's anchor's
+        // (platform_anchor.zig) - null for anything else.
+        if (v8.v8_Object_Instance(obj)) |internal_ptr| {
             // This is a wrapped Zig instance - return it directly
             const instance: *runtime.Instance = @ptrCast(@alignCast(internal_ptr));
             return JSValue.fromInstance(instance);
@@ -1433,10 +1432,11 @@ pub fn interfaceNamed(comptime name: []const u8) type {
 /// wrapped. It says nothing about WHICH interface the object implements;
 /// converting to an interface type is `convertToInterface`.
 ///
-/// A wrapper's internal field 0 holds its Instance, and nothing else ever
-/// sets it: every `v8_Object_SetAlignedPointerInInternalField(_, 0, _)` in
-/// the adapter stores an Instance or null (a WindowProperties object holds
-/// its Window's).
+/// A wrapper reaches its Instance through its anchor (platform_anchor.zig:
+/// v8::Object::Wrap, under a tag only the adapter's anchors carry), a realm's
+/// global through internal field 0, which nothing else ever sets: every
+/// `v8_Object_SetAlignedPointerInInternalField(_, 0, _)` in the adapter
+/// stores an Instance or null.
 // ============================================================================
 // An argument read with no handle (perf3 phase 1b)
 // ============================================================================
@@ -1626,7 +1626,7 @@ fn isPoisonedInstance(address: usize) bool {
 
 pub fn platformObjectOf(value: *v8.Value) ?*runtime.Instance {
     if (!v8.v8_Value_IsObject(value)) return null;
-    // A function has no internal fields to read: no platform object here is
+    // A function is no wrapper: no platform object here is
     // callable (a callback interface's function is converted as a callback,
     // never as an interface).
     if (v8.v8_Value_IsFunction(value)) return null;
@@ -2464,12 +2464,11 @@ fn convertValueAs(
             }
         } else if (v8.v8_Value_IsObject(value)) {
             // For objects, we need to distinguish between:
-            // 1. Wrapped platform objects (DOM nodes, etc.) - have internal fields
-            // 2. Plain JS objects (dictionaries, String objects, etc.) - no internal fields
+            // 1. Wrapped platform objects (DOM nodes, etc.) - a wrapper, which reaches an instance
+            // 2. Plain JS objects (dictionaries, String objects, etc.) - none
             //
-            // The problem: v8_Object_InternalFieldCount_Raw segfaults on plain objects.
-            // Solution: Try instance conversion, but if it returns an instance with null
-            // internal pointer, treat it as a plain object.
+            // Try the instance conversion: an object that reaches no instance
+            // is treated as a plain object.
             if (instance_idx != null) {
                 // Try to extract as instance - but first check if we have a string alternative
                 // because strings should take priority over treating them as objects
@@ -3054,19 +3053,19 @@ fn convertValueAs(
         const TaggedPointer = pointer_tag.TaggedPointer;
 
         // Step 1: Check if V8 object wraps a Zig instance
-        // Detection: Objects with internal fields store Zig instances in field 0
+        // Detection: a wrapper reaches its Zig instance through its anchor
         if (v8.v8_Value_IsObject(value)) {
             const obj: *v8.Object = @ptrCast(value);
-            // The binding's one read of a platform object's instance (field
-            // 0, or a node wrapper's anchor: no internal field since P4).
-            if (v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0)) |internal_ptr| {
+            // The binding's one read of a platform object's instance (its
+            // wrapper's anchor's: platform_anchor.zig).
+            if (v8.v8_Object_Instance(obj)) |internal_ptr| {
                 // TAGGING: .runtime_instance - this is a Zig object, NOT a V8 handle
                 // Consumer MUST NOT pass this to V8 FFI functions!
                 DebugAssertions.logTaggedPointerCreation(@ptrCast(internal_ptr), .runtime_instance);
                 return TaggedPointer.init(internal_ptr, .runtime_instance).toConstPtr();
             }
-            // No instance (internal field null: not fully initialized; or no
-            // platform object) - fall through
+            // No instance (no platform object, or a severed wrapper) - fall
+            // through
         }
 
         // Step 2: Create WEAK Global handle for functions/objects needing persistence
