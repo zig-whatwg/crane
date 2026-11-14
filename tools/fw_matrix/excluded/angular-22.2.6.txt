@@ -1,7 +1,88 @@
 # Angular 22.2.6's own browser tests (frameworks.zon `angular-jasmine`): the
-# tests not run, each with its reason (tools/fw_matrix/exclusions.zig
-# documents the format).
+# tests the matrix does not count, each with its reason
+# (tools/fw_matrix/exclusions.zig documents the format).
 #
-# None is listed. web-test-runner's page takes no filter, so every spec of a
-# target runs; Jasmine's console reporter names only the failures, and a
-# failure whose assertion needs layout is said so where it is reported.
+# web-test-runner's page takes no filter, so every spec of a target runs.
+# A test listed here that fails is classified after the run, as rendering
+# (the integrator, 2026-11-14: one rule for every row): its result needs
+# layout, which Crane does not do. Jasmine's console reporter names only the
+# failures, so a listed test that passes is counted as passed. Read by hand
+# at v22.2.6 from lane fw1 b5's runs (fw1-b5-angular-1 and -2, the same 13).
+
+[BrowserViewportScroller scrollToAnchor should scroll when element with matching id is found]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should honor the scroll offset when smooth scrolling]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should scroll when anchor with matching name is found]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should scroll when element with matching id is found inside the shadow DOM]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should scroll when anchor with matching name is found inside the shadow DOM]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should scroll when a shadow DOM anchor name contains CSS selector metacharacters]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[BrowserViewportScroller scrollToAnchor should not allow overwriting position with options]
+kind      = rendering
+why       = BrowserViewportScroller scrolls the window to an anchor and reads the scroll position back: layout geometry
+assertion = window.pageYOffset / scrollY after scrollToAnchor: expected a position, got 0
+source    = packages/common/test/viewport_scroller_spec.ts
+
+[legacy animation integration tests using web animations should compute (*) animation styles for a container that is being removed]
+kind      = rendering
+why       = computes an element's 'auto' height in px for the animation's keyframes: a used value that needs layout
+assertion = keyframe height: expected a px size, got 'auto'
+source    = packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts
+
+[legacy animation integration tests using web animations should treat * styles as ! when a removal animation is being rendered]
+kind      = rendering
+why       = computes an element's 'auto' height in px for the animation's keyframes: a used value that needs layout
+assertion = keyframe height: expected a px size, got 'auto'
+source    = packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts
+
+[legacy animation integration tests using web animations should compute (!) animation styles for a container that is being inserted]
+kind      = rendering
+why       = computes an element's 'auto' height in px for the animation's keyframes: a used value that needs layout
+assertion = keyframe height: expected a px size, got 'auto'
+source    = packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts
+
+[legacy animation integration tests using web animations should treat * styles as ! for queried items that are collected in a container that is being removed]
+kind      = rendering
+why       = computes an element's 'auto' height in px for the animation's keyframes: a used value that needs layout
+assertion = keyframe height: expected a px size, got 'auto'
+source    = packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts
+
+[legacy animation integration tests using web animations should compute pre (!) and post (*) animation styles with different dom states]
+kind      = rendering
+why       = computes an element's 'auto' height in px for the animation's keyframes: a used value that needs layout
+assertion = keyframe height: expected a px size, got 'auto'
+source    = packages/core/test/legacy_animation/legacy_animations_with_web_animations_integration_spec.ts
+
+[bootstrap should restore the scrolling position]
+kind      = rendering
+why       = restores a scroll position after navigation and reads it back: layout geometry
+assertion = window.pageYOffset after back(): expected >= 5900, got 0
+source    = packages/router/test/bootstrap.spec.ts:470

@@ -484,7 +484,11 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     // skip_kinds for the filter (none in a diagnosis run).
     const all_kinds = [_]exclusions.Kind{ .rendering, .needs_server, .needs_node_build, .node_runner_only };
     const page_entries = try exclusions.forPage(arena, shared.entries, page.module, &all_kinds);
-    const applied = if (config.no_exclusions) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
+    // A page that takes no filter (web-test-runner's, Angular) runs every
+    // test; its listed tests are classified after the run instead.
+    const after_run = suite.reader == .jasmine_console;
+    const classified = if (after_run and !config.no_exclusions) page_entries else &[_]exclusions.Entry{};
+    const applied = if (config.no_exclusions or after_run) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
     const query = try exclusions.filterQuery(arena, suite.reader, applied);
     // A page served by its own target: the project's server for it, started
     // now and stopped when the page ends.
@@ -572,7 +576,8 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         for (r.errors) |e| if (console_errors.items.len < journal.max_errors) try console_errors.append(arena, e);
         // The exclusion list against what the page defines: a rename
         // upstream fails the run instead of excluding nothing.
-        const missing = try exclusions.missing(arena, page_entries, r.defined);
+        // (A page that names only its failures defines nothing to check.)
+        const missing = if (after_run) &[_]exclusions.Entry{} else try exclusions.missing(arena, page_entries, r.defined);
         for (missing) |e| {
             try problems.append(arena, try std.fmt.allocPrint(arena, "excluded test not defined by the page (renamed or removed upstream?): [{s}] (list line {d})", .{ e.id, e.line }));
         }
@@ -591,6 +596,15 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
             rec.assertions_total = t.assertions_total;
             rec.message = t.message;
             rec.duration_ms = t.duration_ms;
+            // A listed test that ran and failed on a page that takes no
+            // filter: classified after the run, with the list's reason, and
+            // its failure kept.
+            if (t.status == .FAIL) for (classified) |e| if (std.mem.eql(u8, e.id, t.id)) {
+                rec.status = .NOTRUN;
+                rec.not_run = e.kind.notRun();
+                rec.reason = try std.fmt.allocPrint(arena, "ran and failed; classified after the run, as its page takes no filter: {s}", .{e.why});
+                break;
+            };
             try records.append(arena, rec);
             const gop = try reported.getOrPut(arena, t.id);
             gop.value_ptr.* = if (gop.found_existing) gop.value_ptr.* + 1 else 1;

@@ -239,8 +239,14 @@ fn suiteLabel(w: W, s: manifest.Suite) !void {
     try w.print(", {d} page{s})", .{ s.pages.len, if (s.pages.len == 1) "" else "s" });
 }
 
-/// What TodoMVC's own runner says of the app, where it skips it.
+/// What TodoMVC's own runner says of the app, where it skips it; a suite's
+/// own note.
 fn appNote(w: W, s: manifest.Suite) !void {
+    if (s.note) |n| {
+        try w.writeAll("<span class=\"why\">");
+        try html.text(w, n);
+        try w.writeAll("</span>");
+    }
     const app = s.app orelse return;
     const why = app.skipped_by_todomvc orelse return;
     try w.writeAll("<span class=\"why\">TodoMVC&#39;s own runner skips this app (tests/excluded.js): ");
@@ -586,7 +592,13 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         const r = latest(s) orelse {
             try w.writeAll("<h2>");
             try suiteLabel(w, s.suite);
-            try w.writeAll("</h2>\n<p>No run yet.</p>\n");
+            try w.writeAll("</h2>\n");
+            if (s.suite.note) |n| {
+                try w.writeAll("<p>");
+                try html.text(w, n);
+                try w.writeAll("</p>\n");
+            }
+            try w.writeAll("<p>No run yet.</p>\n");
             return;
         };
         // A framework's page may hold several suites: each is headed by its
@@ -594,7 +606,13 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         if (s.suite.kind == .project) {
             try w.writeAll("<h2>");
             try suiteLabel(w, s.suite);
-            try w.writeAll("</h2>\n<p>");
+            try w.writeAll("</h2>\n");
+            if (s.suite.note) |n| {
+                try w.writeAll("<p>");
+                try html.text(w, n);
+                try w.writeAll("</p>\n");
+            }
+            try w.writeAll("<p>");
         } else try w.writeAll("<h2>The run</h2>\n<p>");
         try html.text(w, s.suite.repository);
         try w.writeAll(" at ");
@@ -1076,6 +1094,21 @@ test "a Jasmine page: its unnamed passes and pending counted with its named fail
     try testing.expect(std.mem.indexOf(u8, h, "run by the project&#39;s own Bazel 8.8.2 (its MODULE.bazel.lock sha256 <code>aaaaaaaaaaaaaaaa&hellip;</code>), one target per page.") != null);
     // The page's row counts its unnamed tests too: 419 run, 1 failed, 2 not run.
     try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n\">419</td><td class=\"n fail\">1</td><td class=\"n grey\">0</td><td class=\"n grey\">2</td>") != null);
+}
+
+test "a suite's note is on its row and its page" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var suite = sampleSuite();
+    suite.note = "No Chrome number yet.";
+    const suites = try collect(a, .{ .suites = &.{suite} }, &.{}, &.{});
+    var out: Io.Writer.Allocating = .init(a);
+    try writeIndex(&out.writer, &.{}, null, suites, .{});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "<span class=\"why\">No Chrome number yet.</span>") != null);
+    var fw: Io.Writer.Allocating = .init(a);
+    try writeFramework(&fw.writer, .{ .id = "htmx", .title = "htmx" }, suites, .{});
+    try testing.expect(std.mem.indexOf(u8, fw.written(), "<p>No Chrome number yet.</p>") != null);
 }
 
 test "rate: one decimal, rounded; nothing run is a dash" {

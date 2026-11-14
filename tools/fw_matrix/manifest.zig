@@ -232,6 +232,10 @@ pub const Suite = struct {
     tree: ?[]const u8 = null,
     /// The TodoMVC app a suite checks; set only by the expansion.
     app: ?App = null,
+    /// What a reader of the suite's row must know to read its numbers (how
+    /// its tests are classified, what does not run and why); shown on its
+    /// row and its page.
+    note: ?[]const u8 = null,
     /// Chrome's numbers for the suite by the project's own runner, for the
     /// comparison column, where no journal holds them (a project runner's
     /// summary, read from its log; `source` says which).
