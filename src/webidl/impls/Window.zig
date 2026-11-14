@@ -90,11 +90,6 @@ pub const InternalState = struct {
     /// The associated browsing context (§7.1)
     browsing_context: *BrowsingContext,
 
-    /// The navigables this window made with open(). It owns their
-    /// integrations - freeing one takes its navigable down - and frees them
-    /// with itself, as an iframe element frees its own.
-    auxiliary_navigables: std.ArrayListUnmanaged(*html_core.IFrameIntegration) = .empty,
-
     /// Whether we own the browsing context and should free it in deinit.
     /// Set to false when replaceBrowsingContext() assigns an external BC.
     /// This prevents double-free when iframe cleanup also frees the BC.
@@ -315,15 +310,9 @@ pub const InternalState = struct {
         if (self.own_performance) |*performance| performance.edge.release(performance.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
         // The children traced from the global object need nothing here: the
-        // edges go with it, and the realm's end frees the children.
-        // The popups first: each integration ends its navigable's realm (a
-        // child of this window's, and already gone if this window's page is
-        // being torn down - destroyWindowRealm ends a realm once).
-        for (self.auxiliary_navigables.items) |integration| {
-            integration.deinit();
-            self.allocator.destroy(integration);
-        }
-        self.auxiliary_navigables.deinit(self.allocator);
+        // edges go with it, and the realm's end frees the children. The
+        // popups this window opened are not its: their Browser keeps them
+        // (dom.auxiliary_navigables.Popups).
 
         // Clean up browsing context ONLY if we own it.
         // When replaceBrowsingContext() was called, we borrowed an external BC
@@ -434,7 +423,6 @@ pub fn installHooks() void {
         .bound_global = &getBoundV8Global,
         .release_browsing_context = &releaseBrowsingContext,
         .adopt_browsing_context = &replaceBrowsingContext,
-        .move_auxiliary_navigables = &moveAuxiliaryNavigables,
         .swap_current_event = &swapCurrentEvent,
     });
     // A hyperlink's or form's target that names no frame: the popups this
@@ -1147,25 +1135,6 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
     applyRequestedWindow(internal);
 }
 
-/// dom.window_globals: a navigation gave the opener's navigable a new
-/// Window, `to`: the popups `from` opened move to it (HTML 7.3.1.2:
-/// top-level traversables are the user agent's, and window.opener is the
-/// opener browsing context's WindowProxy - the popup is not the old Window's
-/// to take down), and the realm their next realms are made under is `to`'s
-/// (`IFrameIntegration.parent_realm`, which the old realm's end would leave
-/// naming freed memory - runtime.window_holders .popup_parent_realm). Their
-/// realms follow the opener's WindowProxy in the engine (WindowRealmOptions
-/// .auxiliary). Out of memory leaves them with `from`, which ends them as
-/// before.
-fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
-    if (from == to) return;
-    const source = getInternal(from) orelse return;
-    const target = getInternal(to) orelse return;
-    target.auxiliary_navigables.appendSlice(target.allocator, source.auxiliary_navigables.items) catch return;
-    for (source.auxiliary_navigables.items) |integration| integration.parent_realm = @ptrCast(to.ctx);
-    source.auxiliary_navigables.clearRetainingCapacity();
-}
-
 /// dom.window_globals: the Window stops owning the top-level browsing
 /// context Window.init made, and hands it to the caller - the host page's
 /// top-level traversable keeps it across every Window a navigation makes
@@ -1625,8 +1594,13 @@ pub fn get_opener(instance: *runtime.Instance) anyerror!runtime.JSValue {
 
     // HTML: the opener is the browsing context's opener browsing context's
     // WindowProxy - so its ACTIVE window, which a navigation of the opener
-    // replaces; the Window that called open() may be gone from it.
-    if (internal.browsing_context.opener) |opener_bc| {
+    // replaces; the Window that called open() may be gone from it. "3. If
+    // current's opener browsing context is null, then return null": an
+    // opener whose browsing context was freed is gone, whatever Window open()
+    // kept (Blink's OpenedFrameTracker clears the opener when the opener
+    // frame detaches).
+    const opener_bc = internal.browsing_context.opener orelse return runtime.JSValue.jsNull;
+    {
         // An opener whose traversable was closed - its browsing context
         // discarded - is no opener: null, as in Blink (Frame::Detach disposes
         // the OpenedFrameTracker, which clears every openee's opener) and
@@ -3628,8 +3602,9 @@ fn popupByName(window: *runtime.Instance, name: []const u8) ?NamedPopup {
 /// currentNavigable): "creating a new top-level traversable" - given
 /// `window`'s browsing context as the opener, or given null with noopener -
 /// its target name `target` unless that is "_blank", showing its initial
-/// about:blank document. The popup is `window`'s: it goes with `window`'s
-/// page. The machinery is HTMLIFrameElement's (dom.auxiliary_navigables).
+/// about:blank document. The popup is its Browser's (dom.auxiliary_navigables
+/// .Popups), never `window`'s: nothing about the opener's lifetime ends it.
+/// The machinery is HTMLIFrameElement's (dom.auxiliary_navigables).
 /// Null when none can be made.
 fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopener: bool, is_popup: bool, current_window: *runtime.Instance) error{OutOfMemory}!?struct { integration: *html_core.IFrameIntegration, window: *runtime.Instance } {
     const internal = getInternal(window) orelse return null;
@@ -3655,7 +3630,12 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // origin record, not from this Window.
     const created = auxiliary_navigables.create(allocator, @ptrCast(internal.browsing_context), is_popup, popup_flags) orelse return null;
     const integration: *html_core.IFrameIntegration = @ptrCast(@alignCast(created.integration));
-    internal.auxiliary_navigables.append(allocator, integration) catch {
+    const scope = window.ctx.browserScope() orelse {
+        integration.deinit();
+        allocator.destroy(integration);
+        return null;
+    };
+    auxiliary_navigables.keep(scope, integration) catch {
         integration.deinit();
         allocator.destroy(integration);
         return error.OutOfMemory;

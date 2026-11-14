@@ -1987,10 +1987,8 @@ pub const Context = struct {
         if (self.window_instance) |window| try self.registerWindowSingletons(realm, .{ .instance = window });
         try registerCommonGlobals(realm);
         if (self.traversable) |record| dom_mod.top_level_traversables.attachRealm(record, realm);
-        // The popups the old Window opened move with the page's navigable:
-        // the new Window keeps them, and their next realms are made under the
-        // new realm (lane newwin1, B7).
-        if (old_window) |from| if (self.window_instance) |to| dom_mod.window_globals.moveAuxiliaryNavigables(from, to);
+        // The popups the old Window opened are not its: their Browser keeps
+        // them (dom.auxiliary_navigables.Popups), and no realm's end ends one.
         engine.destroyWindowRealm(old, .global_detached);
     }
 
