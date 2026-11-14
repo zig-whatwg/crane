@@ -463,16 +463,29 @@ pub const ApplyItem = struct {
         history.beginApply(self.token(), target);
         for (self.changes.items) |c| history.setCurrentEntry(c.navigable, c.target_entry);
         history.holdAllViews();
-        // Step 8.3: "If targetEntry's document is not navigable's active
-        // document, then queue a global task ... Set navigable's ongoing
-        // navigation to "traversal"" - for every such navigable before any
-        // step-12 task runs (integrator, 2026-10-28: a navigate handler of
-        // an earlier navigable that navigates a later one is ignored, navigate
-        // step 18). Set here, in the apply, which the spec runs on the
-        // traversal queue; a reload's target document is its active one. Not
-        // modelled, stated in the file comment: 8.3.2-3.
+        // Step 8.4: "Set navigable's ongoing navigation to "traversal"" -
+        // for every changing navigable before any step-12 task runs
+        // (integrator, 2026-10-28: a navigate handler of an earlier navigable
+        // that navigates a later one is ignored, navigate step 18). Set here,
+        // in the apply, which the spec runs on the traversal queue. Not
+        // modelled, stated in the file comment: 8.3.2-3, the queued task of
+        // a cross-document target.
+        //
+        // 8.4 is a step of its own, not 8.3's (whose task touches only the
+        // navigation API), so a SAME-document traversal sets it too: it ends
+        // a cross-document navigation of the navigable still fetching, which
+        // 14.10.1 then lets new ones start again ("whereas during the
+        // traversal they were blocked"). Before lane nav2 batch 11 it was
+        // ended only at 14.10.1 (the step read as part of 8.3). A navigation
+        // whose finalize is queued already is mature
+        // (HTMLIFrameElement setOngoingNavigation) and still commits, as the
+        // spec's queued finalize never rechecks. Only a
+        // traversal's same-document change: a finalize's own push/replace
+        // step leaves a navigation started after it alone (whatwg/html#12861,
+        // whose open PR #12942 limits these writes to traversals and
+        // reloads), and a reload's target document is its active one.
         for (self.changes.items) |c| {
-            if (c.same_document or self.kind == .reload) continue;
+            if (self.kind == .reload or (c.same_document and self.kind != .traverse)) continue;
             const bc = navigables.byId(c.navigable) orelse continue;
             const integration = dom.navigables.integrationOf(@ptrCast(bc)) orelse continue;
             integration.beginTraversal();
@@ -794,10 +807,10 @@ const JobTask = struct {
                 }
             }
             // 14.10.1: "Set navigable's ongoing navigation to null" - for a
-            // traversal; it ends a navigation of the navigable in flight
-            // (overlapping-navigations-and-traversals/cross-document-nav-
-            // same-document-traversal: Chrome 156 and Safari 27 PASS, Firefox
-            // 159 FAIL, at wpt.fyi 07ce6e987a). A reload is never
+            // traversal, whose step 8.4 set it to "traversal" and so ended a
+            // navigation of the navigable in flight (overlapping-navigations-
+            // and-traversals/cross-document-nav-same-document-traversal);
+            // new navigations may start again. A reload is never
             // same-document here. Not for the push/replace step a finalize
             // applies (inline, JointHistory.finalizeSameDocument):
             // whatwg/html#12861 - there it would end a cross-document

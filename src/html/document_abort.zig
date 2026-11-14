@@ -65,7 +65,33 @@ pub const DescendantAbort = struct {
     fn steps(context: ?*anyopaque) void {
         const target: *Target = @ptrCast(@alignCast(context.?));
         const task = target.task;
-        document_lifecycle.abort(target.document);
+        const document_generation = runtime.SlabAllocator.generationOf(target.document);
+        // The descendant's load ends as the stopped document's does
+        // (Window.stop, Document's lifecycleStopLoad): readiness "complete",
+        // no load event at it or its container, and its container no longer
+        // delays the container's document. Stated deviation from HTML, whose
+        // aborted descendant still fires load once its cancelled fetches stop
+        // delaying it - golden rule 2, mechanism by mechanism as for the
+        // stopped document (lifecycleStopLoad's evidence: no load in Chrome
+        // and Firefox), here because Blink FrameLoader::StopAllLoaders runs
+        // Document::CancelParsing in every local descendant frame, and WebKit
+        // FrameLoader::stopAllLoaders stops each local child's loaders. Only
+        // "stop loading" queues these tasks (its step 3).
+        //
+        // BEFORE the abort: cancelling the descendant's fetches ends what
+        // delayed its load, which queues "the end" step 9's task and marks the
+        // document ready for post-load tasks - and a stop that came after
+        // found its load already on its way (Crane test
+        // nav2b11-window-stop-descendants.html: the inner frame's load and its
+        // container's fired). Ended first, the queued task completes the
+        // load without its events (completeLoading's load_aborted branch), as
+        // Blink's CancelParsing marks the load event completed before
+        // DocumentLoader::StopLoading cancels the loads.
+        if (target.document.ctx.hasEngine()) document_lifecycle.stopLoad(target.document);
+        // readystatechange listeners ran: the document may be gone.
+        if (runtime.SlabAllocator.generationOf(target.document) == document_generation and target.document.ctx.hasEngine()) {
+            document_lifecycle.abort(target.document);
+        }
         // Abort callbacks may end either document; the task holds each
         // wrapper and still checks the slab identity before reading state.
         if (!task.parent_ctx.hasEngine() or runtime.SlabAllocator.generationOf(task.parent) != task.parent_generation) return;
