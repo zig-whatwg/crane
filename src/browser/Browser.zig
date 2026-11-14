@@ -399,6 +399,11 @@ pub const Browser = struct {
         // are children of the page's (which would end them), and their
         // eviction needs the loop, which ends below.
         @import("back_forward_cache.zig").evictAllIn(self.scope);
+        // Then its popups: "destroy a top-level traversable" for each - its
+        // documents destroyed, its realm ended - before the page. A popup is
+        // the Browser's, no realm's child, so the page's end would leave its
+        // realm alive for the agent's end (dom.auxiliary_navigables.Popups).
+        @import("dom").auxiliary_navigables.closeAll(self.scope);
         // Destroy current context if any
         if (self.current_context) |ctx| {
             // HTML "destroy a top-level traversable" step 2: "destroy a

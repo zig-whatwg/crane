@@ -846,44 +846,39 @@ pub const WindowRealmOptions = struct {
     /// The realm's origin, serialized; null for an opaque one.
     origin: ?[]const u8 = null,
     global_this: GlobalThis = .new_window_proxy,
-    /// The realm this one replaces as its navigable's realm when it gets a
-    /// NEW WindowProxy (`global_this = .new_window_proxy`): a browsing context
-    /// group switch (HTML "obtain a browsing context to use for a navigation
-    /// response"), where the navigable's next document is in a new browsing
-    /// context. The new realm adopts the old realm's auxiliary realms once
-    /// the old realm ends, as it does for `.window_proxy_of`: a popup is a
-    /// top-level traversable of the user agent, which its opener's group
-    /// switch does not destroy. BORROWED - the engine reads it during
-    /// creation and keeps no reference past the old realm's end. An engine
-    /// without [reuse_window_proxy] ignores it.
+    /// The realm of the navigable's parent - an iframe's container document's
+    /// window - or null for a top-level one. A realm with a parent does not
+    /// share engine-level access with it: every access from another realm to
+    /// its WindowProxy or a Location asks `is_platform_object_same_origin`
+    /// [cross_origin_objects]. It ends when the parent ends if it has not
+    /// already, and - made while the parent's script runs - is entered only
+    /// for the calls that run in it. A realm without one, and not
+    /// `auxiliary`, stays the agent's entered realm for its life: the host's
+    /// page.
+    ///
+    /// For `auxiliary = true` it names the realm's CREATOR - the realm whose
+    /// script made it (window.open's entry realm, or a popup's previous realm
+    /// when the popup navigates) - read during creation only: the realm takes
+    /// its window operations from it, and is made, and left, as a frame's is
+    /// (entered only for the calls that run in it). It is no child of it.
+    /// BORROWED for the call.
+    parent: ?Context = null,
+    /// The realm is an auxiliary navigable's: a popup's - window.open's new
+    /// top-level traversable, or one a link's or a form's target made. HTML's
+    /// top-level traversables belong to the user agent, not to the window
+    /// that opened them (7.3.1.2), and window.opener is a reference to the
+    /// opener browsing context that goes when that context goes - nothing
+    /// about the opener's lifetime ends a popup (Blink: a popup's frame is the
+    /// main frame of its own Page, OpenedFrameTracker clears the opener on
+    /// detach). So an auxiliary realm is a top-level realm with no parent
+    /// edge (`parent` is its creator only), and is not entered for its life.
     ///
     /// CONTRACT, for every adapter with [reuse_window_proxy] (the integrator,
-    /// 2026-11-14, from lane rep1 batch 1): when a Window realm ends while
-    /// another realm replaces it as its navigable's realm - made with
-    /// `global_this = .window_proxy_of` it, or with `replaces` it - the
-    /// replacing realm adopts the old realm's auxiliary realms before the old
-    /// realm's frames are destroyed; only a realm that nothing replaces (a
-    /// removed frame, a closed page) takes its auxiliary realms with it.
-    replaces: ?Context = null,
-    /// The realm of the navigable's parent - an iframe's container document's
-    /// window, or a popup's opener - or null for a top-level one. A realm
-    /// with a parent does not share engine-level access with it: every
-    /// access from another realm to its WindowProxy or a Location asks
-    /// `is_platform_object_same_origin` [cross_origin_objects]. It ends when
-    /// the parent ends if it has not already, and - made while the parent's
-    /// script runs - is entered only for the calls that run in it. A realm
-    /// without one stays the agent's entered realm for its life.
-    parent: ?Context = null,
-    /// The realm is an auxiliary navigable's (window.open's new top-level
-    /// traversable, made under its opener's realm as `parent`). HTML's
-    /// top-level traversables belong to the user agent, not to the Window
-    /// that opened them: an auxiliary realm follows its parent's WindowProxy.
-    /// When a navigation builds a new realm around the parent's proxy
-    /// (`global_this = .window_proxy_of` the parent), the new realm adopts it -
-    /// it ends with that realm from then on, and the parent's detach or end
-    /// no longer reaches it. A frame's realm (false, the default) is never
-    /// adopted: it is destroyed with its parent's document. Ignored without
-    /// `parent`, and by engines without [reuse_window_proxy].
+    /// 2026-11-14, from lane rep1 batch 2): A realm's end never ends an
+    /// auxiliary realm: a popup's realm ends only when its own navigable is
+    /// destroyed or its Browser ends (destroyWindowRealm, called by the host
+    /// for that realm). A frame's realm (false, the default) is destroyed
+    /// with its parent's document.
     auxiliary: bool = false,
     /// The Browser the realm belongs to (runtime.BrowserScope,
     /// docs/instances.md): the engine records it as the realm's

@@ -1,0 +1,15 @@
+# Architecture: Ownership modelled on a reference needs a patch for every way the reference goes
+
+**Date**: 2026-11-14
+**Lesson**: A popup's realm and record were owned by its opener (a child realm, a list on the opener's Window) because window.opener names the opener - but the opener relation is a reference that dies with the opener, not an owner; each way the opener could go (a group switch, a removed iframe, a bfcache restore, a closed opener popup) then killed the popup, and each got its own "hand the popups to someone first" patch until the model itself was questioned.
+
+**Why**: HTML 7.3.1.2 makes every top-level traversable the user agent's; window.opener reads the opener BROWSING CONTEXT, and only that reference goes when the opener goes. Blink models it the same way: a popup's frame is the main frame of its own Page in the opener's browsing context group, and OpenedFrameTracker merely clears the opener on detach. Crane had instead hung the popup's engine realm under its opener's realm (WindowRealmOptions.auxiliary implied a parent edge, so the opener's end ended it) and its navigable record on the opener's Window (Window.auxiliary_navigables, freed in the Window's deinit), then kept them alive across the opener's navigations by adoption (passAuxiliaryChildren, the successor/predecessor links, moveAuxiliaryNavigables).
+
+**What Happened**: Lane rep1 batch 1 fixed coop-popup-opener-navigates by making a group switch's new realm adopt the popups (`replaces`). Batch 2 found iframe-popup-* failing because removing the iframe that opened a popup destroyed the popup's realm, and proposed a third adoption path (an explicit adopt operation for the removed frame's container and the bfcache-restored page). The integrator asked why the edge existed at all; the answer - window operations, the entered-for-life rule, Browser-end teardown, WindowProxy reuse, each replaceable without the edge - showed the edge was the defect and a fourth case (a closed opener popup) was broken too. The model fix (no parent edge, the Browser owns its popups) deleted 327 lines against 262 added, and the next look found the same shape one layer down: a browsing context kept on Navigables.retired until the Browser's end because nothing counted the Windows that read it.
+
+**Fix**:
+1. When a fix "hands X to someone before Y ends", ask why Y owns X at all. If the relation from X to Y is a reference in the spec (opener, creator, source, initiator), X belongs to whoever owns the things of its kind (the Browser, the user agent), and the reference becomes a weak link that is cleared when Y goes.
+2. List what the ownership edge provides today (here: window operations, entry order, teardown at the Browser's end, proxy reuse) and give each its own mechanism; then delete the edge and every adoption path built to preserve it.
+3. Free a record by counting its real users (Windows that read a browsing context), never by parking it on a list freed at the owner's end.
+
+**Takeaway**: **A spec reference is not an owner: when a third "hand it over first" patch appears, delete the ownership edge instead of adding the fourth.**

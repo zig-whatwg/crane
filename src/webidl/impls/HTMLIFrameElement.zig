@@ -162,7 +162,7 @@ pub fn installHooks() void {
     // The WindowProxy's frames[index] finds a child browsing context before
     // its container made the navigable's Window: the container makes it.
     dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
-    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable });
+    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable, .destroy = &destroyPopupAtBrowserEnd, .window_ended = &popupWindowEnded });
     // The host page's top-level traversable: a popup nothing opened.
     dom_module.top_level_traversables.install(.{
         .create = &createHostTraversable,
@@ -2084,10 +2084,9 @@ fn navigableContext(integration: *IFrameIntegration) ?runtime.Context {
 }
 
 /// The realm whose agent and Browser a navigation of `integration`'s
-/// navigable belongs to: its container's (a frame's realm shares its
-/// parent's Browser scope and agent), or the navigable's own.
+/// navigable belongs to: the navigable's own - a frame's realm shares its
+/// parent's Browser scope and agent, and a popup's its creator's.
 fn navigationRealmOf(integration: *IFrameIntegration) ?runtime.Context {
-    if (integration.parent_realm) |parent| return @ptrCast(@alignCast(parent));
     return navigableContext(integration);
 }
 
@@ -2104,13 +2103,10 @@ fn networkOf(integration: *IFrameIntegration) ?*fetch_mod.network.NetworkContext
 }
 
 /// The user agent's blob URL store a navigation of `integration`'s navigable
-/// obtains a blob: URL's blob from: its Browser's - the container's realm's
-/// (a frame's realm shares its parent's Browser scope).
+/// obtains a blob: URL's blob from: its Browser's - its own realm's (a
+/// frame's realm shares its parent's Browser scope, a popup's its creator's).
 fn blobURLStoreOf(integration: *IFrameIntegration) ?*anyopaque {
-    const realm: runtime.Context = if (integration.parent_realm) |parent|
-        @ptrCast(@alignCast(parent))
-    else
-        navigableContext(integration) orelse return null;
+    const realm = navigableContext(integration) orelse return null;
     return @ptrCast(dom_module.browser_state.blobURLStoreOf(realm) orelse return null);
 }
 
@@ -6525,7 +6521,7 @@ fn attachNavigableContext(
     // HTML 8.1.3.5 for the initial about:blank document: its creator's
     // answer - the parent's for a frame, the opener's for a popup (`parent`
     // is the opener's realm then) - as html.secure_context.ofDocument has it.
-    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, null, parent.secure_context, allocator) orelse return null;
+    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, parent.secure_context, allocator) orelse return null;
     makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, parent, allocator);
     return realm;
 }
@@ -6712,16 +6708,14 @@ fn failInheritanceClosed(document: *runtime.Instance) void {
 /// `parent`), with a Window bound to its global - built around the
 /// navigable's WindowProxy when `global_this` names the realm a navigation
 /// replaces - wired to the integration and made the browsing context's
-/// active window. `replaces`: the realm a browsing context group switch
-/// replaces with this one, which gets a new WindowProxy
-/// (engine.WindowRealmOptions.replaces). No document: the caller makes that.
+/// active window. `parent`: a frame's parent realm, or a popup's creator
+/// (engine.WindowRealmOptions.parent). No document: the caller makes that.
 fn attachRealm(
     integration: *IFrameIntegration,
     parent: runtime.Context,
     browsing_context: *html_core.BrowsingContext,
     origin: ?[]const u8,
     global_this: engine.GlobalThis,
-    replaces: ?runtime.Context,
     secure_context: bool,
     allocator: std.mem.Allocator,
 ) ?runtime.Context {
@@ -6741,7 +6735,6 @@ fn attachRealm(
         .event_loop = parent.event_loop,
         .origin = origin,
         .global_this = global_this,
-        .replaces = replaces,
         .parent = parent,
         // A popup's realm (window.open's navigable, no container) follows its
         // opener's WindowProxy to the realm the opener's navigation makes
@@ -6902,13 +6895,15 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
     const allocator = integration.allocator;
-    // The parent realm: the window of the navigable's parent, or - for a
-    // popup - the opener's realm the first realm was made under.
+    // The parent realm: the window of the navigable's parent - or, for a
+    // popup, its creator: its own current realm, never its opener's, which
+    // may be gone (a popup is no realm's child: WindowRealmOptions.parent).
     const parent: runtime.Context = blk: {
         if (browsing_context.parent) |parent_bc| {
             if (parent_bc.getActiveWindow()) |w| break :blk @as(*runtime.Instance, @ptrCast(@alignCast(w))).ctx;
+            return false;
         }
-        break :blk @ptrCast(@alignCast(integration.parent_realm orelse return false));
+        break :blk old;
     };
 
     // The integration's origin string outlives this call's use of it below:
@@ -6927,7 +6922,7 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     const switched = integration.next_new_window_proxy;
     const kept = integration.currentRealm();
     _ = integration.releaseCurrentRealm() orelse return false;
-    if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, if (switched) old else null, secure_context, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
         // No new realm - out of memory, which HTML does not let "create and
         // initialize a Document object" step 7 ("create a new realm") do:
         // the navigation fails before its document exists, as one whose
@@ -7014,11 +7009,17 @@ fn settleRealmReplacement(integration: *IFrameIntegration) void {
     const has_document = if (new_window) |w| if (interfaces.Window.get_document(w)) |_| true else |_| false else false;
     if (has_document) {
         // Step 10 happened: the replacement commits. The popups the old
-        // Window opened move with the navigable (lane newwin1, B7). The new
-        // Window keeps them, and their next realms are made under the new
-        // realm.
-        if (old_window) |from| if (new_window) |to| dom_module.window_globals.moveAuxiliaryNavigables(from, to);
+        // Window opened are not its: their Browser keeps them, and no realm's
+        // end ends one (dom.auxiliary_navigables.Popups).
         engine.destroyWindowRealm(old, old_end);
+        // A popup's replaced realm - by a navigation or a group switch - is
+        // detached, not ended, and, a popup's realm being no realm's child,
+        // nothing would end it but the collector: the record keeps it with
+        // the realms it retired, so that its own end (or its Browser's) ends
+        // it if the collector has not. Out of memory, it ends now.
+        if (ownedByBrowser(integration)) {
+            integration.retired_realms.append(integration.allocator, .{ .data = @ptrCast(old), .destroy = destroyRetiredRealm }) catch engine.destroyWindowRealm(old, .global_detached);
+        }
         return;
     }
     // The navigation stopped before step 10: back to the old realm and
@@ -7234,10 +7235,14 @@ fn keepAndReplaceRealm(integration: *IFrameIntegration, kept: KeptDocument, new_
     const old: runtime.Context = @ptrCast(@alignCast(integration.context_cleanup_data orelse return false));
     const browsing_context = integration.browsing_context orelse return false;
     const allocator = integration.allocator;
-    const parent: runtime.Context = @ptrCast(@alignCast(integration.parent_realm orelse {
+    // The new realm's creator: the popup's kept realm itself (a popup is no
+    // realm's child: WindowRealmOptions.parent). Only a popup's page is kept:
+    // a frame has a parent, and the host's page makes its own realms.
+    if (browsing_context.parent != null) {
         destroyKeptDocument(integration, kept);
         return replaceRealm(integration, new_origin);
-    }));
+    }
+    const parent = old;
     const record = KeptRecord.capture(integration) orelse {
         destroyKeptDocument(integration, kept);
         return replaceRealm(integration, new_origin);
@@ -7253,7 +7258,7 @@ fn keepAndReplaceRealm(integration: *IFrameIntegration, kept: KeptDocument, new_
         record.destroy();
         return false;
     };
-    if (attachRealm(integration, parent, browsing_context, origin_copy, .new_window_proxy, null, secure_context, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .new_window_proxy, secure_context, allocator) == null) {
         // No new realm: the kept page goes, as an unkept one would have.
         record.destroy();
         destroyKeptDocumentAndRealm(kept, old);
@@ -7461,9 +7466,11 @@ fn pageSwapOfTraversal(integration: *IFrameIntegration, entry_id: u64) ?PageSwap
 /// "Destroy a top-level traversable", for one this machinery made
 /// (window.open(), a link's or form's target): its documents are destroyed
 /// (no other entry keeps one: there is no bfcache) and its browsing context
-/// closed; its realm lives on while its opener's page does, for script that
-/// holds the window. The host's own page is unloaded but not destroyed,
-/// stated: the host owns it, and it is the host's to take down.
+/// closed; its realm detaches (engine.WindowRealmEnd.navigable_destroyed) -
+/// kept while script holds its WindowProxy, which reads `closed` true, and
+/// ended once collected or at its Browser's end. The host's own page is
+/// unloaded but not destroyed, stated: the host owns it, and it is the
+/// host's to take down.
 fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return false;
     if (bc.parent != null) return false;
@@ -7540,7 +7547,71 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     }
     // "Remove browsingContext": closed, and its descendants with it.
     bc.close();
+    // "Destroy a top-level traversable" ends no realm: the active Window's
+    // realm lives on while script reaches it, its script activity stopped -
+    // detached (engine.WindowRealmEnd.navigable_destroyed). A traversable is
+    // destroyed by its owner: one its Browser owns (a popup) here, its realm
+    // kept by its record so that the Browser's end can end it if the
+    // collector has not; one its host owns - the host's page, the embedder's
+    // tab - by the host, at its own end (browser Context.deinit), which ends
+    // its realm. Its close here unloads and destroys its documents and
+    // leaves its realm to the host (stated: the embedder, not script, ends a
+    // tab).
+    if (ownedByBrowser(made)) {
+        if (made.context_cleanup_data) |data| engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .navigable_destroyed);
+    }
     return true;
+}
+
+/// Whether the top-level traversable `record` is its Browser's - a popup,
+/// which window.open() or a link's or form's target made
+/// (dom.auxiliary_navigables.Popups) - rather than its host's: the host's
+/// page, whose realms the host makes and ends (dom.top_level_traversables,
+/// `host_realms`).
+fn ownedByBrowser(record: *const IFrameIntegration) bool {
+    return record.iframe_element == null and record.host_realms == null;
+}
+
+/// dom.auxiliary_navigables: a popup's navigable at its Browser's end - HTML
+/// "destroy a top-level traversable": its documents destroyed and their
+/// fetches aborted before its realm ends (as the host page's are,
+/// dom.navigables.destroyDocumentsAtBrowserEnd), then its record deinit'd -
+/// which ends its realm (iframeContextCleanup) and its retired ones - and
+/// freed. The Browser calls it for each of its popups before its page ends
+/// (dom.auxiliary_navigables.closeAll).
+fn destroyPopupAtBrowserEnd(integration_ptr: *anyopaque) void {
+    const integration: *IFrameIntegration = @ptrCast(@alignCast(integration_ptr));
+    if (integration.state != .discarded) {
+        if (integration.browsing_context) |bc| {
+            if (!bc.is_closed) dom_module.navigables.destroyDocumentsAtBrowserEnd(bc);
+        }
+    }
+    const allocator = integration.allocator;
+    integration.deinit();
+    allocator.destroy(integration);
+}
+
+/// dom.auxiliary_navigables: a Window that held `browsing_context_ptr`
+/// ended. A closed popup's record is needed only while a Window still shows
+/// its browsing context - script that holds the popup's WindowProxy reads
+/// `closed` and `document` through it - so it goes with the last such Window:
+/// its realm is ending (this was its Window) and its browsing context is
+/// released with it (BrowsingContext.window_holds). An open popup's record,
+/// and any other navigable's, stays.
+fn popupWindowEnded(scope: *runtime.BrowserScope, browsing_context_ptr: *anyopaque) void {
+    const bc: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
+    if (!bc.is_closed or bc.window_holds != 0) return;
+    for (dom_module.auxiliary_navigables.kept(scope)) |item| {
+        const integration: *IFrameIntegration = @ptrCast(@alignCast(item));
+        if (integration.browsing_context != bc) continue;
+        if (!dom_module.auxiliary_navigables.forget(scope, item)) return;
+        // Its current realm is the one ending now: nothing ends it again.
+        _ = integration.releaseCurrentRealm();
+        const allocator = integration.allocator;
+        integration.deinit();
+        allocator.destroy(integration);
+        return;
+    }
 }
 
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary
@@ -7554,9 +7625,10 @@ fn createAuxiliaryNavigable(
     popup_sandboxing_flags: SandboxingFlagSet,
 ) ?dom_module.auxiliary_navigables.Created {
     const opener_bc: *html_core.BrowsingContext = @ptrCast(@alignCast(opener_bc_ptr));
-    // The opener is the entry global, whose script called open(): its realm
-    // is the new realm's parent, so the page that keeps the popup
-    // (Window.auxiliary_navigables) is the page that takes it down.
+    // The entry global's realm, whose script called open(), is the new
+    // realm's creator - its window operations, agent and Browser - and no
+    // more: the popup is its Browser's (dom.auxiliary_navigables.Popups),
+    // and no realm's end ends its realm (WindowRealmOptions.auxiliary).
     const opener_realm = engine.entryRealm() orelse return null;
     // "Create a new auxiliary browsing context and document" step 4: its
     // creator is the opener's active document, and "create a new browsing
@@ -7627,7 +7699,6 @@ fn createAuxiliaryNavigable(
     // paths below free the integration.
     integration.setNextSandboxingFlags(creation_flags);
 
-    integration.parent_realm = @ptrCast(opener_realm);
     _ = attachNavigableContext(integration, opener_realm, browsing_context, if (creation_flags.origin) null else opener_origin, creator, allocator) orelse {
         integration.deinit();
         allocator.destroy(integration);
