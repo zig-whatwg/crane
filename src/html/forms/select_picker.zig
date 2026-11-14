@@ -154,11 +154,11 @@ pub fn mouseUp(target: *Instance, button: u3) void {
 }
 
 /// Pick `option` (HTML 4.10.7 "pick an option"), or toggle its selectedness
-/// when `toggle`: a `multiple` select's toggle, or the request a single-select
-/// list box allows to unselect its selected option.
-fn pick(select: *Instance, option: *Instance, toggle: bool) void {
+/// when `toggles`: a `multiple` select's toggle, or the request a
+/// single-select list box allows to unselect its selected option.
+fn pick(select: *Instance, option: *Instance, toggles: bool) void {
     if (associated.isDisabled(select) or options.isDisabled(option)) return;
-    dom.form_controls.pickOption(select, option, toggle) catch return;
+    dom.form_controls.pickOption(select, option, toggles) catch return;
     // HTML 4.10.7 "pick an option" step 6 (and, in a `multiple` list box,
     // the toggle paragraph): send select update notifications.
     sendSelectUpdateNotifications(select);
