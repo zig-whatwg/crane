@@ -243,34 +243,22 @@ QUnit.config.reporters.tap = true;
   // :382-389 checkItemSaved, and its spy (:413-430). Cypress spies on the
   // app window's Storage.prototype.setItem from cy.visit's onBeforeLoad,
   // before the app's scripts run; an in-page harness has no such hook, so
-  // the port installs the same spy when the app has loaded (beforeEach,
-  // below) and counts the calls from there. A check reads the calls since
-  // the previous check (Cypress resets the spy after each), and every check
-  // follows an action of its test, after the load: what the app wrote while
-  // it started is never what a check looks for. It retries for Cypress's
-  // command timeout, as cy.wrap(spy).should('have.been.called') does.
-  let setItemCalls = 0;
+  // the port installs the same spy (cy.spy: Cypress 15.14.2's, Sinon 8.1.1's)
+  // when the app has loaded (beforeEach, below): every check follows an
+  // action of its test, after the load. The check is the spec's own: the
+  // spy called (retried for Cypress's command timeout), then
+  // invoke('reset') - which fails in Cypress 15.14.2, whose spies have
+  // resetHistory() and no reset(), and so fails here too.
+  let localStorageSetItem = null;
   const spyOnSetItem = () => {
-    setItemCalls = 0;
+    localStorageSetItem = null;
     if (noLocalStorageSpyCheck[framework]) return;
-    const proto = cy.window().Storage.prototype;
-    const setItem = proto.setItem;
-    proto.setItem = function () {
-      setItemCalls += 1;
-      return setItem.apply(this, arguments);
-    };
+    localStorageSetItem = cy.spy(cy.window().Storage.prototype, 'setItem');
   };
   const checkItemSaved = async () => {
     if (noLocalStorageSpyCheck[framework]) return;
-    const deadline = performance.now() + 4000;
-    while (setItemCalls === 0) {
-      if (performance.now() > deadline) {
-        QUnit.config.current.assert.pushResult({ result: false, actual: 0, expected: 'at least 1', message: 'localStorage.setItem should have been called' });
-        throw new Driver.CommandError('localStorage.setItem should have been called');
-      }
-      await Driver.sleep(0);
-    }
-    setItemCalls = 0;
+    await cy.wrap([localStorageSetItem], 'cy.wrap(localStorageSetItem)').should('have.been.called');
+    await cy.wrap([localStorageSetItem], 'cy.wrap(localStorageSetItem)').invoke('reset');
   };
 
   // Shadow-piercing lookup, spec.cy.js:487-495.
@@ -284,8 +272,26 @@ QUnit.config.reporters.tap = true;
     return false;
   };
 
+  // Mocha's rule for a failed hook (Driver.HookSkips): the spec runs under
+  // Cypress's Mocha, where a failed beforeEach or afterEach fails its test
+  // and skips the rest of the suite that declared the hook. Every hook below
+  // is declared in the describe (null) or in its context.
+  const hookSkips = new Driver.HookSkips();
+  const current = () => QUnit.config.current;
+  function hook(declaredIn, fn) {
+    return async function (assert) {
+      if (hookSkips.skips(current().module.name)) return;
+      try {
+        await fn.call(this, assert);
+      } catch (e) {
+        hookSkips.failed(declaredIn, current().testId);
+        throw e;
+      }
+    };
+  }
+
   // The suite: describe(title) at spec.cy.js:335, its hooks at :394-530.
-  QUnit.hooks.beforeEach(async function () {
+  QUnit.hooks.beforeEach(hook(null, async function () {
     Driver.reset();
     // :410-412 cy.visit('/' + folder) under baseUrl .../examples/.
     // :413-476 the onBeforeLoad hooks (the localStorage.setItem spy and the
@@ -313,11 +319,11 @@ QUnit.config.reporters.tap = true;
     } else {
       throw new Error('Cannot determine what kind of selectors this app uses.');
     }
-  });
+  }));
   // :520-524
-  QUnit.hooks.beforeEach(async function () {
+  QUnit.hooks.beforeEach(hook(null, async function () {
     await hasNoItems();
-  });
+  }));
   // :526-530 reset the spy's test id: nothing to reset here. With
   // ?prove=layout, every visibility answer the test asked must be the one
   // Cypress's layout clauses give too (driver.js).
@@ -326,11 +332,19 @@ QUnit.config.reporters.tap = true;
   });
 
   const registered = [];
-  // it(name, fn): skipped when the spec skips it for this framework.
+  // it(name, fn): skipped when the spec skips it for this framework; not run
+  // after a failed hook of its suite (Mocha), which Cypress counts as
+  // skipped and the matrix as not passed.
   function it(context, name, fn, specSkips) {
     registered.push([context, name]);
     if (knownIssue(name) || specSkips) QUnit.skip(name);
-    else QUnit.test(name, fn);
+    else QUnit.test(name, async function (assert) {
+      if (hookSkips.skips(context)) {
+        if (hookSkips.test !== current().testId) assert.pushResult({ result: false, actual: 'not run', expected: 'run', message: 'Cypress does not run it: a hook failed earlier in its suite, and Mocha skips the rest of that suite' });
+        return;
+      }
+      await fn.call(this, assert);
+    });
   }
 
   // :532-544
@@ -400,14 +414,14 @@ QUnit.config.reporters.tap = true;
 
   // :640-722
   QUnit.module('Mark all as completed', function (hooks) {
-    hooks.beforeEach(async function () {
+    hooks.beforeEach(hook('Mark all as completed', async function () {
       (await createDefaultTodos()).as('todos');
       await checkNumberOfTodosInLocalStorage(3);
       await checkItemSaved();
-    });
-    hooks.afterEach(async function () {
+    }));
+    hooks.afterEach(hook('Mark all as completed', async function () {
       await checkNumberOfTodosInLocalStorage(3);
-    });
+    }));
 
     it('Mark all as completed', 'should allow me to mark all items as completed', async function () {
       await cy.get(selectors.toggleAll).check({ force: true });
@@ -478,7 +492,7 @@ QUnit.config.reporters.tap = true;
       const edit = await visibleTodos().eq(1).find('.edit').should('have.value', TODO_ITEM_TWO);
       const cleared = await edit.clear();
       const typed = await cleared.type('buy some sausages{enter}');
-      safeBlur((await typed.resolve())[0]);
+      safeBlur(typed.subject()[0]);
       await visibleTodos().eq(0).should('contain', TODO_ITEM_ONE);
       await visibleTodos().eq(1).should('contain', 'buy some sausages');
       await visibleTodos().eq(2).should('contain', TODO_ITEM_THREE);
@@ -488,10 +502,10 @@ QUnit.config.reporters.tap = true;
 
   // :794-878
   QUnit.module('Editing', function (hooks) {
-    hooks.beforeEach(async function () {
+    hooks.beforeEach(hook('Editing', async function () {
       (await createDefaultTodos()).as('todos');
       await checkNumberOfTodosInLocalStorage(3);
-    });
+    }));
 
     it('Editing', 'should hide other controls when editing', async function () {
       await cy.get('@todos').eq(1).find('label').dblclick();
@@ -516,7 +530,7 @@ QUnit.config.reporters.tap = true;
       await cy.get('@todos').eq(1).find('label').dblclick();
       await checkTodosInLocalStorage(TODO_ITEM_TWO);
       const typed = await cy.get(selectors.todoItems).eq(1).find('.edit').type('{selectall}{backspace}    buy some sausages    {enter}');
-      safeBlur((await typed.resolve())[0]);
+      safeBlur(typed.subject()[0]);
       await visibleTodos().eq(0).should('contain', TODO_ITEM_ONE);
       await visibleTodos().eq(1).should('contain', 'buy some sausages');
       await visibleTodos().eq(2).should('contain', TODO_ITEM_THREE);
@@ -527,7 +541,7 @@ QUnit.config.reporters.tap = true;
       await cy.get('@todos').eq(1).find('label').dblclick();
       const cleared = await cy.get(selectors.todoItems).eq(1).find('.edit').clear();
       const typed = await cleared.type('{enter}');
-      safeBlur((await typed.resolve())[0]);
+      safeBlur(typed.subject()[0]);
       await visibleTodos().should('have.length', 2);
       await checkNumberOfTodosInLocalStorage(2);
     });
@@ -555,9 +569,9 @@ QUnit.config.reporters.tap = true;
 
   // :890-918
   QUnit.module('Clear completed button', function (hooks) {
-    hooks.beforeEach(async function () {
+    hooks.beforeEach(hook('Clear completed button', async function () {
       (await createDefaultTodos()).as('todos');
-    });
+    }));
 
     it('Clear completed button', 'should display the correct text', async function () {
       await cy.get('@todos').eq(0).find('.toggle').check();
@@ -596,21 +610,21 @@ QUnit.config.reporters.tap = true;
       await checkTodosInLocalStorage(TODO_ITEM_ONE, true);
       await checkCompletedKeywordInLocalStorage();
       await checkNumberOfCompletedTodosInLocalStorage(1);
-      // cy.reload() re-queries the aliases' queries in Cypress 12+; these
-      // are the commands' results, found again by their text.
+      // :955-957. The aliases are the commands' results (createTodo ends in
+      // cy.then), which Cypress 12+ does not requery: after cy.reload()
+      // their elements are gone with the old page, and testState fails as
+      // in Cypress (the subject is no longer attached to the DOM).
       await cy.reload();
-      cy.get(selectors.todoList).contains('li', TODO_ITEM_ONE).as('firstTodo');
-      cy.get(selectors.todoList).contains('li', TODO_ITEM_TWO).as('secondTodo');
       await testState();
     }, !!noLocalStorageCheck[framework]);
   });
 
   // :961-1035
   QUnit.module('Routing', function (hooks) {
-    hooks.beforeEach(async function () {
+    hooks.beforeEach(hook('Routing', async function () {
       (await createDefaultTodos()).as('todos');
       await checkTodosInLocalStorage(TODO_ITEM_ONE);
-    });
+    }));
 
     it('Routing', 'should allow me to display active items', async function () {
       await cy.get('@todos').eq(1).find('.toggle').check();

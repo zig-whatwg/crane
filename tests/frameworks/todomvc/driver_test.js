@@ -90,5 +90,65 @@ QUnit.config.reporters.tap = true;
     });
   });
 
+  QUnit.module('Driver: Cypress\'s subjects and hooks', function (hooks) {
+    hooks.before(async function () {
+      Driver.aut.frame = document.getElementById('aut');
+      await cy.visit(FIXTURE);
+    });
+
+    // cypress/ensure.ts isAttached: a command's result is not requeried, so
+    // it fails once its element leaves the page; a query finds the new one.
+    QUnit.test('a command\'s result fails once detached; a query is run again', function (assert) {
+      const doc = cy.document();
+      const p = doc.createElement('p');
+      p.className = 'tmp';
+      doc.body.append(p);
+      const wrapped = cy.wrap([p], 'cy.wrap(p)');
+      assert.deepEqual(ids(wrapped.run()), ['p.tmp']);
+      const alias = wrapped.as('p');
+      p.remove();
+      assert.throws(() => wrapped.run(), /no longer attached to the DOM/);
+      assert.throws(() => cy.get('@p').eq(0).run(), /no longer attached to the DOM/);
+      // cy.then hands a command's result on as it was.
+      assert.strictEqual(alias.subject()[0], p);
+      const again = doc.createElement('p');
+      again.className = 'tmp';
+      doc.body.append(again);
+      cy.get('p.tmp').as('q');
+      assert.strictEqual(cy.get('@q').run()[0], again);
+      again.remove();
+      assert.deepEqual(cy.get('@q').run(), []);
+    });
+
+    // Cypress 15.14.2's cy.spy is Sinon 8.1.1's spy: resetHistory(), no reset().
+    QUnit.test('cy.spy counts calls, and has resetHistory but no reset', async function (assert) {
+      const target = { setItem(k, v) { return k + '=' + v; } };
+      const spy = cy.spy(target, 'setItem');
+      assert.strictEqual(spy.callCount, 0);
+      assert.strictEqual(target.setItem('a', 1), 'a=1');
+      assert.strictEqual(spy.callCount, 1);
+      assert.strictEqual(typeof spy.reset, 'undefined');
+      assert.strictEqual(await cy.wrap([spy]).invoke('resetHistory'), undefined);
+      assert.strictEqual(spy.callCount, 0);
+    });
+
+    // Mocha 7.2.0: a failed hook fails its test and skips the rest of the
+    // suite that declared it.
+    QUnit.test('a failed hook skips the rest of its suite: its context, or all of the describe', function (assert) {
+      const h = new Driver.HookSkips();
+      assert.false(h.skips('Editing'));
+      h.failed('Mark all as completed', 't1');
+      assert.true(h.skips('Mark all as completed'));
+      assert.false(h.skips('Item'));
+      h.failed('Editing', 't2');
+      assert.true(h.skips('Editing'));
+      assert.strictEqual(h.test, 't2');
+      h.failed(null, 't3');
+      assert.true(h.skips('Routing'));
+      h.failed('Routing', 't4');
+      assert.true(h.skips('Counter'), 'the describe\'s skip outlasts a context\'s');
+    });
+  });
+
   QUnit.start();
 })();

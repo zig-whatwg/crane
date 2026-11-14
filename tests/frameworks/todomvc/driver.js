@@ -342,10 +342,53 @@
     return getFirstDeepestElement(found);
   }
 
+  // A command's result is what it was: Cypress re-runs queries, never
+  // commands, so a chain that starts from one (cy.wrap, an action's
+  // subject, an alias of either) checks before every query, assertion or
+  // action on it that its elements are still in a page - connected, their
+  // document's window active (cypress/ensure.ts isAttached,
+  // dom/elements/detached.ts) - and otherwise fails as Cypress does
+  // (error_messages.ts subject.detached_after_command).
+  class DetachedError extends Error {}
+  const attached = (el) => !(el && el.nodeType === 1) || (el.isConnected && !!el.ownerDocument.defaultView);
+  function commandResult(els) {
+    return () => {
+      if (!els.every(attached)) throw new DetachedError('the page updated as a result of this command: the subject is no longer attached to the DOM, and Cypress cannot requery the page after a command');
+      return els;
+    };
+  }
+
   class Chain {
-    constructor(run, label) {
+    // `result`: the elements of a command's result, which `then` hands on
+    // as they are (no attachment check: cy.then is not a query).
+    constructor(run, label, result = null) {
       this.run = run;
       this.label = label;
+      this.result = result;
+    }
+
+    // What `.then(fn)` passes fn: a command's result as it was, else the
+    // query's current elements.
+    subject() {
+      return this.result || this.run();
+    }
+
+    // .invoke(name) (connectors.ts): the subject's method, retried until the
+    // property exists; Cypress fails "the property: <name> does not exist on
+    // your subject" otherwise.
+    async invoke(name, ...args) {
+      const deadline = performance.now() + COMMAND_TIMEOUT;
+      for (;;) {
+        let subject;
+        try {
+          subject = this.run()[0];
+        } catch (e) {}
+        if (subject != null && typeof subject[name] === 'function') return subject[name](...args);
+        if (performance.now() > deadline) break;
+        await sleep(RETRY_INTERVAL);
+      }
+      record(false, `${this.label}.invoke('${name}'): the property ${name} does not exist on your subject`);
+      return undefined;
     }
 
     eq(i) {
@@ -383,16 +426,19 @@
     // existence assertion), recorded only when it fails.
     async resolve() {
       const deadline = performance.now() + COMMAND_TIMEOUT;
+      let why = 'never found';
       for (;;) {
         let els = [];
         try {
           els = this.run();
-        } catch (e) {}
+        } catch (e) {
+          if (e instanceof DetachedError) why = e.message;
+        }
         if (els.length > 0) return els;
         if (performance.now() > deadline) break;
         await sleep(RETRY_INTERVAL);
       }
-      record(false, `${this.label}: never found`);
+      record(false, `${this.label}: ${why}`);
       return [];
     }
 
@@ -406,6 +452,12 @@
         try {
           els = this.run();
         } catch (e) {
+          if (e instanceof DetachedError) {
+            last = { pass: false, actual: e.message, expected: 'its subject attached' };
+            if (performance.now() > deadline) break;
+            await sleep(RETRY_INTERVAL);
+            continue;
+          }
           els = [];
         }
         last = evaluate(chainer, args, els);
@@ -427,14 +479,17 @@
         let els = [];
         try {
           els = this.run();
-        } catch (e) {}
+        } catch (e) {
+          if (e instanceof DetachedError) why = e.message;
+        }
         if (els.length === 1) {
           const el = els[0];
           if (!el.isConnected) why = 'it is detached from the document';
           else if (visible && !isVisible(el, false)) why = 'it is not visible';
           else if (el.disabled) why = 'it is disabled';
           else return el;
-        } else why = els.length === 0 ? 'it was never found' : `it is ${els.length} elements`;
+        } else if (els.length > 1) why = `it is ${els.length} elements`;
+        else if (!why || !why.startsWith('the page updated')) why = 'it was never found';
         if (performance.now() > deadline) break;
         await sleep(RETRY_INTERVAL);
       }
@@ -465,7 +520,7 @@
       if (e instanceof CommandError) record(false, `${chain.label}.${what}(): ${e.message}`);
       throw e;
     }
-    return new Chain(() => [el], chain.label);
+    return new Chain(commandResult([el]), chain.label, [el]);
   }
 
   function evaluate(chainer, args, els) {
@@ -489,6 +544,8 @@
       case 'have.id': return needs(els.some((e) => e.id === args[0]), els.map((e) => e.id).join(' | '), args[0]);
       case 'be.checked': return needs(els.some((e) => e.checked), els.map((e) => e.checked).join(' | '), true);
       case 'not.be.checked': return needs(!els.some((e) => e.checked), els.map((e) => e.checked).join(' | '), false);
+      // A spy (sinon-chai's calledWith family): called at least once.
+      case 'have.been.called': return needs(exists && els[0].callCount > 0, `called ${exists ? els[0].callCount : 0} time(s)`, 'called at least once');
       default: throw new Error('the port does not know the chainer ' + chainer);
     }
   }
@@ -775,14 +832,56 @@
         return el ? [el] : [];
       }, 'cy.focused()');
     },
+    // cy.wrap(subject): a command's result (commandResult above).
     wrap(els, label) {
-      return new Chain(() => els, label || 'cy.wrap()');
+      return new Chain(commandResult(els), label || 'cy.wrap()', els);
+    },
+    // cy.spy(obj, method), as Cypress 15.14.2's (Sinon 8.1.1's spy): the
+    // method wrapped, its calls counted; resetHistory(), and no reset() -
+    // Sinon gives reset() to stubs only, so a spec's invoke('reset') on a
+    // spy fails in Cypress, and here.
+    spy(obj, method) {
+      const original = obj[method];
+      const s = function () {
+        s.callCount += 1;
+        s.called = true;
+        return original.apply(this, arguments);
+      };
+      s.callCount = 0;
+      s.called = false;
+      s.resetHistory = () => {
+        s.callCount = 0;
+        s.called = false;
+      };
+      obj[method] = s;
+      return s;
     },
     window() { return aut.win; },
     document() { return aut.doc; },
   };
 
+  // Mocha's rule for a failed hook (Mocha 7.2.0, Cypress 15.14.2's): when a
+  // beforeEach or afterEach hook fails, the test it ran for fails, and no
+  // later test of the suite that declared the hook runs - the whole
+  // describe for one of its own hooks, the context for a context's - which
+  // Cypress reports as skipped. `failed(null)` is the describe's hook,
+  // `failed(name)` a context's.
+  class HookSkips {
+    constructor() {
+      this.scope = null;
+      this.test = null;
+    }
+    failed(context, testId) {
+      if (!this.scope || !this.scope.all) this.scope = context === null ? { all: true } : { context };
+      this.test = testId;
+    }
+    skips(context) {
+      return !!this.scope && (this.scope.all || this.scope.context === context);
+    }
+  }
+
   global.Driver = {
+    HookSkips,
     cy,
     aut,
     config,
