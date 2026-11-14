@@ -1312,6 +1312,12 @@ EXCLUDE = [
     # (referrer-policy/gen/**/mathml-a-tag.http.html) stay.
     ('mathml/relations/html5-tree/a-referrerpolicy-getter-setter.html',
      'MathMLAnchorElement.referrerPolicy is in no spec IDL: 0/1 in all three'),
+    # Tentative in fact: no spec change behind it (HTML "close the dialog" moves focus only to a
+    # previously focused element; with none, the focus fixup at the next rendering update resets
+    # it, not close() itself). Chromium-only behaviour, crbug.com/41284677 (2026-10-25); no
+    # whatwg/html PR or issue. 0/1 in all three.
+    ('html/semantics/interactive-elements/the-dialog-element/dialog-close-focus-no-previous.html',
+     'tentative in fact: expects body focused at close() with no previously focused element; no spec change (crbug 41284677 only)'),
     # CSS features no browser ships (the cssprop1 rule above); their -invalid siblings stay.
     ('css/css-sizing/parsing/max-size-shorthand.html',
      'max-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
