@@ -100,7 +100,12 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                     try tests.append(arena, t);
                     counts.add(t);
                 };
-                for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.label, label)) try pages.append(arena, p);
+                for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.label, label)) {
+                    try pages.append(arena, p);
+                    // Tests the framework counted without naming them.
+                    counts.pass += p.unnamed_passed orelse 0;
+                    counts.project_skip += p.unnamed_pending orelse 0;
+                };
                 const first = pages.items[0];
                 const run: Run = .{ .label = label, .browser = first.browser, .generation = first.generation, .crane_commit = first.crane_commit, .console_sha256 = first.console_sha256, .tests = tests.items, .pages = pages.items, .counts = counts };
                 if (run.browser != null) {
@@ -608,11 +613,26 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         if (r.pages.len > 0) if (r.pages[0].server) |srv| {
             try w.writeAll(" Served by the project's own test server, ");
             try html.text(w, srv.name);
-            try w.writeAll(", under Node ");
-            try html.text(w, srv.node);
-            try w.writeAll(" (its node_modules sha256 <code>");
-            try html.text(w, srv.node_modules_sha256[0..@min(16, srv.node_modules_sha256.len)]);
-            try w.writeAll("&hellip;</code>).");
+            if (srv.node) |n| {
+                try w.writeAll(", under Node ");
+                try html.text(w, n);
+            }
+            if (srv.node_modules_sha256) |h| {
+                try w.writeAll(" (its node_modules sha256 <code>");
+                try html.text(w, h[0..@min(16, h.len)]);
+                try w.writeAll("&hellip;</code>)");
+            }
+            if (srv.bazel) |bz| {
+                try w.writeAll(", run by the project&#39;s own Bazel ");
+                try html.text(w, bz);
+                if (srv.bazel_lock_sha256) |h| {
+                    try w.writeAll(" (its MODULE.bazel.lock sha256 <code>");
+                    try html.text(w, h[0..@min(16, h.len)]);
+                    try w.writeAll("&hellip;</code>)");
+                }
+                try w.writeAll(", one target per page");
+            }
+            try w.writeAll(".");
         };
         try w.writeAll("</p>\n");
         try meter(w, r.counts);
@@ -650,6 +670,8 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         for (r.pages) |p| {
             var c: journal.Counts = .{};
             for (r.tests) |t| if (std.mem.eql(u8, t.page, p.page)) c.add(t);
+            c.pass += p.unnamed_passed orelse 0;
+            c.project_skip += p.unnamed_pending orelse 0;
             try w.writeAll("<tr><th><code>");
             try html.text(w, p.page);
             try w.print("</code></th><td{s}>{t}", .{ if (p.status == .OK) "" else " class=\"fail\"", p.status });
@@ -1028,6 +1050,32 @@ test "the Chrome column: a browser's run is kept apart from Crane's, shown besid
     const c_at = std.mem.indexOf(u8, h, "<tr><th>New Todo: c (Chrome fails it too)") orelse std.mem.indexOf(u8, h, "New Todo: c <span class=\"grey\">(Chrome fails it too)</span>");
     try testing.expect(c_at != null);
     try testing.expect(std.mem.indexOf(u8, h, "New Todo: b <span class=\"grey\">(Chrome fails it too)</span>") == null);
+}
+
+test "a Jasmine page: its unnamed passes and pending counted with its named failures; its Bazel target named as its server" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    var suite = sampleSuite();
+    suite.id = "angular-jasmine";
+    suite.framework = "angular";
+    suite.title = "Angular";
+    suite.version = "22.2.6";
+    suite.reader = .jasmine_console;
+    const fail: journal.TestRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "angular", .version = "22.2.6", .suite = "angular-jasmine", .suite_kind = .project, .source_sha256 = &sha, .page = "common-http-test", .module = "", .name = "HttpClient sends", .id = "HttpClient sends", .status = .FAIL, .message = "Expected 1 to be 2." };
+    const page: journal.PageRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "angular", .version = "22.2.6", .suite = "angular-jasmine", .suite_kind = .project, .source_sha256 = &sha, .page = "common-http-test", .url = "u", .status = .OK, .wall_ms = 3000, .reported_total = 421, .reported_failed = 1, .ran = 1, .records = 1, .exit = "exited", .unnamed_passed = 418, .unnamed_pending = 2, .server = .{ .name = "web-test-runner manual mode", .bazel = "8.8.2", .bazel_lock_sha256 = &sha, .target = "//packages/common/http/test:test_web_debug" } };
+    const suites = try collect(a, .{ .suites = &.{suite} }, &.{.{ .tests = &.{fail}, .pages = &.{page} }}, &.{});
+    const c = suites[0].runs[0].counts;
+    try testing.expectEqual(@as(u32, 418), c.pass);
+    try testing.expectEqual(@as(u32, 1), c.fail);
+    try testing.expectEqual(@as(u32, 2), c.project_skip);
+    var out: Io.Writer.Allocating = .init(a);
+    try writeFramework(&out.writer, .{ .id = "angular", .title = "Angular" }, suites, .{});
+    const h = out.written();
+    try testing.expect(std.mem.indexOf(u8, h, "run by the project&#39;s own Bazel 8.8.2 (its MODULE.bazel.lock sha256 <code>aaaaaaaaaaaaaaaa&hellip;</code>), one target per page.") != null);
+    // The page's row counts its unnamed tests too: 419 run, 1 failed, 2 not run.
+    try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n\">419</td><td class=\"n fail\">1</td><td class=\"n grey\">0</td><td class=\"n grey\">2</td>") != null);
 }
 
 test "rate: one decimal, rounded; nothing run is a dash" {

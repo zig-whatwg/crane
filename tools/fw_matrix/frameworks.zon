@@ -52,12 +52,12 @@
             .id = "angular",
             .title = "Angular",
             .not_run = .{.{
-                .name = "browser tests (its Bazel web test targets)",
+                .name = "web test targets of the documentation site and Angular DevTools (18 and 50 targets)",
                 .version = "22.2.6",
                 .repository = "https://github.com/angular/angular",
                 .tag = "v22.2.6",
                 .runner = "web-test-runner and Jasmine, through Puppeteer in Chromium and Firefox",
-                .why = "A run is being added: the project's own debug targets serve these tests to any browser by URL (web-test-runner's manual mode), with no browser driver.",
+                .why = "Not run: they test two applications kept in the repository (adev/, the angular.dev site, and devtools/, the browser extension), not the framework; the framework's own 44 targets under packages/ run above.",
             }},
         },
         .{
@@ -273,6 +273,107 @@
                 .{ .id = "test", .path = "test/test.html" },
             },
             .excluded = "htmx-4.0.1.txt",
+        },
+        // Angular 22.2.6's own browser tests: the framework's 44 web test
+        // targets (every `ng_web_test_suite`, `web_test` and
+        // `zoneless_web_test_suite` under packages/), each a Jasmine spec
+        // bundle the project's own Bazel builds. Its runner is
+        // web-test-runner (angular/rules_browsers wtr/wtr.config.mjs), which
+        // drives Chromium or Firefox through Puppeteer; every target also has
+        // the project's own `<target>_debug`, web-test-runner's manual mode,
+        // which serves the same bundle to any browser by URL with no driver.
+        // Each page is that target, started for it (`bazel run`, its port
+        // given by its own --port option) and opened at the test page its
+        // debug page links; Jasmine's console reporter, which that mode adds,
+        // prints the run on the console: failures by name, passes counted.
+        // Bazel's own downloads are the project's pins (MODULE.bazel.lock);
+        // its output root is under the frameworks directory. The user,
+        // 2026-11-14: "run the framework's backends with node against Crane".
+        .{
+            .id = "angular-jasmine",
+            .framework = "angular",
+            .title = "Angular",
+            .version = "22.2.6",
+            .kind = .project,
+            .repository = "https://github.com/angular/angular",
+            .tag = "v22.2.6",
+            .commit = "dda2d41d948380d63619d597c9815db0aa77fd1d",
+            .licence = "MIT",
+            .runner = "Jasmine, web-test-runner manual mode",
+            .reader = .jasmine_console,
+            .source = .{
+                .url = "https://codeload.github.com/angular/angular/tar.gz/refs/tags/v22.2.6",
+                .sha256 = "e4da834267dbe819c409d0b4caf5ae7a07ac6ce4647ce97220c67e841c388177",
+            },
+            // bazelisk's GitHub release digests; Bazel 8.8.2's own .sha256
+            // files (the tree's .bazelversion).
+            .bazel = .{
+                .bazelisk_version = "1.30.0",
+                .bazelisk = .{
+                    .{ .platform = "darwin-arm64", .url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-darwin-arm64", .sha256 = "555d2ff912ccd336d0060bdb5251ef2f62629c6f8fbadb59005a45d5625793ec" },
+                    .{ .platform = "linux-x64", .url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-linux-amd64", .sha256 = "a248ae2b2b62b5baebb748f6fba7203bff1a27e5d01b55399a8406744cb539e8" },
+                },
+                .version = "8.8.2",
+                .binaries = .{
+                    .{ .platform = "darwin-arm64", .sha256 = "ae640432a3fdb8a08c637562895f91c7ff1f63f04b1a9d34de9e9c46162bc10b" },
+                    .{ .platform = "linux-x64", .sha256 = "bf463ba0f5f782e8fe31071bd2b821c2f6a27f03e5bb62f0879e88cbf3656e04" },
+                },
+            },
+            .server = .{
+                .name = "web-test-runner manual mode (the target's own _debug)",
+                .argv = .{ "{bazel}", "run", "{target}", "--", "--port", "{port}" },
+                .ready_path = "/",
+                .ready_s = 300,
+            },
+            .pages = .{
+                .{ .id = "animations-browser-test", .path = "?wtr-test-file=%2Fpackages%2Fanimations%2Fbrowser%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/animations/browser/test:test_web_debug" },
+                .{ .id = "animations-test", .path = "?wtr-test-file=%2Fpackages%2Fanimations%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/animations/test:test_web_debug" },
+                .{ .id = "common-http-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Fhttp%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/http/test:test_web_debug" },
+                .{ .id = "common-http-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Fhttp%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/http/testing/test:test_web_debug" },
+                .{ .id = "common-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/test:test_web_debug" },
+                .{ .id = "compiler-test", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test:test_web_debug" },
+                .{ .id = "compiler-test-expression_parser-expression_parser", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fexpression_parser%2Fexpression_parser_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/expression_parser:expression_parser_web_debug" },
+                .{ .id = "compiler-test-ml_parser-ml_parser", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fml_parser%2Fml_parser_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/ml_parser:ml_parser_web_debug" },
+                .{ .id = "compiler-test-selector-selector", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fselector%2Fselector_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/selector:selector_web_debug" },
+                .{ .id = "core-primitives-dom-navigation-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Fprimitives%2Fdom-navigation%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/primitives/dom-navigation/testing/test:test_web_debug" },
+                .{ .id = "core-primitives-event-dispatch-test-browser_test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Fprimitives%2Fevent-dispatch%2Ftest%2Fbrowser_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/primitives/event-dispatch/test:browser_test_debug" },
+                .{ .id = "core-rxjs-interop-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Frxjs-interop%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/rxjs-interop/test:test_web_debug" },
+                .{ .id = "core-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test:test_web_debug" },
+                .{ .id = "core-test-acceptance-acceptance", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Facceptance_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance:acceptance_web_debug" },
+                .{ .id = "core-test-acceptance-authoring-test_jit", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fauthoring%2Ftest_jit_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/authoring:test_jit_web_debug" },
+                .{ .id = "core-test-acceptance-authoring", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fauthoring%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/authoring:test_web_debug" },
+                .{ .id = "core-test-acceptance-foreign_component-foreign_component", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fforeign_component%2Fforeign_component_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/foreign_component:foreign_component_web_debug" },
+                .{ .id = "core-test-acceptance-selectorless-selectorless", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fselectorless%2Fselectorless_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/selectorless:selectorless_web_debug" },
+                .{ .id = "core-test-authoring", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fauthoring%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/authoring:test_web_debug" },
+                .{ .id = "core-test-compiler-compiler", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fcompiler%2Fcompiler_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/compiler:compiler_web_debug" },
+                .{ .id = "core-test-render3-render3", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Frender3%2Frender3_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/render3:render3_web_debug" },
+                .{ .id = "core-test-resource-resource", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fresource%2Fresource_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/resource:resource_web_debug" },
+                .{ .id = "core-test-signals-signals", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fsignals%2Fsignals_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/signals:signals_web_debug" },
+                .{ .id = "core-test-webmcp-webmcp", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fwebmcp%2Fwebmcp_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/webmcp:webmcp_debug" },
+                .{ .id = "elements-test", .path = "?wtr-test-file=%2Fpackages%2Felements%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/elements/test:test_debug" },
+                .{ .id = "examples-router-testing", .path = "?wtr-test-file=%2Fpackages%2Fexamples%2Frouter%2Ftesting%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/examples/router/testing:test_web_debug" },
+                .{ .id = "forms-signals-test-web", .path = "?wtr-test-file=%2Fpackages%2Fforms%2Fsignals%2Ftest%2Fweb%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/forms/signals/test/web:test_debug" },
+                .{ .id = "forms-test", .path = "?wtr-test-file=%2Fpackages%2Fforms%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/forms/test:test_web_debug" },
+                .{ .id = "misc-angular-in-memory-web-api-test", .path = "?wtr-test-file=%2Fpackages%2Fmisc%2Fangular-in-memory-web-api%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/misc/angular-in-memory-web-api/test:test_web_debug" },
+                .{ .id = "platform-browser-dynamic-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser-dynamic%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser-dynamic/test:test_web_debug" },
+                .{ .id = "platform-browser-animations-async-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Fanimations%2Fasync%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/animations/async/test:test_web_debug" },
+                .{ .id = "platform-browser-animations-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Fanimations%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/animations/test:test_web_debug" },
+                .{ .id = "platform-browser-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/test:test_web_debug" },
+                .{ .id = "router-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/test:test_web_debug" },
+                .{ .id = "router-testing-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/testing/test:test_web_debug" },
+                .{ .id = "router-upgrade-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Fupgrade%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/upgrade/test:test_web_debug" },
+                .{ .id = "service-worker-test", .path = "?wtr-test-file=%2Fpackages%2Fservice-worker%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/service-worker/test:test_web_debug" },
+                .{ .id = "upgrade-src-common-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fsrc%2Fcommon%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/src/common/test:test_debug" },
+                .{ .id = "upgrade-static-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fstatic%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/static/test:test_debug" },
+                .{ .id = "upgrade-static-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fstatic%2Ftesting%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/static/testing/test:test_debug" },
+                .{ .id = "zone.js-test-browser_disable_wrap_uncaught_promise_rejection", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_disable_wrap_uncaught_promise_rejection_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_disable_wrap_uncaught_promise_rejection_debug" },
+                .{ .id = "zone.js-test-browser_green_test", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_green_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_green_test_debug" },
+                .{ .id = "zone.js-test-browser_shadydom", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_shadydom_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_shadydom_debug" },
+                .{ .id = "zone.js-test-browser_test", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_test_debug" },
+            },
+            .excluded = "angular-22.2.6.txt",
+            .skip_kinds = .{},
+            .page_budget_s = 900,
         },
     },
     // TodoMVC, the report's second section (the user, 2026-11-11 09:57 ET;

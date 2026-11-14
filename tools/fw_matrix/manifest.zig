@@ -146,11 +146,42 @@ pub const ExternalServer = struct {
 pub const Page = struct {
     /// Short and unique within the framework ("css", "test").
     id: []const u8,
-    /// Path and query below the tree's root, as the project opens it.
+    /// Path and query below the tree's root, as the project opens it ("" is
+    /// the server's root: web-test-runner's test pages are "/?wtr-test-file=").
     path: []const u8,
     /// QUnit: the module the page selects (`?module=`), whose exclusions
     /// it applies; null for a page that runs everything.
     module: ?[]const u8 = null,
+    /// The project's own Bazel target that serves the page (its server's
+    /// "{target}"): Angular's web-test-runner debug targets, one per page.
+    target: ?[]const u8 = null,
+};
+
+pub const BinaryPin = struct {
+    platform: []const u8,
+    sha256: []const u8,
+
+    pub fn find(pins: []const BinaryPin, platform: []const u8) ?BinaryPin {
+        for (pins) |p| if (std.mem.eql(u8, p.platform, platform)) return p;
+        return null;
+    }
+};
+
+/// Bazel, for a suite whose project builds and serves its browser tests
+/// with it (Angular): bazelisk pinned per platform, and the Bazel release
+/// the project's .bazelversion names, checked by bazelisk against its
+/// sha256 (BAZELISK_VERIFY_SHA256). Bazel's own downloads are the project's
+/// pins (MODULE.bazel.lock). Its output root is under the frameworks
+/// directory, so that one deletion removes every byte it made.
+pub const Bazel = struct {
+    bazelisk_version: []const u8,
+    bazelisk: []const NodeArchive,
+    /// The .bazelversion the tree names.
+    version: []const u8,
+    /// The Bazel binary's sha256 per platform (Node's platform names).
+    binaries: []const BinaryPin,
+    /// `bazel build --jobs` in fetch.
+    jobs: u32 = 6,
 };
 
 pub const Suite = struct {
@@ -179,7 +210,10 @@ pub const Suite = struct {
     overlay: []const Overlay = &.{},
     node: ?Node = null,
     npm: ?Npm = null,
+    bazel: ?Bazel = null,
     /// The project's own test server; null: the harness's static server.
+    /// With "{target}" in its argv it serves one page: a server per page,
+    /// started for it with the page's `target`.
     server: ?ExternalServer = null,
     pages: []const Page,
     /// The exclusion list's file name below tools/fw_matrix/excluded/.
@@ -310,7 +344,7 @@ pub const Manifest = struct {
     todomvc: ?TodoMvc = null,
 };
 
-pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun, DuplicateApp, AppWithoutPin, BadApp, BadChromeReference };
+pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun, DuplicateApp, AppWithoutPin, BadApp, BadChromeReference, PageWithoutTarget };
 
 /// The text a server argument holds where the harness's port goes.
 pub const port_placeholder = "{port}";
@@ -423,8 +457,30 @@ fn isHttps(s: []const u8) bool {
 /// which may end in "/" - a directory, as jquery-test-runner opens
 /// "test/?module=<m>".
 fn isPagePath(path_part: []const u8) bool {
+    // The server's root itself.
+    if (path_part.len == 0) return true;
     const trimmed = if (std.mem.endsWith(u8, path_part, "/")) path_part[0 .. path_part.len - 1] else path_part;
     return isRelativePath(trimmed);
+}
+
+/// The text a server argument holds where the page's Bazel target goes, and
+/// the argument the fetched Bazel (bazelisk and its output root) replaces.
+pub const target_placeholder = "{target}";
+pub const bazel_placeholder = "{bazel}";
+
+/// The server serves one page: its argv names the page's target.
+pub fn serverPerPage(s: ExternalServer) bool {
+    for (s.argv) |arg| if (std.mem.indexOf(u8, arg, target_placeholder) != null) return true;
+    return false;
+}
+
+/// A Bazel label of the tree's own ("//packages/core/test:test_web_debug").
+fn isLabel(s: []const u8) bool {
+    if (!std.mem.startsWith(u8, s, "//")) return false;
+    const colon = std.mem.indexOfScalar(u8, s, ':') orelse return false;
+    if (colon + 1 >= s.len) return false;
+    for (s[2..]) |c| if (!(std.ascii.isAlphanumeric(c) or c == '/' or c == ':' or c == '_' or c == '-' or c == '.')) return false;
+    return isRelativePath(s[2..colon]);
 }
 
 /// The file a page path opens: a directory's index.html.
@@ -471,11 +527,14 @@ fn validateNode(n: Node, failure: *Failure) Error!void {
     }
 }
 
-fn validateServer(s: ExternalServer, failure: *Failure) Error!void {
+fn validateServer(s: ExternalServer, bazel: bool, failure: *Failure) Error!void {
     failure.what = "server";
     if (s.name.len == 0 or s.argv.len == 0) return error.BadServer;
-    // The tree's own command, by its path below the tree.
-    if (!isRelativePath(s.argv[0]) or std.mem.indexOfScalar(u8, s.argv[0], '/') == null) return error.BadServer;
+    // The tree's own command, by its path below the tree - or the fetched
+    // Bazel, which runs the tree's own target.
+    if (std.mem.eql(u8, s.argv[0], bazel_placeholder)) {
+        if (!bazel) return error.BadServer;
+    } else if (!isRelativePath(s.argv[0]) or std.mem.indexOfScalar(u8, s.argv[0], '/') == null) return error.BadServer;
     if (s.ready_path.len == 0 or s.ready_path[0] != '/' or std.mem.indexOfAny(u8, s.ready_path, " \t\r\n") != null) return error.BadServer;
     if (s.ready_s == 0 or !isHost(s.host)) return error.BadServer;
     var has_port = false;
@@ -526,13 +585,34 @@ pub fn validate(m: Manifest, failure: *Failure) Error!void {
             if (!journal.isSha256(n.lockfile_sha256)) return error.BadSha256;
             for (n.scripts) |s| if (!isScriptName(s)) return error.BadName;
         }
+        if (f.bazel) |bz| {
+            failure.what = "bazel";
+            if (!isVersion(bz.bazelisk_version) or !isVersion(bz.version) or bz.bazelisk.len == 0 or bz.binaries.len == 0 or bz.jobs == 0) return error.BadName;
+            for (bz.bazelisk) |a| {
+                if (!isName(a.platform)) return error.BadName;
+                if (!isHttps(a.url)) return error.BadUrl;
+                if (!journal.isSha256(a.sha256)) return error.BadSha256;
+            }
+            for (bz.binaries) |a| if (!journal.isSha256(a.sha256) or !isName(a.platform)) return error.BadSha256;
+        }
         if (f.server) |s| {
             failure.what = "server";
-            if (f.node == null) return error.ServerWithoutNode;
+            // Its runtime: Node, or Bazel (whose own Node runs the target).
+            if (f.node == null and f.bazel == null) return error.ServerWithoutNode;
             // The project's server serves the tree alone: an overlay is the
             // harness's static server's.
             if (f.overlay.len > 0) return error.ServerWithOverlay;
-            try validateServer(s, failure);
+            try validateServer(s, f.bazel != null, failure);
+            // A server per page: every page names its target.
+            var per_page = false;
+            for (s.argv) |arg| per_page = per_page or std.mem.indexOf(u8, arg, target_placeholder) != null;
+            for (f.pages) |p| {
+                failure.what = p.id;
+                if (per_page) {
+                    const t = p.target orelse return error.PageWithoutTarget;
+                    if (!isLabel(t)) return error.BadPath;
+                } else if (p.target != null) return error.BadServer;
+            }
         }
         failure.what = "pages";
         if (f.pages.len == 0) return error.NoPages;
@@ -829,6 +909,44 @@ test "todomvc: a suite per served app, sharing one tree; the app spec's page ope
         var f2: Failure = .{};
         try testing.expectError(c[2], parse(testing.allocator, a, try withTodoMvc(a, block), &f2));
     }
+}
+
+const bazel_fields =
+    \\.bazel = .{ .bazelisk_version = "1.30.0", .bazelisk = .{.{ .platform = "darwin-arm64", .url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-darwin-arm64", .sha256 = "555d2ff912ccd336d0060bdb5251ef2f62629c6f8fbadb59005a45d5625793ec" }}, .version = "8.8.2", .binaries = .{.{ .platform = "darwin-arm64", .sha256 = "1111111111111111111111111111111111111111111111111111111111111111" }} },
+    \\.server = .{ .name = "web-test-runner (manual mode)", .argv = .{ "{bazel}", "run", "{target}", "--", "--port", "{port}" } },
+;
+
+test "a Bazel suite: its own debug targets, a server per page, each page naming its target" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const pages_from = ".pages = .{ .{ .id = \"basic\", .path = \"test/index.html?module=basic\", .module = \"basic\" } },";
+    const pages_to = ".pages = .{ .{ .id = \"common-http\", .path = \"?wtr-test-file=%2Fpackages%2Fcommon%2Fhttp%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue\", .target = \"//packages/common/http/test:test_web_debug\" } },";
+    const text = try std.mem.replaceOwned(u8, a, try withFields(a, bazel_fields), pages_from, pages_to);
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try a.dupeSentinel(u8, text, 0), &f);
+    const s = find(m, "jquery-qunit").?;
+    try testing.expect(serverPerPage(s.server.?));
+    try testing.expectEqualStrings("//packages/common/http/test:test_web_debug", s.pages[0].target.?);
+    try testing.expectEqualStrings("8.8.2", s.bazel.?.version);
+    // The server's root is a page path ("/?wtr-test-file=...").
+    try testing.expectEqual(@as(u32, 6), s.bazel.?.jobs);
+
+    const cases = [_]struct { []const u8, []const u8, Error }{
+        // A page of a per-page server without its target.
+        .{ ", .target = \"//packages/common/http/test:test_web_debug\"", "", error.PageWithoutTarget },
+        // A target that is not a label of the tree.
+        .{ "\"//packages/common/http/test:test_web_debug\"", "\"packages/x\"", error.BadPath },
+        .{ "\"//packages/common/http/test:test_web_debug\"", "\"//../x:y\"", error.BadPath },
+    };
+    for (cases) |c| {
+        const bad = try std.mem.replaceOwned(u8, a, text, c[0], c[1]);
+        try testing.expect(!std.mem.eql(u8, bad, text));
+        try testing.expectError(c[2], parse(testing.allocator, a, try a.dupeSentinel(u8, bad, 0), &f));
+    }
+    // "{bazel}" needs a fetched Bazel.
+    const no_bazel = try std.mem.replaceOwned(u8, a, text, bazel_fields[0 .. std.mem.indexOf(u8, bazel_fields, "\n.server").? + 1], "");
+    try testing.expectError(error.ServerWithoutNode, parse(testing.allocator, a, try a.dupeSentinel(u8, no_bazel, 0), &f));
 }
 
 test "frameworks: the first section's list; each project suite under one, each framework with a suite or a reason" {

@@ -180,6 +180,11 @@ pub const PageRecord = struct {
     ran: u32,
     /// Test records written for the page, all statuses.
     records: u32,
+    /// Tests the framework counted but did not name (Jasmine's console
+    /// reporter: a dot per passed spec, a star per pending one); counted with
+    /// the page's named tests on the report (fw1 b5).
+    unnamed_passed: ?u32 = null,
+    unnamed_pending: ?u32 = null,
     /// How the console ended ("exited with code 0", ...).
     exit: []const u8,
     /// Page errors the console printed (uncaught exceptions, unhandled
@@ -203,11 +208,18 @@ pub const PageRecord = struct {
 pub const ServerInfo = struct {
     /// The manifest's name for it ("jquery-test-runner 0.3.0").
     name: []const u8,
-    /// The Node version it ran under ("24.22.3").
-    node: []const u8,
+    /// The Node version it ran under ("24.22.3"); absent for a server the
+    /// project's Bazel runs (its own Node toolchain).
+    node: ?[]const u8 = null,
     /// The hash of the tree's node_modules as `fw_matrix fetch` installed it
     /// and the run found it (fetch.dirHash).
-    node_modules_sha256: []const u8,
+    node_modules_sha256: ?[]const u8 = null,
+    /// The Bazel release that ran it ("8.8.2"), and the sha256 of the tree's
+    /// MODULE.bazel.lock, which pins everything Bazel fetched (fw1 b5).
+    bazel: ?[]const u8 = null,
+    bazel_lock_sha256: ?[]const u8 = null,
+    /// The Bazel target that served the page.
+    target: ?[]const u8 = null,
 };
 
 pub const max_errors = 20;
@@ -235,7 +247,10 @@ pub fn validatePage(r: PageRecord) ValidationError!void {
     if (!std.mem.eql(u8, r.record, "page")) return error.BadRecordKind;
     if (!isSha256(r.console_sha256) or !isSha256(r.source_sha256)) return error.BadSha256;
     if (r.status != .OK and r.message == null) return error.MissingMessage;
-    if (r.server) |s| if (!isSha256(s.node_modules_sha256)) return error.BadSha256;
+    if (r.server) |s| {
+        if (s.node_modules_sha256) |h| if (!isSha256(h)) return error.BadSha256;
+        if (s.bazel_lock_sha256) |h| if (!isSha256(h)) return error.BadSha256;
+    }
 }
 
 pub const Line = union(enum) {
@@ -472,7 +487,7 @@ test "a page served by the project's own server names it, its Node and its node_
         out.written(),
     );
     const back = try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"));
-    try testing.expectEqualStrings("24.22.3", back.page_record.server.?.node);
+    try testing.expectEqualStrings("24.22.3", back.page_record.server.?.node.?);
     // A hash that is not one is refused.
     try testing.expectError(error.BadSha256, parseLine(arena, try std.mem.replaceOwned(u8, arena, std.mem.trimEnd(u8, out.written(), "\n"), "\"node_modules_sha256\":\"" ++ sha_a, "\"node_modules_sha256\":\"abc")));
     // A line written before the field existed reads with none.

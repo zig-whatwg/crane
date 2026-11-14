@@ -164,13 +164,19 @@ fn oneLine(arena: Allocator, js: []const u8) ![]const u8 {
 
 /// The console's input for one page: the wait, the read, `.exit`.
 pub fn consoleInput(arena: Allocator, reader: Reader, budget_ms: u64, stall_ms: u64) ![]const u8 {
+    // Jasmine's report is its console output: the console only keeps the
+    // page open for its budget, and the harness ends it once the report is
+    // printed (jasmineEnded).
+    if (reader == .jasmine_console) return std.fmt.allocPrint(arena, "await new Promise((resolve) => setTimeout(resolve, {d}))\n.exit\n", .{budget_ms});
     const wait_src = switch (reader) {
         .qunit => qunit_wait,
         .mocha => mocha_wait,
+        .jasmine_console => unreachable,
     };
     const read_src = switch (reader) {
         .qunit => qunit_read,
         .mocha => mocha_read,
+        .jasmine_console => unreachable,
     };
     const b = try std.fmt.allocPrint(arena, "{d}", .{budget_ms});
     const s = try std.fmt.allocPrint(arena, "{d}", .{stall_ms});
@@ -219,6 +225,10 @@ pub const PageResult = struct {
     errors: []const []const u8,
     resources: []const []const u8,
     user_agent: []const u8,
+    /// Tests the framework counted but did not name (Jasmine's console
+    /// reporter prints a dot per passed spec, a star per pending one).
+    unnamed_passed: u32 = 0,
+    unnamed_pending: u32 = 0,
 };
 
 pub const ParseError = error{ OutOfMemory, BadReport };
@@ -390,6 +400,7 @@ pub fn parse(arena: Allocator, reader: Reader, json: []const u8) ParseError!Page
     return switch (reader) {
         .qunit => parseQUnit(arena, json),
         .mocha => parseMocha(arena, json),
+        .jasmine_console => parseJasmineConsole(arena, json),
     };
 }
 
@@ -413,6 +424,9 @@ pub fn countProblems(arena: Allocator, reader: Reader, r: PageResult) ![]const [
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} tests completed; its list shows {d}", .{ n, all }));
             if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} failed; its list shows {d}", .{ n, fail }));
         },
+        .jasmine_console => {
+            if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "Jasmine's summary says {d} failures; its report names {d}", .{ n, fail }));
+        },
         .mocha => {
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha selects {d} tests; its report lists {d}", .{ n, all }));
             if (r.reported_passed) |n| if (n != pass) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha's stats say {d} passes; its report lists {d}", .{ n, pass }));
@@ -429,8 +443,9 @@ test "the console input: three lines, the budget and stall filled in, no newline
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
-    for ([_]Reader{ .qunit, .mocha }) |reader| {
+    for ([_]Reader{ .qunit, .mocha, .jasmine_console }) |reader| {
         const input = try consoleInput(a, reader, 900000, 150000);
+        if (reader == .jasmine_console) continue;
         try testing.expectEqual(@as(usize, 3), std.mem.count(u8, input, "\n"));
         try testing.expect(std.mem.endsWith(u8, input, "\n.exit\n"));
         try testing.expect(std.mem.indexOf(u8, input, "__") == null);
@@ -707,4 +722,128 @@ test "Chrome's stderr: QUnit's TAP read back as QUnit's ids, a failure's first m
     try testing.expectEqual(@as(usize, 0), (try countProblems(a, .qunit, r)).len);
     // Cut before its end: not finished.
     try testing.expect(!(try parseChromeTap(a, chrome_log)).finished);
+}
+
+// ---------------------------------------------------------------------------
+// Jasmine as web-test-runner runs it in its manual mode (Angular's own
+// `<target>_debug` targets; rules_browsers wtr/wtr.config.mjs): with no
+// session the page is a debug page, and web-test-runner-jasmine 0.2.0 adds
+// its console reporter, which prints the whole run in one console.log at
+// the end - a character per spec ("." passed, "F" failed, "*" pending), then
+// "Failures:" with "N) <full name>" and each failed expectation's message
+// and stack indented by three spaces, then "N specs, M failures[, K
+// pending]" - coloured with ANSI escapes. Passed specs are counted, not
+// named: the project's own output names only failures.
+
+const JasmineSummary = struct { specs: u32, failures: u32, pending: u32, end: usize };
+
+/// The last "N spec(s), M failure(s)[, K pending]" in `text`.
+fn jasmineSummary(text: []const u8) ?JasmineSummary {
+    var pos: usize = text.len;
+    while (std.mem.lastIndexOf(u8, text[0..pos], " spec")) |at| : (pos = at) {
+        var start = at;
+        while (start > 0 and std.ascii.isDigit(text[start - 1])) start -= 1;
+        if (start == at) continue;
+        const specs = std.fmt.parseInt(u32, text[start..at], 10) catch continue;
+        var rest = text[at + " spec".len ..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        if (!std.mem.startsWith(u8, rest, ", ")) continue;
+        rest = rest[2..];
+        const failures = leadingNumber(rest) orelse continue;
+        var n: usize = 0;
+        while (n < rest.len and std.ascii.isDigit(rest[n])) n += 1;
+        rest = rest[n..];
+        if (!std.mem.startsWith(u8, rest, " failure")) continue;
+        rest = rest[" failure".len..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        var pending: u32 = 0;
+        if (std.mem.startsWith(u8, rest, ", ")) if (leadingNumber(rest[2..])) |p| {
+            pending = @intCast(p);
+        };
+        const end = (text.len - rest.len);
+        return .{ .specs = specs, .failures = @intCast(failures), .pending = pending, .end = end };
+    }
+    return null;
+}
+
+/// The run has ended: its summary is in the console's output.
+pub fn jasmineEnded(arena: Allocator, output: []const u8) !bool {
+    return jasmineSummary(try stripAnsi(arena, output)) != null;
+}
+
+/// A page's result from the Jasmine console reporter's output: the failed
+/// specs by name with their first message; the passed and pending ones as
+/// counts.
+pub fn parseJasmineConsole(arena: Allocator, output: []const u8) ParseError!PageResult {
+    const text = try stripAnsi(arena, output);
+    const summary = jasmineSummary(text) orelse return error.BadReport;
+    var tests: std.ArrayList(Reported) = .empty;
+    // The failures block of the same report: the last "Failures:" before
+    // the summary.
+    const head = text[0..summary.end];
+    if (std.mem.lastIndexOf(u8, head, "\nFailures:\n")) |at| {
+        var it = std.mem.splitScalar(u8, head[at + "\nFailures:\n".len ..], '\n');
+        var current: ?usize = null;
+        var expected: u32 = 1;
+        while (it.next()) |line| {
+            // "N) <full name>", numbered from 1 in order.
+            const num = std.fmt.allocPrint(arena, "{d}) ", .{expected}) catch return error.OutOfMemory;
+            if (std.mem.startsWith(u8, line, num)) {
+                const name = line[num.len..];
+                try tests.append(arena, .{ .module = "", .name = name, .id = name, .status = .FAIL });
+                current = tests.items.len - 1;
+                expected += 1;
+                continue;
+            }
+            if (current) |i| if (tests.items[i].message == null and std.mem.startsWith(u8, line, "   ")) {
+                const m = std.mem.trim(u8, line, " \t");
+                if (m.len > 0) tests.items[i].message = m;
+            };
+        }
+    }
+    for (tests.items) |*t| if (t.message == null) {
+        t.message = "(no failed expectation shown)";
+    };
+    const passed = summary.specs -| summary.failures -| summary.pending;
+    return .{
+        .tests = tests.items,
+        .defined = &.{},
+        .reported_total = summary.specs,
+        .reported_failed = summary.failures,
+        .finished = true,
+        .errors = &.{},
+        .resources = &.{},
+        .user_agent = "",
+        .unnamed_passed = passed,
+        .unnamed_pending = summary.pending,
+    };
+}
+
+const jasmine_output =
+    "Jasmine randomize seed: 41\n" ++
+    "\x1b[32m.\x1b[39m\x1b[32m.\x1b[39m\x1b[31mF\x1b[39m\x1b[33m*\x1b[39m\x1b[32m.\x1b[39m\n\n" ++
+    "Failures:\n" ++
+    "1) HttpClient should send a request\n" ++
+    "\x1b[31m   Expected 1 to be 2.\n\x1b[39m   Error: Expected 1 to be 2.\n    at <Jasmine>\n\n" ++
+    "5 specs, 1 failure, 1 pending\n";
+
+test "Jasmine's console reporter: the failures by name with their message, the passes and pending as counts" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    try testing.expect(try jasmineEnded(a, jasmine_output));
+    try testing.expect(!try jasmineEnded(a, jasmine_output[0..60]));
+    const r = try parseJasmineConsole(a, jasmine_output);
+    try testing.expectEqual(@as(usize, 1), r.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", r.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", r.tests[0].message.?);
+    try testing.expectEqual(@as(?u32, 5), r.reported_total);
+    try testing.expectEqual(@as(?u32, 1), r.reported_failed);
+    try testing.expectEqual(@as(u32, 3), r.unnamed_passed);
+    try testing.expectEqual(@as(u32, 1), r.unnamed_pending);
+    // Singular and plural, no pending.
+    const one = try parseJasmineConsole(a, "1 spec, 0 failures\n");
+    try testing.expectEqual(@as(u32, 1), one.unnamed_passed);
+    try testing.expectEqual(@as(usize, 0), one.tests.len);
+    try testing.expectError(error.BadReport, parseJasmineConsole(a, "no summary here"));
 }

@@ -183,6 +183,9 @@ pub fn main(init: std.process.Init) !void {
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
         const root = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.need("frameworks-dir"), try manifest.treeName(arena, s) });
         const port: u16 = if (args.get("port")) |p| std.fmt.parseInt(u16, p, 10) catch fail("--port={s}", .{p}) else 8000;
+        if (s.server) |es| if (manifest.serverPerPage(es)) {
+            fail("serve: each page of {s} starts its own server (its Bazel target); run one page with `fw_matrix run --suite={s} --pages=<id>`", .{ s.id, s.id });
+        };
         if (s.server) |es| {
             // The project's own server, as a run starts it.
             const node_dir = try fetch.nodeDirChecked(arena, io, args.need("frameworks-dir"), s.node.?);

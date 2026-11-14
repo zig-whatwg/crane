@@ -1,0 +1,7 @@
+# Angular 22.2.6's own browser tests (frameworks.zon `angular-jasmine`): the
+# tests not run, each with its reason (tools/fw_matrix/exclusions.zig
+# documents the format).
+#
+# None is listed. web-test-runner's page takes no filter, so every spec of a
+# target runs; Jasmine's console reporter names only the failures, and a
+# failure whose assertion needs layout is said so where it is reported.

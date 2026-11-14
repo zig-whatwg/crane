@@ -71,6 +71,15 @@ pub const Totals = struct {
     stopped: bool = false,
 };
 
+/// What a page needs to start its own server: the fetched Bazel, its
+/// environment, and the tree it runs in.
+const PerPage = struct {
+    server: manifest.ExternalServer,
+    bazel: [2][]const u8,
+    environ: *const std.process.Environ.Map,
+    tree_abs: []const u8,
+};
+
 const Shared = struct {
     gpa: Allocator,
     io: Io,
@@ -82,6 +91,9 @@ const Shared = struct {
     port: u16,
     /// The project's own server, when it serves the pages.
     server: ?journal.ServerInfo,
+    /// A server per page (the project's own Bazel target for each page):
+    /// started by the page itself.
+    per_page: ?PerPage = null,
     journal_file: Io.File,
     mutex: Io.Mutex = .init,
     next: std.atomic.Value(usize) = .init(0),
@@ -174,7 +186,23 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         s.stop();
         std.debug.print("fw_matrix: {s}: its server stopped\n", .{suite.id});
     };
-    if (suite.server) |s| {
+    var per_page: ?PerPage = null;
+    if (suite.server) |s| if (manifest.serverPerPage(s)) {
+        // Each page starts the project's own target that serves it (Angular:
+        // `bazel run <target>_debug`, web-test-runner's manual mode).
+        const bz = suite.bazel.?; // manifest.validate: "{bazel}" needs a Bazel
+        const frameworks_abs = try Io.Dir.cwd().realPathFileAlloc(io, config.frameworks_dir, arena);
+        const bazelisk = try fetch.fetchBazelisk(gpa, arena, io, frameworks_abs, bz);
+        const env = try arena.create(std.process.Environ.Map);
+        env.* = try fetch.bazelEnviron(arena, config.environ, frameworks_abs, bz);
+        const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, tree, arena);
+        const lock = Io.Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(arena, "{s}/MODULE.bazel.lock", .{tree_abs}), arena, .limited(64 << 20)) catch "";
+        per_page = .{ .server = s, .bazel = try fetch.bazelArgv(arena, bazelisk, frameworks_abs), .environ = env, .tree_abs = tree_abs };
+        host = s.host;
+        server_info = .{ .name = s.name, .bazel = bz.version, .bazel_lock_sha256 = try arena.dupe(u8, &fetch.sha256Hex(lock)) };
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), each served by its own target ({s}, Bazel {s}) from {s}\n", .{ suite.id, suite.title, suite.version, pages.items.len, s.name, bz.version, tree });
+    };
+    if (per_page != null) {} else if (suite.server) |s| {
         const node = suite.node.?; // manifest.validate: a server needs Node
         const node_dir = try fetch.nodeDirChecked(arena, io, config.frameworks_dir, node);
         const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, tree, arena);
@@ -210,6 +238,7 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         .host = host,
         .port = port,
         .server = server_info,
+        .per_page = per_page,
         .journal_file = journal_file,
         .pages = pages.items,
         .totals = totals,
@@ -219,6 +248,21 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
     const n = @min(n_workers, threads.len);
     for (threads[0..n]) |*t| t.* = try std.Thread.spawn(.{}, worker, .{&shared});
     for (threads[0..n]) |t| t.join();
+}
+
+/// A per-page server's command: "{bazel}" becomes the fetched Bazel (two
+/// arguments: bazelisk and its output root), "{target}" the page's target;
+/// "{port}" is left for the server's start.
+pub fn pageServerArgv(arena: Allocator, argv: []const []const u8, bazel: [2][]const u8, target: []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, manifest.bazel_placeholder)) {
+            try out.appendSlice(arena, &bazel);
+            continue;
+        }
+        try out.append(arena, try std.mem.replaceOwned(u8, arena, arg, manifest.target_placeholder, target));
+    }
+    return out.items;
 }
 
 /// The suite's overlays as the server takes them (directories relative to
@@ -301,11 +345,15 @@ const ConsoleEnd = struct {
 const Waiter = external.Waiter;
 const signalGroup = external.signalGroup;
 
+/// When the harness ends a console whose page's report is its console
+/// output: a browser that never exits by itself, once its stderr holds the
+/// end of QUnit's TAP; Crane's console on a Jasmine page, once its stdout
+/// holds Jasmine's summary.
+const Until = enum { exit, tap_on_stderr, jasmine_on_stdout };
+
 /// One console: `argv`, `input` on its stdin (then closed), its output to
-/// the two files; ended by the harness at `deadline_ms`, or - `until_tap_end`,
-/// a browser that never exits by itself - once its stderr holds the end of
-/// QUnit's TAP.
-fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until_tap_end: bool) !ConsoleEnd {
+/// the two files; ended by the harness at `deadline_ms`, or as `until` says.
+fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until: Until) !ConsoleEnd {
     const out_file = try Io.Dir.cwd().createFile(io, out_path, .{});
     defer out_file.close(io);
     const err_file = try Io.Dir.cwd().createFile(io, err_path, .{});
@@ -336,11 +384,16 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
             stopped = true;
             break;
         } else |_| {};
-        if (until_tap_end) {
+        if (until != .exit) {
             var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
             defer arena_state.deinit();
-            const log = Io.Dir.cwd().readFileAlloc(io, err_path, arena_state.allocator(), .limited(1 << 30)) catch "";
-            if (readers.tapEnded(arena_state.allocator(), log) catch false) {
+            const a = arena_state.allocator();
+            const ended = switch (until) {
+                .exit => unreachable,
+                .tap_on_stderr => readers.tapEnded(a, Io.Dir.cwd().readFileAlloc(io, err_path, a, .limited(1 << 30)) catch "") catch false,
+                .jasmine_on_stdout => readers.jasmineEnded(a, Io.Dir.cwd().readFileAlloc(io, out_path, a, .limited(1 << 30)) catch "") catch false,
+            };
+            if (ended) {
                 at_end = true;
                 break;
             }
@@ -403,7 +456,27 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     const page_entries = try exclusions.forPage(arena, shared.entries, page.module, &all_kinds);
     const applied = if (config.no_exclusions) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
     const query = try exclusions.filterQuery(arena, suite.reader, applied);
-    const url = try std.fmt.allocPrint(arena, "http://{s}:{d}/{s}", .{ shared.host, shared.port, try exclusions.withQuery(arena, page.path, query) });
+    // A page served by its own target: the project's server for it, started
+    // now and stopped when the page ends.
+    var port = shared.port;
+    var page_server: ?*external.External = null;
+    defer if (page_server) |srv| srv.stop();
+    var server_info = shared.server;
+    if (shared.per_page) |pp| {
+        const target = page.target.?; // manifest.validate
+        page_server = try external.External.start(gpa, io, .{
+            .argv = try pageServerArgv(arena, pp.server.argv, pp.bazel, target),
+            .cwd = pp.tree_abs,
+            .environ = pp.environ,
+            .ready_path = pp.server.ready_path,
+            .ready_ms = @as(u64, pp.server.ready_s) * 1000,
+            .log_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}-server.log", .{ config.out_dir, suite.id, page.id }),
+            .pid_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}-server.pid", .{ config.out_dir, suite.id, page.id }),
+        });
+        port = page_server.?.port();
+        if (server_info) |*si| si.target = target;
+    }
+    const url = try std.fmt.allocPrint(arena, "http://{s}:{d}/{s}", .{ shared.host, port, try exclusions.withQuery(arena, page.path, query) });
 
     const budget_ms: u64 = @as(u64, suite.page_budget_s) * 1000;
     const stall_ms: u64 = @as(u64, suite.page_stall_s) * 1000;
@@ -422,9 +495,9 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         try std.fmt.allocPrint(arena, "--user-data-dir={s}", .{profile}), url,
     };
     const end = if (config.browser != null)
-        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, true)
+        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, .tap_on_stderr)
     else
-        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, false);
+        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, if (suite.reader == .jasmine_console) .jasmine_on_stdout else .exit);
     if (end.stopped) {
         shared.mutex.lockUncancelable(io);
         defer shared.mutex.unlock(io);
@@ -434,8 +507,10 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     }
 
     const output = Io.Dir.cwd().readFileAlloc(io, out_path, arena, .limited(2 << 30)) catch "";
-    const result_json = if (config.browser != null) null else readers.findResult(output);
-    const result: ?readers.PageResult = if (config.browser != null) blk: {
+    const result_json = if (config.browser != null or suite.reader == .jasmine_console) null else readers.findResult(output);
+    const result: ?readers.PageResult = if (suite.reader == .jasmine_console and config.browser == null)
+        readers.parseJasmineConsole(arena, output) catch null
+    else if (config.browser != null) blk: {
         const log = Io.Dir.cwd().readFileAlloc(io, err_path, arena, .limited(2 << 30)) catch "";
         const r = readers.parseChromeTap(arena, log) catch break :blk null;
         break :blk if (r.tests.len == 0 and r.reported_total == null) null else r;
@@ -582,8 +657,10 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .console_errors = console_errors.items,
         .loaded = loaded.items,
         .message = if (problems.items.len > 0) try std.mem.join(arena, "; ", problems.items) else null,
-        .server = shared.server,
+        .server = server_info,
         .browser = config.browser,
+        .unnamed_passed = if (result) |r| (if (r.unnamed_passed > 0) r.unnamed_passed else null) else null,
+        .unnamed_pending = if (result) |r| (if (r.unnamed_pending > 0) r.unnamed_pending else null) else null,
     };
 
     var buf: Io.Writer.Allocating = .init(arena);
@@ -604,6 +681,15 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
 }
 
 const testing = std.testing;
+
+test "a page's own server: the fetched Bazel and the page's target in the project's command; the port left to the start" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const argv = try pageServerArgv(arena_state.allocator(), &.{ "{bazel}", "run", "{target}", "--", "--port", "{port}" }, .{ "/f/bazelisk-1.30.0-darwin-arm64/bazelisk", "--output_user_root=/f/bazel-root" }, "//packages/common/http/test:test_web_debug");
+    const want = [_][]const u8{ "/f/bazelisk-1.30.0-darwin-arm64/bazelisk", "--output_user_root=/f/bazel-root", "run", "//packages/common/http/test:test_web_debug", "--", "--port", "{port}" };
+    try testing.expectEqual(want.len, argv.len);
+    for (want, argv) |w, a| try testing.expectEqualStrings(w, a);
+}
 
 test "definedForPage: a module page's tests, compared lower-cased" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
@@ -632,13 +718,13 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const err = try std.fmt.allocPrint(testing.allocator, "{s}/c.err", .{dir});
     defer testing.allocator.free(err);
 
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, false);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, .exit);
     try testing.expect(e.clean());
     const got = try tmp.dir.readFileAlloc(testing.io, "c.out", testing.allocator, .limited(100));
     defer testing.allocator.free(got);
     try testing.expectEqualStrings("{}", readers.findResult(got).?);
 
-    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, false);
+    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, .exit);
     try testing.expect(hung.killed);
     try testing.expect(!hung.clean());
 
@@ -646,7 +732,7 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const stop = try std.fmt.allocPrint(testing.allocator, "{s}/STOP", .{dir});
     defer testing.allocator.free(stop);
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "STOP", .data = "" });
-    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, false);
+    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, .exit);
     try testing.expect(stopped.stopped);
     try testing.expect(stopped.wall_ms < 20_000);
 }
@@ -662,11 +748,11 @@ test "a browser that never exits: ended once its stderr holds the end of QUnit's
     defer testing.allocator.free(err);
     // Prints the TAP end, then keeps running as Chrome does.
     const script = "printf '[1:INFO:CONSOLE:1] \"1..1\", source: x (1)\\n[1:INFO:CONSOLE:1] \"# fail 0\", source: x (1)\\n' >&2; while :; do sleep 0.1; done";
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, true);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, .tap_on_stderr);
     try testing.expect(e.at_end);
     try testing.expect(e.clean());
     try testing.expect(e.wall_ms < 15_000);
     // Without the end it runs to its deadline, and that is not clean.
-    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, true);
+    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, .tap_on_stderr);
     try testing.expect(!cut.at_end and !cut.clean());
 }

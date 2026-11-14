@@ -304,6 +304,20 @@ fn fetchTree(gpa: Allocator, arena: Allocator, io: Io, f: manifest.Suite, tree: 
         _ = try npmInstall(gpa, arena, io, &env, node_dir.?, tree_abs, n);
     }
 
+    // The project's own Bazel builds every page's target (Angular: its
+    // web-test-runner debug targets), so a run only starts them.
+    if (f.bazel) |bz| {
+        const frameworks_abs = try Io.Dir.cwd().realPathFileAlloc(io, std.fs.path.dirname(tree) orelse ".", arena);
+        const bazelisk = try fetchBazelisk(gpa, arena, io, frameworks_abs, bz);
+        const env = try bazelEnviron(arena, environ, frameworks_abs, bz);
+        const start = try bazelArgv(arena, bazelisk, frameworks_abs);
+        var argv: std.ArrayList([]const u8) = .empty;
+        try argv.appendSlice(arena, &start);
+        try argv.appendSlice(arena, &.{ "build", try std.fmt.allocPrint(arena, "--jobs={d}", .{bz.jobs}) });
+        for (f.pages) |p| if (p.target) |t| try argv.append(arena, t);
+        try runIn(gpa, io, &env, try Io.Dir.cwd().realPathFileAlloc(io, tree, arena), argv.items);
+    }
+
     // Written last: a fetch that failed above is redone in full.
     try dir.writeFile(io, .{ .sub_path = stamp_name, .data = &want });
 }
@@ -405,6 +419,68 @@ pub fn nodeDirChecked(arena: Allocator, io: Io, frameworks_dir: []const u8, node
     };
     if (!std.mem.eql(u8, std.mem.trim(u8, have, " \n"), archive.sha256)) return error.StaleFetch;
     return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
+}
+
+// ---------------------------------------------------------------------------
+// Bazel, for a suite the project builds and serves with it (Angular):
+//
+//   <frameworks>/bazelisk-<version>-<platform>/bazelisk   the pinned bazelisk
+//   <frameworks>/bazelisk-home/                          the Bazel it fetches
+//   <frameworks>/bazel-root/                             Bazel's output root
+//
+// bazelisk checks the Bazel binary it fetches against BAZELISK_VERIFY_SHA256
+// (the manifest's pin for the host); Bazel's own downloads are the
+// project's pins (its MODULE.bazel.lock).
+
+pub fn bazelRoot(arena: Allocator, frameworks_abs: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(arena, "{s}/bazel-root", .{frameworks_abs});
+}
+
+/// The pinned bazelisk for the host, downloaded once; its absolute path.
+pub fn fetchBazelisk(gpa: Allocator, arena: Allocator, io: Io, frameworks_dir: []const u8, bz: manifest.Bazel) ![]const u8 {
+    const platform = hostNodePlatform() orelse return error.NoBazelForHost;
+    const archive = for (bz.bazelisk) |a| {
+        if (std.mem.eql(u8, a.platform, platform)) break a;
+    } else {
+        std.debug.print("fw_matrix: the manifest pins no bazelisk for {s}\n", .{platform});
+        return error.NoBazelForHost;
+    };
+    const dir_path = try std.fmt.allocPrint(arena, "{s}/bazelisk-{s}-{s}", .{ frameworks_dir, bz.bazelisk_version, platform });
+    const path = try std.fmt.allocPrint(arena, "{s}/bazelisk", .{dir_path});
+    const stamp_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ dir_path, stamp_name });
+    if (Io.Dir.cwd().readFileAlloc(io, stamp_path, arena, .limited(256))) |have| {
+        if (std.mem.eql(u8, std.mem.trim(u8, have, " \n"), archive.sha256)) return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
+    } else |_| {}
+    const downloads = try std.fmt.allocPrint(arena, "{s}/downloads", .{frameworks_dir});
+    try Io.Dir.cwd().createDirPath(io, downloads);
+    try Io.Dir.cwd().createDirPath(io, dir_path);
+    const bytes = try obtain(gpa, io, downloads, archive.url, archive.sha256, null);
+    defer gpa.free(bytes);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes, .flags = .{ .permissions = .executable_file } });
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = archive.sha256 });
+    std.debug.print("fw_matrix: bazelisk {s} ({s}) from {s}\n", .{ bz.bazelisk_version, platform, archive.url });
+    return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
+}
+
+/// The environment bazelisk runs in: the parent's, its home under the
+/// frameworks directory, and the Bazel binary's pin for the host.
+pub fn bazelEnviron(arena: Allocator, parent: ?*const std.process.Environ.Map, frameworks_abs: []const u8, bz: manifest.Bazel) !std.process.Environ.Map {
+    const platform = hostNodePlatform() orelse return error.NoBazelForHost;
+    const pin = manifest.BinaryPin.find(bz.binaries, platform) orelse {
+        std.debug.print("fw_matrix: the manifest pins no Bazel {s} binary for {s}\n", .{ bz.version, platform });
+        return error.NoBazelForHost;
+    };
+    var env: std.process.Environ.Map = .init(arena);
+    if (parent) |p| try env.putAll(p);
+    try env.put("BAZELISK_HOME", try std.fmt.allocPrint(arena, "{s}/bazelisk-home", .{frameworks_abs}));
+    try env.put("BAZELISK_VERIFY_SHA256", pin.sha256);
+    return env;
+}
+
+/// The command line that starts the fetched Bazel: bazelisk and its output
+/// root (a startup option, before the command).
+pub fn bazelArgv(arena: Allocator, bazelisk: []const u8, frameworks_abs: []const u8) ![2][]const u8 {
+    return .{ bazelisk, try std.fmt.allocPrint(arena, "--output_user_root={s}", .{try bazelRoot(arena, frameworks_abs)}) };
 }
 
 pub const node_modules_stamp = ".fw_matrix-node-modules";
