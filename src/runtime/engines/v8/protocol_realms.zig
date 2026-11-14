@@ -14,10 +14,10 @@ const engine = @import("engine");
 const ffi = @import("ffi.zig");
 const context_manager = @import("context_manager.zig");
 const interface_bindings = @import("interface_bindings.zig");
-const dom_type_info = @import("dom_type_info.zig");
 const window_properties = @import("window_properties.zig");
 const WrapperCache = @import("wrapper_cache.zig").WrapperCache;
 const realm_v8 = @import("realm_v8.zig");
+const realm_global = @import("realm_global.zig");
 const template_registry = @import("template_registry.zig");
 const page_realm = @import("page_realm.zig");
 const protocol_agents = @import("protocol_agents.zig");
@@ -61,20 +61,35 @@ const WindowRealmState = struct {
     /// An auxiliary navigable's realm (WindowRealmOptions.auxiliary): a realm
     /// built around its parent's WindowProxy adopts it.
     auxiliary: bool = false,
+    /// The realm's Window is its page's top-level one - a top-level
+    /// traversable's, an auxiliary one's included (a popup is the main frame
+    /// of its own page) - never a child navigable's: Blink's
+    /// LocalFrame::IsMainFrame. Fixed at the realm's making: a top-level
+    /// realm a later realm adopts (`parent` is set then) stays one. It
+    /// decides what the realm's end tells V8 (`endRealm` step 4).
+    top_level: bool,
     /// The realms made with this one as their parent that have not ended:
     /// they end first when this one does.
     children: std.ArrayListUnmanaged(Context) = .empty,
+    /// A realm made around this one's WindowProxy whose replacement has not
+    /// committed yet: this realm's auxiliary children (window.open's popups)
+    /// pass to it when this realm's document goes (`destroyWindowRealm`
+    /// .global_detached, `passAuxiliaryChildren`), not when it is made - a
+    /// navigation abandoned before its document exists ends only its new
+    /// realm, and the popups stay with this one. Cleared when either ends.
+    successor: ?Context = null,
+    /// The realm whose WindowProxy this one was made around, while that
+    /// realm's auxiliary children have not passed here yet (`successor`).
+    predecessor: ?Context = null,
+    /// Room in `children` kept, from this realm's making, for the
+    /// predecessor's auxiliary children: an append of any other child
+    /// leaves it, so their pass cannot fail.
+    reserved_for_predecessor: usize = 0,
     /// The realm's Window, which the host made (create_global_object), and
     /// its slab generation then: the realm's end gives the Window's slot
     /// back only while it is still that Window's (`endRealm` step 5).
     window: ?*engine.Instance = null,
     window_generation: u64 = 0,
-    /// This realm's global object, once its WindowProxy went on to a later
-    /// realm (window_proxy_handed_on): held weakly - empty once V8 collects
-    /// it - to sever it from this realm's Window at the end. A function of
-    /// this realm that script still holds looks its globals up on it, and the
-    /// WindowProxy no longer reaches it.
-    retired_global: ?*ffi.Value = null,
     /// The realm is detached (`detach`) - its navigable was destroyed, or a
     /// navigation replaced its document: it lives on for as long as script
     /// reaches it, and ends once the collector takes it.
@@ -105,7 +120,8 @@ const Detached = struct {
     }
 };
 
-/// The private key of the array on a detached realm's global object that
+/// The private key of the array on a detached realm's retained store (the
+/// store its global's GlobalAnchor traces, realm_global.retainedStore) that
 /// keeps its callbacks (WrapperCache.detach keeps its wrappers in the same).
 const retained_key = "crane:retained";
 
@@ -242,6 +258,16 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             state.context_entered = true;
         }
     };
+    // ORDER (lane v8up b3e): the hand-on below - handOn and Context::DetachGlobal of the old realm - comes
+    // BEFORE every fallible step that follows (the context, the realm record, the host's Window, its
+    // binding, the realm state and lists), because V8's Context::New / FromSnapshot take a global proxy only
+    // once it is detached, and V8 has no API that attaches a global to a context again. So a failure after
+    // this point (out of memory) leaves the old realm alive and its Window active - the host keeps them
+    // (HTMLIFrameElement replaceRealm) - but its WindowProxy reaching no Window until the next realm made
+    // around it: script sees a proxy with no global (member reads throw V8's TypeError "no access": a detached
+    // proxy has no access-check info; the errdefer below detaches a failed context's global so that every failure
+    // point leaves this one state). Failure-atomic creation (every
+    // fallible allocation before the detach) is queued as its own realm-lifetime work (the v8up handoff).
     switch (options.global_this) {
         .new_window_proxy => {},
         .window_proxy_of => |old| {
@@ -249,11 +275,15 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
             reused_proxy = ffi.v8_Context_Global(old_context) orelse return error.OperationFailed;
             const old_state = realms.get(old);
             if (old_state == null or !old_state.?.window_proxy_handed_on) {
-                // The old global object, behind the proxy until the detach:
-                // the old realm's end severs it from its Window. V8's V1
-                // GetPrototype on a global proxy answers the hidden global
-                // object (only V1 SetPrototype must never be used on one).
-                if (old_state) |state| state.retired_global = retiredGlobalOf(reused_proxy.?);
+                // Blink LocalWindowProxy::DisposeContext
+                // (kGlobalObjectIsDetached, local_window_proxy.cc 171-235):
+                // step 2, the proxy's native info is cleared - the old
+                // hidden global object keeps its GlobalAnchor, and through it
+                // the old Window's retained store, for as long as anything of
+                // the old realm lives (no handle to it is kept: V8 >= 14 has
+                // none to give, crbug.com/333672197) - then step 4, the
+                // detach. This realm's attach wraps the proxy anew.
+                realm_global.handOn(old_context);
                 ffi.v8_Context_DetachGlobal(old_context);
             }
             if (old_state) |state| {
@@ -332,6 +362,15 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     var registered = false;
     errdefer {
         if (registered) context_manager.removeContext(context);
+        // A context made around the handed-on WindowProxy holds it: detach its global, so the proxy is
+        // left with no global, as after the hand-on alone (the ORDER comment above), and script holding it
+        // never reaches this half-made global, whose realm record is gone - a call into a binding there would
+        // make platform objects in a realm no Browser owns. Blink: a failed LocalWindowProxy::Initialize
+        // disposes the context it made, and DisposeContext detaches the global of a reused frame
+        // (local_window_proxy.cc). Before this, a failure after the context was made left the proxy on the
+        // half-made global: member reads gave undefined or a SecurityError, by how far the realm got
+        // (iframe_policy_container_oom_test, failing allocation 144 on chat2 and 143 on server1).
+        if (reused_proxy != null) ffi.v8_Context_DetachGlobal(context);
         ffi.v8_Context_Exit(context);
         ffi.v8_Context_Dispose(context);
     }
@@ -374,7 +413,6 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // (removeContext's Window), which must not find another realm's Window,
     // nor a field never set, which V8 refuses to read as a pointer.
     ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, null);
-    ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, null);
 
     // HTML "create a new realm", the customization for the global object:
     // the host's new Window, bound to `global` (BORROWED by the host).
@@ -394,42 +432,51 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
         .host = options.host,
         .parent = options.parent,
         .auxiliary = options.auxiliary and options.parent != null,
+        .top_level = options.parent == null or options.auxiliary,
         .window = window,
         .window_generation = runtime.SlabAllocator.generationOf(window),
         .allocator = allocator,
     };
     errdefer state.children.deinit(std.heap.c_allocator);
-    // Room for what follows the proxy (below), taken before the realm is
-    // recorded: nothing fails once it is.
+    // Room for what follows the proxy (below, and E2 at the replacement's
+    // commit), taken before the realm is recorded: nothing fails once it is.
+    var auxiliary_following: usize = 0;
     if (predecessor) |old_state| {
-        var following: usize = if (old_state.parent == null) 1 else 0;
         for (old_state.children.items) |child| {
             const child_state = realms.get(child) orelse continue;
-            if (child_state.auxiliary and child_state.detached == null) following += 1;
+            if (child_state.auxiliary and child_state.detached == null) auxiliary_following += 1;
         }
+        const following = auxiliary_following + @as(usize, if (old_state.parent == null) 1 else 0);
         state.children.ensureTotalCapacity(std.heap.c_allocator, following) catch return error.OutOfMemory;
     }
     const parent_state: ?*WindowRealmState = if (options.parent) |parent| realms.get(parent) else null;
-    if (parent_state) |ps| ps.children.append(std.heap.c_allocator, realm) catch return error.OutOfMemory;
+    if (parent_state) |ps| appendChild(ps, realm) catch return error.OutOfMemory;
     errdefer if (parent_state) |ps| removeChild(ps, realm);
     realms.put(std.heap.c_allocator, realm, state) catch return error.OutOfMemory;
 
     if (predecessor) |old_state| {
         // E2: the auxiliary navigables' realms - window.open's popups - the
-        // predecessor parented follow its WindowProxy here. HTML's top-level
-        // traversables are the user agent's, not their opener's Window: a
-        // popup outlives its opener's navigation. Frames stay: they are
-        // destroyed with the predecessor's document.
-        var i = old_state.children.items.len;
-        while (i > 0) {
-            i -= 1;
-            const child = old_state.children.items[i];
-            const child_state = realms.get(child) orelse continue;
-            if (!child_state.auxiliary or child_state.detached != null) continue;
-            _ = old_state.children.swapRemove(i);
-            child_state.parent = realm;
-            state.children.appendAssumeCapacity(child);
-        }
+        // predecessor parented follow its WindowProxy here, but only once
+        // the replacement commits: the predecessor's document goes
+        // (`destroyWindowRealm` .global_detached, `passAuxiliaryChildren`).
+        // HTML's top-level traversables are the user agent's, not their
+        // opener's Window: a popup outlives its opener's navigation ("close a
+        // top-level traversable" and "discard" end it; nothing in "navigate",
+        // "create and initialize a Document object" or "unload a document"
+        // does), and a navigation abandoned before its document exists ends
+        // only its own new realm (HTMLIFrameElement settleRealmReplacement),
+        // so moving them when this realm was made let that end take them too.
+        // Frames stay: they are destroyed with the predecessor's document.
+        state.reserved_for_predecessor = auxiliary_following;
+        state.predecessor = predecessor_realm;
+        // A successor an earlier replacement left (it ended, or never
+        // committed) has let go of this predecessor already (`endRealm`);
+        // one still recorded lets go now.
+        if (old_state.successor) |earlier| if (realms.get(earlier)) |earlier_state| {
+            earlier_state.predecessor = null;
+            earlier_state.reserved_for_predecessor = 0;
+        };
+        old_state.successor = realm;
         // E1: a top-level predecessor's page is this realm now: detached by
         // its navigation (destroyWindowRealm .global_detached, as a frame's),
         // it ends when the collector takes it or when this realm ends.
@@ -455,8 +502,10 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
 }
 
 /// Where `window`'s traced edges hang (protocol_tracing.zig): its realm's
-/// global object - never the WindowProxy, which a navigation hands to the
-/// next Window.
+/// retained store, which its global's GlobalAnchor traces - so they live
+/// exactly while its global object does - never the WindowProxy, which a
+/// navigation hands to the next Window (Blink: LocalDOMWindow's members are
+/// traced from the global's CppHeap pointer, design 2.2).
 pub const TracedEdgeHolder = union(enum) {
     /// `window` is no Window of a realm made here: its wrapper is an
     /// ordinary one.
@@ -464,9 +513,9 @@ pub const TracedEdgeHolder = union(enum) {
     /// Its global object is gone (collected after its WindowProxy went on)
     /// or unreachable: no edge.
     gone,
-    /// The global object, as a Global the caller releases
+    /// The retained store, as a Global the caller releases
     /// (v8_Global_Dispose).
-    global_object: *ffi.Value,
+    retained_store: *ffi.Value,
 };
 
 pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
@@ -476,81 +525,10 @@ pub fn tracedEdgeHolderOfWindow(window: *engine.Instance) TracedEdgeHolder {
     const is_window = std.mem.eql(u8, window.vtable.name, "Window");
     const state = stateOf(window.ctx) orelse return if (is_window) .gone else .not_a_realm_window;
     if (state.window != window) return if (is_window) .gone else .not_a_realm_window;
-    // Its WindowProxy went on to a later realm: the global object it had is
-    // the one createWindowRealm kept (weakly) as `retired_global`.
-    if (state.window_proxy_handed_on) {
-        const retired = state.retired_global orelse return .gone;
-        if (ffi.v8_Global_IsEmpty(retired) or !ffi.v8_Value_IsObject(retired)) return .gone;
-        return .{ .global_object = ffi.v8_Global_Clone(retired) orelse return .gone };
-    }
-    const context = contextOf(window.ctx) orelse return .gone;
-    const proxy = ffi.v8_Context_Global(context) orelse return .gone;
-    defer ffi.v8_Object_Dispose(proxy);
-    // V8's V1 GetPrototype on a global proxy answers the hidden global object.
-    const global = ffi.v8_Object_GetPrototype(proxy) orelse return .gone;
-    if (!ffi.v8_Value_IsObject(global)) {
-        ffi.v8_Global_Dispose(global);
-        return .gone;
-    }
-    return .{ .global_object = global };
-}
-
-/// `proxy`'s hidden global object, as a weak handle (empty once collected).
-fn retiredGlobalOf(proxy: *ffi.Object) ?*ffi.Value {
-    const value = ffi.v8_Object_GetPrototype(proxy) orelse return null;
-    if (!ffi.v8_Value_IsObject(value)) {
-        ffi.v8_Global_Dispose(value);
-        return null;
-    }
-    ffi.v8_Global_SetWeak(@ptrCast(value), null, &retiredGlobalCollected);
-    return value;
-}
-
-/// A retired global object was collected: its weak handle is empty now,
-/// which is all the realm's end needs to know.
-fn retiredGlobalCollected(_: ?*anyopaque, _: usize) callconv(.c) void {}
-
-/// Clear `window` from `global` and the prototype objects behind it (the
-/// placeholder, WindowProperties) before the Window is freed: a Window member
-/// read through them is then an illegal invocation, not a read of freed
-/// memory.
-fn severWindow(global: *ffi.Object, window: *engine.Instance) void {
-    clearWindowField(global, window);
-    var links: [3]?*ffi.Value = .{ null, null, null };
-    defer for (links) |link| {
-        if (link) |value| ffi.v8_Value_Dispose(value);
-    };
-    var current: *ffi.Object = global;
-    for (&links) |*slot| {
-        const proto = ffi.v8_Object_GetPrototypeV2(current) orelse return;
-        slot.* = proto;
-        if (!ffi.v8_Value_IsObject(proto)) return;
-        const object: *ffi.Object = @ptrCast(proto);
-        clearWindowField(object, window);
-        current = object;
-    }
-}
-
-/// Sever `context`'s WindowProxy and the global object behind it - both
-/// carry the Window in field 0 - from `window`, which is being freed while
-/// the global stays attached (engine.WindowRealmEnd.navigable_destroyed).
-/// Only compares `window`; never reads it.
-fn severAttachedGlobal(context: *ffi.Context, window: *engine.Instance) void {
-    const proxy = ffi.v8_Context_Global(context) orelse return;
-    defer ffi.v8_Object_Dispose(proxy);
-    severWindow(proxy, window);
-    // V1 GetPrototype on a global proxy answers the hidden global object,
-    // which V2 (severWindow's walk) steps over.
-    const global = ffi.v8_Object_GetPrototype(proxy) orelse return;
-    defer ffi.v8_Global_Dispose(global);
-    if (ffi.v8_Value_IsObject(global)) severWindow(@ptrCast(global), window);
-}
-
-fn clearWindowField(object: *ffi.Object, window: *engine.Instance) void {
-    if (ffi.v8_Object_InternalFieldCount(object) < 1) return;
-    const ptr = ffi.v8_Object_GetAlignedPointerFromInternalField(object, 0) orelse return;
-    if (@intFromPtr(ptr) != @intFromPtr(window)) return;
-    ffi.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
+    // The store of this realm's own anchor - after a hand-on too: the
+    // context's entry keeps the anchor the realm was attached with, which
+    // reads gone once its global object is collected.
+    return .{ .retained_store = realm_global.retainedStore(window.ctx) orelse return .gone };
 }
 
 fn removeChild(state: *WindowRealmState, child: Context) void {
@@ -559,6 +537,61 @@ fn removeChild(state: *WindowRealmState, child: Context) void {
         _ = state.children.swapRemove(i);
         return;
     }
+}
+
+/// Add `child` to `state`'s children, leaving the room kept for the
+/// predecessor's auxiliary children (`reserved_for_predecessor`).
+fn appendChild(state: *WindowRealmState, child: Context) error{OutOfMemory}!void {
+    try state.children.ensureUnusedCapacity(std.heap.c_allocator, 1 + state.reserved_for_predecessor);
+    state.children.appendAssumeCapacity(child);
+}
+
+/// E2 at a realm replacement's commit (`createWindowRealm` says why): the
+/// auxiliary children of `state`'s realm - its popups' realms - pass to the
+/// realm made around its WindowProxy, before its document's end destroys
+/// what stays (`detach`). Each pass takes the room kept for it; a popup
+/// opened after the new realm was made, when the old Window was no longer
+/// active, finds none kept, and passes only if an append succeeds.
+fn passAuxiliaryChildren(realm: Context, state: *WindowRealmState) void {
+    const successor = state.successor orelse return;
+    state.successor = null;
+    const realms = realmsOf(realm) orelse return;
+    const next = realms.get(successor) orelse return;
+    defer {
+        next.predecessor = null;
+        next.reserved_for_predecessor = 0;
+    }
+    if (next.detached != null) return;
+    var i = state.children.items.len;
+    while (i > 0) {
+        i -= 1;
+        const child = state.children.items[i];
+        const child_state = realms.get(child) orelse continue;
+        if (!child_state.auxiliary or child_state.detached != null) continue;
+        if (next.reserved_for_predecessor > 0) {
+            next.reserved_for_predecessor -= 1;
+            next.children.appendAssumeCapacity(child);
+        } else {
+            next.children.append(std.heap.c_allocator, child) catch continue;
+        }
+        _ = state.children.swapRemove(i);
+        child_state.parent = successor;
+    }
+}
+
+/// A realm ending lets go of its replacement links (`successor`,
+/// `predecessor`): an abandoned replacement's new realm ends with its
+/// predecessor's popups still the predecessor's.
+fn unlinkReplacement(realms: *WindowRealms, state: *WindowRealmState) void {
+    if (state.successor) |successor| if (realms.get(successor)) |next| {
+        next.predecessor = null;
+        next.reserved_for_predecessor = 0;
+    };
+    if (state.predecessor) |predecessor| if (realms.get(predecessor)) |previous| {
+        previous.successor = null;
+    };
+    state.successor = null;
+    state.predecessor = null;
 }
 
 /// The agent's Window interface template, made and registered - EventTarget
@@ -655,13 +688,12 @@ fn bindWindowToGlobal(
     window: *engine.Instance,
     allocator: std.mem.Allocator,
 ) void {
-    // Internal field 0: the Window; 1: its type info.
-    ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(window));
-    // [wrap_tracking]: the global object reaches the Window from here.
-    runtime.instance_lifecycle.markWrapped(window);
-    if (dom_type_info.getTypeInfoByName("Window")) |type_info| {
-        ffi.v8_Object_SetAlignedPointerInInternalField(global, 1, @ptrCast(@constCast(type_info)));
-    }
+    // THE attach function (realm_global.attach): the Window in the global
+    // proxy's field 0 and a GlobalAnchor on the proxy and its hidden global
+    // object (Object::WrapGlobal) - Blink's SetupWindowPrototypeChain
+    // (local_window_proxy.cc 405-449), here for a fresh context and a
+    // restored one alike, as Blink's LocalWindowProxy::Initialize does.
+    realm_global.attach(context, window);
 
     // Cross-origin checks ask the context manager for an accessor's Window.
     context_manager.setWindowForContext(context, window) catch |err| {
@@ -710,8 +742,9 @@ fn bindWindowToGlobal(
     // (WebIDL 3.3.13): cookieStore, caches, showOpenFilePicker...
     interface_bindings.Window.hideSecureContextMembers(isolate, context, global);
 
-    // HTML 7.3.3, named access on the Window: WindowProperties on the chain.
-    _ = window_properties.insertIntoPrototypeChain(isolate, context, window);
+    // HTML 7.3.3, named access on the Window: WindowProperties on the chain,
+    // wrapped with the realm's anchor (Blink SetupWindowPrototypeChain 434-437).
+    _ = window_properties.insertIntoPrototypeChain(isolate, context);
 
     // `self` and `frames` are [Replaceable]: own data properties whose value
     // is the global itself, as their setter's [[DefineOwnProperty]] makes them
@@ -775,34 +808,15 @@ fn isEnding(ending_realms: ?*const EndingRealm, realm: Context) bool {
 /// with its page, whichever comes first (`endRealm`).
 pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     if (stateOf(realm)) |state| {
+        // A navigation replaced this realm's document and committed: its
+        // popups pass to the new realm first (E2, `passAuxiliaryChildren`).
+        if (how == .global_detached) passAuxiliaryChildren(realm, state);
         if (state.parent != null and state.detached == null) switch (how) {
             .navigable_destroyed => return detach(realm, state),
             .global_detached => if (state.window_proxy_handed_on) return detach(realm, state),
         };
     }
     endRealm(realm, how);
-}
-
-/// A realm's global object - the hidden one behind its WindowProxy - as a
-/// Global the caller releases (v8_Global_Dispose); null when it is gone. A
-/// realm whose WindowProxy went on to a later realm has it as
-/// `retired_global`: its context's global proxy reaches the LATER realm's
-/// global object now.
-fn hiddenGlobalOf(state: *const WindowRealmState, context: *ffi.Context) ?*ffi.Value {
-    if (state.window_proxy_handed_on) {
-        const retired = state.retired_global orelse return null;
-        if (ffi.v8_Global_IsEmpty(retired) or !ffi.v8_Value_IsObject(retired)) return null;
-        return ffi.v8_Global_Clone(retired);
-    }
-    const proxy = ffi.v8_Context_Global(context) orelse return null;
-    defer ffi.v8_Object_Dispose(proxy);
-    // V8's V1 GetPrototype on a global proxy answers the hidden global object.
-    const global = ffi.v8_Object_GetPrototype(proxy) orelse return null;
-    if (!ffi.v8_Value_IsObject(global)) {
-        ffi.v8_Global_Dispose(global);
-        return null;
-    }
-    return global;
 }
 
 /// HTML "destroy a child navigable" - or "destroy a document" for a document
@@ -853,9 +867,10 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     // How the realm ends if it cannot be detached: as before - a replaced
     // realm's proxy is already another realm's.
     const end_now: engine.WindowRealmEnd = if (state.window_proxy_handed_on) .global_detached else .navigable_destroyed;
-    // What keeps the realm's objects from now on: its global object. Gone
-    // already (a replaced realm's, collected), nothing reaches the realm.
-    const global = hiddenGlobalOf(state, context) orelse {
+    // What keeps the realm's objects from now on: its retained store, which
+    // its global object keeps through its GlobalAnchor. Gone already (a
+    // replaced realm's global, collected), nothing reaches the realm.
+    const global = realm_global.retainedStore(realm) orelse {
         if (stack) |top| top.* = ending.next;
         return endRealm(realm, end_now);
     };
@@ -878,7 +893,7 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     @import("callback_registry.zig").cleanupForContext(@ptrFromInt(key));
 
     // 2. No strong handle into the context is left: what the wrapper cache
-    // held strongly is kept from the global object now, and the intrinsics
+    // held strongly is kept from the retained store now, and the intrinsics
     // and the context handle are weak.
     if (realm.getV8WrapperCacheStorage()) |storage| {
         const cache: *WrapperCache = @ptrCast(@alignCast(storage));
@@ -887,12 +902,42 @@ fn detach(realm: Context, state: *WindowRealmState) void {
     if (realm.realm) |record_of_realm| realm_v8.weakenIntrinsics(record_of_realm);
     // The callbacks this realm's objects store - its targets' listeners and
     // event handlers, whatever realm their functions are of - are kept from
-    // the global object too: a listener a parent registered on a frame's
+    // the retained store too: a listener a parent registered on a frame's
     // object, closing over the frame, would otherwise keep it forever. Blink
     // traces each listener from its target.
     _ = ffi.v8_Object_WeakenTaggedHandles(global, key, retained_key.ptr, retained_key.len);
+    // The context is disposed, in Blink's sense, now: V8 is told while it is
+    // alive, before its handle goes weak.
+    notifyContextDisposed(state.isolate, context, state);
     ffi.v8_Context_SetWeak(context, record, realmCollected);
     state.detached = record;
+    // A navigation gave a MAIN frame's navigable a new Window - this realm's
+    // WindowProxy went on to it, so the frame is reused (Blink's
+    // WindowProxy::kFrameWillBeReused): the agent's next engine-task step
+    // collects the page that was left if it left much
+    // (navigation_collection.zig). Not a frame's realm, and not a realm
+    // whose navigable is gone - a closed page's ends in `endRealm`, a
+    // destroyed navigable's has handed nothing on.
+    if (state.top_level and state.window_proxy_handed_on) protocol_agents.oweNavigationCollection(state.isolate);
+}
+
+/// Tell V8 a Window realm's context is disposed, and whether it had
+/// dependants, as Blink does from LocalWindowProxy::DisposeContext
+/// (V8GCForContextDispose::NotifyContextDisposed, bindings/core/v8/
+/// v8_gc_for_context_dispose.cc: `is_main_frame ? kNoDependants :
+/// kSomeDependants`): a page's top-level realm has none - V8 takes its
+/// allocation limits back to their initial values, tells its memory reducer
+/// and aborts the context's WebAssembly compilations - and a child
+/// navigable's has some, its page living on - V8 runs a young collection by
+/// task. A realm with no state is told as a child's, which resets nothing.
+/// The context is entered for the call (ffi.v8_Isolate_
+/// ContextDisposedNotification): V8 takes the current context for the
+/// disposed one. Neither collects here: that a page's memory comes back when
+/// it goes is the host's memory-pressure notice (Browser,
+/// engine.notifyMemoryPressure).
+fn notifyContextDisposed(isolate: *ffi.Isolate, context: *ffi.Context, state: ?*WindowRealmState) void {
+    const has_dependants = if (state) |s| !s.top_level else true;
+    ffi.v8_Isolate_ContextDisposedNotification(isolate, context, has_dependants);
 }
 
 /// The collector took a detached realm's context (its weak handle's first
@@ -954,15 +999,15 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
     // removed frame's frames are destroyed navigables too.
     const realms = realmsOf(realm);
     if (stateOf(realm)) |s| {
+        // Its replacement links go first: an abandoned replacement's new
+        // realm ends with its predecessor's popups still the predecessor's.
+        if (realms) |r| unlinkReplacement(r, s);
         while (s.children.pop()) |child| endRealm(child, how);
         s.children.deinit(std.heap.c_allocator);
     }
     const state = if (realms) |r| (if (r.fetchRemove(realm)) |kv| kv.value else null) else null;
     const detached: ?*Detached = if (state) |s| s.detached else null;
-    defer if (state) |s| {
-        if (s.retired_global) |g| ffi.v8_Global_Dispose(g);
-        s.allocator.destroy(s);
-    };
+    defer if (state) |s| s.allocator.destroy(s);
     if (state) |s| if (s.parent) |parent| {
         if (realms.?.get(parent)) |ps| removeChild(ps, realm);
     };
@@ -984,36 +1029,26 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         page_realm.endWindowOperations(realm);
     }
 
-    // A global object whose WindowProxy went on to a later realm is not
-    // reached through the context any more: sever it from the Window the
-    // context manager is about to free.
-    if (state) |s| if (s.retired_global) |g| {
-        if (!ffi.v8_Global_IsEmpty(g) and ffi.v8_Value_IsObject(g)) {
-            if (s.window) |window| severWindow(@ptrCast(g), window);
-        }
-    };
-
     // Every engine object that still names the Window loses it BEFORE the
-    // context manager frees it (lane winslot1, E1/E2): the WindowProxy and
-    // the hidden global behind it - both carry the Window in field 0 - and
-    // the WindowProperties object on its prototype chain. It used to happen
-    // after, and only for a destroyed navigable: a realm ended with
-    // .global_detached and no hand-on - a top-level page, a retired frame
-    // realm - kept the Window in all three, and a getter of Window.prototype
-    // called on the detached proxy unwrapped it. Blink's DisposeContext
-    // clears the global's native info (V8DOMWrapper::ClearNativeInfo) before
-    // DetachGlobalObject. A proxy handed on to a later realm is that realm's
-    // (its field 0 is the later Window; this realm's own global object was
-    // severed above, through `retired_global`), and a collected context has
-    // no object left that script could reach.
+    // context manager frees it (lane winslot1, E1/E2; Blink's DisposeContext
+    // clears the global's native info, V8DOMWrapper::ClearNativeInfo, before
+    // DetachGlobalObject): the WindowProxy's field 0 while it still names this
+    // Window - a proxy handed on names the later realm's, and keeps it - and
+    // this realm's GlobalAnchor, which the hidden global object and the
+    // WindowProperties object are wrapped with (realm_global.clearInstance;
+    // the context manager clears the anchor again, by key, for a context the
+    // collector took). A realm ended with .global_detached and no hand-on - a
+    // top-level page, a retired frame realm - used to keep the Window there,
+    // and a getter of Window.prototype called on the detached proxy unwrapped
+    // it.
     if (state) |s| if (s.window) |window| {
-        if (!s.window_proxy_handed_on and isLive(context)) severAttachedGlobal(context, window);
+        if (isLive(context)) realm_global.clearInstance(context, window);
     };
 
     // 1. The context manager first: it tears down the Window, its document and
     // its frames, and retires the realm - which from here on has no engine
     // context, and may only be compared.
-    context_manager.removeContextByKey(key, if (isLive(context)) context else null);
+    context_manager.removeContextByKey(key);
     // 2. The context and its global proxy - the WindowProxy, which outlives
     // them - unless the collector took them already. A realm whose proxy went
     // on has nothing left to detach or sever through its context: the proxy
@@ -1042,9 +1077,13 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         else
             log.warn("a Window realm ended under another entered context; its context stays entered", .{});
     }
-    // 4. Tell V8 a context is garbage (forced: sequential pages must not pile
-    // up), and release the handle - a detached realm's weak arm with it.
-    _ = ffi.v8_Isolate_ContextDisposedNotification(isolate, true);
+    // 4. Tell V8 the context is disposed (`notifyContextDisposed`) - unless
+    // the realm was detached, when V8 was told then, at the moment Blink
+    // tells it (the navigation, the frame's removal), or the collector took
+    // the context, which V8 did itself. Never from a detached realm's later
+    // end: that runs from the collector's queue, with another page's context
+    // entered. Then release the handle - a detached realm's weak arm with it.
+    if (detached == null and isLive(context)) notifyContextDisposed(isolate, context, state);
     ffi.v8_Context_Dispose(context);
     if (state) |s| if (s.entered_isolate) ffi.v8_Isolate_Exit(isolate);
     // 5. The Window's storage goes back to its Browser's slab: its teardown
@@ -1112,10 +1151,15 @@ pub fn functionRealm(value: JSValue) ?Context {
 /// Blink's GetCachedSizeFunction (core/streams/queuing_strategy_common.cc):
 /// the function is kept under a private symbol on the realm's global - an
 /// edge the collector traces from the global, never a root - so a realm
-/// whose navigable is gone is still collected with it. Here the global
-/// OBJECT holds it, not the global proxy: a WindowProxy a navigation hands
-/// on to a later realm would carry the old realm's function into the new
-/// one. Function::New with ConstructorBehavior::kThrow
+/// whose navigable is gone is still collected with it. Stored, as Blink
+/// stores it, through the realm's global PROXY (`context->Global()`): V8
+/// puts a private symbol set on an attached JSGlobalProxy on its global
+/// OBJECT (LookupIterator::GetStoreTarget, lookup-inl.h), and a read through
+/// the proxy finds it there - so a WindowProxy a navigation hands on reaches
+/// the new realm's global object and never carries the old realm's function
+/// into the new one. (V8 >= 14 gives no other path to the global object: the
+/// V1 GetPrototype that did is Object.getPrototypeOf now, crbug.com/333672197,
+/// and answered Window.prototype - design 2.6.) Function::New with ConstructorBehavior::kThrow
 /// (v8_Function_NewWithData): no [[Construct]] and no "prototype", and not
 /// cached in the context's template instantiation cache. OWNED: a hold of
 /// the function.
@@ -1124,7 +1168,7 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
     defer entered.leave();
     const isolate = entered.isolate;
     const context = entered.context();
-    const global = ffi.v8_Context_GetRealGlobal(context) orelse return error.OperationFailed;
+    const global = ffi.v8_Context_Global(context) orelse return error.OperationFailed;
     defer ffi.v8_Object_Dispose(global);
     // The function made for `key` before: the global object keeps it.
     if (ffi.v8_Object_GetPrivateRef(global, key.ptr, @intCast(key.len))) |made| return support.owned(made);

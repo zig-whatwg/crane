@@ -194,6 +194,10 @@ pub const element_data = @import("element_data.zig");
 pub const element_name = @import("element_name.zig");
 pub const attribute_names = @import("attribute_names.zig");
 pub const attribute_values = @import("attribute_values.zig");
+/// A Document's shared attribute blocks: the cache its parsers share
+/// through, gone 10 s after its parse (lane nd2 batch 5; Blink's
+/// Document::element_data_cache_).
+pub const attribute_block_cache = @import("attribute_block_cache.zig");
 /// An element's rare data - the fields few elements use, in one sparse block
 /// made on first use that MOVES when it grows (Blink's NodeRareData since
 /// 2026-01; lanes perf3 D2, rare1) - HTMLElement's fields included, reached
@@ -296,6 +300,9 @@ pub const node_base = @import("node_base.zig");
 /// agent's ledger (lane rc12, tmp/plans/refcount-design.md). Unused by
 /// production code until step 3.
 pub const refcount = @import("refcount.zig");
+/// The walk the engine's collector runs to keep node wrappers (the wrapper
+/// redesign's P5): runtime.lifetime's traceTree hook.
+pub const wrapper_tracing = @import("wrapper_tracing.zig");
 /// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
 pub const refcount_audit = @import("refcount_audit.zig");
 pub const refcount_teardown = @import("refcount_teardown.zig");

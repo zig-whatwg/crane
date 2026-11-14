@@ -19,7 +19,8 @@
 //! - an agent's end frees its heap (cppgc's heap registry counts it): V8
 //!   13.1.203 never frees a heap given in CreateParams, and leaks --atExit
 //!   cannot see that, the heap staying reachable from the registry;
-//! - the diagnostics tier reports the heap's bytes (`cpp_heap_used_bytes`).
+//! - the diagnostics tier reports the heap's bytes (`cpp_heap_used_bytes`);
+//!   since V8 14 that includes V8's own objects on the heap it owns.
 //!
 //! The probe is v8_wrapper.cpp's (v8_test_CppHeapProbe_*): a holder holding a
 //! leaf through a Member, observed through weak persistents, collected with no
@@ -158,18 +159,24 @@ test "a C++ Trace runs on the agent's thread inside a major GC's pause, while sc
 test "cpp_heap_used_bytes reports the current agent's C++ objects" {
     defer test_agent.close();
     const isolate = try test_agent.open(.{});
-    // A fresh agent's heap holds nothing: Crane allocates nothing there yet.
-    try testing.expectEqual(@as(i64, 0), try counter("cpp_heap_used_bytes"));
+    // A fresh agent's heap is not empty: V8 >= 14 allocates there itself -
+    // its default MicrotaskQueue, Managed<T>'s CppGCManagedWrapper, and an
+    // EmbedderDataSlotWrapper for every aligned pointer in an internal field
+    // or a context's embedder data (V8 d04704a20fc, in 15.7.112.43). The
+    // probe's objects are what its collections add and take back.
     const probe = ffi.v8_test_CppHeapProbe_New(isolate) orelse return error.NoCppHeap;
     defer ffi.v8_test_CppHeapProbe_Delete(probe);
     // Marked and kept: the holder and its leaf.
     ffi.v8_test_CppHeapProbe_Collect(probe);
-    try testing.expect(try counter("cpp_heap_used_bytes") > 0);
-    try testing.expectEqual(@as(usize, @intCast(try counter("cpp_heap_used_bytes"))), ffi.v8_Isolate_CppHeapUsedBytes(isolate));
-    // Both freed: nothing is left.
+    const kept = try counter("cpp_heap_used_bytes");
+    try testing.expect(kept > 0);
+    try testing.expectEqual(@as(usize, @intCast(kept)), ffi.v8_Isolate_CppHeapUsedBytes(isolate));
+    // Both freed: the count falls by what they held.
     ffi.v8_test_CppHeapProbe_DropRoot(probe);
     ffi.v8_test_CppHeapProbe_Collect(probe);
-    try testing.expectEqual(@as(i64, 0), try counter("cpp_heap_used_bytes"));
+    const freed = try counter("cpp_heap_used_bytes");
+    try testing.expect(freed < kept);
+    try testing.expectEqual(@as(usize, @intCast(freed)), ffi.v8_Isolate_CppHeapUsedBytes(isolate));
 }
 
 /// A worker's agent, made as html.worker_host makes it - [[CanBlock]] true,

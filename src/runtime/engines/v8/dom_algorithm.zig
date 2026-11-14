@@ -10,10 +10,14 @@
 //! custom element reaction or an observer callback calling script
 //! (protocol.zig's invokeCallbackFunction, constructCallbackFunction,
 //! callUserObjectOperation). What the queue owes meanwhile - its memory
-//! bound past high_water, a full collection's drain - runs at the binding
+//! bound past high_water, a full collection's drain, the finalizers of
+//! collected wrappers - runs at the binding
 //! exit that brings the depth back to zero: that exit returns into script,
 //! with nothing of the DOM below it. A callback's return goes back into the
-//! native algorithm that invoked it and runs nothing.
+//! native algorithm that invoked it and runs nothing. One thing runs at a
+//! binding's return into a callback's script: the finalizer of an object made
+//! since that callback began, which no algorithm on the stack can hold
+//! (finalizer_safe_point.zig, "Inside a callback").
 //!
 //! The queue is found from the isolate through the isolate's own adapter
 //! storage (isolate_templates.IsolateTemplates, V8 data slot 1: every one of
@@ -36,23 +40,42 @@ pub inline fn enter(isolate: *v8.Isolate) ?*DeferredTeardown {
     return queue;
 }
 
-/// `enter` for a callback invoked in `realm`: null for a realm with no agent.
-pub inline fn enterRealm(realm: runtime.Context) ?*DeferredTeardown {
-    const agent = realm.agent orelse return null;
-    return enter(@ptrCast(@alignCast(agent)));
+/// A callback invocation on the agent's stack, from `enterCallback` to
+/// `leaveCallback`: its queue (null for a realm with no agent, or an isolate
+/// with no queue) and the invocation it found innermost.
+pub const Callback = struct {
+    queue: ?*DeferredTeardown,
+    outer: DeferredTeardown.OuterCallback = .{ .active = 0, .depth = 0 },
+};
+
+/// `enter` for a callback invoked in `realm` - a native algorithm calls
+/// script: besides the depth, the agent's callback clock ticks and this
+/// invocation becomes the innermost one (DeferredTeardown.Callbacks), which
+/// is what a binding's return into the callback's script compares a fresh
+/// finalizer's stamp with.
+pub inline fn enterCallback(realm: runtime.Context) Callback {
+    const agent = realm.agent orelse return .{ .queue = null };
+    const storage = isolate_templates.getTemplateStorage(@ptrCast(@alignCast(agent))) orelse return .{ .queue = null };
+    const queue = storage.deferred_teardown orelse return .{ .queue = null };
+    return .{ .queue = queue, .outer = queue.enterCallback() };
 }
 
 /// A binding returns into script: at depth zero the queue runs what it owes -
-/// a relief, a drain, and the report of the agent's DOM memory to V8
-/// (external_memory.zig, through the queue's report steps) - all behind the
-/// one check of what is owed.
+/// the finalizers of the wrappers V8's collector found dead
+/// (finalizer_safe_point.zig, through the queue's finalizer steps), a relief,
+/// a drain, and the report of the agent's DOM memory to V8
+/// (external_memory.zig, through the queue's report steps); returning into a
+/// callback's own script it runs the FRESH finalizers alone - those of
+/// objects a script-called constructor made since that callback began. All
+/// behind the one check of what is owed.
 pub inline fn leaveToScript(queue: ?*DeferredTeardown) void {
     if (queue) |q| q.leaveAlgorithmToScript();
 }
 
-/// A callback returns into its native caller: nothing runs.
-pub inline fn leaveToNative(queue: ?*DeferredTeardown) void {
-    if (queue) |q| q.leaveAlgorithmToNative();
+/// A callback returns into its native caller: nothing runs, and the
+/// invocation below is the innermost again.
+pub inline fn leaveCallback(callback: Callback) void {
+    if (callback.queue) |q| q.leaveCallback(callback.outer);
 }
 
 /// Set (or, null, clear) the agent's queue on its isolate. On the agent's

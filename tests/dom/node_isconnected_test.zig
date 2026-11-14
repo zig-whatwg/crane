@@ -16,7 +16,6 @@ fn createMockDocumentNode() NodeBase {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .owner_document = null,
     };
 }
 
@@ -173,7 +172,6 @@ test "Node.isConnected - document fragment root is not connected" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
         .parent_node = null,
-        .owner_document = null,
     };
     var elem = Element.init(&allocator, "div");
     defer elem.deinit();

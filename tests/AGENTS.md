@@ -245,8 +245,12 @@ tmp/nightly/, `latest` and `index.tsv`), and by hand with `test` or
 `test-launch` (lane tsan1, 2026-11-02):
 
 - **`-Dsanitize-thread`**: every test executable built with ThreadSanitizer -
-  Crane's own modules, v8_wrapper.cpp among them; the C libraries and the V8
-  prebuilt stay uninstrumented - and run with `TSAN_OPTIONS=halt_on_error=1`,
+  Crane's own modules; v8_wrapper.cpp is compiled apart, into a static library
+  of its own, and stays uninstrumented as the C libraries and the V8 prebuilt
+  do, and which executables link the engine is the build's own record of what
+  it linked, never a look at their sources (`zig build check-suite-facts`
+  holds it: a sanitizer build's test executables are told they have an engine
+  exactly as any build's are) - and run with `TSAN_OPTIONS=halt_on_error=1`,
   so a race crashes its process and is blamed on the test that was running,
   with line numbers (a dSYM beside each macOS executable). A race in Crane's
   code is a bug with an owner; `tools/test_launcher/tsan_suppressions.txt` takes

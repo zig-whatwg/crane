@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Workers started and stopped</title>
+<!-- A dedicated worker's whole life, again and again: each `new Worker` is an engine instance
+     started, used once and terminated. What the other pages never do - they run in one
+     instance - and what an engine's process-wide caches of memory are for: the pages one
+     worker's heap gave back are the next one's. -->
+<script src="../harness.js"></script>
+<script>
+// An engine may have `Worker` and never run one (it does not load a worker's script, say): then
+// no message and no error ever comes. One worker, given five seconds to answer, decides for the
+// page - such an engine's rows read `unsupported` instead of waiting out the page's timeout.
+let answers = null;
+function needWorkers() {
+  if (typeof Worker !== 'function') throw new perf.Unsupported('Worker');
+  answers = answers || new Promise((resolve, reject) => {
+    const w = new Worker('workers-worker.js');
+    const timer = setTimeout(() => { w.terminate(); resolve(false); }, 5000);
+    w.onerror = (e) => { clearTimeout(timer); w.terminate(); reject(new Error('worker: ' + (e && e.message))); };
+    w.onmessage = () => { clearTimeout(timer); w.terminate(); resolve(true); };
+    w.postMessage('echo');
+  });
+  return answers.then((ok) => { if (!ok) throw new perf.Unsupported('Worker: a worker did not answer in 5 s'); });
+}
+// One worker's life: start, one message each way (`mode` says what it does in between),
+// terminate.
+function life(mode) {
+  return new Promise((resolve, reject) => {
+    const w = new Worker('workers-worker.js');
+    w.onerror = (e) => { w.terminate(); reject(new Error('worker: ' + (e && e.message))); };
+    w.onmessage = (e) => { w.terminate(); resolve(e.data); };
+    w.postMessage(mode);
+  });
+}
+// One after another, the worker doing nothing: the cost of an instance itself.
+perf.add('workers.start-stop', {
+  ops: 8,
+  setup: needWorkers,
+  async run(n) { let sink = 0; for (let i = 0; i < n; i++) sink += await life('echo'); this.sink = sink; },
+});
+// The same, each worker allocating - 4,000 arrays of 1,024 numbers, every second one kept until
+// it answers, so they outlive its young generation: every worker's heap grows and is given back
+// at its end.
+perf.add('workers.start-work-stop', {
+  ops: 8,
+  setup: needWorkers,
+  async run(n) { let sink = 0; for (let i = 0; i < n; i++) sink += await life('work'); this.sink = sink; },
+});
+// Four alive at once, all allocating, then all terminated; twice per run.
+perf.add('workers.four-at-once', {
+  ops: 2,
+  setup: needWorkers,
+  async run(n) {
+    let sink = 0;
+    for (let i = 0; i < n; i++) {
+      const answers = await Promise.all([life('work'), life('work'), life('work'), life('work')]);
+      for (const a of answers) sink += a;
+    }
+    this.sink = sink;
+  },
+});
+</script>

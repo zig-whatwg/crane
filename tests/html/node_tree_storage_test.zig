@@ -114,8 +114,11 @@ fn runOnFreshThread(scenario: Scenario) !void {
                 .coordinated_teardown_wrapped => {
                     // A node a wrapper reached has the wrapper severed by its
                     // teardown, and its storage goes at the teardown's end,
-                    // never during it. Wrapping the child wraps its ancestors
-                    // too (node tracing), so only the text is unwrapped.
+                    // never during it. The root and the child are wrapped
+                    // (each its own wrap: since the wrapper redesign's P7 a
+                    // wrap wraps no ancestor), the text is not.
+                    const held_root = try engine.retainValue(ctx, .{ .instance = root });
+                    held_root.release();
                     const held_child = try engine.retainValue(ctx, .{ .instance = child });
                     held_child.release();
                     try testing.expect(runtime.instance_lifecycle.wasWrapped(child));

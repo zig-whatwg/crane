@@ -84,10 +84,15 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
     defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
 
-    // Reserve internal field to store the associated Window instance
-    // This allows named property lookups to find the correct Window regardless of
-    // which context is calling (important for cross-window access like iframe.wp.propName)
-    v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tpl, 1);
+    // No internal field: the object is wrapped with its realm's GlobalAnchor
+    // (insertIntoPrototypeChain), which names its Window - Blink's
+    // SetupWindowPrototypeChain gives WindowProperties the window's native
+    // info the same way (local_window_proxy.cc 434-437). Every API object
+    // carries the CppHeap pointer Object::Wrap sets (V8 js-objects.tq,
+    // JSAPIObjectWithEmbedderSlots / JSSpecialObject `cpp_heap_wrappable`), so
+    // the named lookups find the right Window whichever realm asks
+    // (`iframe.contentWindow.someName`), and the realm's end severs it with
+    // the anchor's one clear().
 
     // Register native property interceptors with definer callback
     // Using SetNamedPropertyHandlerWithDefiner to intercept Object.defineProperty
@@ -119,14 +124,12 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     return tpl;
 }
 
-/// Create the WindowProperties exotic object
-/// The window_instance parameter is stored in an internal field so property lookups
-/// can find the correct Window even when accessed from a different context (e.g., parent accessing iframe's wp).
+/// Create the WindowProperties exotic object, wrapped with `context`'s realm's
+/// GlobalAnchor (realm_global.attach made it), which names the realm's Window.
 pub fn create(
     isolate: *v8.Isolate,
     context: *v8.Context,
     event_target_prototype: *v8.Object,
-    window_instance: ?*runtime.Instance,
 ) ?*v8.Object {
     _ = event_target_prototype;
 
@@ -136,10 +139,9 @@ pub fn create(
     defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
     const instance = v8.v8_ObjectTemplate_NewInstance(instance_tpl, context) orelse return null;
 
-    // Store the Window instance in internal field 0
-    // This allows named property lookups to find the correct Window
-    if (window_instance) |win| {
-        v8.v8_Object_SetAlignedPointerInInternalField(instance, 0, @ptrCast(win));
+    // Its Window: the realm's anchor (Blink: SetNativeInfo on WindowProperties).
+    if (@import("context_manager.zig").globalAnchorOf(context)) |anchor| {
+        v8.v8_GlobalAnchor_WrapObject(anchor, instance);
     }
 
     // Set Symbol.toStringTag per WebIDL §3.7.4
@@ -162,12 +164,12 @@ pub fn create(
 /// This function manually inserts a WindowProperties instance into the chain
 /// since SetPrototypeProviderTemplate may not work as expected for all cases.
 ///
-/// The window_instance parameter is the Window instance to associate with this WindowProperties.
-/// If null, it will attempt to get the Window from the global's internal field 0.
+/// Its Window is the realm's: the object is wrapped with the realm's
+/// GlobalAnchor, so the realm's global must be attached first
+/// (realm_global.attach).
 pub fn insertIntoPrototypeChain(
     isolate: *v8.Isolate,
     context: *v8.Context,
-    window_instance_opt: ?*runtime.Instance,
 ) bool {
     // Get Window.prototype from the chain. Every handle below is owned and
     // released on the way out: each points into `context`, and one leaked per
@@ -213,14 +215,8 @@ pub fn insertIntoPrototypeChain(
         break :blk helpers.asObject(current_proto_val) orelse return false;
     };
 
-    // Use provided window_instance, or try to get from global's internal field
-    const window_instance: ?*runtime.Instance = window_instance_opt orelse blk: {
-        const window_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0);
-        break :blk if (window_ptr) |ptr| @ptrCast(@alignCast(ptr)) else null;
-    };
-
-    // Create a new WindowProperties instance with the Window reference
-    const wp = create(isolate, context, event_target_proto, window_instance) orelse return false;
+    // A new WindowProperties instance, wrapped with the realm's anchor.
+    const wp = create(isolate, context, event_target_proto) orelse return false;
     defer v8.v8_Object_Dispose(wp);
 
     // WindowProperties -> EventTarget.prototype. The instance's own
@@ -289,70 +285,17 @@ fn linkGlobalToWindowProperties(context: *v8.Context, global: *v8.Object, window
 // Named Property Handler Callbacks
 // ============================================================================
 
-/// Get Window instance from the WindowProperties object's internal field
-/// Each WindowProperties instance stores a reference to its associated Window,
-/// allowing correct lookups even when accessed from a different context (e.g., parent accessing iframe's wp).
+/// The Window whose named properties these are: the instance of the
+/// GlobalAnchor the holder - this WindowProperties object, an interceptor's
+/// holder is the object it is installed on - is wrapped with (`create`).
+/// Null once the realm's end cleared the anchor: answer nothing. Never the
+/// CURRENT context's Window, which would answer `iframe.contentWindow.x`
+/// from the parent's document - nor, for a realm whose WindowProxy went on,
+/// the NEW Window: an old realm's named access reaches its own
+/// WindowProperties, whose anchor is the old realm's.
 fn getWindowInstanceFromHolder(info: *const v8.PropertyCallbackInfo) ?*runtime.Instance {
-    // Get the Window from the holder's internal field (set during WindowProperties creation)
-    const holder = info.getHolder() orelse {
-        // Fallback: try current context's global (for backwards compatibility)
-        const isolate = info.getIsolate();
-        const context = v8.v8_Isolate_GetCurrentContext(isolate) orelse return null;
-        defer v8.v8_Context_Dispose(context);
-        const global = v8.v8_Context_Global(context) orelse return null;
-        defer v8.v8_Object_Dispose(global);
-        const global_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(global, 0) orelse return null;
-        return @ptrCast(@alignCast(global_ptr));
-    };
-    // Owned, like every handle the FFI returns - and a handle to this object
-    // keeps its page alive, so one leaked per named-property lookup kept every
-    // page that ever did one.
-    defer v8.v8_Object_Dispose(holder);
-    // An empty field means the Window was discarded (detachWindow): answer
-    // nothing. Falling back to the CURRENT context's window here would answer
-    // `iframe.contentWindow.x` from the parent's document.
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(holder, 0) orelse return null;
+    const ptr = v8.v8_PropertyCallbackInfo_HolderGlobalAnchorInstance(info) orelse return null;
     return @ptrCast(@alignCast(ptr));
-}
-
-/// Sever `window_instance` from its context's global and WindowProperties
-/// object before the instance is freed.
-///
-/// Script can outlive a browsing context: `const w = iframe.contentWindow;
-/// iframe.remove(); w.length` is ordinary. Both the global and its
-/// WindowProperties object hold the Window instance in internal field 0, so
-/// once destroyChildContext freed the instance, every later access read freed
-/// state - `w.length` panicked in an @intCast of a poisoned child count, and
-/// `w.x` walked a freed document. With the fields cleared, a getter finds no
-/// instance and throws "Illegal invocation", and named access is undefined.
-/// (A discarded window should answer `length` 0 and `closed` true; that needs
-/// its state retired rather than freed.)
-pub fn detachWindow(context: *v8.Context, window_instance: *runtime.Instance) void {
-    const global = v8.v8_Context_Global(context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-    clearIfWindow(global, window_instance);
-    // global -> placeholder -> WindowProperties: a couple of links up. Every
-    // handle stays alive until the walk is over - each link is read through
-    // the previous one.
-    var links: [3]?*v8.Value = .{ null, null, null };
-    defer for (links) |link| {
-        if (link) |value| v8.v8_Value_Dispose(value);
-    };
-    var current: *v8.Object = global;
-    for (&links) |*slot| {
-        const proto_val = v8.v8_Object_GetPrototypeV2(current) orelse return;
-        slot.* = proto_val;
-        const proto = helpers.asObject(proto_val) orelse return;
-        clearIfWindow(proto, window_instance);
-        current = proto;
-    }
-}
-
-fn clearIfWindow(obj: *v8.Object, window_instance: *runtime.Instance) void {
-    if (v8.v8_Object_InternalFieldCount(obj) < 1) return;
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(obj, 0) orelse return;
-    if (@intFromPtr(ptr) != @intFromPtr(window_instance)) return;
-    v8.v8_Object_SetAlignedPointerInInternalField(obj, 0, null);
 }
 
 /// Get the current context for WindowProperties operations
@@ -454,7 +397,7 @@ fn namedPropertyDeleter(
 fn namedPropertyDefiner(
     _: *v8.Name,
     _: *const v8.PropertyDescriptor,
-    info: *const v8.PropertyCallbackInfoVoid,
+    info: *const v8.PropertyCallbackInfoBoolean,
 ) callconv(.c) v8.Intercepted {
     const isolate = info.getIsolate();
 

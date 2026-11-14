@@ -27,6 +27,15 @@ fn aFreedDocumentIsNeverHandedOut() !void {
     const other = try interfaces.Document.call_constructor(realm);
     defer dom.node_creation.destroyUninserted(other);
     try testing.expectError(error.InvalidStateError, interfaces.Node.get_ownerDocument(text));
+    // src/dom's readers get the same net since the node document is one word
+    // of NodeBase (lane nm1): the freed document's NodeBase is never handed
+    // out - it was a dangling pointer, read with no check - and never the
+    // NodeBase of whatever took its slot. The identity the counts compare is
+    // unchanged: it reads nothing through the word.
+    if (comptime !@hasDecl(dom.NodeBase, "documentBase")) return error.NoDocumentWord;
+    const base = dom.instance_bridge.getNodeBase(text) orelse return error.NoNodeBase;
+    try testing.expectEqual(@as(?*dom.NodeBase, null), base.documentBase());
+    try testing.expect(base.documentKey() != 0);
 }
 
 test "a node whose document was freed under it reads InvalidStateError, not the freed object" {

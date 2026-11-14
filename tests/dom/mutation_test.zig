@@ -32,17 +32,14 @@ test "NodeBase.getNodeDocument - Document node returns itself" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null, // Document nodes have null owner_document
         .is_connected = true,
     };
 
     // Per spec: For Document nodes, getNodeDocument returns itself
     const node_doc = doc_node.getNodeDocument();
     try std.testing.expect(node_doc != null);
-    // The returned pointer should be the document node itself (cast from NodeBase* to Document*)
-    // Use @alignCast since Document has different alignment
-    const node_base_ptr: *NodeBase = @ptrCast(@alignCast(node_doc.?));
-    try std.testing.expectEqual(&doc_node, node_base_ptr);
+    // The returned pointer is the document node itself.
+    try std.testing.expectEqual(&doc_node, node_doc.?);
 }
 
 test "NodeBase.getNodeDocument - Element node returns owner_document" {
@@ -55,7 +52,6 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -67,12 +63,12 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
     defer element.deinit();
 
     // Set the owner_document
-    element.base.owner_document = doc_ptr;
+    element.base.setDocumentBase(@ptrCast(@alignCast(doc_ptr)));
 
     // getNodeDocument should return the owner_document
     const node_doc = element.base.getNodeDocument();
     try std.testing.expect(node_doc != null);
-    try std.testing.expectEqual(doc_ptr, node_doc.?);
+    try std.testing.expectEqual(&doc_node, node_doc.?);
 }
 
 test "NodeBase.getNodeDocument - unattached node returns null" {
@@ -83,7 +79,7 @@ test "NodeBase.getNodeDocument - unattached node returns null" {
     defer element.deinit();
 
     // Before being attached to a document, owner_document is null
-    try std.testing.expect(element.base.owner_document == null);
+    try std.testing.expect(element.base.documentBase() == null);
 
     // getNodeDocument returns null for unattached nodes
     const node_doc = element.base.getNodeDocument();
@@ -104,7 +100,6 @@ test "adopt - changes node_document for entire subtree" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -114,7 +109,6 @@ test "adopt - changes node_document for entire subtree" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -124,11 +118,11 @@ test "adopt - changes node_document for entire subtree" {
     // Create a parent element with a child
     var parent = ElementWithBase.init(&allocator, "div");
     defer parent.deinit();
-    parent.base.owner_document = doc1_ptr;
+    parent.base.setDocumentBase(@ptrCast(@alignCast(doc1_ptr)));
 
     var child = ElementWithBase.init(&allocator, "span");
     defer child.deinit();
-    child.base.owner_document = doc1_ptr;
+    child.base.setDocumentBase(@ptrCast(@alignCast(doc1_ptr)));
 
     // Set up the parent-child relationship (simplified, not the full insert):
     // the links and the parent write with the holds it moves (refcount), so
@@ -136,15 +130,15 @@ test "adopt - changes node_document for entire subtree" {
     _ = try parent.appendChild(&child.base);
 
     // Verify initial state
-    try std.testing.expectEqual(doc1_ptr, parent.base.owner_document.?);
-    try std.testing.expectEqual(doc1_ptr, child.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc1_ptr))), parent.base.documentBase());
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc1_ptr))), child.base.documentBase());
 
     // Adopt parent into doc2
     try mutation.adopt(&parent.base, doc2_ptr);
 
     // Both parent AND child should now have doc2 as their node document
-    try std.testing.expectEqual(doc2_ptr, parent.base.owner_document.?);
-    try std.testing.expectEqual(doc2_ptr, child.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc2_ptr))), parent.base.documentBase());
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc2_ptr))), child.base.documentBase());
 }
 
 test "adopt - updates attribute node documents for elements" {
@@ -157,7 +151,6 @@ test "adopt - updates attribute node documents for elements" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -167,7 +160,6 @@ test "adopt - updates attribute node documents for elements" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -177,25 +169,25 @@ test "adopt - updates attribute node documents for elements" {
     // Create an element with an attribute
     var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit(); // This will also deinit attributes
-    element.base.owner_document = doc1_ptr;
+    element.base.setDocumentBase(@ptrCast(@alignCast(doc1_ptr)));
 
     // Add an attribute - element.deinit() will clean it up
     const attr = try allocator.create(AttrWithBase);
     attr.* = try AttrWithBase.init(&allocator, "id", "test", null, null);
     // Note: Don't defer cleanup of attr - element.deinit() handles it
-    attr.base.owner_document = doc1_ptr;
+    attr.base.setDocumentBase(@ptrCast(@alignCast(doc1_ptr)));
     try element.attributes.append(attr);
 
     // Verify initial state
-    try std.testing.expectEqual(doc1_ptr, element.base.owner_document.?);
-    try std.testing.expectEqual(doc1_ptr, attr.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc1_ptr))), element.base.documentBase());
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc1_ptr))), attr.base.documentBase());
 
     // Adopt element into doc2
     try mutation.adopt(&element.base, doc2_ptr);
 
     // Element AND its attribute should now have doc2 as their node document
-    try std.testing.expectEqual(doc2_ptr, element.base.owner_document.?);
-    try std.testing.expectEqual(doc2_ptr, attr.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc2_ptr))), element.base.documentBase());
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc2_ptr))), attr.base.documentBase());
 }
 
 test "adopt - same document is a no-op" {
@@ -208,7 +200,6 @@ test "adopt - same document is a no-op" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -217,13 +208,13 @@ test "adopt - same document is a no-op" {
     // Create an element already in the document
     var element = ElementWithBase.init(&allocator, "div");
     defer element.deinit();
-    element.base.owner_document = doc_ptr;
+    element.base.setDocumentBase(@ptrCast(@alignCast(doc_ptr)));
 
     // Adopt into the same document
     try mutation.adopt(&element.base, doc_ptr);
 
     // Should still have the same owner_document
-    try std.testing.expectEqual(doc_ptr, element.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc_ptr))), element.base.documentBase());
 }
 
 // ============================================================================
@@ -242,7 +233,6 @@ test "mutation - insert calls adopt before inserting" {
         .parent_node = null,
         .first_child = null,
         .next_sibling = null,
-        .owner_document = null,
         .is_connected = true,
     };
 
@@ -251,7 +241,7 @@ test "mutation - insert calls adopt before inserting" {
     // Create a parent element in the document
     var parent = ElementWithBase.init(&allocator, "div");
     defer parent.deinit();
-    parent.base.owner_document = doc_ptr;
+    parent.base.setDocumentBase(@ptrCast(@alignCast(doc_ptr)));
 
     // Create a child element NOT in any document
     var child = ElementWithBase.init(&allocator, "span");
@@ -259,14 +249,14 @@ test "mutation - insert calls adopt before inserting" {
     // child.base.owner_document is null initially
 
     // Verify initial state - child has no document
-    try std.testing.expect(child.base.owner_document == null);
+    try std.testing.expect(child.base.documentBase() == null);
 
     // Insert child into parent using append (which calls insert internally)
     // Note: We need to test via the mutation module functions
     try mutation.insert(&child.base, &parent.base, null, false);
 
     // After insertion, child should have been adopted into parent's document
-    try std.testing.expectEqual(doc_ptr, child.base.owner_document.?);
+    try std.testing.expectEqual(@as(?*NodeBase, @ptrCast(@alignCast(doc_ptr))), child.base.documentBase());
 }
 
 // ============================================================================

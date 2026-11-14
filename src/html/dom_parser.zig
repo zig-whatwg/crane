@@ -220,9 +220,12 @@ pub fn parseHTML(
     // Step 6: Convert TreeNode tree to DOM nodes
     var associations: PendingAssociations = .empty;
     defer associations.deinit(allocator);
-    var attribute_blocks: dom.element_attributes.SharingCache = .{};
-    defer attribute_blocks.deinit();
-    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations, .attribute_blocks = &attribute_blocks });
+    // The document's parse: its elements share attribute blocks through the
+    // document's cache, which lives 10 s past this run (dom.
+    // attribute_block_cache).
+    var attribute_run = dom.element_attributes.ParserRun.begin(document, .document);
+    defer attribute_run.end();
+    try convertTreeNodeToDom(allocator, ctx, tree_builder.document, document, document, .{ .associations = &associations, .attribute_run = &attribute_run });
     associateParsedControls(associations.items) catch return error.OutOfMemory;
 
     return document;
@@ -451,9 +454,16 @@ pub fn parseFragmentWith(
             interfaces.Element.get_customElementRegistry(value) catch return error.InvalidStateError }
     else
         .default;
-    var attribute_blocks: dom.element_attributes.SharingCache = .{};
-    defer attribute_blocks.deinit();
-    var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode, .attribute_blocks = &attribute_blocks };
+    // The fragment's elements share attribute blocks through the cache of
+    // the context element's node document (dom.attribute_block_cache: Blink's
+    // Element::ParserSetAttributes reads GetDocument().GetElementDataCache()
+    // for a fragment parser's elements too) - a template's contents and an
+    // inert build's nodes, made in that document's template contents owner
+    // document, included.
+    const context_document: ?*runtime.Instance = if (context_element) |elem| interfaces.Node.get_ownerDocument(elem) catch null else null;
+    var attribute_run = dom.element_attributes.ParserRun.begin(context_document, .fragment);
+    defer attribute_run.end();
+    var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode, .attribute_run = &attribute_run };
     // The context element's local name and namespace. Its HTML-specific
     // steps below - the tokenizer state, the insertion mode - are for an
     // element in the HTML namespace; a foreign context (innerHTML on an svg
@@ -529,22 +539,20 @@ pub fn parseFragmentWith(
     // Steps 2-3: the fragment's document takes the mode of the context
     // element's node document - quirks, or limited-quirks - which the tree
     // builder reads for its mode-dependent rules.
-    if (context_element) |elem| {
-        if (interfaces.Node.get_ownerDocument(elem) catch null) |context_document| {
-            // Fragment parsing steps 10–11: inherit disabled scripting.
-            tree_builder.scripting_enabled = document_internals.isScriptingEnabled(context_document) and
-                (interfaces.Document.get_defaultView(context_document) catch null) != null;
-            // Step 10's Disabled mode, for the scripts: the parser sets their
-            // parser document ("in head", script start tag, step 3), so DOM
-            // insertion never prepares them - none runs, as with Inert's
-            // already started.
-            if (!tree_builder.scripting_enabled) conversion.scripting_mode = .inert;
-            if (document_internals.getMode(context_document)) |mode| tree_builder.quirks_mode = switch (mode) {
-                .no_quirks => .no_quirks,
-                .quirks => .quirks,
-                .limited_quirks => .limited_quirks,
-            };
-        }
+    if (context_document) |document| {
+        // Fragment parsing steps 10–11: inherit disabled scripting.
+        tree_builder.scripting_enabled = document_internals.isScriptingEnabled(document) and
+            (interfaces.Document.get_defaultView(document) catch null) != null;
+        // Step 10's Disabled mode, for the scripts: the parser sets their
+        // parser document ("in head", script start tag, step 3), so DOM
+        // insertion never prepares them - none runs, as with Inert's
+        // already started.
+        if (!tree_builder.scripting_enabled) conversion.scripting_mode = .inert;
+        if (document_internals.getMode(document)) |mode| tree_builder.quirks_mode = switch (mode) {
+            .no_quirks => .no_quirks,
+            .quirks => .quirks,
+            .limited_quirks => .limited_quirks,
+        };
     }
 
     // Step 4: Set up fragment parsing context
@@ -612,10 +620,7 @@ pub fn parseFragmentWith(
     errdefer dom.node_creation.destroyUninserted(fragment);
 
     // Get owner document for node creation
-    var owner_doc: ?*runtime.Instance = null;
-    if (context_element) |elem| {
-        owner_doc = interfaces.Node.get_ownerDocument(elem) catch null;
-    }
+    var owner_doc: ?*runtime.Instance = context_document;
     // The inert build's document: the context document's template contents
     // owner document (HTML 4.12.3 "appropriate template contents owner
     // document"), which has no browsing context. The fragment is its node
@@ -673,9 +678,10 @@ const Conversion = struct {
     /// element for a token" step 15's parser conditions, associated once the
     /// tree is built (a foster-parented control can precede its form).
     associations: ?*PendingAssociations = null,
-    /// The parse's shared attribute blocks (dom.element_data.SharingCache),
-    /// owned by the parse's entry point, which frees it as it returns.
-    attribute_blocks: ?*dom.element_attributes.SharingCache = null,
+    /// The parse's share in its document's attribute-block cache
+    /// (dom.attribute_block_cache.Run), begun and ended by the parse's entry
+    /// point.
+    attribute_run: ?*dom.element_attributes.ParserRun = null,
 };
 
 const PendingAssociation = struct { element: *runtime.Instance, form: *TreeNode };
@@ -754,7 +760,7 @@ fn convertChildrenToDom(
     // template's insertion target is its content DocumentFragment, whose
     // registry lookup is null even when the template itself has one.
     const child_conversion: Conversion = if (target != parent_dom)
-        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_blocks = conversion.attribute_blocks }
+        .{ .fragment = conversion.fragment, .registry = .{ .explicit = null }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_run = conversion.attribute_run }
     else
         conversion;
     var index: usize = 0;
@@ -819,7 +825,7 @@ fn attachDeclarativeShadow(
     // The template's contents are the shadow root (7.11.6); create-for-token
     // step 6 looks the registry up from it.
     const shadow_registry = interfaces.ShadowRoot.get_customElementRegistry(shadow) catch return error.InvalidStateError;
-    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_blocks = conversion.attribute_blocks });
+    try convertChildrenToDom(allocator, ctx, request.template, shadow, owner_document, .{ .fragment = conversion.fragment, .registry = .{ .explicit = shadow_registry }, .associations = conversion.associations, .scripting_mode = conversion.scripting_mode, .attribute_run = conversion.attribute_run });
     return true;
 }
 
@@ -909,7 +915,7 @@ fn createElementNode(
     };
 
     // "Append each attribute in the given token to element."
-    parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), conversion.attribute_blocks);
+    parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), conversion.attribute_run);
 
     // Step 15, deferred to the end of the conversion: a form keeps its DOM
     // node on its tree node so the controls it was the pointer for find it.

@@ -1,21 +1,23 @@
 //! Attribute-block sharing: the paths a parser run ENDS by (lane nd2 batch 4,
-//! plan-v2 A3). A parser run's cache (dom.element_data.SharingCache) holds
-//! every block it handed out, one holder each, and must let go on every path
-//! the run ends by - finished, replaced by document.open(), aborted by
-//! window.stop(), navigated away from, or failed - so that a block lives
-//! exactly as long as an element holds it. Blink keeps its cache on the
-//! Document (core/dom/element_data_cache.cc) and WebKit its
-//! DocumentSharedObjectPool; here it is the run's (the integrator's ruling of
-//! 2026-11-11), owned by the scripted parser's tree adapter
-//! (parser_script_execution.zig), by dom_parser.zig's parseHTML and
-//! parseFragmentWith, and by the XML builder (xml_document_parser.zig).
+//! plan-v2 A3; the Document's cache, batch 5). A parser shares through its
+//! DOCUMENT's cache (dom.attribute_block_cache: Blink's Document::
+//! element_data_cache_, WebKit's DocumentSharedObjectPool), which holds every
+//! block it handed out, one holder each, until 10 s after the document's
+//! parse. Every path a run ends by - finished, replaced by document.open(),
+//! aborted by window.stop(), navigated away from, or failed - must leave the
+//! cache with its 10 s running, or ended with its document, so that once
+//! they are over a block lives exactly as long as an element holds it. The
+//! runs are the scripted parser's tree adapter's (parser_script_execution.
+//! zig), dom_parser.zig's parseHTML and parseFragmentWith, and the XML
+//! builder's (xml_document_parser.zig).
 //!
 //! Which elements share is not web-observable, so each test reads it from
 //! the elements script kept: they hold ONE block, and that block's holder
-//! count is the number of elements - one more only while their parser still
-//! runs. Where a failed run leaves no element, the Browser's value table
-//! says whether anything still counts the run's values. Every Browser here
-//! is on std.testing.allocator: a cache table or block left behind fails the
+//! count is the number of elements - one more while their document's cache
+//! lives. Where a failed run leaves no element, the Browser's value table
+//! says whether anything still counts the run's values. The 10 s pass on the
+//! testing platform's virtual clock. Every Browser here is on
+//! std.testing.allocator: a cache, a table or a block left behind fails the
 //! test as a leak.
 //!
 //! tests/html is one executable: each test runs its Browser on a thread of
@@ -26,6 +28,11 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const dom = @import("dom");
 const browser_mod = @import("browser");
+const platform = @import("platform");
+
+/// The 10 s pass on the testing platform's virtual clock: on another
+/// platform these tests are skipped.
+const is_testing = std.mem.eql(u8, platform.name, "testing");
 
 const AttributeList = dom.element_data.AttributeList;
 
@@ -49,8 +56,17 @@ fn onFreshThread(comptime exercise: fn () anyerror!void) !void {
     if (failure) |err| return err;
 }
 
+/// A Browser whose clock is virtual: it stands still while the page works
+/// and moves to the next timer when the loop is idle.
 fn startBrowser() !*browser_mod.Browser {
-    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    return browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .platform = .{ .virtual_clock = true, .random_seed = 1 } });
+}
+
+/// Let the caches' 10 s pass: a page timer moves the Browser's virtual
+/// clock past them.
+fn passTenSeconds(browser: *browser_mod.Browser) !void {
+    try run(browser, "globalThis.nd2Passed = false; setTimeout(() => { globalThis.nd2Passed = true; }, 10001);");
+    try waitFor(browser, "globalThis.nd2Passed === true");
 }
 
 fn run(browser: *browser_mod.Browser, source: []const u8) !void {
@@ -146,21 +162,26 @@ fn documentOpenMidParse() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     try loadPage(browser, "<!doctype html><body></body>");
-    // A script-created parser, mid-run: its two elements and its cache hold
-    // the block.
+    // A script-created parser, mid-run: its two elements and the document's
+    // cache hold the block.
     try run(browser, "document.open(); document.write('<!doctype html><body>" ++ p ++ p ++ "<div>'); globalThis.kept = [...document.querySelectorAll('p')];");
     const block = try expectOneBlock(browser, "kept", 2, 3);
     // HTML "document open steps" replace that parser: its run ends here, and
-    // its cache lets go. The elements script kept still hold the block.
+    // leaves the cache its 10 s. The elements script kept still hold the
+    // block, with the cache.
     try run(browser, "document.open();");
-    try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
-    // The next run's cache is its own, and gone when that run finishes.
-    try run(browser, "document.write('<!doctype html><body>" ++ p ++ "'); document.close(); globalThis.next = [...document.querySelectorAll('p')];");
-    try testing.expect(try expectOneBlock(browser, "next", 1, 1) != block);
-    _ = try expectOneBlock(browser, "kept", 2, 2);
+    try testing.expect(try expectOneBlock(browser, "kept", 2, 3) == block);
+    // The next run shares through the same cache: its element takes the
+    // block the replaced run's elements hold.
+    try run(browser, "document.write('<!doctype html><body>" ++ p ++ "'); document.close(); globalThis.all = [...kept, ...document.querySelectorAll('p')];");
+    try testing.expect(try expectOneBlock(browser, "all", 3, 4) == block);
+    // 10 s after that parse the cache is gone: the block is its elements'.
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "all", 3, 3) == block);
 }
 
-test "A3 abort: document.open() replaces a parser mid-run - its cache lets go, the kept elements' block stays theirs" {
+test "A3 abort: document.open() replaces a parser mid-run - the document's cache stays for the next run, and goes 10 s after it" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(documentOpenMidParse);
 }
 
@@ -171,14 +192,18 @@ fn documentWriteInAParserScript() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     // The written element is made by the same run (the script's write
-    // re-enters the page's parser): one block, and no cache holder after
-    // the load.
+    // re-enters the page's parser): one block, held by the three elements
+    // and the document's cache - and by the elements alone 10 s after the
+    // load.
     try loadPage(browser, "<!doctype html><body>" ++ p ++ "<script>document.write('" ++ p ++ "')</script>" ++ p ++ "</body>");
     try run(browser, "globalThis.kept = [...document.querySelectorAll('p')];");
-    _ = try expectOneBlock(browser, "kept", 3, 3);
+    const block = try expectOneBlock(browser, "kept", 3, 4);
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "kept", 3, 3) == block);
 }
 
 test "A3 abort: document.write in a parser's script shares with the run it re-enters" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(documentWriteInAParserScript);
 }
 
@@ -187,13 +212,17 @@ fn windowStopInAParserScript() !void {
     defer browser.deinit();
     // window.stop() -> "stop loading" -> "abort a document": the parser is
     // aborted with its script still on the stack, and the rest of the input
-    // is thrown away.
+    // is thrown away. The aborted run's end leaves the cache its 10 s, as a
+    // finished one's does.
     try loadPage(browser, "<!doctype html><body>" ++ p ++ p ++ "<script>window.stop()</script><p id=after class=nd2k title=nd2t></p></body>");
     try run(browser, "if (document.getElementById('after')) throw new Error('window.stop() did not abort the parser'); globalThis.kept = [...document.querySelectorAll('p')];");
-    _ = try expectOneBlock(browser, "kept", 2, 2);
+    const block = try expectOneBlock(browser, "kept", 2, 3);
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
 }
 
-test "A3 abort: window.stop() in a parser's script - the aborted run's cache lets go" {
+test "A3 abort: window.stop() in a parser's script - the aborted run leaves the cache its 10 s, then it lets go" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(windowStopInAParserScript);
 }
 
@@ -202,7 +231,7 @@ fn frameNavigatedAwayMidParse() !void {
     defer browser.deinit();
     try loadPage(browser, "<!doctype html><body><iframe id=f></iframe></body>");
     // The frame's document has a script-created parser, mid-run; the parent
-    // keeps two of its elements.
+    // keeps the document and two of its elements.
     try run(browser,
         \\globalThis.old = document.getElementById('f').contentDocument;
         \\old.open();
@@ -210,14 +239,18 @@ fn frameNavigatedAwayMidParse() !void {
         \\globalThis.kept = [...old.querySelectorAll('p')];
     );
     const block = try expectOneBlock(browser, "kept", 2, 3);
-    // Navigating the frame away destroys that document and aborts its
-    // parser: the run's cache lets go.
+    // Navigating the frame away unloads that document and aborts its parser:
+    // the run ends. The document itself lives on (script keeps it), so its
+    // cache has at most its 10 s left - none if the realm, and its timers,
+    // went first.
     try run(browser, "document.getElementById('f').srcdoc = '<p>next';");
     try waitFor(browser, "document.getElementById('f').contentDocument !== old && document.getElementById('f').contentDocument.body?.textContent === 'next'");
+    try passTenSeconds(browser);
     try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
 }
 
-test "A3 abort: a frame navigated away from mid-parse - the kept elements' block loses the parser's holder" {
+test "A3 abort: a frame navigated away from mid-parse - the kept elements' block loses the cache's holder" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(frameNavigatedAwayMidParse);
 }
 
@@ -228,13 +261,15 @@ fn topLevelNavigatedAwayMidParse() !void {
     try run(browser, "document.open(); document.write('<!doctype html><body>" ++ p ++ p ++ "<div>');");
     try testing.expectEqual(@as(u32, 1), try referencesOn(browser, "nd2t"));
     // The realm ends with its parser suspended mid-run: nothing keeps the
-    // elements, so the run's block goes with its cache.
+    // elements, and the document's end ends its cache, so the run's block
+    // goes.
     try browser.navigate("about:blank", .window);
     try settle(browser);
     try expectNoBlockLeft(browser);
 }
 
-test "A3 abort: a top-level navigation away mid-parse frees the run's cache and its blocks" {
+test "A3 abort: a top-level navigation away mid-parse frees the document's cache and its blocks" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(topLevelNavigatedAwayMidParse);
 }
 
@@ -247,7 +282,8 @@ fn failedXmlParses() !void {
     try loadPage(browser, "<!doctype html><body></body>");
     // innerHTML with an XML context: the XML fragment parser made two
     // elements sharing a block before the well-formedness error
-    // ("SyntaxError", HTML 14.4 step 7).
+    // ("SyntaxError", HTML 14.4 step 7). The failed run's elements are gone;
+    // its block is the XML document's cache's alone, for the cache's 10 s.
     try run(browser,
         \\globalThis.xml = new DOMParser().parseFromString('<r><a/></r>', 'application/xml');
         \\let name = 'none';
@@ -255,20 +291,25 @@ fn failedXmlParses() !void {
         \\if (name !== 'SyntaxError') throw new Error('XML innerHTML threw ' + name);
         \\if (xml.documentElement.childElementCount !== 1) throw new Error('the failed parse changed the tree');
     );
+    try testing.expectEqual(@as(u32, 1), try referencesOn(browser, "nd2t"));
+    try passTenSeconds(browser);
     try expectNoBlockLeft(browser);
     // DOMParser on malformed XML. Crane follows Chrome and WebKit here
     // (xml_document_parser.zig insertErrorMessageBlock): the document keeps
     // what the run built before the error, beside the error report - so the
-    // failed run's two elements live on, holding the block the run's cache
-    // has let go of.
+    // failed run's two elements live on, holding the block with their
+    // document's cache, and alone once its 10 s are over.
     try run(browser, "globalThis.failed = new DOMParser().parseFromString('<r>" ++ xp ++ xp ++ "<oops', 'application/xml');" ++
         \\if (!failed.querySelector('parsererror')) throw new Error('no parsererror in the failed document');
         \\globalThis.kept = [...failed.querySelectorAll('p')];
     );
-    _ = try expectOneBlock(browser, "kept", 2, 2);
+    const block = try expectOneBlock(browser, "kept", 2, 3);
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "kept", 2, 2) == block);
 }
 
-test "A3 abort: a failed XML fragment parse leaves no block behind; DOMParser on malformed XML leaves the kept elements' block theirs" {
+test "A3 abort: a failed XML fragment parse leaves its block to the cache's 10 s; DOMParser on malformed XML leaves the kept elements' block theirs" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(failedXmlParses);
 }
 
@@ -290,12 +331,14 @@ fn templateContentsAndShadowRoots() !void {
     const browser = try startBrowser();
     defer browser.deinit();
     // The page's parser: a template's contents (another document) and a
-    // declarative shadow root are the same run's.
+    // declarative shadow root are the same run's, and share through the
+    // page's document's cache.
     try loadPage(browser, "<!doctype html><body>" ++ templates ++ "</body>");
     try run(browser, five ++ "globalThis.loaded = five(document);");
-    _ = try expectOneBlock(browser, "loaded", 5, 5);
-    // The fragment parser (setHTMLUnsafe, innerHTML) and a document parse
-    // with no script (Document.parseHTMLUnsafe): each its own run.
+    _ = try expectOneBlock(browser, "loaded", 5, 6);
+    // The fragment parser (setHTMLUnsafe, innerHTML) shares through the same
+    // document's cache; a document parse with no script
+    // (Document.parseHTMLUnsafe) makes a document, with a cache of its own.
     try run(browser,
         \\const host = document.body.appendChild(document.createElement('div'));
     ++ "const html = '" ++ templates ++ "';" ++
@@ -307,16 +350,21 @@ fn templateContentsAndShadowRoots() !void {
         \\inner.innerHTML = html;
         \\globalThis.fromInner = [...five(inner).slice(0, 3), ...inner.querySelector('#sh template').content.querySelectorAll('p')];
     );
-    const loaded = try expectOneBlock(browser, "loaded", 5, 5);
-    const fragment = try expectOneBlock(browser, "fromFragment", 5, 5);
-    const document = try expectOneBlock(browser, "fromDocument", 5, 5);
+    const loaded = try expectOneBlock(browser, "loaded", 5, 16);
+    const fragment = try expectOneBlock(browser, "fromFragment", 5, 16);
+    const document = try expectOneBlock(browser, "fromDocument", 5, 6);
     // innerHTML attaches no declarative shadow root: that template stays an
     // element, with its two `p` in its contents.
-    const inner = try expectOneBlock(browser, "fromInner", 5, 5);
-    try testing.expect(loaded != fragment and fragment != document and document != inner);
+    const inner = try expectOneBlock(browser, "fromInner", 5, 16);
+    try testing.expect(loaded == fragment and fragment == inner and inner != document);
+    // 10 s on, both caches are gone.
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "loaded", 5, 15) == loaded);
+    try testing.expect(try expectOneBlock(browser, "fromDocument", 5, 5) == document);
 }
 
-test "A3 abort: a template's contents and a declarative shadow root share with their run; its cache is gone after it" {
+test "A3 abort: a template's contents and a declarative shadow root share with their run's document; its cache is gone 10 s after" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(templateContentsAndShadowRoots);
 }
 
@@ -330,13 +378,18 @@ fn templateRunReplacedMidParse() !void {
         \\globalThis.kept = [...document.getElementById('sh').shadowRoot.querySelectorAll('p'), ...document.getElementById('t').content.querySelectorAll('p')];
     );
     const block = try expectOneBlock(browser, "kept", 4, 5);
+    // The replaced run and the one that replaces it leave the cache its
+    // 10 s.
     try run(browser, "document.open();");
-    try testing.expect(try expectOneBlock(browser, "kept", 4, 4) == block);
+    try testing.expect(try expectOneBlock(browser, "kept", 4, 5) == block);
     try run(browser, "document.close();");
-    _ = try expectOneBlock(browser, "kept", 4, 4);
+    try testing.expect(try expectOneBlock(browser, "kept", 4, 5) == block);
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "kept", 4, 4) == block);
 }
 
-test "A3 abort: a run replaced inside a template's contents, after a declarative shadow root - its cache lets go" {
+test "A3 abort: a run replaced inside a template's contents, after a declarative shadow root - the cache lets go 10 s after" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(templateRunReplacedMidParse);
 }
 
@@ -348,12 +401,18 @@ fn domParserAndXmlRuns() !void {
         "globalThis.fromXML = [...new DOMParser().parseFromString('<r>" ++ xp ++ xp ++ "</r>', 'application/xml').querySelectorAll('p')];" ++
         "globalThis.xml = new DOMParser().parseFromString('<r/>', 'application/xml'); xml.documentElement.innerHTML = '" ++ xp ++ xp ++ "';" ++
         "globalThis.fromXMLFragment = [...xml.querySelectorAll('p')];");
-    const html = try expectOneBlock(browser, "fromHTML", 2, 2);
-    const xml = try expectOneBlock(browser, "fromXML", 2, 2);
-    const xml_fragment = try expectOneBlock(browser, "fromXMLFragment", 2, 2);
-    try testing.expect(html != xml and xml != xml_fragment);
+    // Three documents, three caches.
+    const html = try expectOneBlock(browser, "fromHTML", 2, 3);
+    const xml = try expectOneBlock(browser, "fromXML", 2, 3);
+    const xml_fragment = try expectOneBlock(browser, "fromXMLFragment", 2, 3);
+    try testing.expect(html != xml and xml != xml_fragment and html != xml_fragment);
+    try passTenSeconds(browser);
+    try testing.expect(try expectOneBlock(browser, "fromHTML", 2, 2) == html);
+    try testing.expect(try expectOneBlock(browser, "fromXML", 2, 2) == xml);
+    try testing.expect(try expectOneBlock(browser, "fromXMLFragment", 2, 2) == xml_fragment);
 }
 
-test "A3 abort: DOMParser's HTML and XML runs and an XML fragment parse each end with their cache gone" {
+test "A3 abort: DOMParser's HTML and XML runs and an XML fragment parse each leave their document's cache its 10 s" {
+    if (comptime !is_testing) return error.SkipZigTest;
     try onFreshThread(domParserAndXmlRuns);
 }

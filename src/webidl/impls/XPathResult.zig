@@ -22,12 +22,24 @@ pub const InternalState = struct {
     document: dom.node_holds.MemberHold = .{},
     version: ?u64 = null,
     position: usize = 0,
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the result's nodes and its document, in the
+    /// collector's atomic pause. Blink's XPathResult::Trace visits value_,
+    /// node_set_ and document_ (core/xml/xpath_result.cc, Chromium
+    /// 131.0.6778.0). Makes no wrapper.
+    pub fn traceHeldNodes(instance: *Node, tracer: *engine.Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const self = state.own._internal orelse return;
+        self.nodes.trace(tracer);
+        self.document.trace(tracer);
+    }
 };
 
 pub fn initOwn(instance: *Node, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     const internal = try allocator.create(InternalState);
     errdefer allocator.destroy(internal);
-    internal.* = .{ .allocator = allocator, .nodes = dom.node_holds.Holder.init(allocator, instance) };
+    internal.* = .{ .allocator = allocator, .nodes = dom.node_holds.Holder.init(allocator) };
     errdefer internal.nodes.release();
     errdefer internal.document.release(instance, document_slot);
     if (comptime @hasField(@TypeOf(args), "result_type")) internal.result_type = args.result_type;
@@ -35,7 +47,7 @@ pub fn initOwn(instance: *Node, allocator: std.mem.Allocator, comptime StateType
     if (comptime @hasField(@TypeOf(args), "boolean_value")) internal.boolean_value = args.boolean_value;
     if (comptime @hasField(@TypeOf(args), "string_value")) internal.string_value = try allocator.dupe(u8, args.string_value);
     errdefer allocator.free(internal.string_value);
-    if (comptime @hasField(@TypeOf(args), "nodes")) try internal.nodes.hold(*Node, args.nodes, null);
+    if (comptime @hasField(@TypeOf(args), "nodes")) try internal.nodes.hold(*Node, args.nodes);
     if (internal.result_type == 4 or internal.result_type == 5) {
         if (comptime @hasField(@TypeOf(args), "document")) {
             if (args.document) |document| {

@@ -1,7 +1,11 @@
 //! Attribute-block sharing (lane nd2 batch 4, plan-v2 A3): elements whose
 //! attribute sets are equal - names and values, in order - hold ONE
-//! immutable block, made by a parser run's cache or by a clone from its
-//! source, and the first write on one of them copies it (copy on write).
+//! immutable block, made through their document's cache or by a clone from
+//! its source, and the first write on one of them copies it (copy on write).
+//! The cache lives 10 s past its document's parse where the realm has
+//! timers (dom.attribute_block_cache; tests/html/
+//! nd2_document_attribute_cache_test.zig); these pages have no engine and no
+//! timers, so here it ends with the parser run that made it.
 //! Blink: core/dom/element_data_cache.cc (ElementDataCache::
 //! CachedShareableElementDataWithAttributes), Element::ParserSetAttributes,
 //! Element::CloneAttributesFrom, Element::CreateUniqueElementData. WebKit:
@@ -75,7 +79,7 @@ fn blockOf(el: *runtime.Instance) ?*const dom.element_data.AttributeList {
     return dom.element_data.of(el).?.data.attrs;
 }
 
-test "A3: parser-made elements with equal sets share one block; the parse's cache is gone after it" {
+test "A3: parser-made elements with equal sets share one block; with no timers the document's cache is gone after the parse" {
     var page: Page = undefined;
     try page.open(testing.allocator);
     defer page.close();
@@ -86,7 +90,8 @@ test "A3: parser-made elements with equal sets share one block; the parse's cach
     try testing.expect(blockOf(els[1]).? == shared);
     // Another order, another value: other sets.
     try testing.expect(blockOf(els[2]).? != shared and blockOf(els[3]).? != shared);
-    // Two elements hold it; the parser's cache let go when the parse ended.
+    // Two elements hold it: with no timer to end it later, the document's
+    // cache let go when the parse ended.
     try testing.expectEqual(@as(u8, 2), shared.holders);
     try testing.expectEqual(@as(u8, 1), blockOf(els[2]).?.holders);
     // The ID and classes read through the shared block's indices.

@@ -61,9 +61,16 @@ pub fn lazyConstructorGetter(
     // The realm that owns the global, not the current one: a parent reading
     // `iframe.contentWindow.DOMParser` first would otherwise build ITS OWN
     // DOMParser, and V8 would store that on the iframe's global for good.
+    // Found by THE Window-receiver rule (realm_global.receiverRealm): for a
+    // contextual read in a realm whose WindowProxy went on, V8 15.7 hands a
+    // native data property V8's detached copy of the proxy as Holder()
+    // (GetHolderForApi, V8 32fd863235d) - contextless, so its creation
+    // context answered nothing and the first read of a lazy interface object
+    // there was undefined; the rule answers that realm, whose global the
+    // property is on (design 2.3 gap a; RED 966f3a99eb5).
     const holder = info.getHolder() orelse return;
     defer v8.v8_Object_Dispose(holder);
-    const context = v8.v8_Object_GetCreationContext(holder) orelse return;
+    const context = @import("realm_global.zig").receiverRealm(isolate, holder, .native) orelse return;
     defer v8.v8_Context_Dispose(context);
 
     var name_buf: [256]u8 = undefined;

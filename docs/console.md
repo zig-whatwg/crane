@@ -26,6 +26,14 @@ The console allocates with libc malloc; `--check-leaks` gives it a leak-checking
 (no per-allocation traces; `CRANE_LEAK_TRACES=1` adds a six-frame trace to each leak), and the leaks
 are reported when it exits.
 
+How much memory JavaScript's young generation takes is decided when the console is BUILT, not when
+it is run: `-Dv8-young-generation-mb=<n>`, megabytes of the WHOLE young generation of each of its
+isolates - the page's and every worker's. The default, 24, keeps V8's semispaces at 8 MB: less
+memory held between collections, slower on pages that allocate heavily. A desktop build passes
+`-Dv8-young-generation-mb=0`, V8's own sizing (32 MB semispaces, as Chrome on desktop).
+docs/engine-protocol.md, section 7b, has the table of values and why this is a build option of
+the V8 adapter rather than a command-line flag.
+
 ```
 repl [<url>] [--user-agent=<s>] [--proxy=system|direct|<url>] [--accept-insecure-certs]
      [--ca-bundle=<pem>] [--timeout=<ms>] [--wait-for-navigation]

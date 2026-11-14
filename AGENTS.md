@@ -97,7 +97,7 @@ zig build wpt-runner -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # the on
 zig build test       -j2 --cache-dir ~/Library/Caches/crane-z16-cache   # includes lint-impls
 ```
 
-- `zig build test` also runs `crane-check`, `codegen-check` and the lints - lint-impls, lint-engine, lint-global-state, lint-platform, lint-refcount - each a ratchet whose baseline only goes down (tools/AGENTS.md).
+- `zig build test` also runs `crane-check`, `codegen-check` and the lints - lint-impls, lint-engine, lint-global-state, lint-platform, lint-refcount, lint-build - each a ratchet whose baseline only goes down (tools/AGENTS.md).
 - **Verify mode:** a branch that adds or changes tests also passes `zig build test-verify` (plain and with `-Dsanitize-thread`) and `wpt_runner --repeat=10 --verify`, and its merge report quotes both (tests/AGENTS.md, "Verify mode").
 
 All three must pass. For changes to V8 handle ownership, they are not

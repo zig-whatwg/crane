@@ -1,0 +1,22 @@
+# Architecture: An engine's own timer is pending work to a host that runs until idle - arm it as a background timer
+
+**Date**: 2026-11-12
+**Lesson**: A timer the engine arms for its own housekeeping (drop a cache 10 s after a parse) is, to Crane's hosts, exactly a page's `setTimeout`: the loop is not idle while it is armed, a host that runs a page until its loop is idle waits for it, and a virtual clock jumps to it. Arm such a timer with `runtime.TimerInterface.setBackgroundTimeout`, which the idle check, the loop's wait and the virtual clock never read.
+
+**Why**: A browser never has this problem. It does not end because its loop went idle, so Blink can put `element_data_cache_clear_timer_` on the document's task runner and WebKit `m_sharedObjectPoolClearTimer` on its timer heap. Crane's hosts do end on idle: `Browser.runEventLoopBlocking` returns when `EventLoop.hasPendingWork()` is false, and the console's, the WPT runner's and the tests' waits are built on it. The testing platform's virtual clock moves to `nextDeadlineNs()` whenever the loop has nothing runnable. All of them read the timer manager's one heap, so an engine timer in that heap is indistinguishable from a page's.
+
+**What Happened**: Lane nd2 batch 5 moved the shared attribute blocks' cache from the parser run to the Document, with Blink's and WebKit's lifetime: a one-shot timer 10 s after the parse. Armed as an ordinary timer it would have done three things. Every `runEventLoopBlocking(60_000)` after a page load would have turned for 10 s (tests/html has dozens of run-until-idle helpers, and a host waits the same way). Every virtual-clock Browser would have jumped 10 s at its first idle turn, moving the exact times tests/html/detplat1_virtual_time_test.zig asserts. And a host that stopped turning the loop would have left the timer to fire into whatever was at the Document's address later.
+
+The design asked, before any code, who reads the timer manager: "is a timer armed" (`hasPendingWork`: `getActiveTimerCount`), "when is the next one due" (the turn's wait and the idle-period deadline: `getNextTimerDeadline`), and "where does a virtual clock move" (`nextDeadlineNs`). A second heap in `NativeTimerManager` that none of the three reads, fired by the same poll in firing order with the first, answered all of them without a change to either event loop file. libuv has the same idea as an unreferenced handle (`uv_unref`), Node as `timeout.unref()`.
+
+Two lifetime facts came out of reading `Browser.deinit`, not from a test. The event loop - and its timer manager - ends BEFORE the teardown sweeps that free orphaned Documents, so a timer interface copied into a Document's state can outlive its manager; the cache keeps one only while its timer is armed, and the manager's end drops what is armed (the owned-timer contract). And a retired realm's `ctx.timer` is null while its `Context` stays valid until the agent ends, so the timer is read from `document.ctx` at the moment of arming.
+
+**Fix**:
+1. Before arming a timer for the engine's own work, list every reader of the timer manager: the idle check, the turn's wait, the idle-period deadline, the virtual clock. If neither a page nor a host waits for the timer, it is a background timer.
+2. Give it the owned-timer contract: its user data is dropped when the manager ends with it armed, and a clear that is not confirmed leaves the data to the timer (lesson [Only confirmed cancellation returns payload ownership](architecture-only-confirmed-cancellation-returns-payload-ownership.md)).
+3. Read the realm's timers when you arm, never from a copy kept across turns; keep the interface only while the timer is armed.
+4. Where no background timer can be armed (a realm with no timers), fall back to the lifetime that needs none - here, the cache ends with its parser run.
+5. Test on both clocks. Only the virtual clock shows a clock that moved (`performance.now() === before` after a run until idle); only the real clock shows a host that waited (run until idle returns in well under the timer's delay, with the timer still armed).
+6. Test every end with the timer armed: the owner collected, its frame removed, its page navigated away from, the Browser ended.
+
+**Takeaway**: **To a host that runs until idle, every armed timer is work: housekeeping the engine arms for itself goes on a background timer that the idle check, the loop's wait and the virtual clock never read - and it must be tested on both clocks and at every end of its owner.**

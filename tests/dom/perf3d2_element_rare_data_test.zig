@@ -93,7 +93,7 @@ test "HTMLElement's InternalState keeps no allocator copy" {
     try expectNoFields(HTMLElementState, .{"allocator"});
 }
 
-test "Element's InternalState is 40 bytes: the cold fields are rare data, the slot name its attribute" {
+test "Element's InternalState: the cold fields are rare data, the slot name its attribute" {
     // 416 at dfa8592a878: - 16 (the allocator copy) - 40 (ElementData's
     // prefix and Attr nodes) - 104 (the NamedNodeMap and its generation, the
     // shadow root and its edge, the definition, the is value, the element
@@ -111,8 +111,8 @@ test "Element's InternalState is 40 bytes: the cold fields are rare data, the sl
         return error.NoRareData;
     }
     // Lane nd2 N2 the name to one record pointer (nd2_element_name_test):
-    // -48; N3 the ID and classes views (nd2_id_class_index_test): -48.
-    try expectSize(ElementState, 40);
+    // -48; N3 the ID and classes views (nd2_id_class_index_test): -48: 40.
+    // Its size is pinned in ONE place, tests/dom/node_block_sizes_test.zig (lane nm1).
 }
 
 test "ElementData is 16 bytes: its Attr nodes are rare data, its name one record, its ID and classes two indices in its list" {

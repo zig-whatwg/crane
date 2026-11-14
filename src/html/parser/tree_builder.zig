@@ -268,8 +268,8 @@ pub const ContentPatch = struct {
     end_node: ?*TreeNode = null,
     /// The live DOM adapter: the DOM nodes - typed opaquely, as html_core
     /// does not import runtime - with their slab generations. The parser
-    /// holds them while the template is on its stack (scripted_parser's
-    /// holdsNodeUnder), so a tree script detaches them in is rescued.
+    /// holds them while the template is on its stack, and its Document
+    /// traces them (scripted_parser's traceHeldNodes).
     target: ?*anyopaque = null,
     target_generation: u64 = 0,
     start: ?*anyopaque = null,
@@ -1142,20 +1142,31 @@ pub const TreeBuilder = struct {
     }
 
     /// The nodes the tree builder's own structures name: the stack of open
-    /// elements (topmost first) and the head and form element pointers. The
-    /// live parser holds exactly these (HTML 13.2.4; Blink's
-    /// HTMLConstructionSite::Trace visits the same structures). Active
-    /// formatting entries are not here: the parser touches one as a DOM node
-    /// only after finding it on the stack (adoption agency steps 4.4-4.6).
+    /// elements (topmost first), the head and form element pointers, and the
+    /// list of active formatting elements (its element entries). The live
+    /// parser holds exactly these (HTML 13.2.4; each counted:
+    /// `TreeNode.structure_refs`), and its Document traces them (the wrapper
+    /// redesign's P6) as Blink's HTMLConstructionSite::Trace visits
+    /// open_elements_, active_formatting_elements_, head_ and form_
+    /// (Chromium 131.0.6778.0). A removal's question - is a held node under
+    /// this root - reads the stack, head and form only: the parser touches a
+    /// formatting entry as a DOM node only after finding it on the stack
+    /// (adoption agency steps 4.4-4.6).
     pub const HeldNodes = struct {
         stack: []const *TreeNode,
         head: ?*TreeNode,
         form: ?*TreeNode,
+        formatting: []const FormattingEntry,
     };
 
     /// A read-only view of the held nodes, valid until the next push or pop.
     pub fn heldNodes(self: *const TreeBuilder) HeldNodes {
-        return .{ .stack = self.open_elements.items(), .head = self.head_element, .form = self.form_element };
+        return .{
+            .stack = self.open_elements.items(),
+            .head = self.head_element,
+            .form = self.form_element,
+            .formatting = self.active_formatting_elements.items(),
+        };
     }
 
     /// Get the current node (bottommost in stack of open elements).

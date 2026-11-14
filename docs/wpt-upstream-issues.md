@@ -34,9 +34,39 @@ wpt.fyi's aligned Chrome/Firefox/Safari revision, from fae291ef5): all four file
 are unchanged upstream since fae291ef5, all three issues are open, and the
 worklist regenerated against the new manifest still excludes all four.
 
+## Everything filed, with its status (checked 2026-11-12 16:37 UTC)
+
+The table above carries the details for the files that are excluded or exempt. This is the complete list
+of what was filed under the user's account, so each can be re-checked (`gh issue view <n> --repo <repo>`).
+
+| Item | Kind | Filed | About | Status |
+|------|------|-------|-------|--------|
+| wpt#63098 | issue | 2026-09-30 | traverse_the_history_1 + write_after_load_1 | open |
+| wpt#63099 | issue | 2026-09-30 | joint_session_history/002 | open |
+| wpt#63100 | issue | 2026-09-30 | location_replace_session_history | open |
+| wpt#63811 | issue | 2026-10-17 | MutationObserver-characterData PI subtest | open |
+| wpt#63812 | issue | 2026-10-17 | CSP sandbox-empty headers file name | open |
+| wpt#64332 | PR | 2026-10-28 | fetchLater same-origin-iframe quota expectation | open, no review |
+| wpt#64475 | issue | 2026-10-31 | dynamic-import microtasks basic.any.js Date.now() specifier | open; maintainer asked for a PR -> wpt#65105 |
+| wpt#64636 | issue | 2026-11-03 | navigation-timing-extended strict comparisons | open |
+| wpt#64827 | issue | 2026-11-05 | COEP reporting-to-endpoint lacks Reporting-Endpoints | open |
+| wpt#64870 | issue | 2026-11-06 | COEP reporting tests post Report.toJSON() across threads | CLOSED (tests changed upstream 2026-11-07, 585d7b6f39) |
+| wpt#64927 | issue | 2026-11-09 | customizable-select select-pick-option-dirtiness | open |
+| wpt#64928 | issue | 2026-11-09 | customizable-select select-picker-hover-after-picking | open, 4 comments |
+| wpt#65066 | PR | 2026-11-11 | permissions/worker.https.html undeclared promise | MERGED 2026-11-12 (65989351d1) |
+| wpt#65067 | issue | 2026-11-11 | paste_text_with_text_transform requires window.testRunner | open, 1 comment |
+| wpt#65105 | PR | 2026-11-12 | dynamic-import microtasks: unique module specifier (fixes #64475) | open |
+| wpt.fyi#5128 | issue | 2026-09-30 | Crane test runner registration request | open |
+| w3c/IndexedDB#510 | spec issue | 2026-10-03 | IDBKeyRange.bound() equal keys with an open bound | open, 3 comments |
+| w3c/FileAPI#226 | spec issue | 2026-10-04 | Blob/File serialization drops type | open |
+| w3c/ServiceWorker#1853 | spec issue | 2026-11-05 | static routing "cache" source stops at the first cache | open, 2 comments |
+
 ## Resolved
 
-None yet.
+- wpt#65066 merged upstream 2026-11-12 (65989351d1): `permissions/worker.https.html` gets the fix when
+  tests/wpt moves past it.
+- wpt#64870 closed: upstream changed the COEP reporting tests (585d7b6f39, 2026-11-07); re-check the
+  Report.toJSON ruling against the new copies at the WPT update.
 
 ## Kept in the worklist on purpose
 

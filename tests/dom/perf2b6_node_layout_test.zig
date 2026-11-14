@@ -85,21 +85,20 @@ fn Own(comptime State: type) type {
     return @FieldType(State, "own");
 }
 
-test "NodeBase is 88 bytes: no allocator copy, no last_child" {
+test "NodeBase keeps no allocator copy, no last_child, no holds chain" {
     // 112 at main f7853e77e9a: - 16 (the allocator: an owned node's is its
     // Browser's, an owner-less one's is named by its owner word) - 8
-    // (last_child: the first child's previous link).
-    try expectNoField(NodeBase, .{ "allocator", "last_child", "child_nodes" });
-    try expectSize(NodeBase, 88);
+    // (last_child: the first child's previous link). 88 until the wrapper
+    // redesign's P6 (lane wr1 batch 6): - 8 (`holds`, node_holds' chain -
+    // holders trace their nodes from their wrappers instead, design 3.4).
+    // Its size is pinned in node_block_sizes_test.zig (one place: lane nm1).
+    try expectNoField(NodeBase, .{ "allocator", "last_child", "child_nodes", "holds" });
 }
 
-test "Node's embedded state keeps no allocator copy: 128 bytes" {
+test "Node's embedded state keeps no allocator copy" {
     const E = Embedded(interfaces.Node.State);
     try std.testing.expect(E != void);
     try expectNoField(E, .{"allocator"});
-    // node_base 8, node_type 2, owner_document 8 + its generation 8,
-    // child_nodes_list 8, the NodeBase 88.
-    try expectSize(E, 128);
 }
 
 test "EventTarget's embedded state keeps no allocator and no lazy entry: 8 bytes" {

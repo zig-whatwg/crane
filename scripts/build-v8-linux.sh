@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build V8 13.1.203 - the V8 Crane links (jsengines/v8/include/v8-version.h) - for x86_64 Linux, so its
 # static archives link with the C++ library Zig gives Crane. Output: jsengines/v8/out/static/obj (the
-# path tools/v8_archives.zig names on every OS) with args.gn, PROVENANCE and SHA256SUMS. No sudo.
+# path src/runtime/engines/v8/build/archives.zig names on every OS) with args.gn, PROVENANCE and SHA256SUMS. No sudo.
 #
 #   scripts/build-v8-linux.sh <step>...   (in this order the first time; `all` runs them all)
 #     deps       the commands the build needs (git, python3, curl, tar, xz) and the pinned Zig; prints

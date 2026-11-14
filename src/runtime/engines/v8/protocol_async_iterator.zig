@@ -110,7 +110,7 @@ const Record = struct {
 
     const allocator = std.heap.c_allocator;
 
-    /// Leave the realm's list, dispose the handle (cancelling a second pass
+    /// Leave the realm's list, dispose the handle (cancelling a finalizer
     /// still to come) and free the record; what the host's finalize needs.
     fn end(self: *Record) struct { steps: *const engine.AsyncIteratorSteps, data: ?*anyopaque } {
         const steps = self.steps;
@@ -121,8 +121,8 @@ const Record = struct {
         return .{ .steps = steps, .data = data };
     }
 
-    /// V8's second pass, after the collection (v8_Global_SetWeakFinalizer):
-    /// `finalize` may touch the engine.
+    /// The agent's safe point after the collection (never inside V8's
+    /// collector: ffi.v8_Global_SetWeakFinalizer): `finalize` may touch the engine.
     fn collected(raw: ?*anyopaque, _: usize) callconv(.c) void {
         const self: *Record = @ptrCast(@alignCast(raw.?));
         const host = self.end();
@@ -151,9 +151,28 @@ pub fn createAsyncIterator(realm: Context, steps: *const engine.AsyncIteratorSte
     const isolate = entered.isolate;
 
     // The asynchronous iterator prototype object: its [[Prototype]] is
-    // %AsyncIteratorPrototype%.
-    const async_iterator_prototype = try support.asyncIteratorPrototype(entered);
-    defer ffi.v8_Global_Dispose(async_iterator_prototype);
+    // %AsyncIteratorPrototype% - the realm's own, which V8 names and the
+    // adapter asks for by that name, never by evaluating script. The realm's
+    // record has it from when the realm was made (realm_v8.zig
+    // populateIntrinsics: BORROWED here, the record's for the realm's life);
+    // a realm with no record - a ShadowRealm's context today
+    // (shadow_realm.zig registers it without one) - is asked now, and that
+    // answer is OWNED here.
+    var asked: ?*ffi.Value = null;
+    defer if (asked) |owned| ffi.v8_Global_Dispose(owned);
+    const async_iterator_prototype: *ffi.Value = recorded: {
+        if (realm.getRealm()) |record| {
+            if (record.getIntrinsics().async_iterator_prototype) |handle| {
+                const value: *ffi.Value = @ptrCast(@alignCast(handle));
+                // Weak once the realm's navigable is destroyed
+                // (realm_v8.weakenIntrinsics), and empty only after the
+                // collector took the realm - when nothing runs in it.
+                if (!ffi.v8_Global_IsEmpty(value)) break :recorded value;
+            }
+        }
+        asked = ffi.v8_Context_AsyncIteratorPrototype(isolate, context) orelse return error.OperationFailed;
+        break :recorded asked.?;
+    };
     const prototype: *ffi.Value = @ptrCast(ffi.v8_Object_NewInContext(context) orelse return error.OperationFailed);
     defer ffi.v8_Global_Dispose(prototype);
     if (!ffi.v8_Object_SetPrototypeV2(@ptrCast(prototype), context, async_iterator_prototype)) return error.OperationFailed;

@@ -64,6 +64,10 @@ pub const IsolateTemplates = struct {
     external_reported: usize = 0,
     /// This storage's isolate, for the report (set with `external_memory`).
     external_isolate: ?*anyopaque = null,
+    /// The agent's v8::ExternalMemoryAccounter (ffi.ExternalMemoryAccounter,
+    /// set with `external_memory`): OWNED, deleted by
+    /// external_memory.uninstall at the agent's end.
+    external_accounter: ?*anyopaque = null,
 
     /// Initialize isolate-local template storage
     pub fn init(allocator: std.mem.Allocator) IsolateTemplates {

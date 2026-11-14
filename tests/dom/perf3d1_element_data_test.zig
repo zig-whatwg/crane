@@ -124,7 +124,7 @@ test "ElementData is 16 bytes: the list out of line, no allocator, the Attr node
     }
 }
 
-test "Element's InternalState is 40 bytes" {
+test "Element's InternalState fits an arena class with its element" {
     // 848 at 5b07812bf00: - 432 (ElementData's diet) = 416 at D1, Element
     // still keeping its 16-byte allocator copy then (in the V8 tests' realms
     // the creation allocator was not the scope's: docs/lessons/
@@ -135,7 +135,7 @@ test "Element's InternalState is 40 bytes" {
     // its slottable state (tests/dom/perf3e1_slottable_test.zig): 136; nd2
     // N2 its name (tests/dom/nd2_element_name_test.zig): 88.
     // N3 the ID and classes views: 40.
-    try expectSize(ElementState, 40);
+    // Its size is pinned in ONE place, tests/dom/node_block_sizes_test.zig (lane nm1).
     // Kept by value in its element's one State block (perf2 b5, Z7), or in a
     // block of its own before that: either way at most 512 bytes of arena.
     try testing.expect(runtime.ArenaAllocator.heldBytes(@sizeOf(ElementState), @alignOf(ElementState)) <= 512);

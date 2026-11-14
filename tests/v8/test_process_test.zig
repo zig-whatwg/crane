@@ -132,7 +132,7 @@ test "V8 runs with the runtime's flags, whichever test started it" {
     defer ffi.v8_Context_Dispose(context);
     ffi.v8_Context_Enter(context);
     defer ffi.v8_Context_Exit(context);
-    // --harmony-shadow-realm and --js-float16array (RUNTIME_V8_FLAGS).
+    // --harmony-shadow-realm (RUNTIME_V8_FLAGS) and Float16Array (shipped in V8 13.5).
     const code = "(typeof ShadowRealm === 'function' ? 1 : 0) + (typeof Float16Array === 'function' ? 2 : 0)";
     const text = ffi.v8_String_NewFromUtf8(isolate, code.ptr, @intCast(code.len)) orelse return error.StringFailed;
     defer ffi.v8_String_Dispose(text);

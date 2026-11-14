@@ -107,17 +107,12 @@ comptime {
 }
 
 pub fn main(init: std.process.Init.Minimal) void {
-    // The process start's first step, before any thread exists - a test's,
-    // the busy Browser's, V8's own workers: the engine's per-process state
-    // that only threads created after it inherit (engine protocol
-    // initializeBeforeThreadCreation; V8's thread isolation key on x86-64
-    // Linux), as every Crane host's main does first. A suite's tests start
-    // V8 on whichever thread comes first, and every thread then has access.
-    // CRANE_TEST_ENGINE_EARLY=0 skips it, as a host that never calls it
-    // does: build.zig runs tests-v8's platform start tests that way too
-    // (`addEngineLateRun`), so the fallback - V8 without thread isolation,
-    // started on a later thread beside others - stays tested.
-    if (suite.engine) |engine| if (engineEarly(init.environ)) engine.initializeBeforeThreadCreation();
+    // The engine's part of the process start is `startEngineOnce`: before
+    // the first test and before any thread exists, never here - a process
+    // the launcher only asks for its tests' names runs no test and starts no
+    // engine. How many threads the process has now is what it must still
+    // have then.
+    if (suite.engine != null) threads_at_main = threadCount();
     const args = init.args.toSlice(fba.allocator()) catch |err| panic("unable to parse command line args: {t}", .{err});
 
     var listen = false;
@@ -143,6 +138,69 @@ pub fn main(init: std.process.Init.Minimal) void {
     } else {
         return mainTerminal(init);
     }
+}
+
+/// Whether `startEngineOnce` has run.
+var engine_start_done = false;
+
+/// The process start's engine step, done once, before the process's first
+/// test and before any thread exists - a test's, the busy Browser's, V8's
+/// own workers: the engine's per-process state that only threads created
+/// after it inherit (engine protocol initializeBeforeThreadCreation; V8's
+/// thread isolation key on x86-64 Linux), as every Crane host's main does
+/// first. A suite's tests start V8 on whichever thread comes first, and
+/// every thread then has access. So a test may assume it, as it may assume
+/// anything the process start makes; nothing the runner does before its
+/// first test starts a thread (its own Io is single-threaded, and the
+/// terminal mode's progress thread starts after this).
+///
+/// Before the first test, not first in `main`: the launcher's listing run -
+/// the process it asks only for its tests' names (tools/test_launcher
+/// child.zig, `queryMetadata`) - runs no test, so it starts no engine. That
+/// process has the launcher's own environment, none of a test child's: in a
+/// -Dsanitize-thread build a V8 started there printed the sanitizer's
+/// reports of V8's own worker threads, unsuppressed, into every log (four
+/// per listing run; lane build3, 2026-11-13).
+///
+/// CRANE_TEST_ENGINE_EARLY=0 skips it, as a host that never calls it does:
+/// build.zig runs tests-v8's platform start tests that way too
+/// (`addEngineLateRun`), so the fallback - V8 without thread isolation,
+/// started on a later thread beside others - stays tested.
+fn startEngineOnce(environ: std.process.Environ) void {
+    if (engine_start_done) return;
+    engine_start_done = true;
+    const engine = suite.engine orelse return;
+    if (!engineEarly(environ)) return;
+    // "Before any thread exists" is checked, not assumed: the process has
+    // the threads it had when main began (its main thread; whatever else a
+    // runtime under it keeps is counted on both sides). A thread started by
+    // anything the runner does before its first test would miss the
+    // engine's per-process state - V8 would then have to run without thread
+    // isolation, or fault - so it fails here, in every test process of every
+    // suite that links the engine, by name.
+    if (threads_at_main) |at_main| {
+        if (threadCount()) |now| {
+            if (now != at_main) panic("the test runner started a thread before the engine's process start: {d} thread(s) when main began, {d} before the first test. engine.initializeBeforeThreadCreation must run before any thread exists: start nothing before `startEngineOnce` (tests/test_runner/runner.zig)", .{ at_main, now });
+        }
+    }
+    engine.initializeBeforeThreadCreation();
+}
+
+/// How many threads this process has when `main` begins (`threadCount`).
+var threads_at_main: ?usize = null;
+
+/// How many threads this process has now: the entries of /proc/self/task.
+/// Null where the system has no such listing (macOS) or it cannot be read -
+/// the check that uses it is then not made there; the pool's Linux host
+/// makes it in every gate.
+fn threadCount() ?usize {
+    if (builtin.os.tag != .linux) return null;
+    var tasks = Io.Dir.cwd().openDir(runner_threaded_io, "/proc/self/task", .{ .iterate = true }) catch return null;
+    defer tasks.close(runner_threaded_io);
+    var count: usize = 0;
+    var entries = tasks.iterate();
+    while (entries.next(runner_threaded_io) catch return null) |_| count += 1;
+    return count;
 }
 
 /// Whether the process start makes the engine's per-process state before any
@@ -291,6 +349,9 @@ fn mainServer(init: std.process.Init.Minimal) !void {
             },
 
             .run_test => {
+                // The first test of the process: the engine's process start,
+                // before anything of the test exists.
+                startEngineOnce(init.environ);
                 testing.environ = init.environ;
                 initTestAllocator();
                 testing.io_instance = .init(testing.allocator, .{
@@ -345,6 +406,9 @@ fn mainServer(init: std.process.Init.Minimal) !void {
 }
 
 fn mainTerminal(init: std.process.Init.Minimal) void {
+    // Every test runs in this process: the engine's process start, before
+    // the progress display starts its thread.
+    startEngineOnce(init.environ);
     const test_fn_list = builtin.test_functions;
     var ok_count: usize = 0;
     var skip_count: usize = 0;

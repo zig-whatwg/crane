@@ -371,3 +371,96 @@ test "an asynchronous iterator of an ended realm never calls its steps again" {
     collect();
     try std.testing.expectEqual(@as(usize, 1), iterated.finalized);
 }
+
+// ---------------------------------------------------------------------------
+// A finalizer never runs inside V8's collector (lane v8up b6)
+// ---------------------------------------------------------------------------
+//
+// V8 15.7 runs its weak callbacks under DisallowJSObjectModification and
+// CHECKs it; the first pass only queues the finalizer on its agent, which
+// runs it at its safe point - the pump after the task, or a forced
+// collection's return (v8_wrapper.cpp `runQueuedFinalizers`;
+// tests/v8/weak_callback_ownership_test.zig has the queue's own tests).
+
+/// A reaction whose `dropped` step does engine work in its realm: it writes
+/// a NEW property of the realm's global, which changes the object's map.
+const WritingReaction = struct {
+    realm: runtime.Context,
+    dropped: usize = 0,
+    failed: bool = false,
+
+    fn onDropped(data: ?*anyopaque) void {
+        const self: *WritingReaction = @ptrCast(@alignCast(data.?));
+        self.dropped += 1;
+        run(self.realm, "globalThis.droppedReactions = (globalThis.droppedReactions || 0) + 1") catch {
+            self.failed = true;
+        };
+    }
+
+    const steps: protocol.PromiseReactionSteps = .{ .dropped = onDropped };
+};
+
+/// A collection V8 delivers BY TASK (a moderate memory-pressure notice:
+/// Isolate::MemoryPressureNotification(kModerate) starts an incremental
+/// collection its marking job finishes in foreground tasks, and its second
+/// pass is a task V8 posts), pumped by `pump` until `done` or the bound.
+fn collectByTask(comptime pump: fn (*ffi.Isolate) callconv(.c) bool, context: anytype, comptime done: fn (@TypeOf(context)) bool) !void {
+    const isolate = test_isolate.?;
+    ffi.v8_Isolate_MemoryPressureNotification(isolate, .moderate);
+    var turns: usize = 0;
+    while (!done(context) and turns < 2_000_000) : (turns += 1) {
+        if (!pump(isolate)) std.Thread.yield() catch {};
+    }
+    if (!done(context)) return error.NoCollectionByTask;
+}
+
+fn writingReactionDropped(reaction: *WritingReaction) bool {
+    return reaction.dropped != 0;
+}
+
+fn finalizerQueued(_: void) bool {
+    return ffi.v8_Debug_QueuedFinalizers(test_isolate.?) != 0;
+}
+
+test "a collected reaction's dropped step writes to its realm after a collection delivered by task" {
+    defer test_agent.close();
+    const w = try windowRealm();
+    defer protocol.destroyWindowRealm(w, .global_detached);
+    collect();
+    while (ffi.v8_Platform_PumpMessageLoop(test_isolate.?)) {}
+    var reaction: WritingReaction = .{ .realm = w };
+    {
+        const promise = try evalOwned(w, "new Promise(() => {})");
+        defer promise.release();
+        try protocol.reactToPromise(w, promise.value, &WritingReaction.steps, &reaction);
+    }
+    // The event loop's own pump: the task that finishes V8's collection runs
+    // in it, and the finalizer at the safe point after that task.
+    try collectByTask(ffi.v8_Platform_PumpMessageLoop, &reaction, writingReactionDropped);
+    try std.testing.expectEqual(@as(usize, 1), reaction.dropped);
+    try std.testing.expect(!reaction.failed);
+    try expectEval(w, "String(globalThis.droppedReactions)", "1");
+}
+
+test "a realm that ends while a collected reaction's finalizer is queued drops it once, and the safe point runs nothing for it" {
+    defer test_agent.close();
+    const w = try windowRealm();
+    collect();
+    while (ffi.v8_Platform_PumpMessageLoop(test_isolate.?)) {}
+    var reaction: Reaction = .{};
+    {
+        const promise = try evalOwned(w, "new Promise(() => {})");
+        defer promise.release();
+        try protocol.reactToPromise(w, promise.value, &Reaction.all, &reaction);
+    }
+    // Both passes ran; the finalizer waits on the agent's queue.
+    try collectByTask(ffi.v8_Debug_PumpMessageLoopHoldingFinalizers, {}, finalizerQueued);
+    try std.testing.expectEqual(@as(usize, 0), reaction.dropped);
+    // Its realm ends first: the realm drops the reaction itself, once, and
+    // cancels the queued finalizer, whose record points at freed memory.
+    protocol.destroyWindowRealm(w, .global_detached);
+    try std.testing.expectEqual(@as(usize, 1), reaction.dropped);
+    while (ffi.v8_Platform_PumpMessageLoop(test_isolate.?)) {}
+    try std.testing.expectEqual(@as(usize, 0), ffi.v8_Debug_QueuedFinalizers(test_isolate.?));
+    try std.testing.expectEqual(@as(usize, 1), reaction.total());
+}

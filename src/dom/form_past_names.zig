@@ -92,11 +92,11 @@ pub const Registry = struct {
     }
 };
 
-/// `node`'s node document, as a key (live_collections' documentKey): the
-/// document's own tree node is what its nodes' owner_document points at.
+/// `node`'s node document, as a key (live_collections' documentKey): a
+/// document's own key is what its nodes' keys equal (NodeBase.documentKey).
 pub fn documentOf(node: *const NodeBase) usize {
-    if (node.node_type == NodeBase.DOCUMENT_NODE) return @intFromPtr(node);
-    return @intFromPtr(node.owner_document);
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return node.keyAsDocument();
+    return node.documentKey();
 }
 
 test "an empty registry dispatches nothing, and frees nothing it does not hold" {
