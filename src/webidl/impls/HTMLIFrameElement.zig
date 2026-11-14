@@ -1595,10 +1595,16 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     // an iframe element and will lazy load element steps given container
     // returns true, then stop intersection-observing a lazy loading element
     // container and set container's lazy load resumption steps to null."
-    if (integration.iframe_element) |container_ptr| {
+    // Only a navigation: a traversal's or a reload's population comes here
+    // too (`traversal_entry`), but HTML's "apply the history step" never
+    // calls navigate - a location.reload() of the frame's initial
+    // about:blank leaves its lazy load alone
+    // (iframe-loading-lazy-reload-location-reload.html,
+    // -navigation-reload.html).
+    if (options.traversal_entry == 0) if (integration.iframe_element) |container_ptr| {
         const container: *runtime.Instance = @ptrCast(@alignCast(container_ptr));
         if (container.stateAs(State) != null and willLazyLoad(container)) cancelLazyLoad(container);
-    }
+    };
 
     // Step 12: "If navigable's allowed to perform a navigation or history
     // update returns blocked, then ... return." Not for the navigations the
