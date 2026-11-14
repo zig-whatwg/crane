@@ -198,6 +198,53 @@ test "bytes that are not the coding fail" {
     try testing.expectError(error.InvalidData, decode(&.{.deflate}, "\xff\xff\xff\xff not deflate at all", 0));
 }
 
+/// As `decode`, with the DEFLATE decoder named: zlib's (the platform's
+/// zlib_inflate capability) or Zig's std.compress.flate, which decodes
+/// gzip and deflate where the platform lacks the capability.
+fn decodeWith(inflater: cc.Inflater, codings: []const cc.Coding, encoded: []const u8, chunk: usize) cc.Error![]u8 {
+    const decoder = try cc.Decoder.createWith(testing.allocator, codings, .{ .inflater = inflater });
+    defer decoder.destroy();
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(testing.allocator);
+    var collect: cc.Collect = .{ .allocator = testing.allocator, .out = &out };
+    var at: usize = 0;
+    const step = if (chunk == 0) encoded.len else chunk;
+    while (at < encoded.len) : (at += step) try decoder.push(encoded[at..@min(at + step, encoded.len)], collect.sink());
+    return out.toOwnedSlice(testing.allocator);
+}
+
+test "gzip and deflate decode the same with zlib's inflater and with Zig's" {
+    const small_text = try fixtures.small(testing.allocator);
+    defer testing.allocator.free(small_text);
+    const big_text = try fixtures.big(testing.allocator);
+    defer testing.allocator.free(big_text);
+    const cases = [_]struct { codings: []const cc.Coding, bytes: []const u8, text: []const u8 }{
+        .{ .codings = &.{.gzip}, .bytes = fixtures.small_gz, .text = small_text },
+        .{ .codings = &.{.deflate}, .bytes = fixtures.small_zlib, .text = small_text },
+        .{ .codings = &.{.deflate}, .bytes = fixtures.small_deflate, .text = small_text },
+        .{ .codings = &.{ .gzip, .gzip }, .bytes = fixtures.small_gz_gz, .text = small_text },
+        .{ .codings = &.{.gzip}, .bytes = fixtures.big_gz, .text = big_text },
+    };
+    const inflaters: []const cc.Inflater = if (cc.zlib_inflate_supported) &.{ .zlib, .zig } else &.{.zig};
+    for (inflaters) |inflater| {
+        for (cases) |case| {
+            for ([_]usize{ 0, 1, 7, 4096 }) |chunk| {
+                const got = try decodeWith(inflater, case.codings, case.bytes, chunk);
+                defer testing.allocator.free(got);
+                try testing.expect(std.mem.eql(u8, case.text, got));
+            }
+        }
+        var bad = fixtures.small_zlib.*;
+        bad[bad.len - 1] ^= 0x01;
+        try testing.expectError(error.InvalidData, decodeWith(inflater, &.{.deflate}, &bad, 0));
+        try testing.expectError(error.InvalidData, decodeWith(inflater, &.{.deflate}, "\xff\xff\xff\xff not deflate at all", 0));
+        try testing.expectError(error.InvalidData, decodeWith(inflater, &.{.gzip}, "not actually gzip", 0));
+    }
+    // The testing platform has the capability: Fetch's gzip is zlib's.
+    try testing.expect(cc.zlib_inflate_supported);
+    try testing.expectEqual(cc.Inflater.zlib, cc.Inflater.preferred);
+}
+
 /// A zstd frame: `descriptor` and `window` (Window_Descriptor), then one
 /// raw last block holding `content`.
 fn zstdRawFrame(buf: []u8, window: u8, content: []const u8) []const u8 {
