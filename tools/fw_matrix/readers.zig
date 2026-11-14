@@ -866,3 +866,295 @@ test "Jasmine's console reporter: the failures by name with their message, the p
     try testing.expectEqual(@as(usize, 0), one.tests.len);
     try testing.expectError(error.BadReport, parseJasmineConsole(a, "no summary here"));
 }
+
+// ============================================================================
+// A browser's run by the project's own runner, read from that runner's log
+// (`fw_matrix import`; the integrator, 2026-11-14: every name the report
+// shows comes from a run). Two runners:
+//
+//   jquery-test-runner (jtr, jQuery's CI: `jtr -b chrome --headless`): a dot
+//   per passed test; per run "Tests finished in <time> at <url> in <browser>
+//   (<id>)..." and "[F failed. ]T passed. S skipped." - reporter.js
+//   reportEnd prints QUnit's testCounts.total as "passed", so the passes are
+//   T - F - S; at the end "N test(s) failed." and the failures numbered from
+//   1, each "<i>. <module>: <name>", "Test failed on <browser> (<id>).", a
+//   blank line, then its assertions (run.js, reporter.js reportTest).
+//
+//   Bazel running web-test-runner (Angular's `bazel test <name>_chromium`):
+//   per target "<label>  PASSED|FAILED in <s>s" and, read from each target's
+//   test.log, "<label>\t<P> passed, <F> failed[, <S> skipped]" - counts
+//   only, no name.
+// ============================================================================
+
+/// One page (jtr: one test URL; Bazel: one target) of a runner's log.
+pub const LogPage = struct {
+    /// jtr: the URL it opened; Bazel: the target's label.
+    where: []const u8,
+    /// The runner's own word for the page's end, when it gives one apart
+    /// from the counts (Bazel: "PASSED", "FAILED").
+    runner_status: ?[]const u8 = null,
+    passed: u32,
+    failed: u32,
+    skipped: u32,
+    /// The failures it names, with their first assertion.
+    failures: []const Reported = &.{},
+    wall_ms: u64 = 0,
+};
+
+/// "25s 87ms", "1m 2s 3ms", "950ms" (jtr's lib/prettyMs.js) in milliseconds.
+fn prettyMsValue(s: []const u8) ?u64 {
+    var total: u64 = 0;
+    var any = false;
+    var it = std.mem.tokenizeScalar(u8, s, ' ');
+    while (it.next()) |part| {
+        var n: usize = 0;
+        while (n < part.len and std.ascii.isDigit(part[n])) n += 1;
+        if (n == 0) return null;
+        const v = std.fmt.parseInt(u64, part[0..n], 10) catch return null;
+        const unit = part[n..];
+        const ms: u64 = if (std.mem.eql(u8, unit, "ms")) 1 else if (std.mem.eql(u8, unit, "s")) 1000 else if (std.mem.eql(u8, unit, "m")) 60_000 else if (std.mem.eql(u8, unit, "h")) 3_600_000 else return null;
+        total += v * ms;
+        any = true;
+    }
+    return if (any) total else null;
+}
+
+/// "[F failed. ]T passed. S skipped." as failed, total, skipped.
+fn jtrCounts(line: []const u8) ?struct { failed: u32, total: u32, skipped: u32 } {
+    var rest = line;
+    var failed: u32 = 0;
+    if (std.mem.indexOf(u8, rest, " failed. ")) |at| {
+        failed = std.fmt.parseInt(u32, rest[0..at], 10) catch return null;
+        rest = rest[at + " failed. ".len ..];
+    }
+    const p = std.mem.indexOf(u8, rest, " passed. ") orelse return null;
+    const total = std.fmt.parseInt(u32, rest[0..p], 10) catch return null;
+    rest = rest[p + " passed. ".len ..];
+    if (!std.mem.endsWith(u8, rest, " skipped.")) return null;
+    const skipped = std.fmt.parseInt(u32, rest[0 .. rest.len - " skipped.".len], 10) catch return null;
+    if (failed + skipped > total) return null;
+    return .{ .failed = failed, .total = total, .skipped = skipped };
+}
+
+/// A failure's first assertion: the lines after "Test failed on ..." up to
+/// the first blank line after some text, stack lines ("    at ...") left out.
+fn jtrMessage(arena: Allocator, body: []const []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    for (body) |line| {
+        const t = std.mem.trimEnd(u8, line, " \r");
+        if (t.len == 0) {
+            if (out.items.len > 0) break;
+            continue;
+        }
+        if (std.mem.startsWith(u8, std.mem.trimStart(u8, t, " "), "at ")) continue;
+        if (out.items.len > 0) try out.append(arena, '\n');
+        try out.appendSlice(arena, t);
+    }
+    return if (out.items.len == 0) "(no failed assertion shown)" else out.items;
+}
+
+/// jquery-test-runner's log of one run: its page, its counts and its named
+/// failures. Several "Tests finished" runs in one log are added up, at the
+/// first one's URL. Refused: no summary, or a failure count its list does
+/// not match.
+pub fn parseJtrLog(arena: Allocator, log: []const u8) ParseError!LogPage {
+    const text = try stripAnsi(arena, log);
+    var lines: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.splitScalar(u8, text, '\n');
+    while (it.next()) |l| try lines.append(arena, std.mem.trimEnd(u8, l, "\r"));
+    var page: LogPage = .{ .where = "", .passed = 0, .failed = 0, .skipped = 0 };
+    var runs: u32 = 0;
+    var listed: ?usize = null;
+    for (lines.items, 0..) |line, i| {
+        if (std.mem.startsWith(u8, line, "Tests finished in ")) {
+            const at = std.mem.indexOf(u8, line, " at ") orelse return error.BadReport;
+            const in = std.mem.indexOfPos(u8, line, at, " in ") orelse return error.BadReport;
+            const ms = prettyMsValue(line["Tests finished in ".len..at]) orelse return error.BadReport;
+            var j = i + 1;
+            while (j < lines.items.len and lines.items[j].len == 0) j += 1;
+            if (j == lines.items.len) return error.BadReport;
+            const c = jtrCounts(lines.items[j]) orelse return error.BadReport;
+            if (runs == 0) page.where = line[at + " at ".len .. in];
+            runs += 1;
+            page.failed += c.failed;
+            page.skipped += c.skipped;
+            page.passed += c.total - c.failed - c.skipped;
+            page.wall_ms += ms;
+            continue;
+        }
+        if (runs > 0 and listed == null and std.mem.endsWith(u8, line, " failed.") and (std.mem.indexOf(u8, line, " tests failed.") != null or std.mem.indexOf(u8, line, " test failed.") != null)) listed = i + 1;
+    }
+    if (runs == 0) return error.BadReport;
+    var failures: std.ArrayList(Reported) = .empty;
+    if (listed) |start| {
+        // "<i>. <module>: <name>" followed by "Test failed on ...".
+        var starts: std.ArrayList(usize) = .empty;
+        var next: u32 = 1;
+        var i = start;
+        while (i + 1 < lines.items.len) : (i += 1) {
+            const prefix = try std.fmt.allocPrint(arena, "{d}. ", .{next});
+            if (std.mem.startsWith(u8, lines.items[i], prefix) and std.mem.startsWith(u8, lines.items[i + 1], "Test failed on ")) {
+                try starts.append(arena, i);
+                next += 1;
+            }
+        }
+        for (starts.items, 0..) |s, k| {
+            var end = if (k + 1 < starts.items.len) starts.items[k + 1] else lines.items.len;
+            // The run's end lines after the last failure.
+            if (k + 1 == starts.items.len) {
+                var e = s + 2;
+                while (e < end) : (e += 1) {
+                    const l = lines.items[e];
+                    if (std.mem.eql(u8, l, "Cleaning up...") or std.mem.startsWith(u8, l, "Leaving browsers") or std.mem.eql(u8, l, "All tests passed!")) {
+                        end = e;
+                        break;
+                    }
+                }
+            }
+            const head = lines.items[s];
+            const full = head[std.mem.indexOfScalar(u8, head, ' ').? + 1 ..];
+            const cut = std.mem.indexOf(u8, full, ": ");
+            try failures.append(arena, .{
+                .module = if (cut) |c| full[0..c] else "",
+                .name = if (cut) |c| full[c + 2 ..] else full,
+                .id = full,
+                .status = .FAIL,
+                .message = try jtrMessage(arena, lines.items[s + 2 .. end]),
+            });
+        }
+    }
+    if (failures.items.len != page.failed) return error.BadReport;
+    page.failures = failures.items;
+    return page;
+}
+
+/// Bazel's per-target lines for a web-test-runner suite: each target's word
+/// and its counts. Refused: a target with one and not the other, or none.
+pub fn parseWtrSummary(arena: Allocator, log: []const u8) ParseError![]const LogPage {
+    const text = try stripAnsi(arena, log);
+    var pages: std.ArrayList(LogPage) = .empty;
+    var statuses: std.ArrayList(struct { []const u8, []const u8, u64 }) = .empty;
+    var it = std.mem.splitScalar(u8, text, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, " \r");
+        if (!std.mem.startsWith(u8, line, "//")) continue;
+        if (std.mem.indexOfScalar(u8, line, '\t')) |tab| {
+            // "<label>\t<P> passed, <F> failed[, <S> skipped]"
+            const label = line[0..tab];
+            var parts = std.mem.splitSequence(u8, line[tab + 1 ..], ", ");
+            var counts: [3]?u32 = .{ null, null, 0 };
+            while (parts.next()) |part| {
+                const sp = std.mem.indexOfScalar(u8, part, ' ') orelse return error.BadReport;
+                const n = std.fmt.parseInt(u32, part[0..sp], 10) catch return error.BadReport;
+                const word = part[sp + 1 ..];
+                if (std.mem.eql(u8, word, "passed")) counts[0] = n else if (std.mem.eql(u8, word, "failed")) counts[1] = n else if (std.mem.eql(u8, word, "skipped")) counts[2] = n else return error.BadReport;
+            }
+            for (pages.items) |p| if (std.mem.eql(u8, p.where, label)) return error.BadReport;
+            try pages.append(arena, .{ .where = label, .passed = counts[0] orelse return error.BadReport, .failed = counts[1] orelse return error.BadReport, .skipped = counts[2].? });
+            continue;
+        }
+        // "<label>   PASSED in 1.3s"
+        var words = std.mem.tokenizeScalar(u8, line, ' ');
+        const label = words.next() orelse continue;
+        const word = words.next() orelse continue;
+        if (!std.mem.eql(u8, word, "PASSED") and !std.mem.eql(u8, word, "FAILED")) continue;
+        var ms: u64 = 0;
+        if (words.next()) |in| if (std.mem.eql(u8, in, "in")) if (words.next()) |secs| {
+            if (std.mem.endsWith(u8, secs, "s")) {
+                const v = std.fmt.parseFloat(f64, secs[0 .. secs.len - 1]) catch return error.BadReport;
+                ms = @intFromFloat(@round(v * 1000));
+            }
+        };
+        try statuses.append(arena, .{ label, word, ms });
+    }
+    if (pages.items.len == 0 or pages.items.len != statuses.items.len) return error.BadReport;
+    for (pages.items) |*p| {
+        for (statuses.items) |s| {
+            if (std.mem.eql(u8, s[0], p.where)) {
+                p.runner_status = s[1];
+                p.wall_ms = s[2];
+                break;
+            }
+        } else return error.BadReport;
+    }
+    return pages.items;
+}
+
+const jtr_log =
+    "Server started on port 59941.\n" ++
+    "Driver created for chrome 157.0.8103.78\n" ++
+    ".......\n\n" ++
+    "core: jQuery.parseXML - error reporting\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    "reports error column\n    at Object.<anonymous> (http://localhost:59941/test/unit/core.js:1475:9)\nexpected: \"11\"\nactual: \"10\"\n110\n" ++
+    "......\n\n" ++
+    "Tests finished in 25s 87ms at http://localhost:59941/test/ in Chrome (headless) (bf208f3fb9)...\n" ++
+    "\x1b[31m2\x1b[39m failed. \x1b[32m1147\x1b[39m passed. \x1b[90m1\x1b[39m skipped.\n\n" ++
+    "2 tests failed.\n\n" ++
+    "1. core: jQuery.parseXML - error reporting\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    "reports error column\n    at Object.<anonymous> (http://localhost:59941/test/unit/core.js:1475:9)\nexpected: \"11\"\nactual: \"10\"\n110\n\n" ++
+    "2. selector: pseudo - :(dis|en)abled, optgroup and option\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    ":disabled (#disabled-select-inherit :disabled)\n    at match (http://localhost:59941/test/data/testinit.js:57:9)\nexpected: [\"a\"]\nactual: [\"a\",\"b\"]\n\n" ++
+    ":enabled (#disabled-select-inherit :enabled)\nexpected: [\"c\"]\n" ++
+    "Cleaning up...\nStopped 1 browser.\nServer stopped.\nExited with signal: 1\n";
+
+test "jquery-test-runner's log: the URL, the counts (its 'passed' is QUnit's total), each failure by QUnit's id with its first assertion" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const p = try parseJtrLog(a, jtr_log);
+    try testing.expectEqualStrings("http://localhost:59941/test/", p.where);
+    try testing.expectEqual(@as(u32, 2), p.failed);
+    try testing.expectEqual(@as(u32, 1), p.skipped);
+    try testing.expectEqual(@as(u32, 1144), p.passed);
+    try testing.expectEqual(@as(u64, 25_087), p.wall_ms);
+    try testing.expectEqual(@as(usize, 2), p.failures.len);
+    try testing.expectEqualStrings("core: jQuery.parseXML - error reporting", p.failures[0].id);
+    try testing.expectEqualStrings("core", p.failures[0].module);
+    try testing.expectEqualStrings("jQuery.parseXML - error reporting", p.failures[0].name);
+    try testing.expectEqualStrings("reports error column\nexpected: \"11\"\nactual: \"10\"\n110", p.failures[0].message.?);
+    // The last failure ends at the runner's own end lines.
+    try testing.expectEqualStrings("selector: pseudo - :(dis|en)abled, optgroup and option", p.failures[1].id);
+    try testing.expectEqualStrings(":disabled (#disabled-select-inherit :disabled)\nexpected: [\"a\"]\nactual: [\"a\",\"b\"]", p.failures[1].message.?);
+    // A run that passed prints no failed count and no list.
+    const clean = try parseJtrLog(a, "Tests finished in 950ms at http://localhost:1/test/ in Chrome (headless) (x)...\n5 passed. 0 skipped.\n\nAll tests passed!\n");
+    try testing.expectEqual(@as(u32, 5), clean.passed);
+    try testing.expectEqual(@as(usize, 0), clean.failures.len);
+    // A list that does not match the count, and no summary, are refused.
+    try testing.expectError(error.BadReport, parseJtrLog(a, try std.mem.replaceOwned(u8, a, jtr_log, "\x1b[31m2\x1b[39m failed.", "3 failed.")));
+    try testing.expectError(error.BadReport, parseJtrLog(a, "Server started on port 1.\n"));
+}
+
+const wtr_log =
+    "crane-remote: job pid 68085 on chat2.local\n" ++
+    "INFO: Build completed, 1 test FAILED, 182 total actions\n" ++
+    "//packages/common/test:test_web_chromium                               PASSED in 8.3s\n" ++
+    "//packages/core/test/acceptance:acceptance_web_chromium                FAILED in 15.2s\n" ++
+    "//packages/zone.js/test:browser_test_chromium                          FAILED in 5.6s\n" ++
+    "Executed 3 out of 3 tests: 1 test passes and 2 fail locally.\n" ++
+    "//packages/common/test:test_web_chromium\t681 passed, 0 failed\n\n" ++
+    "//packages/core/test/acceptance:acceptance_web_chromium\t2777 passed, 1 failed, 4 skipped\n\n" ++
+    "//packages/zone.js/test:browser_test_chromium\t513 passed, 0 failed, 24 skipped\n";
+
+test "Bazel's web-test-runner lines: each target's word and counts, no names" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const pages = try parseWtrSummary(a, wtr_log);
+    try testing.expectEqual(@as(usize, 3), pages.len);
+    try testing.expectEqualStrings("//packages/common/test:test_web_chromium", pages[0].where);
+    try testing.expectEqualStrings("PASSED", pages[0].runner_status.?);
+    try testing.expectEqual(@as(u32, 681), pages[0].passed);
+    try testing.expectEqual(@as(u32, 0), pages[0].skipped);
+    try testing.expectEqual(@as(u64, 8_300), pages[0].wall_ms);
+    try testing.expectEqual(@as(u32, 1), pages[1].failed);
+    try testing.expectEqual(@as(u32, 4), pages[1].skipped);
+    try testing.expectEqual(@as(usize, 0), pages[1].failures.len);
+    try testing.expectEqualStrings("FAILED", pages[2].runner_status.?);
+    try testing.expectEqual(@as(u32, 0), pages[2].failed);
+    // A target with counts and no word, or the reverse, is refused.
+    try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log[0..std.mem.lastIndexOf(u8, wtr_log, "//packages/zone.js/test:browser_test_chromium\t").?]));
+    try testing.expectError(error.BadReport, parseWtrSummary(a, "nothing\n"));
+}
