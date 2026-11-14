@@ -28,6 +28,14 @@
 //!       the matrix page and a page per framework, from every journal.jsonl
 //!       one or two levels below <dir> (report.zig); --assets is where the
 //!       WPT site's site.css is, relative to <out> (default "../")
+//!   fw_matrix import --reader=jtr|wtr-summary --suite=<id> --log=<file>
+//!                 --label=<l> --browser=<name> --browser-sha256=<hex>
+//!                 --runner=<text> --date=<YYYY-MM-DD> --out=<dir> [--page=<id>]
+//!       a browser's run by the project's own runner, read from that
+//!       runner's log into <out>/journal.jsonl (crane-fw/1), every record
+//!       naming the browser and the log: jquery-test-runner's console log
+//!       (one page, --page names it), or Bazel's web-test-runner lines (a
+//!       page per target, matched to the suite's pages by their targets)
 //!   fw_matrix serve --frameworks-dir=<dir> --suite=<id> [--port=<n>]
 //!       a suite's tree alone, for a person to open in a browser (the
 //!       project's own server when the manifest names one)
@@ -55,7 +63,7 @@ pub const run = @import("run.zig");
 pub const report = @import("report.zig");
 
 const usage =
-    \\usage: fw_matrix check|fetch|run|summary|report|serve [options]
+    \\usage: fw_matrix check|fetch|run|summary|report|import|serve [options]
     \\       (tools/fw_matrix/main.zig lists every option)
     \\
 ;
@@ -178,6 +186,35 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "report")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         try writeReport(arena, io, m, args.get("excluded-dir") orelse default_excluded, args.need("journals"), args.need("out"), .{ .assets = args.get("assets") orelse "../" });
+    } else if (std.mem.eql(u8, cmd, "import")) {
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
+        const log_path = args.need("log");
+        const log = Io.Dir.cwd().readFileAlloc(io, log_path, arena, .limited(256 << 20)) catch |err| fail("{s}: {t}", .{ log_path, err });
+        const reader = args.need("reader");
+        const one_page = try arena.alloc(readers.LogPage, 1);
+        const pages: []const readers.LogPage = if (std.mem.eql(u8, reader, "jtr")) blk: {
+            one_page[0] = readers.parseJtrLog(arena, log) catch fail("{s}: not a jquery-test-runner log this reader knows", .{log_path});
+            break :blk one_page;
+        } else if (std.mem.eql(u8, reader, "wtr-summary"))
+            readers.parseWtrSummary(arena, log) catch fail("{s}: no Bazel web-test-runner lines this reader knows", .{log_path})
+        else
+            fail("--reader={s}: jtr or wtr-summary", .{reader});
+        const log_sha = fetch.sha256Hex(log);
+        const text = importRecords(arena, s, .{
+            .label = args.need("label"),
+            .browser = args.need("browser"),
+            .browser_sha256 = args.need("browser-sha256"),
+            .runner = args.need("runner"),
+            .log = log_path,
+            .log_sha256 = &log_sha,
+            .date = args.need("date"),
+            .page = args.get("page"),
+        }, pages) catch |err| fail("import: {t}", .{err});
+        const out_dir = args.need("out");
+        try Io.Dir.cwd().createDirPath(io, out_dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
+        std.debug.print("fw_matrix: import: {d} page(s) of {s} from {s} into {s}/journal.jsonl\n", .{ pages.len, s.id, log_path, out_dir });
     } else if (std.mem.eql(u8, cmd, "serve")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
@@ -353,7 +390,7 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     const suites = try report.collect(arena, m, journals.items, files.items);
     try Io.Dir.cwd().createDirPath(io, out_dir);
     var index: Io.Writer.Allocating = .init(arena);
-    try report.writeIndex(&index.writer, m.frameworks, m.todomvc, suites, o);
+    try report.writeIndex(arena, &index.writer, m, suites, o);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
     var written: usize = 1;
     // A page per framework of the first section (or, in a manifest without
@@ -368,13 +405,13 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     };
     for (frameworks.items) |fw| {
         var page: Io.Writer.Allocating = .init(arena);
-        try report.writeFramework(&page.writer, fw, suites, o);
+        try report.writeFramework(arena, &page.writer, m, fw, suites, o);
         try writePage(io, arena, out_dir, "", fw.id, page.written());
         written += 1;
     }
     for (suites) |s| if (s.suite.kind == .todomvc_port) {
         var page: Io.Writer.Allocating = .init(arena);
-        try report.writeApp(&page.writer, s, o);
+        try report.writeApp(arena, &page.writer, m, s, o);
         const dir = report.pageDir(s.suite);
         try writePage(io, arena, out_dir, dir[0], dir[1], page.written());
         written += 1;
@@ -382,11 +419,148 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     std.debug.print("fw_matrix: report: {d} journal(s), {d} page(s) written to {s}\n", .{ journals.items.len, written, out_dir });
 }
 
+pub const ImportOptions = struct {
+    label: []const u8,
+    browser: []const u8,
+    browser_sha256: []const u8,
+    runner: []const u8,
+    log: []const u8,
+    log_sha256: []const u8,
+    date: []const u8,
+    /// The page id a one-page log is recorded as; null: each log page is
+    /// matched to the suite's page by its Bazel target.
+    page: ?[]const u8 = null,
+};
+
+pub const ImportError = error{ OutOfMemory, WriteFailed, UnknownTarget, BadPage, BadSha256, BadDate };
+
+/// The suite's page a Bazel target of the browser's run is: rules_browsers'
+/// wtr_test(name = X) makes X_debug (the manual-mode page Crane opens, the
+/// page's `target`) and X_chromium (the run in its Chromium).
+fn pageForTarget(s: manifest.Suite, label: []const u8) ?[]const u8 {
+    const suffix = "_chromium";
+    if (!std.mem.endsWith(u8, label, suffix)) return null;
+    const base = label[0 .. label.len - suffix.len];
+    for (s.pages) |p| if (p.target) |t| {
+        if (std.mem.endsWith(u8, t, "_debug") and std.mem.eql(u8, t[0 .. t.len - "_debug".len], base)) return p.id;
+    };
+    return null;
+}
+
+/// A browser's run, read from its runner's log, as journal lines: a page
+/// record per log page (its counts, the failures it does not name as
+/// unnamed), a test record per failure it names.
+pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, pages: []const readers.LogPage) ImportError![]const u8 {
+    if (!journal.isSha256(o.browser_sha256) or !journal.isSha256(o.log_sha256)) return error.BadSha256;
+    if (!journal.isDate(o.date)) return error.BadDate;
+    if (o.page != null and pages.len != 1) return error.BadPage;
+    var out: Io.Writer.Allocating = .init(arena);
+    const imported: journal.Imported = .{ .runner = o.runner, .log = o.log, .log_sha256 = o.log_sha256, .date = o.date };
+    for (pages) |lp| {
+        const page_id = o.page orelse pageForTarget(s, lp.where) orelse return error.UnknownTarget;
+        const named: u32 = @intCast(lp.failures.len);
+        for (lp.failures) |f| try journal.writeTest(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .module = f.module,
+            .name = f.name,
+            .id = f.id,
+            .status = .FAIL,
+            .message = f.message,
+            .browser = o.browser,
+        });
+        // A target its runner failed with no failing test: its errors were
+        // outside any test (zone.js's browser_test in Chrome).
+        const failed_outside = lp.runner_status != null and std.mem.eql(u8, lp.runner_status.?, "FAILED") and lp.failed == 0;
+        try journal.writePage(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .url = lp.where,
+            .status = if (failed_outside) .ERROR else .OK,
+            .message = if (failed_outside) try std.fmt.allocPrint(arena, "the runner reported the page FAILED with no failing test ({d} passed, 0 failed, {d} skipped)", .{ lp.passed, lp.skipped }) else null,
+            .wall_ms = lp.wall_ms,
+            .reported_total = lp.passed + lp.failed,
+            .reported_failed = lp.failed,
+            .ran = named,
+            .records = named,
+            .unnamed_passed = lp.passed,
+            .unnamed_failed = if (lp.failed > named) lp.failed - named else null,
+            .unnamed_pending = if (lp.skipped > 0) lp.skipped else null,
+            .exit = if (lp.runner_status) |w| try std.fmt.allocPrint(arena, "the runner's word for the page: {s}", .{w}) else "read from the runner's log",
+            .browser = o.browser,
+            .imported = imported,
+        });
+    }
+    return out.written();
+}
+
 /// <out>/<prefix><name>/index.html.
 fn writePage(io: Io, arena: Allocator, out_dir: []const u8, prefix: []const u8, name: []const u8, data: []const u8) !void {
     const dir = try std.fmt.allocPrint(arena, "{s}/{s}{s}", .{ out_dir, prefix, name });
     try Io.Dir.cwd().createDirPath(io, dir);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = data });
+}
+
+test "import: a runner's log as a browser's journal - named failures as test records, the rest as counts, pages by target" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    const suite: manifest.Suite = .{ .id = "angular-jasmine", .framework = "angular", .title = "Angular", .version = "22.2.6", .kind = .project, .repository = "https://github.com/angular/angular", .tag = "v22.2.6", .commit = "c", .licence = "MIT", .runner = "Jasmine", .reader = .jasmine_console, .source = .{ .url = "https://x", .sha256 = &sha }, .pages = &.{
+        .{ .id = "core-test-acceptance-acceptance", .path = "?a", .target = "//packages/core/test/acceptance:acceptance_web_debug" },
+        .{ .id = "zone-test-browser", .path = "?b", .target = "//packages/zone.js/test:browser_test_debug" },
+    }, .excluded = "x.txt" };
+    const o: ImportOptions = .{ .label = "chrome-ng", .browser = "Chrome for Testing headless shell 159.0.8154.2", .browser_sha256 = &sha, .runner = "bazel test <target>_chromium", .log = "tmp/ng.log", .log_sha256 = &sha, .date = "2026-11-14" };
+    const pages = [_]readers.LogPage{
+        .{ .where = "//packages/core/test/acceptance:acceptance_web_chromium", .runner_status = "FAILED", .passed = 2777, .failed = 1, .skipped = 4, .wall_ms = 15_200 },
+        .{ .where = "//packages/zone.js/test:browser_test_chromium", .runner_status = "FAILED", .passed = 513, .failed = 0, .skipped = 24 },
+    };
+    const text = try importRecords(a, suite, o, &pages);
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, text, &failure);
+    try std.testing.expectEqual(@as(usize, 0), j.tests.len);
+    try std.testing.expectEqual(@as(usize, 2), j.pages.len);
+    const p0 = j.pages[0];
+    try std.testing.expectEqualStrings("core-test-acceptance-acceptance", p0.page);
+    try std.testing.expectEqual(journal.PageStatus.OK, p0.status);
+    try std.testing.expectEqual(@as(?u32, 2777), p0.unnamed_passed);
+    try std.testing.expectEqual(@as(?u32, 1), p0.unnamed_failed);
+    try std.testing.expectEqual(@as(?u32, 4), p0.unnamed_pending);
+    try std.testing.expectEqualStrings("Chrome for Testing headless shell 159.0.8154.2", p0.browser.?);
+    try std.testing.expectEqualStrings("2026-11-14", p0.imported.?.date);
+    try std.testing.expectEqualStrings("none", p0.crane_commit);
+    // Failed by its runner with no failing test: an error outside the tests.
+    try std.testing.expectEqual(journal.PageStatus.ERROR, j.pages[1].status);
+    try std.testing.expectEqualStrings("zone-test-browser", j.pages[1].page);
+
+    // jtr: one page, named failures as test records.
+    var one = o;
+    one.page = "test";
+    const failures = [_]readers.Reported{.{ .module = "core", .name = "parseXML", .id = "core: parseXML", .status = .FAIL, .message = "expected 11" }};
+    const jt = try journal.parseJournal(a, try importRecords(a, suite, one, &.{.{ .where = "http://localhost:1/test/", .passed = 1144, .failed = 1, .skipped = 0, .failures = &failures }}), &failure);
+    try std.testing.expectEqual(@as(usize, 1), jt.tests.len);
+    try std.testing.expectEqualStrings("core: parseXML", jt.tests[0].id);
+    try std.testing.expectEqualStrings("expected 11", jt.tests[0].message.?);
+    try std.testing.expectEqual(@as(?u32, null), jt.pages[0].unnamed_failed);
+    // A target the suite has no page for, a bad hash or date: refused.
+    try std.testing.expectError(error.UnknownTarget, importRecords(a, suite, o, &.{.{ .where = "//x:y_chromium", .passed = 1, .failed = 0, .skipped = 0 }}));
+    var bad = o;
+    bad.date = "Nov 14";
+    try std.testing.expectError(error.BadDate, importRecords(a, suite, bad, &pages));
 }
 
 test {
