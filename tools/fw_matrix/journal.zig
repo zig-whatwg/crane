@@ -84,8 +84,10 @@ pub const SuiteKind = enum {
     pub fn label(k: SuiteKind) []const u8 {
         return switch (k) {
             .project => "the project's own browser suite",
-            // The user's words for these rows (2026-11-11).
-            .todomvc_port => "TodoMVC; Crane's port of the app spec; the project's own suite is not runnable without Node",
+            // Its own section of the report (the user, 2026-11-14: "TODOMVC
+            // is supposed to be called out separately"); never a stand-in
+            // for the framework's own suite.
+            .todomvc_port => "the framework's TodoMVC app, checked by Crane's port of the TodoMVC app spec",
         };
     }
 };

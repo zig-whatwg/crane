@@ -194,11 +194,44 @@ pub const Suite = struct {
     page_stall_s: u32 = 150,
 };
 
+/// A framework's own browser tests that do not run in Crane, and why: a row
+/// of the matrix's first section, so that a framework whose own tests cannot
+/// run is never missing from it (lane fw1 b5: per framework, what runs and
+/// what does not, with why).
+pub const OwnSuiteNotRun = struct {
+    /// What the project calls them ("e2e", "runtime-browser samples").
+    name: []const u8,
+    /// The release read.
+    version: []const u8,
+    repository: []const u8,
+    tag: []const u8,
+    /// How the project runs them ("Playwright on Chromium").
+    runner: []const u8,
+    /// How many tests, read from the source at the tag; null when not counted.
+    tests: ?u32 = null,
+    /// Why Crane does not run them.
+    why: []const u8,
+};
+
+/// A framework of the matrix's first section, "The frameworks' own test
+/// suites": its rows are its suites of kind `.project`, then its own suites
+/// that do not run. TodoMVC apps are the second section's, whatever their
+/// framework.
+pub const Framework = struct {
+    /// The `framework` of its suites ("react").
+    id: []const u8,
+    title: []const u8,
+    not_run: []const OwnSuiteNotRun = &.{},
+};
+
 pub const Manifest = struct {
+    /// The first section's frameworks, in the order shown; empty in a
+    /// manifest that only runs suites.
+    frameworks: []const Framework = &.{},
     suites: []const Suite,
 };
 
-pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay };
+pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun };
 
 /// The text a server argument holds where the harness's port goes.
 pub const port_placeholder = "{port}";
@@ -368,7 +401,45 @@ pub fn validate(m: Manifest, failure: *Failure) Error!void {
         failure.what = "excluded";
         if (!isRelativePath(f.excluded)) return error.BadPath;
     }
+    try validateFrameworks(m, failure);
     failure.* = .{ .diagnostics = failure.diagnostics };
+}
+
+/// The first section: each framework once; each project suite under a
+/// listed framework; each framework shows something - a suite of its own
+/// or the own suites it does not run, with why.
+fn validateFrameworks(m: Manifest, failure: *Failure) Error!void {
+    if (m.frameworks.len == 0) return;
+    for (m.frameworks, 0..) |fw, i| {
+        failure.suite = fw.id;
+        failure.what = "framework";
+        if (!isName(fw.id) or fw.title.len == 0) return error.BadName;
+        for (m.frameworks[0..i]) |o| if (std.mem.eql(u8, o.id, fw.id)) return error.DuplicateFramework;
+        var has_suite = false;
+        for (m.suites) |s| {
+            if (s.kind == .project and std.mem.eql(u8, s.framework, fw.id)) has_suite = true;
+        }
+        if (!has_suite and fw.not_run.len == 0) return error.FrameworkWithoutSuite;
+        for (fw.not_run) |n| {
+            failure.what = n.name;
+            if (n.name.len == 0 or n.runner.len == 0 or n.why.len == 0 or n.tag.len == 0) return error.BadNotRun;
+            if (!isName(n.version)) return error.BadName;
+            if (!isHttps(n.repository)) return error.BadUrl;
+        }
+    }
+    for (m.suites) |s| {
+        if (s.kind != .project) continue;
+        failure.suite = s.id;
+        failure.what = "framework";
+        for (m.frameworks) |fw| {
+            if (std.mem.eql(u8, fw.id, s.framework)) break;
+        } else return error.UnknownFramework;
+    }
+}
+
+pub fn findFramework(m: Manifest, id: []const u8) ?Framework {
+    for (m.frameworks) |fw| if (std.mem.eql(u8, fw.id, id)) return fw;
+    return null;
 }
 
 pub fn find(m: Manifest, id: []const u8) ?Suite {
@@ -532,6 +603,40 @@ test "validate: npm and a server need Node; a server takes its port from the har
         var f: Failure = .{};
         try testing.expectError(c[1], parse(testing.allocator, a, try withFields(a, c[0]), &f));
         try testing.expectEqualStrings("jquery-qunit", f.suite);
+    }
+}
+
+test "frameworks: the first section's list; each project suite under one, each framework with a suite or a reason" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const not_run =
+        \\.not_run = .{.{ .name = "e2e", .version = "19.3.1", .repository = "https://github.com/facebook/react", .tag = "v19.3.1", .runner = "Playwright on Chromium", .tests = 19, .why = "w" }}
+    ;
+    const with_frameworks = try std.fmt.allocPrint(a, ".{{ .frameworks = .{{ .{{ .id = \"jquery\", .title = \"jQuery\" }}, .{{ .id = \"react\", .title = \"React\", {s} }} }},", .{not_run});
+    const text = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{with_frameworks}));
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try a.dupeSentinel(u8, text, 0), &f);
+    try testing.expectEqual(@as(usize, 2), m.frameworks.len);
+    const react = findFramework(m, "react").?;
+    try testing.expectEqual(@as(?u32, 19), react.not_run[0].tests);
+    try testing.expectEqual(@as(usize, 0), findFramework(m, "jquery").?.not_run.len);
+    // None at all: a manifest that only runs suites.
+    try testing.expectEqual(@as(usize, 0), (try parse(testing.allocator, a, sample, &f)).frameworks.len);
+
+    const cases = [_]struct { []const u8, Error }{
+        // jQuery's suite under no listed framework.
+        .{ ".{ .frameworks = .{ .{ .id = \"htmx\", .title = \"htmx\", .not_run = .{.{ .name = \"n\", .version = \"1.0.0\", .repository = \"https://x\", .tag = \"t\", .runner = \"r\", .why = \"w\" }} } },", error.UnknownFramework },
+        // A framework with nothing to show.
+        .{ ".{ .frameworks = .{ .{ .id = \"jquery\", .title = \"jQuery\" }, .{ .id = \"vue\", .title = \"Vue\" } },", error.FrameworkWithoutSuite },
+        .{ ".{ .frameworks = .{ .{ .id = \"jquery\", .title = \"jQuery\" }, .{ .id = \"jquery\", .title = \"jQuery\" } },", error.DuplicateFramework },
+        // A reason is required, and the repository is checked like a pin.
+        .{ ".{ .frameworks = .{ .{ .id = \"jquery\", .title = \"jQuery\", .not_run = .{.{ .name = \"n\", .version = \"1.0.0\", .repository = \"https://x\", .tag = \"t\", .runner = \"r\", .why = \"\" }} } },", error.BadNotRun },
+        .{ ".{ .frameworks = .{ .{ .id = \"jquery\", .title = \"jQuery\", .not_run = .{.{ .name = \"n\", .version = \"1.0.0\", .repository = \"http://x\", .tag = \"t\", .runner = \"r\", .why = \"w\" }} } },", error.BadUrl },
+    };
+    for (cases) |c| {
+        const bad = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{c[0]}));
+        try testing.expectError(c[1], parse(testing.allocator, a, try a.dupeSentinel(u8, bad, 0), &f));
     }
 }
 

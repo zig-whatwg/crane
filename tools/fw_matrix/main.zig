@@ -329,23 +329,40 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     const suites = try report.collect(arena, m, journals.items, files.items);
     try Io.Dir.cwd().createDirPath(io, out_dir);
     var index: Io.Writer.Allocating = .init(arena);
-    try report.writeIndex(&index.writer, suites, o);
+    try report.writeIndex(&index.writer, m.frameworks, suites, o);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
     var written: usize = 1;
-    for (suites, 0..) |s, i| {
-        var seen = false;
-        for (suites[0..i]) |o2| if (std.mem.eql(u8, o2.suite.framework, s.suite.framework)) {
-            seen = true;
-        };
-        if (seen) continue;
-        const dir = try std.fmt.allocPrint(arena, "{s}/{s}", .{ out_dir, s.suite.framework });
-        try Io.Dir.cwd().createDirPath(io, dir);
+    // A page per framework of the first section (or, in a manifest without
+    // that list, per framework a project suite names).
+    var frameworks: std.ArrayList(manifest.Framework) = .empty;
+    try frameworks.appendSlice(arena, m.frameworks);
+    if (m.frameworks.len == 0) for (m.suites) |s| {
+        if (s.kind != .project) continue;
+        for (frameworks.items) |fw| {
+            if (std.mem.eql(u8, fw.id, s.framework)) break;
+        } else try frameworks.append(arena, .{ .id = s.framework, .title = s.title });
+    };
+    for (frameworks.items) |fw| {
         var page: Io.Writer.Allocating = .init(arena);
-        try report.writeSuites(&page.writer, s.suite.framework, suites, o);
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = page.written() });
+        try report.writeFramework(&page.writer, fw, suites, o);
+        try writePage(io, arena, out_dir, "", fw.id, page.written());
         written += 1;
     }
+    for (suites) |s| if (s.suite.kind == .todomvc_port) {
+        var page: Io.Writer.Allocating = .init(arena);
+        try report.writeApp(&page.writer, s, o);
+        const dir = report.pageDir(s.suite);
+        try writePage(io, arena, out_dir, dir[0], dir[1], page.written());
+        written += 1;
+    };
     std.debug.print("fw_matrix: report: {d} journal(s), {d} page(s) written to {s}\n", .{ journals.items.len, written, out_dir });
+}
+
+/// <out>/<prefix><name>/index.html.
+fn writePage(io: Io, arena: Allocator, out_dir: []const u8, prefix: []const u8, name: []const u8, data: []const u8) !void {
+    const dir = try std.fmt.allocPrint(arena, "{s}/{s}{s}", .{ out_dir, prefix, name });
+    try Io.Dir.cwd().createDirPath(io, dir);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = data });
 }
 
 test {

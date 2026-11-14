@@ -3,6 +3,76 @@
 // of the bytes the URL served then; each npm `integrity` is the project's own
 // package-lock.json pin at its tag, and equal to the registry's.
 .{
+    // The report's first section, "The frameworks' own test suites" (the
+    // user's six, 2026-11-11), in its order. Each framework's own browser
+    // tests that Crane does not run are listed with why, read at the
+    // newest release on 2026-11-14 by lane fw1 (tmp/plans/lane-fw1-handoff.md,
+    // "b5"). TodoMVC apps are the second section's (the user, 2026-11-14).
+    .frameworks = .{
+        .{ .id = "jquery", .title = "jQuery" },
+        .{
+            .id = "react",
+            .title = "React",
+            .not_run = .{.{
+                .name = "Playwright end-to-end tests (react-devtools-inline, fixtures/flight, the compiler playground)",
+                .version = "19.3.1",
+                .repository = "https://github.com/facebook/react",
+                .tag = "v19.3.1",
+                .runner = "Playwright on Chromium",
+                .tests = 19,
+                .why = "Playwright drives Chromium through the Chrome DevTools Protocol, which Crane does not speak; its other browsers are patched Firefox and WebKit builds with protocols of their own. React's other tests run under Jest with jsdom, not in a browser.",
+            }},
+        },
+        .{
+            .id = "vue",
+            .title = "Vue",
+            .not_run = .{
+                .{
+                    .name = "e2e tests",
+                    .version = "3.5.45",
+                    .repository = "https://github.com/vuejs/core",
+                    .tag = "v3.5.45",
+                    .runner = "Vitest and Puppeteer 25 on Chrome",
+                    .tests = 36,
+                    .why = "Puppeteer drives a browser through the Chrome DevTools Protocol or WebDriver BiDi, and Crane speaks neither yet. Puppeteer also clicks at a point computed from the element's layout box, which needs a renderer.",
+                },
+                .{
+                    .name = "e2e-browser tests (Transition, TransitionGroup)",
+                    .version = "3.5.45",
+                    .repository = "https://github.com/vuejs/core",
+                    .tag = "v3.5.45",
+                    .runner = "Vitest 4 browser mode, Playwright provider on Chromium",
+                    .tests = 84,
+                    .why = "Not run yet. Vitest's own preview provider, which needs no browser driver, can open them in Crane; that run is being added.",
+                },
+            },
+        },
+        .{ .id = "htmx", .title = "htmx" },
+        .{
+            .id = "angular",
+            .title = "Angular",
+            .not_run = .{.{
+                .name = "browser tests (its Bazel web test targets)",
+                .version = "22.2.6",
+                .repository = "https://github.com/angular/angular",
+                .tag = "v22.2.6",
+                .runner = "web-test-runner and Jasmine, through Puppeteer in Chromium and Firefox",
+                .why = "Not run yet. The project's own debug targets serve them to any browser by URL (web-test-runner's manual mode), with no browser driver; that run is being added.",
+            }},
+        },
+        .{
+            .id = "svelte",
+            .title = "Svelte",
+            .not_run = .{.{
+                .name = "runtime-browser and custom-elements samples (39 and 36)",
+                .version = "5.57.3",
+                .repository = "https://github.com/sveltejs/svelte",
+                .tag = "svelte@5.57.3",
+                .runner = "Vitest calling Playwright on Chromium",
+                .why = "The project's harness launches Chromium through Playwright directly, and Playwright drives it through the Chrome DevTools Protocol, which Crane does not speak; Svelte offers no other driver for these tests. Its other tests run under jsdom, not in a browser.",
+            }},
+        },
+    },
     .suites = .{
         // jQuery 4.0.0's own QUnit suite: test/index.html, one page per module
         // as jquery-test-runner's jtr-isolate.yml runs it (its 21 modules), plus
@@ -191,11 +261,12 @@
             },
             .excluded = "htmx-4.0.1.txt",
         },
-        // React, Vue, Svelte and Angular (the user, 2026-11-11 09:57 ET): no
-        // suite of theirs runs without Node, so each row is the framework's
-        // UNMODIFIED, PREBUILT TodoMVC app - the built output committed in
-        // tastejs/todomvc at ff43b02e59df - checked by Crane's in-page port of
-        // TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests), the page in
+        // TodoMVC, the report's second section (the user, 2026-11-11 09:57 ET,
+        // and 2026-11-14: its own section, never a stand-in for the
+        // framework's own suite): each app's UNMODIFIED, PREBUILT build - the
+        // built output committed in tastejs/todomvc at ff43b02e59df - checked
+        // by Crane's in-page port of TodoMVC's app spec
+        // (cypress/e2e/spec.cy.js, 29 tests), the page in
         // tests/frameworks/todomvc/ served beside the tree (`overlay`). The
         // tree is the repository's tarball, served from its root as the
         // project's own test server serves it (tests/server.js:

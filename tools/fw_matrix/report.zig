@@ -1,17 +1,24 @@
 //! `fw_matrix report`: the JS framework compatibility matrix as finished
 //! HTML, from journals only (tmp/plans/framework-matrix-plan.md, section 4):
 //!
-//!   <out>/index.html               the matrix: a row per framework
-//!   <out>/<framework>/index.html   its suites: every page, every failing
-//!                                  test with its message, every excluded or
-//!                                  not-run test with its reason
+//!   <out>/index.html                 the matrix, in two sections: the
+//!                                    frameworks' own test suites, then
+//!                                    TodoMVC (the user, 2026-11-14: "TODOMVC
+//!                                    is supposed to be called out
+//!                                    separately in that report")
+//!   <out>/<framework>/index.html     its own suites: every page, every
+//!                                    failing test with its message, every
+//!                                    excluded or not-run test with its
+//!                                    reason; its own suites that do not run,
+//!                                    with why
+//!   <out>/todomvc/<app>/index.html   one TodoMVC app, the same way
 //!
 //! The site's rules (tools/wpt_site/DESIGN.md, PRODUCT.md): the content is in
 //! the HTML (no script), graphs count tests, red is a failure, grey is
 //! excluded or not run; it uses the WPT site's stylesheet and its HTML
 //! helpers (tools/wpt_site/html.zig, by import). Every page says that
-//! rendering tests are not run. A row never lets a reader take Crane's port
-//! of an app spec for the project's own suite: each suite names its kind.
+//! rendering tests are not run. A TodoMVC app never stands in for its
+//! framework's own suite: it is only in the second section.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -46,29 +53,26 @@ pub const SuiteRuns = struct {
     file_entries: []const exclusions.Entry,
 };
 
-/// Why a TodoMVC row's framework is not measured by its own suite (the
-/// user, 2026-11-11 09:57 ET: React, Vue, Svelte and Angular are measured by
-/// the prebuilt TodoMVC app against Crane's port of TodoMVC's app spec;
-/// tmp/plans/framework-matrix-plan.md 1.3-1.6).
-pub const own_suite_needs_node = [_][2][]const u8{
-    .{ "react", "React's own tests run under Node: Jest with jsdom; its browser-run tests (react-devtools-inline, fixtures/flight, the compiler playground) assert from Node through Playwright." },
-    .{ "vue", "Vue's own tests run under Node: Vitest with jsdom; its e2e tests (36) assert from Node through Puppeteer, and its browser-mode Transition tests are compiled and driven by Vite." },
-    .{ "angular", "Angular's browser suites are TypeScript bundled by Bazel and esbuild and run by Karma or web-test-runner, all Node." },
-    .{ "svelte", "Svelte's runtime-browser samples (75) are compiled by the Svelte compiler and driven by Playwright from Node; its other suites run under jsdom." },
-};
-
 /// What the TodoMVC port does not run of a test (it excludes no test):
 /// tools/fw_matrix/excluded/todomvc-port.txt says the same.
 pub const todomvc_port_note =
-    "Crane's port runs every test of TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests) on the framework's unmodified, prebuilt TodoMVC app, driving it through DOM events as Cypress drives it. Of Cypress's own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app's entries in tests/knownIssues.js) are reported as skipped by the app spec.";
+    "Crane's port runs every test of TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests) on the app's unmodified build, driving it through DOM events as Cypress drives it. Of Cypress's own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app's entries in tests/knownIssues.js) are reported as skipped by the app spec.";
 
 pub const statement =
     "Crane draws nothing: tests whose result depends on layout geometry or pixels are not run, and each is listed with its reason. Computed style, events, timers and animations are run. Tests a project runs only through its Node test runner are not run either, and are listed with theirs.";
 
 /// Where Node runs (the user, 2026-11-11 17:43 ET: "we can run node for the
-/// purposes of these tests"; Crane is never driven from Node).
+/// purposes of these tests").
 pub const node_note =
-    "Node runs only a project's own test server and build step, never Crane: jQuery's pages are served by its own test server (jquery-test-runner) with the project's own dependencies, as its CI serves them.";
+    "Node runs only a project's own build step, test server and test runner, never inside Crane: jQuery's pages are served by its own test server (jquery-test-runner) with the project's own dependencies, as its CI serves them.";
+
+/// The first section's introduction.
+pub const own_suites_intro =
+    "Each framework's own browser tests, run in Crane the way the project runs them in a browser: its own build, its own test server and its own test runner. A framework's own tests that Crane cannot run yet are listed with why.";
+
+/// The second section's introduction.
+pub const todomvc_intro =
+    "The TodoMVC apps todomvc.com lists, each the app's unmodified build from tastejs/todomvc, checked by Crane's port of TodoMVC's app spec. These rows measure an app written with a framework, not the framework's own tests.";
 
 /// The runs in `journals` grouped by suite, each suite's runs ordered by
 /// generation (lane runs, with none, after) then label.
@@ -179,6 +183,7 @@ const style =
     \\.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
     \\.fw .meter { margin: 0.3rem 0 0; min-width: 8rem; }
     \\.fw .kind { display: block; font: 400 0.82rem/1.35 var(--sans); color: var(--ink-2); }
+    \\.fw .why { display: block; margin-top: 0.25rem; font: 400 0.82rem/1.4 var(--sans); color: var(--ink-2); max-width: 46rem; }
     \\</style>
     \\
 ;
@@ -205,35 +210,98 @@ fn suiteLabel(w: W, s: manifest.Suite) !void {
     try w.print(", {d} page{s})", .{ s.pages.len, if (s.pages.len == 1) "" else "s" });
 }
 
-pub fn writeIndex(w: W, suites: []const SuiteRuns, o: Options) !void {
-    try head(w, "Crane: JS framework compatibility matrix", "JavaScript frameworks' browser tests run in Crane, with rendering tests excluded and named.", o, 0);
-    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JS framework compatibility matrix</span></h1>\n<p class=\"subtitle\">Each framework's own browser tests where Crane can open their pages; for a framework whose own browser tests are driven from Node, its unmodified, prebuilt TodoMVC app checked by Crane's port of TodoMVC's app spec. Each page is opened in Crane's console as a user opens it and read from the test framework's own report. ");
+const table_head = "<table class=\"listing\">\n<thead><tr><th>{s}</th><th class=\"n\">Run</th><th class=\"n\">Passed</th><th class=\"n\">Failed</th><th class=\"n\">Errored</th><th class=\"n\">Excluded: rendering</th><th class=\"n\">Not run</th><th class=\"n\">Pass rate</th><th>History</th></tr></thead>\n<tbody>\n";
+
+/// Where a suite's page is, below the matrix: a framework's own suites at
+/// "<framework>/", a TodoMVC app at "todomvc/<app>/".
+pub fn pageDir(s: manifest.Suite) [2][]const u8 {
+    return switch (s.kind) {
+        .project => .{ "", s.framework },
+        .todomvc_port => .{ "todomvc/", s.framework },
+    };
+}
+
+/// One suite's row: its counts in the latest run, its history.
+fn suiteRow(w: W, s: SuiteRuns) !void {
+    const dir = pageDir(s.suite);
+    try w.writeAll("<tr><th><a href=\"");
+    try html.text(w, dir[0]);
+    try html.text(w, dir[1]);
+    try w.writeAll("/\">");
+    try html.text(w, s.suite.title);
+    try w.writeAll("</a><span class=\"kind\">");
+    try suiteLabel(w, s.suite);
+    try w.writeAll("</span>");
+    if (latest(s)) |r| try meter(w, r.counts);
+    try w.writeAll("</th>");
+    if (latest(s)) |r| {
+        const c = r.counts;
+        try w.print("<td class=\"n\">{d}</td><td class=\"n\">{d}</td><td class=\"n{s}\">{d}</td><td class=\"n{s}\">{d}</td><td class=\"n grey\">{d}</td><td class=\"n grey\">{d}</td><td class=\"n\">", .{
+            c.ran(), c.pass, if (c.fail > 0) " fail" else "", c.fail, if (c.errored() > 0) " fail" else "", c.errored(), c.rendering, c.not_run + c.project_skip + @as(u32, @intCast(s.file_entries.len)),
+        });
+        try rate(w, c.pass, c.ran());
+        try w.writeAll("</td><td>");
+        try sparkline(w, s.runs);
+        try w.writeAll("</td></tr>\n");
+    } else try w.writeAll("<td class=\"n\" colspan=\"8\">no run yet</td></tr>\n");
+}
+
+/// "e2e (Puppeteer on Chrome), Vue 3.5.45": what a not-run row names.
+fn notRunLabel(w: W, fw: manifest.Framework, n: manifest.OwnSuiteNotRun) !void {
+    try html.text(w, fw.title);
+    try w.writeByte(' ');
+    try html.text(w, n.version);
+    try w.writeAll(" &mdash; its own ");
+    try html.text(w, n.name);
+    try w.writeAll(" (");
+    try html.text(w, n.runner);
+    try w.writeAll(")");
+}
+
+/// A framework's own suite that does not run: its row says why.
+fn notRunRow(w: W, fw: manifest.Framework, n: manifest.OwnSuiteNotRun) !void {
+    try w.writeAll("<tr><th><a href=\"");
+    try html.text(w, fw.id);
+    try w.writeAll("/\">");
+    try html.text(w, fw.title);
+    try w.writeAll("</a><span class=\"kind\">");
+    try notRunLabel(w, fw, n);
+    try w.writeAll("</span><span class=\"why\">Not run: ");
+    try html.text(w, n.why);
+    try w.writeAll("</span></th><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">");
+    if (n.tests) |t| try html.num(w, t) else try w.writeAll("all");
+    try w.writeAll("</td><td class=\"n grey\">&mdash;</td><td></td></tr>\n");
+}
+
+pub fn writeIndex(w: W, frameworks: []const manifest.Framework, suites: []const SuiteRuns, o: Options) !void {
+    try head(w, "Crane: JS framework compatibility matrix", "JavaScript frameworks' own browser tests, and the TodoMVC apps, run in Crane, with rendering tests excluded and named.", o, 0);
+    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JS framework compatibility matrix</span></h1>\n<p class=\"subtitle\">Two sections: the frameworks' own test suites, and the TodoMVC apps. Each page is opened in Crane's console as a user opens it and read from the test framework's own report. ");
     try html.text(w, node_note);
     try w.writeAll("</p>\n</header>\n");
     try statementNote(w);
-    try w.writeAll("<h2>The matrix</h2>\n<table class=\"listing\">\n<thead><tr><th>Framework</th><th class=\"n\">Run</th><th class=\"n\">Passed</th><th class=\"n\">Failed</th><th class=\"n\">Errored</th><th class=\"n\">Excluded: rendering</th><th class=\"n\">Not run</th><th class=\"n\">Pass rate</th><th>History</th></tr></thead>\n<tbody>\n");
-    for (suites) |s| {
-        try w.writeAll("<tr><th><a href=\"");
-        try html.text(w, s.suite.framework);
-        try w.writeAll("/\">");
-        try html.text(w, s.suite.title);
-        try w.writeAll("</a><span class=\"kind\">");
-        try suiteLabel(w, s.suite);
-        try w.writeAll("</span>");
-        if (latest(s)) |r| try meter(w, r.counts);
-        try w.writeAll("</th>");
-        if (latest(s)) |r| {
-            const c = r.counts;
-            try w.print("<td class=\"n\">{d}</td><td class=\"n\">{d}</td><td class=\"n{s}\">{d}</td><td class=\"n{s}\">{d}</td><td class=\"n grey\">{d}</td><td class=\"n grey\">{d}</td><td class=\"n\">", .{
-                c.ran(), c.pass, if (c.fail > 0) " fail" else "", c.fail, if (c.errored() > 0) " fail" else "", c.errored(), c.rendering, c.not_run + c.project_skip + @as(u32, @intCast(s.file_entries.len)),
-            });
-            try rate(w, c.pass, c.ran());
-            try w.writeAll("</td><td>");
-            try sparkline(w, s.runs);
-            try w.writeAll("</td></tr>\n");
-        } else try w.writeAll("<td class=\"n\" colspan=\"8\">no run yet</td></tr>\n");
+
+    try w.writeAll("<h2 id=\"own\">The frameworks' own test suites</h2>\n<p>");
+    try html.text(w, own_suites_intro);
+    try w.writeAll("</p>\n");
+    try w.print(table_head, .{"Framework"});
+    if (frameworks.len == 0) {
+        for (suites) |s| if (s.suite.kind == .project) try suiteRow(w, s);
+    } else for (frameworks) |fw| {
+        for (suites) |s| if (s.suite.kind == .project and std.mem.eql(u8, s.suite.framework, fw.id)) try suiteRow(w, s);
+        for (fw.not_run) |n| try notRunRow(w, fw, n);
     }
     try w.writeAll("</tbody>\n</table>\n");
+
+    var any_app = false;
+    for (suites) |s| any_app = any_app or s.suite.kind == .todomvc_port;
+    if (any_app) {
+        try w.writeAll("<h2 id=\"todomvc\">TodoMVC (Crane's port of the TodoMVC app spec)</h2>\n<p>");
+        try html.text(w, todomvc_intro);
+        try w.writeAll("</p>\n");
+        try w.print(table_head, .{"App"});
+        for (suites) |s| if (s.suite.kind == .todomvc_port) try suiteRow(w, s);
+        try w.writeAll("</tbody>\n</table>\n");
+    }
     try w.writeAll("<p class=\"grey\">Pass rate is passed over run. Errored: due to run and never reported (the page's time ran out, or the console ended). Not run: every kind is counted under What we do not run, below.</p>\n");
     try writeNotRun(w, suites);
     try w.writeAll("<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n");
@@ -335,40 +403,88 @@ fn statusText(s: journal.Status) []const u8 {
     };
 }
 
-pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Options) !void {
+const page_foot = "<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n";
+
+/// A framework's page (<out>/<framework>/): its own suites that run, then
+/// those that do not, with why; its TodoMVC app is linked, never shown here.
+pub fn writeFramework(w: W, fw: manifest.Framework, suites: []const SuiteRuns, o: Options) !void {
     var title_buf: [128]u8 = undefined;
-    var title: []const u8 = framework;
-    for (suites) |s| if (std.mem.eql(u8, s.suite.framework, framework)) {
-        title = std.fmt.bufPrint(&title_buf, "Crane: {s} in the JS framework matrix", .{s.suite.title}) catch title;
-        break;
-    };
-    try head(w, title, "A framework's browser test suites run in Crane: every failure with its message, every excluded test with its reason.", o, 1);
-    for (suites) |s| {
-        if (!std.mem.eql(u8, s.suite.framework, framework)) continue;
-        try w.writeAll("<header class=\"head\">\n<h1>");
+    const title = std.fmt.bufPrint(&title_buf, "Crane: {s}'s own tests in the JS framework matrix", .{fw.title}) catch fw.title;
+    try head(w, title, "A framework's own browser test suites run in Crane: every failure with its message, every excluded test with its reason, every suite not run with why.", o, 1);
+    try w.writeAll("<header class=\"head\">\n<h1>");
+    try html.text(w, fw.title);
+    try w.writeAll(" <span class=\"h1-rest\">in Crane</span></h1>\n<p class=\"subtitle\">The project's own test suites. <a href=\"../\">The matrix</a>.");
+    for (suites) |s| if (s.suite.kind == .todomvc_port and std.mem.eql(u8, s.suite.framework, fw.id)) {
+        try w.writeAll(" Its TodoMVC app, a separate measure: <a href=\"../todomvc/");
+        try html.text(w, s.suite.framework);
+        try w.writeAll("/\">");
         try html.text(w, s.suite.title);
-        try w.writeAll(" <span class=\"h1-rest\">in Crane</span></h1>\n<p class=\"subtitle\">");
-        try suiteLabel(w, s.suite);
-        try w.writeAll(". <a href=\"../\">The matrix</a>.</p>\n</header>\n");
-        try statementNote(w);
-        if (s.suite.kind == .todomvc_port) {
-            try w.writeAll("<p>");
-            for (own_suite_needs_node) |e| if (std.mem.eql(u8, e[0], s.suite.framework)) {
-                try html.text(w, e[1]);
-                try w.writeByte(' ');
-            };
-            try html.text(w, todomvc_port_note);
-            try w.writeAll(" The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href=\"");
-            try html.text(w, s.suite.repository);
-            try w.writeAll("/blob/");
-            try html.text(w, s.suite.commit);
-            try w.writeAll("/cypress/e2e/spec.cy.js\"><code>cypress/e2e/spec.cy.js</code></a>.</p>\n");
+        try w.writeAll(" TodoMVC</a>.");
+    };
+    try w.writeAll("</p>\n</header>\n");
+    try statementNote(w);
+    for (suites) |s| if (s.suite.kind == .project and std.mem.eql(u8, s.suite.framework, fw.id)) try suiteBody(w, s);
+    if (fw.not_run.len > 0) {
+        try w.writeAll("<h2 id=\"not-run-suites\">Its own tests Crane does not run</h2>\n<table class=\"listing\">\n<thead><tr><th>Tests</th><th class=\"n\">Count</th><th>Why</th></tr></thead>\n<tbody>\n");
+        for (fw.not_run) |n| {
+            try w.writeAll("<tr><th>");
+            try notRunLabel(w, fw, n);
+            try w.writeAll(", <a href=\"");
+            try html.text(w, n.repository);
+            try w.writeAll("/tree/");
+            try html.text(w, n.tag);
+            try w.writeAll("\">");
+            try html.text(w, n.tag);
+            try w.writeAll("</a></th><td class=\"n grey\">");
+            if (n.tests) |t| try html.num(w, t) else try w.writeAll("not counted");
+            try w.writeAll("</td><td>");
+            try html.text(w, n.why);
+            try w.writeAll("</td></tr>\n");
         }
+        try w.writeAll("</tbody>\n</table>\n");
+    }
+    try w.writeAll(page_foot);
+}
+
+/// A TodoMVC app's page (<out>/todomvc/<app>/).
+pub fn writeApp(w: W, s: SuiteRuns, o: Options) !void {
+    var title_buf: [128]u8 = undefined;
+    const title = std.fmt.bufPrint(&title_buf, "Crane: the {s} TodoMVC app in the JS framework matrix", .{s.suite.title}) catch s.suite.title;
+    try head(w, title, "A TodoMVC app checked in Crane by Crane's port of the TodoMVC app spec: every failure with its message.", o, 2);
+    try w.writeAll("<header class=\"head\">\n<h1>");
+    try html.text(w, s.suite.title);
+    try w.writeAll(" <span class=\"h1-rest\">TodoMVC in Crane</span></h1>\n<p class=\"subtitle\">");
+    try suiteLabel(w, s.suite);
+    try w.writeAll(". <a href=\"../../#todomvc\">The matrix</a>.</p>\n</header>\n");
+    try statementNote(w);
+    try w.writeAll("<p>");
+    try html.text(w, todomvc_port_note);
+    try w.writeAll(" The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href=\"");
+    try html.text(w, s.suite.repository);
+    try w.writeAll("/blob/");
+    try html.text(w, s.suite.commit);
+    try w.writeAll("/cypress/e2e/spec.cy.js\"><code>cypress/e2e/spec.cy.js</code></a>.</p>\n");
+    try suiteBody(w, s);
+    try w.writeAll(page_foot);
+}
+
+/// One suite's run on its page: the run, its pages, its failures and what
+/// it did not run.
+fn suiteBody(w: W, s: SuiteRuns) !void {
+    {
         const r = latest(s) orelse {
-            try w.writeAll("<p>No run yet.</p>\n");
-            continue;
+            try w.writeAll("<h2>");
+            try suiteLabel(w, s.suite);
+            try w.writeAll("</h2>\n<p>No run yet.</p>\n");
+            return;
         };
-        try w.writeAll("<h2>The run</h2>\n<p>");
+        // A framework's page may hold several suites: each is headed by its
+        // label; an app's page holds one run.
+        if (s.suite.kind == .project) {
+            try w.writeAll("<h2>");
+            try suiteLabel(w, s.suite);
+            try w.writeAll("</h2>\n<p>");
+        } else try w.writeAll("<h2>The run</h2>\n<p>");
         try html.text(w, s.suite.repository);
         try w.writeAll(" at ");
         try html.text(w, s.suite.tag);
@@ -442,7 +558,6 @@ pub fn writeSuites(w: W, framework: []const u8, suites: []const SuiteRuns, o: Op
         };
         if (any_loaded) try w.writeAll("</ul>\n");
     }
-    try w.writeAll("<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n");
 }
 
 const Section = enum { failed, rendering, not_run, project_skip };
@@ -548,7 +663,7 @@ test "the matrix: a row per suite with its counts and kind, the statement; text 
     try testing.expectEqual(@as(u32, 1), suites[0].runs[0].counts.pass);
 
     var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(&out.writer, suites, .{});
+    try writeIndex(&out.writer, &.{}, suites, .{});
     const page_html = out.written();
     try testing.expect(std.mem.indexOf(u8, page_html, "Crane draws nothing") != null);
     try testing.expect(std.mem.indexOf(u8, page_html, "the project&#39;s own browser suite") != null);
@@ -559,7 +674,7 @@ test "the matrix: a row per suite with its counts and kind, the statement; text 
     try testing.expect(std.mem.indexOf(u8, page_html, "<script") == null);
 
     var fw_out: Io.Writer.Allocating = .init(a);
-    try writeSuites(&fw_out.writer, "htmx", suites, .{});
+    try writeFramework(&fw_out.writer, .{ .id = "htmx", .title = "htmx" }, suites, .{});
     const fw_html = fw_out.written();
     try testing.expect(std.mem.indexOf(u8, fw_html, "AssertionError: expected &lt;b&gt;") != null);
     try testing.expect(std.mem.indexOf(u8, fw_html, "asserts window.scrollY") != null);
@@ -567,7 +682,7 @@ test "the matrix: a row per suite with its counts and kind, the statement; text 
     try testing.expect(std.mem.indexOf(u8, fw_html, "<b>") == null);
 }
 
-test "a TodoMVC row says it is Crane's port; what is not run is counted by kind on the matrix" {
+test "two sections: the frameworks' own suites (with those not run, and why), then TodoMVC; what is not run is counted by kind" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
@@ -599,10 +714,27 @@ test "a TodoMVC row says it is Crane's port; what is not run is counted by kind 
     const suites = try collect(a, m, &.{j}, &file_entries);
 
     var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(&out.writer, suites, .{});
+    const react: manifest.Framework = .{ .id = "react", .title = "React", .not_run = &.{.{ .name = "Playwright end-to-end tests", .version = "19.3.1", .repository = "https://github.com/facebook/react", .tag = "v19.3.1", .runner = "Playwright on Chromium", .tests = 19, .why = "Playwright drives Chromium through the Chrome DevTools Protocol." }} };
+    const frameworks = [_]manifest.Framework{ .{ .id = "htmx", .title = "htmx" }, react, .{ .id = "angular", .title = "Angular", .not_run = &.{.{ .name = "web tests", .version = "22.2.6", .repository = "https://github.com/angular/angular", .tag = "v22.2.6", .runner = "web-test-runner", .why = "w" }} } };
+    try writeIndex(&out.writer, &frameworks, suites, .{});
     const html_out = out.written();
-    // The user's label for the four TodoMVC rows (2026-11-11).
-    try testing.expect(std.mem.indexOf(u8, html_out, "TodoMVC; Crane&#39;s port of the app spec; the project&#39;s own suite is not runnable without Node") != null);
+    // The user, 2026-11-14: TodoMVC is its own section; an app never stands
+    // in for its framework's own suite.
+    const own = std.mem.indexOf(u8, html_out, "<h2 id=\"own\">The frameworks' own test suites</h2>").?;
+    const todo = std.mem.indexOf(u8, html_out, "<h2 id=\"todomvc\">TodoMVC (Crane's port of the TodoMVC app spec)</h2>").?;
+    try testing.expect(own < todo);
+    const htmx_row = std.mem.indexOf(u8, html_out, "<tr><th><a href=\"htmx/\">htmx</a>").?;
+    try testing.expect(own < htmx_row and htmx_row < todo);
+    // A framework whose own tests do not run is a row of the first section,
+    // saying why, with how many tests.
+    const react_row = std.mem.indexOf(u8, html_out, "<tr><th><a href=\"react/\">React</a><span class=\"kind\">React 19.3.1 &mdash; its own Playwright end-to-end tests (Playwright on Chromium)</span><span class=\"why\">Not run: Playwright drives Chromium through the Chrome DevTools Protocol.</span></th>").?;
+    try testing.expect(react_row < todo);
+    try testing.expect(std.mem.indexOf(u8, html_out[react_row..], "<td class=\"n grey\">19</td>") != null);
+    // The app's row is in the second section only, and links its own page.
+    const app_row = std.mem.indexOf(u8, html_out, "<tr><th><a href=\"todomvc/angular/\">Angular</a>").?;
+    try testing.expect(app_row > todo);
+    try testing.expect(std.mem.indexOf(u8, html_out, "the framework&#39;s TodoMVC app, checked by Crane&#39;s port of the TodoMVC app spec") != null);
+    try testing.expect(std.mem.indexOf(u8, html_out, "not runnable without Node") == null);
     // What is not run: one row per kind, its count, and where.
     try testing.expect(std.mem.indexOf(u8, html_out, "<h2 id=\"not-run\">What we do not run</h2>") != null);
     try testing.expect(std.mem.indexOf(u8, html_out, "<tr><th>Excluded: rendering</th><td class=\"n grey\">2</td><td>htmx 2</td></tr>") != null);
@@ -614,10 +746,23 @@ test "a TodoMVC row says it is Crane's port; what is not run is counted by kind 
     try testing.expect(std.mem.indexOf(u8, html_out, "Needs the project&#39;s Node build") == null);
 
     var fw_out: Io.Writer.Allocating = .init(a);
-    try writeSuites(&fw_out.writer, "angular", suites, .{});
-    const fw_html = fw_out.written();
-    try testing.expect(std.mem.indexOf(u8, fw_html, "TodoMVC&#39;s app spec skips it for this app") != null);
-    try testing.expect(std.mem.indexOf(u8, fw_html, "cypress/e2e/spec.cy.js") != null);
+    try writeApp(&fw_out.writer, suites[1], .{});
+    const app_html = fw_out.written();
+    try testing.expect(std.mem.indexOf(u8, app_html, "TodoMVC&#39;s app spec skips it for this app") != null);
+    try testing.expect(std.mem.indexOf(u8, app_html, "cypress/e2e/spec.cy.js") != null);
+    // Two levels below the matrix, which is one below the site's root.
+    try testing.expect(std.mem.indexOf(u8, app_html, "href=\"../../../site.css\"") != null);
+    try testing.expect(std.mem.indexOf(u8, app_html, "<a href=\"../../#todomvc\">The matrix</a>") != null);
+
+    // The framework's page: its own tests not run, with why; its TodoMVC
+    // app only linked.
+    var ng_out: Io.Writer.Allocating = .init(a);
+    try writeFramework(&ng_out.writer, frameworks[2], suites, .{});
+    const ng_html = ng_out.written();
+    try testing.expect(std.mem.indexOf(u8, ng_html, "<h2 id=\"not-run-suites\">Its own tests Crane does not run</h2>") != null);
+    try testing.expect(std.mem.indexOf(u8, ng_html, "<a href=\"https://github.com/angular/angular/tree/v22.2.6\">v22.2.6</a>") != null);
+    try testing.expect(std.mem.indexOf(u8, ng_html, "<a href=\"../todomvc/angular/\">Angular TodoMVC</a>") != null);
+    try testing.expect(std.mem.indexOf(u8, ng_html, "Routing: should respect the back button") == null);
 }
 
 test "where Node runs is said: on the matrix, and on the page of a suite its project's own server served" {
@@ -636,13 +781,13 @@ test "where Node runs is said: on the matrix, and on the page of a suite its pro
     const suites = try collect(a, .{ .suites = &.{suite} }, &.{.{ .tests = &.{t}, .pages = &.{p} }}, &.{});
 
     var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(&out.writer, suites, .{});
+    try writeIndex(&out.writer, &.{}, suites, .{});
     // The b3 page said "No Node runs at any step": no longer true.
     try testing.expect(std.mem.indexOf(u8, out.written(), "No Node runs") == null);
-    try testing.expect(std.mem.indexOf(u8, out.written(), "Node runs only a project&#39;s own test server and build step, never Crane") != null);
+    try testing.expect(std.mem.indexOf(u8, out.written(), "Node runs only a project&#39;s own build step, test server and test runner, never inside Crane") != null);
 
     var fw_out: Io.Writer.Allocating = .init(a);
-    try writeSuites(&fw_out.writer, "jquery", suites, .{});
+    try writeFramework(&fw_out.writer, .{ .id = "jquery", .title = "jQuery" }, suites, .{});
     try testing.expect(std.mem.indexOf(u8, fw_out.written(), "Served by the project's own test server, jquery-test-runner 0.3.0, under Node 24.22.3 (its node_modules sha256 <code>cccccccccccccccc&hellip;</code>).") != null);
 }
 
