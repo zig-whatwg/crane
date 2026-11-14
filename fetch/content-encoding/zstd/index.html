@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../../">Crane WPT results</a></li><li><a href="../../../fetch/"><code>fetch/</code></a></li><li><a href="../../../fetch/content-encoding/"><code>content-<wbr>encoding/</code></a></li><li aria-current="page"><code>zstd/</code></li></ol></nav>
 <h1 class="page-title"><code>fetch/<wbr>content-<wbr>encoding/<wbr>zstd/</code></h1>
 <div class="figures" role="group" aria-label="fetch/content-encoding/zstd/">
-<p class="figures-main"><span class="fg-pass">28</span><span class="fg-of"> / 45</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>17</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>4</dd></div><div class="blk"><dt>Blocking files</dt><dd>3</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">45</span><span class="fg-of"> / 45</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div><dt>Failed</dt><dd>0</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>4</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>45</b> / 45 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of fetch/content-encoding/zstd/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">4 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="1 clean, 0 with failures, 3 blocking, 0 with no subtests, 0 not run, of 4 files"><span class="m-clean" style="width:25.000%"></span><span class="m-blocking" style="width:75.000%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>1</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div class="blk"><dt><span class="key key-blocking"></span>Blocking</dt><dd>3</dd></div><p class="kinds"><b>3</b> NONE-PASSED</p></dl>
+<div class="meter" role="img" aria-label="4 clean, 0 with failures, 0 blocking, 0 with no subtests, 0 not run, of 4 files"><span class="m-clean" style="width:100.000%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>4</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>0</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -64,91 +64,65 @@
 </div>
 </div>
 </details>
-<details class="tf" id="big-zstd-body.https.any.js" data-gate="none-passed" data-pass="0" data-of="8" data-failed="8" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>big-<wbr>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">8</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="big-zstd-body.https.any.js" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>big-<wbr>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/content-encoding/zstd/big-zstd-body.https.any.js"><code>fetch/<wbr>content-<wbr>encoding/<wbr>zstd/<wbr>big-<wbr>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-431aa1d24027"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-431aa1d24027" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-2c5472838301"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully with byte stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-2c5472838301" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>large zstd data should be decompressed successfully</li><li>large zstd data should be decompressed successfully with byte stream</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-ad23e06ec4ac"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-ad23e06ec4ac" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-adfc87c05a74"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully with byte stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-adfc87c05a74" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>large zstd data should be decompressed successfully</li><li>large zstd data should be decompressed successfully with byte stream</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-4b0a791fed71"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-4b0a791fed71" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-fd5fdebea438"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully with byte stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-fd5fdebea438" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>large zstd data should be decompressed successfully</li><li>large zstd data should be decompressed successfully with byte stream</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-52453fdc19b9"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-52453fdc19b9" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-647345787a29"><details><summary><span class="mark">FAIL</span><span class="sub-name">large zstd data should be decompressed successfully with byte stream</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-647345787a29" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/big-zstd-body.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>large zstd data should be decompressed successfully</li><li>large zstd data should be decompressed successfully with byte stream</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="zstd-body.https.any.js" data-gate="none-passed" data-pass="0" data-of="8" data-failed="8" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>0</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="fail">8</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="zstd-body.https.any.js" data-gate="clean" data-pass="8" data-of="8" data-failed="0" data-ref-pass="8" data-ref-of="8"><summary><span class="tf-name"><code>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></span><span class="tf-n"><b>8</b> / 8<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>8</b> / 8</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>8</b> / 8 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/content-encoding/zstd/zstd-body.https.any.js"><code>fetch/<wbr>content-<wbr>encoding/<wbr>zstd/<wbr>zstd-<wbr>body.<wbr>https.<wbr>any.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-e9436c9890e2"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type text should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-e9436c9890e2" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-59b82e730218"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type octetstream should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-59b82e730218" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>fetched zstd data with content type text should be decompressed.</li><li>fetched zstd data with content type octetstream should be decompressed.</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-e4230af95191"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type text should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-e4230af95191" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-faeba302753c"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type octetstream should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-faeba302753c" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.serviceworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>fetched zstd data with content type text should be decompressed.</li><li>fetched zstd data with content type octetstream should be decompressed.</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-b96700cfd4e4"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type text should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-b96700cfd4e4" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-773c08b11059"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type octetstream should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-773c08b11059" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.sharedworker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>fetched zstd data with content type text should be decompressed.</li><li>fetched zstd data with content type octetstream should be decompressed.</li></ol></details>
 </div>
 <div class="run">
-<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>0</b> / 2</span></h3>
-<ol class="subtests">
-<li class="sub s-fail" id="s-8c93cb78033a"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type text should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-8c93cb78033a" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-841112ec63b8"><details><summary><span class="mark">FAIL</span><span class="sub-name">fetched zstd data with content type octetstream should be decompressed.</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: network error&quot;</pre></details><a class="self" href="#s-841112ec63b8" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<h3 class="run-head"><code>/fetch/content-encoding/zstd/zstd-body.https.any.worker.html</code> <span class="gate">OK</span> <span class="fcount"><b>2</b> / 2</span></h3>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>fetched zstd data with content type text should be decompressed.</li><li>fetched zstd data with content type octetstream should be decompressed.</li></ol></details>
 </div>
 </div>
 </details>
-<details class="tf" id="zstd-navigation.https.window.js" data-gate="none-passed" data-pass="0" data-of="1" data-failed="1" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>zstd-<wbr>navigation.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>0</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-none-passed g-block">NONE-PASSED</span></span></summary>
+<details class="tf" id="zstd-navigation.https.window.js" data-gate="clean" data-pass="1" data-of="1" data-failed="0" data-ref-pass="1" data-ref-of="1"><summary><span class="tf-name"><code>zstd-<wbr>navigation.<wbr>https.<wbr>window.<wbr>js</code></span><span class="tf-n"><b>1</b> / 1<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 1</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-none-passed g-block">NONE-PASSED</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-clean">Clean</span> <b>1</b> / 1 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/fetch/content-encoding/zstd/zstd-navigation.https.window.js"><code>fetch/<wbr>content-<wbr>encoding/<wbr>zstd/<wbr>zstd-<wbr>navigation.<wbr>https.<wbr>window.<wbr>js</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-0eb5952dc508"><details><summary><span class="mark">FAIL</span><span class="sub-name">Naigation to zstd encoded page</span></summary><pre class="msg">promise_test: Unhandled rejection with value: object &quot;TypeError: Cannot read properties of null (reading &#39;body&#39;)&quot;</pre></details><a class="self" href="#s-0eb5952dc508" aria-label="Link to this subtest">&para;</a></li>
-</ol>
+<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>Naigation to zstd encoded page</li></ol></details>
 </div>
 </div>
 </details>
