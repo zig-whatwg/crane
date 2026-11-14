@@ -239,8 +239,18 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // receiver is then bound to nothing, and released.
     if (interface.adoptExistingWrapper(info, this_obj, instance, constructor_context)) return;
 
-    // Store the Zig instance in the V8 object's internal field (slot 0)
-    interface.setInstance(runtime.Instance, this_obj, instance);
+    // The link: `this` reaches the instance through its anchor
+    // (platform_anchor.zig; a node's is made when the cache takes it). A
+    // receiver that cannot be bound - no API object, which V8 never makes
+    // for an interface's constructor - reaches nothing: the construction
+    // fails, the instance is freed, and the error is thrown.
+    if (!interface.setInstance(isolate, this_obj, instance)) {
+        instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+        const function_ctx_owned = info.getFunctionCreationContext();
+        defer if (function_ctx_owned) |c| v8.v8_Context_Dispose(c);
+        conv.throwWebIDLErrorFromContext(isolate, function_ctx_owned orelse current_context, "TypeError");
+        return;
+    }
 
     // ========================================
     // CACHE THE WRAPPER: Store constructor-created wrapper for identity
@@ -472,11 +482,11 @@ fn elementWrapperCache(element: *runtime.Instance) ?*WrapperCache {
 }
 
 /// Bind `element` to `receiver` - the object V8 made for NewTarget - as
-/// the constructor path binds its instance: its Instance in the
-/// internal fields, and the wrapper cache's entry. Whether the cache
-/// took the receiver's handle.
+/// the constructor path binds its instance: the link (an element's, its
+/// NodeAnchor, is made as the cache takes the receiver), and the wrapper
+/// cache's entry. Whether the cache took the receiver's handle.
 fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, element: *runtime.Instance, isolate: *v8.Isolate) anyerror!bool {
-    interface.setInstance(runtime.Instance, receiver, element);
+    if (!interface.setInstance(isolate, receiver, element)) return false;
     if (self.install_conditional_unforgeables) |install| {
         const context: *v8.Context = @ptrCast(@alignCast(element.ctx.engine_ctx orelse return false));
         install(isolate, context, receiver);
@@ -494,10 +504,10 @@ fn bindConstructedElement(self: *const Constructor, receiver: *v8.Object, elemen
     return true;
 }
 
-/// Clear the internal field `setInstance` wrote on `receiver`, so a
-/// receiver the wrapper cache did not take reaches no instance.
+/// Sever the link `setInstance` made on `receiver`, so a receiver the
+/// wrapper cache did not take reaches no instance.
 fn unbindReceiver(receiver: *v8.Object) void {
-    if (v8.v8_Object_InternalFieldCount(receiver) >= 1) v8.v8_Object_SetAlignedPointerInInternalField(receiver, 0, null);
+    @import("platform_anchor.zig").sever(receiver);
 }
 
 // ============================================================================
@@ -691,9 +701,9 @@ fn operationBody(info: *const v8.FunctionCallbackInfo, self: *const Operation) v
     // Nothing above asks that of every receiver: the implicit-this
     // path hands back the realm's GLOBAL for a null `this` whatever
     // the interface (idlharness calls every operation as
-    // `op.apply(null, args)`), and a wrapper's one internal field is
-    // its instance, with no type beside it (lane v8up A0: field 1's
-    // WrapperTypeInfo, kept for 24 interfaces, is gone). The impl
+    // `op.apply(null, args)`), and a wrapper names its instance
+    // with no type beside it (its anchor's tag is the wrapper's kind,
+    // not its interface: platform_anchor.zig). The impl
     // would then read another interface's
     // state as its own: `XMLHttpRequest.open` on the Window died on
     // `_internal.?`. The state ancestry is the brand check; an
@@ -957,7 +967,7 @@ pub fn attributeGetter(info: *const v8.FunctionCallbackInfo, self: *const Getter
     // interface compares it with globals and asks its
     // creation context, and a [SameObject] attribute draws an
     // edge from it. Every other getter reads the receiver's
-    // internal field from `info` (thisInstance), which
+    // instance from `info` (thisInstance), which
     // makes no handle: the Global, made and disposed per read,
     // was most of `list.length` in NodeList-static-length-
     // getter-tampered-[123].html (~6e7 reads each).
@@ -1716,14 +1726,15 @@ pub fn throwInFunctionRealm(frame: *CallFrame, kind: ThrownError, message: []con
     }
 }
 
-/// `this`'s instance - internal field 0, through a legacy platform object's
-/// proxy - read from `info` with no handle (v8_FunctionCallbackInfo_ThisInstance;
-/// perf3 phase 1b), or null when `this` has none. Whether it implements the
-/// member's interface is the caller's brand check, the instance's state
-/// ancestry (`conv.implements`): per WebIDL a `this` that is not a platform
-/// object implementing the interface is a TypeError, and an ancestry check per
-/// instance holds across realms. A wrapper keeps no WrapperTypeInfo beside its
-/// instance (lane v8up A0).
+/// `this`'s instance - its wrapper's anchor's, through a legacy platform
+/// object's proxy; a node's; a realm's global's field (platform_anchor.zig
+/// `instanceOf`'s rule) - read from `info` with no handle
+/// (v8_FunctionCallbackInfo_ThisInstance; perf3 phase 1b), or null when
+/// `this` reaches none. Whether it implements the member's interface is the
+/// caller's brand check, the instance's state ancestry (`conv.implements`):
+/// per WebIDL a `this` that is not a platform object implementing the
+/// interface is a TypeError, and an ancestry check per instance holds across
+/// realms. A wrapper's tag says only what kind of wrapper it is (design 3.3).
 pub fn thisInstance(info: *const v8.FunctionCallbackInfo) ?*anyopaque {
     return v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstance(info);
 }
@@ -2281,7 +2292,7 @@ pub fn convertReturnValue(
 /// parent realm's receiver template. Per WebIDL, cross-realm `this` values
 /// work - an object created as a DOMParser in ANY realm is usable with
 /// DOMParser methods from ANY realm (within the same agent/isolate). The
-/// operation callback validates `this` by its internal fields
+/// operation callback validates `this` by its instance's state ancestry
 /// (`operationReceiver`), which holds across realms.
 pub fn registerMethod(
     isolate: *v8.Isolate,
