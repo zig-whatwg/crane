@@ -3,6 +3,76 @@
 // of the bytes the URL served then; each npm `integrity` is the project's own
 // package-lock.json pin at its tag, and equal to the registry's.
 .{
+    // The report's first section, "The frameworks' own test suites" (the
+    // user's six, 2026-11-11), in its order. Each framework's own browser
+    // tests that Crane does not run are listed with why, read at the
+    // newest release on 2026-11-14 by lane fw1 (tmp/plans/lane-fw1-handoff.md,
+    // "b5"). TodoMVC apps are the second section's (the user, 2026-11-14).
+    .frameworks = .{
+        .{ .id = "jquery", .title = "jQuery" },
+        .{
+            .id = "react",
+            .title = "React",
+            .not_run = .{.{
+                .name = "Playwright end-to-end tests (react-devtools-inline, fixtures/flight, the compiler playground)",
+                .version = "19.3.1",
+                .repository = "https://github.com/facebook/react",
+                .tag = "v19.3.1",
+                .runner = "Playwright on Chromium",
+                .tests = 19,
+                .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. Playwright drives Chromium through that protocol; its other browsers are patched Firefox and WebKit builds with protocols of their own. React's other tests run under Jest with jsdom, not in a browser.",
+            }},
+        },
+        .{
+            .id = "vue",
+            .title = "Vue",
+            .not_run = .{
+                .{
+                    .name = "e2e tests",
+                    .version = "3.5.45",
+                    .repository = "https://github.com/vuejs/core",
+                    .tag = "v3.5.45",
+                    .runner = "Vitest and Puppeteer 25 on Chrome",
+                    .tests = 36,
+                    .why = "Waits for WebDriver BiDi or Chrome DevTools Protocol support in Crane, after 0.1: Puppeteer drives a browser through one of the two. Puppeteer also clicks at a point computed from the element's layout box, which needs a renderer.",
+                },
+                .{
+                    .name = "e2e-browser tests (Transition, TransitionGroup)",
+                    .version = "3.5.45",
+                    .repository = "https://github.com/vuejs/core",
+                    .tag = "v3.5.45",
+                    .runner = "Vitest 4 browser mode, Playwright provider on Chromium",
+                    .tests = 84,
+                    .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. The tests run inside the page, but the project's provider, Playwright, opens Chromium through that protocol, and some tests call it directly (Vitest's cdp()).",
+                },
+            },
+        },
+        .{ .id = "htmx", .title = "htmx" },
+        .{
+            .id = "angular",
+            .title = "Angular",
+            .not_run = .{.{
+                .name = "web test targets of the documentation site and Angular DevTools (18 and 50 targets)",
+                .version = "22.2.6",
+                .repository = "https://github.com/angular/angular",
+                .tag = "v22.2.6",
+                .runner = "web-test-runner and Jasmine, through Puppeteer in Chromium and Firefox",
+                .why = "They test two applications kept in the repository (adev/, the angular.dev site, and devtools/, the browser extension), not the framework; the framework's own 44 targets under packages/ run above.",
+            }},
+        },
+        .{
+            .id = "svelte",
+            .title = "Svelte",
+            .not_run = .{.{
+                .name = "runtime-browser and custom-elements samples (39 and 36)",
+                .version = "5.57.3",
+                .repository = "https://github.com/sveltejs/svelte",
+                .tag = "svelte@5.57.3",
+                .runner = "Vitest calling Playwright on Chromium",
+                .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. The project's harness launches Chromium through Playwright directly, and Playwright drives it through that protocol; Svelte offers no other driver for these tests. Its other tests run under jsdom, not in a browser.",
+            }},
+        },
+    },
     .suites = .{
         // jQuery 4.0.0's own QUnit suite: test/index.html, one page per module
         // as jquery-test-runner's jtr-isolate.yml runs it (its 21 modules), plus
@@ -157,6 +227,19 @@
             // Every test runs but what needs layout (its own server answers
             // the mock actions; its build step wrote the transpiled file).
             .skip_kinds = .{ .rendering, .node_runner_only },
+            // jQuery's own runner in Chrome, its CI's one-page run (`jtr -m
+            // test/middleware-mockserver.cjs -b chrome --headless`), lane fw1
+            // b4: 1,147 tests, 3 failed (core parseXML error column, the
+            // :(dis|en)abled optgroup test, the support UA table).
+            .chrome_reference = .{
+                .browser = "Chrome for Testing 157.0.8103.78",
+                .runner = "jquery-test-runner 0.3.0, headless, one page as its CI runs it",
+                .date = "2026-11-14",
+                .ran = 1147,
+                .passed = 1144,
+                .failed = 3,
+                .source = "lane fw1 batch 4: jtr.log of run fw1-b4-chrome-ci (tmp/plans/lane-fw1-handoff.md, CHROME)",
+            },
         },
         // htmx 4.0.1's own Mocha suite: test/test.html, the project's browser
         // page (80 of its 88 test files; ruling R5: the 9 files only its
@@ -190,175 +273,222 @@
                 .{ .id = "test", .path = "test/test.html" },
             },
             .excluded = "htmx-4.0.1.txt",
+            .note = "No Chrome number yet: htmx's own runner, web-test-runner through Playwright, has not been run in Chrome for this matrix.",
         },
-        // React, Vue, Svelte and Angular (the user, 2026-11-11 09:57 ET): no
-        // suite of theirs runs without Node, so each row is the framework's
-        // UNMODIFIED, PREBUILT TodoMVC app - the built output committed in
-        // tastejs/todomvc at ff43b02e59df - checked by Crane's in-page port of
-        // TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests), the page in
-        // tests/frameworks/todomvc/ served beside the tree (`overlay`). The
-        // tree is the repository's tarball, served from its root as the
-        // project's own test server serves it (tests/server.js:
-        // express.static(repoRoot)); QUnit is the copy pinned for jQuery.
-        // Versions: each app's package-lock.json, and the bundle's own
-        // version string where it carries one.
+        // Angular 22.2.6's own browser tests: the framework's 44 web test
+        // targets (every `ng_web_test_suite`, `web_test` and
+        // `zoneless_web_test_suite` under packages/), each a Jasmine spec
+        // bundle the project's own Bazel builds. Its runner is
+        // web-test-runner (angular/rules_browsers wtr/wtr.config.mjs), which
+        // drives Chromium or Firefox through Puppeteer; every target also has
+        // the project's own `<target>_debug`, web-test-runner's manual mode,
+        // which serves the same bundle to any browser by URL with no driver.
+        // Each page is that target, started for it (`bazel run`, its port
+        // given by its own --port option) and opened at the test page its
+        // debug page links; Jasmine's console reporter, which that mode adds,
+        // prints the run on the console: failures by name, passes counted.
+        // Bazel's own downloads are the project's pins (MODULE.bazel.lock);
+        // its output root is under the frameworks directory. The user,
+        // 2026-11-14: "run the framework's backends with node against Crane".
         .{
-            .id = "react-todomvc",
-            .framework = "react",
-            .title = "React",
-            .version = "19.2.5",
-            .kind = .todomvc_port,
-            .repository = "https://github.com/tastejs/todomvc",
-            .tag = "examples/react/dist",
-            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-            .licence = "MIT",
-            .runner = "QUnit 2.24.2",
-            .reader = .qunit,
-            .source = .{
-                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
-                // Another example's installed node_modules (50 MB); no page
-                // loads them.
-                .skip = .{"examples/typescript-react/node_modules"},
-            },
-            .dependencies = .{
-                .{
-                    .name = "qunit",
-                    .version = "2.24.2",
-                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
-                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
-                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
-                    .files = .{
-                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
-                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
-                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
-                    },
-                },
-            },
-            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
-            .pages = .{
-                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=react" },
-            },
-            .excluded = "todomvc-port.txt",
-            .page_budget_s = 300,
-            .page_stall_s = 60,
-        },
-        .{
-            .id = "vue-todomvc",
-            .framework = "vue",
-            .title = "Vue",
-            .version = "3.5.33",
-            .kind = .todomvc_port,
-            .repository = "https://github.com/tastejs/todomvc",
-            .tag = "examples/vue/dist",
-            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-            .licence = "MIT",
-            .runner = "QUnit 2.24.2",
-            .reader = .qunit,
-            .source = .{
-                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
-                .skip = .{"examples/typescript-react/node_modules"},
-            },
-            .dependencies = .{
-                .{
-                    .name = "qunit",
-                    .version = "2.24.2",
-                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
-                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
-                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
-                    .files = .{
-                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
-                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
-                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
-                    },
-                },
-            },
-            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
-            .pages = .{
-                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=vue" },
-            },
-            .excluded = "todomvc-port.txt",
-            .page_budget_s = 300,
-            .page_stall_s = 60,
-        },
-        .{
-            .id = "svelte-todomvc",
-            .framework = "svelte",
-            .title = "Svelte",
-            .version = "5.55.5",
-            .kind = .todomvc_port,
-            .repository = "https://github.com/tastejs/todomvc",
-            .tag = "examples/svelte/dist",
-            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-            .licence = "MIT",
-            .runner = "QUnit 2.24.2",
-            .reader = .qunit,
-            .source = .{
-                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
-                .skip = .{"examples/typescript-react/node_modules"},
-            },
-            .dependencies = .{
-                .{
-                    .name = "qunit",
-                    .version = "2.24.2",
-                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
-                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
-                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
-                    .files = .{
-                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
-                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
-                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
-                    },
-                },
-            },
-            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
-            .pages = .{
-                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=svelte" },
-            },
-            .excluded = "todomvc-port.txt",
-            .page_budget_s = 300,
-            .page_stall_s = 60,
-        },
-        .{
-            .id = "angular-todomvc",
+            .id = "angular-jasmine",
             .framework = "angular",
             .title = "Angular",
-            .version = "21.2.11",
-            .kind = .todomvc_port,
-            .repository = "https://github.com/tastejs/todomvc",
-            .tag = "examples/angular/dist/browser",
-            .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .version = "22.2.6",
+            .kind = .project,
+            .repository = "https://github.com/angular/angular",
+            .tag = "v22.2.6",
+            .commit = "dda2d41d948380d63619d597c9815db0aa77fd1d",
             .licence = "MIT",
-            .runner = "QUnit 2.24.2",
-            .reader = .qunit,
+            .runner = "Jasmine, web-test-runner manual mode",
+            .reader = .jasmine_console,
             .source = .{
-                .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
-                .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
-                .skip = .{"examples/typescript-react/node_modules"},
+                .url = "https://codeload.github.com/angular/angular/tar.gz/refs/tags/v22.2.6",
+                .sha256 = "e4da834267dbe819c409d0b4caf5ae7a07ac6ce4647ce97220c67e841c388177",
             },
-            .dependencies = .{
-                .{
-                    .name = "qunit",
-                    .version = "2.24.2",
-                    .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
-                    .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
-                    .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
-                    .files = .{
-                        .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
-                        .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
-                        .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
-                    },
+            // bazelisk's GitHub release digests; Bazel 8.8.2's own .sha256
+            // files (the tree's .bazelversion).
+            .bazel = .{
+                .bazelisk_version = "1.30.0",
+                .bazelisk = .{
+                    .{ .platform = "darwin-arm64", .url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-darwin-arm64", .sha256 = "555d2ff912ccd336d0060bdb5251ef2f62629c6f8fbadb59005a45d5625793ec" },
+                    .{ .platform = "linux-x64", .url = "https://github.com/bazelbuild/bazelisk/releases/download/v1.30.0/bazelisk-linux-amd64", .sha256 = "a248ae2b2b62b5baebb748f6fba7203bff1a27e5d01b55399a8406744cb539e8" },
+                },
+                .version = "8.8.2",
+                .binaries = .{
+                    .{ .platform = "darwin-arm64", .sha256 = "ae640432a3fdb8a08c637562895f91c7ff1f63f04b1a9d34de9e9c46162bc10b" },
+                    .{ .platform = "linux-x64", .sha256 = "bf463ba0f5f782e8fe31071bd2b821c2f6a27f03e5bb62f0879e88cbf3656e04" },
                 },
             },
-            .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
-            .pages = .{
-                .{ .id = "todomvc", .path = "crane/todomvc/index.html?framework=angular" },
+            .server = .{
+                .name = "web-test-runner manual mode (the target's own _debug)",
+                .argv = .{ "{bazel}", "run", "{target}", "--", "--port", "{port}" },
+                .ready_path = "/",
+                .ready_s = 300,
             },
-            .excluded = "todomvc-port.txt",
-            .page_budget_s = 300,
-            .page_stall_s = 60,
+            .pages = .{
+                .{ .id = "animations-browser-test", .path = "?wtr-test-file=%2Fpackages%2Fanimations%2Fbrowser%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/animations/browser/test:test_web_debug" },
+                .{ .id = "animations-test", .path = "?wtr-test-file=%2Fpackages%2Fanimations%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/animations/test:test_web_debug" },
+                .{ .id = "common-http-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Fhttp%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/http/test:test_web_debug" },
+                .{ .id = "common-http-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Fhttp%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/http/testing/test:test_web_debug" },
+                .{ .id = "common-test", .path = "?wtr-test-file=%2Fpackages%2Fcommon%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/common/test:test_web_debug" },
+                .{ .id = "compiler-test", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test:test_web_debug" },
+                .{ .id = "compiler-test-expression_parser-expression_parser", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fexpression_parser%2Fexpression_parser_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/expression_parser:expression_parser_web_debug" },
+                .{ .id = "compiler-test-ml_parser-ml_parser", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fml_parser%2Fml_parser_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/ml_parser:ml_parser_web_debug" },
+                .{ .id = "compiler-test-selector-selector", .path = "?wtr-test-file=%2Fpackages%2Fcompiler%2Ftest%2Fselector%2Fselector_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/compiler/test/selector:selector_web_debug" },
+                .{ .id = "core-primitives-dom-navigation-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Fprimitives%2Fdom-navigation%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/primitives/dom-navigation/testing/test:test_web_debug" },
+                .{ .id = "core-primitives-event-dispatch-test-browser_test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Fprimitives%2Fevent-dispatch%2Ftest%2Fbrowser_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/primitives/event-dispatch/test:browser_test_debug" },
+                .{ .id = "core-rxjs-interop-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Frxjs-interop%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/rxjs-interop/test:test_web_debug" },
+                .{ .id = "core-test", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test:test_web_debug" },
+                .{ .id = "core-test-acceptance-acceptance", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Facceptance_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance:acceptance_web_debug" },
+                .{ .id = "core-test-acceptance-authoring-test_jit", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fauthoring%2Ftest_jit_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/authoring:test_jit_web_debug" },
+                .{ .id = "core-test-acceptance-authoring", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fauthoring%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/authoring:test_web_debug" },
+                .{ .id = "core-test-acceptance-foreign_component-foreign_component", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fforeign_component%2Fforeign_component_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/foreign_component:foreign_component_web_debug" },
+                .{ .id = "core-test-acceptance-selectorless-selectorless", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Facceptance%2Fselectorless%2Fselectorless_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/acceptance/selectorless:selectorless_web_debug" },
+                .{ .id = "core-test-authoring", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fauthoring%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/authoring:test_web_debug" },
+                .{ .id = "core-test-compiler-compiler", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fcompiler%2Fcompiler_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/compiler:compiler_web_debug" },
+                .{ .id = "core-test-render3-render3", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Frender3%2Frender3_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/render3:render3_web_debug" },
+                .{ .id = "core-test-resource-resource", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fresource%2Fresource_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/resource:resource_web_debug" },
+                .{ .id = "core-test-signals-signals", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fsignals%2Fsignals_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/signals:signals_web_debug" },
+                .{ .id = "core-test-webmcp-webmcp", .path = "?wtr-test-file=%2Fpackages%2Fcore%2Ftest%2Fwebmcp%2Fwebmcp_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/core/test/webmcp:webmcp_debug" },
+                .{ .id = "elements-test", .path = "?wtr-test-file=%2Fpackages%2Felements%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/elements/test:test_debug" },
+                .{ .id = "examples-router-testing", .path = "?wtr-test-file=%2Fpackages%2Fexamples%2Frouter%2Ftesting%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/examples/router/testing:test_web_debug" },
+                .{ .id = "forms-signals-test-web", .path = "?wtr-test-file=%2Fpackages%2Fforms%2Fsignals%2Ftest%2Fweb%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/forms/signals/test/web:test_debug" },
+                .{ .id = "forms-test", .path = "?wtr-test-file=%2Fpackages%2Fforms%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/forms/test:test_web_debug" },
+                .{ .id = "misc-angular-in-memory-web-api-test", .path = "?wtr-test-file=%2Fpackages%2Fmisc%2Fangular-in-memory-web-api%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/misc/angular-in-memory-web-api/test:test_web_debug" },
+                .{ .id = "platform-browser-dynamic-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser-dynamic%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser-dynamic/test:test_web_debug" },
+                .{ .id = "platform-browser-animations-async-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Fanimations%2Fasync%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/animations/async/test:test_web_debug" },
+                .{ .id = "platform-browser-animations-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Fanimations%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/animations/test:test_web_debug" },
+                .{ .id = "platform-browser-test", .path = "?wtr-test-file=%2Fpackages%2Fplatform-browser%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/platform-browser/test:test_web_debug" },
+                .{ .id = "router-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/test:test_web_debug" },
+                .{ .id = "router-testing-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Ftesting%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/testing/test:test_web_debug" },
+                .{ .id = "router-upgrade-test", .path = "?wtr-test-file=%2Fpackages%2Frouter%2Fupgrade%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/router/upgrade/test:test_web_debug" },
+                .{ .id = "service-worker-test", .path = "?wtr-test-file=%2Fpackages%2Fservice-worker%2Ftest%2Ftest_web_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/service-worker/test:test_web_debug" },
+                .{ .id = "upgrade-src-common-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fsrc%2Fcommon%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/src/common/test:test_debug" },
+                .{ .id = "upgrade-static-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fstatic%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/static/test:test_debug" },
+                .{ .id = "upgrade-static-testing-test", .path = "?wtr-test-file=%2Fpackages%2Fupgrade%2Fstatic%2Ftesting%2Ftest%2Ftest_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/upgrade/static/testing/test:test_debug" },
+                .{ .id = "zone.js-test-browser_disable_wrap_uncaught_promise_rejection", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_disable_wrap_uncaught_promise_rejection_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_disable_wrap_uncaught_promise_rejection_debug" },
+                .{ .id = "zone.js-test-browser_green_test", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_green_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_green_test_debug" },
+                .{ .id = "zone.js-test-browser_shadydom", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_shadydom_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_shadydom_debug" },
+                .{ .id = "zone.js-test-browser_test", .path = "?wtr-test-file=%2Fpackages%2Fzone.js%2Ftest%2Fbrowser_test_bundle.spec.js%3Fwtr-manual-session%3Dtrue", .target = "//packages/zone.js/test:browser_test_debug" },
+            },
+            .excluded = "angular-22.2.6.txt",
+            .skip_kinds = .{},
+            .note = "web-test-runner's page takes no filter, so every test runs; the tests that need layout and fail are classified as rendering after the run (excluded/angular-22.2.6.txt). Two zone.js targets (browser_test, browser_green_test: 1,074 specs in Chrome) do not run in Crane: Crane has no Notification API, so the project skips its Notification tests, which leaves an empty describe() that Jasmine refuses before any test runs.",
+            // The project's own runner in Chromium: `bazel test` of the 44
+            // targets' `_chromium` variants (web-test-runner through
+            // Puppeteer, rules_browsers' pinned headless shell), lane fw1 b5:
+            // per target its summary line summed. Its one failure is in core
+            // acceptance; zone.js browser_test also fails as a target on
+            // errors thrown outside its tests, with no spec failed.
+            .chrome_reference = .{
+                .browser = "Chrome for Testing headless shell 159.0.8154.2",
+                .runner = "bazel test <target>_chromium, web-test-runner through Puppeteer, the 44 targets",
+                .date = "2026-11-14",
+                .ran = 13165,
+                .passed = 13164,
+                .failed = 1,
+                .skipped = 96,
+                .source = "lane fw1 batch 5: each target's test.log summary (tmp/plans/lane-fw1-handoff.md, b5 ANGULAR)",
+            },
+            .page_budget_s = 900,
+            // Jasmine's console reporter prints only when the run ends: the
+            // longest target took 16 s in Crane (core acceptance, 2,782
+            // specs), so 300 s of silence is a run that stopped.
+            .page_stall_s = 300,
+        },
+    },
+    // TodoMVC, the report's second section (the user, 2026-11-11 09:57 ET;
+    // 2026-11-14: "TODOMVC is supposed to be called out separately in that
+    // report. We should report on as many frameworks for TODOMVC as the
+    // actual TODOMVC site"): every app todomvc.com lists, in its order, each
+    // the UNMODIFIED build committed in tastejs/todomvc at ff43b02e59df (its
+    // master on 2026-11-14), opened at the folder the site links and checked
+    // by Crane's in-page port of TodoMVC's app spec (cypress/e2e/spec.cy.js,
+    // 29 tests), the page in tests/frameworks/todomvc/ served beside the tree
+    // (`overlay`). The tree is the repository's tarball, served from its root
+    // as the project's own test server serves it (tests/server.js:
+    // express.static(repoRoot)); QUnit is the copy pinned for jQuery. Each
+    // app is pinned by examples/<id>/'s hash (fetch.dirHash), checked at
+    // every fetch. Versions: the app's package-lock.json, or the framework
+    // file's own header; none where the app's files state none. TodoMVC's
+    // own runner (tests/cya.js --all) skips three apps for the reasons in
+    // tests/excluded.js: they run here all the same, the reason beside them.
+    .todomvc = .{
+        .repository = "https://github.com/tastejs/todomvc",
+        .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+        .licence = "MIT",
+        .runner = "QUnit 2.24.2",
+        .reader = .qunit,
+        .source = .{
+            .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+            .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718",
+        },
+        .dependencies = .{
+            .{
+                .name = "qunit",
+                .version = "2.24.2",
+                .url = "https://registry.npmjs.org/qunit/-/qunit-2.24.2.tgz",
+                .sha256 = "0bb099b1f142144e552e15d3d7025d5ec8a87773fa38ba4415b5d5e5bfe1d667",
+                .integrity = "sha512-dWlYs+Q9AIDT3eHKgkpEpWrSjHjqTJNCAJr1tUo5bQuDMzlZvaqCz1bNZhqzNu41ibkIQ7b50S9y6IMlrrUfNQ==",
+                .files = .{
+                    .{ .from = "package/qunit/qunit.js", .to = "external/qunit/qunit.js" },
+                    .{ .from = "package/qunit/qunit.css", .to = "external/qunit/qunit.css" },
+                    .{ .from = "package/LICENSE.txt", .to = "external/qunit/LICENSE.txt" },
+                },
+            },
+        },
+        .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+        .page = "crane/todomvc/index.html",
+        .excluded = "todomvc-port.txt",
+        .page_budget_s = 300,
+        .page_stall_s = 60,
+        .apps = .{
+            .{ .id = "react", .title = "React", .folder = "react/dist", .version = "19.2.5", .sha256 = "d55b170b2b671ace2d27b00bee8e55a435edb6f56fbc1e8d5658d6f09bb296e2" },
+            .{ .id = "react-redux", .title = "React Redux", .folder = "react-redux/dist", .version = "9.2.0", .sha256 = "6c91e80bab20f03a13afcd8647ad16444a86e1fdf7f5ca07107bfddd246ea442" },
+            .{ .id = "vue", .title = "Vue.js", .folder = "vue/dist", .version = "3.5.33", .sha256 = "61c1868aeddb1c6f6441429f79ae3f40e321eec145ef218834c3c4c40b262a1f" },
+            .{ .id = "preact", .title = "Preact", .folder = "preact/dist", .version = "10.29.1", .sha256 = "3a4e7b18364d3848000736fccc97deded53f68bb17a71f56d8e8de138ffd804d" },
+            .{ .id = "backbone", .title = "Backbone.js", .folder = "backbone/dist", .version = "1.4.1", .sha256 = "12a353e74e0692c0cec2cdc03e08d49de1a8b4bfe46ce26c88eba0c5d1c5ea1a" },
+            .{ .id = "angular", .title = "Angular", .folder = "angular/dist/browser", .version = "21.2.11", .sha256 = "9b1d3bcbb9027f95adf2e86051d442d2487111b1a2e04d44c62d084d813ef524" },
+            .{ .id = "emberjs", .title = "Ember.js", .folder = "emberjs/todomvc/dist", .version = "5.12.0", .sha256 = "a6be8672a0dce4a04e96f35e468a8468f1b4a13a58ebf8a2ea1ed17921f3ca3c" },
+            .{ .id = "lit", .title = "Lit", .folder = "lit/dist", .version = "3.3.2", .sha256 = "a6dabab099696d3ba0758f8f4da6aa60fb9bd80b20dc8e88909fdea433e43b26" },
+            .{ .id = "knockoutjs", .title = "KnockoutJS", .folder = "knockoutjs", .version = "3.2.0", .sha256 = "18b2acc1b53102bccc8808ecbad3fcf7893265d28f9ecd1b3c643721b1f452ce" },
+            .{ .id = "dojo", .title = "Dojo", .folder = "dojo", .version = "1.10.2", .sha256 = "40982502ce874fb99ff5b02c3b8011fd1923758146943655a538bb3543eda35e" },
+            .{ .id = "knockback", .title = "Knockback.js", .folder = "knockback", .version = "1.0.0", .sha256 = "d42963d60c8734b2ddc41bc23558e6366abd50fc83e057b424136733d98c5e67" },
+            .{ .id = "canjs", .title = "CanJS", .folder = "canjs", .version = "2.0.7", .sha256 = "86f051ad2db9595e879c59ed0f6a77d11cdf6d7cb5f1d9b86e7f05d03283f6de" },
+            .{ .id = "polymer", .title = "Polymer", .folder = "polymer", .sha256 = "7bc44ec3532f2cda2dbdff0d7919adddeda9d4e6513bba69be3a1ef8b2a9f0de" },
+            .{ .id = "mithril", .title = "Mithril", .folder = "mithril", .sha256 = "ac274ed45564ebffb246020178a099fd7b2cbffd94d7596a96f57adddd6ffeee" },
+            .{ .id = "backbone_marionette", .title = "Marionette.js", .folder = "backbone_marionette", .version = "3.0.0", .sha256 = "1a0b4049bd60bb284b5b1651c414b6bc7c55965e01321e5fb98479d99b125a05" },
+            .{ .id = "svelte", .title = "Svelte", .folder = "svelte/dist", .version = "5.55.5", .sha256 = "70a59dec12a2061fb2090be7a9015d6557bbb838a2d726c6fcb8280a2ad69b24" },
+            .{ .id = "gwt", .title = "GWT", .folder = "gwt", .sha256 = "16c4810a3edb9df18b08aba2c055ca2381bcae22b54ead2f9111142dde93d2a4", .skipped_by_todomvc = "this implementation deviates from the specification to such an extent that it is not worth testing via a generic mechanism" },
+            .{ .id = "elm", .title = "Elm", .folder = "elm", .sha256 = "bc2f62ab2f3b0c29bb5c84dd1459343efd99d997b84de8d0966fbede0940ea70", .skipped_by_todomvc = "elm-html batches UI updates with requestAnimationFrame which the tests don't wait for" },
+            .{ .id = "angular-dart", .title = "AngularDart", .folder = "angular-dart/web", .sha256 = "47e03def1c9353cf98594c86c2c154691dc2b55ba774843aa50ee1523b85ae69" },
+            .{ .id = "typescript-backbone", .title = "TypeScript + Backbone.js", .folder = "typescript-backbone", .version = "1.2.1", .sha256 = "7957406165a8a0c7b37b648d6ba196f8a5b561f31a63e51bcf65e10ac4300851" },
+            .{ .id = "typescript-angular", .title = "TypeScript + AngularJS", .folder = "typescript-angular", .version = "1.4.8", .sha256 = "e54e41f387e83038051b079661f06485bda00cc7f990784f5296de028e177dc9" },
+            .{ .id = "typescript-react", .title = "TypeScript + React", .folder = "typescript-react", .version = "16.7.0", .sha256 = "12eb1f384a15f74baca9c569c81bae9c784d44de090c05d2786c533d4b352839" },
+            .{ .id = "reagent", .title = "Reagent", .folder = "reagent", .sha256 = "4c5e03a9d9af672111bf14cd49d1743d429667aa0c75d9367db09800fa808f2b" },
+            .{ .id = "binding-scala", .title = "Scala.js + Binding.scala", .folder = "binding-scala", .sha256 = "13230f566cad2ae370cbc5b70ce43d9f92203079f0215db585a3c40440427499" },
+            .{ .id = "js_of_ocaml", .title = "js_of_ocaml", .folder = "js_of_ocaml", .sha256 = "59a9b9933e5a1b5757daae5c5223487c862afa0a26ff0404af51e93481889e95" },
+            .{ .id = "humble", .title = "Humble + GopherJS", .folder = "humble", .not_served = "todomvc.com links examples/humble/, which answers 404 on todomvc.com itself; tastejs/todomvc at ff43b02e59df has no such directory." },
+            .{ .id = "backbone_require", .title = "Backbone.js + RequireJS", .folder = "backbone_require", .version = "1.1.2", .sha256 = "46cd06ed86491943da4c9a6fc489e90be641b4cccc4196423a44326798eff2ef" },
+            .{ .id = "knockoutjs_require", .title = "KnockoutJS + RequireJS", .folder = "knockoutjs_require", .version = "3.2.0", .sha256 = "b73b2d03d67048a9bc8829504149f5e6138f7d526001237001db9fe5e712138d" },
+            .{ .id = "angularjs_require", .title = "AngularJS + RequireJS", .folder = "angularjs_require", .version = "1.3.13", .sha256 = "7f2821612b484761b0b21251a196c61bc581d5c9dabcbe35a9a51f7d2dad4dfa" },
+            .{ .id = "canjs_require", .title = "CanJS + RequireJS", .folder = "canjs_require", .sha256 = "a0c40f173dc67a46284a472b793fc84e529a83af50b58acd82d5b2b44cd715d2" },
+            .{ .id = "lavaca_require", .title = "Lavaca + RequireJS", .folder = "lavaca_require", .sha256 = "7463660fd8f0d445089521da4710b5602b0b47482fcd69685cfc53d5a1f78427" },
+            .{ .id = "cujo", .title = "cujoJS", .folder = "cujo", .sha256 = "205ec9bd3df63da4bd69e649ba6808561e85ecc8e20771cae0ff9d6c6ff0e929", .skipped_by_todomvc = "these frameworks take a long time to start-up, and there is no easy way to determine when they are ready" },
+            .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "todomvc.com links examples/somajs/, which answers 404 on todomvc.com itself; tastejs/todomvc at ff43b02e59df has no such directory." },
+            .{ .id = "duel", .title = "DUEL", .folder = "duel/www", .version = "0.9.7", .sha256 = "093efd4f523855d274b6ebb8d42e457ba6503bc60bffd4a585cf441eb854bd21" },
+            .{ .id = "dijon", .title = "Dijon", .folder = "dijon", .version = "0.5.3", .sha256 = "5fbfec7be24883c7f264975fab61e514f619ed6593c9b04b24cb47db4a1a52d4" },
+            .{ .id = "enyo_backbone", .title = "Enyo + Backbone.js", .folder = "enyo_backbone", .sha256 = "3272a50b58a28fce4ceca914b80410fd2cb67ce1db0c82308c568c188952bd72" },
+            .{ .id = "exoskeleton", .title = "Exoskeleton", .folder = "exoskeleton", .version = "0.7.0", .sha256 = "edc8306f07a5f1d44cdd324b0a494f526cc9c223c7092ec4248049c4301e1cdd" },
+            .{ .id = "ractive", .title = "Ractive.js", .folder = "ractive", .version = "0.3.9", .sha256 = "62039d4be41a42b33b2ec664f23820a7977f95e0e7316c9992127b31eb3c2f06" },
+            .{ .id = "aurelia", .title = "Aurelia", .folder = "aurelia", .sha256 = "aff48792e8014d6d352a5b26d8b33102b1f9e85c7e49a9c39f5cf2aec3f46640" },
+            .{ .id = "riotjs", .title = "Riot", .folder = "riotjs", .version = "2.2.4", .sha256 = "f5e614c7df7d592b3d02d907110be6948238e36851e4e2b6c4f977b57e93bc93" },
+            .{ .id = "jsblocks", .title = "JSBlocks", .folder = "jsblocks", .version = "0.3.4", .sha256 = "658801ec9d265b3de18e6a4061edc262883c08a7ca6075f7c12928013408e46a" },
+            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .sha256 = "c3d8afae83e0ee7913491b339a5c80bb70d8c5eb6abc786d23311da0c46d950d" },
+            .{ .id = "javascript-es6", .title = "Modern JavaScript", .folder = "javascript-es6/dist", .sha256 = "5ae42603ad6bbcd9b02817cdd89878e49698f7c381e326070b97d071fa32888e" },
+            .{ .id = "jquery", .title = "jQuery", .folder = "jquery/dist", .version = "3.6.4", .sha256 = "cf110d54d2488736b859d8dbaf4ff8c3c80c93e541788d780bd4f9fab28aa43b" },
+            .{ .id = "web-components", .title = "Web Components", .folder = "web-components/dist", .sha256 = "3f8e6542514663821c742f869fe8c88b35da34dd49e3ef7e8d7fe48dd8769b60" },
         },
     },
 }
