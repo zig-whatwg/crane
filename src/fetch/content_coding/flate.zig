@@ -100,6 +100,9 @@ pub const Decoder = struct {
     container: Container,
     /// zlib's raw inflate (Inflater.zlib); null for Zig's.
     native: ?*platform.DeflateDecoder = null,
+    /// Its output, allocated once (brotli.zig `buffer`: no ReleaseSafe fill
+    /// of a stack array per call).
+    native_out: []u8 = &.{},
     /// Input not consumed yet; while sniffing, every byte since the
     /// stream's start (to replay as raw DEFLATE).
     pending: std.ArrayListUnmanaged(u8) = .empty,
@@ -143,7 +146,11 @@ pub const Decoder = struct {
             .window = &.{},
         };
         switch (inflater) {
-            .zlib => self.native = try createNative(allocator),
+            .zlib => {
+                self.native_out = try allocator.alloc(u8, native_step);
+                errdefer allocator.free(self.native_out);
+                self.native = try createNative(allocator);
+            },
             .zig => {
                 self.window = try allocator.alloc(u8, window_len);
                 self.inflater = .init(&self.input, .raw, &.{});
@@ -154,6 +161,7 @@ pub const Decoder = struct {
 
     pub fn destroy(self: *Decoder) void {
         if (self.native) |native| destroyNative(native);
+        self.allocator.free(self.native_out);
         self.pending.deinit(self.allocator);
         self.allocator.free(self.window);
         self.allocator.destroy(self);
@@ -296,8 +304,8 @@ pub const Decoder = struct {
         if (comptime !zlib_supported) unreachable;
         const native = self.native.?;
         while (true) {
-            var buffer: [native_step]u8 = undefined;
-            const progress = platform.decompressDeflate(native, .from(self.unread()), &buffer) catch |err| switch (err) {
+            const buffer = self.native_out;
+            const progress = platform.decompressDeflate(native, .from(self.unread()), buffer) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidData, error.NotSupported => {
                     if (self.sniffing) return self.replayNativeAsRaw();
