@@ -818,13 +818,27 @@ fn insertWith(
     // removal below keeps its remover's hold, and the node's link in step
     // 7.3 ends it. A node an error leaves unlinked ends it here.
     var linked: usize = 0;
-    errdefer for (nodes[linked..nodes_count]) |n| refcount.endRemovalHold(n);
+    errdefer for (nodes[linked..nodes_count]) |n| {
+        // A fragment's child step 4.1 took out and no step 7.3 linked is out
+        // of every tree now: recorded as a possible orphan here, while its
+        // remover's hold still stands, as its removal would have recorded
+        // it (a child step 4.1 never reached still has its parent, and is
+        // not).
+        if (isDocumentFragment(node)) orphanRemoved(n);
+        refcount.endRemovalHold(n);
+    };
 
     // Step 4: If node is a DocumentFragment node:
     if (isDocumentFragment(node)) {
-        // Step 4.1: Remove its children with suppress observers flag set
+        // Step 4.1: Remove its children with suppress observers flag set.
+        // Moves, not removals: each child is linked into `parent` in step
+        // 7.3, so none is recorded as a possible orphan (removeHeldMoving).
+        // Nothing can reach one in between: the record is only ever made
+        // for a node no wrapper reaches, the fragment no longer lists it,
+        // and its remover's hold keeps it until its link or the errdefer
+        // above.
         for (nodes[0..nodes_count]) |child_node| {
-            try removeHeld(child_node, true);
+            try removeHeldMoving(child_node, true);
         }
 
         // Step 4.2: Queue a tree mutation record for node
@@ -1518,6 +1532,25 @@ fn removeHeld(
     node: anytype,
     suppress_observers: bool,
 ) (DOMException || error{OutOfMemory})!void {
+    try removeHeldMoving(node, suppress_observers);
+    orphanRemoved(@ptrCast(node));
+}
+
+/// `removeHeld` for a caller that removes `node` only to link it again in
+/// the same algorithm - "insert"'s step 4.1, which takes a fragment's
+/// children out to give them to the parent in step 7.3: a MOVE. It does not
+/// record the node as a possible orphan (`orphanRemoved`): the record was
+/// stale the moment the node was linked, and `host.innerHTML` of 100,000
+/// spans left 100,000 of them, 2.2 MB, in the realm's list to its end (lane
+/// nm1; MEASURED, malloc_history: one block under removeHeld <- insert <-
+/// replaceAll). The caller records what it leaves unlinked on an error.
+/// Blink and WebKit move a fragment's children with no bookkeeping beyond
+/// the removal itself (ContainerNode::InsertBefore -> CollectChildrenAnd
+/// RemoveFromOldParent, a NodeVector of the held children).
+fn removeHeldMoving(
+    node: anytype,
+    suppress_observers: bool,
+) (DOMException || error{OutOfMemory})!void {
     // Step 1: Let parent be node's parent
     const parent = node.parent_node orelse {
         // Step 2: Assert parent is non-null
@@ -1625,8 +1658,6 @@ fn removeHeld(
         refcount.checkAround(@ptrCast(parent));
         refcount.checkAround(@ptrCast(node));
     }
-
-    orphanRemoved(@ptrCast(node));
 }
 
 /// `node` left its tree. A root no wrapper of any realm ever reached - nor
