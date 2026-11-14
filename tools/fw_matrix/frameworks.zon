@@ -93,7 +93,7 @@
             .{ .suite = "htmx-mocha", .id_contains = "view transition" },
         } },
         .{ .title = "The GWT app never shows its heading (it starts through GWT's own loader, nocache.js)", .covers = .{.{ .suite = "gwt-todomvc" }} },
-        .{ .title = "CSS fill-opacity has no computed value", .covers = .{.{ .suite = "jquery-qunit", .message_contains = "'fill-opacity' Expected: 1 Result: undefined" }} },
+        .{ .title = "CSS fill-opacity has no computed value", .covers = .{.{ .suite = "jquery-qunit", .message_contains = "'fill-opacity'\nExpected: 1\nResult: undefined" }} },
         .{ .title = "Going back over hash-route history entries leaves a different list than in Chrome", .covers = .{
             .{ .suite = "mithril-todomvc", .id_contains = "should respect the back button" },
             .{ .suite = "ractive-todomvc", .id_contains = "should respect the back button" },

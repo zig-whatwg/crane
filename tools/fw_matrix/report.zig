@@ -336,7 +336,14 @@ const style =
     \\.fw h3 { margin: 1.8rem 0 0.5rem; font: 600 1.15rem/1.3 var(--serif); }
     \\.fw .ver { margin-left: 0.35rem; font: 400 0.84rem/1.3 var(--sans); color: var(--ink-2); }
     \\.fw .pct { display: inline-block; min-width: 3.4rem; margin-left: 0.4rem; font-size: 0.8rem; color: var(--ink-2); }
-    \\.fw .listing tbody th { width: auto; }
+    \\.fw .listing { font: 400 0.9rem/1.4 var(--sans); font-variant-numeric: tabular-nums; }
+    \\.fw .listing tbody th { width: auto; font: 400 0.95rem/1.4 var(--serif); }
+    \\.fw .listing thead th { padding: 0.32rem 0.75rem; }
+    \\.fw .listing thead th:has(> .sort) { padding: 0; }
+    \\.fw table.fw-causes { table-layout: fixed; }
+    \\.fw .fw-causes thead th:nth-child(1) { width: 52%; }
+    \\.fw .fw-causes thead th:nth-child(2) { width: 7.5rem; }
+    \\.fw .head + .fw-sec { border-top: 0; padding-top: 0.2rem; }
     \\.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
     \\.fw .listing td a.fail { color: var(--fail); }
     \\.fw .tag { margin-left: 0.5rem; font: 600 0.7rem/1 var(--sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
@@ -351,6 +358,7 @@ const style =
     \\.fw .meter { max-width: 34rem; }
     \\.fw .method { max-width: var(--measure); padding-left: 1.2rem; }
     \\.fw .method li { margin: 0 0 0.6rem; }
+    \\@media (min-width: 52.01rem) { .fw .listing td[data-label="Page"] code { white-space: nowrap; } }
     \\@media (max-width: 52rem) {
     \\  .fw .listing tbody td:nth-child(n) { display: block; grid-column: 1 / -1; text-align: left; white-space: normal; }
     \\  .fw .listing tbody td[data-label]::before { content: attr(data-label) ": "; font: 400 0.78rem/1.3 var(--sans); color: var(--ink-2); }
@@ -715,7 +723,7 @@ fn writeCauses(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
             if (c.kind != kind or g.tally.total() == 0) continue;
             if (!any) {
                 if (kind == .chrome_only_api) try w.writeAll("<h3 id=\"chrome-only\">Chrome-only APIs (not standards yet)</h3>\n<p>These fail because Crane does not have an API that only Chrome ships and that is not a web standard yet. They are not counted as Crane gaps above.</p>\n");
-                try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Cause</th><th scope=\"col\" class=\"n\">Tests</th><th scope=\"col\">Where</th></tr></thead>\n<tbody>\n");
+                try w.writeAll("<table class=\"listing fw-cols fw-causes\">\n<thead><tr><th scope=\"col\">Cause</th><th scope=\"col\" class=\"n\">Tests</th><th scope=\"col\">Where</th></tr></thead>\n<tbody>\n");
                 any = true;
             }
             try w.writeAll("<tr><th scope=\"row\">");
@@ -923,7 +931,7 @@ fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Su
             k += 1;
             try html.text(w, app.title);
             try w.writeAll(" (");
-            try html.text(w, why);
+            try html.text(w, std.mem.trimEnd(u8, why, "."));
             try w.writeAll(")");
         };
         try w.writeAll(".</p>\n");
@@ -1137,17 +1145,17 @@ fn suiteMethod(w: W, s: SuiteRuns) !void {
     if (s.chrome) |c| {
         try w.writeAll("Chrome: ");
         try html.text(w, c.browser.?);
-        try w.writeAll(" (sha256 <code>");
+        try w.writeAll(", pinned by sha256 <code>");
         try html.text(w, c.console_sha256[0..@min(16, c.console_sha256.len)]);
-        try w.writeAll("&hellip;</code>), ");
+        try w.writeAll("&hellip;</code>; ");
         if (c.pages.len > 0) if (c.pages[0].imported) |im| {
-            try w.writeAll("by the project&#39;s own runner (");
-            try html.text(w, im.runner);
-            try w.writeAll(") on ");
+            try w.writeAll("the project&#39;s own runner on ");
             try html.text(w, im.date);
-            try w.writeAll(", read from its log <code>");
+            try w.writeAll(": ");
+            try html.text(w, im.runner);
+            try w.writeAll("; read from its log <code>");
             try html.text(w, im.log);
-            try w.writeAll("</code>, ");
+            try w.writeAll("</code>; ");
         };
         try w.writeAll("run <code>");
         try html.text(w, c.label);
@@ -1795,7 +1803,7 @@ test "the overview: TodoMVC in a few numbers, every app closed, A to Z; the not-
     try testing.expect(std.mem.indexOf(u8, h, "Angular&#39;s documentation-site targets: They test an application, not the framework.") != null);
     // How it was measured: closed, with Chrome's imported runner and date.
     const method = std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>The runs, the browsers, the pins and the method</summary>").?;
-    try testing.expect(std.mem.indexOf(u8, h, "by the project&#39;s own runner (jquery-test-runner 0.3.0) on 2026-11-14, read from its log <code>tmp/jtr.log</code>").? > method);
+    try testing.expect(std.mem.indexOf(u8, h, "the project&#39;s own runner on 2026-11-14: jquery-test-runner 0.3.0; read from its log <code>tmp/jtr.log</code>").? > method);
     try testing.expect(std.mem.indexOf(u8, h, "Earlier Crane runs, tests passed: <code>crane-0</code> 1.").? > method);
 }
 
@@ -1825,7 +1833,7 @@ test "a framework's page: figures, Crane-only failures by cause, then closed wha
     try testing.expect(std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>1 test, each with its reason</summary>") != null);
     try testing.expect(std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>2 pages, each opened in a fresh console</summary>") != null);
     try testing.expect(std.mem.indexOf(u8, h, "<h2 id=\"not-run-suites-h\">") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "by the project&#39;s own runner (bazel test &lt;target&gt;_chromium) on 2026-11-14") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "the project&#39;s own runner on 2026-11-14: bazel test &lt;target&gt;_chromium;") != null);
 
     // jQuery: the failure Chrome shares is in its closed section only.
     out.clearRetainingCapacity();
