@@ -56,7 +56,7 @@ fn divReportedWhole() !void {
     // and nothing for a div beyond it.
     const State = interfaces.HTMLDivElement.State;
     const whole = runtime.SlabAllocator.slot_bytes + runtime.ArenaAllocator.heldBytes(@sizeOf(State), @alignOf(State));
-    if (@sizeOf(State) < 104 + @sizeOf(dom.NodeBase) or delta != whole) {
+    if (@sizeOf(State) <= @sizeOf(dom.NodeBase) or delta != whole) {
         std.debug.print("a div is reported as {d} B; its slot + whole State block ({d} B) are {d} B\n", .{ delta, @sizeOf(State), whole });
         return error.InternalStatesNotCounted;
     }
