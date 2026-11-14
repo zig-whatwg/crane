@@ -87,9 +87,24 @@ Each step reports its check. A failed check runs that step's undo and stops the 
 | 12 | integrator, then lane | The WPT-UPDATE generation sweep (production + bug-finding). The lane builds the generation in a SCRATCH copy (never the main checkout's history), runs `--upstream-test-changes`, reviews every loss, and writes the entries and queue items | "0 unexplained subtest losses" | - |
 | 13 | integrator | Fast-forward the fork's main to the sync commit; push main and gh-pages; reopen the hosts; the resume-brief line for lanes | - | - |
 
-After the window: re-run the Chrome reference (lane chromeref1's `chrome-ref.sh`, Chrome for
-Testing at the aligned run's version, a chat.local timed window, about 55 minutes). Until it runs,
-the comparison says that Crane's column and the reference are on different upstream revisions.
+After the window, re-run the Chrome reference in a chat.local timed window. It takes about 60
+minutes and uses Chrome for Testing at the aligned run's version. The scripts are in `tmp/remote/`:
+`chrome-ref.sh` is lane chromeref1's script with lane wptup1's fixes (it reads V8 from
+`jsengines/v8/<version>/include`, states its verify skip, and takes `REF_MIRROR=<mirror>`), and
+`chrome-ref-freeze.sh` freezes the production runner.
+
+The run, in your chat.local mirror:
+1. `zig build wpt-runner snapshot` through `crane-remote.sh`.
+2. `SHA=<main sha10> REF_MIRROR=<mirror> bash chrome-ref-freeze.sh`.
+3. `REF_MIRROR=<mirror> bash chrome-ref.sh setup`.
+4. A dry `check <sha10> <fork gitlink>` with `RUNNER_DIR`.
+5. In the window: `rerun <sha10> <fork gitlink>` with `RUNNER_DIR` and `SWEEP_ENV=FILES_PER_RUNNER=40`.
+6. `zig build wpt-site -- import-reference --engine=chrome --report=<B>/window2/chrome/wptreport.json --manifest=<B>/wpt/MANIFEST.json --worklist=tests/wpt_0_1_worklist.txt --meta=<B>/window2/run.json --out=<dir>`.
+
+Then the integrator swaps `wpt-results/reference/<run>/` (the directory is untracked) and runs
+`zig build wpt-progress`. The regeneration refreshes the latest generation's upstream revisions,
+so the site's comparison stops saying that Crane's column and the reference are on different
+upstream revisions.
 Then the cleanup: the copies `prune` lists, the `.bak` scripts, scratch clones and branches.
 
 ## A lane whose branch predates the update
