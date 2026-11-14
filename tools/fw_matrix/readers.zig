@@ -1158,3 +1158,164 @@ test "Bazel's web-test-runner lines: each target's word and counts, no names" {
     try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log[0..std.mem.lastIndexOf(u8, wtr_log, "//packages/zone.js/test:browser_test_chromium\t").?]));
     try testing.expectError(error.BadReport, parseWtrSummary(a, "nothing\n"));
 }
+
+// ============================================================================
+// Cypress's own results (`fw_matrix import --reader=cypress`): the object its
+// Module API's `cypress.run()` resolves with - how TodoMVC's own runner
+// (tests/cya.js) runs each app - written as JSON per app, optionally wrapped
+// as {"framework": <the --env framework value>, "result": <that object>}.
+// Per test: `title` [the spec's describe ("TodoMVC - <framework>"), its
+// context, its name], `state` passed / failed / pending (`this.skip()`: the
+// spec's known issues and skips) / skipped (Mocha ran it not at all: a hook
+// failed earlier in its suite), `displayError` for a failure. The run: its
+// browserName / browserVersion / cypressVersion / startedTestsAt; a run that
+// never started its spec has no tests and, wrapped, a `message`.
+// ============================================================================
+
+pub const CypressState = enum { passed, failed, pending, skipped };
+
+pub const CypressTest = struct {
+    /// The spec's context ("Routing").
+    module: []const u8,
+    name: []const u8,
+    state: CypressState,
+    /// A failure's error, its first line.
+    message: ?[]const u8 = null,
+};
+
+pub const CypressRun = struct {
+    /// The `--env framework=` value: the describe's "TodoMVC - <framework>",
+    /// else the wrapper's.
+    framework: []const u8,
+    browser: []const u8,
+    browser_version: []const u8,
+    cypress_version: []const u8,
+    /// YYYY-MM-DD of startedTestsAt.
+    date: []const u8,
+    tests: []const CypressTest,
+    wall_ms: u64,
+    /// Why the run has no tests (the wrapper's `message`, or Cypress's
+    /// run `error`).
+    run_error: ?[]const u8 = null,
+};
+
+const describe_prefix = "TodoMVC - ";
+
+pub fn parseCypressResults(arena: Allocator, text: []const u8) error{ BadReport, OutOfMemory }!CypressRun {
+    const root = std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{}) catch return error.BadReport;
+    if (root != .object) return error.BadReport;
+    var wrapper_framework: ?[]const u8 = null;
+    var result = root;
+    if (root.object.get("result")) |r| {
+        result = r;
+        if (root.object.get("framework")) |f| if (f == .string) {
+            wrapper_framework = f.string;
+        };
+    }
+    if (result != .object) return error.BadReport;
+    const str = struct {
+        fn get(o: std.json.ObjectMap, k: []const u8) ?[]const u8 {
+            const v = o.get(k) orelse return null;
+            return if (v == .string) v.string else null;
+        }
+    }.get;
+    var tests: std.ArrayList(CypressTest) = .empty;
+    var framework: ?[]const u8 = null;
+    var run_error: ?[]const u8 = if (root.object.get("result") != null) str(result.object, "message") else null;
+    if (result.object.get("runs")) |runs| {
+        if (runs != .array) return error.BadReport;
+        for (runs.array.items) |run| {
+            if (run != .object) return error.BadReport;
+            if (str(run.object, "error")) |e| run_error = e;
+            const ts = run.object.get("tests") orelse continue;
+            if (ts == .null) continue;
+            if (ts != .array) return error.BadReport;
+            for (ts.array.items) |t| {
+                if (t != .object) return error.BadReport;
+                const title = t.object.get("title") orelse return error.BadReport;
+                if (title != .array or title.array.items.len != 3) return error.BadReport;
+                for (title.array.items) |part| if (part != .string) return error.BadReport;
+                const describe = title.array.items[0].string;
+                if (!std.mem.startsWith(u8, describe, describe_prefix)) return error.BadReport;
+                const fw = describe[describe_prefix.len..];
+                if (framework) |f| {
+                    if (!std.mem.eql(u8, f, fw)) return error.BadReport;
+                } else framework = fw;
+                const state = std.meta.stringToEnum(CypressState, str(t.object, "state") orelse return error.BadReport) orelse return error.BadReport;
+                var message: ?[]const u8 = null;
+                if (str(t.object, "displayError")) |e| {
+                    const line = std.mem.trim(u8, e[0 .. std.mem.indexOfScalar(u8, e, '\n') orelse e.len], " \r\t");
+                    message = line;
+                }
+                if (state == .failed and message == null) return error.BadReport;
+                try tests.append(arena, .{ .module = title.array.items[1].string, .name = title.array.items[2].string, .state = state, .message = message });
+            }
+        }
+    }
+    if (framework != null and wrapper_framework != null and !std.mem.eql(u8, framework.?, wrapper_framework.?)) return error.BadReport;
+    if (tests.items.len == 0 and run_error == null) return error.BadReport;
+    const started = str(result.object, "startedTestsAt") orelse "";
+    const wall: u64 = if (result.object.get("totalDuration")) |d| switch (d) {
+        .integer => |i| if (i >= 0) @intCast(i) else 0,
+        .float => |f| if (f >= 0) @intFromFloat(f) else 0,
+        else => 0,
+    } else 0;
+    const date = if (started.len >= 10 and journal.isDate(started[0..10])) started[0..10] else if (tests.items.len == 0) "" else return error.BadReport;
+    return .{
+        .framework = framework orelse wrapper_framework orelse return error.BadReport,
+        .browser = str(result.object, "browserName") orelse "",
+        .browser_version = str(result.object, "browserVersion") orelse "",
+        .cypress_version = str(result.object, "cypressVersion") orelse "",
+        .date = date,
+        .tests = tests.items,
+        .wall_ms = wall,
+        .run_error = run_error,
+    };
+}
+
+const cypress_results =
+    \\{"framework":"jquery/dist","started":"2026-11-14T21:45:00.000Z","result":{
+    \\ "browserName":"chrome-for-testing","browserVersion":"157.0.8103.78","cypressVersion":"15.14.2",
+    \\ "startedTestsAt":"2026-11-14T21:45:01.123Z","totalDuration":27012,"totalTests":4,
+    \\ "runs":[{"error":null,"tests":[
+    \\  {"attempts":[{"state":"passed"}],"displayError":null,"duration":138,"state":"passed","title":["TodoMVC - jquery/dist","When page is initially opened","should focus on the todo input field"]},
+    \\  {"attempts":[{"state":"failed"}],"displayError":"AssertionError: Timed out retrying after 4000ms: expected '<label>' to contain 'feed the cat'\n    at Context.eval (webpack://todomvc/./cypress/e2e/spec.cy.js:568:7)","duration":4100,"state":"failed","title":["TodoMVC - jquery/dist","New Todo","should allow me to add todo items"]},
+    \\  {"attempts":[{"state":"skipped"}],"displayError":null,"duration":0,"state":"skipped","title":["TodoMVC - jquery/dist","New Todo","should clear text input field when an item is added"]},
+    \\  {"attempts":[{"state":"pending"}],"displayError":null,"duration":5,"state":"pending","title":["TodoMVC - jquery/dist","Persistence","should persist its data"]}
+    \\ ]}]}}
+;
+
+test "Cypress's results: every test with its context, state and first error line; the framework from the spec's describe" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const r = try parseCypressResults(a, cypress_results);
+    try testing.expectEqualStrings("jquery/dist", r.framework);
+    try testing.expectEqualStrings("chrome-for-testing", r.browser);
+    try testing.expectEqualStrings("157.0.8103.78", r.browser_version);
+    try testing.expectEqualStrings("15.14.2", r.cypress_version);
+    try testing.expectEqualStrings("2026-11-14", r.date);
+    try testing.expectEqual(@as(u64, 27012), r.wall_ms);
+    try testing.expectEqual(@as(usize, 4), r.tests.len);
+    try testing.expectEqualStrings("When page is initially opened", r.tests[0].module);
+    try testing.expectEqualStrings("should focus on the todo input field", r.tests[0].name);
+    try testing.expectEqual(CypressState.passed, r.tests[0].state);
+    try testing.expectEqual(CypressState.failed, r.tests[1].state);
+    try testing.expectEqualStrings("AssertionError: Timed out retrying after 4000ms: expected '<label>' to contain 'feed the cat'", r.tests[1].message.?);
+    try testing.expectEqual(CypressState.skipped, r.tests[2].state);
+    try testing.expectEqual(CypressState.pending, r.tests[3].state);
+    // Unwrapped, the same object reads the same.
+    const inner = cypress_results[std.mem.indexOf(u8, cypress_results, "\"result\":").? + 9 .. cypress_results.len - 1];
+    try testing.expectEqual(@as(usize, 4), (try parseCypressResults(a, inner)).tests.len);
+    // A run that never started its spec: no tests, the wrapper's message.
+    const failed_run = try parseCypressResults(a, "{\"framework\":\"gwt\",\"result\":{\"failures\":1,\"message\":\"Could not find Cypress test run results\"}}");
+    try testing.expectEqualStrings("gwt", failed_run.framework);
+    try testing.expectEqual(@as(usize, 0), failed_run.tests.len);
+    try testing.expectEqualStrings("Could not find Cypress test run results", failed_run.run_error.?);
+    // Refused: a test of another framework than the wrapper's, a failure
+    // with no error, an unknown state, nothing at all.
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"framework\":\"jquery/dist\"", "\"framework\":\"jquery\"")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"displayError\":\"AssertionError", "\"displayError\":null,\"x\":\"")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"state\":\"pending\",", "\"state\":\"retried\",")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, "{}"));
+}
