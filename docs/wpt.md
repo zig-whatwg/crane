@@ -83,6 +83,9 @@ git submodule update --init
 
 The WPT tests will be located at `tests/wpt/`.
 
+To move `tests/wpt` to a newer upstream WPT revision (the fork, the worklist and the pool's trees),
+follow [docs/wpt-update.md](wpt-update.md).
+
 ### WPT Server Configuration
 
 Some WPT tests use server-side template substitution (files ending in `.sub.js`, `.sub.html`, etc.). These require the Python WPT server to be running with proper port configuration.

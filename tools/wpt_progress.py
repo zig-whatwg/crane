@@ -2015,6 +2015,7 @@ def record_generation(worklist, records, areas, previous_records=None, reference
                 last = history['generations'][-1]
                 last['regenerations'] = last.get('regenerations', 0) + 1
                 last['regenerated_at'] = snap['at']
+                refresh_upstream_fields(last, worklist, records, reference)
                 if migrating_passes:
                     last['loss_baseline_missing'] = snap['loss_baseline_missing']
             history['last_statuses'] = cur
@@ -2623,6 +2624,18 @@ def generation_upstream_fields(worklist, records, ref, wpt_repo=None):
     reference run's), where known - the results site compares them without git."""
     crane, reference = crane_and_reference_upstreams(worklist, records, ref, wpt_repo)
     return {k: v for k, v in (('wpt_upstream', crane), ('reference_wpt_upstream', reference)) if v}
+
+
+def refresh_upstream_fields(generation, worklist, records, ref, wpt_repo=None):
+    """Bring a recorded generation's `wpt_upstream` / `reference_wpt_upstream` up to date in place
+    (a regeneration: the results did not move, but the reference run may have been re-run). A field
+    git cannot tell any more is removed rather than left stale."""
+    fields = generation_upstream_fields(worklist, records, ref, wpt_repo)
+    for key in ('wpt_upstream', 'reference_wpt_upstream'):
+        if key in fields:
+            generation[key] = fields[key]
+        else:
+            generation.pop(key, None)
 
 
 def reference_revision_note(crane_upstream, reference_upstream):
@@ -4218,6 +4231,13 @@ def _check_upstream_test_change():
             {'wpt_upstream': '2' * 40, 'reference_wpt_upstream': '1' * 40}
         assert generation_upstream_fields(wl, recs, None, wpt) == {'wpt_upstream': '2' * 40}
         assert generation_upstream_fields(wl, {}, None, wpt) == {}
+        # A regeneration (nothing moved) refreshes them on the latest generation: a reference re-run on
+        # the new tree must clear the site's "different upstream revisions" sentence without a new row.
+        last = {'n': 224, 'wpt_upstream': '2' * 40, 'reference_wpt_upstream': '1' * 40}
+        refresh_upstream_fields(last, wl, recs, {'run': {'wpt_revision': after}}, wpt)
+        assert last['wpt_upstream'] == '2' * 40 and last['reference_wpt_upstream'] == '2' * 40, last
+        refresh_upstream_fields(last, wl, recs, None, wpt)
+        assert 'reference_wpt_upstream' not in last and last['wpt_upstream'] == '2' * 40, last
         # A generation that did not move to another WPT revision is not a WPT-update generation.
         assert 'not a WPT-update generation' in upstream_change_report(
             {'generations': [{'n': 224, 'losses': []}]}, {}, 224, wpt)
