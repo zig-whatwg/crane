@@ -291,8 +291,10 @@ pub const DeferredTeardown = struct {
     pub const loop_low_water: usize = high_water / 4;
 
     pub const Books = struct {
-        /// Garbage trees queued.
+        /// Garbage trees queued, and the bytes of the Browser's DOM memory
+        /// their queueing summed for them (DeferredTeardown.Dying).
         queued: u64 = 0,
+        queued_bytes: u64 = 0,
         /// Trees freed, and their nodes.
         freed_trees: u64 = 0,
         freed_nodes: u64 = 0,
@@ -433,6 +435,26 @@ pub const DeferredTeardown = struct {
         data: ?*anyopaque = null,
         /// The nodes it stands for (an estimate is fine), for the memory bound.
         weight: usize = 1,
+        /// What the object's tree holds of a Browser's DOM memory, decided
+        /// dead by this push (`Dying`); null: nothing of it is counted there.
+        dying: ?Dying = null,
+    };
+
+    /// The bytes a queued tree holds of a Browser's DOM memory, and that
+    /// memory (the one its nodes were counted in, which outlives the queue's
+    /// items: a BrowserScope's). The tree is decided dead where it is queued,
+    /// so its bytes leave the figure the engine is told THERE
+    /// (ExternalMemory.decideDead) and not when its slices free them: an
+    /// engine sets its next collection threshold from what it believes is
+    /// alive, and a tree that waits for its slices is not (lane dm1's design,
+    /// tmp/plans/dom-memory-figure-design.md 3.1 and 3.2 A). From the push on
+    /// the queue owns them: the frees its steps make pay them down
+    /// (`runSteps`), and whatever is left when the item leaves the queue -
+    /// its tree freed with less than was summed, held again, forgotten with
+    /// its owner - goes back into the figure (`finish`).
+    pub const Dying = struct {
+        memory: *ExternalMemory,
+        bytes: usize,
     };
 
     /// An item's place in its own teardown, kept by its steps between slices:
@@ -454,6 +476,11 @@ pub const DeferredTeardown = struct {
         /// The part of `weight` already taken off `pending`.
         accounted: usize = 0,
         position: Position = .{},
+        /// The DOM memory its tree is counted in, and what is left there of
+        /// the bytes this item's push decided dead (`Dying`); null and 0:
+        /// none.
+        memory: ?*ExternalMemory = null,
+        dying: usize = 0,
     };
 
     /// How a slice of one item went.
@@ -507,6 +534,10 @@ pub const DeferredTeardown = struct {
             .data = request.data,
             .weight = request.weight,
         };
+        if (request.dying) |dying| {
+            item.dying = dying.memory.decideDead(dying.bytes);
+            if (item.dying != 0) item.memory = dying.memory;
+        }
         self.pushBack(item);
         self.pending += request.weight;
         self.queued_total += 1;
@@ -673,7 +704,7 @@ pub const DeferredTeardown = struct {
         var freed: usize = 0;
         while (freed < budget) {
             const item = self.popFront() orelse break;
-            const progress = item.steps.run(item, budget - freed);
+            const progress = runSteps(item, budget - freed);
             self.account(item, progress.freed);
             // An item that freed nothing and is not done would hold the
             // queue: count it as one, so the slice still ends.
@@ -757,7 +788,7 @@ pub const DeferredTeardown = struct {
                 ordered = item.next;
                 item.next = null;
                 while (true) {
-                    const progress = item.steps.run(item, std.math.maxInt(usize));
+                    const progress = runSteps(item, std.math.maxInt(usize));
                     self.account(item, progress.freed);
                     if (progress.done) break;
                 }
@@ -773,10 +804,51 @@ pub const DeferredTeardown = struct {
         self.pending -|= take;
     }
 
-    /// The item is done: what is left of its weight comes off `pending`.
+    /// The item is done: what is left of its weight comes off `pending`,
+    /// and what is left of its dying bytes goes back into its DOM memory's
+    /// figure - they are not dying any more, whichever way the item ended:
+    /// its tree was freed and held less than was summed, it is held again
+    /// (a resurrection), or it goes with its owner's pools, whose frees are
+    /// not this item's.
     fn finish(self: *DeferredTeardown, item: *Item) void {
         self.pending -|= item.weight - item.accounted;
+        if (item.memory) |memory| memory.rescue(item.dying);
         self.allocator.destroy(item);
+    }
+
+    /// One run of `item`'s steps. While they run, what they free of the
+    /// item's DOM memory pays the item's dying bytes down first
+    /// (ExternalMemory.beginTeardown): those bytes left the figure when the
+    /// item was queued, and a free must not take them out of it twice. A
+    /// teardown that runs another item's steps (a realm that ends inside it
+    /// drains its own) nests: each run pays its own item, and the outer
+    /// one's rest is put back when the inner returns.
+    fn runSteps(item: *Item, budget: usize) Progress {
+        const memory = item.memory orelse return item.steps.run(item, budget);
+        const outer = memory.beginTeardown(item.dying);
+        const progress = item.steps.run(item, budget);
+        item.dying = memory.endTeardown(outer);
+        return progress;
+    }
+
+    /// The object queued as `instance` at `generation` with `steps` is held
+    /// again before its teardown (a resurrection, dom.refcount_teardown.
+    /// resurrect): its item, if one waits, leaves the queue now - its weight
+    /// comes off the memory bound and its dying bytes go back into the
+    /// figure at once, so a tree that is queued again later is counted
+    /// once. Whether one was found: the item a slice has in hand is not in
+    /// the queue, and that slice's own re-check drops it. A walk of the
+    /// queue, for a path that is an anomaly (a holder the counts did not
+    /// see).
+    pub fn withdraw(self: *DeferredTeardown, instance: *const Instance, generation: u64, steps: *const Steps) bool {
+        var at = self.head;
+        while (at) |item| : (at = item.next) {
+            if (item.instance != instance or item.generation != generation or item.steps != steps) continue;
+            self.unlink(item);
+            self.finish(item);
+            return true;
+        }
+        return false;
     }
 
     fn pushBack(self: *DeferredTeardown, item: *Item) void {
@@ -835,8 +907,30 @@ pub const DeferredTeardown = struct {
 /// nodes), and only the window agent is given it. Debug builds check the
 /// thread once an agent has claimed it (`claim`).
 pub const ExternalMemory = struct {
-    /// Bytes alive now.
+    /// Bytes alive now: everything counted and not yet freed (`held`) less
+    /// the trees decided dead (`dying`). THE FIGURE: what the agent's
+    /// adapter tells its engine.
     live: usize = 0,
+    /// Of what is counted and not yet freed, the bytes of the trees decided
+    /// dead: queued on the agent's deferred teardown queue, where each
+    /// waits for its slices (DeferredTeardown.Dying). They leave `live` at
+    /// the queueing and come off here as the tree's nodes are freed - or go
+    /// back into `live` when the tree is held again. A counter that fell
+    /// only at the free told the engine the dead were alive, and V8 set
+    /// each next limit from it: 11.7 -> 54.8 -> 104.8 -> 162.1 -> 206.9 MB
+    /// over four collections with 23 to 39 MB alive (lane dm1,
+    /// tmp/plans/dom-memory-figure-design.md 0). Both browsers give their
+    /// collector survivors only: Blink's nodes are on V8's C++ heap, whose
+    /// MARKED bytes V8 reads (Chromium 157.0.8103.50 core/dom/node.h:165;
+    /// V8 15.7.112.43 src/heap/cppgc-js/cpp-heap.cc:1016), and a full
+    /// collection of JavaScriptCore zeroes its extra-memory sum and adds
+    /// only what each visited wrapper keeps (WebKit 621b33b3b71
+    /// Source/JavaScriptCore/heap/Heap.cpp:1811-1817, :2254-2270).
+    dying: usize = 0,
+    /// While a queued tree's teardown steps run (`beginTeardown`): what is
+    /// left of THAT tree's share of `dying`, which a free pays down first.
+    /// 0 outside one.
+    paying: usize = 0,
     /// `live` has left the window around what the engine was last told
     /// (`low`..`high`, `report_step` either side): the adapter's next safe
     /// point tells it. Set here, where the figure moves - once per node made
@@ -891,8 +985,78 @@ pub const ExternalMemory = struct {
 
     pub fn sub(self: *ExternalMemory, bytes: usize) void {
         self.checkThread();
+        // A free inside a queued tree's teardown: out of line, so every
+        // other free pays one compare for it.
+        if (self.paying != 0) return self.subDying(bytes);
         self.live -|= bytes;
         if (!self.due and self.live < self.low) self.becomeDue();
+    }
+
+    /// `sub` while a queued tree's teardown runs: the bytes freed come off
+    /// that tree's share of `dying` first - they left `live` when the tree
+    /// was queued - and only what is freed beyond it (what the queueing's
+    /// walk did not sum) comes off `live`.
+    noinline fn subDying(self: *ExternalMemory, bytes: usize) void {
+        const paid = @min(bytes, self.paying);
+        std.debug.assert(self.dying >= paid);
+        self.paying -= paid;
+        self.dying -|= paid;
+        if (paid == bytes) return;
+        self.live -|= bytes - paid;
+        if (!self.due and self.live < self.low) self.becomeDue();
+    }
+
+    /// Everything counted and not yet freed: the counter the figure was
+    /// before it knew which trees are dead (tests, diagnostics).
+    pub fn held(self: *const ExternalMemory) usize {
+        return self.live + self.dying;
+    }
+
+    /// A tree that holds `bytes` of what is counted is decided dead (queued
+    /// for its sliced free): they leave the figure now. Returns what moved
+    /// into `dying` - `bytes`, or all of `live` when the sum was more than
+    /// is counted - which the queue keeps for the tree
+    /// (DeferredTeardown.Item.dying). The engine hears it at the agent's
+    /// next safe point, as a decrease.
+    pub fn decideDead(self: *ExternalMemory, bytes: usize) usize {
+        self.checkThread();
+        const moved = @min(bytes, self.live);
+        self.live -= moved;
+        self.dying += moved;
+        if (!self.due and self.live < self.low) self.becomeDue();
+        return moved;
+    }
+
+    /// `bytes` of `dying` are not dying any more and were not freed: the
+    /// tree they were decided dead with is held again, or its item left the
+    /// queue with a rest. They are back in the figure.
+    pub fn rescue(self: *ExternalMemory, bytes: usize) void {
+        if (bytes == 0) return;
+        self.checkThread();
+        std.debug.assert(self.dying >= bytes);
+        const moved = @min(bytes, self.dying);
+        self.dying -= moved;
+        self.live += moved;
+        if (!self.due and self.live > self.high) self.becomeDue();
+    }
+
+    /// A queued tree's teardown steps begin: frees pay `dying` - what is
+    /// left of the tree's share - down first, until `endTeardown`. Returns
+    /// the share of the teardown this one runs inside (0: none), for
+    /// `endTeardown`.
+    pub fn beginTeardown(self: *ExternalMemory, dying: usize) usize {
+        const outer = self.paying;
+        self.paying = dying;
+        return outer;
+    }
+
+    /// The steps returned: what is left of the tree's share, which its item
+    /// keeps for its next slice; the teardown it ran inside pays `outer`
+    /// again.
+    pub fn endTeardown(self: *ExternalMemory, outer: usize) usize {
+        const left = self.paying;
+        self.paying = outer;
+        return left;
     }
 
     fn becomeDue(self: *ExternalMemory) void {

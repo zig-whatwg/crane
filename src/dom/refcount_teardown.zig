@@ -26,8 +26,9 @@
 //!
 //! A tree held again before its slice - a reference reaching its root, or the
 //! root linked under a parent or a host - is a RESURRECTION: the flag is
-//! cleared where it happens (`resurrect`), the slice finds it unflagged and
-//! drops the item. In a correct DOM nothing reaches a garbage tree (it is
+//! cleared where it happens (`resurrect`) and its item leaves the queue
+//! there (the one a slice has in hand: that slice finds it unflagged and
+//! drops it). In a correct DOM nothing reaches a garbage tree (it is
 //! unreachable from script and from every counted holder; weak links read it
 //! as gone), so a resurrection is a raw holder the counts did not see - the
 //! zombie audit's class (refcount step 6). It is counted, and logged when a
@@ -106,26 +107,38 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     const queue = queueOf(instance) orelse return;
     root.rc_flags.garbage = true;
+    // The memory bound counts nodes, so the tree weighs its nodes - up to
+    // the bound itself, past which one tree alone has the next safe point
+    // free it. The walk is the one its slices then make to free them: one
+    // more pass, read-only, over a tree freed anyway. A capped weight let
+    // the bound admit trees instead of nodes (lane perf1: weighed at most
+    // 64, 1,562 innerHTML-replaced lists of 900 nodes waited - 1.39M nodes,
+    // 4 GB; the document-unreferenced item below weighs its tree the same
+    // way).
+    //
+    // The same walk sums what the tree holds of its Browser's DOM memory:
+    // THE TREE IS DECIDED DEAD HERE, so those bytes leave the figure the
+    // engine is told at this push and not when its slices free them (lane
+    // dm1's design, tmp/plans/dom-memory-figure-design.md 3.2 A: the moment
+    // a tree's count reaches zero outside a full collection). The engine
+    // sets its next threshold from what it is told is alive; a tree that
+    // only waits for its slices is not. Both browsers tell their collector
+    // survivors only (runtime.gc.ExternalMemory.dying has the sources).
+    const measure = tree_teardown.measureUpTo(root, DeferredTeardown.high_water);
     if (!queue.push(.{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .owner = queueOwner(instance.ctx),
         .steps = &garbage_tree_steps,
-        // The memory bound counts nodes, so the tree weighs its nodes - up
-        // to the bound itself, past which one tree alone has the next safe
-        // point free it. The walk is the one its slices then make to free
-        // them: one more pass, read-only, over a tree freed anyway. A
-        // capped weight let the bound admit trees instead of nodes (lane
-        // perf1: weighed at most 64, 1,562 innerHTML-replaced lists of 900
-        // nodes waited - 1.39M nodes, 4 GB; the document-unreferenced item
-        // below weighs its tree the same way).
-        .weight = tree_teardown.countUpTo(root, DeferredTeardown.high_water),
+        .weight = measure.nodes,
+        .dying = .{ .memory = &runtime.BrowserScope.ofInstance(instance).dom_memory, .bytes = measure.bytes },
     })) {
         // The agent is ending (its queue closed): the old model frees it.
         root.rc_flags.garbage = false;
         return;
     }
     queue.books.queued += 1;
+    queue.books.queued_bytes += measure.bytes;
 }
 
 /// The owner a realm's garbage is queued under: its ContextData, whose end
@@ -144,12 +157,18 @@ pub fn drainRealm(queue: *DeferredTeardown, realm: runtime.Context) void {
 
 /// `root`, flagged garbage, is held again (a reference reached it, or it was
 /// linked): the flag goes now, so weak links read its tree as alive again,
-/// and its slice drops the item.
+/// and its item leaves the queue - with it the tree's bytes go back into the
+/// figure the engine is told (they are alive again), and a tree that is
+/// queued a second time later is counted once. The item a slice has in hand
+/// is not in the queue: that slice finds the tree unflagged and drops it.
 pub fn resurrect(root: *NodeBase) void {
     if (!root.rc_flags.garbage) return;
     root.rc_flags.garbage = false;
     const instance = instanceOf(root) orelse return;
-    if (queueOf(instance)) |queue| queue.books.resurrections += 1;
+    if (queueOf(instance)) |queue| {
+        queue.books.resurrections += 1;
+        _ = queue.withdraw(instance, runtime.SlabAllocator.generationOf(instance), &garbage_tree_steps);
+    }
     if (@import("refcount.zig").diagnosticsOn())
         log.warn("a garbage tree was held again before its teardown (root node type {d}): a holder the counts do not see", .{root.node_type});
 }

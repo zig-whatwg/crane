@@ -182,7 +182,15 @@ host's struct. Where
 moved, at its safe points - the outermost binding exit back into script and
 each microtask checkpoint outside a DOM algorithm - once it moved
 `ExternalMemory.report_step` (128 KB, V8's own re-check step), and the agent's
-end takes back all it reported. The binding exit pays nothing for it: the host
+end takes back all it reported. The figure is what is counted LESS the trees
+decided dead (`ExternalMemory.live` = `held()` - `dying`): a tree's bytes
+leave it where the counts queue the tree for its sliced free
+(dom.refcount_teardown.settle, `DeferredTeardown.Dying`), not when its slices
+free them, and go back into it when the tree is held again - an engine sets
+its next collection threshold from what it is told is alive, and a counter
+that fell only at the free told it the dead were alive (lane dm1's design,
+lane dm2's batch A: the trees whose count reaches zero outside a full
+collection). The binding exit pays nothing for it: the host
 owes the report on the claiming agent's queue (`DeferredTeardown.Owed.report`),
 and the exit's one check of what the queue owes runs the adapter's
 `report_steps`. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
