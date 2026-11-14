@@ -2240,9 +2240,11 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 //    an unread change, starts from that older value or, for an element never
 //    resolved, not at all.
 // 2. A pseudo-element never read has no before-change style: the update
-//    resolves the pseudo-element styles already cached, and ::before,
-//    ::after and ::marker when an author sheet styles one of them (lane
-//    anim1 C2: their CSS animations start at the update).
+//    resolves the pseudo-element styles already cached, ::before, ::after
+//    and ::marker when an author sheet styles one of them (lane anim1 C2:
+//    their CSS animations start at the update), and a drop-down select's
+//    ::picker(select) (lane sel1). The others (::backdrop, ::placeholder,
+//    ::first-line, ...) still start their transitions only when read.
 // 3. An inherited property under an animating ancestor: the child's base
 //    style inherits the ancestor's animated value (Blink re-resolves the
 //    base chain through animating ancestors), so a child's own transition on
@@ -2469,6 +2471,12 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         // of them: their CSS animations and transitions start at this update
         // as a browser's frame starts them, with no read.
         if (generated.?) try addGeneratedPseudos(allocator, &names, state);
+        // A drop-down select's ::picker(select) too: its box exists whether
+        // or not script reads it, so its style change events - and the
+        // transitions they start, @starting-style's among them - come at
+        // this update (HTML 15.5.16; customizable-select/select-picker-
+        // starting-style.html, Chrome 157 1/1).
+        if (selectKind(element) == .drop_down) try addPseudo(allocator, &names, "picker");
         for (names.items) |n| _ = computedStyle(element, n) catch continue;
     }
     return any_volatile;
@@ -2481,11 +2489,14 @@ fn addGeneratedPseudos(allocator: Allocator, names: *std.ArrayList([]u8), state:
     const list_item = if (state.cached) |cached| cached.style.display().list_item else false;
     for ([_][]const u8{ "marker", "before", "after" }) |name| {
         if (std.mem.eql(u8, name, "marker") and !list_item) continue;
-        const known = for (names.items) |n| {
-            if (std.mem.eql(u8, n, name)) break true;
-        } else false;
-        if (!known) try names.append(allocator, try allocator.dupe(u8, name));
+        try addPseudo(allocator, names, name);
     }
+}
+
+/// Add the pseudo-element `name` to `names` unless it is there.
+fn addPseudo(allocator: Allocator, names: *std.ArrayList([]u8), name: []const u8) Allocator.Error!void {
+    for (names.items) |n| if (std.mem.eql(u8, n, name)) return;
+    try names.append(allocator, try allocator.dupe(u8, name));
 }
 
 /// Whether an author sheet of `node`'s document or of one of its shadow
