@@ -194,15 +194,24 @@ pub fn obtain(gpa: Allocator, io: Io, downloads: []const u8, url: []const u8, sh
     return bytes;
 }
 
-/// The hash of a manifest entry: its fields as JSON, sha256'd. A suite on a
-/// shared tree hashes only what makes the tree, so that every suite on it
-/// finds the same stamp current.
+/// The hash of what makes a suite's tree - its directory's name, the
+/// source, the dependencies, the generated files, Node, npm, Bazel and the
+/// targets it builds - as JSON, sha256'd: a change to how pages run (a
+/// budget, a reader) leaves the tree current, and every suite on a shared
+/// tree finds the same stamp.
 pub fn entryHash(gpa: Allocator, f: manifest.Suite) ![64]u8 {
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var targets: std.ArrayList([]const u8) = .empty;
+    if (f.bazel != null) for (f.pages) |p| if (p.target) |t| try targets.append(arena, t);
     var out: Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
-    if (f.tree) |t| {
-        try std.json.Stringify.value(.{ .tree = t, .source = f.source, .dependencies = f.dependencies, .generated = f.generated, .node = f.node, .npm = f.npm }, .{}, &out.writer);
-    } else try std.json.Stringify.value(f, .{}, &out.writer);
+    // Absent when null, so that a tree made before Bazel was known keeps its
+    // stamp.
+    const Fields = struct { tree: []const u8, source: manifest.Archive, dependencies: []const manifest.Dependency, generated: []const manifest.Generated, node: ?manifest.Node, npm: ?manifest.Npm, bazel: ?manifest.Bazel, targets: ?[]const []const u8 };
+    const fields: Fields = .{ .tree = try manifest.treeName(arena, f), .source = f.source, .dependencies = f.dependencies, .generated = f.generated, .node = f.node, .npm = f.npm, .bazel = f.bazel, .targets = if (targets.items.len > 0) targets.items else null };
+    try std.json.Stringify.value(fields, .{ .emit_null_optional_fields = false }, &out.writer);
     return sha256Hex(out.written());
 }
 
@@ -852,7 +861,7 @@ test "a TodoMVC app: its directory checked against its pin; the shared tree's st
     try testing.expectError(error.AppMissing, checkApp(testing.allocator, testing.io, tmp.dir, gone));
 
     // Two apps on one tree find the same stamp; a suite of its own does not
-    // share its stamp with another.
+    // share its stamp with another; how a page runs is not the tree's.
     const base: manifest.Suite = .{ .id = "react-todomvc", .framework = "react", .title = "React", .version = "19.2.5", .kind = .todomvc_port, .repository = "https://github.com/tastejs/todomvc", .tag = "examples/react/dist", .commit = "ff43b02e59df", .licence = "MIT", .runner = "QUnit", .reader = .qunit, .source = .{ .url = "https://x", .sha256 = "a" }, .pages = &.{.{ .id = "todomvc", .path = "p?framework=react" }}, .excluded = "x.txt", .tree = "todomvc-ff43b02e59df", .app = app };
     var other = base;
     other.id = "vue-todomvc";
@@ -865,6 +874,13 @@ test "a TodoMVC app: its directory checked against its pin; the shared tree's st
     var own2 = other;
     own2.tree = null;
     try testing.expect(!std.mem.eql(u8, &(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, own2))));
+    var slower = own;
+    slower.page_budget_s += 100;
+    slower.page_stall_s += 100;
+    try testing.expectEqualStrings(&(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, slower)));
+    var other_source = own;
+    other_source.source.sha256 = "c";
+    try testing.expect(!std.mem.eql(u8, &(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, other_source))));
 }
 
 test "checkLockfile: the tree's package-lock.json against the manifest's pin" {

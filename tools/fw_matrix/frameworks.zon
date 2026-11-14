@@ -374,6 +374,10 @@
             .excluded = "angular-22.2.6.txt",
             .skip_kinds = .{},
             .page_budget_s = 900,
+            // Jasmine's console reporter prints only when the run ends: the
+            // longest target took 16 s in Crane (core acceptance, 2,782
+            // specs), so 300 s of silence is a run that stopped.
+            .page_stall_s = 300,
         },
     },
     // TodoMVC, the report's second section (the user, 2026-11-11 09:57 ET;

@@ -324,6 +324,9 @@ const ConsoleEnd = struct {
     /// A browser ended by the harness once its page's run had ended: the
     /// normal end of a browser that never exits by itself.
     at_end: bool = false,
+    /// Ended because the output it is read from stopped growing for the
+    /// page's stall time before its report appeared.
+    stalled: bool = false,
     wall_ms: u64,
 
     fn text(e: ConsoleEnd, arena: Allocator) ![]const u8 {
@@ -353,7 +356,7 @@ const Until = enum { exit, tap_on_stderr, jasmine_on_stdout };
 
 /// One console: `argv`, `input` on its stdin (then closed), its output to
 /// the two files; ended by the harness at `deadline_ms`, or as `until` says.
-fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until: Until) !ConsoleEnd {
+fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until: Until, stall_ms: u64) !ConsoleEnd {
     const out_file = try Io.Dir.cwd().createFile(io, out_path, .{});
     defer out_file.close(io);
     const err_file = try Io.Dir.cwd().createFile(io, err_path, .{});
@@ -378,6 +381,9 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     var waited: u64 = 0;
     var stopped = false;
     var at_end = false;
+    var stalled = false;
+    var last_len: usize = 0;
+    var grew_at: u64 = 0;
     while (!w.done.load(.acquire) and waited < deadline_ms) : (waited += 1000) {
         w.waitFor(@min(1000, deadline_ms - waited));
         if (stop_file) |f| if (Io.Dir.cwd().access(io, f, .{})) {
@@ -388,13 +394,22 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
             var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
             defer arena_state.deinit();
             const a = arena_state.allocator();
+            const text = Io.Dir.cwd().readFileAlloc(io, if (until == .tap_on_stderr) err_path else out_path, a, .limited(1 << 30)) catch "";
             const ended = switch (until) {
                 .exit => unreachable,
-                .tap_on_stderr => readers.tapEnded(a, Io.Dir.cwd().readFileAlloc(io, err_path, a, .limited(1 << 30)) catch "") catch false,
-                .jasmine_on_stdout => readers.jasmineEnded(a, Io.Dir.cwd().readFileAlloc(io, out_path, a, .limited(1 << 30)) catch "") catch false,
+                .tap_on_stderr => readers.tapEnded(a, text) catch false,
+                .jasmine_on_stdout => readers.jasmineEnded(a, text) catch false,
             };
             if (ended) {
                 at_end = true;
+                break;
+            }
+            // Nothing new for the stall time: the run is not progressing.
+            if (text.len != last_len) {
+                last_len = text.len;
+                grew_at = waited;
+            } else if (waited - grew_at >= stall_ms) {
+                stalled = true;
                 break;
             }
         }
@@ -411,7 +426,7 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     }
     thread.join();
     const wall: u64 = @intCast(@max(0, t0.durationTo(Io.Timestamp.now(io, .awake)).toMilliseconds()));
-    return .{ .term = w.term, .killed = killed and !at_end, .stopped = stopped, .at_end = at_end, .wall_ms = wall };
+    return .{ .term = w.term, .killed = killed and !at_end, .stopped = stopped, .at_end = at_end, .stalled = stalled, .wall_ms = wall };
 }
 
 /// The tests `defined` that belong to a page: a QUnit module page's module
@@ -424,6 +439,21 @@ fn definedForPage(arena: Allocator, defined: []const []const u8, module: ?[]cons
         if (std.ascii.eqlIgnoreCase(dm, m)) try out.append(arena, d);
     }
     return out.items;
+}
+
+/// The first line of a console's output that begins "Error: " or another
+/// "<Name>Error: " (an error the page's framework logged), trimmed.
+fn firstErrorLine(output: []const u8) ?[]const u8 {
+    var it = std.mem.splitScalar(u8, output, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        const colon = std.mem.indexOf(u8, line, "Error: ") orelse continue;
+        const name = line[0 .. colon + "Error".len];
+        var ok = true;
+        for (name) |c| ok = ok and std.ascii.isAlphanumeric(c);
+        if (ok) return line[0..@min(line.len, 300)];
+    }
+    return null;
 }
 
 /// The lines of the console's output that report an uncaught exception or
@@ -495,9 +525,9 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         try std.fmt.allocPrint(arena, "--user-data-dir={s}", .{profile}), url,
     };
     const end = if (config.browser != null)
-        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, .tap_on_stderr)
+        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, .tap_on_stderr, stall_ms)
     else
-        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, if (suite.reader == .jasmine_console) .jasmine_on_stdout else .exit);
+        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, if (suite.reader == .jasmine_console) .jasmine_on_stdout else .exit, stall_ms);
     if (end.stopped) {
         shared.mutex.lockUncancelable(io);
         defer shared.mutex.unlock(io);
@@ -619,8 +649,13 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         }
         if (status == .TIMEOUT) try problems.append(arena, try std.fmt.allocPrint(arena, "the framework's run did not end within the page's budget ({d} s) or stalled ({d} s without progress); {d} due test(s) unreported", .{ suite.page_budget_s, suite.page_stall_s, unreported }));
     } else {
-        status = if (!end.clean()) .CRASH else .ERROR;
+        status = if (end.stalled) .TIMEOUT else if (!end.clean()) .CRASH else .ERROR;
         try problems.append(arena, if (config.browser != null) "the browser's console carried no TAP report" else if (result_json == null) "the console printed no report" else "the report could not be parsed");
+        if (end.stalled) try problems.append(arena, try std.fmt.allocPrint(arena, "its output stopped growing for {d} s", .{suite.page_stall_s}));
+        // What the page printed that stopped its framework: Jasmine's
+        // runner logs the error that aborted the run (web-test-runner-
+        // jasmine: console.log(error)).
+        if (suite.reader == .jasmine_console) if (firstErrorLine(output)) |line| try problems.append(arena, line);
     }
     try uncaughtLines(arena, output, &console_errors);
 
@@ -721,13 +756,13 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const err = try std.fmt.allocPrint(testing.allocator, "{s}/c.err", .{dir});
     defer testing.allocator.free(err);
 
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, .exit);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, .exit, 60_000);
     try testing.expect(e.clean());
     const got = try tmp.dir.readFileAlloc(testing.io, "c.out", testing.allocator, .limited(100));
     defer testing.allocator.free(got);
     try testing.expectEqualStrings("{}", readers.findResult(got).?);
 
-    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, .exit);
+    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, .exit, 60_000);
     try testing.expect(hung.killed);
     try testing.expect(!hung.clean());
 
@@ -735,7 +770,7 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const stop = try std.fmt.allocPrint(testing.allocator, "{s}/STOP", .{dir});
     defer testing.allocator.free(stop);
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "STOP", .data = "" });
-    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, .exit);
+    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, .exit, 60_000);
     try testing.expect(stopped.stopped);
     try testing.expect(stopped.wall_ms < 20_000);
 }
@@ -751,11 +786,22 @@ test "a browser that never exits: ended once its stderr holds the end of QUnit's
     defer testing.allocator.free(err);
     // Prints the TAP end, then keeps running as Chrome does.
     const script = "printf '[1:INFO:CONSOLE:1] \"1..1\", source: x (1)\\n[1:INFO:CONSOLE:1] \"# fail 0\", source: x (1)\\n' >&2; while :; do sleep 0.1; done";
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, .tap_on_stderr);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, .tap_on_stderr, 60_000);
     try testing.expect(e.at_end);
     try testing.expect(e.clean());
     try testing.expect(e.wall_ms < 15_000);
     // Without the end it runs to its deadline, and that is not clean.
-    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, .tap_on_stderr);
+    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, .tap_on_stderr, 60_000);
     try testing.expect(!cut.at_end and !cut.clean());
+    // Output that stops growing ends it at the stall time, before its
+    // deadline.
+    const quiet = try runConsole(testing.io, &.{ "/bin/sh", "-c", "echo started >&2; while :; do sleep 0.1; done" }, "", out, err, 30_000, null, .tap_on_stderr, 2000);
+    try testing.expect(quiet.stalled and !quiet.clean());
+    try testing.expect(quiet.wall_ms < 15_000);
+}
+
+test "firstErrorLine: the first error a page's framework logged" {
+    try testing.expectEqualStrings("Error: describe with no children (describe() or it()): Notification API", firstErrorLine("> DEPRECATION: x\n  WARNING: skipping\n  Error: describe with no children (describe() or it()): Notification API\n    at SuiteBuilder").?);
+    try testing.expectEqualStrings("TypeError: x is not a function", firstErrorLine("  TypeError: x is not a function").?);
+    try testing.expectEqual(@as(?[]const u8, null), firstErrorLine("an Error: inside text\nno errors"));
 }
