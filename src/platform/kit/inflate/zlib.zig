@@ -84,13 +84,26 @@ const Memory = struct {
             self.failed = true;
             return null;
         };
-        const bytes = self.allocator.alignedAlloc(u8, .@"16", total) catch {
+        // rawAlloc, not alignedAlloc (the integrator's approval, 2026-11-14,
+        // for these C-callback shims only): in safe builds - ReleaseSafe is
+        // the production build - Allocator.alloc fills every block with
+        // `undefined` (std/mem/Allocator.zig:326) and Allocator.free fills
+        // it again (:475), a write over the decoder's whole ring buffer or
+        // window per response that the plain malloc zlib gets from libcurl
+        // on main never makes. zlib initialises what it reads, as it must
+        // with malloc. Measured: 125 of the tip's 2,695 busy samples were
+        // that fill under Memory.free (macOS sample, fetch.loopback-br's
+        // body, chat.local). The allocator still sees every block, and a
+        // leak check still counts it (the test in kit/inflate/zlib.zig).
+        // The length and alignment rawFree gets are these: the length is
+        // stored in the 16-byte header, the alignment is 16 on both sides.
+        const bytes = self.allocator.rawAlloc(total, .@"16", @returnAddress()) orelse {
             self.failed = true;
             return null;
         };
-        const header: *usize = @ptrCast(bytes.ptr);
+        const header: *usize = @ptrCast(@alignCast(bytes));
         header.* = total;
-        return bytes.ptr + 16;
+        return bytes + 16;
     }
 
     fn free(raw: ?*anyopaque, address: ?*anyopaque) callconv(.c) void {
@@ -98,7 +111,9 @@ const Memory = struct {
         const self: *Memory = @ptrCast(@alignCast(raw.?));
         const bytes: [*]align(16) u8 = @alignCast(@as([*]u8, @ptrCast(ptr)) - 16);
         const header: *const usize = @ptrCast(bytes);
-        self.allocator.free(bytes[0..header.*]);
+        // rawFree, with rawAlloc's exact length (from the header) and
+        // alignment (16): see `alloc`.
+        self.allocator.rawFree(bytes[0..header.*], .@"16", @returnAddress());
     }
 };
 
@@ -196,4 +211,44 @@ test "ZStream has zlib.h 1.3.x's layout on LP64 targets" {
     try std.testing.expectEqual(@as(usize, 88), @offsetOf(ZStream, "data_type"));
     try std.testing.expectEqual(@as(usize, 96), @offsetOf(ZStream, "adler"));
     try std.testing.expectEqual(@as(usize, 104), @offsetOf(ZStream, "reserved"));
+}
+
+/// An allocator over std.testing.allocator that counts the blocks alive.
+const Counting = struct {
+    live: usize = 0,
+
+    fn allocator(self: *Counting) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &.{ .alloc = alloc, .resize = std.mem.Allocator.noResize, .remap = std.mem.Allocator.noRemap, .free = free } };
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *Counting = @ptrCast(@alignCast(ctx));
+        const p = std.testing.allocator.rawAlloc(len, alignment, ret_addr) orelse return null;
+        self.live += 1;
+        return p;
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *Counting = @ptrCast(@alignCast(ctx));
+        std.testing.allocator.rawFree(memory, alignment, ret_addr);
+        self.live -= 1;
+    }
+};
+
+test "Memory: zlib's blocks reach the caller's allocator, and a dropped free is still a leak" {
+    // Static only (no zlib in this binary): zlib's own calls to the hooks.
+    var counting: Counting = .{};
+    var memory: Memory = .{ .allocator = counting.allocator() };
+    const a = Memory.alloc(&memory, 4, 1000) orelse return error.TestUnexpectedResult;
+    const b = Memory.alloc(&memory, 1, 64) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(@as(usize, 2), counting.live);
+    // 16-byte alignment, as malloc gives zlib.
+    try std.testing.expectEqual(@as(usize, 0), @intFromPtr(a) % 16);
+    @memset(@as([*]u8, @ptrCast(a))[0..4000], 1);
+    Memory.free(&memory, a);
+    // b's free dropped: the allocator still holds it - a leak check sees it.
+    try std.testing.expectEqual(@as(usize, 1), counting.live);
+    Memory.free(&memory, b);
+    try std.testing.expectEqual(@as(usize, 0), counting.live);
+    try std.testing.expect(!memory.failed);
 }
