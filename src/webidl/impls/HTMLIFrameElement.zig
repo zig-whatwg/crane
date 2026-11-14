@@ -741,29 +741,17 @@ fn inRealm(realm: runtime.Context, comptime steps: anytype, args: anytype) bool 
 /// out of memory was a panic (lane leaks4's iframe sweep); and the parse and
 /// the serialization read out of memory as "does not parse", which
 /// navigated to about:blank instead.
+///
+/// Step 2.1 encoding-parses: the query is percent-encoded with the node
+/// document's character encoding, not UTF-8 (dom.encoding_parse), so a
+/// windows-1252 page's `src="x.html?\u{DF}"` navigates to `x.html?%DF`, as
+/// Chrome, Firefox and Safari do (iframe-src-encoding.html: 1/1 each at
+/// wpt.fyi 2358bd4835). It parsed with the URL API, always UTF-8.
 fn resolveSrc(instance: *runtime.Instance, src: []const u8) error{OutOfMemory}![]const u8 {
     const allocator = instance.ctx.allocator;
     const blank = "about:blank";
     if (src.len == 0) return allocator.dupe(u8, blank);
-    const base = interfaces.Node.get_baseURI(instance) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return allocator.dupe(u8, src),
-    };
-    defer allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const parsed = interfaces.URL.call_static_parse(instance, src, base_arg) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => null,
-    };
-    const url = parsed orelse return allocator.dupe(u8, blank);
-    defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return allocator.dupe(u8, blank),
-    };
+    return (try dom_module.encoding_parse.encodingParseAndSerialize(instance, src)) orelse allocator.dupe(u8, blank);
 }
 
 /// Location URL update callback for iframes
