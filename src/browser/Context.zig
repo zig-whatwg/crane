@@ -2100,7 +2100,7 @@ pub const Context = struct {
         // does.
         if (self.traversable) |record| {
             dom_mod.top_level_traversables.destroy(record);
-        } else if (self.browsing_context) |bc| bc.deinit();
+        } else if (self.browsing_context) |bc| bc.releaseByOwner();
         self.traversable = null;
         self.browsing_context = null;
 

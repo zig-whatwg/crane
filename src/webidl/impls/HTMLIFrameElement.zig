@@ -162,7 +162,7 @@ pub fn installHooks() void {
     // The WindowProxy's frames[index] finds a child browsing context before
     // its container made the navigable's Window: the container makes it.
     dom_module.child_navigables.install(.{ .window = &windowOfChildNavigable });
-    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable, .destroy = &destroyPopupAtBrowserEnd });
+    dom_module.auxiliary_navigables.install(.{ .create = &createAuxiliaryNavigable, .definitely_close = &definitelyCloseTraversable, .destroy = &destroyPopupAtBrowserEnd, .window_ended = &popupWindowEnded });
     // The host page's top-level traversable: a popup nothing opened.
     dom_module.top_level_traversables.install(.{
         .create = &createHostTraversable,
@@ -7536,6 +7536,29 @@ fn destroyPopupAtBrowserEnd(integration_ptr: *anyopaque) void {
     const allocator = integration.allocator;
     integration.deinit();
     allocator.destroy(integration);
+}
+
+/// dom.auxiliary_navigables: a Window that held `browsing_context_ptr`
+/// ended. A closed popup's record is needed only while a Window still shows
+/// its browsing context - script that holds the popup's WindowProxy reads
+/// `closed` and `document` through it - so it goes with the last such Window:
+/// its realm is ending (this was its Window) and its browsing context is
+/// released with it (BrowsingContext.window_holds). An open popup's record,
+/// and any other navigable's, stays.
+fn popupWindowEnded(scope: *runtime.BrowserScope, browsing_context_ptr: *anyopaque) void {
+    const bc: *html_core.BrowsingContext = @ptrCast(@alignCast(browsing_context_ptr));
+    if (!bc.is_closed or bc.window_holds != 0) return;
+    for (dom_module.auxiliary_navigables.kept(scope)) |item| {
+        const integration: *IFrameIntegration = @ptrCast(@alignCast(item));
+        if (integration.browsing_context != bc) continue;
+        if (!dom_module.auxiliary_navigables.forget(scope, item)) return;
+        // Its current realm is the one ending now: nothing ends it again.
+        _ = integration.releaseCurrentRealm();
+        const allocator = integration.allocator;
+        integration.deinit();
+        allocator.destroy(integration);
+        return;
+    }
 }
 
 /// dom.auxiliary_navigables: window.open()'s new navigable - an auxiliary

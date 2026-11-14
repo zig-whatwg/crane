@@ -586,12 +586,11 @@ pub const IFrameIntegration = struct {
         // Likewise a pending origin record.
         self.setNextOrigin(null);
 
-        // Destroy the browsing context if it exists
-        // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
-        // so we only need to call deinit() here.
+        // The owner lets its browsing context go: freed now, or by the end of
+        // the last Window that still holds it (BrowsingContext.window_holds).
         if (self.browsing_context) |ctx| {
             log.debug("[IFrameIntegration.deinit] integration={*} -> BC {*}\n", .{ self, ctx });
-            ctx.deinit();
+            ctx.releaseByOwner();
         } else {
             log.debug("[IFrameIntegration.deinit] integration={*} -> BC null\n", .{self});
         }

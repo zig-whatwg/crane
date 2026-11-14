@@ -992,12 +992,27 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             navigables.forgetWindow(@ptrCast(instance), if (associated_document) |d| @ptrCast(d) else null);
         }
 
+        // The browsing context it shows and does not own: held until now
+        // (BrowsingContext.window_holds), released below, once nothing of
+        // the Window reads it any more.
+        const held_context: ?*BrowsingContext = if (internal.owns_browsing_context) null else internal.browsing_context;
+        const scope = instance.ctx.browserScope();
+
         internal.deinit();
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
         // the life of the process.
         runtime.arenaOf(instance).destroy(InternalState, internal);
         state.own._internal = null;
+
+        // Its hold ends: the context is freed if its owner released it and
+        // this was the last Window - else a closed popup's record may go now
+        // that its last Window has (dom.auxiliary_navigables.windowEnded).
+        if (held_context) |bc| {
+            if (!bc.releaseFromWindow()) {
+                if (scope) |s| @import("dom").auxiliary_navigables.windowEnded(s, @ptrCast(bc));
+            }
+        }
     }
 
     // NOTE: EventTarget.deinit() does NOT call runtime.Instance.deinit() - GC layer handles slab freeing
@@ -1114,13 +1129,19 @@ pub fn replaceBrowsingContext(instance: *runtime.Instance, bc_ptr: *anyopaque) v
 
     // Deinitialize the auto-created browsing context (created by Window.init)
     // Note: We must deinit it because it was allocated during init and we own it
+    // - or let go of the one it held.
     if (internal.owns_browsing_context) {
         internal.browsing_context.deinit();
+    } else {
+        _ = internal.browsing_context.releaseFromWindow();
     }
 
     // Replace with the existing browsing context (owned by iframe integration)
+    // and hold it until this Window's end: the context is freed only when its
+    // owner released it and no Window holds it (BrowsingContext.window_holds).
     const existing_bc: *BrowsingContext = @ptrCast(@alignCast(bc_ptr));
     internal.browsing_context = existing_bc;
+    existing_bc.holdForWindow();
 
     // Mark that we DON'T own this browsing context - iframe cleanup will free it
     // This prevents double-free when both Window.deinit and HTMLIFrameElement.deinit run
@@ -1143,6 +1164,9 @@ fn releaseBrowsingContext(instance: *runtime.Instance) ?*anyopaque {
     const internal = getInternal(instance) orelse return null;
     if (!internal.owns_browsing_context) return null;
     internal.owns_browsing_context = false;
+    // Still read by this Window until its end: held, as any Window holds the
+    // context it shows and does not own (BrowsingContext.window_holds).
+    internal.browsing_context.holdForWindow();
     return @ptrCast(internal.browsing_context);
 }
 

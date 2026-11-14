@@ -47,6 +47,11 @@ pub const Implementation = struct {
     /// top-level traversable": its documents destroyed, its realm ended, its
     /// integration (a `Created.integration`) deinit'd and destroyed.
     destroy: *const fn (integration: *anyopaque) void,
+    /// A Window that held `browsing_context` (an `html_core.BrowsingContext`)
+    /// ended, and it still lives: if it is a closed popup's and no Window
+    /// holds it any more, the popup's record goes now - `forget` it, then
+    /// free it, which releases the context.
+    window_ended: *const fn (scope: *runtime.BrowserScope, browsing_context: *anyopaque) void,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -174,8 +179,37 @@ pub fn closeAll(scope: *runtime.BrowserScope) void {
     }
 }
 
-/// How many popups the Browser of `scope` keeps (closed ones included, until
-/// its end).
+/// The popups the Browser of `scope` keeps now, each a
+/// `Created.integration`. BORROWED until one is kept or forgotten.
+pub fn kept(scope: *runtime.BrowserScope) []const *anyopaque {
+    const popups = scope.existing(Popups) orelse return &.{};
+    return popups.integrations.items;
+}
+
+/// The Browser of `scope` stops keeping `integration`: true when it kept it,
+/// and the caller frees it. False when it never did, or `closeAll` already
+/// took it (it is being destroyed).
+pub fn forget(scope: *runtime.BrowserScope, integration: *anyopaque) bool {
+    const popups = scope.existing(Popups) orelse return false;
+    for (popups.integrations.items, 0..) |item, i| {
+        if (item != integration) continue;
+        _ = popups.integrations.swapRemove(i);
+        return true;
+    }
+    return false;
+}
+
+/// A Window that held `browsing_context` ended and the context lives on:
+/// the implementation frees a closed popup's record whose last Window this
+/// was (`Implementation.window_ended`). Window's end calls it.
+pub fn windowEnded(scope: *runtime.BrowserScope, browsing_context: *anyopaque) void {
+    const impl = implementation.get() orelse return;
+    impl.window_ended(scope, browsing_context);
+}
+
+/// How many popups the Browser of `scope` keeps: open ones, and closed ones
+/// a Window still shows (a closed popup's record goes with its last
+/// Window).
 pub fn count(scope: *runtime.BrowserScope) usize {
     const popups = scope.existing(Popups) orelse return 0;
     return popups.integrations.items.len;
