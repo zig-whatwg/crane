@@ -191,3 +191,27 @@ fn hostPageClose() !void {
 test "the host's page that closes itself unloads, and its realm stays the host's until its end" {
     try onFreshThread(hostPageClose);
 }
+
+fn replacedRealmKeepsItsWindow() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try loadPage(browser);
+    // websockets/unload-a-document/001.html: a popup's first document leaves
+    // a function behind (a test cleanup that reads its sessionStorage), then
+    // the popup navigates three times. The first realm lives while script reaches
+    // it, and its function still reads its own Window's storage - its realm
+    // is no realm's child, not even the realm that replaced it.
+    try page.runScript("globalThis.p = window.open('about:blank', 'p'); p.sessionStorage.setItem('k', 'v'); globalThis.firstRead = p.eval('(function () { return String(sessionStorage.getItem(\\'k\\')); })');");
+    try page.runScript("p.location.href = 'javascript:\"<p id=a>one</p>\"';");
+    try until(browser, "p.document.getElementById('a') !== null");
+    try page.runScript("p.location.href = 'javascript:\"<p id=b>two</p>\"';");
+    try until(browser, "p.document.getElementById('b') !== null");
+    try page.runScript("p.location.href = 'javascript:\"<p id=c>three</p>\"';");
+    try until(browser, "p.document.getElementById('c') !== null");
+    try collect(browser);
+    try expectEval(page, "(() => { try { return firstRead(); } catch (e) { return e.name; } })()", "v");
+}
+
+test "a popup's first realm, replaced by two navigations, still reads its own Window's storage" {
+    try onFreshThread(replacedRealmKeepsItsWindow);
+}
