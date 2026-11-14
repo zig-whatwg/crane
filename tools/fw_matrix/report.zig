@@ -1,37 +1,36 @@
-//! `fw_matrix report`: the JS framework compatibility matrix as finished
-//! HTML, from journals only (tmp/plans/framework-matrix-plan.md, section 4).
+//! `fw_matrix report`: the JS framework compatibility matrix as ONE finished
+//! HTML page, from journals only (tmp/plans/framework-matrix-plan.md,
+//! section 4), and its social card.
 //!
-//!   <out>/index.html                 the overview, five numbered sections:
-//!                                    1 the frameworks' own tests - per
-//!                                      framework Crane's tests passed beside
-//!                                      Chrome's and how many fail only in
-//!                                      Crane; then those not run yet
-//!                                    2 what fails in Crane and passes in
-//!                                      Chrome, by cause (the manifest's
-//!                                      `causes`), Chrome-only APIs apart
-//!                                    3 TodoMVC: apps passing every test and
-//!                                      tests passed in Crane and Chrome,
-//!                                      every app in a closed list
-//!                                    4 what is not run, and why - said once
-//!                                    5 how this was measured (closed)
-//!   <out>/<framework>/index.html     its figures, its Crane-only failures by
-//!                                    cause, then (closed) those Chrome shares,
-//!                                    what is not run, its pages and how it
-//!                                    was measured
-//!   <out>/todomvc/<app>/index.html   one TodoMVC app, the same way
+//!   <out>/index.html   the page:
+//!                      - the chart: each framework's own tests, and TodoMVC's
+//!                        apps as one row, as a pass rate in Crane (a dot)
+//!                        beside Chrome (a ring) on an axis zoomed to where the
+//!                        rates are; a framework Crane cannot run yet is a
+//!                        hatched row that says why
+//!                      - TodoMVC: the pass rate per app (open; it closes)
+//!                      - what is not run, and why (closed)
+//!                      - how this was measured (closed)
+//!   <out>/card.png     og:image / twitter:image (card.zig), named with a
+//!                      `?v=` of its hash
 //!
-//! The redesign (lane fw1 b6; the user, 2026-11-14: "The data presentation
-//! feels like noise and it isn't focusing on the important parts. I want
-//! this page to be far easier for people to follow."): a visitor asks
-//! whether a framework works in Crane, what fails in Crane that works in
-//! Chrome, and what was not tested and why - in that order.
+//! The design (lane fw1 b8; the user, 2026-11-14 4:24 PM ET: "I don't want
+//! the frameworks/ pages to have individual pages they link to ... I want to
+//! have sections that expand instead"; 4:25 PM ET: "we don't need all of the
+//! failure details on this page, we just need to know pass rates. If a test
+//! suite cannot run yet that should be noted. People that have an interest
+//! in Crane will just scan this page"; 4:34 PM ET: "I prefer the One Chart
+//! page. Make sure it matches our existing design for the progress and
+//! performance pages"): direction A of tmp/fw-site/directions/, in the WPT
+//! site's stylesheet, header, faces and tokens. No failure cause, test name
+//! or message is on the page: pass rates, and why a suite does not run.
 //!
-//! The site's rules (tools/wpt_site/DESIGN.md, PRODUCT.md): every number is
-//! in the HTML; site.js only enhances (it sorts every `table.listing` by its
-//! cells' data-v / data-of); red is a failure, grey is blocking or not run;
-//! Crane and Chrome side by side. It uses the WPT site's stylesheet and its
-//! HTML helpers (tools/wpt_site/html.zig, by import). A TodoMVC app never
-//! stands in for its framework's own suite: it is only in section 3.
+//! The site's rules (tools/wpt_site/DESIGN.md): every number is in the HTML
+//! (the chart's dots carry theirs beside them and in a native tooltip);
+//! site.js only enhances; red is failure, grey is not run; the chart is
+//! drawn by the generator as inline SVG positioned in percentages, so one
+//! drawing serves every width (at phone width each row stacks: its name above
+//! its line, the axis kept beneath the lines, the two rates under the line).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -41,11 +40,14 @@ const html = @import("site_html");
 const journal = @import("journal.zig");
 const manifest = @import("manifest.zig");
 const exclusions = @import("exclusions.zig");
+const card = @import("card.zig");
 
 pub const Options = struct {
     /// Where the WPT site's site.css and site.js are, relative to <out>/
     /// ("../").
     assets: []const u8 = "../",
+    /// The site's URL, ending in '/': og:url and og:image are absolute.
+    site_url: []const u8 = "https://zig-whatwg.github.io/crane/",
 };
 
 /// One run of one suite: its records.
@@ -68,22 +70,24 @@ pub const SuiteRuns = struct {
     /// The `[file:...]` entries of its exclusion list (not in a journal).
     file_entries: []const exclusions.Entry,
     /// The latest comparison run in a browser (`fw_matrix run --browser`,
-    /// or a project runner's log read by `fw_matrix import`).
+    /// or a project runner's results read by `fw_matrix import`).
     chrome: ?Run = null,
 };
 
-/// What the TodoMVC port does not run of a test (it excludes no test):
-/// tools/fw_matrix/excluded/todomvc-port.txt says the same.
+/// How Crane's TodoMVC numbers are made (the method section).
 pub const todomvc_port_note =
-    "Crane's port runs every test of TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests) on the app's unmodified build, driving it through DOM events as Cypress drives it. Of Cypress's own checks it does not run the parts that need layout: visibility is decided by computed style (no box, visibility, opacity) and not by size, clipping or transforms, and an action does not scroll the element into view or check that nothing covers it. Cypress's hooks that run before the app's own scripts have no in-page equivalent: an app counts as started when its page has loaded and its heading is visible, and the spec's spy on localStorage.setItem is installed then. Tests the spec itself skips for an app (its localStorage test for apps that keep no data there, the app's entries in tests/knownIssues.js) are reported as skipped by the app spec.";
+    "Crane runs TodoMVC's app spec (cypress/e2e/spec.cy.js, 29 tests) through Crane's port of it: the same tests, steps and checks in the app's own page, driving the unmodified app through DOM events as Cypress drives it, with Cypress's configuration read from the project's cypress.config.js (includeShadowDom: queries reach into shadow roots as Cypress's do). What the port cannot do in Crane is layout: an element counts as visible by its computed style (no box, visibility, opacity) and not by its size, clipping or transforms, and an action neither scrolls the element into view nor checks that something covers it. Cypress's hooks that run before an app's own scripts have no in-page equivalent: an app counts as started when its page has loaded and its heading is visible, and the spec's spy on localStorage.setItem is installed then.";
 
-/// Why rendering tests are not run: said once on the overview (section 4)
-/// and once on a page that lists such tests.
+/// How Chrome's TodoMVC numbers are made.
+pub const todomvc_chrome_note =
+    "Chrome's TodoMVC numbers are TodoMVC's own Cypress suite, not the port: Cypress 15.14.2 with the project's cypress.config.js and spec unmodified (only the port of its test server's address moved), one app per run as its tests/cya.js runs them, read from Cypress's own results. A test Cypress does not run because a hook failed earlier in its suite (Mocha then skips the rest of that suite) counts as not passed, so both columns count the spec's tests.";
+
+/// Why rendering tests are not run.
 pub const rendering_statement =
     "Crane draws nothing, so tests whose result depends on layout geometry or pixels are not run. Computed style, events, timers and animations do run.";
 
-/// Where Node runs (the user, 2026-11-11 17:43 ET: "we can run node for the
-/// purposes of these tests").
+/// Where Node runs (the user, 2026-11-11 5:43 PM ET: "we can run node for
+/// the purposes of these tests").
 pub const node_note =
     "Node runs only the projects' own build steps, test servers and test runners, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies; Angular's are built by its own Bazel and served by its own web-test-runner, one target per page. htmx's test page and the TodoMVC apps are static files, served as they are.";
 
@@ -141,127 +145,6 @@ fn latest(s: SuiteRuns) ?Run {
     return if (s.runs.len == 0) null else s.runs[s.runs.len - 1];
 }
 
-// ============================================================================
-// Crane's failures beside Chrome's
-// ============================================================================
-
-/// How a failure of Crane's compares with Chrome's run of the same page.
-pub const Verdict = enum {
-    /// Chrome's run passes it (or ran the tests of a page Crane stopped on).
-    crane_only,
-    /// Chrome's run fails it too (by name): not a Crane finding (lesson
-    /// testing-a-framework-failure-chrome-shares-is-not-a-crane-finding.md).
-    shared,
-    /// No Chrome run of it to compare with.
-    no_chrome,
-};
-
-/// One failure in a suite's latest Crane run: a failed or errored test, or
-/// a page that stopped before naming any failing test.
-pub const Failure = struct {
-    test_rec: ?journal.TestRecord = null,
-    page: ?journal.PageRecord = null,
-    verdict: Verdict,
-    /// Its cause, an index into the manifest's `causes`.
-    cause: ?usize = null,
-    /// A stopped page: the tests Chrome's run counted on it.
-    chrome_tests: u32 = 0,
-};
-
-fn isFailing(t: journal.TestRecord) bool {
-    return t.status == .FAIL or t.status.errored();
-}
-
-fn chromeFails(c: Run, id: []const u8) bool {
-    for (c.tests) |t| if (std.mem.eql(u8, t.id, id) and isFailing(t)) return true;
-    return false;
-}
-
-/// The tests Chrome's run counted on a page, or null when it has no such page.
-fn chromePageTests(c: Run, page: []const u8) ?u32 {
-    for (c.pages) |p| if (std.mem.eql(u8, p.page, page)) return p.reported_total orelse p.ran;
-    return null;
-}
-
-fn matchesTest(mt: manifest.Match, s: manifest.Suite, t: journal.TestRecord) bool {
-    if (mt.suite) |x| if (!std.mem.eql(u8, x, s.id)) return false;
-    if (mt.page) |x| if (!std.mem.eql(u8, x, t.page)) return false;
-    if (mt.id_contains) |x| if (std.mem.indexOf(u8, t.id, x) == null) return false;
-    if (mt.message_contains) |x| if (t.message == null or std.mem.indexOf(u8, t.message.?, x) == null) return false;
-    return true;
-}
-
-fn matchesPage(mt: manifest.Match, s: manifest.Suite, p: journal.PageRecord) bool {
-    if (mt.id_contains != null) return false;
-    if (mt.page == null and mt.message_contains == null) return false;
-    if (mt.suite) |x| if (!std.mem.eql(u8, x, s.id)) return false;
-    if (mt.page) |x| if (!std.mem.eql(u8, x, p.page)) return false;
-    if (mt.message_contains) |x| if (p.message == null or std.mem.indexOf(u8, p.message.?, x) == null) return false;
-    return true;
-}
-
-fn causeOf(causes: []const manifest.Cause, s: manifest.Suite, f: Failure) ?usize {
-    for (causes, 0..) |c, i| for (c.covers) |mt| {
-        if (f.test_rec) |t| {
-            if (matchesTest(mt, s, t)) return i;
-        } else if (f.page) |p| {
-            if (matchesPage(mt, s, p)) return i;
-        }
-    };
-    return null;
-}
-
-/// A suite's failures in its latest Crane run, each beside Chrome's run.
-pub fn failuresOf(arena: Allocator, causes: []const manifest.Cause, s: SuiteRuns) ![]const Failure {
-    const r = latest(s) orelse return &.{};
-    var out: std.ArrayList(Failure) = .empty;
-    for (r.tests) |t| if (isFailing(t)) {
-        var f: Failure = .{ .test_rec = t, .verdict = if (s.chrome) |c| (if (chromeFails(c, t.id)) .shared else .crane_only) else .no_chrome };
-        f.cause = causeOf(causes, s.suite, f);
-        try out.append(arena, f);
-    };
-    for (r.pages) |p| if (p.status != .OK) {
-        // A page whose failing tests are named is counted through them.
-        const named = for (r.tests) |t| {
-            if (std.mem.eql(u8, t.page, p.page) and isFailing(t)) break true;
-        } else false;
-        if (named) continue;
-        var f: Failure = .{ .page = p, .verdict = .no_chrome };
-        if (s.chrome) |c| if (chromePageTests(c, p.page)) |n| {
-            f.verdict = if (n > 0) .crane_only else .shared;
-            f.chrome_tests = n;
-        };
-        f.cause = causeOf(causes, s.suite, f);
-        try out.append(arena, f);
-    };
-    return out.items;
-}
-
-const Tally = struct {
-    tests: u32 = 0,
-    pages: u32 = 0,
-
-    fn of(fs: []const Failure, v: Verdict) Tally {
-        var t: Tally = .{};
-        for (fs) |f| if (f.verdict == v) {
-            if (f.test_rec != null) t.tests += 1 else t.pages += 1;
-        };
-        return t;
-    }
-
-    fn total(t: Tally) u32 {
-        return t.tests + t.pages;
-    }
-};
-
-/// Failures Chrome's run counted without naming them.
-fn chromeUnnamedFailures(s: SuiteRuns) u32 {
-    const c = s.chrome orelse return 0;
-    var n: u32 = 0;
-    for (c.pages) |p| n += p.unnamed_failed orelse 0;
-    return n;
-}
-
 /// Every test of the run passed and every page ended normally.
 fn allPass(r: Run) bool {
     if (r.counts.ran() == 0 or r.counts.fail > 0 or r.counts.errored() > 0) return false;
@@ -270,123 +153,28 @@ fn allPass(r: Run) bool {
 }
 
 // ============================================================================
-// Pieces
+// The chart's rows
 // ============================================================================
 
-/// Passed over run, one decimal; never "100.0%" unless every test passed.
-fn rate(w: W, pass: u32, ran: u32) !void {
-    if (ran == 0) return w.writeAll("&mdash;");
-    const tenths = (@as(u64, pass) * 1000 + ran / 2) / ran;
-    if (pass < ran and tenths == 1000) return w.writeAll("&gt;99.9%");
-    if (pass > 0 and tenths == 0) return w.writeAll("&lt;0.1%");
-    try w.print("{d}.{d}%", .{ tenths / 10, tenths % 10 });
-}
+/// One row of the chart: a framework's own tests, TodoMVC's apps together,
+/// or a framework Crane cannot run yet.
+pub const Row = struct {
+    /// Its anchor: the framework's id, or "todomvc".
+    id: []const u8,
+    title: []const u8,
+    /// The line under the name ("22.2.6 · its own tests").
+    sub: []const u8,
+    /// Crane's tests, null with no run yet.
+    crane: ?journal.Counts = null,
+    /// Chrome's, null with no Chrome run.
+    chrome: ?journal.Counts = null,
+    /// It cannot run yet: the protocol its test runner drives the browser
+    /// with, which Crane does not speak.
+    waits: ?manifest.Protocol = null,
+};
 
-/// "<b>1,066</b> / 1,072" and its share, in a cell site.js sorts by share.
-fn passCell(w: W, c: journal.Counts, label: []const u8) !void {
-    try w.print("<td class=\"n\" data-label=\"{s}\" data-v=\"{d}\" data-of=\"{d}\"><b>", .{ label, c.pass, c.ran() });
-    try html.num(w, c.pass);
-    try w.writeAll("</b> / ");
-    try html.num(w, c.ran());
-    try w.writeAll(" <span class=\"pct\">");
-    try rate(w, c.pass, c.ran());
-    try w.writeAll("</span></td>");
-}
-
-/// A stacked bar of one run's tests: passed (green), failed and errored
-/// (red), not run (grey), each a share of all its tests.
-fn meter(w: W, c: journal.Counts) !void {
-    const parts = [_]struct { u32, []const u8, []const u8 }{
-        .{ c.pass, "var(--pass)", "passed" },
-        .{ c.fail + c.errored(), "var(--fail)", "failed or errored" },
-        .{ c.rendering + c.not_run + c.project_skip, "var(--block-seg)", "not run" },
-    };
-    var total: u64 = 0;
-    for (parts) |p| total += p[0];
-    if (total == 0) return;
-    try w.writeAll("<div class=\"meter\" role=\"img\" aria-label=\"");
-    for (parts, 0..) |p, i| {
-        if (i > 0) try w.writeAll(", ");
-        try html.num(w, p[0]);
-        try w.print(" {s}", .{p[2]});
-    }
-    try w.writeAll("\">");
-    for (parts) |p| if (p[0] > 0) try w.print("<span style=\"width:{d:.3}%;background:{s}\"></span>", .{ 100.0 * @as(f64, @floatFromInt(p[0])) / @as(f64, @floatFromInt(total)), p[1] });
-    try w.writeAll("</div>\n");
-}
-
-fn head(w: W, title: []const u8, description: []const u8, o: Options, depth: u32) !void {
-    try w.writeAll("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>");
-    try html.text(w, title);
-    try w.writeAll("</title>\n<meta name=\"description\" content=\"");
-    try html.text(w, description);
-    try w.writeAll("\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<link rel=\"stylesheet\" href=\"");
-    for (0..depth) |_| try w.writeAll("../");
-    try w.print("{s}site.css\">\n<link rel=\"icon\" href=\"data:,\">\n<script src=\"", .{o.assets});
-    for (0..depth) |_| try w.writeAll("../");
-    try w.print("{s}site.js\" defer></script>\n", .{o.assets});
-    try w.writeAll(style);
-    try w.writeAll("</head>\n<body>\n<main class=\"doc fw\" id=\"main\">\n");
-}
-
-const style =
-    \\<style>
-    \\.fw .fw-sec { margin: 0 0 3rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); }
-    \\.fw .lede, .fw .fw-facts, .fw .fw-sec > p { max-width: var(--measure); }
-    \\.fw h3 { margin: 1.8rem 0 0.5rem; font: 600 1.15rem/1.3 var(--serif); }
-    \\.fw .ver { margin-left: 0.35rem; font: 400 0.84rem/1.3 var(--sans); color: var(--ink-2); }
-    \\.fw .pct { display: inline-block; min-width: 3.4rem; margin-left: 0.4rem; font-size: 0.8rem; color: var(--ink-2); }
-    \\.fw .listing { font: 400 0.9rem/1.4 var(--sans); font-variant-numeric: tabular-nums; }
-    \\.fw .listing tbody th { width: auto; font: 400 0.95rem/1.4 var(--serif); }
-    \\.fw .listing thead th { padding: 0.32rem 0.75rem; }
-    \\.fw .listing thead th:has(> .sort) { padding: 0; }
-    \\.fw table.fw-causes { table-layout: fixed; }
-    \\.fw .fw-causes thead th:nth-child(1) { width: 52%; }
-    \\.fw .fw-causes thead th:nth-child(2) { width: 7.5rem; }
-    \\.fw .head + .fw-sec { border-top: 0; padding-top: 0.2rem; }
-    \\.fw .listing td.msg pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 0.78rem/1.45 var(--mono); }
-    \\.fw .listing td a.fail { color: var(--fail); }
-    \\.fw .tag { margin-left: 0.5rem; font: 600 0.7rem/1 var(--sans); letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
-    \\.fw .back-link { margin: 0 0 0.8rem; font: 500 0.9rem/1.4 var(--sans); }
-    \\.fw .order, .fw .fine { margin: 0.6rem 0 0; max-width: var(--measure); font: 400 0.84rem/1.45 var(--sans); color: var(--ink-2); }
-    \\.fw .fw-facts { margin: 1rem 0; padding-left: 1.2rem; }
-    \\.fw .fw-facts li { margin: 0 0 0.45rem; }
-    \\.fw table.versus { max-width: 34rem; margin: 1rem 0; }
-    \\.fw details.fw-more { margin: 0.8rem 0 0; }
-    \\.fw details.fw-more > summary { cursor: pointer; padding: 0.35rem 0; font: 600 0.92rem/1.4 var(--sans); color: var(--link); }
-    \\.fw details.fw-more[open] > summary { margin-bottom: 0.6rem; }
-    \\.fw .meter { max-width: 34rem; }
-    \\.fw .method { max-width: var(--measure); padding-left: 1.2rem; }
-    \\.fw .method li { margin: 0 0 0.6rem; }
-    \\@media (min-width: 52.01rem) { .fw .listing td[data-label="Page"] code { white-space: nowrap; } }
-    \\@media (max-width: 52rem) {
-    \\  .fw .listing tbody td:nth-child(n) { display: block; grid-column: 1 / -1; text-align: left; white-space: normal; }
-    \\  .fw .listing tbody td[data-label]::before { content: attr(data-label) ": "; font: 400 0.78rem/1.3 var(--sans); color: var(--ink-2); }
-    \\}
-    \\</style>
-    \\
-;
-
-const page_foot = "<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n";
-
-/// A numbered section's heading.
-fn sectionHead(w: W, n: u32, id: []const u8, title: []const u8) !void {
-    try w.print("<section class=\"fw-sec\" id=\"{s}\" aria-labelledby=\"{s}-h\">\n<h2 id=\"{s}-h\"><span class=\"secno\">{d}</span>", .{ id, id, id, n });
-    try html.text(w, title);
-    try w.print("<a class=\"self\" href=\"#{s}\" aria-label=\"Link to section {d}\">&para;</a></h2>\n", .{ id, n });
-}
-
-/// Where a suite's page is, below the overview: a framework's own suites at
-/// "<framework>/", a TodoMVC app at "todomvc/<app>/".
-pub fn pageDir(s: manifest.Suite) [2][]const u8 {
-    return switch (s.kind) {
-        .project => .{ "", s.framework },
-        .todomvc_port => .{ "todomvc/", s.framework },
-    };
-}
-
-/// The overview's first section: the listed frameworks, or (a manifest
-/// without that list) one per framework a project suite names.
+/// The first section's frameworks, or (a manifest without that list) one per
+/// framework a project suite names.
 fn frameworkList(arena: Allocator, m: manifest.Manifest) ![]const manifest.Framework {
     if (m.frameworks.len > 0) return m.frameworks;
     var out: std.ArrayList(manifest.Framework) = .empty;
@@ -399,192 +187,8 @@ fn frameworkList(arena: Allocator, m: manifest.Manifest) ![]const manifest.Frame
     return out.items;
 }
 
-fn byTitle(_: void, a: manifest.Framework, b: manifest.Framework) bool {
+fn byTitle(_: void, a: Row, b: Row) bool {
     return std.ascii.lessThanIgnoreCase(a.title, b.title);
-}
-
-fn hasSuite(suites: []const SuiteRuns, fw: manifest.Framework) bool {
-    for (suites) |s| if (s.suite.kind == .project and std.mem.eql(u8, s.suite.framework, fw.id)) return true;
-    return false;
-}
-
-/// A suite's name where it is listed: its framework's, or "TodoMVC <app>".
-fn suiteName(w: W, s: manifest.Suite) !void {
-    if (s.kind == .todomvc_port) try w.writeAll("TodoMVC ");
-    try html.text(w, s.title);
-}
-
-/// The link to a suite's Crane-only failures, from the overview.
-fn suiteHref(w: W, s: manifest.Suite) !void {
-    const dir = pageDir(s);
-    try html.href(w, dir[0]);
-    try html.href(w, dir[1]);
-    try w.writeAll("/#fails-only");
-}
-
-/// "3 tests", "2 tests and 1 page".
-fn tallyText(w: W, t: Tally) !void {
-    if (t.tests > 0 or t.pages == 0) try html.plural(w, t.tests, "test", "tests");
-    if (t.tests > 0 and t.pages > 0) try w.writeAll(" and ");
-    if (t.pages > 0) try html.plural(w, t.pages, "page", "pages");
-}
-
-// ============================================================================
-// The overview
-// ============================================================================
-
-pub fn writeIndex(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, o: Options) !void {
-    try head(w, "Crane: JavaScript frameworks", "JavaScript frameworks' own browser tests, and the TodoMVC apps, run in Crane and in Chrome: what passes, what fails only in Crane, and what is not run and why.", o, 0);
-    const failures = try arena.alloc([]const Failure, suites.len);
-    for (suites, 0..) |s, i| failures[i] = try failuresOf(arena, m.causes, s);
-
-    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JavaScript frameworks</span></h1>\n<p class=\"subtitle\">Do JavaScript frameworks work in Crane? Each framework&#39;s own browser tests, run in Crane and in Chrome, and the TodoMVC apps built with them.</p>\n<dl class=\"head-meta\">\n");
-    try runsMeta(arena, w, suites);
-    try w.writeAll("<div><dt>More</dt><dd><a href=\"../\">Crane&#39;s web-platform-tests results</a></dd></div>\n</dl>\n</header>\n");
-
-    const all = try frameworkList(arena, m);
-    var running: std.ArrayList(manifest.Framework) = .empty;
-    var waiting: std.ArrayList(manifest.Framework) = .empty;
-    for (all) |fw| try (if (hasSuite(suites, fw)) &running else &waiting).append(arena, fw);
-    std.mem.sort(manifest.Framework, running.items, {}, byTitle);
-    std.mem.sort(manifest.Framework, waiting.items, {}, byTitle);
-
-    var n: u32 = 0;
-    // 1. The frameworks' own tests.
-    n += 1;
-    try sectionHead(w, n, "own", "The frameworks' own tests");
-    try w.writeAll("<p class=\"lede\">Each framework&#39;s own browser tests, run in Crane the way the project runs them in a browser (its own build, test server and test runner), and in Chrome by the project&#39;s own runner. A test that fails in both says nothing about Crane; the last column counts the tests that fail only in Crane.</p>\n");
-    try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Framework</th><th scope=\"col\" class=\"n\">Crane: tests passed</th><th scope=\"col\" class=\"n\">Chrome: tests passed</th><th scope=\"col\" class=\"n\">Fail only in Crane</th></tr></thead>\n<tbody>\n");
-    for (running.items) |fw| for (suites, 0..) |s, si| {
-        if (s.suite.kind != .project or !std.mem.eql(u8, s.suite.framework, fw.id)) continue;
-        try frameworkRow(w, fw, s, failures[si]);
-    };
-    try w.writeAll("</tbody>\n</table>\n");
-    if (waiting.items.len > 0) {
-        try w.writeAll("<h3 id=\"waiting\">Not run yet</h3>\n<p>Their browser tests run only through a test runner that drives the browser over a protocol Crane does not speak yet; section 4 says which and why.</p>\n<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Framework</th><th scope=\"col\" class=\"n\">Its own browser tests</th><th scope=\"col\">Waits for</th></tr></thead>\n<tbody>\n");
-        for (waiting.items) |fw| try waitingRow(w, fw);
-        try w.writeAll("</tbody>\n</table>\n");
-    }
-    try w.writeAll("<p class=\"order\">Order: the frameworks Crane runs, then those not run yet; each group A to Z. With script on, a column head sorts its table.</p>\n</section>\n");
-
-    // 2. What fails in Crane and passes in Chrome.
-    n += 1;
-    try sectionHead(w, n, "gaps", "What fails in Crane and passes in Chrome");
-    try writeCauses(arena, w, m, suites, failures);
-    try w.writeAll("</section>\n");
-
-    // 3. TodoMVC.
-    var any_app = m.todomvc != null;
-    for (suites) |s| any_app = any_app or s.suite.kind == .todomvc_port;
-    if (any_app) {
-        n += 1;
-        try sectionHead(w, n, "todomvc", "TodoMVC: apps built with each framework");
-        try writeTodoMvc(arena, w, m, suites, failures);
-        try w.writeAll("</section>\n");
-    }
-
-    // 4. What is not run, and why: said once.
-    n += 1;
-    try sectionHead(w, n, "not-run", "What is not run, and why");
-    try writeNotRun(arena, w, m, suites, waiting.items);
-    try w.writeAll("</section>\n");
-
-    // 5. How this was measured.
-    n += 1;
-    try sectionHead(w, n, "method", "How this was measured");
-    try w.writeAll("<details class=\"fw-more\"><summary>The runs, the browsers, the pins and the method</summary>\n<ul class=\"method\">\n");
-    try w.writeAll("<li>Each page is opened in Crane&#39;s console as a user opens it, and read from the test framework&#39;s own report; Chrome&#39;s numbers come from the same pages, or from the project&#39;s own runner where the project runs its tests that way (each suite below says which).</li>\n");
-    for (running.items) |fw| for (suites) |s| {
-        if (s.suite.kind != .project or !std.mem.eql(u8, s.suite.framework, fw.id)) continue;
-        try w.writeAll("<li>");
-        try suiteMethod(w, s);
-        try w.writeAll("</li>\n");
-    };
-    if (m.todomvc) |t| {
-        try w.writeAll("<li>TodoMVC: the apps of <a href=\"");
-        try html.text(w, t.repository);
-        try w.writeAll("\">tastejs/todomvc</a> at <code>");
-        try html.text(w, t.commit[0..@min(12, t.commit.len)]);
-        try w.writeAll("</code>, each <code>examples/&lt;app&gt;/</code> pinned by its sha256 and checked at every fetch; each app&#39;s page names its runs. ");
-        try html.text(w, todomvc_port_note);
-        try w.writeAll("</li>\n");
-    }
-    try w.writeAll("</ul>\n</details>\n</section>\n");
-    try w.writeAll(page_foot);
-}
-
-/// The header's "Crane" and "Chrome" rows: the commits and browsers of the
-/// runs shown, each with what it ran.
-fn runsMeta(arena: Allocator, w: W, suites: []const SuiteRuns) !void {
-    const Group = struct { key: []const u8, names: std.ArrayList([]const u8) = .empty };
-    for ([_]bool{ false, true }) |browser| {
-        var groups: std.ArrayList(Group) = .empty;
-        for (suites) |s| {
-            const r = (if (browser) s.chrome else latest(s)) orelse continue;
-            const key = if (browser) r.browser.? else r.crane_commit;
-            const name = if (s.suite.kind == .todomvc_port) "TodoMVC" else s.suite.title;
-            const g = for (groups.items) |*gp| {
-                if (std.mem.eql(u8, gp.key, key)) break gp;
-            } else blk: {
-                try groups.append(arena, .{ .key = key });
-                break :blk &groups.items[groups.items.len - 1];
-            };
-            for (g.names.items) |x| {
-                if (std.mem.eql(u8, x, name)) break;
-            } else try g.names.append(arena, name);
-        }
-        if (groups.items.len == 0) continue;
-        try w.writeAll(if (browser) "<div><dt>Chrome</dt><dd>" else "<div><dt>Crane</dt><dd>");
-        for (groups.items, 0..) |g, i| {
-            if (i > 0) try w.writeAll("; ");
-            if (browser) try html.text(w, g.key) else {
-                try w.writeAll("<code>");
-                try html.text(w, g.key);
-                try w.writeAll("</code>");
-            }
-            try w.writeAll(" (");
-            for (g.names.items, 0..) |x, k| {
-                if (k > 0) try w.writeAll(", ");
-                try html.text(w, x);
-            }
-            try w.writeAll(")");
-        }
-        try w.writeAll("</dd></div>\n");
-    }
-}
-
-fn frameworkRow(w: W, fw: manifest.Framework, s: SuiteRuns, fs: []const Failure) !void {
-    try w.writeAll("<tr id=\"fw-");
-    try html.text(w, fw.id);
-    try w.writeAll("\"><th scope=\"row\"><a href=\"");
-    try html.href(w, fw.id);
-    try w.writeAll("/\">");
-    try html.text(w, fw.title);
-    try w.writeAll("</a><span class=\"ver\">");
-    try html.text(w, s.suite.version);
-    try w.writeAll("</span></th>");
-    const r = latest(s) orelse {
-        try w.writeAll("<td class=\"n\" data-label=\"Crane\">no run yet</td><td class=\"n\" data-label=\"Chrome\"></td><td class=\"n\" data-label=\"Fail only in Crane\"></td></tr>\n");
-        return;
-    };
-    try passCell(w, r.counts, "Crane");
-    if (s.chrome) |c| try passCell(w, c.counts, "Chrome") else try w.writeAll("<td class=\"n quiet\" data-label=\"Chrome\">no Chrome run yet</td>");
-    // The verdict: what fails only in Crane, or, with no Chrome run, what
-    // fails at all.
-    const v: Verdict = if (s.chrome != null) .crane_only else .no_chrome;
-    const t = Tally.of(fs, v);
-    try w.print("<td class=\"n\" data-label=\"Fail only in Crane\" data-v=\"{d}\">", .{t.total()});
-    if (t.total() == 0) {
-        try w.writeAll("<span class=\"quiet\">none</span></td></tr>\n");
-        return;
-    }
-    try w.writeAll("<a class=\"fail\" href=\"");
-    try suiteHref(w, s.suite);
-    try w.writeAll("\">");
-    try tallyText(w, t);
-    try w.writeAll("</a>");
-    if (v == .no_chrome) try w.writeAll(" <span class=\"quiet\">(no Chrome run to compare)</span>");
-    try w.writeAll("</td></tr>\n");
 }
 
 /// The protocol a waiting framework needs: CDP when any of its suites needs
@@ -597,346 +201,639 @@ fn neededProtocol(fw: manifest.Framework) ?manifest.Protocol {
     return p;
 }
 
-fn waitingRow(w: W, fw: manifest.Framework) !void {
-    try w.writeAll("<tr id=\"fw-");
-    try html.text(w, fw.id);
-    try w.writeAll("\"><th scope=\"row\"><a href=\"");
-    try html.href(w, fw.id);
-    try w.writeAll("/\">");
-    try html.text(w, fw.title);
-    try w.writeAll("</a>");
-    if (fw.not_run.len > 0) {
-        try w.writeAll("<span class=\"ver\">");
-        try html.text(w, fw.not_run[0].version);
-        try w.writeAll("</span>");
-    }
-    try w.writeAll("</th>");
-    var counted: u32 = 0;
-    var uncounted = false;
-    for (fw.not_run) |nr| {
-        if (nr.tests) |t| counted += t else uncounted = true;
-    }
-    if (counted > 0) {
-        try w.print("<td class=\"n\" data-label=\"Its own browser tests\" data-v=\"{d}\">", .{counted});
-        try html.plural(w, counted, "test", "tests");
-        if (uncounted) try w.writeAll(" and more, not counted");
-    } else try w.writeAll("<td class=\"n quiet\" data-label=\"Its own browser tests\">not counted");
-    try w.writeAll("</td><td data-label=\"Waits for\">");
-    if (neededProtocol(fw)) |p| try html.text(w, p.short()) else try w.writeAll("&mdash;");
-    try w.writeAll("</td></tr>\n");
-}
-
-/// Cause indices, the most failures first; ties keep the manifest's order.
-fn causeOrder(arena: Allocator, totals: []const u32) ![]usize {
-    const order = try arena.alloc(usize, totals.len);
-    for (order, 0..) |*o, i| o.* = i;
-    std.mem.sort(usize, order, totals, struct {
-        fn lt(t: []const u32, a: usize, b: usize) bool {
-            if (t[a] != t[b]) return t[a] > t[b];
-            return a < b;
-        }
-    }.lt);
-    return order;
-}
-
-/// Section 2: the failures Crane has and Chrome does not, by cause.
-fn writeCauses(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, failures: []const []const Failure) !void {
-    const Entry = struct { suite: usize, tally: Tally = .{}, chrome_tests: u32 = 0, no_chrome: bool };
-    const Group = struct { entries: std.ArrayList(Entry) = .empty, tally: Tally = .{} };
-    const groups = try arena.alloc(Group, m.causes.len);
-    for (groups) |*g| g.* = .{};
-    var unsorted: std.ArrayList(struct { usize, Failure }) = .empty;
-    for (failures, 0..) |fs, si| for (fs) |f| {
-        if (f.verdict == .shared) continue;
-        const ci = f.cause orelse {
-            try unsorted.append(arena, .{ si, f });
-            continue;
-        };
-        const g = &groups[ci];
-        const e = for (g.entries.items) |*ep| {
-            if (ep.suite == si) break ep;
-        } else blk: {
-            try g.entries.append(arena, .{ .suite = si, .no_chrome = f.verdict == .no_chrome });
-            break :blk &g.entries.items[g.entries.items.len - 1];
-        };
-        if (f.test_rec != null) {
-            e.tally.tests += 1;
-            g.tally.tests += 1;
-        } else {
-            e.tally.pages += 1;
-            g.tally.pages += 1;
-            e.chrome_tests += f.chrome_tests;
-        }
-    };
-    // Each cause's places: the frameworks' own suites, then the apps, A to Z.
-    for (groups) |*g| std.mem.sort(Entry, g.entries.items, suites, struct {
-        fn lt(ss: []const SuiteRuns, x: Entry, y: Entry) bool {
-            const a = ss[x.suite].suite;
-            const b = ss[y.suite].suite;
-            if (a.kind != b.kind) return a.kind == .project;
-            return std.ascii.lessThanIgnoreCase(a.title, b.title);
-        }
-    }.lt);
-    // The lede: the real gaps' totals.
-    var gaps: u32 = 0;
-    var total: Tally = .{};
-    var where: std.ArrayList(usize) = .empty;
-    for (m.causes, groups) |c, g| {
-        if (c.kind != .crane_gap or g.tally.total() == 0) continue;
-        gaps += 1;
-        total.tests += g.tally.tests;
-        total.pages += g.tally.pages;
-        for (g.entries.items) |e| {
-            for (where.items) |x| {
-                if (x == e.suite) break;
-            } else try where.append(arena, e.suite);
-        }
-    }
-    if (gaps == 0 and unsorted.items.len == 0) {
-        try w.writeAll("<p>Nothing: every test that fails in Crane fails in Chrome too.</p>\n");
-    } else {
-        var projects: u32 = 0;
-        var apps: u32 = 0;
-        for (where.items) |si| {
-            if (suites[si].suite.kind == .project) projects += 1 else apps += 1;
-        }
-        try w.writeAll("<p class=\"lede\">");
-        try html.plural(w, gaps, "cause", "causes");
-        try w.writeAll(": ");
-        try tallyText(w, total);
-        try w.writeAll(", in ");
-        try html.plural(w, projects, "framework&#39;s own tests", "frameworks&#39; own tests");
-        if (apps > 0) {
-            try w.writeAll(" and ");
-            try html.plural(w, apps, "TodoMVC app", "TodoMVC apps");
-        }
-        try w.writeAll(". A test is here when it fails in Crane and Chrome&#39;s run of the same page passes it; a page is here when it stops in Crane before any test runs and Chrome runs its tests. A test with no Chrome run to compare is marked. Largest first; each links to its tests and their messages.</p>\n");
-    }
-    const totals = try arena.alloc(u32, groups.len);
-    for (groups, totals) |g, *t| t.* = g.tally.total();
-    const order = try causeOrder(arena, totals);
-    for ([_]manifest.CauseKind{ .crane_gap, .chrome_only_api }) |kind| {
-        var any = false;
-        for (order) |ci| {
-            const c = m.causes[ci];
-            const g = groups[ci];
-            if (c.kind != kind or g.tally.total() == 0) continue;
-            if (!any) {
-                if (kind == .chrome_only_api) try w.writeAll("<h3 id=\"chrome-only\">Chrome-only APIs (not standards yet)</h3>\n<p>These fail because Crane does not have an API that only Chrome ships and that is not a web standard yet. They are not counted as Crane gaps above.</p>\n");
-                try w.writeAll("<table class=\"listing fw-cols fw-causes\">\n<thead><tr><th scope=\"col\">Cause</th><th scope=\"col\" class=\"n\">Tests</th><th scope=\"col\">Where</th></tr></thead>\n<tbody>\n");
-                any = true;
+/// The chart's rows: the frameworks Crane runs, A to Z; TodoMVC; then those
+/// it cannot run yet, A to Z (main's order, 2026-11-14).
+pub fn chartRows(arena: Allocator, m: manifest.Manifest, suites: []const SuiteRuns) ![]const Row {
+    var running: std.ArrayList(Row) = .empty;
+    var waiting: std.ArrayList(Row) = .empty;
+    for (try frameworkList(arena, m)) |fw| {
+        var row: Row = .{ .id = fw.id, .title = fw.title, .sub = "" };
+        var has_suite = false;
+        for (suites) |s| {
+            if (s.suite.kind != .project or !std.mem.eql(u8, s.suite.framework, fw.id)) continue;
+            if (!has_suite) row.sub = try std.fmt.allocPrint(arena, "{s} \u{b7} its own tests", .{s.suite.version});
+            has_suite = true;
+            if (latest(s)) |r| {
+                var c = row.crane orelse journal.Counts{};
+                c.merge(r.counts);
+                row.crane = c;
             }
-            try w.writeAll("<tr><th scope=\"row\">");
-            try html.text(w, c.title);
-            try w.print("</th><td class=\"n\" data-label=\"Tests\" data-v=\"{d}\">", .{g.tally.total()});
-            try tallyText(w, g.tally);
-            try w.writeAll("</td><td data-label=\"Where\">");
-            for (g.entries.items, 0..) |e, k| {
-                if (k > 0) try w.writeAll(", ");
-                const s = suites[e.suite].suite;
-                try w.writeAll("<a href=\"");
-                try suiteHref(w, s);
-                try w.writeAll("\">");
-                try suiteName(w, s);
-                try w.writeByte(' ');
-                if (e.tally.tests > 0) try html.num(w, e.tally.tests);
-                if (e.tally.tests > 0 and e.tally.pages > 0) try w.writeAll(" and ");
-                if (e.tally.pages > 0) try html.plural(w, e.tally.pages, "page", "pages");
-                try w.writeAll("</a>");
-                if (e.tally.pages > 0 and e.chrome_tests > 0) {
-                    try w.writeAll(" <span class=\"quiet\">(Chrome runs ");
-                    try html.plural(w, e.chrome_tests, "test", "tests");
-                    try w.writeAll(" there)</span>");
-                }
-                if (e.no_chrome) try w.writeAll(" <span class=\"quiet\">(no Chrome run to compare)</span>");
+            if (s.chrome) |r| {
+                var c = row.chrome orelse journal.Counts{};
+                c.merge(r.counts);
+                row.chrome = c;
             }
-            try w.writeAll("</td></tr>\n");
         }
-        if (any) try w.writeAll("</tbody>\n</table>\n");
-    }
-    if (unsorted.items.len > 0) {
-        try w.writeAll("<h3 id=\"unsorted\">Not yet sorted by cause</h3>\n<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Test</th><th scope=\"col\">Where</th><th scope=\"col\">First failing assertion</th></tr></thead>\n<tbody>\n");
-        for (unsorted.items) |u| {
-            const s = suites[u[0]].suite;
-            const f = u[1];
-            try w.writeAll("<tr><th scope=\"row\">");
-            if (f.test_rec) |t| try html.text(w, t.id) else try html.text(w, f.page.?.page);
-            try w.writeAll("</th><td data-label=\"Where\"><a href=\"");
-            try suiteHref(w, s);
-            try w.writeAll("\">");
-            try suiteName(w, s);
-            try w.writeAll("</a>");
-            if (f.verdict == .no_chrome) try w.writeAll(" <span class=\"quiet\">(no Chrome run to compare)</span>");
-            try w.writeAll("</td><td class=\"msg\"><pre>");
-            const msg = if (f.test_rec) |t| t.message orelse "" else f.page.?.message orelse "";
-            try html.text(w, msg[0..@min(msg.len, 300)]);
-            try w.writeAll("</pre></td></tr>\n");
+        if (has_suite) {
+            try running.append(arena, row);
+        } else if (manifest.waits(m, fw)) {
+            row.waits = neededProtocol(fw);
+            row.sub = if (fw.not_run.len > 0) fw.not_run[0].version else "";
+            try waiting.append(arena, row);
         }
-        try w.writeAll("</tbody>\n</table>\n");
     }
-    // A Chrome run that failed tests it does not name: they may be among
-    // the Crane-only ones.
-    for (suites, failures) |s, fs| {
-        const unnamed = chromeUnnamedFailures(s);
-        const t = Tally.of(fs, .crane_only);
-        if (unnamed == 0 or t.tests == 0) continue;
-        try w.writeAll("<p class=\"fine\">");
-        try suiteName(w, s.suite);
-        try w.writeAll(": Chrome&#39;s own run failed ");
-        try html.plural(w, unnamed, "test", "tests");
-        try w.writeAll(" that its output does not name; ");
-        try w.writeAll(if (unnamed == 1) "it" else "they");
-        try w.writeAll(" may be among the ");
-        try html.num(w, t.tests);
-        try w.writeAll(" counted here.</p>\n");
-    }
-}
-
-/// Section 3: TodoMVC in a few numbers, every app in a closed list.
-fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, failures: []const []const Failure) !void {
+    std.mem.sort(Row, running.items, {}, byTitle);
+    std.mem.sort(Row, waiting.items, {}, byTitle);
     var apps: u32 = 0;
-    var crane_all: u32 = 0;
-    var chrome_all: u32 = 0;
-    var crane: journal.Counts = .{};
-    var chrome: journal.Counts = .{};
-    var crane_only: u32 = 0;
-    var shared: u32 = 0;
-    var only_apps: std.ArrayList(struct { usize, u32 }) = .empty;
-    var chrome_only: std.ArrayList(struct { usize, []const u8 }) = .empty;
-    // Every list here is A to Z by app.
-    var order: std.ArrayList(usize) = .empty;
-    for (suites, 0..) |s, si| if (s.suite.kind == .todomvc_port) try order.append(arena, si);
-    std.mem.sort(usize, order.items, suites, struct {
-        fn lt(ss: []const SuiteRuns, a: usize, b: usize) bool {
-            return std.ascii.lessThanIgnoreCase(ss[a].suite.title, ss[b].suite.title);
-        }
-    }.lt);
-    for (order.items) |si| {
-        const s = suites[si];
+    var todo: Row = .{ .id = "todomvc", .title = "TodoMVC", .sub = "" };
+    for (suites) |s| if (s.suite.kind == .todomvc_port) {
         apps += 1;
         if (latest(s)) |r| {
-            crane.merge(r.counts);
-            if (allPass(r)) crane_all += 1;
-            if (s.chrome) |c| for (c.tests) |ct| if (isFailing(ct)) {
-                for (r.tests) |t| if (std.mem.eql(u8, t.id, ct.id) and t.status == .PASS) {
-                    try chrome_only.append(arena, .{ si, ct.id });
-                    break;
-                };
-            };
+            var c = todo.crane orelse journal.Counts{};
+            c.merge(r.counts);
+            todo.crane = c;
         }
-        if (s.chrome) |c| {
-            chrome.merge(c.counts);
-            if (allPass(c)) chrome_all += 1;
+        if (s.chrome) |r| {
+            var c = todo.chrome orelse journal.Counts{};
+            c.merge(r.counts);
+            todo.chrome = c;
         }
-        const t = Tally.of(failures[si], .crane_only);
-        crane_only += t.total();
-        shared += Tally.of(failures[si], .shared).total();
-        if (t.total() > 0) try only_apps.append(arena, .{ si, t.total() });
+    };
+    if (apps > 0) {
+        todo.sub = try std.fmt.allocPrint(arena, "all {d} apps\u{2019} tests", .{apps});
+        try running.append(arena, todo);
     }
+    try running.appendSlice(arena, waiting.items);
+    return running.items;
+}
+
+/// Passed over run, as a percentage.
+fn pct(c: journal.Counts) ?f64 {
+    if (c.ran() == 0) return null;
+    return @as(f64, @floatFromInt(c.pass)) * 100.0 / @as(f64, @floatFromInt(c.ran()));
+}
+
+/// Passed over run, one decimal; never "100.0%" unless every test passed.
+fn rate(w: W, pass: u32, ran: u32) !void {
+    if (ran == 0) return w.writeAll("&mdash;");
+    const tenths = (@as(u64, pass) * 1000 + ran / 2) / ran;
+    if (pass < ran and tenths == 1000) return w.writeAll("&gt;99.9%");
+    if (pass > 0 and tenths == 0) return w.writeAll("&lt;0.1%");
+    try w.print("{d}.{d}%", .{ tenths / 10, tenths % 10 });
+}
+
+/// The same, as plain text (a tooltip, a description).
+fn rateText(buf: []u8, pass: u32, ran: u32) []const u8 {
+    if (ran == 0) return "no tests";
+    const tenths = (@as(u64, pass) * 1000 + ran / 2) / ran;
+    if (pass < ran and tenths == 1000) return ">99.9%";
+    if (pass > 0 and tenths == 0) return "<0.1%";
+    return std.fmt.bufPrint(buf, "{d}.{d}%", .{ tenths / 10, tenths % 10 }) catch unreachable;
+}
+
+/// "12,099 / 12,126" as plain text.
+fn countsText(arena: Allocator, c: journal.Counts) ![]const u8 {
+    var out: Io.Writer.Allocating = .init(arena);
+    try html.num(&out.writer, c.pass);
+    try out.writer.writeAll(" / ");
+    try html.num(&out.writer, c.ran());
+    return out.written();
+}
+
+// ============================================================================
+// The axis: zoomed to where the rates are, broken between two clusters
+// ============================================================================
+
+pub const Segment = struct {
+    /// Its range, in percent.
+    lo: f64,
+    hi: f64,
+    /// Its tick step, in percent.
+    step: f64,
+    /// Where it sits in the plot, as fractions of its width.
+    x0: f64,
+    x1: f64,
+};
+
+pub const Axis = struct {
+    segs: [2]Segment,
+    n: usize,
+
+    /// The x of a rate as a fraction of the plot's width.
+    pub fn x(a: Axis, v: f64) f64 {
+        for (a.segs[0..a.n]) |s| if (v >= s.lo - 1e-9 and v <= s.hi + 1e-9) {
+            return s.x0 + (v - s.lo) / (s.hi - s.lo) * (s.x1 - s.x0);
+        };
+        // Outside every segment (never, for the values it was made from).
+        return if (v < a.segs[0].lo) a.segs[0].x0 else a.segs[a.n - 1].x1;
+    }
+
+    pub fn broken(a: Axis) bool {
+        return a.n == 2;
+    }
+};
+
+/// Two rates further apart than this split the axis.
+const cluster_gap = 5.0;
+/// The gap between two segments, as a fraction of the plot.
+const break_width = 0.07;
+const steps = [_]f64{ 0.2, 0.5, 1, 2, 5, 10, 20, 25 };
+
+/// `v` without the float noise of a multiplied step (385 * 0.2).
+fn clean(v: f64) f64 {
+    return @round(v * 1e6) / 1e6;
+}
+
+/// A cluster's range: whole percents around it, at least one percent wide,
+/// within 0-100, cut in at most five steps of 1-2-5.
+fn segmentFor(min: f64, max: f64) Segment {
+    var lo0 = @floor(min);
+    var hi0 = @max(@ceil(max), lo0 + 1);
+    if (hi0 > 100) {
+        lo0 -= hi0 - 100;
+        hi0 = 100;
+    }
+    for (steps) |st| {
+        const lo = clean(@floor(lo0 / st + 1e-9) * st);
+        const hi = @min(100.0, clean(@ceil(hi0 / st - 1e-9) * st));
+        if ((hi - lo) / st <= 5 + 1e-9) return .{ .lo = @max(0, lo), .hi = hi, .step = st, .x0 = 0, .x1 = 1 };
+    }
+    return .{ .lo = 0, .hi = 100, .step = 20, .x0 = 0, .x1 = 1 };
+}
+
+/// The axis for `values` (percentages): one segment around them, or two
+/// when they fall in two clusters more than `cluster_gap` apart, each as
+/// wide as its range (at least a quarter of the plot); 0-100 when they fall
+/// in more than two.
+pub fn axisFor(arena: Allocator, values: []const f64) !Axis {
+    const whole: Axis = .{ .segs = .{ .{ .lo = 0, .hi = 100, .step = 20, .x0 = 0, .x1 = 1 }, undefined }, .n = 1 };
+    if (values.len == 0) return whole;
+    const v = try arena.dupe(f64, values);
+    std.mem.sort(f64, v, {}, std.sort.asc(f64));
+    var splits: usize = 0;
+    var cut: usize = 0;
+    for (v[1..], 1..) |x, i| if (x - v[i - 1] > cluster_gap) {
+        splits += 1;
+        cut = i;
+    };
+    if (splits == 0) return .{ .segs = .{ segmentFor(v[0], v[v.len - 1]), undefined }, .n = 1 };
+    if (splits > 1) return whole;
+    var a = segmentFor(v[0], v[cut - 1]);
+    var b = segmentFor(v[cut], v[v.len - 1]);
+    if (a.hi >= b.lo) return .{ .segs = .{ segmentFor(v[0], v[v.len - 1]), undefined }, .n = 1 };
+    const wa = @max(0.25, (a.hi - a.lo) / ((a.hi - a.lo) + (b.hi - b.lo)));
+    const wb = @max(0.25, 1 - wa);
+    const room = 1 - break_width;
+    a.x0 = 0;
+    a.x1 = room * wa / (wa + wb);
+    b.x0 = a.x1 + break_width;
+    b.x1 = 1;
+    return .{ .segs = .{ a, b }, .n = 2 };
+}
+
+/// "99%", "99.2%".
+fn tickLabel(buf: []u8, v: f64) []const u8 {
+    const r = @round(v * 10) / 10;
+    if (@abs(r - @round(r)) < 1e-9) return std.fmt.bufPrint(buf, "{d}%", .{@as(i64, @intFromFloat(@round(r)))}) catch unreachable;
+    return std.fmt.bufPrint(buf, "{d:.1}%", .{r}) catch unreachable;
+}
+
+fn pctAttr(w: W, frac: f64) !void {
+    try w.print("{d:.2}%", .{frac * 100});
+}
+
+// ============================================================================
+// The page
+// ============================================================================
+
+pub const Output = struct {
+    index_html: []const u8,
+    card_png: []const u8,
+};
+
+/// The page and its card from the collected runs.
+pub fn render(arena: Allocator, m: manifest.Manifest, suites: []const SuiteRuns, o: Options) !Output {
+    const rows = try chartRows(arena, m, suites);
+    const png = try card.render(arena, try cardFigures(arena, rows));
+    const card_ref = try std.fmt.allocPrint(arena, "card.png?v={x:0>8}", .{@as(u32, @truncate(std.hash.Wyhash.hash(0, png)))});
+    var out: Io.Writer.Allocating = .init(arena);
+    try writeIndex(arena, &out.writer, m, suites, rows, o, card_ref);
+    return .{ .index_html = out.written(), .card_png = png };
+}
+
+/// The card's rows: every row's rates in tenths of a percent.
+fn cardFigures(arena: Allocator, rows: []const Row) !card.Figures {
+    var out: std.ArrayList(card.Row) = .empty;
+    var waiting: std.ArrayList([]const u8) = .empty;
+    for (rows) |r| {
+        if (r.waits != null) {
+            try waiting.append(arena, r.title);
+            continue;
+        }
+        try out.append(arena, .{ .title = r.title, .crane = if (r.crane) |c| card.tenths(c.pass, c.ran()) else null, .chrome = if (r.chrome) |c| card.tenths(c.pass, c.ran()) else null });
+    }
+    return .{ .rows = out.items, .waiting = waiting.items };
+}
+
+/// "Angular 99.8%, htmx 99.9% and jQuery 99.4% of their own tests pass in
+/// Crane (Chrome: ...); TodoMVC's 43 apps 76.4% (Chrome 76.7%); React,
+/// Svelte and Vue wait for CDP." - from the rows, for every description.
+fn writeDescription(w: W, rows: []const Row) !void {
+    var buf: [16]u8 = undefined;
+    var own: usize = 0;
+    for (rows) |r| {
+        if (r.waits != null or std.mem.eql(u8, r.id, "todomvc")) continue;
+        const c = r.crane orelse continue;
+        try w.writeAll(if (own == 0) "Crane passes " else ", ");
+        own += 1;
+        try w.print("{s} {s}", .{ r.title, rateText(&buf, c.pass, c.ran()) });
+    }
+    if (own > 0) try w.writeAll(" of the frameworks' own tests");
+    var chrome_n: usize = 0;
+    for (rows) |r| {
+        if (r.waits != null or std.mem.eql(u8, r.id, "todomvc")) continue;
+        if (r.crane == null) continue;
+        const c = r.chrome orelse continue;
+        try w.writeAll(if (chrome_n == 0) " (Chrome: " else ", ");
+        chrome_n += 1;
+        try w.print("{s} {s}", .{ r.title, rateText(&buf, c.pass, c.ran()) });
+    }
+    if (chrome_n > 0) try w.writeAll(")");
+    for (rows) |r| if (std.mem.eql(u8, r.id, "todomvc")) {
+        const c = r.crane orelse break;
+        try w.writeAll(if (own > 0) "; " else "Crane passes ");
+        try w.print("{s} of TodoMVC's apps' tests", .{rateText(&buf, c.pass, c.ran())});
+        if (r.chrome) |g| try w.print(" (Chrome {s})", .{rateText(&buf, g.pass, g.ran())});
+    };
+    var waiting: usize = 0;
+    var total_waiting: usize = 0;
+    var protocol: manifest.Protocol = .cdp;
+    for (rows) |r| if (r.waits) |p| {
+        total_waiting += 1;
+        if (p != .cdp) protocol = p;
+    };
+    for (rows) |r| if (r.waits != null) {
+        try w.writeAll(if (waiting == 0) "; " else if (waiting + 1 == total_waiting) " and " else ", ");
+        waiting += 1;
+        try w.writeAll(r.title);
+        if (waiting == total_waiting) try w.print(" can't run yet: {s} for {s}", .{ if (total_waiting == 1) "it waits" else "they wait", protocol.short() });
+    };
+    try w.writeAll(". Crane is a headless web platform engine in Zig.");
+}
+
+fn writeHead(w: W, arena: Allocator, rows: []const Row, o: Options, card_ref: []const u8) !void {
+    var d: Io.Writer.Allocating = .init(arena);
+    try writeDescription(&d.writer, rows);
+    const desc = d.written();
+    try w.writeAll("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Crane: JavaScript frameworks</title>\n<meta name=\"description\" content=\"");
+    try html.text(w, desc);
+    try w.writeAll("\">\n<meta name=\"color-scheme\" content=\"light dark\">\n");
+    try w.print("<link rel=\"stylesheet\" href=\"{s}site.css\">\n<link rel=\"icon\" href=\"data:,\">\n<script src=\"{s}site.js\" defer></script>\n", .{ o.assets, o.assets });
+    // The social card, as the progress and performance pages give theirs.
+    try w.writeAll("<link rel=\"canonical\" href=\"");
+    try html.text(w, o.site_url);
+    try w.writeAll("frameworks/\">\n<meta property=\"og:type\" content=\"website\">\n<meta property=\"og:site_name\" content=\"Crane\">\n<meta property=\"og:title\" content=\"Crane: JavaScript frameworks\">\n<meta property=\"og:description\" content=\"");
+    try html.text(w, desc);
+    try w.writeAll("\">\n<meta property=\"og:url\" content=\"");
+    try html.text(w, o.site_url);
+    try w.writeAll("frameworks/\">\n<meta property=\"og:image\" content=\"");
+    try html.text(w, o.site_url);
+    try w.writeAll("frameworks/");
+    try html.text(w, card_ref);
+    try w.writeAll("\">\n<meta property=\"og:image:type\" content=\"image/png\">\n<meta property=\"og:image:width\" content=\"1200\">\n<meta property=\"og:image:height\" content=\"630\">\n");
+    try w.writeAll("<meta property=\"og:image:alt\" content=\"The share of each JavaScript framework's own tests that pass in Crane, beside Chrome, and of TodoMVC's apps' tests; the frameworks Crane cannot run yet, named.\">\n");
+    try w.writeAll("<meta name=\"twitter:card\" content=\"summary_large_image\">\n<meta name=\"twitter:title\" content=\"Crane: JavaScript frameworks\">\n<meta name=\"twitter:description\" content=\"");
+    try html.text(w, desc);
+    try w.writeAll("\">\n<meta name=\"twitter:image\" content=\"");
+    try html.text(w, o.site_url);
+    try w.writeAll("frameworks/");
+    try html.text(w, card_ref);
+    try w.writeAll("\">\n");
+    try w.writeAll(style);
+    try w.writeAll("</head>\n<body>\n<main class=\"doc fw\" id=\"main\">\n");
+}
+
+const style =
+    \\<style>
+    \\.fw { --crane: #2a78d6; margin: 0 auto; }
+    \\@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fw { --crane: #3987e5; } }
+    \\:root[data-theme="dark"] .fw { --crane: #3987e5; }
+    \\.fw .subtitle { max-width: 52rem; }
+    \\.fw .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    \\.fw .chart { margin: 0 0 2.6rem; }
+    \\.fw .chart .box-head { align-items: center; flex-wrap: wrap; row-gap: 0.4rem; }
+    \\.fw .chart h2.box-title { position: static; }
+    \\.fw .key { display: flex; gap: 1.2rem; margin: 0; padding: 0; list-style: none; font: 500 0.84rem/1 var(--sans); color: var(--ink); }
+    \\.fw .key li { display: flex; align-items: center; gap: 0.4rem; }
+    \\.fw .rows { padding: 0.5rem 1rem 0.2rem; }
+    \\.fw .dr { display: grid; grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr) 6.6rem 6.6rem; column-gap: 1.1rem; align-items: center; padding: 0.5rem 0; }
+    \\.fw .dr-head { padding: 0 0 0.1rem; font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); }
+    \\.fw .dr-head span { grid-column: 3; text-align: right; }
+    \\.fw .dr-head span + span { grid-column: 4; }
+    \\.fw .dr-name { min-width: 0; }
+    \\.fw .dr-title { display: block; font: 620 1.14rem/1.2 var(--serif); }
+    \\.fw .dr-title a { color: inherit; text-decoration: none; }
+    \\.fw .dr-sub { display: block; margin-top: 0.1rem; font: 400 0.78rem/1.3 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    \\.fw .plot { display: block; width: 100%; height: 30px; overflow: visible; }
+    \\.fw .plot .grid { stroke: var(--rule); stroke-width: 1; }
+    \\.fw .plot .track { stroke: var(--rule-strong); stroke-width: 1; }
+    \\.fw .plot .link { stroke: color-mix(in srgb, var(--crane) 40%, transparent); stroke-width: 4; stroke-linecap: round; }
+    \\.fw .plot .crane { fill: var(--crane); stroke: var(--paper); stroke-width: 2; }
+    \\.fw .plot .chrome { fill: var(--paper); stroke: var(--ink-2); stroke-width: 2; }
+    \\.fw .plot .brk { stroke: var(--ink-2); stroke-width: 1.2; }
+    \\.fw .dr-v { text-align: right; font: 400 0.76rem/1.25 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    \\.fw .dr-v b { display: block; font: 650 1.24rem/1.15 var(--sans); color: var(--ink); }
+    \\.fw .dr-v.g b { font-weight: 450; color: var(--ink-2); }
+    \\.fw .dr-v .vl { display: none; }
+    \\.fw .dr-v.none { font-size: 0.84rem; }
+    \\.fw .dr-wait { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.8rem; min-height: 30px; padding: 0.3rem 0.5rem; border-radius: 2px;
+    \\  background: repeating-linear-gradient(135deg, var(--unrun) 0 5px, transparent 5px 10px); }
+    \\.fw .mark-wait { padding: 0.32rem 0.5rem; border-radius: 2px; background: var(--block-wash); color: var(--block); font: 650 0.72rem/1 var(--sans); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+    \\.fw .why { padding: 0.05rem 0.3rem; border-radius: 2px; background: var(--paper); font: 400 0.86rem/1.35 var(--sans); color: var(--ink-2); }
+    \\.fw .axis { display: block; width: 100%; height: 22px; overflow: visible; font: 400 11px var(--sans); }
+    \\.fw .axis text { fill: var(--ink-2); font-variant-numeric: tabular-nums; }
+    \\.fw .axis .brk { stroke: var(--ink-2); stroke-width: 1.2; }
+    \\.fw .dr-axis { padding-top: 0.15rem; }
+    \\.fw .dr-axis .axis { grid-column: 2; }
+    \\.fw .axis-note { margin: 0.3rem 1rem 1rem; max-width: var(--measure); font: 400 0.8rem/1.45 var(--sans); color: var(--ink-2); }
+    \\.fw details.fold { margin: 0 0 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--rule); }
+    \\.fw details.fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem; list-style: none; cursor: pointer; }
+    \\.fw details.fold > summary::-webkit-details-marker { display: none; }
+    \\.fw details.fold > summary h2 { display: inline-flex; align-items: baseline; gap: 0.6rem; margin: 0; font-size: 1.32rem; }
+    \\.fw details.fold > summary h2::before { content: ""; flex: none; width: 0.42rem; height: 0.42rem; border-right: 1.4px solid var(--ink-2); border-bottom: 1.4px solid var(--ink-2); transform: translateY(-0.12em) rotate(-45deg); transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+    \\.fw details.fold[open] > summary h2::before { transform: translateY(-0.2em) rotate(45deg); }
+    \\.fw details.fold > summary:hover h2 { color: var(--link); }
+    \\.fw .fold-meta { margin-left: auto; font: 400 0.82rem/1.3 var(--sans); color: var(--ink-2); }
+    \\.fw .fold-body { padding: 0.9rem 0 0.6rem; }
+    \\.fw .fold-body > p, .fw .facts, .fw .method { max-width: var(--measure); }
+    \\.fw .allpass { margin: 0 0 1rem; font: 400 1rem/1.4 var(--sans); }
+    \\.fw .allpass b { font-weight: 650; font-variant-numeric: tabular-nums; }
+    \\.fw .apps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
+    \\.fw .app-list { margin: 0; padding: 0; list-style: none; }
+    \\.fw .app { display: grid; grid-template-columns: minmax(6rem, 11rem) minmax(0, 1fr) 3rem 3rem; column-gap: 0.75rem; align-items: center; min-height: 1.72rem; font: 400 0.84rem/1.25 var(--sans); font-variant-numeric: tabular-nums; }
+    \\.fw .app-head { min-height: 1.3rem; font: 600 0.7rem/1.2 var(--sans); color: var(--ink-2); }
+    \\.fw .app-head span:nth-child(3), .fw .app-head span:nth-child(4) { text-align: right; }
+    \\.fw .app-name { text-align: right; font: 400 0.92rem/1.2 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    \\.fw .app .plot { height: 18px; }
+    \\.fw .app .c { text-align: right; font-weight: 650; }
+    \\.fw .app .g { text-align: right; color: var(--ink-2); }
+    \\.fw .app .none { text-align: right; color: var(--ink-2); }
+    \\.fw .app-axis .axis { grid-column: 2; }
+    \\.fw .facts, .fw .method { padding-left: 1.2rem; }
+    \\.fw .facts li, .fw .method li { margin: 0 0 0.6rem; }
+    \\.fw .note { margin-top: 0.4rem; }
+    \\@media (max-width: 40rem) {
+    \\  .fw .rows { padding: 0.4rem 0.75rem 0.2rem; }
+    \\  .fw .dr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 0.25rem; padding: 0.6rem 0; }
+    \\  .fw .dr-head { display: none; }
+    \\  .fw .dr-name, .fw .dr .plot, .fw .dr-wait { grid-column: 1 / -1; }
+    \\  .fw .dr-v { display: flex; align-items: baseline; gap: 0.35rem; text-align: left; }
+    \\  .fw .dr-v.g { justify-content: flex-end; }
+    \\  .fw .dr-v b { display: inline; font-size: 1.05rem; }
+    \\  .fw .dr-v .vl { display: inline; font-weight: 600; color: var(--ink-2); }
+    \\  .fw .dr-axis { display: block; }
+    \\  .fw .axis .minor { display: none; }
+    \\  .fw .apps { grid-template-columns: minmax(0, 1fr); }
+    \\  .fw .app { grid-template-columns: minmax(5.5rem, 7.5rem) minmax(0, 1fr) 2.8rem 2.8rem; column-gap: 0.5rem; }
+    \\  .fw .app-list + .app-list .app-head { display: none; }
+    \\  .fw .fold-meta { margin-left: 0; }
+    \\}
+    \\</style>
+    \\
+;
+
+const page_foot = "<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n";
+
+/// A circle at a percentage of the plot, with its native tooltip.
+fn dot(w: W, class: []const u8, frac: f64, cy: u32, r: u32, title: []const u8) !void {
+    try w.print("<circle class=\"{s}\" cx=\"", .{class});
+    try pctAttr(w, frac);
+    try w.print("\" cy=\"{d}\" r=\"{d}\"><title>", .{ cy, r });
+    try html.text(w, title);
+    try w.writeAll("</title></circle>");
+}
+
+/// The tracks and gridlines of one row's plot on `axis` (height `h`).
+fn plotFrame(w: W, axis: Axis, h: u32) !void {
+    for (axis.segs[0..axis.n]) |s| {
+        var v = s.lo;
+        while (v <= s.hi + 1e-9) : (v += s.step) {
+            try w.writeAll("<line class=\"grid\" x1=\"");
+            try pctAttr(w, axis.x(v));
+            try w.writeAll("\" x2=\"");
+            try pctAttr(w, axis.x(v));
+            try w.print("\" y1=\"3\" y2=\"{d}\"/>", .{h - 3});
+        }
+        try w.writeAll("<line class=\"track\" x1=\"");
+        try pctAttr(w, s.x0);
+        try w.writeAll("\" x2=\"");
+        try pctAttr(w, s.x1);
+        try w.print("\" y1=\"{d}\" y2=\"{d}\"/>", .{ h / 2, h / 2 });
+    }
+}
+
+/// Two short slants where the axis breaks, centred on `y`.
+fn breakMark(w: W, axis: Axis, y: u32) !void {
+    if (!axis.broken()) return;
+    const mid = (axis.segs[0].x1 + axis.segs[1].x0) / 2;
+    try w.writeAll("<svg x=\"");
+    try pctAttr(w, mid);
+    try w.print("\" y=\"{d}\" overflow=\"visible\"><line class=\"brk\" x1=\"-6\" y1=\"5\" x2=\"-1\" y2=\"-5\"/><line class=\"brk\" x1=\"1\" y1=\"5\" x2=\"6\" y2=\"-5\"/></svg>", .{y});
+}
+
+fn writeChart(arena: Allocator, w: W, rows: []const Row) !void {
+    var values: std.ArrayList(f64) = .empty;
+    for (rows) |r| {
+        if (r.crane) |c| if (pct(c)) |v| try values.append(arena, v);
+        if (r.chrome) |c| if (pct(c)) |v| try values.append(arena, v);
+    }
+    const axis = try axisFor(arena, values.items);
+    try w.writeAll("<section class=\"box chart\" id=\"rates\" aria-labelledby=\"rates-h\">\n<div class=\"box-head\"><h2 class=\"box-title\" id=\"rates-h\">Pass rate: Crane beside Chrome</h2>\n");
+    try w.writeAll("<ul class=\"key\"><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"var(--crane)\"/></svg>Crane</li><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"var(--paper)\" stroke=\"var(--ink-2)\" stroke-width=\"2\"/></svg>Chrome</li></ul></div>\n");
+    try w.writeAll("<div class=\"rows\" role=\"list\">\n<div class=\"dr dr-head\" aria-hidden=\"true\"><span>Crane</span><span>Chrome</span></div>\n");
+    var buf: [16]u8 = undefined;
+    for (rows) |r| {
+        try w.writeAll("<div class=\"dr\" role=\"listitem\" id=\"r-");
+        try html.text(w, r.id);
+        try w.writeAll("\"><div class=\"dr-name\"><span class=\"dr-title\">");
+        if (std.mem.eql(u8, r.id, "todomvc")) try w.writeAll("<a href=\"#todomvc\">");
+        try html.text(w, r.title);
+        if (std.mem.eql(u8, r.id, "todomvc")) try w.writeAll("</a>");
+        try w.writeAll("</span><span class=\"dr-sub\">");
+        try html.text(w, r.sub);
+        try w.writeAll("</span></div>");
+        if (r.waits) |p| {
+            try w.print("<div class=\"dr-wait\"><span class=\"mark-wait\">can&#39;t run yet &middot; waits for {s}</span><span class=\"why\">its test runner drives the browser over {s}, which Crane does not support yet (after 0.1)</span></div></div>\n", .{ p.short(), p.short() });
+            continue;
+        }
+        // The plot: the line from Crane's rate to Chrome's, the ring, the dot.
+        try w.writeAll("<svg class=\"plot\" aria-hidden=\"true\">");
+        try plotFrame(w, axis, 30);
+        try breakMark(w, axis, 15);
+        const cv = if (r.crane) |c| pct(c) else null;
+        const gv = if (r.chrome) |c| pct(c) else null;
+        if (cv != null and gv != null) {
+            try w.writeAll("<line class=\"link\" x1=\"");
+            try pctAttr(w, axis.x(cv.?));
+            try w.writeAll("\" x2=\"");
+            try pctAttr(w, axis.x(gv.?));
+            try w.writeAll("\" y1=\"15\" y2=\"15\"/>");
+        }
+        if (gv) |v| try dot(w, "chrome", axis.x(v), 15, 6, try std.fmt.allocPrint(arena, "Chrome: {s} ({s})", .{ try countsText(arena, r.chrome.?), rateText(&buf, r.chrome.?.pass, r.chrome.?.ran()) }));
+        if (cv) |v| try dot(w, "crane", axis.x(v), 15, 7, try std.fmt.allocPrint(arena, "Crane: {s} ({s})", .{ try countsText(arena, r.crane.?), rateText(&buf, r.crane.?.pass, r.crane.?.ran()) }));
+        try w.writeAll("</svg>");
+        // The numbers, each with its name for a reader who does not see the heads.
+        for ([_]?journal.Counts{ r.crane, r.chrome }, 0..) |maybe, i| {
+            const cls = if (i == 0) "c" else "g";
+            const name = if (i == 0) "Crane" else "Chrome";
+            if (maybe) |c| if (c.ran() > 0) {
+                try w.print("<div class=\"dr-v {s}\"><span class=\"vl\">{s}</span><span class=\"vh\">{s}: </span><b>", .{ cls, name, name });
+                try rate(w, c.pass, c.ran());
+                try w.writeAll("</b><span>");
+                try html.num(w, c.pass);
+                try w.writeAll(" / ");
+                try html.num(w, c.ran());
+                try w.writeAll("</span></div>");
+                continue;
+            };
+            try w.print("<div class=\"dr-v {s} none\"><span class=\"vl\">{s}</span><span class=\"vh\">{s}: </span>{s}</div>", .{ cls, name, name, if (i == 0) "no run yet" else "no run" });
+        }
+        try w.writeAll("</div>\n");
+    }
+    // The axis under the lines: every tick, the breaks marked.
+    try w.writeAll("<div class=\"dr dr-axis\" aria-hidden=\"true\"><svg class=\"axis\">");
+    var tbuf: [16]u8 = undefined;
+    for (axis.segs[0..axis.n], 0..) |s, si| {
+        var v = s.lo;
+        var k: usize = 0;
+        while (v <= s.hi + 1e-9) : ({
+            v += s.step;
+            k += 1;
+        }) {
+            const first = k == 0;
+            const last = v + s.step > s.hi + 1e-9;
+            const anchor = if (first and (si == 0 or axis.broken())) "start" else if (last) "end" else "middle";
+            const minor = !first and !last;
+            try w.print("<text{s} x=\"", .{if (minor) " class=\"minor\"" else ""});
+            try pctAttr(w, axis.x(v));
+            try w.print("\" y=\"14\" text-anchor=\"{s}\">{s}</text>", .{ anchor, tickLabel(&tbuf, v) });
+        }
+    }
+    try breakMark(w, axis, 9);
+    try w.writeAll("</svg></div>\n</div>\n");
+    // What the axis is, said once.
+    try w.writeAll("<p class=\"axis-note\">");
+    if (axis.broken()) {
+        try w.writeAll("The axis is zoomed to where the rates are, ");
+        for (axis.segs[0..2], 0..) |s, i| {
+            if (i > 0) try w.writeAll(" and ");
+            try w.print("{s}&ndash;", .{tickLabel(&tbuf, s.lo)});
+            try w.writeAll(tickLabel(&tbuf, s.hi));
+        }
+        try w.writeAll(", broken between them: no rate falls in the gap. ");
+    } else if (axis.segs[0].lo > 0 or axis.segs[0].hi < 100) {
+        try w.print("The axis is zoomed to where the rates are, {s}&ndash;", .{tickLabel(&tbuf, axis.segs[0].lo)});
+        try w.print("{s}. ", .{tickLabel(&tbuf, axis.segs[0].hi)});
+    }
+    try w.writeAll("Pass rate is the tests that passed of the tests run; dots, not bars, so no length is cut short.</p>\n</section>\n");
+}
+
+/// The TodoMVC apps by their pass rate in Crane, highest first (then Chrome's,
+/// then A to Z), in two columns.
+fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns) !void {
+    const App = struct { title: []const u8, crane: ?journal.Counts, chrome: ?journal.Counts, crane_all: bool, chrome_all: bool };
+    var apps: std.ArrayList(App) = .empty;
+    var crane_all: u32 = 0;
+    var chrome_all: u32 = 0;
+    var tests_each: ?u32 = null;
+    for (suites) |s| if (s.suite.kind == .todomvc_port) {
+        const r = latest(s);
+        const a: App = .{ .title = s.suite.title, .crane = if (r) |x| x.counts else null, .chrome = if (s.chrome) |x| x.counts else null, .crane_all = if (r) |x| allPass(x) else false, .chrome_all = if (s.chrome) |x| allPass(x) else false };
+        crane_all += @intFromBool(a.crane_all);
+        chrome_all += @intFromBool(a.chrome_all);
+        if (r) |x| if (x.tests.len > 0) {
+            tests_each = @intCast(x.tests.len);
+        };
+        try apps.append(arena, a);
+    };
+    if (apps.items.len == 0) return;
+    const key = struct {
+        fn of(c: ?journal.Counts) f64 {
+            const x = c orelse return -1;
+            return pct(x) orelse -1;
+        }
+        fn lt(_: void, a: App, b: App) bool {
+            const ca = of(a.crane);
+            const cb = of(b.crane);
+            if (ca != cb) return ca > cb;
+            const ga = of(a.chrome);
+            const gb = of(b.chrome);
+            if (ga != gb) return ga > gb;
+            return std.ascii.lessThanIgnoreCase(a.title, b.title);
+        }
+    };
+    std.mem.sort(App, apps.items, {}, key.lt);
     var not_served: u32 = 0;
     if (m.todomvc) |t| for (t.apps) |app| {
         not_served += @intFromBool(app.not_served != null);
     };
-    try w.writeAll("<p class=\"lede\">The apps todomvc.com lists, each the app&#39;s unmodified build, checked by Crane&#39;s port of TodoMVC&#39;s app spec (29 tests per app). They measure an app written with a framework, not the framework&#39;s own tests.</p>\n");
-    try w.writeAll("<table class=\"versus\">\n<thead><tr><th scope=\"col\"></th><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">Chrome</th></tr></thead>\n<tbody>\n");
-    try w.writeAll("<tr><th scope=\"row\">Apps that pass every test</th><td class=\"n\"><b>");
-    try html.num(w, crane_all);
-    try w.writeAll("</b> / ");
-    try html.num(w, apps);
-    try w.writeAll("</td><td class=\"n\"><b>");
-    try html.num(w, chrome_all);
-    try w.writeAll("</b> / ");
-    try html.num(w, apps);
-    try w.writeAll("</td></tr>\n<tr><th scope=\"row\">Tests passed</th><td class=\"n\"><b>");
-    try html.num(w, crane.pass);
-    try w.writeAll("</b> / ");
-    try html.num(w, crane.ran());
-    try w.writeAll("</td><td class=\"n\"><b>");
-    try html.num(w, chrome.pass);
-    try w.writeAll("</b> / ");
-    try html.num(w, chrome.ran());
-    try w.writeAll("</td></tr>\n</tbody>\n</table>\n<ul class=\"fw-facts\">\n<li><b class=\"fail\">");
-    try html.num(w, crane_only);
-    try w.writeAll("</b> ");
-    try w.writeAll(if (crane_only == 1) "test fails" else "tests fail");
-    try w.writeAll(" only in Crane");
-    if (only_apps.items.len > 0) {
-        try w.writeAll(", in ");
-        try html.plural(w, only_apps.items.len, "app", "apps");
-        try w.writeAll(": ");
-        for (only_apps.items, 0..) |x, i| {
-            if (i > 0) try w.writeAll(", ");
-            try w.writeAll("<a href=\"");
-            try suiteHref(w, suites[x[0]].suite);
-            try w.writeAll("\">");
-            try html.text(w, suites[x[0]].suite.title);
-            try w.print(" {d}</a>", .{x[1]});
-        }
-        try w.writeAll(" (their causes are in <a href=\"#gaps\">section 2</a>)");
-    }
-    try w.writeAll(".</li>\n<li><b>");
-    try html.num(w, chrome_only.items.len);
-    try w.writeAll("</b> ");
-    try w.writeAll(if (chrome_only.items.len == 1) "test fails" else "tests fail");
-    try w.writeAll(" only in Chrome");
-    for (chrome_only.items, 0..) |x, i| {
-        try w.writeAll(if (i == 0) ": " else "; ");
-        try html.text(w, suites[x[0]].suite.title);
-        try w.writeAll(" &ldquo;");
-        try html.text(w, x[1]);
-        try w.writeAll("&rdquo;");
-    }
-    try w.writeAll(".</li>\n<li><b>");
-    try html.num(w, shared);
-    try w.writeAll("</b> ");
-    try w.writeAll(if (shared == 1) "test fails" else "tests fail");
-    try w.writeAll(" in Chrome too, so they say nothing about Crane; each app&#39;s page lists them.</li>\n</ul>\n");
 
-    try w.print("<details class=\"fw-more\" id=\"apps\"><summary>All {d} apps, A to Z</summary>\n", .{apps});
-    try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">App</th><th scope=\"col\" class=\"n\">Crane: tests passed</th><th scope=\"col\" class=\"n\">Chrome: tests passed</th><th scope=\"col\" class=\"n\">Fail only in Crane</th></tr></thead>\n<tbody>\n");
-    for (order.items) |si| {
-        const s = suites[si];
-        try w.writeAll("<tr id=\"app-");
-        try html.text(w, s.suite.framework);
-        try w.writeAll("\"><th scope=\"row\"><a href=\"todomvc/");
-        try html.href(w, s.suite.framework);
-        try w.writeAll("/\">");
-        try html.text(w, s.suite.title);
-        try w.writeAll("</a>");
-        if (s.suite.app) |app| if (app.version) |v| {
-            try w.writeAll("<span class=\"ver\">");
-            try html.text(w, v);
-            try w.writeAll("</span>");
-        };
-        try w.writeAll("</th>");
-        if (latest(s)) |r| try passCell(w, r.counts, "Crane") else try w.writeAll("<td class=\"n quiet\" data-label=\"Crane\">no run yet</td>");
-        if (s.chrome) |c| try passCell(w, c.counts, "Chrome") else try w.writeAll("<td class=\"n quiet\" data-label=\"Chrome\">no Chrome run yet</td>");
-        const t = Tally.of(failures[si], .crane_only);
-        try w.print("<td class=\"n\" data-label=\"Fail only in Crane\" data-v=\"{d}\">", .{t.total()});
-        if (t.total() == 0) try w.writeAll("<span class=\"quiet\">none</span>") else {
-            try w.writeAll("<a class=\"fail\" href=\"");
-            try suiteHref(w, s.suite);
-            try w.writeAll("\">");
-            try tallyText(w, t);
-            try w.writeAll("</a>");
+    try w.print("<details class=\"fold\" id=\"todomvc\" open>\n<summary><h2>TodoMVC: pass rate per app</h2><span class=\"fold-meta\">{d} apps", .{apps.items.len});
+    if (tests_each) |n| try w.print(" &middot; {d} tests each", .{n});
+    try w.writeAll(" &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
+    try w.print("<p class=\"allpass\"><b>{d}</b> of {d} apps pass every test in Crane, <b>{d}</b> in Chrome.</p>\n", .{ crane_all, apps.items.len, chrome_all });
+    try w.writeAll("<div class=\"apps\">\n");
+    const half = (apps.items.len + 1) / 2;
+    const zero_to_hundred: Axis = .{ .segs = .{ .{ .lo = 0, .hi = 100, .step = 50, .x0 = 0, .x1 = 1 }, undefined }, .n = 1 };
+    var buf: [16]u8 = undefined;
+    for ([_][]const App{ apps.items[0..half], apps.items[half..] }) |col| {
+        if (col.len == 0) continue;
+        try w.writeAll("<ul class=\"app-list\">\n<li class=\"app app-head\" aria-hidden=\"true\"><span></span><span></span><span>Crane</span><span>Chrome</span></li>\n");
+        for (col) |a| {
+            try w.writeAll("<li class=\"app\"><span class=\"app-name\">");
+            try html.text(w, a.title);
+            try w.writeAll("</span><svg class=\"plot\" aria-hidden=\"true\">");
+            try plotFrame(w, zero_to_hundred, 18);
+            const cv = if (a.crane) |c| pct(c) else null;
+            const gv = if (a.chrome) |c| pct(c) else null;
+            if (cv != null and gv != null and cv.? != gv.?) {
+                try w.writeAll("<line class=\"link\" x1=\"");
+                try pctAttr(w, cv.? / 100);
+                try w.writeAll("\" x2=\"");
+                try pctAttr(w, gv.? / 100);
+                try w.writeAll("\" y1=\"9\" y2=\"9\"/>");
+            }
+            if (gv) |v| try dot(w, "chrome", v / 100, 9, 5, try std.fmt.allocPrint(arena, "{s}, Chrome: {s} ({s})", .{ a.title, try countsText(arena, a.chrome.?), rateText(&buf, a.chrome.?.pass, a.chrome.?.ran()) }));
+            if (cv) |v| try dot(w, "crane", v / 100, 9, 6, try std.fmt.allocPrint(arena, "{s}, Crane: {s} ({s})", .{ a.title, try countsText(arena, a.crane.?), rateText(&buf, a.crane.?.pass, a.crane.?.ran()) }));
+            try w.writeAll("</svg>");
+            for ([_]?journal.Counts{ a.crane, a.chrome }, 0..) |maybe, i| {
+                const name = if (i == 0) "Crane" else "Chrome";
+                if (maybe) |c| if (c.ran() > 0) {
+                    try w.print("<span class=\"{s}\"><span class=\"vh\">{s}: </span>", .{ if (i == 0) "c" else "g", name });
+                    try appRate(w, c.pass, c.ran());
+                    try w.writeAll("</span>");
+                    continue;
+                };
+                try w.print("<span class=\"none\"><span class=\"vh\">{s}: </span>&mdash;</span>", .{name});
+            }
+            try w.writeAll("</li>\n");
         }
-        try w.writeAll("</td></tr>\n");
+        try w.writeAll("<li class=\"app app-axis\" aria-hidden=\"true\"><span></span><svg class=\"axis\"><text x=\"0%\" y=\"14\" text-anchor=\"start\">0%</text><text x=\"50%\" y=\"14\" text-anchor=\"middle\">50%</text><text x=\"100%\" y=\"14\" text-anchor=\"end\">100%</text></svg></li>\n</ul>\n");
     }
-    try w.writeAll("</tbody>\n</table>\n");
-    if (m.todomvc) |t| if (not_served > 0) {
-        try w.writeAll("<p class=\"fine\">Not run, because they cannot be served: ");
-        var k: u32 = 0;
-        for (t.apps) |app| if (app.not_served) |why| {
-            if (k > 0) try w.writeAll("; ");
-            k += 1;
-            try html.text(w, app.title);
-            try w.writeAll(" (");
-            try html.text(w, std.mem.trimEnd(u8, why, "."));
-            try w.writeAll(")");
-        };
-        try w.writeAll(".</p>\n");
-    };
-    try w.writeAll("</details>\n");
+    try w.writeAll("</div>\n");
+    if (not_served > 0) {
+        try w.writeAll("<p class=\"fine quiet\">");
+        if (m.todomvc) |t| {
+            var k: u32 = 0;
+            for (t.apps) |app| if (app.not_served != null) {
+                if (k > 0) try w.writeAll(if (k + 1 == not_served) " and " else ", ");
+                k += 1;
+                try html.text(w, app.title);
+            };
+        }
+        try w.writeAll(if (not_served == 1) " is" else " are");
+        try w.writeAll(" listed on todomvc.com but cannot be served: the site&#39;s own link answers 404 and the repository has no such app.</p>\n");
+    }
+    try w.writeAll("</div>\n</details>\n");
+}
+
+/// A whole percent where the rate is one ("100%", "93%"), else one decimal;
+/// never 100% with a failure, never 0% with a pass.
+fn appRate(w: W, pass: u32, ran: u32) !void {
+    const whole = (@as(u64, pass) * 100 + ran / 2) / ran;
+    if (pass < ran and whole == 100) return w.writeAll("&gt;99%");
+    if (pass > 0 and whole == 0) return w.writeAll("&lt;1%");
+    try w.print("{d}%", .{whole});
 }
 
 fn countKind(r: Run, kind: journal.NotRun) u32 {
@@ -947,9 +844,9 @@ fn countKind(r: Run, kind: journal.NotRun) u32 {
     return n;
 }
 
-/// "(Angular 13, htmx 13, jQuery 76)" for the frameworks' own suites, A to Z.
 const Named = struct { []const u8, u32 };
 
+/// "(Angular 13, htmx 13, jQuery 76)" for the frameworks' own suites, A to Z.
 fn perFramework(arena: Allocator, w: W, suites: []const SuiteRuns, count: *const fn (SuiteRuns) u32) !u32 {
     var items: std.ArrayList(Named) = .empty;
     var total: u32 = 0;
@@ -1002,41 +899,65 @@ fn sumOver(suites: []const SuiteRuns, kind: journal.SuiteKind, count: *const fn 
     return n;
 }
 
-/// Section 4, the one place the reasons are given.
-fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, waiting: []const manifest.Framework) !void {
-    try w.writeAll("<ul class=\"fw-facts\">\n");
-    // Rendering.
+/// "What is not run, and why": closed; its summary carries the counts.
+fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, rows: []const Row) !void {
     const rendering = sumOver(suites, .project, countOf(.rendering));
+    const skipped = sumOver(suites, .project, countOf(.project_skip));
+    const app_skips = sumOver(suites, .todomvc_port, countOf(.project_skip));
+    try w.writeAll("<details class=\"fold\" id=\"not-run\">\n<summary><h2>What is not run, and why</h2><span class=\"fold-meta\">");
+    var parts: u32 = 0;
+    for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
+        if (parts > 0) try w.writeAll(" &middot; ");
+        parts += 1;
+        try w.print("{s} ", .{p[1]});
+        try html.plural(w, p[0], "test", "tests");
+    };
+    try w.writeAll("</span></summary>\n<div class=\"fold-body\">\n<ul class=\"facts\">\n");
+    // Rendering.
     try w.writeAll("<li><strong>Rendering.</strong> ");
     try html.text(w, rendering_statement);
     if (rendering > 0) {
         try w.writeAll(" Not run for this reason: ");
         try html.plural(w, rendering, "test", "tests");
         _ = try perFramework(arena, w, suites, countOf(.rendering));
-        try w.writeAll(", each listed with its reason on its framework&#39;s page.");
+        try w.writeAll(", each listed with its reason in the project&#39;s exclusion list (<code>tools/fw_matrix/excluded/</code>).");
     }
     try w.writeAll("</li>\n");
-    // The protocols.
-    if (waiting.len > 0) {
+    // The frameworks that wait, and their suites.
+    var waiting: u32 = 0;
+    for (rows) |r| waiting += @intFromBool(r.waits != null);
+    if (waiting > 0) {
         try w.writeAll("<li><strong>Browser-automation protocols.</strong> ");
-        for (waiting, 0..) |fw, i| {
-            if (i > 0) try w.writeAll(if (i + 1 == waiting.len) " and " else ", ");
-            try w.writeAll("<a href=\"");
-            try html.href(w, fw.id);
-            try w.writeAll("/\">");
+        var k: u32 = 0;
+        for (rows) |r| if (r.waits != null) {
+            if (k > 0) try w.writeAll(if (k + 1 == waiting) " and " else ", ");
+            k += 1;
+            try html.text(w, r.title);
+        };
+        try w.writeAll(" run their browser tests only through Playwright or Puppeteer, which drive the browser over the Chrome DevTools Protocol (CDP) or WebDriver BiDi. Crane does not speak either yet, so these suites wait until after Crane 0.1; Crane does not run them through a harness of its own instead.");
+        for (try frameworkList(arena, m)) |fw| for (fw.not_run) |nr| if (nr.waits_for != null) {
+            try w.writeAll(" ");
             try html.text(w, fw.title);
-            try w.writeAll("</a>");
-        }
-        try w.writeAll(" run their browser tests only through Playwright or Puppeteer, which drive the browser over the Chrome DevTools Protocol (CDP) or WebDriver BiDi. Crane does not speak either yet, so these suites wait until after Crane 0.1; Crane does not run them through a harness of its own instead. Each framework&#39;s page names its suites and their runners.</li>\n");
+            try w.writeAll(" ");
+            try html.text(w, nr.version);
+            try w.writeAll(", ");
+            try html.text(w, nr.name);
+            if (nr.tests) |t| {
+                try w.writeAll(" (");
+                try html.plural(w, t, "test", "tests");
+                try w.writeAll(")");
+            }
+            try w.writeAll(": ");
+            try html.text(w, nr.why);
+        };
+        try w.writeAll("</li>\n");
     }
     // Node.
     try w.writeAll("<li><strong>Node.</strong> ");
     try html.text(w, node_note);
     try w.writeAll("</li>\n");
     // What the projects leave out themselves, and the rest.
-    const skipped = sumOver(suites, .project, countOf(.project_skip));
     const files = sumOver(suites, .project, fileCount);
-    const app_skips = sumOver(suites, .todomvc_port, countOf(.project_skip));
     const server = sumOver(suites, .project, countOf(.needs_server));
     const node_build = sumOver(suites, .project, countOf(.needs_node_build));
     var other_suites = false;
@@ -1087,7 +1008,7 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
         };
         try w.writeAll("</li>\n");
     }
-    try w.writeAll("</ul>\n");
+    try w.writeAll("</ul>\n</div>\n</details>\n");
 }
 
 /// One suite in "How this was measured": its source, its Crane run and its
@@ -1161,420 +1082,96 @@ fn suiteMethod(w: W, s: SuiteRuns) !void {
         try html.text(w, c.label);
         try w.writeAll("</code>. ");
     } else try w.writeAll("No Chrome run yet. ");
-    if (s.runs.len > 1) {
-        try w.writeAll("Earlier Crane runs, tests passed: ");
-        for (s.runs[0 .. s.runs.len - 1], 0..) |r, i| {
-            if (i > 0) try w.writeAll(", ");
-            try w.writeAll("<code>");
-            try html.text(w, r.label);
-            try w.writeAll("</code> ");
-            try html.num(w, r.counts.pass);
-        }
-        try w.writeAll(". ");
-    }
     if (s.suite.note) |note| try html.text(w, note);
 }
 
-// ============================================================================
-// A framework's page and an app's page
-// ============================================================================
-
-/// The figures that open a suite's page: Crane's tests passed with its
-/// counts, Chrome's beside them, one meter.
-fn figures(w: W, s: SuiteRuns, fs: []const Failure) !void {
-    const r = latest(s) orelse {
-        try w.writeAll("<p>No run yet.</p>\n");
-        return;
-    };
-    const c = r.counts;
-    try w.writeAll("<div class=\"figures\" role=\"group\" aria-label=\"Crane\">\n<p class=\"figures-main\"><span class=\"fg-pass\">");
-    try html.num(w, c.pass);
-    try w.writeAll("</span><span class=\"fg-of\"> / ");
-    try html.num(w, c.ran());
-    try w.writeAll("</span> <span class=\"fg-label\">tests passing in Crane</span></p>\n<dl class=\"figures-counts\">");
-    const have_chrome = s.chrome != null;
-    const only = Tally.of(fs, if (have_chrome) .crane_only else .no_chrome);
-    const shared = Tally.of(fs, .shared);
-    try w.print("<div{s}><dt>{s}</dt><dd>", .{ if (only.tests > 0) " class=\"fail\"" else "", if (have_chrome) "Fail only in Crane" else "Fail (no Chrome run to compare)" });
-    try html.num(w, only.tests);
-    try w.writeAll("</dd></div>");
-    if (have_chrome) {
-        try w.writeAll("<div><dt>Fail in Chrome too</dt><dd>");
-        try html.num(w, shared.tests);
-        try w.writeAll("</dd></div>");
-    }
-    if (only.pages + shared.pages > 0) {
-        try w.writeAll("<div class=\"blk\"><dt>Pages that stop early</dt><dd>");
-        try html.num(w, only.pages + shared.pages);
-        try w.writeAll("</dd></div>");
-    }
-    try w.writeAll("<div><dt>Not run</dt><dd>");
-    try html.num(w, c.rendering + c.not_run + @as(u32, @intCast(s.file_entries.len)));
-    try w.writeAll("</dd></div><div><dt>");
-    try w.writeAll(if (s.suite.kind == .todomvc_port) "Skipped by the app spec" else "Skipped by the project");
-    try w.writeAll("</dt><dd>");
-    try html.num(w, c.project_skip);
-    try w.writeAll("</dd></div></dl>\n</div>\n");
-    if (s.chrome) |ch| {
-        try w.writeAll("<p class=\"figures-ref\"><span class=\"ref-name\">Chrome</span> <b>");
-        try html.num(w, ch.counts.pass);
-        try w.writeAll("</b> / ");
-        try html.num(w, ch.counts.ran());
-        try w.writeAll(" tests passing");
-        if (ch.pages.len > 0 and ch.pages[0].imported != null) try w.writeAll(", by the project&#39;s own runner, which runs every test (the ones Crane does not run too)") else try w.writeAll(" on the same pages");
-        try w.writeAll("</p>\n");
-    } else try w.writeAll("<p class=\"figures-ref\">No Chrome run yet.</p>\n");
-    try meter(w, c);
-}
-
-/// The listing of some failures: a test with its first failing assertion,
-/// or a page that stopped with its message.
-fn failureTable(w: W, fs: []const Failure) !void {
-    try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Test</th><th scope=\"col\">Page</th><th scope=\"col\">First failing assertion</th></tr></thead>\n<tbody>\n");
-    for (fs) |f| {
-        try w.writeAll("<tr><th scope=\"row\">");
-        if (f.test_rec) |t| {
-            try html.text(w, t.id);
-            if (t.status != .FAIL) try w.print(" <span class=\"fail\">({s})</span>", .{statusText(t.status)});
-            try w.writeAll("</th><td data-label=\"Page\"><code>");
-            try html.text(w, t.page);
-            try w.writeAll("</code></td><td class=\"msg\"><pre>");
-            const msg = t.message orelse "";
-            try html.text(w, msg[0..@min(msg.len, 600)]);
-        } else {
-            const p = f.page.?;
-            try w.writeAll("The whole page stops before any test runs");
-            if (f.chrome_tests > 0) {
-                try w.writeAll(" <span class=\"quiet\">(Chrome runs ");
-                try html.plural(w, f.chrome_tests, "test", "tests");
-                try w.writeAll(" there)</span>");
-            }
-            try w.writeAll("</th><td data-label=\"Page\"><code>");
-            try html.text(w, p.page);
-            try w.print("</code></td><td class=\"msg\"><pre>{t}: ", .{p.status});
-            const msg = p.message orelse "";
-            try html.text(w, msg[0..@min(msg.len, 600)]);
+/// "How this was measured": closed.
+fn writeMethod(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns) !void {
+    try w.writeAll("<details class=\"fold\" id=\"method\">\n<summary><h2>How this was measured</h2></summary>\n<div class=\"fold-body\">\n<ul class=\"method\">\n");
+    try w.writeAll("<li>Each page is opened in Crane&#39;s console as a user opens it, and read from the test framework&#39;s own report; Chrome&#39;s numbers come from the same pages, or from the project&#39;s own runner where the project runs its tests that way. Pass rate is the tests that passed of the tests run: tests not run (below) are in neither number.</li>\n");
+    var order: std.ArrayList(SuiteRuns) = .empty;
+    for (suites) |s| if (s.suite.kind == .project) try order.append(arena, s);
+    std.mem.sort(SuiteRuns, order.items, {}, struct {
+        fn lt(_: void, a: SuiteRuns, b: SuiteRuns) bool {
+            return std.ascii.lessThanIgnoreCase(a.suite.title, b.suite.title);
         }
-        try w.writeAll("</pre></td></tr>\n");
-    }
-    try w.writeAll("</tbody>\n</table>\n");
-}
-
-fn statusText(s: journal.Status) []const u8 {
-    return switch (s) {
-        .PASS => "pass",
-        .FAIL => "fail",
-        .TIMEOUT => "timeout",
-        .CRASH => "crash",
-        .NOTRUN => "not run",
-    };
-}
-
-/// The section of a suite's Crane-only failures (or, with no Chrome run,
-/// all of them), by cause: the real gaps, the Chrome-only APIs, then those
-/// no cause covers.
-fn failsOnlySection(arena: Allocator, w: W, n: u32, m: manifest.Manifest, s: SuiteRuns, fs: []const Failure) !void {
-    const have_chrome = s.chrome != null;
-    const v: Verdict = if (have_chrome) .crane_only else .no_chrome;
-    try sectionHead(w, n, "fails-only", if (have_chrome) "Fails only in Crane" else "Fails in Crane");
-    if (!have_chrome) try w.writeAll("<p>No Chrome run of these tests yet, so it is not known whether Chrome passes them.</p>\n");
-    if (Tally.of(fs, v).total() == 0) {
-        try w.writeAll(if (have_chrome) "<p>None: every test that fails in Crane fails in Chrome too.</p>\n" else "<p>None.</p>\n");
-    } else {
-        var group: std.ArrayList(Failure) = .empty;
-        const totals = try arena.alloc(u32, m.causes.len);
-        @memset(totals, 0);
-        for (fs) |f| if (f.verdict == v) if (f.cause) |ci| {
-            totals[ci] += 1;
-        };
-        const order = try causeOrder(arena, totals);
-        for ([_]manifest.CauseKind{ .crane_gap, .chrome_only_api }) |kind| for (order) |ci| {
-            const c = m.causes[ci];
-            if (c.kind != kind) continue;
-            group.clearRetainingCapacity();
-            for (fs) |f| if (f.verdict == v and f.cause == ci) try group.append(arena, f);
-            if (group.items.len == 0) continue;
-            try w.writeAll("<h3>");
-            try html.text(w, c.title);
-            if (kind == .chrome_only_api) try w.writeAll("<span class=\"tag\">Chrome-only API, not a standard yet</span>");
-            try w.writeAll("</h3>\n");
-            try failureTable(w, group.items);
-        };
-        group.clearRetainingCapacity();
-        for (fs) |f| if (f.verdict == v and f.cause == null) try group.append(arena, f);
-        if (group.items.len > 0) {
-            try w.writeAll("<h3>Not yet sorted by cause</h3>\n");
-            try failureTable(w, group.items);
-        }
-    }
-    const unnamed = chromeUnnamedFailures(s);
-    if (unnamed > 0) {
-        try w.writeAll("<p class=\"fine\">Chrome&#39;s own run failed ");
-        try html.plural(w, unnamed, "test", "tests");
-        try w.writeAll(" that its output does not name; ");
-        try w.writeAll(if (unnamed == 1) "it" else "they");
-        try w.writeAll(" may be among those above.</p>\n");
-    }
-    try w.writeAll("</section>\n");
-}
-
-/// The closed sections below a suite's Crane-only failures: those Chrome
-/// shares, what is not run, its pages.
-fn closedSections(arena: Allocator, w: W, n: *u32, s: SuiteRuns, fs: []const Failure) !void {
-    const r = latest(s) orelse return;
-    var shared: std.ArrayList(Failure) = .empty;
-    for (fs) |f| if (f.verdict == .shared) try shared.append(arena, f);
-    if (shared.items.len > 0) {
-        n.* += 1;
-        try sectionHead(w, n.*, "shared", "Fails in Chrome too");
-        try w.writeAll("<details class=\"fw-more\"><summary>");
-        try html.plural(w, shared.items.len, "test fails", "tests fail");
-        try w.writeAll(" in Crane and in Chrome: not Crane findings</summary>\n");
-        try failureTable(w, shared.items);
-        try w.writeAll("</details>\n</section>\n");
-    }
-    const not_run = r.counts.rendering + r.counts.not_run + r.counts.project_skip;
-    if (not_run + s.file_entries.len > 0) {
-        n.* += 1;
-        try sectionHead(w, n.*, "not-run", "Not run");
-        try w.writeAll("<details class=\"fw-more\"><summary>");
-        try html.plural(w, not_run, "test", "tests");
-        if (s.file_entries.len > 0) {
-            try w.writeAll(" and ");
-            try html.plural(w, s.file_entries.len, "file", "files");
-        }
-        try w.writeAll(", each with its reason</summary>\n");
-        if (r.counts.rendering > 0) {
-            try w.writeAll("<p>");
-            try html.text(w, rendering_statement);
-            try w.writeAll("</p>\n");
-        }
-        try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Test</th><th scope=\"col\">Page</th><th scope=\"col\">Why</th></tr></thead>\n<tbody>\n");
-        for (r.tests) |t| {
-            const kind = t.not_run orelse continue;
-            try w.writeAll("<tr><th scope=\"row\">");
-            try html.text(w, t.id);
-            try w.writeAll("</th><td data-label=\"Page\"><code>");
-            try html.text(w, t.page);
-            try w.writeAll("</code></td><td data-label=\"Why\">");
-            const why = switch (kind) {
-                .project_skip => switch (s.suite.kind) {
-                    .project => "the project skips it (QUnit.skip, Mocha's pending)",
-                    .todomvc_port => "TodoMVC's app spec skips it for this app (spec.cy.js: its localStorage test for apps that keep nothing there; tests/knownIssues.js: the app's known issues)",
-                },
-                else => t.reason orelse kind.label(),
-            };
-            try html.text(w, why[0..@min(why.len, 600)]);
-            try w.writeAll("</td></tr>\n");
-        }
-        for (s.file_entries) |e| {
-            try w.writeAll("<tr><th scope=\"row\"><code>");
-            try html.text(w, e.id);
-            try w.writeAll("</code> (a whole file)</th><td data-label=\"Page\"></td><td data-label=\"Why\">");
-            try html.text(w, e.why);
-            try w.writeAll("</td></tr>\n");
-        }
-        try w.writeAll("</tbody>\n</table>\n");
-        var unnamed: u32 = 0;
-        for (r.pages) |p| unnamed += p.unnamed_pending orelse 0;
-        if (unnamed > 0) {
-            try w.writeAll("<p class=\"fine\">And ");
-            try html.plural(w, unnamed, "test", "tests");
-            try w.writeAll(" the project skips that its runner counts without naming.</p>\n");
-        }
-        try w.writeAll("</details>\n</section>\n");
-    }
-}
-
-fn pagesSection(w: W, n: u32, r: Run) !void {
-    try sectionHead(w, n, "pages", "Pages");
-    try w.writeAll("<details class=\"fw-more\"><summary>");
-    try html.plural(w, r.pages.len, "page", "pages");
-    try w.writeAll(", each opened in a fresh console</summary>\n<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Page</th><th scope=\"col\">Outcome</th><th scope=\"col\" class=\"n\">Run</th><th scope=\"col\" class=\"n\">Failed</th><th scope=\"col\" class=\"n\">Not run</th><th scope=\"col\" class=\"n\">Seconds</th></tr></thead>\n<tbody>\n");
-    for (r.pages) |p| {
-        var c: journal.Counts = .{};
-        for (r.tests) |t| if (std.mem.eql(u8, t.page, p.page)) c.add(t);
-        c.pass += p.unnamed_passed orelse 0;
-        c.fail += p.unnamed_failed orelse 0;
-        c.project_skip += p.unnamed_pending orelse 0;
-        try w.writeAll("<tr><th scope=\"row\"><code>");
-        try html.text(w, p.page);
-        try w.print("</code></th><td data-label=\"Outcome\"{s}>{t}", .{ if (p.status == .OK) "" else " class=\"blk\"", p.status });
-        if (p.message) |msg| {
-            try w.writeAll(": ");
-            try html.text(w, msg[0..@min(msg.len, 300)]);
-        }
-        try w.print("</td><td class=\"n\" data-label=\"Run\" data-v=\"{d}\">{d}</td><td class=\"n{s}\" data-label=\"Failed\" data-v=\"{d}\">{d}</td><td class=\"n\" data-label=\"Not run\" data-v=\"{d}\">{d}</td><td class=\"n\" data-label=\"Seconds\" data-v=\"{d}\">{d}</td></tr>\n", .{ c.ran(), c.ran(), if (c.fail + c.errored() > 0) " fail" else "", c.fail + c.errored(), c.fail + c.errored(), c.rendering + c.not_run + c.project_skip, c.rendering + c.not_run + c.project_skip, p.wall_ms / 1000, p.wall_ms / 1000 });
-    }
-    try w.writeAll("</tbody>\n</table>\n</details>\n</section>\n");
-}
-
-/// A framework's page (<out>/<framework>/): its own suites' figures and
-/// failures, then those of its own tests that do not run; its TodoMVC app
-/// is linked, never shown here.
-pub fn writeFramework(arena: Allocator, w: W, m: manifest.Manifest, fw: manifest.Framework, suites: []const SuiteRuns, o: Options) !void {
-    var title_buf: [160]u8 = undefined;
-    const title = std.fmt.bufPrint(&title_buf, "Crane: {s}'s own tests", .{fw.title}) catch fw.title;
-    try head(w, title, "A framework's own browser tests in Crane and in Chrome: what fails only in Crane, by cause, with every message; what Chrome fails too; what is not run, and why.", o, 1);
-    try w.writeAll("<header class=\"head\">\n<p class=\"back-link\"><a href=\"../\">All frameworks</a></p>\n<h1>");
-    try html.text(w, fw.title);
-    try w.writeAll(" <span class=\"h1-rest\">in Crane</span></h1>\n<p class=\"subtitle\">");
-    try html.text(w, fw.title);
-    try w.writeAll("&#39;s own browser tests, run in Crane and in Chrome.");
-    for (suites) |s| if (s.suite.kind == .todomvc_port and std.mem.eql(u8, s.suite.framework, fw.id)) {
-        try w.writeAll(" Its TodoMVC app is measured apart: <a href=\"../todomvc/");
-        try html.href(w, s.suite.framework);
-        try w.writeAll("/\">");
-        try html.text(w, s.suite.title);
-        try w.writeAll(" TodoMVC</a>.");
-    };
-    try w.writeAll("</p>\n");
-    var mine: std.ArrayList(usize) = .empty;
-    for (suites, 0..) |s, si| if (s.suite.kind == .project and std.mem.eql(u8, s.suite.framework, fw.id)) try mine.append(arena, si);
-    if (mine.items.len == 0) {
-        try w.writeAll("<p class=\"lede\"><strong>Not run yet.</strong> ");
-        if (neededProtocol(fw)) |p| {
-            try w.writeAll("Its browser tests run only through a runner that drives the browser over ");
-            try html.text(w, p.label());
-            try w.writeAll(", which Crane does not speak yet; they wait until after Crane 0.1.");
-        } else try w.writeAll("None of its own browser tests can run in Crane yet; the table below says why.");
-        try w.writeAll("</p>\n");
-    }
-    // One suite's figures open the page; several suites each get theirs.
-    const one = mine.items.len == 1;
-    var fails: std.ArrayList([]const Failure) = .empty;
-    for (mine.items) |si| try fails.append(arena, try failuresOf(arena, m.causes, suites[si]));
-    if (one) try figures(w, suites[mine.items[0]], fails.items[0]);
-    try w.writeAll("</header>\n");
-    var n: u32 = 0;
-    for (mine.items, fails.items) |si, fs| {
-        const s = suites[si];
-        if (!one) {
-            try w.writeAll("<h2>");
-            try html.text(w, s.suite.title);
-            try w.writeByte(' ');
-            try html.text(w, s.suite.version);
-            try w.writeAll("</h2>\n");
-            try figures(w, s, fs);
-        }
-        n += 1;
-        try failsOnlySection(arena, w, n, m, s, fs);
-        try closedSections(arena, w, &n, s, fs);
-    }
-    if (fw.not_run.len > 0) {
-        n += 1;
-        try sectionHead(w, n, "not-run-suites", "Its own tests Crane does not run");
-        try w.writeAll("<table class=\"listing fw-cols\">\n<thead><tr><th scope=\"col\">Tests</th><th scope=\"col\" class=\"n\">Count</th><th scope=\"col\">Why</th></tr></thead>\n<tbody>\n");
-        for (fw.not_run) |nr| {
-            try w.writeAll("<tr><th scope=\"row\">");
-            try html.text(w, nr.name);
-            try w.writeAll(" <span class=\"ver\">");
-            try html.text(w, nr.runner);
-            try w.writeAll(", <a href=\"");
-            try html.text(w, nr.repository);
-            try w.writeAll("/tree/");
-            try html.text(w, nr.tag);
-            try w.writeAll("\">");
-            try html.text(w, nr.tag);
-            try w.writeAll("</a></span></th><td class=\"n\" data-label=\"Count\"");
-            if (nr.tests) |t| {
-                try w.print(" data-v=\"{d}\">", .{t});
-                try html.num(w, t);
-            } else try w.writeAll(">not counted");
-            try w.writeAll("</td><td data-label=\"Why\">");
-            try html.text(w, nr.why);
-            try w.writeAll("</td></tr>\n");
-        }
-        try w.writeAll("</tbody>\n</table>\n</section>\n");
-    }
-    for (mine.items) |si| {
-        const r = latest(suites[si]) orelse continue;
-        n += 1;
-        try pagesSection(w, n, r);
-    }
-    if (mine.items.len > 0) {
-        n += 1;
-        try sectionHead(w, n, "method", "How this was measured");
-        try w.writeAll("<details class=\"fw-more\"><summary>The runs, the browsers and the pins</summary>\n<ul class=\"method\">\n");
-        for (mine.items) |si| {
-            try w.writeAll("<li>");
-            try suiteMethod(w, suites[si]);
-            try w.writeAll("</li>\n");
-        }
+    }.lt);
+    for (order.items) |s| {
         try w.writeAll("<li>");
-        try html.text(w, node_note);
-        try w.writeAll("</li>\n</ul>\n</details>\n</section>\n");
+        try suiteMethod(w, s);
+        try w.writeAll("</li>\n");
     }
-    try w.writeAll(page_foot);
+    if (m.todomvc) |t| {
+        try w.writeAll("<li>TodoMVC: the apps todomvc.com lists, each the unmodified build committed in <a href=\"");
+        try html.text(w, t.repository);
+        try w.writeAll("\">tastejs/todomvc</a> at <code>");
+        try html.text(w, t.commit[0..@min(12, t.commit.len)]);
+        try w.writeAll("</code>, <code>examples/&lt;app&gt;/</code> pinned by its sha256 and checked at every fetch. ");
+        try html.text(w, todomvc_port_note);
+        try w.writeAll(" ");
+        try html.text(w, todomvc_chrome_note);
+        // The apps given to Cypress, and so to the port, by their folder.
+        var by_folder: u32 = 0;
+        for (t.apps) |app| by_folder += @intFromBool(app.cypress_framework != null);
+        if (by_folder > 0) {
+            try w.writeAll(" ");
+            try html.plural(w, by_folder, "app is", "apps are");
+            try w.writeAll(" given to both as the folder of the build todomvc.com links (");
+            var k: u32 = 0;
+            for (t.apps) |app| if (app.cypress_framework) |f| {
+                if (k > 0) try w.writeAll(", ");
+                k += 1;
+                try w.writeAll("<code>");
+                try html.text(w, f);
+                try w.writeAll("</code>");
+            };
+            try w.writeAll("), the path form of the spec&#39;s framework value: its default folders for those names are unbuilt sources. Their name-keyed settings in the spec (known issues, localStorage checks) then do not apply, in Cypress as in the port.");
+        }
+        // The runs.
+        var crane_label: ?[]const u8 = null;
+        var crane_commit: ?[]const u8 = null;
+        var chrome: ?Run = null;
+        for (suites) |s| if (s.suite.kind == .todomvc_port) {
+            if (latest(s)) |r| {
+                crane_label = r.label;
+                crane_commit = r.crane_commit;
+            }
+            if (s.chrome) |c| chrome = c;
+        };
+        if (crane_label) |l| {
+            try w.writeAll(" Crane: run <code>");
+            try html.text(w, l);
+            try w.writeAll("</code>, Crane <code>");
+            try html.text(w, crane_commit.?);
+            try w.writeAll("</code>.");
+        }
+        if (chrome) |c| {
+            try w.writeAll(" Chrome: ");
+            try html.text(w, c.browser.?);
+            try w.writeAll(", run <code>");
+            try html.text(w, c.label);
+            try w.writeAll("</code>");
+            if (c.pages.len > 0) if (c.pages[0].imported) |im| {
+                try w.writeAll(" on ");
+                try html.text(w, im.date);
+                try w.writeAll(" (");
+                try html.text(w, im.runner);
+                try w.writeAll(")");
+            };
+            try w.writeAll(".");
+        }
+        try w.writeAll("</li>\n");
+    }
+    try w.writeAll("</ul>\n</div>\n</details>\n");
 }
 
-/// A TodoMVC app's page (<out>/todomvc/<app>/).
-pub fn writeApp(arena: Allocator, w: W, m: manifest.Manifest, s: SuiteRuns, o: Options) !void {
-    var title_buf: [160]u8 = undefined;
-    const title = std.fmt.bufPrint(&title_buf, "Crane: the {s} TodoMVC app", .{s.suite.title}) catch s.suite.title;
-    try head(w, title, "A TodoMVC app checked in Crane and in Chrome by Crane's port of the TodoMVC app spec: what fails only in Crane, with every message.", o, 2);
-    try w.writeAll("<header class=\"head\">\n<p class=\"back-link\"><a href=\"../../#todomvc\">All frameworks</a></p>\n<h1>");
-    try html.text(w, s.suite.title);
-    try w.writeAll(" <span class=\"h1-rest\">TodoMVC in Crane</span></h1>\n<p class=\"subtitle\">The ");
-    try html.text(w, s.suite.title);
-    try w.writeAll(" app from TodoMVC");
-    if (s.suite.app) |app| if (app.version) |v| {
-        try w.writeAll(" (");
-        try html.text(w, v);
-        try w.writeAll(")");
-    };
-    try w.writeAll(", checked by Crane&#39;s port of TodoMVC&#39;s app spec in Crane and in Chrome.");
-    if (s.suite.app) |app| if (app.skipped_by_todomvc) |why| {
-        try w.writeAll(" TodoMVC&#39;s own runner skips this app (tests/excluded.js): ");
-        try html.text(w, why);
-        try w.writeAll(". It is run here all the same.");
-    };
-    try w.writeAll("</p>\n");
-    const fs = try failuresOf(arena, m.causes, s);
-    try figures(w, s, fs);
-    try w.writeAll("</header>\n");
-    var n: u32 = 1;
-    try failsOnlySection(arena, w, n, m, s, fs);
-    try closedSections(arena, w, &n, s, fs);
-    n += 1;
-    try sectionHead(w, n, "method", "How this was measured");
-    try w.writeAll("<details class=\"fw-more\"><summary>The build, the runs and the port</summary>\n<ul class=\"method\">\n<li>");
-    if (s.suite.app) |app| {
-        try w.writeAll("The app&#39;s build: <code>examples/");
-        try html.text(w, app.folder);
-        try w.writeAll("</code> as committed in ");
-        try html.text(w, s.suite.repository);
-        try w.writeAll(" at <code>");
-        try html.text(w, s.suite.commit[0..@min(12, s.suite.commit.len)]);
-        try w.writeAll("</code>, unmodified; <code>examples/");
-        try html.text(w, app.id);
-        try w.writeAll("/</code> is pinned by its sha256 <code>");
-        if (app.sha256) |h| try html.text(w, h[0..@min(16, h.len)]);
-        try w.writeAll("&hellip;</code>, checked at every fetch. ");
-    }
-    if (latest(s)) |r| {
-        try w.writeAll("Crane: run <code>");
-        try html.text(w, r.label);
-        try w.writeAll("</code>, Crane <code>");
-        try html.text(w, r.crane_commit);
-        try w.writeAll("</code> (console sha256 <code>");
-        try html.text(w, r.console_sha256[0..@min(16, r.console_sha256.len)]);
-        try w.writeAll("&hellip;</code>). ");
-    }
-    if (s.chrome) |c| {
-        try w.writeAll("Chrome: ");
-        try html.text(w, c.browser.?);
-        try w.writeAll(" on the same page, run <code>");
-        try html.text(w, c.label);
-        try w.writeAll("</code>. ");
-    }
-    try w.writeAll("</li>\n<li>");
-    try html.text(w, todomvc_port_note);
-    try w.writeAll(" The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href=\"");
-    try html.text(w, s.suite.repository);
-    try w.writeAll("/blob/");
-    try html.text(w, s.suite.commit);
-    try w.writeAll("/cypress/e2e/spec.cy.js\"><code>cypress/e2e/spec.cy.js</code></a>.</li>\n</ul>\n</details>\n</section>\n");
+pub fn writeIndex(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, rows: []const Row, o: Options, card_ref: []const u8) !void {
+    try writeHead(w, arena, rows, o, card_ref);
+    try w.print("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Frameworks</span></h1>\n<p class=\"subtitle\">Do JavaScript frameworks work in Crane? Each framework&#39;s own browser tests, and the TodoMVC apps built with them, run in Crane and in Chrome. <a href=\"{s}\">WPT results</a> &middot; <a href=\"{s}performance/\">Performance</a></p>\n</header>\n", .{ o.assets, o.assets });
+    try writeChart(arena, w, rows);
+    try writeTodoMvc(arena, w, m, suites);
+    try writeNotRun(arena, w, m, suites, rows);
+    try writeMethod(arena, w, m, suites);
     try w.writeAll(page_foot);
 }
 
@@ -1584,7 +1181,6 @@ pub fn writeApp(arena: Allocator, w: W, m: manifest.Manifest, s: SuiteRuns, o: O
 
 const testing = std.testing;
 
-/// Occurrences of `needle` in `hay`.
 fn occurrences(hay: []const u8, needle: []const u8) usize {
     var n: usize = 0;
     var at: usize = 0;
@@ -1614,10 +1210,8 @@ const Fixture = struct {
 const chrome_157 = "Chrome for Testing 157.0.8103.78";
 
 /// A manifest and journals like the published page's, in miniature:
-/// Angular (a cause by message, a Chrome-only API, a page that stops, an
-/// unnamed Chrome failure), htmx (no Chrome run), jQuery (a failure Chrome
-/// shares, one it does not, one no cause covers), React, Svelte and Vue
-/// waiting, and three TodoMVC apps.
+/// Angular (counts only from Chrome's runner), htmx (no Chrome run), jQuery,
+/// React, Svelte and Vue waiting, and three TodoMVC apps (one not served).
 fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
     const ng = suiteOf("angular-jasmine", "angular", "Angular", "22.2.6", .project, &.{ .{ .id = "core", .path = "?a" }, .{ .id = "zone", .path = "?b" } });
     const hx = suiteOf("htmx-mocha", "htmx", "htmx", "4.0.1", .project, &.{.{ .id = "test", .path = "test/test.html" }});
@@ -1626,8 +1220,8 @@ fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
     react_app.app = .{ .id = "react", .title = "React", .folder = "react/dist", .version = "19.2.5", .sha256 = &sha };
     var gwt_app = suiteOf("gwt-todomvc", "gwt", "GWT", "ff43b02e59df", .todomvc_port, &.{.{ .id = "todomvc", .path = "p" }});
     gwt_app.app = .{ .id = "gwt", .title = "GWT", .folder = "gwt", .sha256 = &sha, .skipped_by_todomvc = "it deviates" };
-    var can_app = suiteOf("canjs-todomvc", "canjs", "CanJS", "ff43b02e59df", .todomvc_port, &.{.{ .id = "todomvc", .path = "p" }});
-    can_app.app = .{ .id = "canjs", .title = "CanJS", .folder = "canjs", .sha256 = &sha };
+    var jq_app = suiteOf("jquery-todomvc", "jquery", "jQuery", "3.6.4", .todomvc_port, &.{.{ .id = "todomvc", .path = "p" }});
+    jq_app.app = .{ .id = "jquery", .title = "jQuery", .folder = "jquery/dist", .cypress_framework = "jquery/dist", .sha256 = &sha };
     const nr = struct {
         fn f(name: []const u8, tests: ?u32, p: ?manifest.Protocol) manifest.OwnSuiteNotRun {
             return .{ .name = name, .version = "1.0.0", .repository = "https://github.com/x/y", .tag = "v1", .runner = "Playwright", .tests = tests, .why = if (p == null) "They test an application, not the framework." else "Playwright drives Chromium through CDP.", .waits_for = p };
@@ -1643,252 +1237,223 @@ fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
             .{ .id = "angular", .title = "Angular", .not_run = &.{comptime nr("documentation-site targets", null, null)} },
             .{ .id = "svelte", .title = "Svelte", .not_run = &.{comptime nr("samples", null, .cdp)} },
         },
-        .suites = try a.dupe(manifest.Suite, &.{ jq, hx, ng, react_app, gwt_app, can_app }),
+        .suites = try a.dupe(manifest.Suite, &.{ jq, hx, ng, react_app, gwt_app, jq_app }),
         .todomvc = .{ .repository = "https://github.com/tastejs/todomvc", .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a", .licence = "MIT", .runner = "QUnit 2.24.2", .reader = .qunit, .source = .{ .url = "https://x", .sha256 = &sha }, .page = "p", .excluded = "todomvc-port.txt", .apps = try a.dupe(manifest.App, &.{
-            react_app.app.?, gwt_app.app.?, can_app.app.?, .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "404 on todomvc.com itself" },
+            react_app.app.?, gwt_app.app.?, jq_app.app.?, .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "404 on todomvc.com itself" },
         }) },
-        .causes = &.{
-            .{ .title = "console.timeStamp() is missing", .covers = &.{.{ .suite = "angular-jasmine", .message_contains = "timeStamp() method does not exist" }} },
-            .{ .title = "View Transitions: startViewTransition() throws NotSupportedError", .covers = &.{.{ .id_contains = "view transition" }} },
-            .{ .title = "No Notification API: the zone.js page stops before any test", .covers = &.{.{ .suite = "angular-jasmine", .page = "zone" }} },
-            .{ .title = "navigator.modelContext (WebMCP) is missing", .kind = .chrome_only_api, .covers = &.{.{ .id_contains = "WebMCP" }} },
-            .{ .title = "The GWT app never shows its heading", .covers = &.{.{ .suite = "gwt-todomvc" }} },
-        },
     };
     var f: Fixture = .{};
     const cr = "crane-1";
     const ch = "chrome-1";
     const imported: journal.Imported = .{ .runner = "bazel test <target>_chromium", .log = "tmp/ng.log", .log_sha256 = &sha, .date = "2026-11-14" };
-    // Angular: 3 named failures in Crane, a stopped page; Chrome's run
-    // counts only, 1 unnamed failure, and the stopped page's 513 tests.
+    // Angular: 997 of 1,000 in Crane; Chrome's runner counts 1,099 of 1,100.
     try f.testRec(a, cr, null, ng, "core", "DI perf events should not crash", .FAIL, .{ .message = "Error: <spyOn> : timeStamp() method does not exist" });
-    try f.testRec(a, cr, null, ng, "core", "router view transitions should skip initial transition", .FAIL, .{ .message = "NotSupportedError" });
-    try f.testRec(a, cr, null, ng, "core", "Signal Forms WebMCP Integration should fill out", .FAIL, .{ .message = "TypeError: getTools" });
+    try f.testRec(a, cr, null, ng, "core", "router view transitions", .FAIL, .{ .message = "NotSupportedError" });
+    try f.testRec(a, cr, null, ng, "core", "WebMCP fill out", .FAIL, .{ .message = "TypeError: getTools" });
     try f.testRec(a, cr, null, ng, "core", "core scrolls", .NOTRUN, .{ .not_run = .rendering, .reason = "asserts scrollY" });
-    try f.pageRec(a, cr, null, ng, "core", .{ .unnamed_passed = 100 });
-    try f.pageRec(a, cr, null, ng, "zone", .{ .status = .TIMEOUT, .message = "Error: describe with no children (describe() or it()): Notification API" });
-    try f.pageRec(a, ch, "Chrome for Testing headless shell 159.0.8154.2", ng, "core", .{ .unnamed_passed = 103, .unnamed_failed = 1, .reported_total = 104, .imported = imported });
-    try f.pageRec(a, ch, "Chrome for Testing headless shell 159.0.8154.2", ng, "zone", .{ .unnamed_passed = 513, .reported_total = 513, .imported = imported });
-    // htmx: one failure, no Chrome run.
+    try f.pageRec(a, cr, null, ng, "core", .{ .unnamed_passed = 997 });
+    try f.pageRec(a, ch, "Chrome for Testing headless shell 159.0.8154.2", ng, "core", .{ .unnamed_passed = 1099, .unnamed_failed = 1, .reported_total = 1100, .imported = imported });
+    // htmx: 1 of 2 in Crane, no Chrome run.
     try f.testRec(a, cr, null, hx, "test", "swap() triggers view transition events", .FAIL, .{});
     try f.testRec(a, cr, null, hx, "test", "swap() swaps", .PASS, .{});
     try f.pageRec(a, cr, null, hx, "test", .{});
-    // jQuery: fill-opacity fails only in Crane (no cause: unsorted),
-    // parseXML in both; an earlier run for the history.
+    // jQuery: 995 of 1,000 in Crane, 997 of 1,000 in Chrome; an earlier run.
     try f.testRec(a, "crane-0", null, jq, "css", "css: Do not append px", .PASS, .{});
     try f.pageRec(a, "crane-0", null, jq, "css", .{});
-    try f.testRec(a, cr, null, jq, "css", "css: Do not append px", .FAIL, .{ .message = "Do not append px to 'fill-opacity' Expected: 1 Result: undefined" });
-    try f.testRec(a, cr, null, jq, "core", "core: jQuery.parseXML - error reporting", .FAIL, .{ .message = "reports error column Expected: \"11\" Result: \"10\"" });
-    try f.testRec(a, cr, null, jq, "core", "core: basics", .PASS, .{});
-    try f.pageRec(a, cr, null, jq, "css", .{});
-    try f.pageRec(a, cr, null, jq, "core", .{});
+    try f.testRec(a, cr, null, jq, "css", "css: fill-opacity", .FAIL, .{ .message = "Do not append px to 'fill-opacity' Expected: 1 Result: undefined" });
+    try f.testRec(a, cr, null, jq, "core", "core: jQuery.parseXML - error reporting", .FAIL, .{ .message = "reports error column" });
+    try f.pageRec(a, cr, null, jq, "css", .{ .unnamed_passed = 500, .unnamed_failed = 2 });
+    try f.pageRec(a, cr, null, jq, "core", .{ .unnamed_passed = 495, .unnamed_failed = 1 });
     try f.testRec(a, ch, chrome_157, jq, "test", "core: jQuery.parseXML - error reporting", .FAIL, .{ .message = "reports error column" });
-    try f.pageRec(a, ch, chrome_157, jq, "test", .{ .unnamed_passed = 1144, .reported_total = 1145, .imported = .{ .runner = "jquery-test-runner 0.3.0", .log = "tmp/jtr.log", .log_sha256 = &sha, .date = "2026-11-14" } });
-    // TodoMVC: React passes everything in both; GWT fails 2 only in Crane
-    // and 1 in both; CanJS fails 1 only in Chrome.
-    for ([_]manifest.Suite{ react_app, gwt_app, can_app }) |s| for ([_][]const u8{ cr, ch }) |label| {
+    try f.pageRec(a, ch, chrome_157, jq, "test", .{ .unnamed_passed = 997, .unnamed_failed = 2, .reported_total = 1000, .imported = .{ .runner = "jquery-test-runner 0.3.0", .log = "tmp/jtr.log", .log_sha256 = &sha, .date = "2026-11-14" } });
+    // TodoMVC: React passes everything in both; GWT fails 2 in Crane and 1
+    // in Chrome; jQuery fails everything in both.
+    for ([_]manifest.Suite{ react_app, gwt_app, jq_app }) |s| for ([_][]const u8{ cr, ch }) |label| {
         const b: ?[]const u8 = if (std.mem.eql(u8, label, ch)) chrome_157 else null;
         const is_chrome = b != null;
         const gwt = std.mem.eql(u8, s.id, "gwt-todomvc");
-        const can = std.mem.eql(u8, s.id, "canjs-todomvc");
-        try f.testRec(a, label, b, s, "todomvc", "New Todo: should add", if (gwt and !is_chrome) .FAIL else .PASS, .{});
-        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (gwt and !is_chrome) .FAIL else .PASS, .{});
-        try f.testRec(a, label, b, s, "todomvc", "Routing: should respect the back button", if (gwt or (can and is_chrome)) .FAIL else .PASS, .{});
+        const jqa = std.mem.eql(u8, s.id, "jquery-todomvc");
+        try f.testRec(a, label, b, s, "todomvc", "New Todo: should add", if (jqa or (gwt and !is_chrome)) .FAIL else .PASS, .{});
+        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (jqa) .FAIL else .PASS, .{});
+        try f.testRec(a, label, b, s, "todomvc", "Routing: should respect the back button", if (jqa or gwt) .FAIL else .PASS, .{});
         try f.testRec(a, label, b, s, "todomvc", "Persistence: should persist", .NOTRUN, .{ .not_run = .project_skip });
-        try f.pageRec(a, label, b, s, "todomvc", .{});
+        try f.pageRec(a, label, b, s, "todomvc", .{ .imported = if (is_chrome) .{ .runner = "Cypress 15.14.2", .log = "tmp/cy", .log_sha256 = &sha, .date = "2026-11-14" } else null });
     };
     const j: journal.Journal = .{ .tests = f.tests.items, .pages = f.pages.items };
     const files = [_][]const exclusions.Entry{ &.{}, &.{.{ .id = "test/a.js", .file = true, .kind = .node_runner_only, .why = "only its Node runner loads it", .line = 1 }}, &.{}, &.{}, &.{}, &.{} };
     return .{ .m = m, .suites = try collect(a, m, &.{j}, &files) };
 }
 
-test "the overview: frameworks Crane runs first, then those not run yet, each A to Z; one verdict per framework beside Chrome" {
+test "the chart's rows: the frameworks Crane runs A to Z, TodoMVC's apps as one row, then those that wait A to Z; every number from the journals" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const fx = try fixture(a);
-    var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(a, &out.writer, fx.m, fx.suites, .{});
-    const h = out.written();
-    // The order (main, 2026-11-14): those that run, then those that wait; A to Z.
-    const ng = std.mem.indexOf(u8, h, "<tr id=\"fw-angular\">").?;
-    const hx = std.mem.indexOf(u8, h, "<tr id=\"fw-htmx\">").?;
-    const jq = std.mem.indexOf(u8, h, "<tr id=\"fw-jquery\">").?;
-    const re = std.mem.indexOf(u8, h, "<tr id=\"fw-react\">").?;
-    const sv = std.mem.indexOf(u8, h, "<tr id=\"fw-svelte\">").?;
-    const vu = std.mem.indexOf(u8, h, "<tr id=\"fw-vue\">").?;
-    try testing.expect(ng < hx and hx < jq and jq < re and re < sv and sv < vu);
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "Order: the frameworks Crane runs, then those not run yet; each group A to Z."));
-    // Crane beside Chrome, sortable by share; the verdict once per row.
-    try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n\" data-label=\"Crane\" data-v=\"1\" data-of=\"3\"><b>1</b> / 3 <span class=\"pct\">33.3%</span></td><td class=\"n\" data-label=\"Chrome\" data-v=\"1144\" data-of=\"1145\"><b>1,144</b> / 1,145 <span class=\"pct\">99.9%</span></td><td class=\"n\" data-label=\"Fail only in Crane\" data-v=\"1\"><a class=\"fail\" href=\"jquery/#fails-only\">1 test</a></td>") != null);
-    // Angular: the Chrome-only API counts as failing only in Crane on its
-    // row; the stopped page too.
-    try testing.expect(std.mem.indexOf(u8, h, "data-label=\"Fail only in Crane\" data-v=\"4\"><a class=\"fail\" href=\"angular/#fails-only\">3 tests and 1 page</a>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n quiet\" data-label=\"Chrome\">no Chrome run yet</td><td class=\"n\" data-label=\"Fail only in Crane\" data-v=\"1\"><a class=\"fail\" href=\"htmx/#fails-only\">1 test</a> <span class=\"quiet\">(no Chrome run to compare)</span>") != null);
-    // A waiting framework: its count and protocol, no reason repeated.
-    try testing.expect(std.mem.indexOf(u8, h, "<tr id=\"fw-vue\"><th scope=\"row\"><a href=\"vue/\">Vue</a><span class=\"ver\">1.0.0</span></th><td class=\"n\" data-label=\"Its own browser tests\" data-v=\"120\">120 tests</td><td data-label=\"Waits for\">CDP</td></tr>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n quiet\" data-label=\"Its own browser tests\">not counted</td>") != null);
-    try testing.expectEqual(@as(usize, 0), occurrences(h, "Playwright drives Chromium through CDP."));
-    // Content is HTML; site.js only sorts. No meters, no sparklines.
-    try testing.expect(std.mem.indexOf(u8, h, "<script src=\"../site.js\" defer></script>") != null);
+    const rows = try chartRows(a, fx.m, fx.suites);
+    try testing.expectEqual(@as(usize, 7), rows.len);
+    const want = [_][]const u8{ "angular", "htmx", "jquery", "todomvc", "react", "svelte", "vue" };
+    for (want, rows) |id, r| try testing.expectEqualStrings(id, r.id);
+    // Angular: Crane's named failures and unnamed passes; Chrome's counts.
+    try testing.expectEqual(@as(u32, 997), rows[0].crane.?.pass);
+    try testing.expectEqual(@as(u32, 1000), rows[0].crane.?.ran());
+    try testing.expectEqual(@as(u32, 1099), rows[0].chrome.?.pass);
+    try testing.expectEqualStrings("22.2.6 \u{b7} its own tests", rows[0].sub);
+    try testing.expect(rows[1].chrome == null);
+    // TodoMVC: three apps together, Crane 3 + 1 + 0 of 9, Chrome 3 + 2 + 0.
+    try testing.expectEqual(@as(u32, 4), rows[3].crane.?.pass);
+    try testing.expectEqual(@as(u32, 9), rows[3].crane.?.ran());
+    try testing.expectEqual(@as(u32, 5), rows[3].chrome.?.pass);
+    try testing.expectEqualStrings("all 3 apps\u{2019} tests", rows[3].sub);
+    // Waiting: CDP when any suite needs only CDP.
+    try testing.expectEqual(manifest.Protocol.cdp, rows[6].waits.?);
+    try testing.expectEqual(manifest.Protocol.cdp, rows[4].waits.?);
+}
+
+test "the axis: zoomed to the clusters the rates fall in, broken between two, each labelled" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // The published page's: two clusters, 76-77% and 99-100%.
+    const ax = try axisFor(a, &.{ 99.78, 99.99, 99.89, 99.44, 99.74, 76.4, 76.7 });
+    try testing.expect(ax.broken());
+    try testing.expectEqual(@as(f64, 76), ax.segs[0].lo);
+    try testing.expectEqual(@as(f64, 77), ax.segs[0].hi);
+    try testing.expectEqual(@as(f64, 99), ax.segs[1].lo);
+    try testing.expectEqual(@as(f64, 100), ax.segs[1].hi);
+    try testing.expectEqual(@as(f64, 0.2), ax.segs[1].step);
+    // Equal ranges, equal widths; the gap between them; monotonic.
+    try testing.expectApproxEqAbs(ax.segs[0].x1 - ax.segs[0].x0, ax.segs[1].x1 - ax.segs[1].x0, 1e-9);
+    try testing.expect(ax.x(76.7) < ax.x(99.0) and ax.x(99.5) < ax.x(99.9));
+    try testing.expectApproxEqAbs(@as(f64, 1), ax.x(100), 1e-9);
+    // One cluster: one segment around it; all at 100%: 99-100.
+    const one = try axisFor(a, &.{ 99.4, 99.8 });
+    try testing.expect(!one.broken());
+    try testing.expectEqual(@as(f64, 99), one.segs[0].lo);
+    try testing.expectEqual(@as(f64, 99), (try axisFor(a, &.{ 100, 100 })).segs[0].lo);
+    // A wide cluster takes coarser steps: 62.3-79.9 is 60-80 by 5.
+    const wide = try axisFor(a, &.{ 62.3, 66, 70, 75, 79.9 });
+    try testing.expectEqual(@as(f64, 60), wide.segs[0].lo);
+    try testing.expectEqual(@as(f64, 5), wide.segs[0].step);
+    // Three clusters: the whole 0-100.
+    const three = try axisFor(a, &.{ 10, 50, 99 });
+    try testing.expectEqual(@as(f64, 0), three.segs[0].lo);
+    try testing.expectEqual(@as(f64, 100), three.segs[0].hi);
+    var buf: [16]u8 = undefined;
+    try testing.expectEqualStrings("99.2%", tickLabel(&buf, 99.2));
+    try testing.expectEqualStrings("100%", tickLabel(&buf, 100.0000001));
+}
+
+test "one page: the chart, TodoMVC open, what is not run and the method closed; no subpage, no failure name, every rate from the journals" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const fx = try fixture(a);
+    const out = try render(a, fx.m, fx.suites, .{});
+    const h = out.index_html;
+    // The order of the page.
+    const chart = std.mem.indexOf(u8, h, "<section class=\"box chart\" id=\"rates\"").?;
+    const todo = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"todomvc\" open>").?;
+    const notrun = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"not-run\">").?;
+    const method = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"method\">").?;
+    try testing.expect(chart < todo and todo < notrun and notrun < method);
+    // Each chart row once, in order.
+    var at: usize = 0;
+    for ([_][]const u8{ "angular", "htmx", "jquery", "todomvc", "react", "svelte", "vue" }) |id| {
+        const needle = try std.fmt.allocPrint(a, "<div class=\"dr\" role=\"listitem\" id=\"r-{s}\">", .{id});
+        try testing.expectEqual(@as(usize, 1), occurrences(h, needle));
+        const i = std.mem.indexOf(u8, h, needle).?;
+        try testing.expect(i > at);
+        at = i;
+    }
+    // The rates and counts, from the journals: Angular 997 / 1,000.
+    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"dr-v c\"><span class=\"vl\">Crane</span><span class=\"vh\">Crane: </span><b>99.7%</b><span>997 / 1,000</span></div><div class=\"dr-v g\"><span class=\"vl\">Chrome</span><span class=\"vh\">Chrome: </span><b>99.9%</b><span>1,099 / 1,100</span></div>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<title>Crane: 997 / 1,000 (99.7%)</title>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"vh\">Chrome: </span>no run</div>") != null);
+    // A framework that waits: hatched, its mark and its reason, once each.
+    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"mark-wait\">can&#39;t run yet &middot; waits for CDP</span>"));
+    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"why\">its test runner drives the browser over CDP, which Crane does not support yet (after 0.1)</span>"));
+    // TodoMVC: apps passing everything, highest first.
+    try testing.expect(std.mem.indexOf(u8, h, "<p class=\"allpass\"><b>1</b> of 3 apps pass every test in Crane, <b>1</b> in Chrome.</p>") != null);
+    const react_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">React</span>").?;
+    const gwt_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">GWT</span>").?;
+    const jq_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">jQuery</span>").?;
+    try testing.expect(react_i < gwt_i and gwt_i < jq_i);
+    try testing.expect(std.mem.indexOf(u8, h, "soma.js is listed on todomvc.com but cannot be served") != null);
+    // The axis note, once; the five-app folder decision, once.
+    try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"axis-note\""));
+    try testing.expect(std.mem.indexOf(u8, h, "1 app is given to both as the folder of the build todomvc.com links (<code>jquery/dist</code>)") != null);
+    // Not run: the counts in its summary.
+    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fold-meta\">rendering 1 test &middot; skipped by TodoMVC&#39;s spec 3 tests</span>") != null);
+    // No failure cause, test name or message; no link to a subpage.
+    for ([_][]const u8{ "fill-opacity", "parseXML", "timeStamp", "view transition", "should respect the back button", "NotSupportedError", "#fails-only", "href=\"angular/", "href=\"todomvc/" }) |gone| {
+        if (std.mem.indexOf(u8, h, gone) != null) {
+            std.debug.print("found on the page: {s}\n", .{gone});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // Content is HTML; site.js only enhances.
     try testing.expectEqual(@as(usize, 1), occurrences(h, "<script"));
-    try testing.expectEqual(@as(usize, 0), occurrences(h, "class=\"meter\""));
-    try testing.expectEqual(@as(usize, 0), occurrences(h, "class=\"spark\""));
-    // The header names the runs' Crane commit and browsers.
-    try testing.expect(std.mem.indexOf(u8, h, "<div><dt>Crane</dt><dd><code>fb2911d722a</code> (jQuery, htmx, Angular, TodoMVC)</dd></div>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "Chrome for Testing headless shell 159.0.8154.2 (Angular)") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<script src=\"../site.js\" defer></script>") != null);
 }
 
-test "the overview: what fails only in Crane, once, by cause; Chrome-only APIs apart; what no cause covers named; what Chrome shares left out" {
+test "the social card's tags: every one present, in the head, the numbers from the journals, the image named by its hash" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const fx = try fixture(a);
-    var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(a, &out.writer, fx.m, fx.suites, .{});
-    const h = out.written();
-    const gaps = std.mem.indexOf(u8, h, "<h2 id=\"gaps-h\"><span class=\"secno\">2</span>What fails in Crane and passes in Chrome").?;
-    const todo = std.mem.indexOf(u8, h, "<h2 id=\"todomvc-h\"><span class=\"secno\">3</span>").?;
-    const sec = h[gaps..todo];
-    // The lede counts the real gaps only: 4 causes, 4 tests and 1 page.
-    try testing.expect(std.mem.indexOf(u8, sec, "4 causes: 5 tests and 1 page, in 2 frameworks&#39; own tests and 1 TodoMVC app.") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "<tr><th scope=\"row\">console.timeStamp() is missing</th><td class=\"n\" data-label=\"Tests\" data-v=\"1\">1 test</td><td data-label=\"Where\"><a href=\"angular/#fails-only\">Angular 1</a></td></tr>") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "<tr><th scope=\"row\">View Transitions: startViewTransition() throws NotSupportedError</th><td class=\"n\" data-label=\"Tests\" data-v=\"2\">2 tests</td><td data-label=\"Where\"><a href=\"angular/#fails-only\">Angular 1</a>, <a href=\"htmx/#fails-only\">htmx 1</a> <span class=\"quiet\">(no Chrome run to compare)</span></td></tr>") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "<a href=\"angular/#fails-only\">Angular 1 page</a> <span class=\"quiet\">(Chrome runs 513 tests there)</span>") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "<a href=\"todomvc/gwt/#fails-only\">TodoMVC GWT 2</a>") != null);
-    // The Chrome-only API under its own heading, after the gaps.
-    const own = std.mem.indexOf(u8, sec, "<h3 id=\"chrome-only\">Chrome-only APIs (not standards yet)</h3>").?;
-    try testing.expect(std.mem.indexOf(u8, sec, "navigator.modelContext (WebMCP) is missing").? > own);
-    try testing.expect(std.mem.indexOf(u8, sec, "console.timeStamp() is missing").? < own);
-    // No cause covers fill-opacity: named, with its message.
-    try testing.expect(std.mem.indexOf(u8, sec, "<h3 id=\"unsorted\">Not yet sorted by cause</h3>") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "css: Do not append px</th>") != null);
-    try testing.expect(std.mem.indexOf(u8, sec, "Do not append px to &#39;fill-opacity&#39;") != null);
-    // A failure Chrome shares is not here; Chrome's unnamed failure is said.
-    try testing.expect(std.mem.indexOf(u8, sec, "parseXML") == null);
-    try testing.expect(std.mem.indexOf(u8, sec, "Routing: should respect the back button") == null);
-    try testing.expect(std.mem.indexOf(u8, sec, "Angular: Chrome&#39;s own run failed 1 test that its output does not name; it may be among the 3 counted here.") != null);
-    // Once on the page: the failure is not listed again elsewhere on it.
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "css: Do not append px"));
-}
-
-test "the overview: TodoMVC in a few numbers, every app closed, A to Z; the not-run reasons said once" {
-    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena_state.deinit();
-    const a = arena_state.allocator();
-    const fx = try fixture(a);
-    var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(a, &out.writer, fx.m, fx.suites, .{});
-    const h = out.written();
-    try testing.expect(std.mem.indexOf(u8, h, "<tr><th scope=\"row\">Apps that pass every test</th><td class=\"n\"><b>2</b> / 3</td><td class=\"n\"><b>1</b> / 3</td></tr>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<tr><th scope=\"row\">Tests passed</th><td class=\"n\"><b>6</b> / 9</td><td class=\"n\"><b>7</b> / 9</td></tr>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<li><b class=\"fail\">2</b> tests fail only in Crane, in 1 app: <a href=\"todomvc/gwt/#fails-only\">GWT 2</a>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<li><b>1</b> test fails only in Chrome: CanJS &ldquo;Routing: should respect the back button&rdquo;.</li>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<li><b>1</b> test fails in Chrome too, so they say nothing about Crane") != null);
-    // The apps, closed, A to Z (CanJS, GWT, React), with the one not served.
-    const list = std.mem.indexOf(u8, h, "<details class=\"fw-more\" id=\"apps\"><summary>All 3 apps, A to Z</summary>").?;
-    const can = std.mem.indexOf(u8, h, "<tr id=\"app-canjs\">").?;
-    const gwt = std.mem.indexOf(u8, h, "<tr id=\"app-gwt\">").?;
-    const react = std.mem.indexOf(u8, h, "<tr id=\"app-react\">").?;
-    try testing.expect(list < can and can < gwt and gwt < react);
-    try testing.expect(std.mem.indexOf(u8, h, "soma.js (404 on todomvc.com itself)") != null);
-    // Section 4 says each reason once, here only.
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "Crane draws nothing"));
-    try testing.expect(std.mem.indexOf(u8, h, "Not run for this reason: 1 test (Angular 1), each listed with its reason") != null);
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "Crane does not speak either yet"));
-    try testing.expect(std.mem.indexOf(u8, h, "<a href=\"react/\">React</a>, <a href=\"svelte/\">Svelte</a> and <a href=\"vue/\">Vue</a> run their browser tests only through Playwright or Puppeteer") != null);
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "Node runs only the projects&#39; own build steps"));
-    try testing.expect(std.mem.indexOf(u8, h, "1 test file runs only through the project&#39;s Node test runner, not in a browser page (htmx 1).") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "TodoMVC&#39;s app spec skips 3 tests for the apps it names") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "Angular&#39;s documentation-site targets: They test an application, not the framework.") != null);
-    // How it was measured: closed, with Chrome's imported runner and date.
-    const method = std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>The runs, the browsers, the pins and the method</summary>").?;
-    try testing.expect(std.mem.indexOf(u8, h, "the project&#39;s own runner on 2026-11-14: jquery-test-runner 0.3.0; read from its log <code>tmp/jtr.log</code>").? > method);
-    try testing.expect(std.mem.indexOf(u8, h, "Earlier Crane runs, tests passed: <code>crane-0</code> 1.").? > method);
-}
-
-test "a framework's page: figures, Crane-only failures by cause, then closed what Chrome shares, what is not run, pages, method" {
-    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena_state.deinit();
-    const a = arena_state.allocator();
-    const fx = try fixture(a);
-    var out: Io.Writer.Allocating = .init(a);
-    try writeFramework(a, &out.writer, fx.m, fx.m.frameworks[4], fx.suites, .{});
-    const h = out.written();
-    try testing.expect(std.mem.indexOf(u8, h, "href=\"../../site.css\"") != null and std.mem.indexOf(u8, h, "src=\"../../site.js\"") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fg-pass\">100</span><span class=\"fg-of\"> / 103</span> <span class=\"fg-label\">tests passing in Crane</span>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fail\"><dt>Fail only in Crane</dt><dd>3</dd></div><div><dt>Fail in Chrome too</dt><dd>0</dd></div><div class=\"blk\"><dt>Pages that stop early</dt><dd>1</dd></div>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<p class=\"figures-ref\"><span class=\"ref-name\">Chrome</span> <b>616</b> / 617 tests passing, by the project&#39;s own runner") != null);
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"meter\""));
-    // By cause, the Chrome-only API last and tagged.
-    const ts = std.mem.indexOf(u8, h, "<h3>console.timeStamp() is missing</h3>").?;
-    const vt = std.mem.indexOf(u8, h, "<h3>View Transitions: startViewTransition() throws NotSupportedError</h3>").?;
-    const zn = std.mem.indexOf(u8, h, "<h3>No Notification API: the zone.js page stops before any test</h3>").?;
-    const mc = std.mem.indexOf(u8, h, "<h3>navigator.modelContext (WebMCP) is missing<span class=\"tag\">Chrome-only API, not a standard yet</span></h3>").?;
-    try testing.expect(ts < vt and vt < zn and zn < mc);
-    try testing.expect(std.mem.indexOf(u8, h, "The whole page stops before any test runs <span class=\"quiet\">(Chrome runs 513 tests there)</span></th><td data-label=\"Page\"><code>zone</code></td><td class=\"msg\"><pre>TIMEOUT: Error: describe with no children") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "Chrome&#39;s own run failed 1 test that its output does not name; it may be among those above.") != null);
-    // Closed: what is not run (with the statement, once), the pages, the method.
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "Crane draws nothing"));
-    try testing.expect(std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>1 test, each with its reason</summary>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<details class=\"fw-more\"><summary>2 pages, each opened in a fresh console</summary>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<h2 id=\"not-run-suites-h\">") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "the project&#39;s own runner on 2026-11-14: bazel test &lt;target&gt;_chromium;") != null);
-
-    // jQuery: the failure Chrome shares is in its closed section only.
-    out.clearRetainingCapacity();
-    try writeFramework(a, &out.writer, fx.m, fx.m.frameworks[0], fx.suites, .{});
-    const jq = out.written();
-    const shared = std.mem.indexOf(u8, jq, "<details class=\"fw-more\"><summary>1 test fails in Crane and in Chrome: not Crane findings</summary>").?;
-    try testing.expect(std.mem.indexOf(u8, jq, "core: jQuery.parseXML - error reporting").? > shared);
-    try testing.expect(std.mem.indexOf(u8, jq, "<h3>Not yet sorted by cause</h3>").? < shared);
-
-    // A waiting framework: the verdict, and its suites with why.
-    out.clearRetainingCapacity();
-    try writeFramework(a, &out.writer, fx.m, fx.m.frameworks[1], fx.suites, .{});
-    const vue = out.written();
-    try testing.expect(std.mem.indexOf(u8, vue, "<strong>Not run yet.</strong> Its browser tests run only through a runner that drives the browser over the Chrome DevTools Protocol (CDP), which Crane does not speak yet; they wait until after Crane 0.1.") != null);
-    try testing.expect(std.mem.indexOf(u8, vue, "<a href=\"https://github.com/x/y/tree/v1\">v1</a>") != null);
-    try testing.expect(std.mem.indexOf(u8, vue, "class=\"figures\"") == null);
-}
-
-test "an app's page: figures beside Chrome, its Crane-only failures, the app spec's skips and the port's method closed" {
-    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena_state.deinit();
-    const a = arena_state.allocator();
-    const fx = try fixture(a);
-    var out: Io.Writer.Allocating = .init(a);
-    try writeApp(a, &out.writer, fx.m, fx.suites[4], .{});
-    const h = out.written();
-    try testing.expect(std.mem.indexOf(u8, h, "href=\"../../../site.css\"") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<a href=\"../../#todomvc\">All frameworks</a>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "TodoMVC&#39;s own runner skips this app (tests/excluded.js): it deviates. It is run here all the same.") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fg-pass\">0</span><span class=\"fg-of\"> / 3</span>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<h3>The GWT app never shows its heading</h3>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<summary>1 test fails in Crane and in Chrome: not Crane findings</summary>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "TodoMVC&#39;s app spec skips it for this app") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<code>examples/gwt/</code> is pinned by its sha256 <code>aaaaaaaaaaaaaaaa&hellip;</code>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "cypress/e2e/spec.cy.js") != null);
-}
-
-test "a manifest without a frameworks list: a row per framework its project suites name" {
-    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena_state.deinit();
-    const a = arena_state.allocator();
-    const s = suiteOf("htmx-mocha", "htmx", "htmx", "4.0.1", .project, &.{.{ .id = "test", .path = "test/test.html" }});
-    const m: manifest.Manifest = .{ .suites = &.{s} };
-    const suites = try collect(a, m, &.{}, &.{});
-    var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(a, &out.writer, m, suites, .{});
-    try testing.expect(std.mem.indexOf(u8, out.written(), "<tr id=\"fw-htmx\"><th scope=\"row\"><a href=\"htmx/\">htmx</a><span class=\"ver\">4.0.1</span></th><td class=\"n\" data-label=\"Crane\">no run yet</td>") != null);
+    const out = try render(a, fx.m, fx.suites, .{});
+    const h = out.index_html;
+    const end_head = std.mem.indexOf(u8, h, "</head>").?;
+    const description = "Crane passes Angular 99.7%, htmx 50.0%, jQuery 99.5% of the frameworks&#39; own tests (Chrome: Angular 99.9%, jQuery 99.7%); 44.4% of TodoMVC&#39;s apps&#39; tests (Chrome 55.6%); React, Svelte and Vue can&#39;t run yet: they wait for CDP. Crane is a headless web platform engine in Zig.";
+    const tags = [_][]const u8{
+        "<meta name=\"description\" content=\"" ++ description ++ "\">",
+        "<link rel=\"canonical\" href=\"https://zig-whatwg.github.io/crane/frameworks/\">",
+        "<meta property=\"og:type\" content=\"website\">",
+        "<meta property=\"og:site_name\" content=\"Crane\">",
+        "<meta property=\"og:title\" content=\"Crane: JavaScript frameworks\">",
+        "<meta property=\"og:description\" content=\"" ++ description ++ "\">",
+        "<meta property=\"og:url\" content=\"https://zig-whatwg.github.io/crane/frameworks/\">",
+        "<meta property=\"og:image\" content=\"https://zig-whatwg.github.io/crane/frameworks/card.png?v=",
+        "<meta property=\"og:image:type\" content=\"image/png\">",
+        "<meta property=\"og:image:width\" content=\"1200\">",
+        "<meta property=\"og:image:height\" content=\"630\">",
+        "<meta property=\"og:image:alt\" content=\"",
+        "<meta name=\"twitter:card\" content=\"summary_large_image\">",
+        "<meta name=\"twitter:title\" content=\"Crane: JavaScript frameworks\">",
+        "<meta name=\"twitter:description\" content=\"" ++ description ++ "\">",
+        "<meta name=\"twitter:image\" content=\"https://zig-whatwg.github.io/crane/frameworks/card.png?v=",
+    };
+    for (tags) |t| {
+        const i = std.mem.indexOf(u8, h, t) orelse {
+            std.debug.print("missing: {s}\n", .{t});
+            return error.TestUnexpectedResult;
+        };
+        try testing.expect(i < end_head);
+    }
+    // The ?v= is the card's own hash, the same in both tags.
+    const v = try std.fmt.allocPrint(a, "card.png?v={x:0>8}\"", .{@as(u32, @truncate(std.hash.Wyhash.hash(0, out.card_png)))});
+    try testing.expectEqual(@as(usize, 2), occurrences(h, v));
+    try testing.expect(std.mem.startsWith(u8, out.card_png, "\x89PNG\r\n\x1a\n"));
+    // Same journals, same bytes.
+    const again = try render(a, fx.m, fx.suites, .{});
+    try testing.expectEqualSlices(u8, out.card_png, again.card_png);
+    try testing.expectEqualStrings(out.index_html, again.index_html);
 }
 
 test "rate: one decimal, rounded, never 100% with a failure; nothing run is a dash" {
-    var out: Io.Writer.Allocating = .init(testing.allocator);
-    defer out.deinit();
-    try rate(&out.writer, 1778, 1790);
-    try rate(&out.writer, 0, 0);
-    try rate(&out.writer, 13164, 13165);
-    try rate(&out.writer, 5, 5);
-    try testing.expectEqualStrings("99.3%&mdash;&gt;99.9%100.0%", out.written());
+    var buf: Io.Writer.Allocating = .init(testing.allocator);
+    defer buf.deinit();
+    const w = &buf.writer;
+    try rate(w, 13164, 13165);
+    try w.writeAll(" ");
+    try rate(w, 12099, 12126);
+    try w.writeAll(" ");
+    try rate(w, 0, 0);
+    try w.writeAll(" ");
+    try rate(w, 5, 5);
+    try w.writeAll(" ");
+    try appRate(w, 28, 29);
+    try w.writeAll(" ");
+    try appRate(w, 299, 300);
+    try testing.expectEqualStrings("&gt;99.9% 99.8% &mdash; 100.0% 97% &gt;99%", buf.written());
 }

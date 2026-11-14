@@ -25,7 +25,8 @@
 //!       per suite: pages, tests run / passed / failed / errored / excluded
 //!       as rendering / not run; every failure with its first assertion
 //!   fw_matrix report --journals=<dir> --out=<dir> [--assets=<url>]
-//!       the matrix page and a page per framework, from every journal.jsonl
+//!       the one page (<dir>/index.html) and its social card (card.png),
+//!       from every journal.jsonl
 //!       one or two levels below <dir> (report.zig); --assets is where the
 //!       WPT site's site.css is, relative to <out> (default "../")
 //!   fw_matrix import --reader=jtr|wtr-summary --suite=<id> --log=<file>
@@ -428,34 +429,12 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     }
     const suites = try report.collect(arena, m, journals.items, files.items);
     try Io.Dir.cwd().createDirPath(io, out_dir);
-    var index: Io.Writer.Allocating = .init(arena);
-    try report.writeIndex(arena, &index.writer, m, suites, o);
-    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
-    var written: usize = 1;
-    // A page per framework of the first section (or, in a manifest without
-    // that list, per framework a project suite names).
-    var frameworks: std.ArrayList(manifest.Framework) = .empty;
-    try frameworks.appendSlice(arena, m.frameworks);
-    if (m.frameworks.len == 0) for (m.suites) |s| {
-        if (s.kind != .project) continue;
-        for (frameworks.items) |fw| {
-            if (std.mem.eql(u8, fw.id, s.framework)) break;
-        } else try frameworks.append(arena, .{ .id = s.framework, .title = s.title });
-    };
-    for (frameworks.items) |fw| {
-        var page: Io.Writer.Allocating = .init(arena);
-        try report.writeFramework(arena, &page.writer, m, fw, suites, o);
-        try writePage(io, arena, out_dir, "", fw.id, page.written());
-        written += 1;
-    }
-    for (suites) |s| if (s.suite.kind == .todomvc_port) {
-        var page: Io.Writer.Allocating = .init(arena);
-        try report.writeApp(arena, &page.writer, m, s, o);
-        const dir = report.pageDir(s.suite);
-        try writePage(io, arena, out_dir, dir[0], dir[1], page.written());
-        written += 1;
-    };
-    std.debug.print("fw_matrix: report: {d} journal(s), {d} page(s) written to {s}\n", .{ journals.items.len, written, out_dir });
+    // One page and its card (the user, 2026-11-14 4:24 PM ET: sections that
+    // expand, no pages of their own).
+    const out = try report.render(arena, m, suites, o);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = out.index_html });
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/card.png", .{out_dir}), .data = out.card_png });
+    std.debug.print("fw_matrix: report: {d} journal(s); {s}/index.html and {s}/card.png written\n", .{ journals.items.len, out_dir, out_dir });
 }
 
 pub const ImportOptions = struct {
@@ -693,13 +672,6 @@ test "import Cypress: every test of each app a record, the app found by Cypress'
     try std.testing.expectEqualStrings("Could not find Cypress test run results", jc.pages[0].message.?);
 }
 
-/// <out>/<prefix><name>/index.html.
-fn writePage(io: Io, arena: Allocator, out_dir: []const u8, prefix: []const u8, name: []const u8, data: []const u8) !void {
-    const dir = try std.fmt.allocPrint(arena, "{s}/{s}{s}", .{ out_dir, prefix, name });
-    try Io.Dir.cwd().createDirPath(io, dir);
-    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = data });
-}
-
 test "import: a runner's log as a browser's journal - named failures as test records, the rest as counts, pages by target" {
     var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena_state.deinit();
@@ -750,6 +722,7 @@ test "import: a runner's log as a browser's journal - named failures as test rec
 
 test {
     _ = report;
+    _ = @import("card.zig");
     _ = journal;
     _ = exclusions;
     _ = manifest;

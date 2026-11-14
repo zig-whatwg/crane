@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+/frameworks/'s card without its rates: base.png (1200x630), drawn once in the WPT site's faces.
+The rates are composited onto it by tools/fw_matrix/card.zig from the WPT site's own digit atlas
+(tools/wpt_site/card/atlas.png, the 400/60px cut). Each rate's decimal point and "%" are drawn
+here, at the positions card.zig computes: change COLUMN_RIGHT, ROW_BASELINE, ROWS and WAITING
+here and column_right, row_baseline, row_titles and waiting_titles there together.
+  ?part=base     -> base.png
+  ?part=metrics  -> the advance of "." in the 400/60px cut (card.zig `period`)
+How it was made, and how to remake it: README.md beside this file.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face { font-family: "Source Serif 4"; font-weight: 200 900; src: url(../../wpt_site/assets/fonts/source-serif-4-latin.woff2) format("woff2"); }
+@font-face { font-family: "Public Sans"; font-weight: 100 900; src: url(../../wpt_site/assets/fonts/public-sans-latin.woff2) format("woff2"); }
+html, body { margin: 0; padding: 0; background: #fff; }
+svg { display: block; }
+text { font-kerning: none; font-variant-numeric: tabular-nums lining-nums; }
+.serif { font-family: "Source Serif 4"; }
+.sans { font-family: "Public Sans"; }
+pre { font: 14px monospace; margin: 0; }
+</style>
+</head>
+<body>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+// card.zig's constants. DIGIT is the atlas's 400/60px digit advance (tools/wpt_site/card.zig `of`).
+const COLUMN_RIGHT = [780, 1040];
+const ROW_BASELINE = [296, 358, 420, 482];
+const ROWS = ["Angular", "htmx", "jQuery", "TodoMVC apps"];
+const WAITING = "React, Svelte and Vue can’t run yet: they wait for CDP";
+const DIGIT = 28.203125;
+const part = new URLSearchParams(location.search).get("part") || "base";
+function svg(w, h) {
+  const s = document.createElementNS(NS, "svg");
+  s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  document.body.append(s);
+  return s;
+}
+function text(s, x, y, str, cls, size, weight, fill, extra = {}) {
+  const t = document.createElementNS(NS, "text");
+  t.setAttribute("x", x); t.setAttribute("y", y); t.setAttribute("class", cls);
+  t.setAttribute("font-size", size); t.setAttribute("font-weight", weight); t.setAttribute("fill", fill);
+  for (const [k, v] of Object.entries(extra)) t.setAttribute(k, v);
+  t.textContent = str;
+  s.append(t);
+  return t;
+}
+document.fonts.load('400 60px "Source Serif 4"').then(() => document.fonts.load('620 46px "Source Serif 4"'))
+  .then(() => document.fonts.load('400 20px "Public Sans"')).then(() => document.fonts.ready).then(() => {
+  // The point's advance in the rates' cut, measured as the atlas's advances were.
+  const probe = svg(10, 10);
+  const PERIOD = text(probe, 0, 5, ".", "serif", 60, 400, "#000").getComputedTextLength();
+  probe.remove();
+  if (part === "metrics") {
+    const pre = document.createElement("pre");
+    pre.id = "metrics";
+    pre.textContent = JSON.stringify({ period: PERIOD });
+    document.body.replaceChildren(pre);
+    document.title = "ready";
+    return;
+  }
+  // Tokens: paper #ffffff, ink #202124, ink-2 #5a5e63, rule #d9dce0 (the WPT site's, light).
+  const s = svg(1200, 630);
+  const bg = document.createElementNS(NS, "rect");
+  bg.setAttribute("width", 1200); bg.setAttribute("height", 630); bg.setAttribute("fill", "#ffffff");
+  s.append(bg);
+  const title = text(s, 80, 104, "", "serif", 46, 620, "#202124");
+  const a = document.createElementNS(NS, "tspan"); a.textContent = "Crane ";
+  const b = document.createElementNS(NS, "tspan"); b.textContent = "Frameworks"; b.setAttribute("font-weight", 380);
+  title.append(a, b);
+  text(s, 80, 152, "SHARE OF EACH FRAMEWORK’S OWN TESTS THAT PASS", "sans", 20, 600, "#5a5e63", { "letter-spacing": "1.6" });
+  const rule = (y) => { const l = document.createElementNS(NS, "rect"); l.setAttribute("x", 80); l.setAttribute("y", y); l.setAttribute("width", 1040); l.setAttribute("height", 1); l.setAttribute("fill", "#d9dce0"); s.append(l); };
+  ["Crane", "Chrome"].forEach((l, i) => text(s, COLUMN_RIGHT[i] + 38, 214, l, "sans", 22, 600, i === 0 ? "#202124" : "#5a5e63", { "text-anchor": "end" }));
+  rule(232);
+  ROWS.forEach((l, r) => {
+    text(s, 80, ROW_BASELINE[r], l, "sans", 28, 500, "#202124");
+    COLUMN_RIGHT.forEach((right, c) => {
+      const fill = c === 0 ? "#202124" : "#5a5e63";
+      // The point, where card.zig puts it: right - DIGIT - PERIOD; the "%" just right of the tenth.
+      text(s, right - DIGIT - PERIOD, ROW_BASELINE[r], ".", "serif", 60, 400, fill);
+      text(s, right + 4, ROW_BASELINE[r], "%", "serif", 40, 400, "#5a5e63");
+    });
+  });
+  rule(512);
+  text(s, 80, 552, WAITING, "sans", 22, 500, "#5a5e63");
+  text(s, 80, 600, "zig-whatwg.github.io/crane/frameworks", "sans", 20, 500, "#202124");
+  text(s, 1120, 600, "Crane beside Chrome; tests passed of tests run", "sans", 18, 400, "#5a5e63", { "text-anchor": "end" });
+  document.title = "ready";
+});
+</script>
+</body>
+</html>
