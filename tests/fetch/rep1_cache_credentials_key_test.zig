@@ -201,3 +201,45 @@ test "the cache's own key: lookup takes the credentials bit, invalidate removes 
     try testing.expect(store.lookup("https://a.test", url, true) == null);
     try testing.expect(store.lookup("https://a.test", url, false) == null);
 }
+
+test "a cached gzip, br or zstd response stores and returns the decoded body, its Content-Encoding and its filtered coding" {
+    // HTTP-network fetch hands the cache a response whose body Fetch has
+    // already decoded ("handle content codings", src/fetch/content_coding)
+    // and whose header list still says how it was coded. The cache stores
+    // that decoded body with the header (RFC 9111 3.2: Content-Encoding is
+    // one of the fields a 304 does not update) and the body info's filtered
+    // coding (Fetch 11.5.2's note: "the associated body info is stored in the
+    // cache alongside the response"); a hit answers all three. The coding is
+    // not part of the key: each credentials variant keeps its own response.
+    for ([_][]const u8{ "gzip", "br", "zstd" }) |coding| {
+        var fx = try Fixture.init();
+        defer fx.deinit();
+        const first = try fx.request(.include, null);
+        defer first.deinit();
+        const coded = try fresh("decoded text");
+        try coded.header_list.append("Content-Encoding", coding);
+        var buf: [16]u8 = undefined;
+        _ = try fetchThrough(first, coded, t0, &buf);
+        try testing.expectEqual(@as(usize, 1), fx.network.http_cache.?.entryCount());
+
+        const again = try fx.request(.include, null);
+        defer again.deinit();
+        switch (try Transaction.begin(testing.allocator, again, viewOf(again), t0 + 1)) {
+            .response => |hit| {
+                defer hit.deinit();
+                try testing.expectEqualStrings("decoded text", hit.body.?.getBytes());
+                try testing.expectEqualStrings(coding, hit.header_list.getFirstValue("Content-Encoding").?);
+                try testing.expectEqualStrings(coding, hit.body_info.content_encoding);
+            },
+            else => return error.TestExpectedHit,
+        }
+        // The uncredentialed request is not answered by it.
+        const anonymous = try fx.request(.omit, null);
+        defer anonymous.deinit();
+        var network = switch (try Transaction.begin(testing.allocator, anonymous, viewOf(anonymous), t0 + 1)) {
+            .network => |n| n,
+            else => return error.TestExpectedNetwork,
+        };
+        network.transaction.deinit();
+    }
+}
