@@ -73,12 +73,11 @@ pub const DocumentRareData = struct {
     pointed_element: ?same_object.Link = null,
     activated_element: ?same_object.Link = null,
 
-    /// The fullscreen element (Fullscreen API), the pointer lock element
-    /// (Pointer Lock 2.0) and the picture-in-picture element (Picture-in-
-    /// Picture): Blink keeps each in a supplement of its own, made on first
-    /// use (Fullscreen, PointerLockController, PictureInPictureController).
-    /// None is ever set yet.
-    fullscreen_element: ?*runtime.Instance = null,
+    /// The pointer lock element (Pointer Lock 2.0) and the
+    /// picture-in-picture element (Picture-in-Picture): Blink keeps each in
+    /// a supplement of its own, made on first use (PointerLockController,
+    /// PictureInPictureController). Neither is ever set yet. (The fullscreen
+    /// element is the top layer's: dom.top_layer, html.fullscreen.)
     pointer_lock_element: ?*runtime.Instance = null,
     picture_in_picture_element: ?*runtime.Instance = null,
 

@@ -17,6 +17,8 @@
 //! :-internal-list-box (selector parser), which this sheet's `.user_agent`
 //! parse alone accepts; their calc-size() min sizes are left out until
 //! Crane parses calc-size().
+//! Added: Fullscreen 5.2's user-agent rules (:fullscreen), at the end of
+//! html.css's top-layer blocks.
 //! Changed, stated in html.css: the link colors are LinkText, VisitedText and
 //! ActiveText rather than their light hex values, as in all three browsers
 //! (an anchor's color follows the element color scheme; whatwg/html#12761).

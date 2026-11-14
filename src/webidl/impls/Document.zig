@@ -298,6 +298,12 @@ pub fn installHooks() void {
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
     // HTML "update the rendering" step 6: reveal (dom.update_the_rendering).
     @import("dom").update_the_rendering.installStep(.reveal, &revealStep);
+    // Step 12: Fullscreen "run the fullscreen steps"; the fullscreen
+    // removing steps and its unloading document cleanup step ("fully exit
+    // fullscreen") - html.fullscreen's.
+    @import("dom").update_the_rendering.installStep(.fullscreen, &fullscreenStep);
+    @import("dom").mutation.registerRemovingStepsCallback(&@import("html").fullscreen.removingSteps) catch @panic("fullscreen removing steps allocation");
+    @import("dom").unloading_cleanup.install(&@import("html").fullscreen.unloadingCleanup);
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
@@ -921,21 +927,20 @@ pub fn get_prerendering(instance: *runtime.Instance) anyerror!bool {
     return false;
 }
 
-/// Getter for fullscreenEnabled
-/// Fullscreen API - Returns whether fullscreen is enabled
+/// Getter for fullscreenEnabled (Fullscreen 3): "true if this is allowed to
+/// use the "fullscreen" feature and fullscreen is supported, and false
+/// otherwise" (html.fullscreen). iframe-allowfullscreen.html and
+/// iframe-allow.html read it through the frames' permissions policies.
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreenenabled
 pub fn get_fullscreenEnabled(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.fullscreen_enabled;
+    return @import("html").fullscreen.fullscreenEnabled(instance);
 }
 
-/// Getter for fullscreen
-/// Fullscreen API (obsolete) - Returns true if fullscreen element exists
+/// Getter for fullscreen (Fullscreen 3, historical): "false if this's
+/// fullscreen element is null, and true otherwise".
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-document-fullscreen
 pub fn get_fullscreen(instance: *runtime.Instance) anyerror!bool {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const rare = internal.rareData() orelse return false;
-    return rare.fullscreen_element != null;
+    return @import("html").fullscreen.fullscreenElementOf(instance) != null;
 }
 
 /// Getter for timeline (Web Animations 1 6.9): the default document
@@ -3337,10 +3342,10 @@ pub fn call_hasFocus(instance: *runtime.Instance) anyerror!bool {
     return @import("html").focus.hasFocus(instance);
 }
 
-/// Operation: exitFullscreen
+/// Operation: exitFullscreen (Fullscreen 3): "return the result of running
+/// exit fullscreen on this" (html.fullscreen).
 pub fn call_exitFullscreen(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
+    return @import("html").fullscreen.exitFullscreen(instance);
 }
 
 /// Operation: adoptNode
@@ -5216,6 +5221,13 @@ fn firePageTransition(document: *runtime.Instance, window: *runtime.Instance, ev
 }
 
 /// HTML 7.4.6.3 "reveal" `document`, update the rendering step 6.
+/// HTML "update the rendering" step 12: "For each doc of docs, run the
+/// fullscreen steps for doc" (Fullscreen 2, html.fullscreen).
+fn fullscreenStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
+    _ = frame;
+    @import("html").fullscreen.runFullscreenSteps(document);
+}
+
 fn revealStep(document: *runtime.Instance, frame: @import("dom").update_the_rendering.Frame) void {
     _ = frame;
     const internal = getInternal(document) orelse return;

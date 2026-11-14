@@ -121,6 +121,40 @@ dialog:popover-open {
  background-color: transparent;
 }
 
+/* Fullscreen 5.2 "User-agent level style sheet defaults", copied verbatim
+   from https://fullscreen.spec.whatwg.org/#user-agent-level-style-sheet-defaults
+   (specs/whatwg/fullscreen.md, lane ifr1, 2026-11-14). Crane draws nothing;
+   the computed values are what getComputedStyle reads of a fullscreen
+   element (fullscreen/rendering/fullscreen-ua-stylesheet.html: 3/3 in Chrome,
+   Firefox and Safari). Copyright (c) WHATWG, CC BY 4.0. */
+@namespace "http://www.w3.org/1999/xhtml";
+
+*|*:not(:root):fullscreen {
+ position:fixed !important;
+ inset:0 !important;
+ margin:0 !important;
+ box-sizing:border-box !important;
+ min-width:0 !important;
+ max-width:none !important;
+ min-height:0 !important;
+ max-height:none !important;
+ width:100% !important;
+ height:100% !important;
+ transform:none !important;
+
+ /* intentionally not !important */
+ object-fit:contain;
+}
+
+iframe:fullscreen {
+ border:none !important;
+ padding:0 !important;
+}
+
+*|*:not(:root):fullscreen::backdrop {
+ background:black;
+}
+
 slot {
  display: contents;
 }

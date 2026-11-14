@@ -465,6 +465,7 @@ pub const Matcher = struct {
             .Open => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .open) else false,
             .PopoverOpen => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .popover_open) else false,
             .Modal => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .modal) else false,
+            .Fullscreen => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .fullscreen) else false,
             .Playing => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .playing) else false,
             .Paused => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .paused) else false,
             .Seeking => if (instanceOf(element)) |object| dom.html_pseudo_classes.matches(@ptrCast(@alignCast(object)), .seeking) else false,
