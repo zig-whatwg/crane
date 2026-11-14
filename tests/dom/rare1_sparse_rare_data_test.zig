@@ -85,15 +85,17 @@ test "the block for n fields holds 1, 3, 7 or 15 slots: 16, 32, 64, 128 bytes" {
     for (expected, 0..) |bytes, n| try testing.expectEqual(bytes, rare_data.blockBytesFor(@intCast(n)));
 }
 
-test "Element's InternalState stays 40 bytes: the rare word, and click()'s flag in its padding" {
+test "Element's rare data is one word, and click()'s flag is a bit of the element's byte" {
     if (comptime !sparse) return error.NoSparseBlock;
     // HTML click() step 3's flag is the one bool that would make a block on
     // its own. Blink and WebKit keep it out of the element (a set of the
-    // elements dispatching a simulated click); here it takes Element's
-    // padding, 0 bytes (the integrator, 2026-11-10 19:38).
-    try testing.expect(@hasField(ElementState, "click_in_progress"));
+    // elements dispatching a simulated click); here it was a byte of
+    // Element's padding (the integrator, 2026-11-10 19:38) and is a bit of
+    // the element's byte in NodeBase since lane nm1 (NodeBase.ElementBits).
+    // Element's state's size is pinned in node_block_sizes_test.zig.
+    if (comptime !@hasDecl(dom.NodeBase, "ElementBits")) return error.NoElementBits;
+    try testing.expect(@hasField(dom.NodeBase.ElementBits, "click_in_progress"));
     try testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(ElementState, "rare")));
-    try expectSize(ElementState, 40);
 }
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig

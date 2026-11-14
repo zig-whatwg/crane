@@ -58,6 +58,12 @@ const Page = struct {
         return dom.instance_bridge.entryCount(self.browser.scope);
     }
 
+    /// The Browser's own count of its DOM memory alive now - what it
+    /// reports to the engine (runtime.BrowserScope.dom_memory).
+    fn live(self: Page) usize {
+        return self.browser.scope.dom_memory.live;
+    }
+
     /// The engine's count of the agent's external memory.
     fn external(self: Page) !usize {
         const agent = self.browser.getAgent() orelse return error.NoAgent;
@@ -80,13 +86,26 @@ fn collect(browser: *browser_mod.Browser) !void {
     try engine.runInRealm(realm, Collect.steps, agent);
 }
 
-/// The page clones a 1,001-node tree ten times a task, for fifteen tasks,
-/// and drops every clone - 150,150 nodes - with the event loop turning
-/// between tasks, as a page's own does; nothing forces a collection. The
-/// clones' wrappers are all V8 sees of them; told about the DOM, it collects
-/// once it has grown 64 MB past its last collection, and the loop frees the
-/// trees their wrappers' deaths left: the page ends with a fraction of what
-/// it dropped. Unreported, V8 never collected and every clone was alive.
+/// The page clones a 1,001-node tree ten times a task, for sixty tasks, and
+/// drops every clone - 600,600 nodes, over 100 MB of DOM - with the event
+/// loop turning between tasks, as a page's own does; nothing forces a
+/// collection. The clones' wrappers are all V8 sees of them; told about the
+/// DOM, it collects as the reported bytes grow, and the loop frees the trees
+/// their wrappers' deaths left. Unreported, V8 never collected and every
+/// clone was alive.
+///
+/// The bar is in BYTES, because bytes are what V8 paces by: the DOM alive
+/// never passes 64 MB over the start - V8's own soft limit for external
+/// memory (heap.h kExternalAllocationSoftLimit), well clear of the measured
+/// peaks - and it fell at least once, and the engine was told. It was a node
+/// count ("fewer than 100,000 of 150,150 alive after 15 tasks") until lane
+/// nm1's layout batch made a div 48 bytes and a Text 32 bytes smaller: a node
+/// count moves with every size change. MEASURED with this workload (server1,
+/// 2026-11-14): V8 collected at 38.1 MB over the start with 192,188 nodes
+/// alive on main 497cbc5559f, and at 36.9 MB with 230,226 nodes alive on the
+/// smaller nodes - the same bytes, 20% more nodes - and the old bar, which
+/// sat between a first collection after task 5 and one after task 6, read
+/// 100,096.
 fn droppedClonesAreCollected() !void {
     if (engine.capabilities.external_memory == .unsupported) return error.SkipZigTest;
     const page = try Page.open();
@@ -96,15 +115,35 @@ fn droppedClonesAreCollected() !void {
         \\tree.innerHTML = '<p>x</p>'.repeat(500);
     );
     try collect(page.browser);
-    const before = page.nodes();
+    const nodes_before = page.nodes();
+    const live_before = page.live();
+    const told_before = try page.external();
+    var peak_live: usize = 0;
+    var peak_nodes: usize = 0;
+    var peak_told: usize = 0;
+    var previous_live: usize = 0;
+    var falls: usize = 0;
     var task: usize = 0;
-    while (task < 15) : (task += 1) {
+    while (task < 60) : (task += 1) {
         try page.run("for (let i = 0; i < 10; i++) tree.cloneNode(true);");
         _ = try page.browser.runEventLoopBlocking(5);
+        const live = page.live() -| live_before;
+        if (live > peak_live) {
+            peak_live = live;
+            peak_nodes = page.nodes() -| nodes_before;
+        }
+        if (live < previous_live) falls += 1;
+        previous_live = live;
+        peak_told = @max(peak_told, (try page.external()) -| told_before);
     }
-    const alive = page.nodes() -| before;
-    if (alive >= 100_000) std.debug.print("150 dropped clones of 1,001 nodes over 15 tasks: {d} nodes alive\n", .{alive});
-    try testing.expect(alive < 100_000);
+    const limit: usize = 64 * 1024 * 1024;
+    const collected = peak_live <= limit and falls != 0 and peak_told != 0;
+    if (!collected) {
+        std.debug.print("600 dropped clones of 1,001 nodes over 60 tasks: the DOM alive peaked at {d} B over the start (limit {d}), with {d} nodes alive at that peak (an observation, not a bar); it fell {d} times; the engine was told of at most {d} B\n", .{ peak_live, limit, peak_nodes, falls, peak_told });
+        if (peak_told == 0) std.debug.print("the engine was told nothing about the DOM: it cannot collect what it cannot see\n", .{});
+        if (falls == 0) std.debug.print("the DOM alive never fell: no collection freed a dropped clone\n", .{});
+    }
+    try testing.expect(collected);
 }
 
 test "dropped clones of a tree are collected as the DOM grows, with no forced collection" {

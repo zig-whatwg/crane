@@ -81,8 +81,8 @@ test "NodeBase keeps no child list: the sibling links are the children" {
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
     // it, so it waits for those to carry their own (design 3.4, deferred).
     // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig;
-    // 80 since the wrapper redesign's P6 (no holds chain).
-    try expectSize(NodeBase, 80);
+    // 80 since the wrapper redesign's P6 (no holds chain). The size is
+    // pinned in node_block_sizes_test.zig (one place: lane nm1).
     try std.testing.expect(!@hasField(NodeBase, "child_nodes"));
     try std.testing.expect(@hasField(NodeBase, "wrapper"));
 }
@@ -105,22 +105,19 @@ test "every OwnState level keeps its InternalState by value in its own State" {
     try std.testing.expectEqual(@as(usize, 0), missing);
 }
 
-test "Node's embedded state is its NodeBase by value and the fields a node uses: 120 bytes" {
+test "Node's embedded state is its NodeBase by value, without the fields no node used" {
     const E = Embedded(interfaces.Node.State);
     if (E == void) {
         return error.NotEmbedded;
     } else {
-        // allocator 16, node_base 8, node_type 2, owner_document 8 + its
-        // generation 8, child_nodes_list 8, the NodeBase 112. Gone:
-        // local_name (written, never read), namespace_uri (its one writer had
-        // no caller), prefix and node_value (no writer) and is_connected
-        // (NodeBase's is the one the DOM reads). The allocator copy stays
-        // until every realm's creation allocator is its scope's (the V8
-        // tests' realms are not). Batch 6: no allocator copy, NodeBase 88;
-        // 80 since the wrapper redesign's P6 (no holds chain).
-        try expectSize(E, 120);
+        // Gone: local_name (written, never read), namespace_uri (its one
+        // writer had no caller), prefix and node_value (no writer) and
+        // is_connected (NodeBase's is the one the DOM reads); in batch 6 the
+        // allocator copy; in lane nm1's layout batch the pointer to its own
+        // NodeBase, the second node type and the second childNodes pointer.
+        // Its size is pinned in node_block_sizes_test.zig.
         try std.testing.expect(@FieldType(E, "base") == NodeBase);
-        inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected" }) |dead| {
+        inline for (.{ "local_name", "namespace_uri", "prefix", "node_value", "is_connected", "allocator", "node_base", "node_type", "child_nodes_list" }) |dead| {
             if (@hasField(E, dead)) {
                 std.debug.print("Node's state still has `{s}`\n", .{dead});
                 return error.DeadFieldKept;

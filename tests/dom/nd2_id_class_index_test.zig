@@ -95,10 +95,8 @@ test "the attribute list's header keeps the two indices in its 8 bytes; the leng
     }
 }
 
-test "Element's InternalState is 40 bytes" {
-    // 88 at N2, less ElementData's 48.
-    try expectSize(ElementState, 40);
-}
+// Element's InternalState: 88 at N2, less ElementData's 48: 40. Its size is
+// pinned in ONE place, tests/dom/node_block_sizes_test.zig (lane nm1).
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
 // (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).

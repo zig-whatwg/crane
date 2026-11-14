@@ -17,7 +17,9 @@ const NodeBase = dom.NodeBase;
 test "NodeBase's wrapper is the engine's slot, and nothing else names the old alias" {
     try std.testing.expect(@FieldType(NodeBase, "wrapper") == engine.NodeWrapperSlot);
     try std.testing.expect(!@hasField(NodeBase, "bound_v8_wrapper"));
-    try std.testing.expectEqual(@as(usize, 80), @sizeOf(NodeBase));
+    // The slot is one word of NodeBase; NodeBase's size is pinned in ONE
+    // place, tests/dom/node_block_sizes_test.zig (lane nm1).
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(NodeBase, "wrapper")));
 }
 
 test "a new node's slot is empty" {
