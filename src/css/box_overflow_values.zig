@@ -187,10 +187,10 @@ pub fn parseClamp(options: properties.ParseOptions, legacy: bool, stream: *Strea
         if (maximum) |v| v.release();
         if (ellipsis) |v| v.release();
     }
-    // Overflow 4 §§5.1–5.1.1: reset all three constituents. Q65 deliberately
-    // departs from today's §5.1.1 "unconditionally sets block-ellipsis to
-    // ellipsis" text for legacy none, pending CSSWG #14673 (OPEN, Async
-    // Resolution: Proposed). The matching serializer below uses the same
+    // Overflow 4 §§5.1–5.1.1: reset all three constituents. Legacy none sets
+    // block-ellipsis to no-ellipsis, as CSSWG #14673 resolved (Q65 made this
+    // departure from the then "unconditionally sets block-ellipsis to
+    // ellipsis" text before the resolution). The matching serializer below uses the same
     // initial tuple; positive integers retain ellipsis/-webkit-legacy.
     // Overflow editor Florian Rivoal agrees with that proposed correction:
     // https://github.com/w3c/csswg-drafts/issues/14673#issuecomment-6420092047
