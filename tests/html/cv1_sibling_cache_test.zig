@@ -12,11 +12,11 @@ const Before = struct {
     updating: bool,
     // Row117 MERGE-MAIN REQUIRED ruling (2026-10-24): this independent
     // field is present on both sides; the bound measures sibling_counts only.
-    background_hint: @FieldType(state.ElementStyle, "background_hint"),
     // Lane editing3 (2026-10-26), by the same precedent: HTML 15.3.4's font
-    // presentational hint cache is another independent field present on
-    // both sides (integrator grant).
-    font_hint: @FieldType(state.ElementStyle, "font_hint"),
+    // presentational hint cache was another independent field present on
+    // both sides (integrator grant). Lane quick1 b4 (2026-11-14) merged the
+    // background, font and SVG hints into one slot, `hint`.
+    hint: @FieldType(state.ElementStyle, "hint"),
     cached: @FieldType(state.ElementStyle, "cached"),
     // Integrator Q173: the independent lazy Typed OM pointer is on both sides.
     computed_map: @FieldType(state.ElementStyle, "computed_map"),

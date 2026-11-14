@@ -138,3 +138,19 @@ test "a div's and a Text's block is an exact-size arena block" {
         }
     }
 }
+
+/// ElementStyle: the style state every element whose style is computed
+/// allocates beside its node block (dom.style.element_style), pinned here
+/// with the node's own sizes. History:
+/// - 280 at main 7a598a88c4b; 272 after lane quick1 b4: the background hint
+///   and the font hint pointers became one slot (`hint`, element_style.Hint),
+///   which SVG presentation attributes share: -8 bytes.
+const element_style_bytes: usize = 272;
+
+test "ElementStyle, the style state of every styled element" {
+    if (@sizeOf(dom.style.ElementStyle) != element_style_bytes) {
+        printLayout(dom.style.ElementStyle);
+        std.debug.print("ElementStyle: {d} bytes, pinned {d}\n", .{ @sizeOf(dom.style.ElementStyle), element_style_bytes });
+        return error.SizePinMoved;
+    }
+}

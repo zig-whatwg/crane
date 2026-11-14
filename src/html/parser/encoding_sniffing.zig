@@ -562,6 +562,19 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, encoding: Encodin
     return decodeWith(allocator, input, chosen);
 }
 
+/// Encoding "UTF-8 decode" of `bytes`, to UTF-8 owned by `allocator`: a
+/// leading UTF-8 byte order mark is dropped, no other byte order mark or
+/// label changes the encoding, errors become U+FFFD.
+///
+/// Spec: https://encoding.spec.whatwg.org/#utf-8-decode
+pub fn utf8Decode(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    // 1-2. Peek three bytes; if they are 0xEF 0xBB 0xBF, read them.
+    const input = if (std.mem.startsWith(u8, bytes, "\xEF\xBB\xBF")) bytes[3..] else bytes;
+    // 3. Process the queue with an instance of UTF-8's decoder.
+    if (std.unicode.utf8ValidateSlice(input)) return allocator.dupe(u8, input);
+    return decodeWith(allocator, input, &enc.UTF_8);
+}
+
 /// The length of the byte order mark `bytes` start with, or 0.
 pub fn bomLength(bytes: []const u8) usize {
     const found = encoding_mod.bom.sniff(bytes) orelse return 0;

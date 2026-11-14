@@ -113,7 +113,7 @@ pub fn backgroundHint(element: *runtime.Instance, state: *@import("element_style
     // DOM mutations invalidate computed style; checking the captured base
     // here also invalidates the hint after base[href] changes, while an
     // unrelated mutation reuses the already parsed/resolved value.
-    if (state.background_hint) |old| {
+    if (state.backgroundHint()) |old| {
         if (std.mem.eql(u8, old.input, input) and std.mem.eql(u8, old.source.base_url, base)) return &old.block;
     }
     const allocator = state.allocator;
@@ -138,8 +138,7 @@ pub fn backgroundHint(element: *runtime.Instance, state: *@import("element_style
         _ = try block.setProperty(.{ .allocator = allocator, .resource_source = source }, "background-image", text.items, "");
     }
     hint.* = .{ .allocator = allocator, .input = owned_input, .source = source, .block = block };
-    state.dropBackgroundHint();
-    state.background_hint = hint;
+    state.setHint(&hint.header);
     return &hint.block;
 }
 
@@ -385,7 +384,7 @@ pub fn installHooks() void {
 
 fn backgroundAdopted(element: *runtime.Instance, _: ?*runtime.Instance) void {
     const state = @import("element_style.zig").existingOf(element) orelse return;
-    if (state.background_hint == null) return;
+    if (state.backgroundHint() == null) return;
     state.dropBackgroundHint();
     state.dropCache();
 }
