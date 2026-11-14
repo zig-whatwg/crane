@@ -37,6 +37,7 @@ const HeaderView = @import("header_view.zig").HeaderView;
 const Directives = @import("cache_control.zig").Directives;
 const freshness = @import("freshness.zig");
 const http_fetch = @import("../algorithms/http_fetch.zig");
+const content_coding = @import("../content_coding/root.zig");
 
 pub const Transaction = struct {
     /// The request's Browser's cache. BORROWED: the network context it is on
@@ -508,26 +509,11 @@ fn declaredLength(response: *const InternalResponse) ?u64 {
     return std.fmt.parseInt(u64, std.mem.trim(u8, value, " \t"), 10) catch null;
 }
 
-/// HTTP-network fetch's body steps 1.2-1.6 filtered coding (as
-/// http_fetch.filteredContentCoding): a static string.
+/// HTTP-network fetch 18.1.1.1.2-6's filtered coding of `headers`, from
+/// the content coding table (content_coding.zig) - the one Fetch decodes
+/// with and reports from: a static string.
 fn filteredContentCoding(headers: []const stored_response.Header) []const u8 {
-    var codings: usize = 0;
-    var first: []const u8 = "";
-    for (headers) |header| {
-        if (!std.ascii.eqlIgnoreCase(header.name, "Content-Encoding")) continue;
-        var values = std.mem.splitScalar(u8, header.value, ',');
-        while (values.next()) |raw| {
-            if (codings == 0) first = std.mem.trim(u8, raw, " \t");
-            codings += 1;
-        }
-    }
-    if (codings == 0) return "";
-    if (codings > 1) return "multiple";
-    if (first.len == 0) return "";
-    for ([_][]const u8{ "gzip", "deflate", "br", "zstd" }) |coding| {
-        if (std.ascii.eqlIgnoreCase(first, coding)) return coding;
-    }
-    return "@unknown";
+    return content_coding.filteredCoding(content_coding.headerFields(headers));
 }
 
 /// A response made from `stored` for `request` - its URL the request's

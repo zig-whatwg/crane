@@ -139,8 +139,13 @@ pub const NetworkResponse = struct {
     http_version: HttpVersion,
     /// Response headers
     headers: []Header,
-    /// Response body (may be null for HEAD requests or errors)
+    /// Response body (may be null for HEAD requests or errors), its content
+    /// codings undone (content_coding.zig: Fetch's "handle content codings").
     body: ?[]const u8,
+    /// How many bytes of the body arrived, before its content codings were
+    /// undone: the body info's encoded size (HTTP-network fetch
+    /// 18.1.1.1.8). Null: as many as `body` has.
+    encoded_body_size: ?u64 = null,
     /// Final URL after redirects (if different from request URL)
     final_url: ?[]const u8,
     /// Total time in milliseconds
@@ -246,6 +251,11 @@ pub const NetworkError = error{
     ProtocolError,
     /// Out of memory
     OutOfMemory,
+    /// The body is not what its content codings make, or names more of them
+    /// than a decoder chain nests: "handle content codings" returned failure
+    /// (HTTP-network fetch 18.1.1.1.11 terminates the fetch). Chromium's
+    /// ERR_CONTENT_DECODING_FAILED and ERR_CONTENT_DECODING_INIT_FAILED.
+    ContentDecodingFailed,
     /// Unknown/unspecified error
     Unknown,
 };
