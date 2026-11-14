@@ -452,6 +452,110 @@ test "the snapshot generator refuses an API object that points at a C++-heap obj
     try testing.expectEqual(non_node_wrappers_use_object_wrap, ffi.v8_test_SnapshotRefusesApiWrapper(&anchor_stand_in));
 }
 
+// ---- The anchor in place of the weak-handle machinery (lane wrap1 b3; tmp/plans/object-wrap-design.md 3.4) ----
+
+/// One row of the kept-wrapper pins: `make` pushes one object of the shape onto `o.keep`.
+const KeptShape = struct {
+    name: []const u8,
+    make: []const u8,
+    /// The agent's C++ heap per kept object, bytes: the shape's anchors (24 B a non-node platform object's, 32 B
+    /// a node's when the row makes one too).
+    cpp_least: f64,
+    cpp_most: f64,
+};
+
+/// Every wrapper shape the binding makes for a non-node platform object (lesson
+/// testing-measure-a-kept-object-of-every-wrapper-shape-not-one-representative.md): a constructor's receiver, an
+/// object Crane wrapped, one with indexed properties, a holder of nodes, and one behind a legacy platform
+/// object's proxy. The DOMTokenList and the HTMLCollection each come with the div they hang from (its node
+/// anchor: 32 B).
+const kept_shapes = [_]KeptShape{
+    .{ .name = "Event (a constructor's receiver)", .make = "o.keep.push(new Event('x'))", .cpp_least = 16.0, .cpp_most = 26.0 },
+    .{ .name = "URLSearchParams (a constructor's receiver)", .make = "o.keep.push(new URLSearchParams('a=b'))", .cpp_least = 16.0, .cpp_most = 26.0 },
+    .{ .name = "Headers (a constructor's receiver)", .make = "o.keep.push(new Headers())", .cpp_least = 16.0, .cpp_most = 26.0 },
+    .{ .name = "createEvent's Event (wrapped by Crane)", .make = "o.keep.push(doc2.createEvent('Event'))", .cpp_least = 16.0, .cpp_most = 26.0 },
+    .{ .name = "a div's DOMTokenList (indexed properties; with its div)", .make = "o.keep.push(doc2.createElement('div').classList)", .cpp_least = 48.0, .cpp_most = 60.0 },
+    .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .cpp_least = 16.0, .cpp_most = 26.0 },
+    .{ .name = "a div's HTMLCollection (a holder behind a proxy; with its div)", .make = "o.keep.push(doc2.createElement('div').children)", .cpp_least = 48.0, .cpp_most = 60.0 },
+};
+
+test "a kept non-node wrapper of every shape costs no V8 global handle, and one anchor on the C++ heap" {
+    // Until lane wrap1's batch 3 the wrapper cache kept each non-node wrapper by a weak v8::Global with a
+    // callback record: a 32 B global-handle node of V8's, a 16 B box, a 48 B record, a node in the adapter's
+    // armed-handle map and an 88 B cache entry - about 200 of the 312-320 B a kept wrapper cost (gc_bench,
+    // tmp/plans/wrap1-evidence/meas0-c.out). Now the wrapper's anchor is what the cache holds it by: the anchor
+    // names a 32 B record of the cache's (instance, slab generation, the wrapper as a v8::TracedReference - 16 B
+    // of V8's traced handles, which this does not count), the cache's map names the record, and the collector
+    // finds a dead wrapper through its anchor. Blink holds a wrapper the same way: a TraceWrapperV8Reference
+    // in the ScriptWrappable, no v8::Global (platform/bindings/script_wrappable.h:147, dom_data_store.h).
+    const page = try Page.open();
+    defer page.close();
+    try page.run(objects);
+    const n = 2000;
+
+    var wrong: usize = 0;
+    for (kept_shapes) |shape| {
+        try page.run("o.keep = []; globalThis.doc2 = new Document().implementation.createHTMLDocument(''); doc2.body.appendChild(doc2.createElement('p')); 0");
+        var source: [240]u8 = undefined;
+        // Once before the reading: whatever the shape makes once per realm (templates, prototypes).
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < 8; i++) {s}; o.keep.length", .{shape.make}));
+        const cpp_before = page.cppHeapUsed();
+        const handles_before = try page.counter("global_handle_bytes");
+        const entries_before = try page.counter("wrapper_cache_entries");
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {s}; o.keep.length", .{ n, shape.make }));
+        const cpp_after = page.cppHeapUsed();
+        const handles_after = try page.counter("global_handle_bytes");
+        const entries_after = try page.counter("wrapper_cache_entries");
+
+        const cpp = @as(f64, @floatFromInt(cpp_after -| cpp_before)) / @as(f64, n);
+        const handles = @as(f64, @floatFromInt(handles_after - handles_before)) / @as(f64, n);
+        const entries = @as(f64, @floatFromInt(entries_after - entries_before)) / @as(f64, n);
+        std.debug.print("{s}: {d:.1} B of V8 global handles, {d:.1} B of CppHeap, {d:.2} cache entries per kept object\n", .{ shape.name, handles, cpp, entries });
+        // The cache still knows each one (identity), by one entry.
+        if (entries < 0.99 or entries > 1.01) wrong += 1;
+        if (handles > 1.0) wrong += 1;
+        if (cpp < shape.cpp_least or cpp > shape.cpp_most) wrong += 1;
+        try page.run("o.keep = null; 0");
+    }
+    try testing.expectEqual(@as(usize, 0), wrong);
+}
+
+test "a wrapper script changed waits for a full collection; an unchanged one goes in a young one" {
+    // The cache holds a wrapper by a DROPPABLE traced reference: in a young-generation collection V8 treats it
+    // as weak only while the wrapper is an unmodified API object - nothing script could tell from a fresh
+    // wrapper (15.7.112.43 src/handles/traced-handles.cc:519-533, src/objects/js-objects.cc:3152-3168) - and as
+    // a root otherwise, so a wrapper with an expando is collected by the next FULL collection. Blink's rule,
+    // which is V8's (DOMDataStore::SetWrapperInInlineStorage makes the reference droppable; nothing is added on
+    // top). Until lane wrap1's batch 3 a weak v8::Global let either kind go in a young collection.
+    const page = try Page.open();
+    defer page.close();
+    const n = 1000;
+    try page.run("for (let i = 0; i < 64; i++) void new Event('x'); 0");
+
+    var attempt: usize = 0;
+    while (attempt < 4) : (attempt += 1) {
+        page.fullGC();
+        const entries_before = try page.counter("wrapper_cache_entries");
+        const full_before = page.fullCollections();
+        var source: [160]u8 = undefined;
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {{ const e = new Event('x'); e.mine = i; }} 0", .{n}));
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) void new Event('x'); 0", .{n}));
+        try page.minorGC(4);
+        // A full collection V8 chose to run meanwhile took both kinds: read again.
+        if (page.fullCollections() != full_before) continue;
+        const entries_young = try page.counter("wrapper_cache_entries");
+        std.debug.print("after young collections: {d} of {d} changed and {d} unchanged dead wrappers are still cached\n", .{ entries_young - entries_before, n, n });
+        // The changed ones wait; the unchanged ones went.
+        try testing.expect(entries_young >= entries_before + n - 8);
+        try testing.expect(entries_young <= entries_before + n + 8);
+        page.fullGC();
+        try testing.expect(try page.counter("wrapper_cache_entries") <= entries_before + 8);
+        return;
+    }
+    std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
+    return error.TestInconclusive;
+}
+
 /// The next batch changes this to true too, and the test below then holds the fixed value.
 const dead_wrappers_freed_ahead_of_the_collector = false;
 
