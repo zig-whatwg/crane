@@ -164,13 +164,19 @@ fn oneLine(arena: Allocator, js: []const u8) ![]const u8 {
 
 /// The console's input for one page: the wait, the read, `.exit`.
 pub fn consoleInput(arena: Allocator, reader: Reader, budget_ms: u64, stall_ms: u64) ![]const u8 {
+    // Jasmine's report is its console output: the console only keeps the
+    // page open for its budget, and the harness ends it once the report is
+    // printed (jasmineEnded).
+    if (reader == .jasmine_console) return std.fmt.allocPrint(arena, "await new Promise((resolve) => setTimeout(resolve, {d}))\n.exit\n", .{budget_ms});
     const wait_src = switch (reader) {
         .qunit => qunit_wait,
         .mocha => mocha_wait,
+        .jasmine_console => unreachable,
     };
     const read_src = switch (reader) {
         .qunit => qunit_read,
         .mocha => mocha_read,
+        .jasmine_console => unreachable,
     };
     const b = try std.fmt.allocPrint(arena, "{d}", .{budget_ms});
     const s = try std.fmt.allocPrint(arena, "{d}", .{stall_ms});
@@ -219,6 +225,10 @@ pub const PageResult = struct {
     errors: []const []const u8,
     resources: []const []const u8,
     user_agent: []const u8,
+    /// Tests the framework counted but did not name (Jasmine's console
+    /// reporter prints a dot per passed spec, a star per pending one).
+    unnamed_passed: u32 = 0,
+    unnamed_pending: u32 = 0,
 };
 
 pub const ParseError = error{ OutOfMemory, BadReport };
@@ -390,6 +400,7 @@ pub fn parse(arena: Allocator, reader: Reader, json: []const u8) ParseError!Page
     return switch (reader) {
         .qunit => parseQUnit(arena, json),
         .mocha => parseMocha(arena, json),
+        .jasmine_console => parseJasmineConsole(arena, json),
     };
 }
 
@@ -413,6 +424,9 @@ pub fn countProblems(arena: Allocator, reader: Reader, r: PageResult) ![]const [
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} tests completed; its list shows {d}", .{ n, all }));
             if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} failed; its list shows {d}", .{ n, fail }));
         },
+        .jasmine_console => {
+            if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "Jasmine's summary says {d} failures; its report names {d}", .{ n, fail }));
+        },
         .mocha => {
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha selects {d} tests; its report lists {d}", .{ n, all }));
             if (r.reported_passed) |n| if (n != pass) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha's stats say {d} passes; its report lists {d}", .{ n, pass }));
@@ -429,8 +443,9 @@ test "the console input: three lines, the budget and stall filled in, no newline
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
-    for ([_]Reader{ .qunit, .mocha }) |reader| {
+    for ([_]Reader{ .qunit, .mocha, .jasmine_console }) |reader| {
         const input = try consoleInput(a, reader, 900000, 150000);
+        if (reader == .jasmine_console) continue;
         try testing.expectEqual(@as(usize, 3), std.mem.count(u8, input, "\n"));
         try testing.expect(std.mem.endsWith(u8, input, "\n.exit\n"));
         try testing.expect(std.mem.indexOf(u8, input, "__") == null);
@@ -519,4 +534,335 @@ test "Mocha: full titles from the suite path, pending as the project's skip, hoo
     try testing.expectEqual(@as(usize, 0), (try countProblems(a, .mocha, r)).len);
     const wrong = try std.mem.replaceOwned(u8, a, mocha_report, "\"passes\":2", "\"passes\":3");
     try testing.expectEqual(@as(usize, 1), (try countProblems(a, .mocha, try parseMocha(a, wrong))).len);
+}
+
+// ---------------------------------------------------------------------------
+// Chrome, for the comparison column: an in-page QUnit suite with QUnit's own
+// TAP reporter on (the TodoMVC port sets QUnit.config.reporters.tap) prints
+// its run on the console, and headless Chrome started with
+// `--enable-logging=stderr --log-level=0` writes each console message to its
+// stderr as `[...:INFO:CONSOLE:<n>] "<message>", source: <url> (<n>)`, a
+// message's own newlines kept (lesson workflow-headless-chromes-console-log-
+// carries-a-pages-tap.md). QUnit 2.24's TapReporter: "ok N <full name>",
+// "ok N <full name> # SKIP", "not ok N <full name> # TODO", "not ok N <full
+// name>" then a YAML block per failed assertion ("  message: ..."), and at
+// the end "1..T", "# pass P", "# skip S", "# todo D", "# fail F" - some
+// parts coloured with ANSI escapes. A full name is the module path and the
+// test's name joined by " > ".
+
+/// The console messages of a Chrome stderr log, in order, ANSI escapes
+/// removed (arena-owned).
+pub fn chromeConsoleMessages(arena: Allocator, log: []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    var current: ?std.ArrayList(u8) = null;
+    var it = std.mem.splitScalar(u8, log, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, "\r");
+        var text: []const u8 = line;
+        if (current == null) {
+            const tag = std.mem.indexOf(u8, line, ":CONSOLE") orelse continue;
+            const open = std.mem.indexOfPos(u8, line, tag, "] \"") orelse continue;
+            current = .empty;
+            text = line[open + 3 ..];
+        } else try current.?.append(arena, '\n');
+        if (std.mem.lastIndexOf(u8, text, "\", source: ")) |end| {
+            try current.?.appendSlice(arena, text[0..end]);
+            try out.append(arena, try stripAnsi(arena, current.?.items));
+            current = null;
+        } else try current.?.appendSlice(arena, text);
+    }
+    return out.items;
+}
+
+fn stripAnsi(arena: Allocator, s: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < s.len) {
+        if (s[i] == 0x1b and i + 1 < s.len and s[i + 1] == '[') {
+            var j = i + 2;
+            while (j < s.len and (std.ascii.isDigit(s[j]) or s[j] == ';')) j += 1;
+            i = if (j < s.len) j + 1 else j;
+            continue;
+        }
+        try out.append(arena, s[i]);
+        i += 1;
+    }
+    return out.items;
+}
+
+/// The run's last line has been printed: "# fail F" after the plan.
+pub fn tapEnded(arena: Allocator, log: []const u8) !bool {
+    var plan = false;
+    for (try chromeConsoleMessages(arena, log)) |m| {
+        if (std.mem.startsWith(u8, m, "1..")) plan = true;
+        if (plan and std.mem.startsWith(u8, m, "# fail ")) return true;
+    }
+    return false;
+}
+
+/// "Module > name": the module path before the last " > " (a nested
+/// module's name is its path joined by " > " in QUnit too), as QUnit's id
+/// "<module>: <name>".
+fn tapTest(arena: Allocator, full: []const u8, status: journal.Status, skip: bool) !Reported {
+    const cut = std.mem.lastIndexOf(u8, full, " > ");
+    const module = if (cut) |c| full[0..c] else "";
+    const name = if (cut) |c| full[c + 3 ..] else full;
+    return .{ .module = module, .name = name, .id = try std.fmt.allocPrint(arena, "{s}: {s}", .{ module, name }), .status = status, .project_skip = skip };
+}
+
+/// A page's result from QUnit's TAP in a Chrome stderr log.
+pub fn parseChromeTap(arena: Allocator, log: []const u8) ParseError!PageResult {
+    var tests: std.ArrayList(Reported) = .empty;
+    var defined: std.ArrayList([]const u8) = .empty;
+    var errors: std.ArrayList([]const u8) = .empty;
+    var total: ?u32 = null;
+    var failed: ?u32 = null;
+    // The test a following YAML block belongs to.
+    var last_fail: ?usize = null;
+    var global = false;
+    for (try chromeConsoleMessages(arena, log)) |m| {
+        if (std.mem.startsWith(u8, m, "ok ") or std.mem.startsWith(u8, m, "not ok ")) {
+            const ok = m[0] == 'o';
+            const prefix: []const u8 = if (ok) "ok " else "not ok ";
+            var rest = m[prefix.len..];
+            // The test's number.
+            while (rest.len > 0 and std.ascii.isDigit(rest[0])) rest = rest[1..];
+            rest = std.mem.trimStart(u8, rest, " ");
+            last_fail = null;
+            global = false;
+            if (!ok and std.mem.eql(u8, rest, "global failure")) {
+                global = true;
+                continue;
+            }
+            var status: journal.Status = if (ok) .PASS else .FAIL;
+            var skip = false;
+            if (std.mem.endsWith(u8, rest, " # SKIP")) {
+                rest = rest[0 .. rest.len - " # SKIP".len];
+                status = .NOTRUN;
+                skip = true;
+            } else if (std.mem.endsWith(u8, rest, " # TODO")) {
+                // A todo test failing as it is expected to: QUnit does not
+                // count it failed.
+                rest = rest[0 .. rest.len - " # TODO".len];
+                status = .PASS;
+            }
+            const t = try tapTest(arena, rest, status, skip);
+            try defined.append(arena, t.id);
+            try tests.append(arena, t);
+            if (status == .FAIL) last_fail = tests.items.len - 1;
+            continue;
+        }
+        if (std.mem.indexOf(u8, m, "  message: ")) |at| {
+            const value_end = std.mem.indexOfScalarPos(u8, m, at, '\n') orelse m.len;
+            const value = std.mem.trim(u8, m[at + "  message: ".len .. value_end], " \"");
+            if (global) {
+                if (errors.items.len < journal.max_errors) try errors.append(arena, value);
+            } else if (last_fail) |i| {
+                if (tests.items[i].message == null) tests.items[i].message = value;
+            }
+            continue;
+        }
+        if (std.mem.startsWith(u8, m, "1..")) total = std.fmt.parseInt(u32, m[3..], 10) catch null;
+        if (std.mem.startsWith(u8, m, "# fail ")) failed = std.fmt.parseInt(u32, std.mem.trim(u8, m["# fail ".len..], " "), 10) catch null;
+    }
+    for (tests.items) |*t| if (t.status == .FAIL and t.message == null) {
+        t.message = "(no failed assertion shown)";
+    };
+    return .{
+        .tests = tests.items,
+        .defined = defined.items,
+        .reported_total = total,
+        .reported_failed = failed,
+        .finished = total != null and failed != null,
+        .errors = errors.items,
+        .resources = &.{},
+        .user_agent = "",
+    };
+}
+
+const chrome_log =
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"TAP version 13\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"ok 1 When page is initially opened > should focus on the todo input field\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "some other line\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"not ok 2 \x1b[31mNew Todo > should allow me to add todo items\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"  ---\n  message: \"expected 2 items\"\n  severity: failed\n  actual  : 1\n  ...\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"ok 3 \x1b[33mPersistence > should persist its data\x1b[39m # SKIP\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"1..3\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# pass 1\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# \x1b[33mskip 1\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n";
+const chrome_log_end =
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# \x1b[31mfail 1\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n";
+
+test "Chrome's stderr: QUnit's TAP read back as QUnit's ids, a failure's first message, skips, the plan and the end" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // Not ended until "# fail" follows the plan.
+    try testing.expect(!try tapEnded(a, chrome_log));
+    try testing.expect(try tapEnded(a, chrome_log ++ chrome_log_end));
+
+    const msgs = try chromeConsoleMessages(a, chrome_log);
+    try testing.expectEqual(@as(usize, 8), msgs.len);
+    // A message's own newlines are kept; the colour is gone.
+    try testing.expect(std.mem.indexOf(u8, msgs[3], "\n  severity: failed\n") != null);
+    try testing.expectEqualStrings("not ok 2 New Todo > should allow me to add todo items", msgs[2]);
+
+    const r = try parseChromeTap(a, chrome_log ++ chrome_log_end);
+    try testing.expectEqual(@as(usize, 3), r.tests.len);
+    try testing.expectEqualStrings("When page is initially opened: should focus on the todo input field", r.tests[0].id);
+    try testing.expectEqualStrings("When page is initially opened", r.tests[0].module);
+    try testing.expectEqual(journal.Status.FAIL, r.tests[1].status);
+    try testing.expectEqualStrings("expected 2 items", r.tests[1].message.?);
+    try testing.expect(r.tests[2].project_skip);
+    try testing.expectEqualStrings("Persistence: should persist its data", r.tests[2].id);
+    try testing.expect(r.finished);
+    try testing.expectEqual(@as(?u32, 3), r.reported_total);
+    try testing.expectEqual(@as(?u32, 1), r.reported_failed);
+    try testing.expectEqual(@as(usize, 3), r.defined.len);
+    try testing.expectEqual(@as(usize, 0), (try countProblems(a, .qunit, r)).len);
+    // Cut before its end: not finished.
+    try testing.expect(!(try parseChromeTap(a, chrome_log)).finished);
+}
+
+// ---------------------------------------------------------------------------
+// Jasmine as web-test-runner runs it in its manual mode (Angular's own
+// `<target>_debug` targets; rules_browsers wtr/wtr.config.mjs): with no
+// session the page is a debug page, and web-test-runner-jasmine 0.2.0 adds
+// its console reporter, which prints the whole run in one console.log at
+// the end - a character per spec ("." passed, "F" failed, "*" pending), then
+// "Failures:" with "N) <full name>" and each failed expectation's message
+// and stack indented by three spaces, then "N specs, M failures[, K
+// pending]" - coloured with ANSI escapes. Passed specs are counted, not
+// named: the project's own output names only failures.
+
+const JasmineSummary = struct { specs: u32, failures: u32, pending: u32, end: usize };
+
+/// The last "N spec(s), M failure(s)[, K pending]" in `text`.
+fn jasmineSummary(text: []const u8) ?JasmineSummary {
+    var pos: usize = text.len;
+    while (std.mem.lastIndexOf(u8, text[0..pos], " spec")) |at| : (pos = at) {
+        var start = at;
+        while (start > 0 and std.ascii.isDigit(text[start - 1])) start -= 1;
+        if (start == at) continue;
+        const specs = std.fmt.parseInt(u32, text[start..at], 10) catch continue;
+        var rest = text[at + " spec".len ..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        if (!std.mem.startsWith(u8, rest, ", ")) continue;
+        rest = rest[2..];
+        const failures = leadingNumber(rest) orelse continue;
+        var n: usize = 0;
+        while (n < rest.len and std.ascii.isDigit(rest[n])) n += 1;
+        rest = rest[n..];
+        if (!std.mem.startsWith(u8, rest, " failure")) continue;
+        rest = rest[" failure".len..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        var pending: u32 = 0;
+        if (std.mem.startsWith(u8, rest, ", ")) if (leadingNumber(rest[2..])) |p| {
+            pending = @intCast(p);
+        };
+        const end = (text.len - rest.len);
+        return .{ .specs = specs, .failures = @intCast(failures), .pending = pending, .end = end };
+    }
+    return null;
+}
+
+/// The run has ended: its summary is in the console's output.
+pub fn jasmineEnded(arena: Allocator, output: []const u8) !bool {
+    return jasmineSummary(try stripAnsi(arena, output)) != null;
+}
+
+/// A page's result from the Jasmine console reporter's output: the failed
+/// specs by name with their first message; the passed and pending ones as
+/// counts.
+pub fn parseJasmineConsole(arena: Allocator, output: []const u8) ParseError!PageResult {
+    const text = try stripAnsi(arena, output);
+    const summary = jasmineSummary(text) orelse return error.BadReport;
+    var tests: std.ArrayList(Reported) = .empty;
+    // The failures block of the same report: after the last "Failures:"
+    // line before the summary. A console may indent a message's lines after
+    // its first (Crane's prints each continuation line indented by two
+    // spaces), so lines are read with their leading spaces trimmed: a
+    // failure is "N) <full name>", numbered from 1 in order; its message is
+    // the first non-empty line after it.
+    const head = text[0..summary.end];
+    var block_start: ?usize = null;
+    {
+        var pos: usize = 0;
+        var it = std.mem.splitScalar(u8, head, '\n');
+        while (it.next()) |line| : (pos += line.len + 1) {
+            if (std.mem.eql(u8, std.mem.trim(u8, line, " \t\r"), "Failures:")) block_start = pos + line.len + 1;
+        }
+    }
+    if (block_start) |at| if (at <= head.len) {
+        var it = std.mem.splitScalar(u8, head[at..], '\n');
+        var current: ?usize = null;
+        var expected: u32 = 1;
+        while (it.next()) |line| {
+            const t = std.mem.trim(u8, line, " \t\r");
+            const num = std.fmt.allocPrint(arena, "{d}) ", .{expected}) catch return error.OutOfMemory;
+            if (std.mem.startsWith(u8, t, num)) {
+                const name = t[num.len..];
+                try tests.append(arena, .{ .module = "", .name = name, .id = name, .status = .FAIL });
+                current = tests.items.len - 1;
+                expected += 1;
+                continue;
+            }
+            if (current) |i| if (tests.items[i].message == null and t.len > 0) {
+                tests.items[i].message = t;
+            };
+        }
+    };
+    for (tests.items) |*t| if (t.message == null) {
+        t.message = "(no failed expectation shown)";
+    };
+    const passed = summary.specs -| summary.failures -| summary.pending;
+    return .{
+        .tests = tests.items,
+        .defined = &.{},
+        .reported_total = summary.specs,
+        .reported_failed = summary.failures,
+        .finished = true,
+        .errors = &.{},
+        .resources = &.{},
+        .user_agent = "",
+        .unnamed_passed = passed,
+        .unnamed_pending = summary.pending,
+    };
+}
+
+const jasmine_output =
+    "Jasmine randomize seed: 41\n" ++
+    "\x1b[32m.\x1b[39m\x1b[32m.\x1b[39m\x1b[31mF\x1b[39m\x1b[33m*\x1b[39m\x1b[32m.\x1b[39m\n\n" ++
+    "Failures:\n" ++
+    "1) HttpClient should send a request\n" ++
+    "\x1b[31m   Expected 1 to be 2.\n\x1b[39m   Error: Expected 1 to be 2.\n    at <Jasmine>\n\n" ++
+    "5 specs, 1 failure, 1 pending\n";
+
+test "Jasmine's console reporter: the failures by name with their message, the passes and pending as counts" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    try testing.expect(try jasmineEnded(a, jasmine_output));
+    try testing.expect(!try jasmineEnded(a, jasmine_output[0..60]));
+    const r = try parseJasmineConsole(a, jasmine_output);
+    try testing.expectEqual(@as(usize, 1), r.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", r.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", r.tests[0].message.?);
+    try testing.expectEqual(@as(?u32, 5), r.reported_total);
+    try testing.expectEqual(@as(?u32, 1), r.reported_failed);
+    try testing.expectEqual(@as(u32, 3), r.unnamed_passed);
+    try testing.expectEqual(@as(u32, 1), r.unnamed_pending);
+    // As Crane's console prints a multi-line message: every line after the
+    // first indented by two spaces.
+    const indented = try std.mem.replaceOwned(u8, a, jasmine_output, "\n", "\n  ");
+    const ri = try parseJasmineConsole(a, indented);
+    try testing.expectEqual(@as(usize, 1), ri.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", ri.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", ri.tests[0].message.?);
+    try testing.expectEqual(@as(usize, 0), (try countProblems(a, .jasmine_console, ri)).len);
+    // Singular and plural, no pending.
+    const one = try parseJasmineConsole(a, "1 spec, 0 failures\n");
+    try testing.expectEqual(@as(u32, 1), one.unnamed_passed);
+    try testing.expectEqual(@as(usize, 0), one.tests.len);
+    try testing.expectError(error.BadReport, parseJasmineConsole(a, "no summary here"));
 }

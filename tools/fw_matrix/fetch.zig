@@ -194,12 +194,43 @@ pub fn obtain(gpa: Allocator, io: Io, downloads: []const u8, url: []const u8, sh
     return bytes;
 }
 
-/// The hash of a manifest entry: its fields as JSON, sha256'd.
+/// The hash of what makes a suite's tree - its directory's name, the
+/// source, the dependencies, the generated files, Node, npm, Bazel and the
+/// targets it builds - as JSON, sha256'd: a change to how pages run (a
+/// budget, a reader) leaves the tree current, and every suite on a shared
+/// tree finds the same stamp.
 pub fn entryHash(gpa: Allocator, f: manifest.Suite) ![64]u8 {
+    var arena_state: std.heap.ArenaAllocator = .init(gpa);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var targets: std.ArrayList([]const u8) = .empty;
+    if (f.bazel != null) for (f.pages) |p| if (p.target) |t| try targets.append(arena, t);
     var out: Io.Writer.Allocating = .init(gpa);
     defer out.deinit();
-    try std.json.Stringify.value(f, .{}, &out.writer);
+    // Absent when null, so that a tree made before Bazel was known keeps its
+    // stamp.
+    const Fields = struct { tree: []const u8, source: manifest.Archive, dependencies: []const manifest.Dependency, generated: []const manifest.Generated, node: ?manifest.Node, npm: ?manifest.Npm, bazel: ?manifest.Bazel, targets: ?[]const []const u8 };
+    const fields: Fields = .{ .tree = try manifest.treeName(arena, f), .source = f.source, .dependencies = f.dependencies, .generated = f.generated, .node = f.node, .npm = f.npm, .bazel = f.bazel, .targets = if (targets.items.len > 0) targets.items else null };
+    try std.json.Stringify.value(fields, .{ .emit_null_optional_fields = false }, &out.writer);
     return sha256Hex(out.written());
+}
+
+/// A TodoMVC app's directory, examples/<id>/, is the one its manifest entry
+/// pins (dirHash). Its build is what the row measures.
+pub fn checkApp(gpa: Allocator, io: Io, tree: Io.Dir, app: manifest.App) !void {
+    const want = app.sha256 orelse return error.AppWithoutPin;
+    const path = try std.fmt.allocPrint(gpa, "examples/{s}", .{app.id});
+    defer gpa.free(path);
+    var dir = tree.openDir(io, path, .{}) catch |err| {
+        std.debug.print("fw_matrix: {s}: {t}\n", .{ path, err });
+        return error.AppMissing;
+    };
+    defer dir.close(io);
+    const got = try dirHash(gpa, io, dir);
+    if (!std.mem.eql(u8, &got, want)) {
+        std.debug.print("fw_matrix: {s}/ is sha256 {s}; the manifest pins {s}\n", .{ path, &got, want });
+        return error.AppMismatch;
+    }
 }
 
 pub const stamp_name = ".fw_matrix-fetched";
@@ -216,8 +247,19 @@ pub fn fetchSuite(gpa: Allocator, io: Io, frameworks_dir: []const u8, f: manifes
     // Node is its own directory with its own stamp: made whenever it is
     // missing, even when the tree is current.
     const node_dir: ?[]const u8 = if (f.node) |n| try fetchNode(gpa, arena, io, frameworks_dir, n) else null;
-    const tree = try std.fmt.allocPrint(gpa, "{s}/{s}-{s}", .{ frameworks_dir, f.id, f.version });
+    const tree = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ frameworks_dir, try manifest.treeName(arena, f) });
     defer gpa.free(tree);
+    try fetchTree(gpa, arena, io, f, tree, downloads, node_dir, environ);
+    // An app's build is checked whether its tree was made now or before.
+    if (f.app) |app| {
+        var dir = try Io.Dir.cwd().openDir(io, tree, .{});
+        defer dir.close(io);
+        try checkApp(gpa, io, dir, app);
+        std.debug.print("fw_matrix: {s}: examples/{s}/ is the pinned build\n", .{ f.id, app.id });
+    }
+}
+
+fn fetchTree(gpa: Allocator, arena: Allocator, io: Io, f: manifest.Suite, tree: []const u8, downloads: []const u8, node_dir: ?[]const u8, environ: ?*const std.process.Environ.Map) !void {
     const stamp_path = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ tree, stamp_name });
     defer gpa.free(stamp_path);
     const want = try entryHash(gpa, f);
@@ -271,6 +313,20 @@ pub fn fetchSuite(gpa: Allocator, io: Io, frameworks_dir: []const u8, f: manifes
         _ = try npmInstall(gpa, arena, io, &env, node_dir.?, tree_abs, n);
     }
 
+    // The project's own Bazel builds every page's target (Angular: its
+    // web-test-runner debug targets), so a run only starts them.
+    if (f.bazel) |bz| {
+        const frameworks_abs = try Io.Dir.cwd().realPathFileAlloc(io, std.fs.path.dirname(tree) orelse ".", arena);
+        const bazelisk = try fetchBazelisk(gpa, arena, io, frameworks_abs, bz);
+        const env = try bazelEnviron(arena, environ, frameworks_abs, bz);
+        const start = try bazelArgv(arena, bazelisk, frameworks_abs);
+        var argv: std.ArrayList([]const u8) = .empty;
+        try argv.appendSlice(arena, &start);
+        try argv.appendSlice(arena, &.{ "build", try std.fmt.allocPrint(arena, "--jobs={d}", .{bz.jobs}) });
+        for (f.pages) |p| if (p.target) |t| try argv.append(arena, t);
+        try runIn(gpa, io, &env, try Io.Dir.cwd().realPathFileAlloc(io, tree, arena), argv.items);
+    }
+
     // Written last: a fetch that failed above is redone in full.
     try dir.writeFile(io, .{ .sub_path = stamp_name, .data = &want });
 }
@@ -290,7 +346,7 @@ pub fn fetchSuite(gpa: Allocator, io: Io, frameworks_dir: []const u8, f: manifes
 //                                           lockfile (its sha256 checked
 //                                           first; npm checks each package's
 //                                           integrity line)
-//   <tree>/.fw_matrix-node-modules          nodeModulesHash of node_modules
+//   <tree>/.fw_matrix-node-modules          dirHash of node_modules
 //                                           as installed, which a run checks
 // ---------------------------------------------------------------------------
 
@@ -374,14 +430,77 @@ pub fn nodeDirChecked(arena: Allocator, io: Io, frameworks_dir: []const u8, node
     return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
 }
 
+// ---------------------------------------------------------------------------
+// Bazel, for a suite the project builds and serves with it (Angular):
+//
+//   <frameworks>/bazelisk-<version>-<platform>/bazelisk   the pinned bazelisk
+//   <frameworks>/bazelisk-home/                          the Bazel it fetches
+//   <frameworks>/bazel-root/                             Bazel's output root
+//
+// bazelisk checks the Bazel binary it fetches against BAZELISK_VERIFY_SHA256
+// (the manifest's pin for the host); Bazel's own downloads are the
+// project's pins (its MODULE.bazel.lock).
+
+pub fn bazelRoot(arena: Allocator, frameworks_abs: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(arena, "{s}/bazel-root", .{frameworks_abs});
+}
+
+/// The pinned bazelisk for the host, downloaded once; its absolute path.
+pub fn fetchBazelisk(gpa: Allocator, arena: Allocator, io: Io, frameworks_dir: []const u8, bz: manifest.Bazel) ![]const u8 {
+    const platform = hostNodePlatform() orelse return error.NoBazelForHost;
+    const archive = for (bz.bazelisk) |a| {
+        if (std.mem.eql(u8, a.platform, platform)) break a;
+    } else {
+        std.debug.print("fw_matrix: the manifest pins no bazelisk for {s}\n", .{platform});
+        return error.NoBazelForHost;
+    };
+    const dir_path = try std.fmt.allocPrint(arena, "{s}/bazelisk-{s}-{s}", .{ frameworks_dir, bz.bazelisk_version, platform });
+    const path = try std.fmt.allocPrint(arena, "{s}/bazelisk", .{dir_path});
+    const stamp_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ dir_path, stamp_name });
+    if (Io.Dir.cwd().readFileAlloc(io, stamp_path, arena, .limited(256))) |have| {
+        if (std.mem.eql(u8, std.mem.trim(u8, have, " \n"), archive.sha256)) return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
+    } else |_| {}
+    const downloads = try std.fmt.allocPrint(arena, "{s}/downloads", .{frameworks_dir});
+    try Io.Dir.cwd().createDirPath(io, downloads);
+    try Io.Dir.cwd().createDirPath(io, dir_path);
+    const bytes = try obtain(gpa, io, downloads, archive.url, archive.sha256, null);
+    defer gpa.free(bytes);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes, .flags = .{ .permissions = .executable_file } });
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = archive.sha256 });
+    std.debug.print("fw_matrix: bazelisk {s} ({s}) from {s}\n", .{ bz.bazelisk_version, platform, archive.url });
+    return Io.Dir.cwd().realPathFileAlloc(io, path, arena);
+}
+
+/// The environment bazelisk runs in: the parent's, its home under the
+/// frameworks directory, and the Bazel binary's pin for the host.
+pub fn bazelEnviron(arena: Allocator, parent: ?*const std.process.Environ.Map, frameworks_abs: []const u8, bz: manifest.Bazel) !std.process.Environ.Map {
+    const platform = hostNodePlatform() orelse return error.NoBazelForHost;
+    const pin = manifest.BinaryPin.find(bz.binaries, platform) orelse {
+        std.debug.print("fw_matrix: the manifest pins no Bazel {s} binary for {s}\n", .{ bz.version, platform });
+        return error.NoBazelForHost;
+    };
+    var env: std.process.Environ.Map = .init(arena);
+    if (parent) |p| try env.putAll(p);
+    try env.put("BAZELISK_HOME", try std.fmt.allocPrint(arena, "{s}/bazelisk-home", .{frameworks_abs}));
+    try env.put("BAZELISK_VERIFY_SHA256", pin.sha256);
+    return env;
+}
+
+/// The command line that starts the fetched Bazel: bazelisk and its output
+/// root (a startup option, before the command).
+pub fn bazelArgv(arena: Allocator, bazelisk: []const u8, frameworks_abs: []const u8) ![2][]const u8 {
+    return .{ bazelisk, try std.fmt.allocPrint(arena, "--output_user_root={s}", .{try bazelRoot(arena, frameworks_abs)}) };
+}
+
 pub const node_modules_stamp = ".fw_matrix-node-modules";
 
-/// A tree's node_modules as one sha256: a line per entry - "D <path>" for a
-/// directory, "F <path> <sha256 of its bytes>" for a file, "L <path>
-/// <target>" for a symbolic link (never followed) - sorted by path bytes and
-/// hashed together. The same packages give the same hash on any machine and
-/// in any order of creation; the walk reads every file once.
-pub fn nodeModulesHash(gpa: Allocator, io: Io, dir: Io.Dir) ![64]u8 {
+/// A directory as one sha256 (a tree's node_modules; a TodoMVC app's
+/// examples/<id>/): a line per entry - "D <path>" for a directory, "F <path>
+/// <sha256 of its bytes>" for a file, "L <path> <target>" for a symbolic
+/// link (never followed) - sorted by path bytes and hashed together. The
+/// same files give the same hash on any machine and in any order of
+/// creation; the walk reads every file once.
+pub fn dirHash(gpa: Allocator, io: Io, dir: Io.Dir) ![64]u8 {
     var arena_state: std.heap.ArenaAllocator = .init(gpa);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -406,7 +525,7 @@ pub fn nodeModulesHash(gpa: Allocator, io: Io, dir: Io.Dir) ![64]u8 {
                 break :blk try std.fmt.allocPrint(arena, "F {s} {s}\n", .{ path, &sha256Hex(bytes) });
             },
             else => {
-                std.debug.print("fw_matrix: {s}: a {t} in node_modules\n", .{ path, e.kind });
+                std.debug.print("fw_matrix: {s}: a {t} in the tree hashed\n", .{ path, e.kind });
                 return error.UnexpectedFileKind;
             },
         };
@@ -484,7 +603,7 @@ pub fn npmInstall(gpa: Allocator, arena: Allocator, io: Io, environ: *const std.
     for (npm.scripts) |s| try runIn(gpa, io, environ, tree, &.{ npm_bin, "run", s });
     var nm = try dir.openDir(io, "node_modules", .{});
     defer nm.close(io);
-    const h = try nodeModulesHash(gpa, io, nm);
+    const h = try dirHash(gpa, io, nm);
     try dir.writeFile(io, .{ .sub_path = node_modules_stamp, .data = &h });
     std.debug.print("fw_matrix: node_modules installed, sha256 {s}\n", .{&h});
     return h;
@@ -502,7 +621,7 @@ pub fn checkNodeModules(gpa: Allocator, io: Io, tree: []const u8) ![64]u8 {
     }, " \n");
     var nm = try dir.openDir(io, "node_modules", .{});
     defer nm.close(io);
-    const h = try nodeModulesHash(gpa, io, nm);
+    const h = try dirHash(gpa, io, nm);
     if (!std.mem.eql(u8, recorded, &h)) {
         std.debug.print("fw_matrix: {s}/node_modules is sha256 {s}; fetch installed {s}\n", .{ tree, &h, recorded });
         return error.NodeModulesChanged;
@@ -684,12 +803,12 @@ test "extractNode: the top directory stripped; bin/npm stays a link and bin/node
     }
 }
 
-/// The text nodeModulesHash hashes, written out by hand for the tests.
+/// The text dirHash hashes, written out by hand for the tests.
 fn sha256Line(comptime kind: []const u8, path: []const u8, bytes: []const u8) ![]u8 {
     return std.fmt.allocPrint(testing.allocator, kind ++ " {s} {s}\n", .{ path, &sha256Hex(bytes) });
 }
 
-test "nodeModulesHash: every directory, file (by its sha256) and link (by its target), in path order" {
+test "dirHash: every directory, file (by its sha256) and link (by its target), in path order" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.createDirPath(testing.io, "e");
@@ -697,7 +816,7 @@ test "nodeModulesHash: every directory, file (by its sha256) and link (by its ta
     try tmp.dir.createDirPath(testing.io, "a");
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "a/b.js", .data = "B" });
     try tmp.dir.symLink(testing.io, "b.js", "a/link", .{});
-    const got = try nodeModulesHash(testing.allocator, testing.io, tmp.dir);
+    const got = try dirHash(testing.allocator, testing.io, tmp.dir);
 
     // The format, independently: one line per entry, sorted by path bytes.
     const b_line = try sha256Line("F", "a/b.js", "B");
@@ -717,9 +836,51 @@ test "nodeModulesHash: every directory, file (by its sha256) and link (by its ta
     try other.dir.writeFile(testing.io, .{ .sub_path = "a/b.js", .data = "B" });
     try other.dir.writeFile(testing.io, .{ .sub_path = "c.js", .data = "C" });
     try other.dir.createDirPath(testing.io, "e");
-    try testing.expectEqualStrings(&got, &(try nodeModulesHash(testing.allocator, testing.io, other.dir)));
+    try testing.expectEqualStrings(&got, &(try dirHash(testing.allocator, testing.io, other.dir)));
     try other.dir.writeFile(testing.io, .{ .sub_path = "c.js", .data = "D" });
-    try testing.expect(!std.mem.eql(u8, &got, &(try nodeModulesHash(testing.allocator, testing.io, other.dir))));
+    try testing.expect(!std.mem.eql(u8, &got, &(try dirHash(testing.allocator, testing.io, other.dir))));
+}
+
+test "a TodoMVC app: its directory checked against its pin; the shared tree's stamp is every app's" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(testing.io, "examples/react/dist");
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "examples/react/dist/index.html", .data = "<h1>todos</h1>" });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "examples/react/package.json", .data = "{}" });
+    var app_dir = try tmp.dir.openDir(testing.io, "examples/react", .{});
+    const pin = try dirHash(testing.allocator, testing.io, app_dir);
+    app_dir.close(testing.io);
+
+    const app: manifest.App = .{ .id = "react", .title = "React", .folder = "react/dist", .sha256 = &pin };
+    try checkApp(testing.allocator, testing.io, tmp.dir, app);
+    // One byte of the build changed: not the pinned build.
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "examples/react/dist/index.html", .data = "<h1>Todos</h1>" });
+    try testing.expectError(error.AppMismatch, checkApp(testing.allocator, testing.io, tmp.dir, app));
+    var gone = app;
+    gone.id = "vue";
+    try testing.expectError(error.AppMissing, checkApp(testing.allocator, testing.io, tmp.dir, gone));
+
+    // Two apps on one tree find the same stamp; a suite of its own does not
+    // share its stamp with another; how a page runs is not the tree's.
+    const base: manifest.Suite = .{ .id = "react-todomvc", .framework = "react", .title = "React", .version = "19.2.5", .kind = .todomvc_port, .repository = "https://github.com/tastejs/todomvc", .tag = "examples/react/dist", .commit = "ff43b02e59df", .licence = "MIT", .runner = "QUnit", .reader = .qunit, .source = .{ .url = "https://x", .sha256 = "a" }, .pages = &.{.{ .id = "todomvc", .path = "p?framework=react" }}, .excluded = "x.txt", .tree = "todomvc-ff43b02e59df", .app = app };
+    var other = base;
+    other.id = "vue-todomvc";
+    other.version = "3.5.33";
+    other.pages = &.{.{ .id = "todomvc", .path = "p?framework=vue" }};
+    other.app = gone;
+    try testing.expectEqualStrings(&(try entryHash(testing.allocator, base)), &(try entryHash(testing.allocator, other)));
+    var own = base;
+    own.tree = null;
+    var own2 = other;
+    own2.tree = null;
+    try testing.expect(!std.mem.eql(u8, &(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, own2))));
+    var slower = own;
+    slower.page_budget_s += 100;
+    slower.page_stall_s += 100;
+    try testing.expectEqualStrings(&(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, slower)));
+    var other_source = own;
+    other_source.source.sha256 = "c";
+    try testing.expect(!std.mem.eql(u8, &(try entryHash(testing.allocator, own)), &(try entryHash(testing.allocator, other_source))));
 }
 
 test "checkLockfile: the tree's package-lock.json against the manifest's pin" {

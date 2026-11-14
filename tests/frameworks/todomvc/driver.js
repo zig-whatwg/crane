@@ -271,6 +271,7 @@
     async blur(options = {}) {
       return act(this, 'blur', { force: true, ...options }, (el) => {
         if (el.ownerDocument.activeElement !== el) throw new CommandError(`.blur() needs the focused element; ${describe(el)} is not focused`);
+        commitChange(el);
         el.blur();
       });
     }
@@ -353,8 +354,12 @@
     const doc = el.ownerDocument;
     const target = el.closest(focusableSelector);
     if (target && !target.disabled) {
-      if (doc.activeElement !== target) target.focus();
+      if (doc.activeElement !== target) {
+        if (doc.activeElement) commitChange(doc.activeElement);
+        target.focus();
+      }
     } else if (doc.activeElement && doc.activeElement !== doc.body) {
+      commitChange(doc.activeElement);
       doc.activeElement.blur();
     }
   }
@@ -416,6 +421,24 @@
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
   }
 
+  // Cypress fires `change` itself once typing has changed a field's value
+  // and the field is committed - {enter} into an input, or the field losing
+  // focus - as a browser does for a user's edit (Cypress
+  // packages/driver/src/cy/commands/actions/type.ts onValueChange and
+  // onEnterPressed, cy/focused.ts fireBlur); a value a script sets makes no
+  // browser fire it. Apps that add a todo on `change` (the vanilla
+  // JavaScript ones) rely on it.
+  let pendingChange = null;
+  function noteValueChange(el, original) {
+    if (!pendingChange || pendingChange.el !== el) pendingChange = { el, original };
+  }
+  function commitChange(el) {
+    if (!pendingChange || pendingChange.el !== el) return;
+    const changed = el.value !== pendingChange.original;
+    pendingChange = null;
+    if (changed) el.dispatchEvent(new (el.ownerDocument.defaultView.Event)('change', { bubbles: true }));
+  }
+
   function editValue(el, inputType, data) {
     const v = el.value;
     let start = el.selectionStart;
@@ -425,6 +448,7 @@
     if (inputType === 'deleteContentForward' && start === end) end = Math.min(v.length, end + 1);
     if (start === end && inputType !== 'insertText') return false;
     const insert = data || '';
+    noteValueChange(el, v);
     setValue(el, v.slice(0, start) + insert + v.slice(end));
     el.setSelectionRange(start + insert.length, start + insert.length);
     return true;
@@ -449,9 +473,13 @@
     const [key, code, keyCode] = spec;
     const down = keyEvent(el, 'keydown', key, code, keyCode, 0);
     if (down && name === 'enter') {
-      // Enter's keypress, then the form's implicit submission (HTML
-      // 4.10.21.2) when the field is in a form.
-      if (keyEvent(el, 'keypress', key, code, keyCode, keyCode) && el.form) implicitSubmission(el);
+      // Enter's keypress, then (an input, not a textarea) the change its
+      // typing made, then the form's implicit submission (HTML 4.10.21.2)
+      // when the field is in a form.
+      if (keyEvent(el, 'keypress', key, code, keyCode, keyCode)) {
+        if (el.localName === 'input') commitChange(el);
+        if (el.form) implicitSubmission(el);
+      }
     } else if (down && (name === 'backspace' || name === 'del')) {
       const inputType = name === 'backspace' ? 'deleteContentBackward' : 'deleteContentForward';
       const v = el.value;
@@ -574,6 +602,7 @@
     reset() {
       aliases = Object.create(null);
       layoutDisagreements = [];
+      pendingChange = null;
     },
     takeLayoutDisagreements() {
       const d = layoutDisagreements;
