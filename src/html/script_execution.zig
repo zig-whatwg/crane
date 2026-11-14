@@ -4633,6 +4633,22 @@ pub const script_type_test_cases = if (@import("builtin").is_test) struct {
             .{ .type_value = " ", .language = "javascript", .expected = .null },
             .{ .type_value = "text/javascript\xc2\xa0", .language = null, .expected = .null },
             .{ .type_value = null, .language = repeatForTest("javascript", 20), .expected = .null },
+            // Steps 10-12 match the type string as written (step 8: the
+            // attribute's value); only step 9's JavaScript MIME type match
+            // also tries it stripped (WPT module/type.html; Chrome, Safari).
+            .{ .type_value = "module", .language = null, .expected = .module },
+            .{ .type_value = "MODULE", .language = null, .expected = .module },
+            .{ .type_value = " module", .language = null, .expected = .null },
+            .{ .type_value = "module ", .language = null, .expected = .null },
+            .{ .type_value = " module ", .language = null, .expected = .null },
+            .{ .type_value = "\tmodule\n", .language = null, .expected = .null },
+            .{ .type_value = "ImportMap", .language = null, .expected = .importmap },
+            .{ .type_value = "importmap ", .language = null, .expected = .null },
+            .{ .type_value = " importmap", .language = null, .expected = .null },
+            .{ .type_value = "SpeculationRules", .language = null, .expected = .speculationrules },
+            .{ .type_value = "speculationrules ", .language = null, .expected = .null },
+            .{ .type_value = " speculationrules", .language = null, .expected = .null },
+            .{ .type_value = " text/javascript ", .language = null, .expected = .classic },
         };
         for (cases) |case| {
             const element = try HTMLScriptElement.init(allocator, &context);
