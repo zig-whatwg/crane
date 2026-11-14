@@ -4042,9 +4042,25 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
     const generation = runtime.SlabAllocator.generationOf(document);
     const had_engine = document.ctx.hasEngine();
     const epoch = internal.parser_epoch;
+    // A microtask checkpoint before DOMContentLoaded, and another before the
+    // load: the microtasks the parse queued - a MutationObserver's records of
+    // the last nodes the parser inserted - run before either event's
+    // listeners, as they would at the end of HTML's own parser task. WebKit's
+    // Document::finishedParsing performs one before it dispatches
+    // DOMContentLoaded; Blink's FinishedParsing one after it ("Ensure Custom
+    // Element callbacks are drained", crbug.com/425790), before
+    // CheckCompleted fires load (custom-elements/perform-microtask-checkpoint-
+    // before-construction.html reads the records in onload: Chrome, Firefox
+    // and Safari pass it).
+    endOfParseMicrotaskCheckpoint(document);
+    if ((had_engine and !document.ctx.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
+    if ((getInternal(document) orelse return).parser_epoch != epoch) return;
     fireDOMContentLoaded(document);
     // Its listeners may have taken the document away, or document.open()ed
     // it: that ends this parser's "the end".
+    if ((had_engine and !document.ctx.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
+    if ((getInternal(document) orelse return).parser_epoch != epoch) return;
+    endOfParseMicrotaskCheckpoint(document);
     if ((had_engine and !document.ctx.hasEngine()) or runtime.SlabAllocator.generationOf(document) != generation) return;
     if ((getInternal(document) orelse return).parser_epoch != epoch) return;
     // HTML 7.4.6.5 "restore persisted state" step 2 for a document a
@@ -4057,6 +4073,16 @@ fn lifecycleFinishLoading(document: *runtime.Instance) void {
     // script-inserted script still fetching keeps them non-empty, which
     // completeLoadUnlessDelayed waits on.
     completeLoadUnlessDelayed(document);
+}
+
+/// lifecycleFinishLoading's microtask checkpoints around DOMContentLoaded
+/// (WebKit's before it, Blink's after it): none while script is running -
+/// a parse script started (document.write's) ends in that script's own
+/// checkpoint.
+fn endOfParseMicrotaskCheckpoint(document: *runtime.Instance) void {
+    const agent = document.ctx.agent orelse return;
+    if (engine.hasRunningScript(agent)) return;
+    engine.performMicrotaskCheckpoint(agent) catch |err| log.debug("end-of-parse microtask checkpoint: {}", .{err});
 }
 
 /// "The end" step 6's DOMContentLoaded, fired now (lifecycleFinishLoading
