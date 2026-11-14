@@ -290,6 +290,7 @@ system state (defaults allowed), console output.
 | `system_trust_store` | native (SecTrust, decision 6) | emulated (distro CA bundle: no revocation, no enterprise roots) | as its host OS | only `extra_trust_anchors_pem` trusted |
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
 | `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
+| `deflate_decoding` | native (the zlib build.zig.zon pins, linked by the bundled libcurl); unsupported with -Dsystem-curl | same | same | Fetch's gzip and deflate content codings decode with Zig's std.compress.flate (slower: 1.317x the instructions on a 1 MB body) |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
 | `address_space` | native (kit/posix: VM tags, MADV_FREE_REUSABLE / REUSE) | native (kit/posix: VMA names, MADV_NOHUGEPAGE on the node cage) | native (the host OS's) | no Browser heap: `Browser.init` fails with NotSupported (6.11); no page sees the difference |
@@ -472,8 +473,25 @@ contexts are safe on different threads. The supplied allocator owns all C
 allocations too. The built-ins use the hash-pinned MIT Google Brotli v1.2.0
 codec in `kit/brotli`, for matching semantics and no OS-version dependency.
 `-Dplatform-without=brotli` removes it; `-Dplatform-static=brotli` is already the
-default. HTTP uses the same source library through curl's streaming decoder.
+default. Fetch's "br" content coding uses the same decoder
+(src/fetch/content_coding/brotli.zig); libcurl decodes no content coding.
 Only RFC 7932 streams are accepted (no large-window extension or dictionaries).
+
+#### 6.7.2 Raw DEFLATE through zlib [deflate_decoding]
+
+`createDeflateDecoder(allocator) CodecError!*DeflateDecoder`,
+`decompressDeflate(decoder, input: Bytes, output: []u8) CodecError!CodecProgress` and
+`destroyDeflateDecoder(decoder)`: zlib's inflate over raw RFC 1951 DEFLATE
+(`inflateInit2(-15)`), with the Brotli trio's contract - borrowed buffers,
+`need_input` / `need_output` / `finished`, bytes after the final block left
+unconsumed, `InvalidData` for what is not DEFLATE, every C allocation through the
+caller's allocator. The caller parses any gzip or zlib container itself, as
+Chromium's GzipSourceStream and Firefox's nsHTTPCompressConv do; Fetch's gzip and
+deflate content codings are its user (src/fetch/content_coding/flate.zig).
+`kit/inflate/zlib.zig` declares zlib's entry points and `z_stream` itself (no
+build-graph line names zlib); `inflateInit2_` checks `sizeof(z_stream)`, so a
+layout drift is `NotSupported`. The built-ins report it only where the bundled
+libcurl, and so the pinned zlib, is in the link.
 
 ### 6.8 Crypto primitives (decision 11)
 
