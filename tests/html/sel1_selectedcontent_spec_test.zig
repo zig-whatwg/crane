@@ -124,12 +124,13 @@ fn movedAncestorQueuesNothing() !void {
         \\document.body.innerHTML = '<div id=old><div id=wrapper><select><button><selectedcontent></selectedcontent></button><option>one</option><option id=b>two</option></select></div></div><div id=new></div>';
         \\globalThis.content = document.querySelector('selectedcontent');
         \\globalThis.original = content.firstChild;
-        \\globalThis.observer = new MutationObserver(() => {});
+        \\globalThis.records = [];
+        \\globalThis.observer = new MutationObserver(list => records.push(...list));
         \\observer.observe(content, {childList: true, subtree: true});
         \\document.getElementById('new').moveBefore(document.getElementById('wrapper'), null);
     );
     // The microtask checkpoint after the script ran: no update was queued.
-    try expectScript(page, "String(content.firstChild === original) + '|' + observer.takeRecords().length", "true|0");
+    try expectScript(page, "String(content.firstChild === original) + '|' + records.concat(observer.takeRecords()).length", "true|0");
     try expectScript(page, "document.getElementById('b').selected = true; content.innerHTML", "two");
 }
 
