@@ -290,7 +290,7 @@ system state (defaults allowed), console output.
 | `system_trust_store` | native (SecTrust, decision 6) | emulated (distro CA bundle: no revocation, no enterprise roots) | as its host OS | only `extra_trust_anchors_pem` trusted |
 | `http2` / `http3` | native when built with nghttp2 / unsupported | same | same | HTTP-network fetch step 8.3: an HTTP/2-only request is a network error / HTTP/1.1 and 2 only |
 | `brotli` | native (vendored Google Brotli) | native (same) | native (same) | CompressionStream/DecompressionStream reject "brotli"; the static HTTP backend does not advertise or decode br |
-| `zlib_inflate` | native (the zlib build.zig.zon pins, linked by the bundled libcurl); unsupported with -Dsystem-curl | same | same | Fetch's gzip and deflate content codings decode with Zig's std.compress.flate (slower: 1.317x the instructions on a 1 MB body) |
+| `deflate_decoding` | native (the zlib build.zig.zon pins, linked by the bundled libcurl); unsupported with -Dsystem-curl | same | same | Fetch's gzip and deflate content codings decode with Zig's std.compress.flate (slower: 1.317x the instructions on a 1 MB body) |
 | `thread_qos` | native | unsupported | as its host OS | default priority |
 | `resident_memory` | native | native | native | diagnostics report nothing |
 | `address_space` | native (kit/posix: VM tags, MADV_FREE_REUSABLE / REUSE) | native (kit/posix: VMA names, MADV_NOHUGEPAGE on the node cage) | native (the host OS's) | no Browser heap: `Browser.init` fails with NotSupported (6.11); no page sees the difference |
@@ -477,11 +477,11 @@ default. Fetch's "br" content coding uses the same decoder
 (src/fetch/content_coding/brotli.zig); libcurl decodes no content coding.
 Only RFC 7932 streams are accepted (no large-window extension or dictionaries).
 
-#### 6.7.2 Raw DEFLATE through zlib [zlib_inflate]
+#### 6.7.2 Raw DEFLATE through zlib [deflate_decoding]
 
-`createInflateDecoder(allocator) CodecError!*InflateDecoder`,
-`inflateChunk(decoder, input: Bytes, output: []u8) CodecError!CodecProgress` and
-`destroyInflateDecoder(decoder)`: zlib's inflate over raw RFC 1951 DEFLATE
+`createDeflateDecoder(allocator) CodecError!*DeflateDecoder`,
+`decompressDeflate(decoder, input: Bytes, output: []u8) CodecError!CodecProgress` and
+`destroyDeflateDecoder(decoder)`: zlib's inflate over raw RFC 1951 DEFLATE
 (`inflateInit2(-15)`), with the Brotli trio's contract - borrowed buffers,
 `need_input` / `need_output` / `finished`, bytes after the final block left
 unconsumed, `InvalidData` for what is not DEFLATE, every C allocation through the

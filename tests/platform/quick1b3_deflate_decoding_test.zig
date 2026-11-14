@@ -1,4 +1,4 @@
-//! The zlib_inflate capability (src/platform/protocol.zig, kit/inflate/
+//! The deflate_decoding capability (src/platform/protocol.zig, kit/inflate/
 //! zlib.zig): raw DEFLATE (RFC 1951) decoded by zlib's own inflate, a chunk
 //! at a time, with the caller's allocator - what Fetch's "gzip" and
 //! "deflate" content codings run (src/fetch/content_coding/flate.zig), as
@@ -24,13 +24,13 @@ fn small(allocator: std.mem.Allocator) ![]u8 {
     return out.toOwnedSlice(allocator);
 }
 
-const supported = platform.capabilities.zlib_inflate != .unsupported;
+const supported = platform.capabilities.deflate_decoding != .unsupported;
 
 /// Decode `pieces` in order through one decoder, `out_len` bytes of output
 /// per call; the decoded bytes (OWNED) and the last status.
 fn decodePieces(allocator: std.mem.Allocator, pieces: []const []const u8, out_len: usize) !struct { bytes: []u8, status: platform.CodecStatus, left: usize } {
-    const decoder = try platform.createInflateDecoder(allocator);
-    defer platform.destroyInflateDecoder(decoder);
+    const decoder = try platform.createDeflateDecoder(allocator);
+    defer platform.destroyDeflateDecoder(decoder);
     var out: std.ArrayListUnmanaged(u8) = .empty;
     errdefer out.deinit(allocator);
     const buffer = try allocator.alloc(u8, out_len);
@@ -40,7 +40,7 @@ fn decodePieces(allocator: std.mem.Allocator, pieces: []const []const u8, out_le
     for (pieces) |piece| {
         var input = piece;
         while (true) {
-            const progress = try platform.inflateChunk(decoder, .from(input), buffer);
+            const progress = try platform.decompressDeflate(decoder, .from(input), buffer);
             try testing.expect(progress.consumed <= input.len);
             try testing.expect(progress.produced <= buffer.len);
             input = input[progress.consumed..];
@@ -62,7 +62,7 @@ fn decodePieces(allocator: std.mem.Allocator, pieces: []const []const u8, out_le
     return .{ .bytes = try out.toOwnedSlice(allocator), .status = status, .left = left };
 }
 
-test "zlib_inflate decodes a whole stream in one call" {
+test "deflate_decoding decodes a whole stream in one call" {
     // Supported where the bundled libcurl links the zlib build.zig.zon pins
     // (every platform but a -Dsystem-curl build).
     if (!supported) return;
@@ -75,7 +75,7 @@ test "zlib_inflate decodes a whole stream in one call" {
     try testing.expectEqualStrings(text, result.bytes);
 }
 
-test "zlib_inflate: the stream split at every byte decodes the same" {
+test "deflate_decoding: the stream split at every byte decodes the same" {
     if (!supported) return;
     const text = try small(testing.allocator);
     defer testing.allocator.free(text);
@@ -87,19 +87,19 @@ test "zlib_inflate: the stream split at every byte decodes the same" {
     }
 }
 
-test "zlib_inflate: a one-byte output asks for more output, never loses a byte" {
+test "deflate_decoding: a one-byte output asks for more output, never loses a byte" {
     if (!supported) return;
     const text = try small(testing.allocator);
     defer testing.allocator.free(text);
-    const decoder = try platform.createInflateDecoder(testing.allocator);
-    defer platform.destroyInflateDecoder(decoder);
+    const decoder = try platform.createDeflateDecoder(testing.allocator);
+    defer platform.destroyDeflateDecoder(decoder);
     var out: std.ArrayListUnmanaged(u8) = .empty;
     defer out.deinit(testing.allocator);
     var input: []const u8 = small_deflate;
     var need_output: usize = 0;
     for (0..text.len * 4) |_| {
         var byte: [1]u8 = undefined;
-        const progress = try platform.inflateChunk(decoder, .from(input), &byte);
+        const progress = try platform.decompressDeflate(decoder, .from(input), &byte);
         input = input[progress.consumed..];
         try out.appendSlice(testing.allocator, byte[0..progress.produced]);
         if (progress.status == .need_output) need_output += 1;
@@ -109,12 +109,12 @@ test "zlib_inflate: a one-byte output asks for more output, never loses a byte" 
     try testing.expectEqualStrings(text, out.items);
     // After the end: finished again, nothing taken.
     var byte: [1]u8 = undefined;
-    const again = try platform.inflateChunk(decoder, .from("more"), &byte);
+    const again = try platform.decompressDeflate(decoder, .from("more"), &byte);
     try testing.expectEqual(platform.CodecStatus.finished, again.status);
     try testing.expectEqual(@as(usize, 0), again.produced);
 }
 
-test "zlib_inflate: a truncated stream asks for more input and keeps what decoded" {
+test "deflate_decoding: a truncated stream asks for more input and keeps what decoded" {
     if (!supported) return;
     const text = try small(testing.allocator);
     defer testing.allocator.free(text);
@@ -130,7 +130,7 @@ test "zlib_inflate: a truncated stream asks for more input and keeps what decode
     }
 }
 
-test "zlib_inflate: bytes after the stream's end are left to the caller" {
+test "deflate_decoding: bytes after the stream's end are left to the caller" {
     if (!supported) return;
     const text = try small(testing.allocator);
     defer testing.allocator.free(text);
@@ -142,7 +142,7 @@ test "zlib_inflate: bytes after the stream's end are left to the caller" {
     try testing.expectEqualStrings(text, result.bytes);
 }
 
-test "zlib_inflate: what is not DEFLATE fails with InvalidData" {
+test "deflate_decoding: what is not DEFLATE fails with InvalidData" {
     if (!supported) return;
     // BFINAL 1, BTYPE 11: the reserved block type (RFC 1951 3.2.3).
     try testing.expectError(error.InvalidData, decodePieces(testing.allocator, &.{"\x07\x00"}, 64));
@@ -153,7 +153,7 @@ test "zlib_inflate: what is not DEFLATE fails with InvalidData" {
     try testing.expectError(error.InvalidData, decodePieces(testing.allocator, &.{"\x03\x02\x00"}, 64));
 }
 
-test "zlib_inflate: a 1 MB body from another encoder decodes in network-sized pieces" {
+test "deflate_decoding: a 1 MB body from another encoder decodes in network-sized pieces" {
     if (!supported) return;
     const allocator = testing.allocator;
     // 1 MiB of text that compresses about as a page does.
@@ -190,7 +190,7 @@ fn decodeWithAllocator(allocator: std.mem.Allocator) !void {
     allocator.free(result.bytes);
 }
 
-test "zlib_inflate cleans up on every allocation failure, zlib's own included" {
+test "deflate_decoding cleans up on every allocation failure, zlib's own included" {
     if (!supported) return;
     try testing.checkAllAllocationFailures(testing.allocator, decodeWithAllocator, .{});
 }

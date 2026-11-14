@@ -199,7 +199,7 @@ test "bytes that are not the coding fail" {
 }
 
 /// As `decode`, with the DEFLATE decoder named: zlib's (the platform's
-/// zlib_inflate capability) or Zig's std.compress.flate, which decodes
+/// deflate_decoding capability) or Zig's std.compress.flate, which decodes
 /// gzip and deflate where the platform lacks the capability.
 fn decodeWith(inflater: cc.Inflater, codings: []const cc.Coding, encoded: []const u8, chunk: usize) cc.Error![]u8 {
     const decoder = try cc.Decoder.createWith(testing.allocator, codings, .{ .inflater = inflater });
@@ -225,7 +225,7 @@ test "gzip and deflate decode the same with zlib's inflater and with Zig's" {
         .{ .codings = &.{ .gzip, .gzip }, .bytes = fixtures.small_gz_gz, .text = small_text },
         .{ .codings = &.{.gzip}, .bytes = fixtures.big_gz, .text = big_text },
     };
-    const inflaters: []const cc.Inflater = if (cc.zlib_inflate_supported) &.{ .zlib, .zig } else &.{.zig};
+    const inflaters: []const cc.Inflater = if (cc.deflate_decoding_supported) &.{ .zlib, .zig } else &.{.zig};
     for (inflaters) |inflater| {
         for (cases) |case| {
             for ([_]usize{ 0, 1, 7, 4096 }) |chunk| {
@@ -241,7 +241,7 @@ test "gzip and deflate decode the same with zlib's inflater and with Zig's" {
         try testing.expectError(error.InvalidData, decodeWith(inflater, &.{.gzip}, "not actually gzip", 0));
     }
     // The testing platform has the capability: Fetch's gzip is zlib's.
-    try testing.expect(cc.zlib_inflate_supported);
+    try testing.expect(cc.deflate_decoding_supported);
     try testing.expectEqual(cc.Inflater.zlib, cc.Inflater.preferred);
 }
 

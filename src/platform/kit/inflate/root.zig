@@ -27,7 +27,7 @@
 
 const std = @import("std");
 
-/// zlib's own inflate, for the platform's zlib_inflate capability (HTTP
+/// zlib's own inflate, for the platform's deflate_decoding capability (HTTP
 /// content codings; why it sits beside this one: zlib.zig's comment).
 pub const zlib_inflate = @import("zlib.zig");
 

@@ -2,7 +2,7 @@
 //! around RFC 1951's DEFLATE) content codings, decoded as they arrive.
 //!
 //! DEFLATE itself is zlib's inflate where the platform has it (the
-//! `zlib_inflate` capability, kit/inflate/zlib.zig), as Chromium's
+//! `deflate_decoding` capability, kit/inflate/zlib.zig), as Chromium's
 //! GzipSourceStream and Firefox's nsHTTPCompressConv run it: raw DEFLATE
 //! behind the container parsed here, fed each chunk as it comes, with no
 //! roll-back. Zig's std.compress.flate took 1.317x zlib's instructions on a
@@ -58,12 +58,12 @@ const Sink = root.Sink;
 
 pub const Container = enum { gzip, zlib };
 
-/// Whether the platform decodes raw DEFLATE with zlib (`zlib_inflate`).
-pub const zlib_supported = platform.capabilities.zlib_inflate != .unsupported;
+/// Whether the platform decodes raw DEFLATE with zlib (`deflate_decoding`).
+pub const zlib_supported = platform.capabilities.deflate_decoding != .unsupported;
 
 /// Which DEFLATE decoder a Decoder runs.
 pub const Inflater = enum {
-    /// zlib's, through the platform (`zlib_inflate`).
+    /// zlib's, through the platform (`deflate_decoding`).
     zlib,
     /// Zig's std.compress.flate, driven with roll-backs (this file's
     /// comment).
@@ -99,7 +99,7 @@ pub const Decoder = struct {
     allocator: Allocator,
     container: Container,
     /// zlib's raw inflate (Inflater.zlib); null for Zig's.
-    native: ?*platform.InflateDecoder = null,
+    native: ?*platform.DeflateDecoder = null,
     /// Input not consumed yet; while sniffing, every byte since the
     /// stream's start (to replay as raw DEFLATE).
     pending: std.ArrayListUnmanaged(u8) = .empty,
@@ -159,18 +159,18 @@ pub const Decoder = struct {
         self.allocator.destroy(self);
     }
 
-    fn createNative(allocator: Allocator) Error!*platform.InflateDecoder {
+    fn createNative(allocator: Allocator) Error!*platform.DeflateDecoder {
         if (comptime !zlib_supported) unreachable;
-        return platform.createInflateDecoder(allocator) catch |err| switch (err) {
+        return platform.createDeflateDecoder(allocator) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
             // A zlib that is not the one kit/inflate declares: no decoder.
             error.InvalidData, error.NotSupported => error.InvalidData,
         };
     }
 
-    fn destroyNative(native: *platform.InflateDecoder) void {
+    fn destroyNative(native: *platform.DeflateDecoder) void {
         if (comptime !zlib_supported) unreachable;
-        platform.destroyInflateDecoder(native);
+        platform.destroyDeflateDecoder(native);
     }
 
     pub fn push(self: *Decoder, bytes: []const u8, sink: Sink) Error!void {
@@ -297,7 +297,7 @@ pub const Decoder = struct {
         const native = self.native.?;
         while (true) {
             var buffer: [native_step]u8 = undefined;
-            const progress = platform.inflateChunk(native, .from(self.unread()), &buffer) catch |err| switch (err) {
+            const progress = platform.decompressDeflate(native, .from(self.unread()), &buffer) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidData, error.NotSupported => {
                     if (self.sniffing) return self.replayNativeAsRaw();

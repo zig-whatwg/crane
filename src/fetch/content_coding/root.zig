@@ -53,9 +53,9 @@ pub const Entry = struct {
 /// capability: kit/brotli's pinned codec).
 pub const brotli_supported = platform.capabilities.brotli != .unsupported;
 
-/// Whether gzip and deflate decode with zlib (the platform's zlib_inflate
+/// Whether gzip and deflate decode with zlib (the platform's deflate_decoding
 /// capability) - otherwise with Zig's std.compress.flate (flate.zig).
-pub const zlib_inflate_supported = flate.zlib_supported;
+pub const deflate_decoding_supported = flate.zlib_supported;
 
 /// The DEFLATE decoder gzip and deflate run (flate.zig).
 pub const Inflater = flate.Inflater;

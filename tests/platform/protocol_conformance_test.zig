@@ -80,7 +80,7 @@ test "conformance: the bound platform matches every operation" {
     // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
     // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
-    // (createInflateDecoder, inflateChunk, destroyInflateDecoder).
+    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder).
     try testing.expectEqual(@as(usize, 235), count);
 }
 

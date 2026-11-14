@@ -130,7 +130,7 @@ pub const protocol = struct {
         // zlib's inflate for Fetch's gzip and deflate (kit/inflate/zlib.zig):
         // only where the bundled libcurl links the pinned zlib - not with
         // -Dsystem-curl, whose zlib is the system libcurl's own.
-        c.zlib_inflate = if (bundled_zlib) .native else .unsupported;
+        c.deflate_decoding = if (bundled_zlib) .native else .unsupported;
         c.persistent_storage = .native;
         c.file_urls = .native;
         c.http2 = if (platform_options.http2) .native else .unsupported;
@@ -161,9 +161,9 @@ pub const protocol = struct {
     pub const createBrotliEncoder = brotli.createBrotliEncoder;
     pub const compressBrotli = brotli.compressBrotli;
     pub const destroyBrotliEncoder = brotli.destroyBrotliEncoder;
-    pub const createInflateDecoder = if (bundled_zlib) inflate.zlib_inflate.createInflateDecoder else headless.createInflateDecoder;
-    pub const inflateChunk = if (bundled_zlib) inflate.zlib_inflate.inflateChunk else headless.inflateChunk;
-    pub const destroyInflateDecoder = if (bundled_zlib) inflate.zlib_inflate.destroyInflateDecoder else headless.destroyInflateDecoder;
+    pub const createDeflateDecoder = if (bundled_zlib) inflate.zlib_inflate.createDeflateDecoder else headless.createDeflateDecoder;
+    pub const decompressDeflate = if (bundled_zlib) inflate.zlib_inflate.decompressDeflate else headless.decompressDeflate;
+    pub const destroyDeflateDecoder = if (bundled_zlib) inflate.zlib_inflate.destroyDeflateDecoder else headless.destroyDeflateDecoder;
     pub const createBrowserPlatform = State.create;
     pub const destroyBrowserPlatform = State.destroy;
     pub const initializePlatform = posix.initializePlatform;

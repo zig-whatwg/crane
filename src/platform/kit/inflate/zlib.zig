@@ -1,6 +1,6 @@
 //! kit/inflate's second inflater: zlib's own inflate (the zlib that
 //! build.zig.zon pins and the bundled libcurl links), for the platform's
-//! `zlib_inflate` capability - raw DEFLATE (RFC 1951), a chunk at a time,
+//! `deflate_decoding` capability - raw DEFLATE (RFC 1951), a chunk at a time,
 //! which Fetch's "gzip" and "deflate" content codings run behind their own
 //! container parsing (src/fetch/content_coding/flate.zig).
 //!
@@ -23,7 +23,7 @@
 //! Z_VERSION_ERROR when it differs from its own, so a layout drift fails
 //! the decoder's creation (NotSupported) instead of corrupting memory; the
 //! layout is pinned by the test below too. The symbols are referenced only
-//! when an operation here is called - the platform reports `zlib_inflate`
+//! when an operation here is called - the platform reports `deflate_decoding`
 //! only where the bundled libcurl, and so this zlib, is in the link
 //! (adapters/*/protocol.zig), and a binary that never calls it (the kit's
 //! own test binary, which links no zlib) links without them.
@@ -111,7 +111,7 @@ const Decoder = struct {
 };
 
 /// All allocations, zlib's own included, belong to allocator.
-pub fn createInflateDecoder(allocator: std.mem.Allocator) platform.CodecError!*platform.InflateDecoder {
+pub fn createDeflateDecoder(allocator: std.mem.Allocator) platform.CodecError!*platform.DeflateDecoder {
     const self = try allocator.create(Decoder);
     errdefer allocator.destroy(self);
     self.* = .{ .memory = .{ .allocator = allocator }, .stream = std.mem.zeroes(ZStream) };
@@ -127,13 +127,13 @@ pub fn createInflateDecoder(allocator: std.mem.Allocator) platform.CodecError!*p
     };
 }
 
-pub fn destroyInflateDecoder(handle: *platform.InflateDecoder) void {
+pub fn destroyDeflateDecoder(handle: *platform.DeflateDecoder) void {
     const self: *Decoder = @ptrCast(@alignCast(handle));
     _ = inflateEnd(&self.stream);
     self.memory.allocator.destroy(self);
 }
 
-pub fn inflateChunk(handle: *platform.InflateDecoder, input: platform.Bytes, output: []u8) platform.CodecError!platform.CodecProgress {
+pub fn decompressDeflate(handle: *platform.DeflateDecoder, input: platform.Bytes, output: []u8) platform.CodecError!platform.CodecProgress {
     const self: *Decoder = @ptrCast(@alignCast(handle));
     // After the final block nothing more is read: the rest is the caller's
     // (a gzip trailer, or what follows the stream).

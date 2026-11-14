@@ -313,9 +313,9 @@ pub const Capabilities = struct {
     http3: Support,
     /// Compression Streams rejects "brotli" with TypeError; no br content decoding.
     brotli: Support,
-    /// Fetch's gzip and deflate content codings decode with Zig's
-    /// std.compress.flate instead of zlib (src/fetch/content_coding/flate.zig).
-    zlib_inflate: Support,
+    /// Fetch's gzip and deflate content codings decode with Zig's slower
+    /// std.compress.flate (src/fetch/content_coding/flate.zig).
+    deflate_decoding: Support,
     /// Threads run at the default priority.
     thread_qos: Support,
     /// Diagnostics report no resident memory.
@@ -980,30 +980,30 @@ pub inline fn destroyBrotliEncoder(encoder: *BrotliEncoder) void {
     return impl.destroyBrotliEncoder(encoder);
 }
 
-/// One zlib raw-DEFLATE context, OWNED until destroyInflateDecoder; thread
-/// rules as BrotliDecoder's.
-pub const InflateDecoder = opaque {};
+/// One raw DEFLATE decoding context, OWNED until destroyDeflateDecoder;
+/// thread rules as BrotliDecoder's.
+pub const DeflateDecoder = opaque {};
 
-/// Create an RFC 1951 raw DEFLATE decoder (zlib's inflate, no zlib or gzip
-/// wrapper: the caller parses containers), using allocator for ALL its native
-/// storage. Synchronous, any thread.
-pub inline fn createInflateDecoder(allocator: std.mem.Allocator) CodecError!*InflateDecoder {
-    comptime gate(.zlib_inflate, "createInflateDecoder");
-    return impl.createInflateDecoder(allocator);
+/// Create an RFC 1951 raw DEFLATE decoder (no zlib or gzip wrapper: the
+/// caller parses containers; the built-ins run zlib's inflate), using
+/// allocator for ALL its native storage. Synchronous, any thread.
+pub inline fn createDeflateDecoder(allocator: std.mem.Allocator) CodecError!*DeflateDecoder {
+    comptime gate(.deflate_decoding, "createDeflateDecoder");
+    return impl.createDeflateDecoder(allocator);
 }
 
 /// Decode into caller storage without retaining input/output pointers. Input
 /// after the final block is left unconsumed (finished); need_input at the end
 /// of input means truncation; invalid DEFLATE is InvalidData.
-pub inline fn inflateChunk(decoder: *InflateDecoder, input: Bytes, output: []u8) CodecError!CodecProgress {
-    comptime gate(.zlib_inflate, "inflateChunk");
-    return impl.inflateChunk(decoder, input, output);
+pub inline fn decompressDeflate(decoder: *DeflateDecoder, input: Bytes, output: []u8) CodecError!CodecProgress {
+    comptime gate(.deflate_decoding, "decompressDeflate");
+    return impl.decompressDeflate(decoder, input, output);
 }
 
 /// Release the context and all native allocations, including after a failed call.
-pub inline fn destroyInflateDecoder(decoder: *InflateDecoder) void {
-    comptime gate(.zlib_inflate, "destroyInflateDecoder");
-    return impl.destroyInflateDecoder(decoder);
+pub inline fn destroyDeflateDecoder(decoder: *DeflateDecoder) void {
+    comptime gate(.deflate_decoding, "destroyDeflateDecoder");
+    return impl.destroyDeflateDecoder(decoder);
 }
 
 // ============================================================================
