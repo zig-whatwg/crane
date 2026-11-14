@@ -132,6 +132,37 @@ QUnit.config.reporters.tap = true;
       assert.strictEqual(spy.callCount, 0);
     });
 
+    // cy/actionability.ts: an action that is not forced waits for a second
+    // coordinate sample, one retry interval (16 ms) after the first; a forced
+    // one acts at once.
+    QUnit.test('an action waits one retry interval for its second look; a forced one does not', async function (assert) {
+      const doc = cy.document();
+      const b = doc.createElement('button');
+      b.className = 'tmp-b';
+      doc.body.append(b);
+      let ready = false;
+      let seen = null;
+      b.addEventListener('click', () => { seen = ready; });
+      setTimeout(() => { ready = true; }, 4);
+      await cy.get('button.tmp-b').click();
+      assert.strictEqual(seen, true, 'the click came after a task 4 ms later');
+      ready = false;
+      setTimeout(() => { ready = true; }, 4);
+      await cy.get('button.tmp-b').click({ force: true });
+      assert.strictEqual(seen, false, 'the forced click came at once');
+      b.remove();
+    });
+
+    // Cypress 12+'s test isolation: about:blank when a test ends, the
+    // storage cleared when the next begins, so a page's save on unload is
+    // gone before the next visit.
+    QUnit.test('what a page saves as it unloads does not reach the next visit', async function (assert) {
+      await cy.visit('fixtures/unload.html');
+      assert.strictEqual(localStorage.getItem('fixture-saved-on-unload'), null);
+      await cy.visit(FIXTURE);
+      assert.strictEqual(localStorage.getItem('fixture-saved-on-unload'), null);
+    });
+
     // Mocha 7.2.0: a failed hook fails its test and skips the rest of the
     // suite that declared it.
     QUnit.test('a failed hook skips the rest of its suite: its context, or all of the describe', function (assert) {

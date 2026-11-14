@@ -471,10 +471,15 @@
 
     // The subject, retried until it is one element (and actionable when the
     // action needs it): what Cypress's actionability waits for, without
-    // its geometry (scrolling, the covered check).
+    // its geometry (scrolling, the covered check). An action that is not
+    // forced acts on its second look at least: Cypress's animation check
+    // needs two coordinate samples, so its first pass always retries, one
+    // retry interval later (cy/actionability.ts ensureNotAnimating,
+    // cy/retries.ts _interval 16); the comparison itself is geometry.
     async one(what, { visible = true } = {}) {
       const deadline = performance.now() + COMMAND_TIMEOUT;
       let why;
+      let samples = 0;
       for (;;) {
         let els = [];
         try {
@@ -487,7 +492,7 @@
           if (!el.isConnected) why = 'it is detached from the document';
           else if (visible && !isVisible(el, false)) why = 'it is not visible';
           else if (el.disabled) why = 'it is disabled';
-          else return el;
+          else if (!visible || ++samples >= 2) return el;
         } else if (els.length > 1) why = `it is ${els.length} elements`;
         else if (!why || !why.startsWith('the page updated')) why = 'it was never found';
         if (performance.now() > deadline) break;
@@ -778,17 +783,21 @@
   }
 
   const cy = {
-    // cy.visit:Cypress 12+ test isolation clears the page (about:blank)
-    // and the origin's storage before each test, then loads the URL.
+    // cy.visit after Cypress 12+'s test isolation
+    // (cy/commands/sessions/index.ts): the page goes to about:blank when a
+    // test ends, and the origin's storage is cleared when the next begins -
+    // in that order, so nothing the old page writes as it unloads survives -
+    // then the URL loads.
     async visit(url) {
-      try {
-        aut.frame.contentWindow.localStorage.clear();
-      } catch (e) {}
-      localStorage.clear();
       if (aut.frame.contentWindow.location.href !== 'about:blank') {
         const blank = waitForLoad(aut.frame);
         aut.frame.src = 'about:blank';
         await blank;
+      }
+      for (const store of [localStorage, sessionStorage]) {
+        try {
+          store.clear();
+        } catch (e) {}
       }
       const loaded = waitForLoad(aut.frame);
       aut.frame.src = url;
