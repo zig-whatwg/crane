@@ -145,18 +145,20 @@ pub fn mouseUp(target: *Instance, button: u3) void {
     const option = optionOfTarget(target) orelse return;
     const select = ownerSelect(option) orelse return;
     if (!optionFocusable(option)) return;
-    pick(select, option);
-}
-
-fn pick(select: *Instance, option: *Instance) void {
-    if (associated.isDisabled(select) or options.isDisabled(option)) return;
     // HTML 4.10.7: a click picks an option - also in a single-select list
     // box, where it stays selected when clicked again ("pick an option" step
     // 4; customizable-select-listbox-mouse-behavior.html, size=4: Firefox
     // passes, Chrome 157 toggles it off). Only with the multiple attribute
-    // does the user toggle an option's selectedness.
-    const multiple = associated.hasAttribute(select, "multiple");
-    dom.form_controls.pickOption(select, option, multiple) catch return;
+    // does a click toggle an option's selectedness.
+    pick(select, option, associated.hasAttribute(select, "multiple"));
+}
+
+/// Pick `option` (HTML 4.10.7 "pick an option"), or toggle its selectedness
+/// when `toggle`: a `multiple` select's toggle, or the request a single-select
+/// list box allows to unselect its selected option.
+fn pick(select: *Instance, option: *Instance, toggle: bool) void {
+    if (associated.isDisabled(select) or options.isDisabled(option)) return;
+    dom.form_controls.pickOption(select, option, toggle) catch return;
     // HTML 4.10.7 "pick an option" step 6 (and, in a `multiple` list box,
     // the toggle paragraph): send select update notifications.
     sendSelectUpdateNotifications(select);
@@ -230,7 +232,12 @@ pub fn keyDown(target: *Instance, key: []const u8, shortcut: bool) bool {
     if (keyIs(key, " ") or keyIs(key, "Enter")) {
         // Blink and WebKit both reserve modified Space/Enter for shortcuts.
         if (shortcut) return false;
-        if (option) |selected| pick(select, selected);
+        // In a list box Space and Enter toggle the focused option: HTML
+        // 4.10.7 lets the user of a single-select list box "request that the
+        // option whose selectedness is true ... be unselected"
+        // (customizable-select-listbox-keyboard-behavior.optional.html,
+        // Chrome 157 4/4). In a drop-down they pick it.
+        if (option) |selected| pick(select, selected, isListbox(select));
         return true;
     }
     const direction = arrowDirection(select, key);

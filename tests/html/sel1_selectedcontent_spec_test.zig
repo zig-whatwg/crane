@@ -231,3 +231,29 @@ fn listBoxClickPicks() !void {
 test "clicking the selected option of a base-appearance single-select list box keeps it selected" {
     try helpers.onFreshThread(listBoxClickPicks);
 }
+
+fn listBoxSpaceUnselects() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\const style = document.createElement('style');
+        \\style.textContent = 'select { appearance: base-select }';
+        \\document.head.append(style);
+        \\document.body.innerHTML = '<select id=s size=4><option id=one>one</option><option id=two>two</option></select>';
+        \\document.getElementById('two').focus();
+    );
+    const document = try documentOf(page);
+    var keyboard: user_input.Keyboard = .{};
+    // HTML 4.10.7 lets the user unselect the selected option of a
+    // single-select list box: Space on it toggles (Chrome's
+    // customizable-select-listbox-keyboard-behavior.optional.html, 4/4).
+    for ([_][]const u8{ "1|two", "0|" }) |expected| {
+        user_input.keyDown(&keyboard, document, .{ .key = " ", .text = " " }, .{});
+        user_input.keyUp(&keyboard, document, .{ .key = " ", .text = " " }, .{});
+        try expectScript(page, "String(document.getElementById('s').selectedOptions.length) + '|' + document.getElementById('s').value", expected);
+    }
+}
+
+test "Space on the selected option of a base-appearance single-select list box unselects it" {
+    try helpers.onFreshThread(listBoxSpaceUnselects);
+}
