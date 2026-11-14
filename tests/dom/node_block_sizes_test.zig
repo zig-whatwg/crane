@@ -21,11 +21,27 @@
 //! - 184 after the wrapper redesign's P6 (lane wr1): NodeBase.holds, the
 //!   node_holds chain's head, went (88 -> 80 bytes; tests/dom/
 //!   perf2b6_node_layout_test.zig pins NodeBase).
+//! - 152 after lane nm1's layout batch, steps 1-4 (plan v2 section 6 items
+//!   4 and 5): Node's pointer to its own NodeBase and its second node type
+//!   went (16), the element's five flag bytes became one byte of NodeBase
+//!   (8), and the childNodes list is cached once (8). NodeBase is an extern
+//!   struct at +24 of every node State (tests/dom/nm1_node_layout_pins_test.zig
+//!   pins the structure).
 //!
-//! They name generated States only, and compile at any base.
+//! A Text's and a Comment's block: 160 after the wrapper redesign's P6 (their
+//! history is in tests/dom/nd1_text_data_layout_test.zig); 136 after lane
+//! nm1's steps 1-4 (Node's 24 bytes above; a Text has no element flags).
+//!
+//! NodeBase, and Node's and Element's embedded states, are pinned here too
+//! since lane nm1: perf2b5_node_layout_test.zig, perf2b6_node_layout_test.zig,
+//! nd1_text_data_layout_test.zig, perf3e1_text_slottable_test.zig and
+//! rare1_sparse_rare_data_test.zig each carried a copy of one of them.
+//!
+//! They name generated States and src/dom types only, and compile at any base.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 
 fn Embedded(comptime State: type) type {
     if (!@hasField(State, "_embedded")) return void;
@@ -58,16 +74,42 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 
 /// Whole block, and the generated part (less every level's InternalState):
 /// the root's live word (4, padded to 8) and the [SameObject] caches still in
-/// a State - Node's childNodes (lane wr1 holds NodeRareData) and a
+/// a State - Node's childNodes (NodeRareData is not a sparse block yet) and a
 /// DocumentFragment's children.
 const pins = [_]Pin{
-    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 184, .generated = 16 },
-    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 184, .generated = 16 },
-    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 184, .generated = 16 },
-    .{ .name = "Element", .State = interfaces.Element.State, .block = 184, .generated = 16 },
+    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 152, .generated = 16 },
+    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 152, .generated = 16 },
+    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 152, .generated = 16 },
+    .{ .name = "Element", .State = interfaces.Element.State, .block = 152, .generated = 16 },
+    .{ .name = "Text", .State = interfaces.Text.State, .block = 136, .generated = 16 },
+    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 136, .generated = 16 },
+    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 136, .generated = 16 },
 };
 
-test "a div's, a span's, an HTMLElement's and an Element's one block, whole and generated" {
+/// The parts every node's block is made of.
+const part_pins = .{
+    // The tree links 32, the node document 8, the rare data 8, the wrapper
+    // slot 8, the owner 8, the two counts 8, and 8 bytes of type and flags.
+    .{ "NodeBase", dom.NodeBase, 80 },
+    // The NodeBase, the node document's Instance and its generation.
+    .{ "Node's embedded state", Embedded(interfaces.Node.State), 96 },
+    // The name 8, the attributes 8, the style 8, the rare word 8.
+    .{ "Element's embedded state", Embedded(interfaces.Element.State), 32 },
+};
+
+test "the parts of a node's block: NodeBase, and each level's embedded state" {
+    var wrong: usize = 0;
+    inline for (part_pins) |p| {
+        if (@sizeOf(p[1]) != p[2]) {
+            wrong += 1;
+            printLayout(p[1]);
+            std.debug.print("{s}: {d} bytes, pinned {d}\n", .{ p[0], @sizeOf(p[1]), p[2] });
+        }
+    }
+    if (wrong != 0) return error.SizePinMoved;
+}
+
+test "an element's, a Text's and a Comment's one block, whole and generated" {
     var wrong: usize = 0;
     inline for (pins) |p| {
         const generated = @sizeOf(p.State) - embeddedBytes(p.State);
@@ -80,11 +122,12 @@ test "a div's, a span's, an HTMLElement's and an Element's one block, whole and 
     if (wrong != 0) return error.SizePinMoved;
 }
 
-test "a div's block is an exact-size arena block" {
-    const S = interfaces.HTMLDivElement.State;
-    const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
-    if (held - @sizeOf(S) >= 16) {
-        std.debug.print("HTMLDivElement.State: {d} bytes in a {d}-byte block\n", .{ @sizeOf(S), held });
-        return error.NotExactSize;
+test "a div's and a Text's block is an exact-size arena block" {
+    inline for (.{ interfaces.HTMLDivElement.State, interfaces.Text.State }) |S| {
+        const held = runtime.ArenaAllocator.heldBytes(@sizeOf(S), @alignOf(S));
+        if (held - @sizeOf(S) >= 16) {
+            std.debug.print("{s}: {d} bytes in a {d}-byte block\n", .{ @typeName(S), @sizeOf(S), held });
+            return error.NotExactSize;
+        }
     }
 }
