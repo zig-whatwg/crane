@@ -185,6 +185,10 @@ pub const PageRecord = struct {
     /// the page's named tests on the report (fw1 b5).
     unnamed_passed: ?u32 = null,
     unnamed_pending: ?u32 = null,
+    /// Failures the framework counted without naming them (a project
+    /// runner's summary that gives only counts: web-test-runner's "N passed,
+    /// M failed" under Bazel). Added in fw1 b6.
+    unnamed_failed: ?u32 = null,
     /// How the console ended ("exited with code 0", ...).
     exit: []const u8,
     /// Page errors the console printed (uncaught exceptions, unhandled
@@ -200,8 +204,27 @@ pub const PageRecord = struct {
     /// The browser that opened the page, for the comparison column; absent
     /// for Crane (whose commit and console are the record's own). On a
     /// browser's record `crane_commit` is "none" and `console_sha256` the
-    /// browser's executable's. Added in fw1 b5.
+    /// browser's executable's - or, for a browser the project's own tooling
+    /// downloaded (Angular's rules_browsers), the sha256 its pin gives the
+    /// browser's archive. Added in fw1 b5.
     browser: ?[]const u8 = null,
+    /// A browser's run the project's own runner made, read from that
+    /// runner's log by `fw_matrix import` (the integrator, 2026-11-14: every
+    /// name on the page comes from a run, not from a copy); absent for a
+    /// run `fw_matrix run` made. Added in fw1 b6.
+    imported: ?Imported = null,
+};
+
+/// Where an imported run's records come from.
+pub const Imported = struct {
+    /// How the project ran it ("jquery-test-runner 0.3.0, headless, one
+    /// page as its CI runs it").
+    runner: []const u8,
+    /// The log as kept, relative to the repository root.
+    log: []const u8,
+    log_sha256: []const u8,
+    /// The day of the run, YYYY-MM-DD.
+    date: []const u8,
 };
 
 /// A project's own test server, as a page record names it.
@@ -224,7 +247,14 @@ pub const ServerInfo = struct {
 
 pub const max_errors = 20;
 
-pub const ValidationError = error{ BadFormat, BadRecordKind, BadSha256, NotRunWithoutKind, KindWithoutNotRun, MissingMessage, EmptyName };
+pub const ValidationError = error{ BadFormat, BadRecordKind, BadSha256, NotRunWithoutKind, KindWithoutNotRun, MissingMessage, EmptyName, BadDate };
+
+/// YYYY-MM-DD, digits where digits go.
+pub fn isDate(s: []const u8) bool {
+    if (s.len != 10 or s[4] != '-' or s[7] != '-') return false;
+    for (s, 0..) |c, i| if (i != 4 and i != 7 and !std.ascii.isDigit(c)) return false;
+    return true;
+}
 
 pub fn isSha256(s: []const u8) bool {
     if (s.len != 64) return false;
@@ -250,6 +280,10 @@ pub fn validatePage(r: PageRecord) ValidationError!void {
     if (r.server) |s| {
         if (s.node_modules_sha256) |h| if (!isSha256(h)) return error.BadSha256;
         if (s.bazel_lock_sha256) |h| if (!isSha256(h)) return error.BadSha256;
+    }
+    if (r.imported) |im| {
+        if (!isSha256(im.log_sha256)) return error.BadSha256;
+        if (!isDate(im.date)) return error.BadDate;
     }
 }
 
@@ -512,6 +546,30 @@ test "a browser's record names it; Crane's records have none, as before" {
     try writePage(&crane.writer, .{ .label = "x", .crane_commit = "c", .console_sha256 = sha_a, .framework = "f", .version = "1", .suite = "s", .suite_kind = .project, .source_sha256 = sha_b, .page = "p", .url = "u", .status = .OK, .wall_ms = 1, .ran = 1, .records = 1, .exit = "exited with code 0" });
     try testing.expect(std.mem.indexOf(u8, crane.written(), "browser") == null);
     try testing.expectEqual(@as(?[]const u8, null), (try parseLine(a, std.mem.trimEnd(u8, crane.written(), "\n"))).page_record.browser);
+}
+
+test "a run imported from a project runner's log names the runner, the log and its date; its unnamed failures are counted" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var out: Io.Writer.Allocating = .init(a);
+    const page: PageRecord = .{ .label = "chrome-ng", .crane_commit = "none", .console_sha256 = sha_a, .framework = "angular", .version = "22.2.6", .suite = "angular-jasmine", .suite_kind = .project, .source_sha256 = sha_b, .page = "core-test-acceptance-acceptance", .url = "//packages/core/test/acceptance:acceptance_web_chromium", .status = .OK, .wall_ms = 0, .reported_total = 2778, .reported_failed = 1, .ran = 0, .records = 0, .unnamed_passed = 2777, .unnamed_failed = 1, .unnamed_pending = 4, .exit = "bazel test: FAILED", .browser = "Chrome for Testing headless shell 159.0.8154.2", .imported = .{ .runner = "bazel test <target>_chromium", .log = "tmp/ng-chrome.log", .log_sha256 = sha_b, .date = "2026-11-14" } };
+    try writePage(&out.writer, page);
+    try testing.expect(std.mem.indexOf(u8, out.written(), "\"unnamed_failed\":1,") != null);
+    try testing.expect(std.mem.endsWith(u8, out.written(), "\"imported\":{\"runner\":\"bazel test <target>_chromium\",\"log\":\"tmp/ng-chrome.log\",\"log_sha256\":\"" ++ sha_b ++ "\",\"date\":\"2026-11-14\"}}\n"));
+    const back = try parseLine(a, std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqualStrings("2026-11-14", back.page_record.imported.?.date);
+    try testing.expectEqual(@as(?u32, 1), back.page_record.unnamed_failed);
+    // The log's hash and the date are checked.
+    try testing.expectError(error.BadSha256, parseLine(a, try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, out.written(), "\n"), "\"log_sha256\":\"" ++ sha_b, "\"log_sha256\":\"abc")));
+    try testing.expectError(error.BadDate, parseLine(a, try std.mem.replaceOwned(u8, a, std.mem.trimEnd(u8, out.written(), "\n"), "2026-11-14", "14 Nov")));
+    // A run's own records have neither, as before.
+    var plain = page;
+    plain.imported = null;
+    plain.unnamed_failed = null;
+    var o2: Io.Writer.Allocating = .init(a);
+    try writePage(&o2.writer, plain);
+    try testing.expect(std.mem.indexOf(u8, o2.written(), "imported") == null and std.mem.indexOf(u8, o2.written(), "unnamed_failed") == null);
 }
 
 test "lines read back strictly: an unknown field, a wrong type or a missing kind fail" {

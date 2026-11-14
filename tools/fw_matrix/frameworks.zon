@@ -21,6 +21,7 @@
                 .runner = "Playwright on Chromium",
                 .tests = 19,
                 .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. Playwright drives Chromium through that protocol; its other browsers are patched Firefox and WebKit builds with protocols of their own. React's other tests run under Jest with jsdom, not in a browser.",
+                .waits_for = .cdp,
             }},
         },
         .{
@@ -35,6 +36,7 @@
                     .runner = "Vitest and Puppeteer 25 on Chrome",
                     .tests = 36,
                     .why = "Waits for WebDriver BiDi or Chrome DevTools Protocol support in Crane, after 0.1: Puppeteer drives a browser through one of the two. Puppeteer also clicks at a point computed from the element's layout box, which needs a renderer.",
+                    .waits_for = .cdp_or_bidi,
                 },
                 .{
                     .name = "e2e-browser tests (Transition, TransitionGroup)",
@@ -44,6 +46,7 @@
                     .runner = "Vitest 4 browser mode, Playwright provider on Chromium",
                     .tests = 84,
                     .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. The tests run inside the page, but the project's provider, Playwright, opens Chromium through that protocol, and some tests call it directly (Vitest's cdp()).",
+                    .waits_for = .cdp,
                 },
             },
         },
@@ -70,8 +73,41 @@
                 .tag = "svelte@5.57.3",
                 .runner = "Vitest calling Playwright on Chromium",
                 .why = "Waits for Chrome DevTools Protocol support in Crane, after 0.1. The project's harness launches Chromium through Playwright directly, and Playwright drives it through that protocol; Svelte offers no other driver for these tests. Its other tests run under jsdom, not in a browser.",
+                .waits_for = .cdp,
             }},
         },
+    },
+    // The causes of the failures Crane has and Chrome does not, written by
+    // hand from the failures' messages (lane fw1 b6, from runs
+    // fw1-b5-angular-3, fw1-b4-run3, fw1-b5-todomvc-2 beside Chrome's): the
+    // report counts what each covers from the journals, shows the largest
+    // first, drops one that covers nothing any more, and names every
+    // Crane-only failure no cause covers. `chrome_only_api`: an API only
+    // Chrome ships that is not a standard yet (the integrator, 2026-11-14:
+    // navigator.modelContext is a Chrome-only community-group draft), shown
+    // apart from the Crane gaps.
+    .causes = .{
+        .{ .title = "console.timeStamp() is missing", .covers = .{.{ .suite = "angular-jasmine", .message_contains = "timeStamp() method does not exist" }} },
+        .{ .title = "View Transitions: document.startViewTransition() exists but throws NotSupportedError", .covers = .{
+            .{ .suite = "angular-jasmine", .id_contains = "view transition" },
+            .{ .suite = "htmx-mocha", .id_contains = "view transition" },
+        } },
+        .{ .title = "The GWT app never shows its heading (it starts through GWT's own loader, nocache.js)", .covers = .{.{ .suite = "gwt-todomvc" }} },
+        .{ .title = "CSS fill-opacity has no computed value", .covers = .{.{ .suite = "jquery-qunit", .message_contains = "'fill-opacity' Expected: 1 Result: undefined" }} },
+        .{ .title = "Going back over hash-route history entries leaves a different list than in Chrome", .covers = .{
+            .{ .suite = "mithril-todomvc", .id_contains = "should respect the back button" },
+            .{ .suite = "ractive-todomvc", .id_contains = "should respect the back button" },
+        } },
+        .{ .title = "No Notification API: two zone.js test pages stop before any test runs (an empty describe() Jasmine refuses)", .covers = .{
+            .{ .suite = "angular-jasmine", .page = "zone.js-test-browser_test" },
+            .{ .suite = "angular-jasmine", .page = "zone.js-test-browser_green_test" },
+        } },
+        .{ .title = "No focusin event reaches the parent document when an input in an iframe is focused", .covers = .{.{ .suite = "jquery-qunit", .id_contains = "focusin from an iframe" }} },
+        .{ .title = "Editing a todo to empty text leaves it in the list (Preact)", .covers = .{.{ .suite = "preact-todomvc", .id_contains = "should remove the item if an empty text string was entered" }} },
+        .{ .title = "navigator.modelContext (WebMCP) is missing", .kind = .chrome_only_api, .covers = .{
+            .{ .suite = "angular-jasmine", .id_contains = "WebMcp" },
+            .{ .suite = "angular-jasmine", .id_contains = "WebMCP" },
+        } },
     },
     .suites = .{
         // jQuery 4.0.0's own QUnit suite: test/index.html, one page per module
@@ -227,19 +263,10 @@
             // Every test runs but what needs layout (its own server answers
             // the mock actions; its build step wrote the transpiled file).
             .skip_kinds = .{ .rendering, .node_runner_only },
-            // jQuery's own runner in Chrome, its CI's one-page run (`jtr -m
-            // test/middleware-mockserver.cjs -b chrome --headless`), lane fw1
-            // b4: 1,147 tests, 3 failed (core parseXML error column, the
-            // :(dis|en)abled optgroup test, the support UA table).
-            .chrome_reference = .{
-                .browser = "Chrome for Testing 157.0.8103.78",
-                .runner = "jquery-test-runner 0.3.0, headless, one page as its CI runs it",
-                .date = "2026-11-14",
-                .ran = 1147,
-                .passed = 1144,
-                .failed = 3,
-                .source = "lane fw1 batch 4: jtr.log of run fw1-b4-chrome-ci (tmp/plans/lane-fw1-handoff.md, CHROME)",
-            },
+            // Chrome's numbers: jQuery's own runner in Chrome, its CI's
+            // one-page run (`jtr -m test/middleware-mockserver.cjs -b chrome
+            // --headless`, lane fw1 b4), read from its log into a journal by
+            // `fw_matrix import --reader=jtr` (lane fw1 b6).
         },
         // htmx 4.0.1's own Mocha suite: test/test.html, the project's browser
         // page (80 of its 88 test files; ruling R5: the 9 files only its
@@ -273,7 +300,6 @@
                 .{ .id = "test", .path = "test/test.html" },
             },
             .excluded = "htmx-4.0.1.txt",
-            .note = "No Chrome number yet: htmx's own runner, web-test-runner through Playwright, has not been run in Chrome for this matrix.",
         },
         // Angular 22.2.6's own browser tests: the framework's 44 web test
         // targets (every `ng_web_test_suite`, `web_test` and
@@ -375,22 +401,12 @@
             .excluded = "angular-22.2.6.txt",
             .skip_kinds = .{},
             .note = "web-test-runner's page takes no filter, so every test runs; the tests that need layout and fail are classified as rendering after the run (excluded/angular-22.2.6.txt). Two zone.js targets (browser_test, browser_green_test: 1,074 specs in Chrome) do not run in Crane: Crane has no Notification API, so the project skips its Notification tests, which leaves an empty describe() that Jasmine refuses before any test runs.",
-            // The project's own runner in Chromium: `bazel test` of the 44
-            // targets' `_chromium` variants (web-test-runner through
-            // Puppeteer, rules_browsers' pinned headless shell), lane fw1 b5:
-            // per target its summary line summed. Its one failure is in core
-            // acceptance; zone.js browser_test also fails as a target on
-            // errors thrown outside its tests, with no spec failed.
-            .chrome_reference = .{
-                .browser = "Chrome for Testing headless shell 159.0.8154.2",
-                .runner = "bazel test <target>_chromium, web-test-runner through Puppeteer, the 44 targets",
-                .date = "2026-11-14",
-                .ran = 13165,
-                .passed = 13164,
-                .failed = 1,
-                .skipped = 96,
-                .source = "lane fw1 batch 5: each target's test.log summary (tmp/plans/lane-fw1-handoff.md, b5 ANGULAR)",
-            },
+            // Chrome's numbers: the project's own runner in Chromium, `bazel
+            // test` of the 44 targets' `_chromium` variants (web-test-runner
+            // through Puppeteer, rules_browsers' pinned headless shell, lane
+            // fw1 b5), read from its per-target lines into a journal by
+            // `fw_matrix import --reader=wtr-summary` (lane fw1 b6): counts
+            // only, so its one failure (core acceptance) is unnamed.
             .page_budget_s = 900,
             // Jasmine's console reporter prints only when the run ends: the
             // longest target took 16 s in Crane (core acceptance, 2,782
