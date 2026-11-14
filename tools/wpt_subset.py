@@ -902,6 +902,14 @@ EXCLUDE = [
     # selectedcontent for multiple selects.
     ('html/semantics/forms/the-select-element/customizable-select-multiple-popup/selectedcontent-multiple-restore.optional.html',
      'selectedcontent for select multiple, unspecified'),
+    # Two .optional customizable-select files (WPT's .optional: behaviour the spec allows but does not
+    # require) that lane sel1 batch 1 did not implement: the picker's event sequence and its dialog-mode
+    # focus. The user, 2026-11-14 6:00 PM ET ("1 skip"): not part of the 0.1 gate. Re-include when the
+    # customizable select's picker work takes them up.
+    ('html/semantics/forms/the-select-element/customizable-select/select-events.optional.html',
+     'optional picker event sequence, not in the 0.1 gate (the user, 2026-11-14)'),
+    ('html/semantics/forms/the-select-element/customizable-select/select-dialog-mode-focus.optional.html',
+     'optional picker dialog-mode focus, not in the 0.1 gate (the user, 2026-11-14)'),
     # Needs Gecko's test preference dom.serviceWorkers.testUpdateOverOneDay
     # ("treat all registrations as older than 24 hours", the file's opening
     # comment); there is no WebDriver or testdriver way to set it, and Chrome,
