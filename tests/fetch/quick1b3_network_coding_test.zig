@@ -159,3 +159,29 @@ test "HTTP-network-or-cache fetch 8.19-8.20: a Range request accepts identity al
     try expectAcceptEncoding("identity", "https://a.test/x", "bytes=0-10", null);
     try expectAcceptEncoding("gzip", "https://a.test/x", null, "gzip");
 }
+
+test "a transfer scans its header blocks for the final one once: the codings, the fields and the status line share it" {
+    // Main (4b4765bd6ee) scanned them twice per transfer (parseHeaders and
+    // the status line); the content-coding plan and the end's check read
+    // the same block. The perf pair's fetch.loopback-br profile found the
+    // extra scans (2026-11-14).
+    const text = try fixtures.small(testing.allocator);
+    defer testing.allocator.free(text);
+    const response_bytes = try fixtures.httpResponse(testing.allocator, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Encoding: gzip\r\n", fixtures.small_gz);
+    defer testing.allocator.free(response_bytes);
+    var server: fixtures.Canned = .{ .response = response_bytes };
+    try server.start();
+    defer server.stop();
+    var url_buf: [64]u8 = undefined;
+    const request = get(try server.url(&url_buf, "/small.gz"));
+    const transfer = try network.Transfer.create(testing.allocator, &request, .{});
+    defer transfer.destroy();
+    transfer.prepareAttempt();
+    const result = network.curl_ffi.easy_perform(transfer.handle);
+    var response = try transfer.finish(result);
+    defer response.deinit();
+    try testing.expectEqual(@as(u16, 200), response.status);
+    try testing.expectEqualStrings(text, response.body orelse "");
+    try testing.expectEqualStrings("OK", response.status_message);
+    try testing.expectEqual(@as(u32, 1), transfer.headerBlockScans());
+}

@@ -210,6 +210,14 @@ pub const LibcurlBackend = struct {
         /// The codings could not be undone: the transfer ends as a
         /// network error (18.1.1.1.11 terminates the fetch).
         decode_failed: bool = false,
+        /// Where the final response's header block starts in
+        /// `raw_headers`, found by the first `finalHeaderBlock` - once the
+        /// block is complete it does not move - and how many times the
+        /// headers were scanned for it (a test pins one per attempt: the
+        /// codings plan, the header fields and the status line all read the
+        /// same block).
+        final_block_start: ?usize = null,
+        final_block_scans: u32 = 0,
 
         // Strings that must persist until request completes (curl doesn't copy them)
         url_z: ?[:0]u8 = null,
@@ -245,6 +253,17 @@ pub const LibcurlBackend = struct {
             if (self.header_list) |list| curl.slist_free_all(list);
         }
 
+        /// The final response's header block (`finalBlock`), scanned for
+        /// once. Only called once that block is complete: at the body's
+        /// first bytes, at `head`, at the end.
+        fn finalHeaderBlock(self: *CallbackContext) []const u8 {
+            if (self.final_block_start) |start| return self.raw_headers.items[start..];
+            self.final_block_scans += 1;
+            const block = finalBlock(self.raw_headers.items);
+            self.final_block_start = self.raw_headers.items.len - block.len;
+            return block;
+        }
+
         fn dropDecoder(self: *CallbackContext) void {
             if (self.decoder) |decoder| decoder.destroy();
             self.decoder = null;
@@ -255,7 +274,7 @@ pub const LibcurlBackend = struct {
         fn receiveBody(self: *CallbackContext, bytes: []const u8) bool {
             self.encoded_bytes += bytes.len;
             if (!self.planned) {
-                self.codings = codingsOfBlock(finalBlock(self.raw_headers.items));
+                self.codings = codingsOfBlock(self.finalHeaderBlock());
                 self.planned = true;
             }
             switch (self.codings) {
@@ -470,7 +489,7 @@ pub const LibcurlBackend = struct {
 
     fn parseHeaders(ctx: *CallbackContext) !void {
         // Parse the final response's header block into name-value pairs.
-        var lines = headerLines(finalBlock(ctx.raw_headers.items));
+        var lines = headerLines(ctx.finalHeaderBlock());
 
         while (lines.next()) |line| {
             // Skip empty lines and status line
@@ -680,6 +699,7 @@ pub const Transfer = struct {
         self.ctx.dropDecoder();
         self.ctx.codings = .identity;
         self.ctx.planned = false;
+        self.ctx.final_block_start = null;
         self.ctx.encoded_bytes = 0;
         self.ctx.decode_failed = false;
     }
@@ -816,6 +836,12 @@ pub const Transfer = struct {
         return self.ctx.response_body.items;
     }
 
+    /// How many times the response's header blocks were scanned for the
+    /// final one (`CallbackContext.finalHeaderBlock`): one per attempt.
+    pub fn headerBlockScans(self: *const Transfer) u32 {
+        return self.ctx.final_block_scans;
+    }
+
     /// Drop the body bytes `bodyReceived` returned; they have been handed on.
     pub fn consumeBody(self: *Transfer) void {
         self.ctx.response_body.clearRetainingCapacity();
@@ -878,7 +904,8 @@ pub const Transfer = struct {
 
         // The body's content codings could not be undone - or are more than
         // a chain nests, which fails even a response with no body (`head`).
-        if (ctx.decode_failed or codingsOfBlock(finalBlock(ctx.raw_headers.items)) == .too_many) return self.decodingFailed();
+        const codings = if (ctx.planned) ctx.codings else codingsOfBlock(ctx.finalHeaderBlock());
+        if (ctx.decode_failed or codings == .too_many) return self.decodingFailed();
 
         // Check for errors
         if (result != curl.CURLE_OK) {
@@ -969,7 +996,7 @@ pub const Transfer = struct {
         errdefer if (body) |b| allocator.free(b);
 
         // The final response's status line.
-        const status_message = try ownedReason(allocator, finalBlock(ctx.raw_headers.items));
+        const status_message = try ownedReason(allocator, ctx.finalHeaderBlock());
 
         // Copy strings that need to outlive curl handle
         const final_url = if (effective_url != null and
