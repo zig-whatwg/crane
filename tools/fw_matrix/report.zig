@@ -82,6 +82,10 @@ pub const todomvc_port_note =
 pub const todomvc_chrome_note =
     "Chrome's TodoMVC numbers are TodoMVC's own Cypress suite, not the port: Cypress 15.14.2 with the project's cypress.config.js and spec unmodified (only the port of its test server's address moved), one app per run as its tests/cya.js runs them, read from Cypress's own results. A test Cypress does not run because a hook failed earlier in its suite (Mocha then skips the rest of that suite) counts as not passed, so both columns count the spec's tests.";
 
+/// What a test's message says when Cypress did not run it after a failed
+/// hook (main.zig importCypress).
+const mocha_skip_marker = "a hook failed earlier in its suite";
+
 /// Why rendering tests are not run.
 pub const rendering_statement =
     "Crane draws nothing, so tests whose result depends on layout geometry or pixels are not run. Computed style, events, timers and animations do run.";
@@ -518,8 +522,8 @@ const style =
     \\.fw .rates { margin: 0 0 2.6rem; }
     \\.fw .rates .box-head { align-items: center; flex-wrap: wrap; row-gap: 0.4rem; }
     \\.fw .rates h2.box-title { position: static; }
-    \\.fw .key { display: flex; gap: 1.2rem; margin: 0; padding: 0; list-style: none; font: 500 0.84rem/1 var(--sans); color: var(--ink); }
-    \\.fw .key li { display: flex; align-items: center; gap: 0.4rem; }
+    \\.fw .fw-key { display: flex; gap: 1.2rem; margin: 0; padding: 0; list-style: none; font: 500 0.84rem/1 var(--sans); color: var(--ink); }
+    \\.fw .fw-key li { display: flex; align-items: center; gap: 0.4rem; }
     \\.fw .rows { padding: 0.5rem 1rem 0.2rem; }
     \\.fw .dr { display: grid; grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr) 6.6rem 6.6rem; column-gap: 1.1rem; align-items: center; padding: 0.5rem 0; }
     \\.fw .dr-head { padding: 0 0 0.1rem; font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); }
@@ -574,18 +578,18 @@ const style =
     \\.fw .app .g { text-align: right; color: var(--ink-2); }
     \\.fw .app .none { text-align: right; color: var(--ink-2); }
     \\.fw .app-axis .axis { grid-column: 2; }
+    \\.fw .fine { margin: 1rem 0 0; max-width: var(--measure); font: 400 0.84rem/1.45 var(--sans); }
     \\.fw .facts, .fw .method { padding-left: 1.2rem; }
     \\.fw .facts li, .fw .method li { margin: 0 0 0.6rem; }
     \\.fw .note { margin-top: 0.4rem; }
     \\@media (max-width: 40rem) {
     \\  .fw .rows { padding: 0.4rem 0.75rem 0.2rem; }
-    \\  .fw .dr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 0.25rem; padding: 0.6rem 0; }
+    \\  .fw .dr { grid-template-columns: minmax(0, 1fr); row-gap: 0.2rem; padding: 0.6rem 0; }
     \\  .fw .dr-head { display: none; }
-    \\  .fw .dr-name, .fw .dr .plot, .fw .dr-wait { grid-column: 1 / -1; }
-    \\  .fw .dr-v { display: flex; align-items: baseline; gap: 0.35rem; text-align: left; }
-    \\  .fw .dr-v.g { justify-content: flex-end; }
-    \\  .fw .dr-v b { display: inline; font-size: 1.05rem; }
-    \\  .fw .dr-v .vl { display: inline; font-weight: 600; color: var(--ink-2); }
+    \\  .fw .dr-name, .fw .dr .plot, .fw .dr-wait, .fw .dr-v { grid-column: 1 / -1; }
+    \\  .fw .dr-v { display: flex; align-items: baseline; gap: 0.45rem; text-align: left; }
+    \\  .fw .dr-v b { display: inline; min-width: 4.2rem; font-size: 1.05rem; }
+    \\  .fw .dr-v .vl { display: inline; min-width: 3.3rem; font-weight: 600; color: var(--ink-2); }
     \\  .fw .dr-axis { display: block; }
     \\  .fw .axis .minor { display: none; }
     \\  .fw .apps { grid-template-columns: minmax(0, 1fr); }
@@ -644,7 +648,7 @@ fn writeChart(arena: Allocator, w: W, rows: []const Row) !void {
     }
     const axis = try axisFor(arena, values.items);
     try w.writeAll("<section class=\"box rates\" id=\"rates\" aria-labelledby=\"rates-h\">\n<div class=\"box-head\"><h2 class=\"box-title\" id=\"rates-h\">Pass rate: Crane beside Chrome</h2>\n");
-    try w.writeAll("<ul class=\"key\"><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"var(--crane)\"/></svg>Crane</li><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"var(--paper)\" stroke=\"var(--ink-2)\" stroke-width=\"2\"/></svg>Chrome</li></ul></div>\n");
+    try w.writeAll("<ul class=\"fw-key\"><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"var(--crane)\"/></svg>Crane</li><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"var(--paper)\" stroke=\"var(--ink-2)\" stroke-width=\"2\"/></svg>Chrome</li></ul></div>\n");
     try w.writeAll("<div class=\"rows\" role=\"list\">\n<div class=\"dr dr-head\" aria-hidden=\"true\"><span>Crane</span><span>Chrome</span></div>\n");
     var buf: [16]u8 = undefined;
     for (rows) |r| {
@@ -709,6 +713,8 @@ fn writeChart(arena: Allocator, w: W, rows: []const Row) !void {
             const last = v + s.step > s.hi + 1e-9;
             const anchor = if (first and (si == 0 or axis.broken())) "start" else if (last) "end" else "middle";
             const minor = !first and !last;
+            // A narrow part labels its ends only; its other ticks stay lines.
+            if (minor and s.x1 - s.x0 < 0.4) continue;
             try w.print("<text{s} x=\"", .{if (minor) " class=\"minor\"" else ""});
             try pctAttr(w, axis.x(v));
             try w.print("\" y=\"14\" text-anchor=\"{s}\">{s}</text>", .{ anchor, tickLabel(&tbuf, v) });
@@ -775,7 +781,7 @@ fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Su
 
     try w.print("<details class=\"fold\" id=\"todomvc\" open>\n<summary><h2>TodoMVC: pass rate per app</h2><span class=\"fold-meta\">{d} apps", .{apps.items.len});
     if (tests_each) |n| try w.print(" &middot; {d} tests each", .{n});
-    try w.writeAll(" &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
+    try w.writeAll(" &middot; Chrome by TodoMVC&#39;s own Cypress suite &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
     try w.print("<p class=\"allpass\"><b>{d}</b> of {d} apps pass every test in Crane, <b>{d}</b> in Chrome.</p>\n", .{ crane_all, apps.items.len, chrome_all });
     try w.writeAll("<div class=\"apps\">\n");
     const half = (apps.items.len + 1) / 2;
@@ -1150,6 +1156,29 @@ fn writeMethod(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
             try html.text(w, crane_commit.?);
             try w.writeAll("</code>.");
         }
+        // What Mocha left unrun in Chrome, and how Crane did on those tests.
+        var unrun: u32 = 0;
+        var unrun_apps: u32 = 0;
+        var crane_passed: u32 = 0;
+        for (suites) |s| if (s.suite.kind == .todomvc_port) {
+            const c = s.chrome orelse continue;
+            var here: u32 = 0;
+            for (c.tests) |ct| if (ct.message) |msg| if (std.mem.indexOf(u8, msg, mocha_skip_marker) != null) {
+                here += 1;
+                if (latest(s)) |r| for (r.tests) |rt| {
+                    if (std.mem.eql(u8, rt.id, ct.id) and rt.status == .PASS) crane_passed += 1;
+                };
+            };
+            unrun += here;
+            unrun_apps += @intFromBool(here > 0);
+        };
+        if (unrun > 0) {
+            try w.writeAll(" In Chrome, Cypress did not run ");
+            try html.plural(w, unrun, "test", "tests");
+            try w.writeAll(" of ");
+            try html.plural(w, unrun_apps, "app", "apps");
+            try w.print(" because a hook had failed earlier in their suite; they count as not passed, and Crane, whose run of the same apps went on, passed {d} of them.", .{crane_passed});
+        }
         if (chrome) |c| {
             try w.writeAll(" Chrome: ");
             try html.text(w, c.browser.?);
@@ -1279,7 +1308,7 @@ fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
         const gwt = std.mem.eql(u8, s.id, "gwt-todomvc");
         const jqa = std.mem.eql(u8, s.id, "jquery-todomvc");
         try f.testRec(a, label, b, s, "todomvc", "New Todo: should add", if (jqa or (gwt and !is_chrome)) .FAIL else .PASS, .{});
-        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (jqa) .FAIL else .PASS, .{});
+        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (jqa) .FAIL else .PASS, .{ .message = if (jqa and is_chrome) "Cypress did not run it: a hook failed earlier in its suite, and Mocha skips the suite's remaining tests" else null });
         try f.testRec(a, label, b, s, "todomvc", "Routing: should respect the back button", if (jqa or gwt) .FAIL else .PASS, .{});
         try f.testRec(a, label, b, s, "todomvc", "Persistence: should persist", .NOTRUN, .{ .not_run = .project_skip });
         try f.pageRec(a, label, b, s, "todomvc", .{ .imported = if (is_chrome) .{ .runner = "Cypress 15.14.2", .log = "tmp/cy", .log_sha256 = &sha, .date = "2026-11-14" } else null });
@@ -1394,6 +1423,8 @@ test "one page: the chart, TodoMVC open, what is not run and the method closed; 
     // The axis note, once; the five-app folder decision, once.
     try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"axis-note\""));
     try testing.expect(std.mem.indexOf(u8, h, "1 app is given to both as the folder of the build todomvc.com links (<code>jquery/dist</code>)") != null);
+    // What Mocha left unrun in Chrome, counted from Chrome's journal.
+    try testing.expect(std.mem.indexOf(u8, h, " In Chrome, Cypress did not run 1 test of 1 app because a hook had failed earlier in their suite; they count as not passed, and Crane, whose run of the same apps went on, passed 0 of them.") != null);
     // Not run: the counts in its summary.
     try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fold-meta\">rendering 1 test &middot; skipped by TodoMVC&#39;s spec 3 tests</span>") != null);
     // No failure cause, test name or message; no link to a subpage.
