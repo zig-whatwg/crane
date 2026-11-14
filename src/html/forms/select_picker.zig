@@ -150,7 +150,13 @@ pub fn mouseUp(target: *Instance, button: u3) void {
 
 fn pick(select: *Instance, option: *Instance) void {
     if (associated.isDisabled(select) or options.isDisabled(option)) return;
-    dom.form_controls.pickOption(select, option, isListbox(select)) catch return;
+    // HTML 4.10.7: a click picks an option - also in a single-select list
+    // box, where it stays selected when clicked again ("pick an option" step
+    // 4; customizable-select-listbox-mouse-behavior.html, size=4: Firefox
+    // passes, Chrome 157 toggles it off). Only with the multiple attribute
+    // does the user toggle an option's selectedness.
+    const multiple = associated.hasAttribute(select, "multiple");
+    dom.form_controls.pickOption(select, option, multiple) catch return;
     // HTML 4.10.7 "pick an option" step 6 (and, in a `multiple` list box,
     // the toggle paragraph): send select update notifications.
     sendSelectUpdateNotifications(select);
@@ -294,15 +300,28 @@ fn arrowDirection(select: *Instance, key: []const u8) i2 {
 
 /// UA typeahead runs only after an uncanceled printable keypress, without
 /// Ctrl/Alt/Meta (Blink TypeAhead::ShouldHandleKeyboardEvent, row61 Q27).
+///
+/// With native appearance the match is picked, as in a closed base-select
+/// drop-down: Blink HTMLSelectElement::TypeAheadFind selects it with
+/// kMakeOptionDirtyFlag and kDispatchInputAndChangeEventFlag in a menu list
+/// and a list box alike, and focuses it only in a base-appearance picker or
+/// list box. HTML leaves the mechanism to the UA ("through any other
+/// mechanism"); select-user-selection-dirtiness.html's typing subtest passes
+/// in Chrome, Firefox and Safari Technology Preview (wpt.fyi 2358bd4835 and
+/// 2841b52d24). A native multiple select keeps no typeahead here: "pick an
+/// option" returns for it (step 1), and Blink's deselect-others is a UA
+/// choice HTML does not describe.
 pub fn typeAhead(target: *Instance, typed: []const u8) bool {
     const select = selectOfTarget(target) orelse return false;
-    if (typed.len == 0 or !isControlTarget(target, select) or !baseOptions(select)) return false;
+    if (typed.len == 0 or !isControlTarget(target, select)) return false;
+    const base = baseOptions(select);
+    if (!base and associated.hasAttribute(select, "multiple")) return false;
     if (associated.isDisabled(select)) return true;
     var list: std.ArrayListUnmanaged(*Instance) = .empty;
     defer list.deinit(select.ctx.allocator);
     options.collect(select, select.ctx.allocator, &list) catch return true;
     if (list.items.len == 0) return true;
-    const closed = !isListbox(select) and !dom.form_controls.pickerOpen(select);
+    const closed = !base or (!isListbox(select) and !dom.form_controls.pickerOpen(select));
     var current: ?usize = if (closed) dom.form_controls.selectedIndex(select) catch null else null;
     if (!closed) {
         const focused = optionOfTarget(target);
