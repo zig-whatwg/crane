@@ -80,6 +80,7 @@
 //! element's style and nonce; this module's `destroy` frees any element's
 //! nonce bytes).
 const std = @import("std");
+const NodeBase = @import("node_base.zig").NodeBase;
 
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -653,16 +654,16 @@ pub fn destroy(ctx: Context, holder: *Holder) void {
 // ============================================================================
 
 /// What Element hands this module for one element: the address of its rare
-/// data's holder, and of click()'s in-progress flag (HTMLElement's: HTML
-/// click() steps 2-5), both in Element's InternalState and good for the
+/// data's holder, in Element's InternalState, and of click()'s in-progress
+/// flag (HTMLElement's: HTML click() steps 2-5), a bit of the element's byte
+/// in its NodeBase (dom.NodeBase.ElementBits; lane nm1) - both good for the
 /// element's life. The flag is the one bool that would make a block on its
 /// own; Blink and WebKit keep it out of the element too (the elements
 /// dispatching a simulated click: Blink EventDispatcher::
-/// DispatchSimulatedClick, WebKit simulateClick), and here it takes
-/// Element's padding.
+/// DispatchSimulatedClick, WebKit simulateClick).
 pub const Access = struct {
     holder: *Holder,
-    click_in_progress: *bool,
+    click_in_progress: NodeBase.ClickInProgress,
 };
 
 pub const Error = error{ OutOfMemory, InvalidStateError };

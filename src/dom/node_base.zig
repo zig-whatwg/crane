@@ -16,16 +16,135 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
+const custom_elements = @import("custom_elements.zig");
 
 // Forward declarations at file scope
 const DocumentType = interfaces.Document;
 pub const RegisteredObserverType = @import("registered_observer.zig").RegisteredObserver;
 
-/// Base structure containing all fields from the Node interface
-/// This is used as the first field in all concrete node types (Element, CharacterData, etc.)
-pub const NodeBase = struct {
+/// A node's own data: the tree links, the node document, the type and flags,
+/// the counts, the wrapper slot. Every node type's State keeps one by value
+/// (Node's embedded state), at `offset_in_state` of its block.
+///
+/// An `extern struct` (lane nm1's layout batch; tmp/redesign/
+/// node-memory-plan-v2.md X4, I1, I3): its field order is this declaration's,
+/// whatever Zig's auto layout would choose - code computes into the block
+/// (`ofState`, the planned 32-bit links and folded Instance), and an auto
+/// struct's order is a sort by alignment that Zig does not promise (the deep
+/// review's Z2). Every offset is pinned in tests/dom/
+/// nm1_node_layout_pins_test.zig; a new field is added THERE first.
+///
+/// The order is by use, in 32-byte windows, each half a cache line (the
+/// research review's R5: on x86-64 a cold scattered walk ran 1.1-1.8x faster
+/// with its fields in one window than spread over 40 bytes; Chilimbi,
+/// Davidson and Larus, PLDI 1999; Blink reordered Node's fields for the same
+/// reason after pointer compression, Chrome 108):
+///
+///     +0  the WALK: parent, first child, next sibling, then 8 bytes of
+///         type and flags - what `querySelector`, a collection, a tree
+///         walker and a mutation's ancestor checks read on every node
+///     +32 what a link, an adoption and a wrap read: the previous link, the
+///         node document, the rare data, the wrapper slot
+///     +64 the owner and the two counts
+///
+/// The type and flags stay bytes of their own, at pinned offsets: one packed
+/// 32-bit word (the plan's N7) saves nothing until the links are 32-bit, and
+/// `traces_held` must not share a word the node's thread rewrites while a
+/// collector reads it (the deep review's Z7).
+pub const NodeBase = extern struct {
     // ========================================================================
-    // Core Node Fields (from webidl/src/dom/Node.zig)
+    // +0: the walk's window
+    // ========================================================================
+
+    // Parent pointer. Written only through `setParent`.
+    parent_node: ?*NodeBase = null,
+
+    // The tree links. `first_child` and `next_sibling` are what they say;
+    // there is no `last_child` (lane perf2 batch 6): a node's previous link
+    // holds its previous sibling, or - for a first child - its parent's LAST
+    // child, as Gecko's nsIContent::mPreviousOrLastSibling does
+    // (nsINode::GetLastChild reads mFirstChild->mPreviousOrLastSibling;
+    // GetPreviousSibling returns null when the link's target has no next
+    // sibling, which only the last child lacks). 8 bytes a node. Read
+    // through `previousSibling()` and `lastChild()`, written only by
+    // `linkChildBefore` and `unlinkChild`.
+    first_child: ?*NodeBase = null,
+    next_sibling: ?*NodeBase = null,
+
+    // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
+    // children, as in Blink, WebKit, Gecko and Lightpanda - `children()`,
+    // `childCount()`, `childAt()`, `index()`. Script's indexed reads
+    // (childNodes, children, every collection) go through
+    // live_collections.IndexCache over the links (Blink's
+    // CollectionIndexCache): sequential reads are O(1) each.
+
+    node_type: u16,
+
+    /// Connection status - true when root is a document
+    /// Used by isConnected getter
+    is_connected: bool = false,
+
+    /// Whether this element is a shadow host: set by "attach a shadow root"
+    /// (Element's attachShadow, the one step every shadow root attaches
+    /// through), never cleared - a shadow root is never detached. A guard
+    /// for the insert and remove steps' slot steps, so a tree with no shadow
+    /// root pays a field test for them (Blink's HasShadowRoot bit); the
+    /// shadow root itself is the Element state's, which stays the source of
+    /// truth (dom.shadow_hosts.rootForHost).
+    is_shadow_host: bool = false,
+
+    /// Whether this node's type holds nodes for script itself - its
+    /// VTable's `trace_held_nodes` (the wrapper redesign's P6: a Document's
+    /// active parser, top layer and autofocus candidates, a dialog's saved
+    /// focus) - so the walk (dom.wrapper_tracing) asks it for them where it
+    /// visits the node, with no VTable read for every other node. Set once,
+    /// when the node is registered (dom.instance_bridge.register). A byte
+    /// of its own: nothing rewrites it while a collector's walk reads it.
+    traces_held: bool = false,
+
+    /// The reference counting state that is not a number (see RcFlags).
+    rc_flags: RcFlags = .{},
+
+    /// An element's flags (`ElementBits`): the custom element state, where
+    /// its registry is, click()'s in-progress flag. All zero on every other
+    /// node. Element's impl reads and writes them (`elementBits`); they are
+    /// here, not in Element's own state, because five bytes there cost 8
+    /// with its padding and one byte here costs none - Blink keeps the
+    /// custom element state in Node::node_flags_ (kCustomElementStateMask),
+    /// WebKit an element's state flags in Node (Node::ElementStateFlag).
+    element: ElementBits = .{},
+
+    /// Not used. Named, so the struct has no padding and a pin fails when
+    /// something takes it (tests/dom/nm1_node_layout_pins_test.zig).
+    spare: u8 = 0,
+
+    // ========================================================================
+    // +32: links, document, rare data, wrapper
+    // ========================================================================
+
+    previous_or_last: ?*NodeBase = null,
+
+    // Document ownership
+    owner_document: ?*DocumentType = null,
+
+    /// The fields few nodes use - the registered observer list, the node
+    /// name - or null while none has been needed (NodeRareData).
+    rare: ?*NodeRareData = null,
+
+    /// The node's one wrapper per agent, whatever realm asks for it (DOM
+    /// identity: `===` across realms, a MutationObserver's addedNodes[0] the
+    /// element script made) - the engine's own inline slot
+    /// (engine.NodeWrapperSlot; the wrapper redesign's P1,
+    /// tmp/redesign/wrapper-redesign-design.md section 3.3). The node owns
+    /// the bytes and asks only `wrapper.isEmpty()` ("is it wrapped"); the
+    /// engine adapter owns what is in them and reaches them only through
+    /// runtime.lifetime.slotOf (dom.refcount's hook). Blink keeps the main
+    /// world's wrapper on the object (ScriptWrappable::wrapper_), WebKit
+    /// likewise (ScriptWrappable::m_wrapper).
+    wrapper: engine.NodeWrapperSlot = .empty,
+
+    // ========================================================================
+    // +64: the owner and the counts
     // ========================================================================
 
     /// Who owns this NodeBase, in one word (lane perf2 batch 6): the
@@ -46,61 +165,6 @@ pub const NodeBase = struct {
     /// (Node's initOwn). 16 bytes a node.
     owner: usize = 0,
 
-    node_type: u16,
-
-    // Tree structure - BOTH patterns for O(1) access in all directions
-    // Parent pointer
-    parent_node: ?*NodeBase = null,
-
-    // The tree links. `first_child` and `next_sibling` are what they say;
-    // there is no `last_child` (lane perf2 batch 6): a node's previous link
-    // holds its previous sibling, or - for a first child - its parent's LAST
-    // child, as Gecko's nsIContent::mPreviousOrLastSibling does
-    // (nsINode::GetLastChild reads mFirstChild->mPreviousOrLastSibling;
-    // GetPreviousSibling returns null when the link's target has no next
-    // sibling, which only the last child lacks). 8 bytes a node. Read
-    // through `previousSibling()` and `lastChild()`, written only by
-    // `linkChildBefore` and `unlinkChild`.
-    first_child: ?*NodeBase = null,
-    previous_or_last: ?*NodeBase = null,
-    next_sibling: ?*NodeBase = null,
-
-    // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
-    // children, as in Blink, WebKit, Gecko and Lightpanda - `children()`,
-    // `childCount()`, `childAt()`, `index()`. Script's indexed reads
-    // (childNodes, children, every collection) go through
-    // live_collections.IndexCache over the links (Blink's
-    // CollectionIndexCache): sequential reads are O(1) each.
-
-    // Document ownership
-    owner_document: ?*DocumentType = null,
-
-    /// The fields few nodes use - the registered observer list, the node
-    /// name - or null while none has been needed (NodeRareData).
-    rare: ?*NodeRareData = null,
-
-    /// Connection status - true when root is a document
-    /// Used by isConnected getter
-    is_connected: bool = false,
-
-    /// Whether this element is a shadow host: set by "attach a shadow root"
-    /// (Element's attachShadow, the one step every shadow root attaches
-    /// through), never cleared - a shadow root is never detached. A guard
-    /// for the insert and remove steps' slot steps, so a tree with no shadow
-    /// root pays a field test for them (Blink's HasShadowRoot bit); the
-    /// shadow root itself is the Element state's, which stays the source of
-    /// truth (dom.shadow_hosts.rootForHost).
-    is_shadow_host: bool = false,
-
-    /// Whether this node's type holds nodes for script itself - its
-    /// VTable's `trace_held_nodes` (the wrapper redesign's P6: a Document's
-    /// active parser, top layer and autofocus candidates, a dialog's saved
-    /// focus) - so the walk (dom.wrapper_tracing) asks it for them where it
-    /// visits the node, with no VTable read for every other node. Set once,
-    /// when the node is registered (dom.instance_bridge.register). It sits in
-    /// the padding beside the other flags: NodeBase stays 80 bytes.
-    traces_held: bool = false,
-
     /// The reference count word, WebKit's encoding (Source/WebCore/dom/Node.h
     /// `m_refCountAndParentBit`): bit 0 is the parent bit (this node has a
     /// parent), the rest is the count of references held through `Ref`, in
@@ -116,20 +180,55 @@ pub const NodeBase = struct {
     /// total is 0. A node is born held (`rc_one`), so it starts at 1.
     subtree_holds: u32 = 1,
 
-    /// The reference counting state that is not a number (see RcFlags).
-    rc_flags: RcFlags = .{},
+    comptime {
+        // The tests pin every offset; these two are what this file itself
+        // computes with.
+        std.debug.assert(@sizeOf(NodeBase) == 80);
+        std.debug.assert(@alignOf(NodeBase) == 8);
+    }
 
-    /// The node's one wrapper per agent, whatever realm asks for it (DOM
-    /// identity: `===` across realms, a MutationObserver's addedNodes[0] the
-    /// element script made) - the engine's own inline slot
-    /// (engine.NodeWrapperSlot; the wrapper redesign's P1,
-    /// tmp/redesign/wrapper-redesign-design.md section 3.3). The node owns
-    /// the bytes and asks only `wrapper.isEmpty()` ("is it wrapped"); the
-    /// engine adapter owns what is in them and reaches them only through
-    /// runtime.lifetime.slotOf (dom.refcount's hook). Blink keeps the main
-    /// world's wrapper on the object (ScriptWrappable::wrapper_), WebKit
-    /// likewise (ScriptWrappable::m_wrapper).
-    wrapper: engine.NodeWrapperSlot = .empty,
+    /// An element's flags, in NodeBase's `element` byte. Zero is an element
+    /// as its State block is made: custom element state "undefined" (HTML
+    /// "create an element" sets it), no registry place, nothing in progress.
+    pub const ElementBits = packed struct(u8) {
+        /// HTML: the element's custom element state, as
+        /// dom.custom_elements.State's integer value (`customElementState`).
+        custom_element_state: u3 = 0,
+        /// Whether a custom element reaction was ever enqueued for the
+        /// element (its queue must be cancelled at its teardown).
+        custom_element_ever_enqueued: bool = false,
+        /// Set only while Element's `appendAttributeHook` appends a style
+        /// attribute copied by cloning, and consumed by the style
+        /// attribute's change steps, which then skip their CSP check.
+        appending_clone: bool = false,
+        /// DOM: where the element's custom element registry is - none, its
+        /// node document's, or its rare data's association
+        /// (dom.custom_elements.RegistryPlace, lane perf3 E1).
+        registry_place: custom_elements.RegistryPlace = .none,
+        /// HTMLElement's: HTML click() steps 2-5's "click in progress flag"
+        /// (lane rare1: the one bool that would make a rare block on its
+        /// own; Blink and WebKit keep it out of the element too -
+        /// EventDispatcher::DispatchSimulatedClick's and simulateClick's
+        /// set of elements).
+        click_in_progress: bool = false,
+
+        comptime {
+            std.debug.assert(@typeInfo(custom_elements.State).@"enum".field_names.len <= 8);
+        }
+
+        pub fn customElementState(self: ElementBits) custom_elements.State {
+            return @fromBackingInt(@intCast(self.custom_element_state));
+        }
+
+        pub fn setCustomElementState(self: *ElementBits, state: custom_elements.State) void {
+            self.custom_element_state = @backingInt(state);
+        }
+    };
+
+    /// The address of click()'s in-progress flag in an element's NodeBase
+    /// (`&node.element.click_in_progress`): a bit - bit 7 of its one-byte
+    /// host - so a bit pointer.
+    pub const ClickInProgress = *align(1:7:1) bool;
 
     // ========================================================================
     // Reference counting (tmp/plans/refcount-design.md section 1)
@@ -672,6 +771,21 @@ pub const NodeBase = struct {
         return self.owner_document;
     }
 };
+
+/// Where a node's NodeBase sits in its State block: in Node's embedded state,
+/// which every node interface's State nests at offset 0. One number for all
+/// of them - tests/dom/nm1_node_layout_pins_test.zig pins it over every node
+/// interface (Zig alone promises neither part: the deep review's Z2).
+pub const offset_in_state: usize = @offsetOf(interfaces.Node.State, "_embedded") +
+    @offsetOf(@FieldType(interfaces.Node.State, "_embedded"), "base");
+
+/// The NodeBase of the node whose State block starts at `state` - any level's
+/// State of a node, since each starts at the block's first byte. Only for a
+/// State the caller knows is a node's (an impl holding its own node's
+/// state): nothing is checked.
+pub inline fn ofState(state: *const anyopaque) *NodeBase {
+    return @ptrFromInt(@intFromPtr(state) + offset_in_state);
+}
 
 /// The fields few nodes ever use, kept out of every NodeBase (WebKit
 /// NodeRareData, Blink NodeRareData, Gecko nsINode::nsSlots): allocated once,
