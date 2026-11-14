@@ -102,6 +102,13 @@ fn collect(browser: *browser_mod.Browser) !void {
     }
 }
 
+/// The Browser's popup list's length (dom.auxiliary_navigables.count); 0 on
+/// a tree that keeps popups on their opener's Window (the red run on main).
+fn popupCount(browser: *browser_mod.Browser) usize {
+    if (comptime @hasDecl(dom.auxiliary_navigables, "count")) return dom.auxiliary_navigables.count(browser.scope);
+    return 0;
+}
+
 const Snapshot = struct {
     live_bytes: isize,
     popups: usize,
@@ -112,7 +119,7 @@ const Snapshot = struct {
         const navigables = try browser.scope.table(.navigables, html_core.Navigables);
         return .{
             .live_bytes = counting.live.load(.monotonic),
-            .popups = dom.auxiliary_navigables.count(browser.scope),
+            .popups = popupCount(browser),
             .retired = navigables.retired.items.len,
             .contexts = navigables.contexts().len,
         };
@@ -244,7 +251,7 @@ fn windowFirst() !void {
     try page.runScript("globalThis.p = null;");
     try collect(browser);
     try testing.expectEqual(start, navigables.contexts().len);
-    try testing.expectEqual(@as(usize, 0), dom.auxiliary_navigables.count(browser.scope));
+    try testing.expectEqual(@as(usize, 0), popupCount(browser));
     try testing.expectEqual(@as(usize, 0), navigables.retired.items.len);
 }
 
