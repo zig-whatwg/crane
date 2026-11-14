@@ -160,9 +160,10 @@ test "a frame its own document's parse-time script removes has no content window
     const browser = try openPage(server, "http://nav3remove.test/page.html");
     defer browser.deinit();
     // The same commit, left by script that runs during the parse rather than
-    // at its end: the frame's inline script removes its own container.
+    // at its end: the frame's inline script removes its own container. Its
+    // parent is read first: a removed frame's window has none.
     try run(browser, remove_on_load ++
-        \\frame.srcdoc = '<script>parent.events.push("script"); frameElement.remove(); parent.events.push("removed:" + (parent.frame.contentWindow === null));</script>';
+        \\frame.srcdoc = '<script>const p = parent; p.events.push("script"); frameElement.remove(); p.events.push("removed:" + (p.frame.contentWindow === null));</script>';
         \\document.body.append(frame);
     );
     try expectGone(browser, "script,removed:true");
