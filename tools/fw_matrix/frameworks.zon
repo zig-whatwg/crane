@@ -6,7 +6,14 @@
     .suites = .{
         // jQuery 4.0.0's own QUnit suite: test/index.html, one page per module
         // as jquery-test-runner's jtr-isolate.yml runs it (its 21 modules), plus
-        // `wrap` and `ready`, which only its all-modules run covers.
+        // `wrap` and `ready`, which only its all-modules run covers. Served by
+        // the project's own test server - `npm run test:server`, jquery-test-
+        // runner's `jtr serve -m test/middleware-mockserver.cjs` (the 29 mock
+        // actions its ajax tests call) - under Node 24 (its CI's browser-
+        // tests.yml: NODE_VERSION 24.x), with its own dependencies from its
+        // own lockfile; pages at test/?module=<m>, the URL jtr's runs open, on
+        // the host they open it on (localhost). The user, 2026-11-11 17:43 ET:
+        // "we can run node for the purposes of these tests".
         .{
             .id = "jquery-qunit",
             .framework = "jquery",
@@ -98,32 +105,58 @@
             .generated = .{
                 .{ .kind = .qunit_fixture, .from = "test/data/qunit-fixture.html", .to = "test/data/qunit-fixture.js" },
             },
+            // nodejs.org's SHASUMS256.txt for v24.22.3 (LTS "Krypton").
+            .node = .{
+                .version = "24.22.3",
+                .archives = .{
+                    .{ .platform = "linux-x64", .url = "https://nodejs.org/dist/v24.22.3/node-v24.22.3-linux-x64.tar.gz", .sha256 = "061ec3e3062115705b56b51fa9cc330ab50d34b6969387d4e4b1a50c6809acc2" },
+                    .{ .platform = "darwin-arm64", .url = "https://nodejs.org/dist/v24.22.3/node-v24.22.3-darwin-arm64.tar.gz", .sha256 = "ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd" },
+                },
+            },
+            // `npm ci` from the tag's package-lock.json; then the one step of
+            // its `pretest` whose output a test page loads and the tag does not
+            // carry: babel:tests writes test/data/core/jquery-iterability-
+            // transpiled.js (core's "Iterability of jQuery objects with Symbol
+            // polyfill"). Its other pretest steps (npmcopy, qunit-fixture) are
+            // the `dependencies` and `generated` entries above.
+            .npm = .{
+                .lockfile_sha256 = "b0b0be0c8e8c4ba6a3a23c4ac7a1178a0dd7fb7fa14f22ed66404df5e52a991b",
+                .scripts = .{"babel:tests"},
+            },
+            .server = .{
+                .name = "jquery-test-runner 0.3.0",
+                .argv = .{ "node_modules/.bin/jtr", "serve", "-m", "test/middleware-mockserver.cjs", "--port", "{port}" },
+                .ready_path = "/test/",
+            },
             .pages = .{
-                .{ .id = "basic", .path = "test/index.html?module=basic", .module = "basic" },
-                .{ .id = "ajax", .path = "test/index.html?module=ajax", .module = "ajax" },
-                .{ .id = "animation", .path = "test/index.html?module=animation", .module = "animation" },
-                .{ .id = "attributes", .path = "test/index.html?module=attributes", .module = "attributes" },
-                .{ .id = "callbacks", .path = "test/index.html?module=callbacks", .module = "callbacks" },
-                .{ .id = "core", .path = "test/index.html?module=core", .module = "core" },
-                .{ .id = "css", .path = "test/index.html?module=css", .module = "css" },
-                .{ .id = "data", .path = "test/index.html?module=data", .module = "data" },
-                .{ .id = "deferred", .path = "test/index.html?module=deferred", .module = "deferred" },
-                .{ .id = "deprecated", .path = "test/index.html?module=deprecated", .module = "deprecated" },
-                .{ .id = "dimensions", .path = "test/index.html?module=dimensions", .module = "dimensions" },
-                .{ .id = "effects", .path = "test/index.html?module=effects", .module = "effects" },
-                .{ .id = "event", .path = "test/index.html?module=event", .module = "event" },
-                .{ .id = "manipulation", .path = "test/index.html?module=manipulation", .module = "manipulation" },
-                .{ .id = "offset", .path = "test/index.html?module=offset", .module = "offset" },
-                .{ .id = "queue", .path = "test/index.html?module=queue", .module = "queue" },
-                .{ .id = "selector", .path = "test/index.html?module=selector", .module = "selector" },
-                .{ .id = "serialize", .path = "test/index.html?module=serialize", .module = "serialize" },
-                .{ .id = "support", .path = "test/index.html?module=support", .module = "support" },
-                .{ .id = "traversing", .path = "test/index.html?module=traversing", .module = "traversing" },
-                .{ .id = "tween", .path = "test/index.html?module=tween", .module = "tween" },
-                .{ .id = "wrap", .path = "test/index.html?module=wrap", .module = "wrap" },
-                .{ .id = "ready", .path = "test/index.html?module=ready", .module = "ready" },
+                .{ .id = "basic", .path = "test/?module=basic", .module = "basic" },
+                .{ .id = "ajax", .path = "test/?module=ajax", .module = "ajax" },
+                .{ .id = "animation", .path = "test/?module=animation", .module = "animation" },
+                .{ .id = "attributes", .path = "test/?module=attributes", .module = "attributes" },
+                .{ .id = "callbacks", .path = "test/?module=callbacks", .module = "callbacks" },
+                .{ .id = "core", .path = "test/?module=core", .module = "core" },
+                .{ .id = "css", .path = "test/?module=css", .module = "css" },
+                .{ .id = "data", .path = "test/?module=data", .module = "data" },
+                .{ .id = "deferred", .path = "test/?module=deferred", .module = "deferred" },
+                .{ .id = "deprecated", .path = "test/?module=deprecated", .module = "deprecated" },
+                .{ .id = "dimensions", .path = "test/?module=dimensions", .module = "dimensions" },
+                .{ .id = "effects", .path = "test/?module=effects", .module = "effects" },
+                .{ .id = "event", .path = "test/?module=event", .module = "event" },
+                .{ .id = "manipulation", .path = "test/?module=manipulation", .module = "manipulation" },
+                .{ .id = "offset", .path = "test/?module=offset", .module = "offset" },
+                .{ .id = "queue", .path = "test/?module=queue", .module = "queue" },
+                .{ .id = "selector", .path = "test/?module=selector", .module = "selector" },
+                .{ .id = "serialize", .path = "test/?module=serialize", .module = "serialize" },
+                .{ .id = "support", .path = "test/?module=support", .module = "support" },
+                .{ .id = "traversing", .path = "test/?module=traversing", .module = "traversing" },
+                .{ .id = "tween", .path = "test/?module=tween", .module = "tween" },
+                .{ .id = "wrap", .path = "test/?module=wrap", .module = "wrap" },
+                .{ .id = "ready", .path = "test/?module=ready", .module = "ready" },
             },
             .excluded = "jquery-4.0.0.txt",
+            // Every test runs but what needs layout (its own server answers
+            // the mock actions; its build step wrote the transpiled file).
+            .skip_kinds = .{ .rendering, .node_runner_only },
         },
         // htmx 4.0.1's own Mocha suite: test/test.html, the project's browser
         // page (80 of its 88 test files; ruling R5: the 9 files only its
