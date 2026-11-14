@@ -684,7 +684,13 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     // document's base URL (CSSOM "style sheet base URL").
     const base = interfaces.Node.get_baseURI(load.document) catch null;
     defer if (base) |b| document_allocator.free(b);
-    fetchImports(load, null, text, base);
+    // A document no browsing context can show - a DOMParser document, an
+    // SVG resource document parsed in secure static mode (SVG 2 §16.1.7.3;
+    // dom.style.svg_resources, whose missing browsing context prevents
+    // every resource loader, as the style values' and images' loaders
+    // here start none for it) - fetches no @import. A document still
+    // loading into its navigable is not gone.
+    if (dom.document_activity.activity(load.document, load.document_generation) != .gone) fetchImports(load, null, text, base);
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
     load.blocks_scripts = parser_created and load.in_flight > 0;
