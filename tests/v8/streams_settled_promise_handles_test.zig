@@ -26,11 +26,13 @@ test "a settled streams promise keeps one handle, a pending one its three" {
     defer page.end();
     try rounds_lib.expectEval(page.realm, "globalThis.kept = []; 'ok'", "ok");
 
-    // Counted in bytes of V8's handle tables: a v8::Global is 32 of them, and
-    // the wrapper cache's reference to a wrapper - a traced reference since
-    // lane wrap1 b3 - is 16.
+    // Counted in bytes of V8's handle tables: a v8::Global is 32 of them. The
+    // wrapper cache's reference to a wrapper is one too for a reader and a
+    // writer: the binding draws their edges on the wrapper (the stream, the
+    // promises), V8 does not drop a changed wrapper in a young collection,
+    // and the cache holds such a wrapper by a weak Global made in its record
+    // (lane wrap1 b3; an unchanged wrapper's is a traced reference of 16).
     const global = try rounds_lib.handleBytes(page.realm, page.isolate());
-    const traced = 16;
 
     // A reader of a closed stream: its wrapper, and its [[closedPromise]],
     // resolved at once (ReadableStreamReaderGenericInitialize step 4.1).
@@ -45,10 +47,10 @@ test "a settled streams promise keeps one handle, a pending one its three" {
     const reader_kept = with_reader - closed_stream;
     const writer_kept = with_writer - writable;
     // The wrapper, and 1 handle for the settled [[closedPromise]].
-    const reader_expected = traced + global;
+    const reader_expected = global + global;
     // The wrapper, 1 handle for the settled [[readyPromise]], 3 for the
     // pending [[closedPromise]].
-    const writer_expected = traced + global + 3 * global;
+    const writer_expected = global + global + 3 * global;
     if (reader_kept != reader_expected or writer_kept != writer_expected) {
         std.debug.print("handle bytes kept a call: {d} by a reader of a closed stream (expected {d}), {d} by a writer (expected {d})\n", .{ reader_kept, reader_expected, writer_kept, writer_expected });
         return error.SettledPromisesKept;

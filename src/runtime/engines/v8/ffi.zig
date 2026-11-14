@@ -1593,7 +1593,8 @@ pub const WrapperCell = opaque {};
 /// cache then holds the wrapper by a weak Global.
 pub extern fn v8_WrapperCell_Attach(isolate: *Isolate, box: *Object, cell: *WrapperCell) bool;
 /// The cache lets go of the wrapper `cell` holds, outside a collection: its
-/// reference is Reset, and the wrapper's anchor stops naming `cell` - it
+/// handle is Reset - a traced reference, or an in-place weak Global with its
+/// arm - and the wrapper's anchor stops naming `cell` - it
 /// reaches the instance itself again when `keep_link`, nothing otherwise
 /// (severed). Nothing for an empty reference. On `isolate`'s thread; it is
 /// entered for the call if it is not current.
@@ -1615,7 +1616,21 @@ pub extern fn v8_Isolate_SetPlatformWrapperHooks(
     data: ?*anyopaque,
     weak: *const fn (?*anyopaque) callconv(.c) void,
     dropped: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
+    changed: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
 ) bool;
+/// The realm's cache takes the wrapper in `box` by a weak handle
+/// (wrapper_cache.zig `heldByWeakHandle`): `cell`'s word becomes a strong
+/// v8::Global of the wrapper, in place, and the wrapper's anchor names
+/// `cell`. False, with nothing changed, as v8_WrapperCell_Attach.
+pub extern fn v8_WrapperCell_AttachWeak(isolate: *Isolate, box: *Object, cell: *WrapperCell) bool;
+/// `cell`'s traced reference becomes a strong v8::Global of the same wrapper,
+/// in place: the binding changed the wrapper. False for an empty reference.
+pub extern fn v8_WrapperCell_ToWeakHandle(isolate: *Isolate, cell: *WrapperCell) bool;
+/// Arm the in-place Global of `cell` weak: `unlink(cell)` in V8's first pass,
+/// `finalize(cell)` at the agent's safe point; a first pass in a
+/// young-generation collection also frees the wrapper's anchor ahead of the
+/// collector.
+pub extern fn v8_WrapperCell_ArmWeak(isolate: *Isolate, cell: *WrapperCell, unlink: WeakCallbackFn, finalize: WeakCallbackFn) void;
 /// `finalize(user_data, 0)` joins `isolate`'s finalizer queue: it runs at the
 /// agent's next safe point, as a collected weak Global's finalizer does.
 /// Callable inside a collection. False, with nothing queued, for an isolate

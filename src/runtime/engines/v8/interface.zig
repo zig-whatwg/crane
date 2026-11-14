@@ -2021,6 +2021,23 @@ pub fn hasExposureOverride(comptime Interface: type, comptime name: []const u8, 
     return false;
 }
 
+/// Whether every instance of `Interface` is born with an own property: the
+/// interface, or one it inherits from, has a [LegacyUnforgeable] member, which
+/// WebIDL makes an own property of each instance (3.7.6, 3.7.7) and the
+/// binding puts on the instance template (createTemplate: `if (unforgeable)
+/// instance_tmpl`, registerInheritedUnforgeables) or, with an exposure
+/// override, defines on each object (installConditionalUnforgeables). Such a
+/// wrapper is never on its constructor's initial map, so V8 never treats it as
+/// an unmodified API object (wrapper_cache.zig `heldByWeakHandle` says what
+/// follows). Read from the interface's metadata: a new interface with an
+/// unforgeable member answers true with no list to edit.
+pub fn instancesAreBornWithOwnProperties(comptime Interface: type) bool {
+    @setEvalBranchQuota(1_000_000);
+    if (@hasDecl(Interface.Meta, "unforgeable_members") and Interface.Meta.unforgeable_members.len != 0) return true;
+    if (@hasDecl(Interface.Meta, "ParentInterface")) return instancesAreBornWithOwnProperties(Interface.Meta.ParentInterface);
+    return false;
+}
+
 /// Only these interfaces need work after a wrapper is instantiated. Keep
 /// the predicate metadata-only so the dispatcher compiles out every other
 /// interface before instantiating its binding.

@@ -529,6 +529,11 @@ struct WeakCallbackData {
     // engine work is allowed - V8's first pass only queues it
     // (`queueFinalizer`). Null for a first-pass-only arm.
     ZigWeakCallbackFn finalize = nullptr;
+    // The platform anchor of the wrapper the handle holds, when the arm is a
+    // wrapper cache record's (v8_WrapperCell_ArmWeak): a first pass that runs
+    // in a young-generation collection severs it and frees it ahead of the
+    // collector (`dropDeadWrapperAnchor`). Null for every other arm.
+    void* anchor = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -804,6 +809,7 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data);
 static bool runQueuedFinalizers(Isolate* isolate);
 static void oweWaitingAnchorFrees(Isolate* isolate);
+static void dropDeadWrapperAnchor(Isolate* isolate, void* anchor);
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
@@ -853,6 +859,10 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     // node, and V8 clears its class id, flags included.
     forgetCountedHandle(data->handle);
     data->handle->Reset();
+
+    // A wrapper cache record's wrapper died: its anchor goes ahead of the
+    // collector when a young-generation collection found it.
+    if (data->anchor) dropDeadWrapperAnchor(info.GetIsolate(), data->anchor);
 
     // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
     // node) leaves the record HERE with its handle intact, precisely so the
@@ -3181,6 +3191,12 @@ struct CraneWrapperCell {
 /// takes every attached record without it for dead and clears it on the
 /// rest (wrapper_cache.zig `processWeak`).
 static constexpr uint32_t kWrapperCellMarked = 1u << 31;
+/// `bits`: the record holds its wrapper by a weak v8::Global made IN PLACE in
+/// `wrapper` (the same one word, the same borrowed handle) and not by a
+/// traced reference - the wrappers V8 will not drop in a young collection
+/// (wrapper_cache.zig `heldByWeakHandle`). Nothing here traces such a
+/// record's word, and its death comes through the Global's first pass.
+static constexpr uint32_t kWrapperCellWeakHandle = 1u << 29;
 static_assert(sizeof(CraneWrapperCell) == 32 && offsetof(CraneWrapperCell, instance) == 8 &&
                   offsetof(CraneWrapperCell, generation) == 16 && offsetof(CraneWrapperCell, bits) == 28,
               "CraneWrapperCell mirrors wrapper_cache.zig's Cell");
@@ -3245,7 +3261,7 @@ class PlatformAnchor : public CraneWrappable {
     void Trace(cppgc::Visitor* visitor) const override {
         CraneWrappable::Trace(visitor);
         CraneWrapperCell* record = cell();
-        if (!record) return;
+        if (!record || (record->bits & kWrapperCellWeakHandle)) return;
         visitor->Trace(record->wrapper);
         if (collectingRecord(this)) record->bits |= kWrapperCellMarked;
     }
@@ -3542,6 +3558,11 @@ struct IsolateData {
     std::unordered_map<CraneWrapperCell*, Global<Object>> strong_wrappers;
     void (*platform_wrappers_weak)(void* data) = nullptr;
     void (*platform_wrapper_dropped)(void* data, CraneWrapperCell* cell) = nullptr;
+    /// The binding changed a wrapper an anchored record holds by a traced
+    /// reference - a private property, its prototype, a captured stack - so
+    /// V8 no longer drops it in a young collection: the cache holds it by a
+    /// weak handle from here (wrapper_cache.zig `changed`).
+    void (*platform_wrapper_changed)(void* data, CraneWrapperCell* cell) = nullptr;
     /// The dropped anchors freed so far, and the frees cppgc refused because
     /// its heap was collecting (one per anchor per refusal): diagnostics and
     /// tests/v8 (engine.diagnosticCounters).
@@ -4676,8 +4697,8 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // ---- What the instances behind non-node wrappers hold (lane wrap1 b3) ----
 //
 // A non-node platform object's wrapper is 16 bytes of V8's heap and 24 of
-// the C++ heap, and keeps a Zig instance alive that V8 cannot see: an
-// Event's state is 1,072 bytes, a URLSearchParams' 216. V8 schedules a
+// the C++ heap, and keeps a Zig instance alive that V8 cannot see: a kept
+// Event holds 1.2 KB by allocation site, a URLSearchParams 216 bytes. V8 schedules a
 // young-generation collection by the bytes of its own young space, so a
 // script that makes and drops such objects holds the dead ones' instances
 // until V8's own allocation asks for a collection - and the smaller the
@@ -4697,15 +4718,20 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // one script never changed, which a young collection can drop, and the ones
 // that wait for a full collection and so lean on this most (a wrapper with
 // an expando, one with a traced child, a legacy platform object behind its
-// proxy) - its instance's state block and slab slot and the cache's record
-// (wrapper_cache.zig `noteWrapped`, the one call site). NOT COUNTED - the
-// figure's floor: the cache's map slot (about 22 bytes), and whatever a
-// state allocates beyond its block, which the adapter cannot see - a
+// proxy) - its instance's slab slot, its generated State block (the size its
+// vtable carries) and the cache's record: ONE function of the instance
+// (wrapper_cache.zig `instanceHeldBytes`, called from `noteWrapped`, the one
+// call site). NOT COUNTED - so the figure is a floor, and for some shapes a
+// low one: the cache's map slot (about 22 bytes); the impl's internal state,
+// which is a block of the Browser's arena that neither the instance nor its
+// vtable names; and whatever that state allocates beyond its block - a
 // URLSearchParams' or Headers' list, a Response's body and URL list, a
-// stream's queue. For an Event the block is nearly all of it: of the 1.2 KB
-// a kept Event holds by allocation site, 1,079 bytes are its state block
-// and 32 its slab slot (gc_bench --profile, tmp/plans/wrap1-evidence/
-// sites0-c.out; the rest was the cache's old entry). WHERE AND WHEN: noted
+// stream's queue. An Event is the widest gap: V8 is told 112 bytes of it
+// (32 + 48 + 32), and of the 1.2 KB a kept Event holds by allocation site,
+// 1,079 bytes are its internal state's arena block (gc_bench --profile,
+// tmp/plans/wrap1-evidence/sites0-c.out). A URLSearchParams is told 72 of
+// its 216. The survivors' sum that replaces this account (below) is where
+// the arena's blocks are counted. WHERE AND WHEN: noted
 // at the wrap (a store, no V8 call), reported at the agent's drain once
 // 128 KB wait (V8's own step: kExternalAllocationLimitForInterrupt) - the
 // report may start a collection, so it is made at a safe point - and taken
@@ -5015,35 +5041,185 @@ extern "C" bool v8_WrapperCell_Attach(Isolate* isolate, Global<Object>* box, Cra
     return true;
 }
 
+/// The in-place weak v8::Global of a record of the weak-handle kind
+/// (kWrapperCellWeakHandle): the record's one word, read as a Global is.
+static Global<Object>* weakHandleOf(CraneWrapperCell* cell) {
+    return reinterpret_cast<Global<Object>*>(&cell->wrapper);
+}
+
 /// The cache lets go of the wrapper `cell` holds, outside a collection: the
 /// record is about to be freed (its realm's end, a replaced or removed
 /// entry). The wrapper's anchor stops naming the record - it reaches the
 /// instance itself again when `keep_link` (the wrapper lives on uncached:
 /// WrapperCache.remove), nothing otherwise (severed: the instance goes) - and
-/// the reference is Reset, V8 freeing its TracedNode. Nothing for a record
-/// whose reference is empty already (a collection took the wrapper, and
-/// severed or swept its anchor). On `isolate`'s thread; it is entered for
-/// the call if it is not current (v8_NodeWrapper_End's rule).
+/// the record's handle is Reset: its traced reference (V8 frees the
+/// TracedNode), or its in-place weak Global, whose weak arm ends with it (a
+/// finalizer still queued for it is cancelled). Nothing for a record whose
+/// handle is empty already (a collection took the wrapper, and severed or
+/// swept its anchor) but the end of a weak Global's arm. On `isolate`'s
+/// thread; it is entered for the call if it is not current
+/// (v8_NodeWrapper_End's rule).
 extern "C" void v8_WrapperCell_Detach(Isolate* isolate, CraneWrapperCell* cell, bool keep_link) {
-    if (cell->wrapper.IsEmpty()) return;
-    const bool enter = Isolate::TryGetCurrent() != isolate;
-    if (enter) isolate->Enter();
-    {
-        HandleScope scope(isolate);
-        Local<Object> wrappable = anchorHolderOf(cell->wrapper.Get(isolate));
-        if (wrappable->IsApiWrapper()) {
-            PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
-            if (anchor && anchor->cell() == cell) {
-                if (keep_link) {
-                    anchor->link_ = reinterpret_cast<uintptr_t>(cell->instance);
-                } else {
-                    anchor->sever();
+    const bool weak = (cell->bits & kWrapperCellWeakHandle) != 0;
+    const bool empty = weak ? weakHandleOf(cell)->IsEmpty() : cell->wrapper.IsEmpty();
+    if (!empty) {
+        const bool enter = Isolate::TryGetCurrent() != isolate;
+        if (enter) isolate->Enter();
+        {
+            HandleScope scope(isolate);
+            Local<Object> object = weak ? weakHandleOf(cell)->Get(isolate) : cell->wrapper.Get(isolate);
+            Local<Object> wrappable = anchorHolderOf(object);
+            if (wrappable->IsApiWrapper()) {
+                PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+                if (anchor && anchor->cell() == cell) {
+                    if (keep_link) {
+                        anchor->link_ = reinterpret_cast<uintptr_t>(cell->instance);
+                    } else {
+                        anchor->sever();
+                    }
                 }
             }
         }
+        if (enter) isolate->Exit();
     }
-    if (enter) isolate->Exit();
+    if (weak) {
+        Global<Object>* handle = weakHandleOf(cell);
+        releaseWeakArm(handle);
+        handle->Reset();
+        return;
+    }
     cell->wrapper.Reset();
+}
+
+// ---- The wrappers V8 will not drop: a weak handle (lane wrap1 b3) ----
+//
+// V8 drops a wrapper held by a droppable traced reference in a
+// young-generation collection only while it is an "unmodified API object":
+// JSObject::IsUnmodifiedApiObject (15.7.112.43 src/objects/js-objects.cc:
+// 3152-3168) - a JS API object with no elements and no identity hash whose
+// map is still its constructor's initial map. Three kinds of wrapper never
+// are, or stop being:
+// - one whose interface gives every instance an own property - an Event's
+//   [LegacyUnforgeable] isTrusted. V8 makes an object from a template in two
+//   steps (src/api/api-natives.cc:351-356, InstantiateObject: JSObject::New
+//   with the constructor's initial map, then ConfigureInstance adds the
+//   instance template's properties), so such an instance is off the initial
+//   map at birth. Blink's are too (it clones a boilerplate made the same
+//   way: platform/bindings/v8_per_context_data.cc:96-117);
+// - a legacy platform object behind its proxy: a Proxy is no API object;
+// - one the binding itself changes after it is made: a private property for
+//   a traced child or a [SameObject] value, a prototype, a captured stack.
+// Held by a traced reference, each would wait for a FULL collection - and V8
+// asks for one only about every 100 MB of memory it is told of, where a
+// young collection comes every few megabytes of script allocation: 650,000
+// dropped Events ended at 198 MB against main's 88 (gc_bench, server1,
+// 2026-11-14; tmp/plans/wrap1-evidence/b3-meas3-drop-l.out). Blink does not
+// feel it because its Event is on the C++ heap, whose growth V8 counts.
+//
+// So the wrapper cache holds exactly these by a weak v8::Global, which V8
+// processes in every collection whatever the object's map - as it held every
+// wrapper until this batch - and every other wrapper by its traced
+// reference. The Global is made IN PLACE in the record's one word: the
+// handle a caller borrowed (the record's address) stays the same handle
+// when a record changes kind. The record keeps its anchor's link, so the
+// binding's reads and a holder's trace are the same for both kinds. A wrapper
+// script changes (an expando) is not known to the cache and waits for a full
+// collection, as in Blink.
+//
+// A V8 upgrade re-reads the two citations before this compiles again: the
+// rule the cache's choice rests on is V8's, and tests/v8/
+// wrap1_platform_anchor_test.zig asks V8 for it template by template.
+static_assert(V8_MAJOR_VERSION == 15 && V8_MINOR_VERSION == 7,
+              "which wrappers V8 drops in a young collection was read from 15.7.112.43 "
+              "(js-objects.cc IsUnmodifiedApiObject, api-natives.cc InstantiateObject): re-read both before upgrading");
+
+/// The realm's cache takes the wrapper in `box` by a WEAK HANDLE: `cell`'s one
+/// word becomes a strong v8::Global of the wrapper, made in place
+/// (v8_WrapperCell_ArmWeak makes it weak), and the wrapper's anchor names the
+/// record. False - nothing changed - under v8_WrapperCell_Attach's
+/// conditions. The caller sets the record's kWrapperCellWeakHandle bit before
+/// anything can collect (nothing here does).
+extern "C" bool v8_WrapperCell_AttachWeak(Isolate* isolate, Global<Object>* box, CraneWrapperCell* cell) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->node_anchors.Get() || !record->platform_wrappers_weak || !record->platform_wrapper_dropped) return false;
+    HandleScope scope(isolate);
+    Local<Object> object = box->Get(isolate);
+    Local<Object> wrappable = anchorHolderOf(object);
+    if (!wrappable->IsApiWrapper()) return false;
+    PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+    if (!anchor || anchor->cell() || anchor->instance() != cell->instance) return false;
+    new (static_cast<void*>(&cell->wrapper)) Global<Object>(isolate, object);
+    anchor->attach(cell);
+    return true;
+}
+
+/// `cell` holds its wrapper by a traced reference, and the binding has just
+/// changed the wrapper: the record's word becomes a strong v8::Global of the
+/// same wrapper, in place (the reference is Reset first - V8 frees its
+/// TracedNode). False for an empty reference. The caller sets the record's
+/// kWrapperCellWeakHandle bit before anything can collect, and arms it.
+extern "C" bool v8_WrapperCell_ToWeakHandle(Isolate* isolate, CraneWrapperCell* cell) {
+    if (cell->wrapper.IsEmpty()) return false;
+    HandleScope scope(isolate);
+    Local<Object> object = cell->wrapper.Get(isolate);
+    cell->wrapper.Reset();
+    new (static_cast<void*>(&cell->wrapper)) Global<Object>(isolate, object);
+    return true;
+}
+
+/// Arm the in-place Global of `cell` (a record of the weak-handle kind) weak,
+/// as v8_Global_SetWeakFinalizer arms a box: `unlink(cell)` in V8's first
+/// pass, `finalize(cell)` at the agent's safe point - and the wrapper's
+/// anchor remembered with the arm, so that a first pass in a young-generation
+/// collection frees it ahead of the collector (`dropDeadWrapperAnchor`).
+extern "C" void v8_WrapperCell_ArmWeak(Isolate* isolate, CraneWrapperCell* cell, ZigWeakCallbackFn unlink, ZigWeakCallbackFn finalize) {
+    Global<Object>* handle = weakHandleOf(cell);
+    if (handle->IsEmpty() || !finalize) return;
+    void* anchor = nullptr;
+    {
+        HandleScope scope(isolate);
+        anchor = platformAnchorOf(isolate, handle->Get(isolate));
+    }
+    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
+    WeakCallbackData* data = new WeakCallbackData{unlink, cell, global, isolate, finalize, anchor};
+    armWeakData(handle, data);
+    global->SetWeak(data, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
+}
+
+/// A wrapper cache record's wrapper died and its weak Global's first pass is
+/// running: `raw` is the wrapper's anchor. In a YOUNG-generation collection
+/// the C++ heap did not collect: the anchor is whole, nothing reaches it any
+/// more, and it is severed and listed for its free at the agent's drain, its
+/// pointer-table entry counted (freeDroppedAnchors, reportDroppedTableEntries)
+/// - what resetPlatformRoot does for a traced record's. In a FULL collection
+/// the anchor died with its wrapper and the sweep takes it: it is not
+/// touched. A full collection is told from a young one by the pause
+/// recorder's depth: V8 runs first-pass callbacks between a mark-compact's
+/// prologue and epilogue callbacks (15.7.112.43 src/heap/heap.cc:1514, :2344,
+/// :1621), and a scavenge calls neither.
+static void dropDeadWrapperAnchor(Isolate* isolate, void* raw) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || record->gc_pauses.depth != 0) return;
+    PlatformAnchor* anchor = static_cast<PlatformAnchor*>(raw);
+    anchor->sever();
+    record->node_wrappers_dropped += 1;
+    record->dropped_platform_anchors.push_back(anchor);
+    noteNodeWrappersCollected(record);
+}
+
+/// The binding changed `object` - a private property, its prototype, a
+/// captured stack: if it is a wrapper its cache holds by a traced reference,
+/// the cache is told (IsolateData::platform_wrapper_changed), and holds it by
+/// a weak handle from here. Nothing for any other object.
+static void notePlatformWrapperChanged(Isolate* isolate, Local<Object> object) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->platform_wrapper_changed) return;
+    Local<Object> wrappable = anchorHolderOf(object);
+    if (!wrappable->IsApiWrapper()) return;
+    PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+    CraneWrapperCell* cell = anchor ? anchor->cell() : nullptr;
+    if (!cell || (cell->bits & kWrapperCellWeakHandle)) return;
+    record->platform_wrapper_changed(record->platform_wrappers, cell);
 }
 
 /// The cache holds `cell`'s wrapper strongly from here (`strong`), or no more:
@@ -5069,18 +5245,21 @@ extern "C" void v8_WrapperCell_SetStrong(Isolate* isolate, CraneWrapperCell* cel
 }
 
 /// The wrapper caches' two steps inside `isolate`'s collections
-/// (IsolateData::platform_wrappers_weak, platform_wrapper_dropped), installed
-/// once per isolate by its first cache that takes a wrapper; `data` is handed
-/// back to both. The anchors' registry - whose weak processing calls `weak` -
+/// (IsolateData::platform_wrappers_weak, platform_wrapper_dropped) and their
+/// step when the binding changes a wrapper (platform_wrapper_changed),
+/// installed once per isolate by its first cache that takes a wrapper; `data`
+/// is handed back to each. The anchors' registry - whose weak processing calls `weak` -
 /// must exist (v8_Isolate_SetNodeWrappers): false without it, or for an
 /// isolate with no record, and then no record is ever attached there.
 extern "C" bool v8_Isolate_SetPlatformWrapperHooks(Isolate* isolate, void* data, void (*weak)(void*),
-                                                   void (*dropped)(void*, CraneWrapperCell*)) {
+                                                   void (*dropped)(void*, CraneWrapperCell*),
+                                                   void (*changed)(void*, CraneWrapperCell*)) {
     IsolateData* record = isolateData(isolate);
     if (!record || !record->node_anchors.Get()) return false;
     record->platform_wrappers = data;
     record->platform_wrappers_weak = weak;
     record->platform_wrapper_dropped = dropped;
+    record->platform_wrapper_changed = changed;
     return true;
 }
 
@@ -8530,6 +8709,10 @@ void v8_Object_SetPrivateRef(Global<Object>* holder, const char* key, int key_le
     if (!String::NewFromUtf8(isolate, key, NewStringType::kInternalized, key_len).ToLocal(&name)) return;
     Local<Private> priv = Private::ForApi(isolate, name);
     (void)object->SetPrivate(context, priv, target);
+    // A private property moves the object off its constructor's initial map:
+    // a wrapper cache record that held it by a traced reference holds it by a
+    // weak handle from here ("The wrappers V8 will not drop").
+    notePlatformWrapperChanged(isolate, object);
 }
 
 void v8_Object_Dispose(Global<Object>* obj) {
@@ -9484,7 +9667,10 @@ bool v8_Exception_CaptureStackTrace(Global<Context>* context, Global<Object>* ob
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
     Local<Context> ctx = context->Get(isolate);
-    return Exception::CaptureStackTrace(ctx, object->Get(isolate)).FromMaybe(false);
+    const bool captured = Exception::CaptureStackTrace(ctx, object->Get(isolate)).FromMaybe(false);
+    // The `stack` own property changes the object (a DOMException's wrapper).
+    notePlatformWrapperChanged(isolate, object->Get(isolate));
+    return captured;
 }
 
 /// Get the holder object from FunctionCallbackInfo.
@@ -11478,7 +11664,12 @@ bool v8_Object_SetPrototype(Global<Object>* object, Global<Context>* context, Gl
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
 
-    return obj->SetPrototype(ctx, proto).FromMaybe(false);
+    const bool set = obj->SetPrototype(ctx, proto).FromMaybe(false);
+    // Another prototype is another map: no longer the constructor's initial
+    // one, for a wrapper its cache already holds (a constructor's instance
+    // that was wrapped while it was made, given NewTarget's prototype).
+    notePlatformWrapperChanged(isolate, obj);
+    return set;
 }
 
 /// Set the prototype of an object using SetPrototypeV2.
@@ -11492,7 +11683,12 @@ bool v8_Object_SetPrototypeV2(Global<Object>* object, Global<Context>* context, 
     Local<Context> ctx = context->Get(isolate);
     Local<Value> proto = prototype->Get(isolate);
 
-    return obj->SetPrototype(ctx, proto).FromMaybe(false);
+    const bool set = obj->SetPrototype(ctx, proto).FromMaybe(false);
+    // Another prototype is another map: no longer the constructor's initial
+    // one, for a wrapper its cache already holds (a constructor's instance
+    // that was wrapped while it was made, given NewTarget's prototype).
+    notePlatformWrapperChanged(isolate, obj);
+    return set;
 }
 
 Global<Value>* v8_Object_GetPrototype(Global<Object>* object) {

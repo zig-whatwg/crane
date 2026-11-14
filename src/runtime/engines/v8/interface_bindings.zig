@@ -1448,6 +1448,40 @@ pub fn getOrCreateTemplateByName(
     return createTemplateOnDemandByName(interface_name, isolate);
 }
 
+/// The interfaces whose wrapper is not an unmodified API object from the
+/// moment it is made, by name: every interface whose instances are born with
+/// an own property (interface.instancesAreBornWithOwnProperties: a
+/// [LegacyUnforgeable] member of its own or inherited - Event and all that
+/// inherit from it, Location, ...) and every legacy platform object whose
+/// wrapper is a Proxy (template_registry.isLegacyPlatformObject). Built at
+/// compile time from each interface's metadata; nobody keeps it by hand.
+const born_changed_interfaces = blk: {
+    @setEvalBranchQuota(100_000_000);
+    const template_registry = @import("template_registry.zig");
+    const decl_names = @typeInfo(interfaces).@"struct".decl_names;
+    var entries: [decl_names.len]struct { []const u8 } = undefined;
+    var count: usize = 0;
+    for (decl_names) |decl_name| {
+        const InterfaceType = @field(interfaces, decl_name);
+        if (@typeInfo(InterfaceType) != .@"struct" or !@hasDecl(InterfaceType, "Meta")) continue;
+        if (!@hasDecl(InterfaceType.Meta, "name")) continue;
+        const name: []const u8 = InterfaceType.Meta.name;
+        if (interface_mod.instancesAreBornWithOwnProperties(InterfaceType) or template_registry.isLegacyPlatformObject(name)) {
+            entries[count] = .{name};
+            count += 1;
+        }
+    }
+    const final = entries[0..count].*;
+    break :blk std.StaticStringMap(void).initComptime(final);
+};
+
+/// Whether a wrapper of the interface named `interface_name` is, from the
+/// moment it is made, one V8 will not drop in a young-generation collection
+/// (wrapper_cache.zig `heldByWeakHandle`: the rule and its reasons).
+pub fn wrapperIsBornChanged(interface_name: []const u8) bool {
+    return born_changed_interfaces.has(interface_name);
+}
+
 /// Create a template on-demand by interface name.
 ///
 /// This is called when wrapInstanceAsV8Object() needs a template that doesn't

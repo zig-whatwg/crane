@@ -60,19 +60,24 @@ const log = std.log.scoped(.wrapper_cache);
 /// global-handle node, and that handle's 48-byte callback record with its
 /// node in the adapter's armed-handle map.
 ///
-/// Two kinds, told apart by `bits.boxed`:
-/// - ANCHORED (the default: every non-node platform object made from an
-///   interface's template): `wrapper` IS a `v8::TracedReference<v8::Object>`,
-///   one word, attached by v8_WrapperCell_Attach. Blink keeps a wrapper the
-///   same way - `ScriptWrappable::wrapper_`, a TraceWrapperV8Reference traced
-///   by the object the wrapper points at (platform/bindings/
-///   script_wrappable.h:147, script_wrappable.cc:63-66; Chromium
-///   157.0.8103.51). The collector tells the cache when the wrapper died
-///   (`WrapperCache.processWeak`, `dropped`).
+/// Three kinds, told apart by `bits.boxed` and `bits.weak_handle`:
+/// - TRACED (the default: a non-node platform object's wrapper that V8 can
+///   drop in a young collection): `wrapper` IS a
+///   `v8::TracedReference<v8::Object>`, one word, attached by
+///   v8_WrapperCell_Attach. Blink keeps a wrapper the same way -
+///   `ScriptWrappable::wrapper_`, a TraceWrapperV8Reference traced by the
+///   object the wrapper points at (platform/bindings/script_wrappable.h:147,
+///   script_wrappable.cc:63-66; Chromium 157.0.8103.51). The collector tells
+///   the cache when the wrapper died (`WrapperCache.processWeak`, `dropped`).
+/// - WEAK HANDLE (a non-node platform object's wrapper that V8 will NOT drop
+///   in a young collection: `heldByWeakHandle`, `WrapperCache.changed`):
+///   `wrapper` IS a `v8::Global<v8::Object>`, made in place in the same one
+///   word, weak with a first-pass callback (`unlinkCollected`) and a
+///   finalizer - what every entry's handle was until lane wrap1 b3, without
+///   its box. The wrapper's anchor names the record as a traced one's does.
 /// - BOXED (an object with no platform anchor: a realm's global, which has
 ///   its GlobalAnchor; a test's plain object): `wrapper` is the
-///   `Global<Object>*` the binding made, weak with a first-pass callback
-///   (`unlinkCollected`) and a finalizer, as every entry's was.
+///   `Global<Object>*` the binding made, weak in the same way.
 ///
 /// The record outlives its wrapper: a collection that takes the wrapper
 /// leaves the record `collected`, out of the map, its reference empty, until
@@ -168,7 +173,11 @@ pub const Cell = extern struct {
         /// TeardownHolds.deferred for the last resume to tear it down.
         teardown_deferred: bool = false,
 
-        _unused: u2 = 0,
+        /// `wrapper` is a `v8::Global` made in place, not a traced reference
+        /// (see `Cell`; v8_wrapper.cpp kWrapperCellWeakHandle reads it).
+        weak_handle: bool = false,
+
+        _unused: u1 = 0,
 
         /// A full collection's marking reached the record's anchor
         /// (v8_wrapper.cpp PlatformAnchor::Trace, kWrapperCellMarked): written
@@ -189,6 +198,15 @@ pub const Cell = extern struct {
         return @ptrCast(self);
     }
 
+    /// The record's v8::Global - a boxed record's box, a weak-handle
+    /// record's own word - or null for a traced record, and for a boxed one
+    /// whose box is gone.
+    fn global(self: *Cell) ?*anyopaque {
+        if (self.bits.boxed) return self.wrapper;
+        if (self.bits.weak_handle) return @ptrCast(self);
+        return null;
+    }
+
     /// The record as v8_wrapper.cpp takes it.
     fn raw(self: *Cell) *v8.WrapperCell {
         return @ptrCast(self);
@@ -205,7 +223,7 @@ comptime {
     std.debug.assert(@sizeOf(Cell) == 32);
     std.debug.assert(@offsetOf(Cell, "wrapper") == 0 and @offsetOf(Cell, "instance") == 8);
     std.debug.assert(@offsetOf(Cell, "generation") == 16 and @offsetOf(Cell, "fresh") == 24 and @offsetOf(Cell, "bits") == 28);
-    std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31);
+    std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
 }
 
 /// One block of a cache's pool of records: `chunk_bytes` at an address that
@@ -283,14 +301,18 @@ fn letGo(entry: *Cell, link: Link) void {
     // A wrapper the cache held strongly is held no more.
     entry.cache().dropStrongHandle(entry);
     if (!entry.bits.boxed) {
-        // An anchored record's cache joined its agent's caches with the
-        // isolate it was handed (`register`).
+        // A record with an anchor: its cache joined its agent's caches with
+        // the isolate it was handed (`register`). Its handle - the traced
+        // reference, or the in-place weak Global with its arm - is Reset, and
+        // the anchor stops naming it.
         v8.v8_WrapperCell_Detach(entry.cache().isolate.?, entry.raw(), link == .keep);
-        // No reference and no anchor from here: the record is inert until
-        // it is freed, and the collector's weak processing - a teardown the
-        // caller runs next can collect - does not take it for an anchored
-        // record whose wrapper died.
+        // No handle and no anchor from here: the record is inert until it is
+        // freed, and the collector's weak processing - a teardown the caller
+        // runs next can collect - does not take it for a traced record whose
+        // wrapper died.
+        entry.bits.weak_handle = false;
         entry.bits.boxed = true;
+        entry.wrapper = null;
         return;
     }
     const box: *v8.Object = @ptrCast(@alignCast(entry.wrapper orelse return));
@@ -301,6 +323,39 @@ fn letGo(entry: *Cell, link: Link) void {
     // Its weak arm ends with it (v8_Object_Dispose releases the arm; a
     // finalizer still queued for it is cancelled).
     v8.v8_Object_Dispose(box);
+}
+
+/// THE RULE for which wrappers the cache holds by a weak handle, stated once:
+/// A WRAPPER V8 WOULD NOT TREAT AS AN UNMODIFIED API OBJECT IS HELD BY A WEAK
+/// HANDLE; every other one by a droppable traced reference.
+///
+/// V8 drops a traced reference's wrapper in a young-generation collection
+/// only while `JSObject::IsUnmodifiedApiObject` holds (V8 15.7.112.43
+/// src/objects/js-objects.cc:3152-3168): a JS API object with no elements and
+/// no identity hash whose map is still its constructor's initial map. Any
+/// other wrapper would wait for a full collection, which V8 runs about every
+/// 100 MB of memory it is told of - 650,000 dropped Events ended at 198 MB
+/// against 88 with a weak handle (v8_wrapper.cpp, "The wrappers V8 will not
+/// drop"). A weak v8::Global is processed in every collection whatever the
+/// object's map. The cache knows of three ways a wrapper is not unmodified:
+/// - FROM BIRTH, answered here from the interface's template
+///   (interface_bindings.wrapperIsBornChanged, computed from each interface's
+///   metadata, never a list of names): its instance template has own
+///   properties - V8 adds them after it makes the object from the initial map
+///   (src/api/api-natives.cc:351-356), so `Event`, with its
+///   [LegacyUnforgeable] isTrusted, and every interface that inherits from
+///   one with such a member - or its wrapper is a Proxy (a legacy platform
+///   object with named properties), which is no API object at all;
+/// - WHEN THE BINDING CHANGES IT: `WrapperCache.changed`, called by the
+///   adapter's own writes on a wrapper (a traced child's or [SameObject]
+///   value's private property, a prototype, a captured stack);
+/// - when script changes it (an expando, a WeakMap key): not known here. Such
+///   a wrapper waits for a full collection, as in Blink and as a node's has
+///   since the wrapper redesign.
+/// tests/v8/wrap1_platform_anchor_test.zig asks V8 itself, template by
+/// template, and pins this answer against it.
+fn heldByWeakHandle(instance: *const runtime.Instance) bool {
+    return @import("interface_bindings.zig").wrapperIsBornChanged(instance.vtable.name);
 }
 
 /// True when the slab slot behind `entry.instance` no longer holds the
@@ -318,14 +373,31 @@ fn slotReissued(entry: *const Cell) bool {
     return runtime.SlabAllocator.generationOf(entry.instance) != entry.generation;
 }
 
-/// What `instance` holds of host memory that V8 cannot see, noted for the
-/// collector's schedule when its realm's cache takes its wrapper
-/// (v8_wrapper.cpp, "What the instances behind non-node wrappers hold"): its
-/// slab slot, its state block - 1,072 bytes for an Event, 216 for a
-/// URLSearchParams - and the cache's record. What its state allocates beyond
-/// its block is not known here and not counted.
+/// The bytes of host memory `instance` holds that V8 cannot see, as far as an
+/// instance says them itself: ONE function of the instance, so that every
+/// account of it adds the same number - the report made when its realm's
+/// cache takes its wrapper (`noteWrapped`), and the sum over surviving
+/// wrappers that lane dm1's design computes from an anchor's trace
+/// (tmp/plans/dom-memory-figure-design.md, section 5). Its slab slot, its
+/// generated State block (the size its vtable carries) and the cache's
+/// record of its wrapper: 112 bytes for an Event, 72 for a URLSearchParams.
+/// No per-interface table.
+///
+/// It is a FLOOR. The impl's internal state is a block of the Browser's arena
+/// that neither the instance nor its vtable names (an Event's is 1,079 bytes
+/// of the 1.2 KB a kept Event holds), and what that state allocates beyond
+/// its block (a list, a body, a queue) is not known here either. Counting the
+/// arena's blocks belongs to the change that makes this the survivors' sum:
+/// it is made where the blocks are made, in src/runtime.
+pub fn instanceHeldBytes(instance: *const runtime.Instance) usize {
+    return runtime.SlabAllocator.slot_bytes + instance.vtable.state_size + @sizeOf(Cell);
+}
+
+/// `instance`'s realm's cache took its wrapper: what it holds is noted for
+/// the collector's schedule (v8_wrapper.cpp, "What the instances behind
+/// non-node wrappers hold" - the one call site of that account).
 fn noteWrapped(isolate: *v8.Isolate, instance: *const runtime.Instance) void {
-    v8.v8_Isolate_NoteWrappedInstance(isolate, runtime.SlabAllocator.slot_bytes + instance.vtable.state_size + @sizeOf(Cell));
+    v8.v8_Isolate_NoteWrappedInstance(isolate, instanceHeldBytes(instance));
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -666,7 +738,7 @@ pub fn liveDeferredEdgeCount() usize {
 /// is the agent's record's). A cache still on it outlived its agent's
 /// realms; it is taken off, so that its own end touches no freed list.
 pub fn endAgent(isolate: *v8.Isolate, caches: *Caches) void {
-    _ = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, null, &noWeakProcessing, &nothingDropped);
+    _ = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, null, &noWeakProcessing, &nothingDropped, &nothingDropped);
     if (caches.items.len != 0) log.err("{d} wrapper cache(s) outlived their agent's realms", .{caches.items.len});
     for (caches.items) |cache| {
         cache.peers = null;
@@ -689,16 +761,22 @@ fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bo
     return false;
 }
 
-/// Arm a BOXED record's Global weak: the collector takes the record out of
-/// the cache in its first pass and its instance is torn down after the
-/// collection.
+/// Arm a record's v8::Global weak - a boxed record's box, a weak-handle
+/// record's own word: the collector takes the record out of the cache in its
+/// first pass and its instance is torn down after the collection.
 fn armWeak(entry: *Cell) void {
+    if (entry.bits.weak_handle) {
+        // With the wrapper's anchor, which a first pass in a young
+        // collection frees ahead of the collector.
+        v8.v8_WrapperCell_ArmWeak(entry.cache().isolate.?, entry.raw(), unlinkCollected, finalizeCollected);
+        return;
+    }
     std.debug.assert(entry.bits.boxed);
     v8.v8_Global_SetWeakFinalizer(@ptrCast(entry.wrapper.?), @ptrCast(entry), unlinkCollected, finalizeCollected);
 }
 
-/// V8's FIRST pass for a boxed record: its wrapper was collected and its
-/// Global Reset. No V8 API may be called here (v8-weak-callback-info.h) -
+/// V8's FIRST pass for a record held by a v8::Global (boxed, or a weak
+/// handle): its wrapper was collected and its Global Reset. No V8 API may be called here (v8-weak-callback-info.h) -
 /// other wrappers of this collection may still hold the 0xCA11 zap value - so
 /// this only makes the record unreachable, as Blink's firstWeakCallback reset
 /// the object's wrapper (`WrapperCache.died`). The finalizer is queued by the
@@ -728,6 +806,16 @@ fn dropped(_: ?*anyopaque, raw: *v8.WrapperCell) callconv(.c) void {
     const entry: *Cell = @ptrCast(@alignCast(raw));
     entry.cache().died(entry);
     entry.cache().queueFinalizer(entry);
+}
+
+/// The binding changed the wrapper `raw` holds by a traced reference
+/// (v8_wrapper.cpp notePlatformWrapperChanged: a private property, a
+/// prototype, a captured stack): V8 will not drop it in a young collection
+/// any more, so the record holds it by a weak handle from here
+/// (`heldByWeakHandle`'s rule).
+fn changed(_: ?*anyopaque, raw: *v8.WrapperCell) callconv(.c) void {
+    const entry: *Cell = @ptrCast(@alignCast(raw));
+    entry.cache().toWeakHandle(entry);
 }
 
 /// The hooks of an agent that ended: its caches are gone.
@@ -1287,24 +1375,24 @@ pub const WrapperCache = struct {
         self.free_cells = null;
     }
 
-    /// Hold `entry`'s wrapper strongly: a boxed record's Global stops being
-    /// weak; an anchored one's wrapper gets a strong handle beside its
-    /// reference, kept by its isolate's record (v8_WrapperCell_SetStrong: a
-    /// droppable reference is no root in a young collection, and a traced
-    /// one none in a full one). Few wrappers are held: most are only
-    /// script's.
+    /// Hold `entry`'s wrapper strongly: a record's v8::Global (a boxed
+    /// record's, a weak-handle record's) stops being weak; a traced record's
+    /// wrapper gets a strong handle beside its reference, kept by its
+    /// isolate's record (v8_WrapperCell_SetStrong: a droppable reference is
+    /// no root in a young collection, and a traced one none in a full one).
+    /// Few wrappers are held: most are only script's.
     fn makeStrong(self: *Self, entry: *Cell) void {
-        if (entry.bits.boxed) {
-            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper.?));
-        } else v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), true);
+        if (entry.global()) |handle| {
+            v8.v8_Global_ClearWeak(handle);
+        } else if (!entry.bits.boxed) v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), true);
         entry.bits.strong = true;
     }
 
     /// End `makeStrong`'s hold: the wrapper is the collector's again.
     fn makeWeak(self: *Self, entry: *Cell) void {
-        if (entry.bits.boxed) {
+        if (entry.bits.boxed or entry.bits.weak_handle) {
             entry.bits.strong = false;
-            if (entry.wrapper != null) armWeak(entry);
+            if (entry.global() != null) armWeak(entry);
             return;
         }
         self.dropStrongHandle(entry);
@@ -1313,7 +1401,26 @@ pub const WrapperCache = struct {
     fn dropStrongHandle(self: *Self, entry: *Cell) void {
         if (!entry.bits.strong) return;
         entry.bits.strong = false;
-        if (!entry.bits.boxed) v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), false);
+        if (!entry.bits.boxed and !entry.bits.weak_handle) v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), false);
+    }
+
+    /// A traced record becomes a weak-handle record: its wrapper is one V8
+    /// will not drop in a young collection any more (`changed`). The handle
+    /// borrowers hold - the record's address - is the same handle after it.
+    /// A record the cache holds strongly stays held: its Global is strong.
+    fn toWeakHandle(self: *Self, entry: *Cell) void {
+        if (entry.bits.boxed or entry.bits.weak_handle or entry.bits.collected or !entry.bits.in_use) return;
+        const was_strong = entry.bits.strong;
+        self.dropStrongHandle(entry);
+        if (!v8.v8_WrapperCell_ToWeakHandle(self.isolate.?, entry.raw())) {
+            if (was_strong) self.makeStrong(entry);
+            return;
+        }
+        entry.bits.weak_handle = true;
+        entry.bits.marked = false;
+        if (was_strong) {
+            entry.bits.strong = true;
+        } else armWeak(entry);
     }
 
     /// A collection took `entry`'s wrapper (its reference is empty): the
@@ -1362,7 +1469,7 @@ pub const WrapperCache = struct {
         while (at) |chunk| : (at = chunk.next) {
             for (&chunk.cells) |*entry| {
                 const bits = entry.bits;
-                if (!bits.in_use or bits.boxed or bits.collected) continue;
+                if (!bits.in_use or bits.boxed or bits.weak_handle or bits.collected) continue;
                 if (bits.marked) {
                     entry.bits.marked = false;
                     continue;
@@ -1698,16 +1805,16 @@ pub const WrapperCache = struct {
         // it would find this cache gone. Run them now.
         self.finalizePending();
 
-        // PHASE 1: End every BOXED record's weak arm first, so that no first
-        // pass fires for one during cleanup. (An anchored record a collection
-        // takes while the sweep below runs - a teardown can collect - only
-        // joins the wait, and is finalized after the sweep.)
+        // PHASE 1: End every weak arm first - a boxed record's, a weak-handle
+        // record's - so that no first pass fires for one during cleanup. (A
+        // traced record a collection takes while the sweep below runs - a
+        // teardown can collect - only joins the wait, and is finalized after
+        // the sweep.)
         {
             var iter = self.cache.valueIterator();
             while (iter.next()) |entry_ptr| {
                 const entry = entry_ptr.*;
-                if (!entry.bits.boxed) continue;
-                if (entry.wrapper) |box| v8.v8_Global_ClearWeak(@ptrCast(box));
+                if (entry.global()) |handle| v8.v8_Global_ClearWeak(handle);
             }
         }
 
@@ -1900,7 +2007,7 @@ pub const WrapperCache = struct {
         // The anchors' registry, whose weak processing calls the caches',
         // is made with the agent's node wrapper registry.
         node_wrappers.prepareHolderTracing(isolate);
-        self.anchors = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, caches, &processWeak, &dropped);
+        self.anchors = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, caches, &processWeak, &dropped, &changed);
     }
 
     fn unregister(self: *Self) void {
@@ -2030,15 +2137,22 @@ pub const WrapperCache = struct {
             self.freeCell(old_entry);
         }
 
-        // The cache's reference. A platform object's wrapper - an object
+        // The cache's handle. A platform object's wrapper - an object
         // platform_anchor.bind bound, behind its proxy or not - is held by
-        // the record's traced reference, and its anchor names the record;
-        // anything else (a realm's global) by the caller's Global.
-        if (self.anchors and v8.v8_WrapperCell_Attach(isolate, wrapper, entry.raw())) {
+        // the record itself, and its anchor names the record: by a weak
+        // Global made in the record when V8 would not drop the wrapper in a
+        // young collection (`heldByWeakHandle`), by a droppable traced
+        // reference otherwise. Anything else (a realm's global) is held by
+        // the caller's Global.
+        if (self.anchors and heldByWeakHandle(instance)) {
+            if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
+                entry.bits.weak_handle = true;
+                entry.bits.boxed = false;
+            }
+        } else if (self.anchors and v8.v8_WrapperCell_Attach(isolate, wrapper, entry.raw())) {
             entry.bits.boxed = false;
-        } else {
-            entry.wrapper = @ptrCast(wrapper);
         }
+        if (entry.bits.boxed) entry.wrapper = @ptrCast(wrapper);
 
         // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
@@ -2053,10 +2167,12 @@ pub const WrapperCache = struct {
         // design 4.4 "Holders"; Blink's holders trace their Member<Node>s.)
         // (A node never gets here: its wrapper is its agent's, in its own
         // slot - `setNode` - a constructor's included, and the walk keeps it.)
+        // (The edges just drawn may have made a traced record a weak-handle
+        // one - `changed` - armed already; arming again replaces the arm.)
         if (shouldBeStrong(entry) and self.detached_holder == null) {
             self.makeStrong(entry);
         } else {
-            if (entry.bits.boxed) armWeak(entry);
+            if (entry.global() != null) armWeak(entry);
             if (self.detached_holder != null) syncEntry(entry);
         }
 
@@ -2103,14 +2219,12 @@ pub const WrapperCache = struct {
         self.finalizePending();
         self.drainDeferred();
 
-        // PHASE 1: End every boxed record's weak arm first, as `deinit`
-        // does.
+        // PHASE 1: End every weak arm first, as `deinit` does.
         {
             var iter = self.cache.valueIterator();
             while (iter.next()) |entry_ptr| {
                 const entry = entry_ptr.*;
-                if (!entry.bits.boxed) continue;
-                if (entry.wrapper) |box| v8.v8_Global_ClearWeak(@ptrCast(box));
+                if (entry.global()) |handle| v8.v8_Global_ClearWeak(handle);
             }
         }
 

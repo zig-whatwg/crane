@@ -148,10 +148,12 @@ test "a pipe read to its end keeps nothing once script drops it" {
 /// the 3 fewer are values its algorithms keep that are now traced, not
 /// strong. Declared in BYTES of V8's handle tables since lane wrap1 b3: a
 /// v8::Global is 32 of them, and the wrapper cache's reference to a wrapper
-/// is a traced reference of 16 - beside a strong Global of 32 while the
-/// wrapper is kept (pending activity), where one weak-or-strong Global of 32
-/// held either kind. The graph was 39 Globals (1,248 B) and is 1,264 B.
-const unread_pipe_through_hold = 1264;
+/// is no longer always one. A wrapper nothing changed is held by a traced
+/// reference of 16 (and a strong Global of 32 beside it while pending
+/// activity keeps it); a wrapper the binding drew an edge on - every stream,
+/// reader, writer and controller here - by ONE Global made in the cache's
+/// record, weak or strong. The graph was 39 Globals (1,248 B) and is 1,232 B.
+const unread_pipe_through_hold = 1232;
 
 test "DECLARED: an unread pipeThrough is held by its pending pipe until its realm ends" {
     var page: rounds_lib.Page = undefined;
