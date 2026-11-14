@@ -187,16 +187,20 @@ pub fn parseClamp(options: properties.ParseOptions, legacy: bool, stream: *Strea
         if (maximum) |v| v.release();
         if (ellipsis) |v| v.release();
     }
-    // Overflow 4 §§5.1–5.1.1: reset all three constituents. Q65 deliberately
-    // departs from today's §5.1.1 "unconditionally sets block-ellipsis to
-    // ellipsis" text for legacy none, pending CSSWG #14673 (OPEN, Async
-    // Resolution: Proposed). The matching serializer below uses the same
+    // Overflow 4 §§5.1–5.1.1: reset all three constituents. Legacy none sets
+    // block-ellipsis to no-ellipsis, as CSSWG #14673 resolved (Q65 made this
+    // departure from the then "unconditionally sets block-ellipsis to
+    // ellipsis" text before the resolution). The matching serializer below uses the same
     // initial tuple; positive integers retain ellipsis/-webkit-legacy.
     // Overflow editor Florian Rivoal agrees with that proposed correction:
     // https://github.com/w3c/csswg-drafts/issues/14673#issuecomment-6420092047
     // Chromium's flagged implementation is the design reference (not copied):
     // https://github.com/chromium/chromium/blob/3fefddfc43edcf3a5d62ed60f15cb592f299ab18/third_party/blink/renderer/core/css/properties/shorthands/shorthands_custom.cc
     // https://github.com/chromium/chromium/blob/3fefddfc43edcf3a5d62ed60f15cb592f299ab18/third_party/blink/renderer/core/css/style_property_serializer.cc
+    // #14673 was resolved this way (2026-10-29; spec edit acde592, tested by
+    // css/css-overflow/parsing/webkit-line-clamp-computed.html). The two
+    // -webkit-line-clamp checks of css/cssom/cssom-getPropertyValue-common-
+    // checks.html still expect the replaced rule: web-platform-tests/wpt#65204.
     // Integrator probe, 2026-10-27, tmp/cssbox/probe-q65/: Chrome 156,
     // Firefox 158 and Safari 27 read initial and none as "none"; their shipped
     // standalone property does not expose the newer shorthand constituents.

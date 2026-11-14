@@ -24,10 +24,15 @@
 //!       one or two levels below <dir> (report.zig); --assets is where the
 //!       WPT site's site.css is, relative to <out> (default "../")
 //!   fw_matrix serve --frameworks-dir=<dir> --suite=<id> [--port=<n>]
-//!       a suite's tree alone, for a person to open in a browser
+//!       a suite's tree alone, for a person to open in a browser (the
+//!       project's own server when the manifest names one)
 //!
-//! A tool: std only, on the host (tools/AGENTS.md "Tools are Zig"); no
-//! Node, no Python, nothing of Crane's engine.
+//! A tool: std only, on the host (tools/AGENTS.md "Tools are Zig"); nothing
+//! of Crane's engine. Node runs only where a suite's manifest entry names it
+//! (the user, 2026-11-11 17:43 ET: "we can run node for the purposes of these
+//! tests"): `fetch` installs the project's own dependencies with it and runs
+//! its own build scripts, and `run` and `serve` start the project's own test
+//! server under it. Crane itself is never driven from Node.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -39,6 +44,7 @@ pub const manifest = @import("manifest.zig");
 pub const readers = @import("readers.zig");
 pub const generated = @import("generated.zig");
 pub const server = @import("server.zig");
+pub const external = @import("external.zig");
 pub const fetch = @import("fetch.zig");
 pub const run = @import("run.zig");
 pub const report = @import("report.zig");
@@ -119,7 +125,7 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "fetch")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const dir = args.need("frameworks-dir");
-        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| try fetch.fetchSuite(gpa, io, dir, s);
+        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| try fetch.fetchSuite(gpa, io, dir, s, init.environ_map);
     } else if (std.mem.eql(u8, cmd, "run")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const excluded_dir = args.get("excluded-dir") orelse default_excluded;
@@ -144,6 +150,7 @@ pub fn main(init: std.process.Init) !void {
             .no_exclusions = args.has("no-exclusions"),
             .parallel = parallel,
             .stop_file = args.get("stop-file"),
+            .environ = init.environ_map,
         });
         const c = totals.counts;
         std.debug.print("fw_matrix: run done{s}: {d} pages ({d} OK); {d} ran: {d} pass, {d} fail; {d} errored; {d} rendering; {d} not run; {d} skipped by the project\n", .{
@@ -162,6 +169,18 @@ pub fn main(init: std.process.Init) !void {
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
         const root = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.need("frameworks-dir"), try manifest.treeName(arena, s) });
         const port: u16 = if (args.get("port")) |p| std.fmt.parseInt(u16, p, 10) catch fail("--port={s}", .{p}) else 8000;
+        if (s.server) |es| {
+            // The project's own server, as a run starts it.
+            const node_dir = try fetch.nodeDirChecked(arena, io, args.need("frameworks-dir"), s.node.?);
+            const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, root, arena);
+            const env = try arena.create(std.process.Environ.Map);
+            env.* = try fetch.nodeEnviron(arena, init.environ_map, try std.fmt.allocPrint(arena, "{s}/bin", .{node_dir}), try std.fmt.allocPrint(arena, "{s}/downloads/npm-cache", .{try Io.Dir.cwd().realPathFileAlloc(io, args.need("frameworks-dir"), arena)}));
+            const log = try std.fmt.allocPrint(arena, "{s}-serve.log", .{tree_abs});
+            const srv = try external.External.start(gpa, io, .{ .argv = es.argv, .cwd = tree_abs, .environ = env, .ready_path = es.ready_path, .ready_ms = @as(u64, es.ready_s) * 1000, .port = port, .log_path = log });
+            defer srv.stop();
+            std.debug.print("fw_matrix: {s} ({s}, pid {d}) serving {s} on http://{s}:{d}/ (its output: {s}; Ctrl+C ends)\n", .{ es.name, s.id, srv.pid, root, es.host, srv.port(), log });
+            while (true) Io.sleep(io, .fromSeconds(3600), .awake) catch {};
+        }
         const srv = try server.Server.start(gpa, io, .{ .root = root, .port = port, .overlays = try run.serverOverlays(arena, s) });
         defer srv.stop();
         std.debug.print("fw_matrix: serving {s} on http://127.0.0.1:{d}/ (Ctrl+C ends)\n", .{ root, srv.port() });
@@ -337,6 +356,7 @@ test {
     _ = readers;
     _ = generated;
     _ = server;
+    _ = external;
     _ = fetch;
     _ = run;
 }

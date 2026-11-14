@@ -76,6 +76,14 @@ pub const Implementation = struct {
     /// calls Frame::CancelFormSubmission; WebKit's NavigationScheduler of the
     /// target frame cancels its scheduled submission when a new load starts.
     cancel_planned_navigations_to: *const fn (scope: *runtime.Instance, navigable: u64) void,
+    /// Whether a planned navigation aimed at the navigable whose html_core
+    /// BrowsingContext id is `navigable` waits for its task, planned by any
+    /// form of `scope`'s Browser. "The end" asks it before it completes a
+    /// load at the end of the parse (Document's completeLoadUnlessDelayed):
+    /// WebKit's Document::implicitClose waits while the frame's
+    /// NavigationScheduler has a location change pending - a scheduled form
+    /// submission is one.
+    has_planned_navigation_to: *const fn (scope: *runtime.Instance, navigable: u64) bool,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -99,6 +107,14 @@ pub fn cancelPlannedNavigations(document: *runtime.Instance) void {
 pub fn cancelPlannedNavigationsTo(scope: *runtime.Instance, navigable: u64) void {
     const impl = implementation.get() orelse return;
     impl.cancel_planned_navigations_to(scope, navigable);
+}
+
+/// Whether a planned navigation aimed at `navigable` is waiting: see
+/// Implementation.has_planned_navigation_to. None before any form installed
+/// the implementation.
+pub fn hasPlannedNavigationTo(scope: *runtime.Instance, navigable: u64) bool {
+    const impl = implementation.get() orelse return false;
+    return impl.has_planned_navigation_to(scope, navigable);
 }
 
 /// Submit `form` from `submitter`.

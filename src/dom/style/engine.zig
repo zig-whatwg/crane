@@ -71,6 +71,7 @@ const animations = struct {
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
+const svg_hints = @import("svg_hints.zig");
 pub const available_images = @import("available_images.zig");
 const matched_properties_cache = @import("matched_properties_cache.zig");
 
@@ -272,6 +273,10 @@ pub const StyleEngine = struct {
         /// document declares any, and what its last step-16 style update saw
         /// (`AnimationGate`).
         animations: AnimationGate = .{},
+        /// SVG 2 §6.6: the presentation-attribute hints elements with equal
+        /// presentation attributes share (svg_hints.Cache; Blink's
+        /// PresentationAttributeCache). Made at the first SVG hint.
+        svg_hints: ?*svg_hints.Cache = null,
         /// Moves whenever a slot's assigned nodes change (DOM "assign
         /// slottables"): part of each cached style's key, since a slotted
         /// element inherits from its slot. 1 while the engine has no Rare
@@ -279,6 +284,8 @@ pub const StyleEngine = struct {
         slot_version: u64 = 1,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
+            // Hints its elements still hold live on, uncached.
+            if (self.svg_hints) |cache| cache.destroy();
             if (self.resources) |resources| resources.destroy();
             if (self.images) |images| {
                 images.deinit();
@@ -435,6 +442,25 @@ pub const StyleEngine = struct {
         try registry.register(options, definition);
         self.generation +%= 1;
         if (self.resourceState()) |resources| resources.invalidate();
+    }
+
+    /// The document's SVG presentation-attribute hint cache, made on first
+    /// use; null when there is no room for it (each hint is then its
+    /// element's own).
+    pub fn svgHintCache(self: *StyleEngine) ?*svg_hints.Cache {
+        const rare = self.ensureRare() catch return null;
+        return rare.svg_hints orelse {
+            const made = svg_hints.Cache.create(self.allocator) catch return null;
+            rare.svg_hints = made;
+            return made;
+        };
+    }
+
+    /// How many hints the document's SVG hint cache holds (0 with none).
+    pub fn svgHintCount(self: *const StyleEngine) usize {
+        const rare = self.rare orelse return 0;
+        const cache = rare.svg_hints orelse return 0;
+        return cache.count();
     }
 
     pub fn resourceState(self: *StyleEngine) ?*resource_loading.State {
@@ -1832,6 +1858,9 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     var background: ?[]const u8 = null;
     // HTML 15.3.4: an HTML font element's color, face and size hints.
     const font_eligible = pseudo == null and is_html and std.mem.eql(u8, local, "font");
+    // SVG 2 §6.6: an SVG element's presentation attributes. An HTML element
+    // pays only the `is_html` test here.
+    const svg_eligible = pseudo == null and !is_html and if (ns) |n| std.mem.eql(u8, n, svg_namespace) else false;
     var font_attributes: font_hints.Attributes = .{};
     var it = data.attributeIterator();
     while (it.next()) |entry| {
@@ -1868,6 +1897,12 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     };
     if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true } });
+        res.own_blocks = true;
+    };
+    // At the author presentational hint origin, specificity 0, before every
+    // author rule (SVG 2 §6.6; CSS Cascade 5 §6.2), as HTML's hints.
+    if (svg_eligible) if (try svg_hints.svgHint(element, state, data, local, res.engine.svgHintCache(), res.document)) |hint| {
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
     };
 

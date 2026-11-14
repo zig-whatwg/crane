@@ -5707,10 +5707,12 @@ pub fn build(b: *std.Build) void {
     // FRAMEWORKS: the JS framework compatibility matrix's harness (tools/fw_matrix/)
     // ========================================================================
     // tools/fw_matrix fetches the frameworks' pinned suites by checksum,
-    // serves each suite's tree on 127.0.0.1, opens its pages in Crane's
-    // console (`repl <url>`, a fresh one per page), reads the framework's own
-    // report and writes the journal (tmp/plans/framework-matrix-plan.md). A
-    // tool: std only, on the host; no Node.
+    // serves each suite's tree on 127.0.0.1, or starts the project's own test
+    // server under the pinned Node when the manifest names one (jQuery's jtr
+    // serve; the user, 2026-11-11: Node only for the framework tests), opens
+    // its pages in Crane's console (`repl <url>`, a fresh one per page), reads
+    // the framework's own report and writes the journal
+    // (tmp/plans/framework-matrix-plan.md). A tool: std only, on the host.
     const fw_matrix_module = b.createModule(.{
         .root_source_file = b.path("tools/fw_matrix/main.zig"),
         .target = b.graph.host,
@@ -5730,6 +5732,7 @@ pub fn build(b: *std.Build) void {
     addTestVerify(b, launch, fw_matrix_tests, "tools-fw_matrix", "tools/fw_matrix", &.{
         "main.zig",      "journal.zig", "exclusions.zig", "manifest.zig", "readers.zig",
         "generated.zig", "server.zig",  "fetch.zig",      "run.zig",      "report.zig",
+        "external.zig",
     });
     // The manifest and the exclusion lists, read strictly: every entry with
     // its reason, each belonging to a page.
