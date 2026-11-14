@@ -474,6 +474,74 @@ test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain
         \\  subject[mark] = 1;
         \\  check("a symbol: the traps called", log.join(" | "), "set Symbol(mark) receiver the collection");
         \\  check("a symbol: the collection's own property", subject[mark], 1);
+        \\  // A Receiver that is no Object (Reflect.set's fourth argument) reaches the trap as it is.
+        \\  log.length = 0;
+        \\  check("a primitive Receiver: the answer", set(subject, "viaPrimitive", 1, 5), false);
+        \\  check("a primitive Receiver: the traps called", log.join(" | "), "set viaPrimitive receiver other");
+        \\} finally {
+        \\  saved.setPrototypeOf(subject, interfacePrototype);
+        \\}
+        \\failures.join("; ") || "ok"
+    );
+}
+
+test "a Proxy on a legacy platform object's prototype chain has its [[Set]] performed whole: no trap, a false, a revoked proxy, the invariants" {
+    // ES 10.5.9, the steps a Proxy's [[Set]] has besides calling its trap (specs/ecma/
+    // ordinary-and-exotic-objects-behaviours.md): a revoked proxy throws (step 1); with no `set` trap the call
+    // goes to the Proxy's TARGET's [[Set]] with the same Receiver (step 6), which asks none of the handler's
+    // other traps; a trap's false is the store's false, a TypeError in strict code (step 8); and a trap that
+    // answers true for a property its target holds as non-configurable and read-only with another value, or as
+    // a non-configurable accessor with no setter, throws (step 10). V8's API has no [[Set]] that takes a
+    // Receiver and answers, so the adapter performs these steps itself (v8_wrapper.cpp TrapSet).
+    const page = try Realm.open();
+    defer page.close();
+    try expectOk(page.realm,
+        \\const failures = [];
+        \\const check = (name, got, want) => { if (got !== want) failures.push(name + ": " + saved.String(got)); };
+        \\const log = [];
+        \\const subject = collection();
+        \\const interfacePrototype = saved.getPrototypeOf(subject);
+        \\const set = Reflect.set, gopd = Reflect.getOwnPropertyDescriptor, gpo = Reflect.getPrototypeOf;
+        \\const through = (backing, handler) => { const p = new Proxy(backing, handler); saved.setPrototypeOf(subject, p); return p; };
+        \\try {
+        \\  // No `set` trap: the target's [[Set]], which reads the target and never the handler's other traps.
+        \\  let backing = saved.create(interfacePrototype);
+        \\  let seen = "not called";
+        \\  saved.defineProperty(backing, "viaSetter", descriptor({ set(v) { seen = v + (this === subject ? " on the collection" : " elsewhere"); }, configurable: true }));
+        \\  through(backing, {
+        \\    getOwnPropertyDescriptor(t, k) { log.push("getOwnPropertyDescriptor " + saved.String(k)); return gopd(t, k); },
+        \\    getPrototypeOf(t) { log.push("getPrototypeOf"); return gpo(t); },
+        \\  });
+        \\  subject.viaSetter = 4;
+        \\  subject.plain = 6;
+        \\  check("no set trap: the target's setter", seen, "4 on the collection");
+        \\  check("no set trap: the collection's own property", saved.hasOwn.call(subject, "plain") && subject.plain, 6);
+        \\  check("no set trap: no other trap called", log.join(" | "), "");
+        \\  // A trap's false: nothing stored, quietly in sloppy code and a TypeError in strict.
+        \\  through(saved.create(interfacePrototype), { set() { return false; } });
+        \\  subject.refused = 1;
+        \\  check("a trap's false: nothing made", saved.hasOwn.call(subject, "refused"), false);
+        \\  check("a trap's false, strict", attempt(() => { "use strict"; subject.refused = 1; }), "threw TypeError");
+        \\  // A trap's true with nothing done: the store answers true and makes nothing.
+        \\  through(saved.create(interfacePrototype), { set() { return 1; } });
+        \\  check("a trap's true, strict", attempt(() => { "use strict"; subject.swallowed = 1; return "no error"; }), "no error");
+        \\  check("a trap's true: nothing made", saved.hasOwn.call(subject, "swallowed"), false);
+        \\  // A `set` that is not callable.
+        \\  through(saved.create(interfacePrototype), { set: 1 });
+        \\  check("a set that is no function", attempt(() => { subject.x1 = 1; }), "threw TypeError");
+        \\  // The invariants: a true the target contradicts.
+        \\  backing = saved.create(interfacePrototype);
+        \\  saved.defineProperty(backing, "locked", descriptor({ value: 1, writable: false, configurable: false }));
+        \\  saved.defineProperty(backing, "getterOnly", descriptor({ get() { return 1; }, configurable: false }));
+        \\  through(backing, { set() { return true; } });
+        \\  check("a true over a locked value, another value", attempt(() => { subject.locked = 2; }), "threw TypeError");
+        \\  check("a true over a locked value, the same value", attempt(() => { subject.locked = 1; return "no error"; }), "no error");
+        \\  check("a true over a locked accessor with no setter", attempt(() => { subject.getterOnly = 2; }), "threw TypeError");
+        \\  // A revoked proxy.
+        \\  const revocable = Proxy.revocable(saved.create(interfacePrototype), {});
+        \\  saved.setPrototypeOf(subject, revocable.proxy);
+        \\  revocable.revoke();
+        \\  check("a revoked proxy", attempt(() => { subject.x2 = 1; }), "threw TypeError");
         \\} finally {
         \\  saved.setPrototypeOf(subject, interfacePrototype);
         \\}

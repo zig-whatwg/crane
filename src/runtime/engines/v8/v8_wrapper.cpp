@@ -14874,62 +14874,168 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
             if (!target->GetOwnPropertyDescriptor(context, name).ToLocal(&own_desc)) return;  // an exception is pending
         }
         // Step 3: "Perform ? OrdinarySetWithOwnDescriptor(O, P, V, Receiver,
-        // ownDesc)" - ES 10.1.9.2, its steps numbered below.
+        // ownDesc)" - ES 10.1.9.2, its steps numbered below as the cached
+        // text numbers them (specs/ecma/ordinary-and-exotic-objects-behaviours.md).
         if (own_desc->IsUndefined()) {
             // 1. If ownDesc is undefined, then
-            //    a. Let parent be ? O.[[GetPrototypeOf]]().
-            //    (O's [[GetPrototypeOf]] is ordinary: WebIDL defines none, and
-            //    the target is an API object - no page code runs here.)
-            Local<Value> parent = target->GetPrototype();
-            if (parent->IsObject() && receiver->IsObject()) {
-                //    b. If parent is not null, return ? parent.[[Set]](P, V,
-                //       Receiver).
-                // The PARENT's own internal method, whatever the parent is:
-                // v8::Object::Set with a receiver is that call (15.7.112.43
-                // src/api/api.cc Object::Set -> Object::SetProperty with the
-                // receiver; a JSProxy takes JSProxy::SetProperty, ES 10.5.9).
-                // This used to walk the chain itself, reading each object's
-                // own property descriptor and prototype through V8's API: an
-                // ordinary parent cannot tell, but a Proxy a page put on the
-                // chain had its getOwnPropertyDescriptor and getPrototypeOf
-                // traps called and its `set` trap never (lane wrap1 b3;
-                // tests/v8/wrap1_legacy_proxy_traps_test.zig). In a browser a
-                // legacy platform object is no Proxy and its [[Set]] is the
-                // engine's own, which makes this call: V8 as above; Gecko's
-                // js::SetPropertyIgnoringNamedGetter ("return SetProperty(cx,
-                // proto, id, v, receiver, result)", js/src/proxy/
-                // BaseProxyHandler.cpp), which its DOM proxies' set uses;
-                // JavaScriptCore's JSObject::putInlineSlow, which hands a
-                // ProxyObject on the chain its own put with the receiver
-                // (Source/JavaScriptCore/runtime/JSObject.cpp).
-                Maybe<bool> done = parent.As<Object>()->Set(context, property, value, receiver.As<Object>());
-                if (done.IsNothing()) return;  // an exception is pending
-                info.GetReturnValue().Set(done.FromJust());
-                return;
-            }
-            if (parent->IsObject()) {
-                // A Receiver that is no Object (Reflect.set(collection, P, V,
-                // 1)): V8's API takes an Object Receiver only, so the chain
-                // is walked here as ES 10.1.9.2 walks it for ordinary
-                // objects - an accessor's setter is called with the Receiver
-                // (step 3), and a data property, or none, ends in step 2.b:
-                // "If Receiver is not an Object, return false".
-                Local<Value> holder_value = parent;
-                while (holder_value->IsObject()) {
-                    Local<Object> holder = holder_value.As<Object>();
-                    Local<Value> desc_value;
-                    if (!holder->GetOwnPropertyDescriptor(context, name).ToLocal(&desc_value)) return;
-                    if (desc_value->IsUndefined()) {
-                        holder_value = holder->GetPrototype();
+            //    1. Let parent be ? O.[[GetPrototypeOf]]().
+            //       (O's [[GetPrototypeOf]] is ordinary: WebIDL defines none,
+            //       and the target is an API object - no page code runs.)
+            //    2. If parent is not null, return ? parent.[[Set]](P, V,
+            //       Receiver).
+            //    3. Set ownDesc to the PropertyDescriptor { [[Value]]:
+            //       undefined, [[Writable]]: true, [[Enumerable]]: true,
+            //       [[Configurable]]: true }.
+            //
+            // 1.2 is the PARENT's own internal method, whatever the parent
+            // is. This loop is that call, one object a turn:
+            // - an ordinary parent's [[Set]] is OrdinarySet (ES 10.1.9.1):
+            //   its own property descriptor, and with none this same step 1
+            //   for ITS parent - the loop's next turn;
+            // - a Proxy's is ES 10.5.9, below: its handler's `set` trap,
+            //   called once.
+            // The loop used to treat every object as ordinary, reading its
+            // own property descriptor and its prototype through V8's API: an
+            // ordinary parent cannot tell, but a Proxy a page put on the
+            // chain had its getOwnPropertyDescriptor and getPrototypeOf traps
+            // called and its `set` trap never (lane wrap1 b3;
+            // tests/v8/wrap1_legacy_proxy_traps_test.zig). In a browser a
+            // legacy platform object is no Proxy and its [[Set]] is the
+            // engine's own, which makes this call. Probed 2026-11-14 with a
+            // Proxy as an HTMLCollection's and a NamedNodeMap's prototype
+            // (tmp/plans/wrap1-evidence/b3-set-proxy-probe.txt): Chrome 157,
+            // Firefox 159 and Safari 27 each call the Proxy's set trap once,
+            // with the collection as Receiver, and neither its
+            // getOwnPropertyDescriptor nor its getPrototypeOf trap. The spec
+            // and the three agree.
+            //
+            // WHY BY HAND. V8's API has no [[Set]] that takes a Receiver and
+            // answers: v8::Object::Set(context, key, value, receiver) is
+            // Runtime::SetObjectProperty -> Object::SetProperty on a lookup
+            // that STARTS at the object (15.7.112.43 src/api/api.cc:4693,
+            // src/runtime/runtime-object.cc:351), which
+            // - returns Just(true) whatever the store answered, so a trap's
+            //   false (a TypeError in strict code) is lost;
+            // - with nothing found, adds the property to the Receiver by
+            //   Object::AddDataProperty without asking the Receiver for its
+            //   own property - on a JSProxy Receiver, as this object's is,
+            //   that writes a JSObject's fields into a JSProxy (a fatal
+            //   "LinearSearch(...) == InternalIndex::NotFound()" in the
+            //   first build that tried it). Reflect.set's own path,
+            //   Object::SetSuperProperty, is not on the API.
+            // What is NOT reproduced: a TypedArray on the chain, whose
+            // [[Set]] with another Receiver ends the store for an invalid
+            // integer index (ES 10.4.5.5); it is walked as an ordinary
+            // object here.
+            Local<Value> holder_value = target->GetPrototype();
+            while (holder_value->IsObject()) {
+                Local<Object> holder = holder_value.As<Object>();
+                if (holder->IsProxy()) {
+                    // ES 10.5.9, a Proxy exotic object's [[Set]](P, V,
+                    // Receiver).
+                    Local<Proxy> proxy = holder.As<Proxy>();
+                    // 1. Perform ? ValidateNonRevokedProxy(O).
+                    if (proxy->IsRevoked()) {
+                        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(
+                            isolate, "Cannot perform 'set' on a proxy that has been revoked")));
+                        return;
+                    }
+                    // 2. Let target be O.[[ProxyTarget]].
+                    Local<Value> proxy_target = proxy->GetTarget();
+                    // 3. Let handler be O.[[ProxyHandler]].
+                    // 4. Assert: handler is an Object.
+                    Local<Value> handler = proxy->GetHandler();
+                    if (!proxy_target->IsObject() || !handler->IsObject()) {
+                        info.GetReturnValue().Set(false);
+                        return;
+                    }
+                    // 5. Let trap be ? GetMethod(handler, "set"). (ES 7.3.10:
+                    //    undefined for undefined or null, a TypeError for
+                    //    anything else that is not callable.)
+                    Local<Value> trap;
+                    if (!handler.As<Object>()->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&trap)) return;
+                    if (trap->IsNullOrUndefined()) {
+                        // 6. If trap is undefined, then return
+                        //    ? target.[[Set]](P, V, Receiver).
+                        holder_value = proxy_target;
                         continue;
                     }
+                    if (!trap->IsFunction()) {
+                        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(
+                            isolate, "The 'set' trap of a proxy's handler is not a function")));
+                        return;
+                    }
+                    // 7. Let booleanTrapResult be ToBoolean(? Call(trap,
+                    //    handler, << target, P, V, Receiver >>)).
+                    Local<Value> trap_args[] = { proxy_target, property, value, receiver };
+                    Local<Value> trap_result;
+                    if (!trap.As<Function>()->Call(context, handler, 4, trap_args).ToLocal(&trap_result)) return;
+                    // 8. If booleanTrapResult is false, return false.
+                    if (!trap_result->BooleanValue(isolate)) {
+                        info.GetReturnValue().Set(false);
+                        return;
+                    }
+                    // 9. Let targetDesc be ? target.[[GetOwnProperty]](P).
+                    Local<Value> target_desc_value;
+                    if (!proxy_target.As<Object>()->GetOwnPropertyDescriptor(context, name).ToLocal(&target_desc_value)) return;
+                    // 10. If targetDesc is not undefined and
+                    //     targetDesc.[[Configurable]] is false, then
+                    if (target_desc_value->IsObject()) {
+                        Local<Object> target_desc = target_desc_value.As<Object>();
+                        Local<Value> configurable;
+                        if (!target_desc->Get(context, String::NewFromUtf8Literal(isolate, "configurable")).ToLocal(&configurable)) return;
+                        if (!configurable->BooleanValue(isolate)) {
+                            const bool accessor =
+                                target_desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "get")).FromMaybe(false) ||
+                                target_desc->HasOwnProperty(context, String::NewFromUtf8Literal(isolate, "set")).FromMaybe(false);
+                            if (!accessor) {
+                                // 1. If IsDataDescriptor(targetDesc) is true
+                                //    and targetDesc.[[Writable]] is false,
+                                //    then if SameValue(V,
+                                //    targetDesc.[[Value]]) is false, throw a
+                                //    TypeError exception.
+                                Local<Value> target_writable;
+                                Local<Value> target_value;
+                                if (!target_desc->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&target_writable)) return;
+                                if (!target_desc->Get(context, String::NewFromUtf8Literal(isolate, "value")).ToLocal(&target_value)) return;
+                                if (!target_writable->BooleanValue(isolate) && !value->SameValue(target_value)) {
+                                    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(
+                                        isolate, "'set' on proxy: trap returned truish for a property which exists in the proxy target as a non-configurable and non-writable data property with a different value")));
+                                    return;
+                                }
+                            } else {
+                                // 2. If IsAccessorDescriptor(targetDesc) is
+                                //    true, then if targetDesc.[[Set]] is
+                                //    undefined, throw a TypeError exception.
+                                Local<Value> target_setter;
+                                if (!target_desc->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&target_setter)) return;
+                                if (target_setter->IsUndefined()) {
+                                    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8Literal(
+                                        isolate, "'set' on proxy: trap returned truish for a property which exists in the proxy target as a non-configurable and non-writable accessor property without a setter")));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    // 11. Return true.
+                    info.GetReturnValue().Set(true);
+                    return;
+                }
+                // OrdinarySet (ES 10.1.9.1) of this object:
+                // 1. Let ownDesc be ? O.[[GetOwnProperty]](P).
+                // 2. Return ? OrdinarySetWithOwnDescriptor(O, P, V, Receiver,
+                //    ownDesc).
+                // With a descriptor that is steps 2-7 below, which read
+                // nothing of the object it was found on; with none it is step
+                // 1 for this object's parent.
+                Local<Value> desc_value;
+                if (!holder->GetOwnPropertyDescriptor(context, name).ToLocal(&desc_value)) return;
+                if (!desc_value->IsUndefined()) {
                     own_desc = desc_value;
                     break;
                 }
+                holder_value = holder->GetPrototype();
             }
-            //    c. Else, set ownDesc to the PropertyDescriptor { [[Value]]:
-            //       undefined, [[Writable]]: true, [[Enumerable]]: true,
-            //       [[Configurable]]: true }.
         }
         if (own_desc->IsObject()) {
             // V8's descriptor object (FromPropertyDescriptor): its OWN fields
@@ -14943,7 +15049,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                 // 4. Let setter be ownDesc.[[Set]].
                 // 5. If setter is undefined, return false. (A TypeError in
                 //    strict code.)
-                // 6. Perform ? Call(setter, Receiver, « V »).
+                // 6. Perform ? Call(setter, Receiver, << V >>).
                 // 7. Return true.
                 Local<Value> setter;
                 if (!has_set || !desc->Get(context, String::NewFromUtf8Literal(isolate, "set")).ToLocal(&setter)) {
@@ -14960,7 +15066,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                 return;
             }
             // 2. If IsDataDescriptor(ownDesc) is true, then
-            //    a. If ownDesc.[[Writable]] is false, return false.
+            //    1. If ownDesc.[[Writable]] is false, return false.
             Local<Value> writable;
             if (!desc->Get(context, String::NewFromUtf8Literal(isolate, "writable")).ToLocal(&writable)) return;
             if (!writable->BooleanValue(isolate)) {
@@ -14968,7 +15074,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                 return;
             }
         }
-        //    b. If Receiver is not an Object, return false.
+        //    2. If Receiver is not an Object, return false.
         if (!receiver->IsObject()) {
             info.GetReturnValue().Set(false);
             return;
@@ -14979,18 +15085,16 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
         // [[DefineOwnProperty]] are the target's (WebIDL 3.9.1 and 3.9.3: no
         // trap, so the proxy forwards them to the target's interceptors).
         Local<Object> receiver_object = receiver.As<Object>();
-        //    c. Let existingDescriptor be ? Receiver.[[GetOwnProperty]](P).
+        //    3. Let existingDescriptor be ? Receiver.[[GetOwnProperty]](P).
         Local<Value> existing_value;
         if (!receiver_object->GetOwnPropertyDescriptor(context, name).ToLocal(&existing_value)) return;
         if (existing_value->IsObject()) {
-            //    d. If existingDescriptor is not undefined, then
-            //       i. If IsAccessorDescriptor(existingDescriptor) is true,
-            //          return false.
-            //       ii. If existingDescriptor.[[Writable]] is false, return
-            //           false.
-            //       iii. Let valueDesc be the PropertyDescriptor
-            //            { [[Value]]: V }.
-            //       iv. Return ? Receiver.[[DefineOwnProperty]](P, valueDesc).
+            //    5. If IsAccessorDescriptor(existingDescriptor) is true,
+            //       return false.
+            //    6. If existingDescriptor.[[Writable]] is false, return
+            //       false.
+            //    7. Let valueDesc be the PropertyDescriptor { [[Value]]: V }.
+            //    8. Return ? Receiver.[[DefineOwnProperty]](P, valueDesc).
             // The value alone: the property keeps its other attributes. (For
             // Receiver this proxy the trap used to redefine the property
             // whole - writable, enumerable and configurable - whatever it
@@ -15010,10 +15114,21 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
             info.GetReturnValue().Set(defined.FromJust());
             return;
         }
-        //    e. Else,
-        //       i. Assert: Receiver does not currently have a property P.
-        //       ii. Return ? CreateDataProperty(Receiver, P, V).
-        Maybe<bool> created = receiver_object->CreateDataProperty(context, name, value);
+        //    4. If existingDescriptor is undefined, then
+        //       1. Assert: Receiver does not currently have a property P.
+        //       2. Return ? CreateDataProperty(Receiver, P, V).
+        // CreateDataProperty (ES 7.3.5) is Receiver.[[DefineOwnProperty]](P,
+        // { [[Value]]: V, [[Writable]]: true, [[Enumerable]]: true,
+        // [[Configurable]]: true }), made here with Object::DefineProperty:
+        // v8::Object::CreateDataProperty enters V8 with script disallowed
+        // for a JSObject Receiver (15.7.112.43 src/api/api.cc:4737,
+        // EnterV8NoScriptScope), and a Receiver that is a platform object
+        // runs its setter there, which converts the value and may call
+        // script.
+        PropertyDescriptor new_descriptor(value, true);
+        new_descriptor.set_enumerable(true);
+        new_descriptor.set_configurable(true);
+        Maybe<bool> created = receiver_object->DefineProperty(context, name, new_descriptor);
         if (created.IsNothing()) return;  // an exception is pending
         info.GetReturnValue().Set(created.FromJust());
         return;
