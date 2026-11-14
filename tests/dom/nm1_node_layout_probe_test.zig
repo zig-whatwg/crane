@@ -515,15 +515,15 @@ test "nm1 probe: what each field of a real node holds" {
     const ctext = try interfaces.Document.call_createTextNode(page.document, str("x"));
     try dumpValues(interfaces.Text.State, "createTextNode('x'), detached", ctext);
 
-    // The duplicates, checked on the parsed div: Node's copy of what NodeBase
-    // already says, and the per-level states at fixed offsets of one block.
+    // What the block computes with, checked on the parsed div: the NodeBase
+    // at one offset, the owner word naming the Instance, the Instance's state
+    // pointer naming the block. (Node's own copies of the NodeBase pointer
+    // and the node type went in lane nm1's layout batch.)
     const s: *const div_state = @ptrCast(@alignCast(pdiv.state));
     const node_state = pdiv.getState(interfaces.Node.State);
     const node_internal = &node_state._embedded;
     const nb = &node_internal.base;
-    print("\n##### DUPLICATES on the parsed div\n", .{});
-    print("  Node.node_base == &Node.base: {}\n", .{node_internal.node_base == nb});
-    print("  Node.node_type {d} == NodeBase.node_type {d}: {}\n", .{ node_internal.node_type, nb.node_type, node_internal.node_type == nb.node_type });
+    print("\n##### LINKS on the parsed div\n", .{});
     const nb_doc: usize = if (nb.owner_document) |d| @intFromPtr(d) else 0;
     const node_doc: usize = if (node_internal.owner_document) |d| @intFromPtr(d) else 0;
     print("  NodeBase.owner_document 0x{x}, Node.owner_document 0x{x} (Instance), the document's Instance 0x{x}\n", .{ nb_doc, node_doc, @intFromPtr(page.document) });
