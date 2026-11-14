@@ -5646,14 +5646,23 @@ fn stopLoadingDocument(document: *runtime.Instance) void {
         // Each descendant navigable's navigation in flight ends too, as the
         // stopped navigable's does at step 2. Stated deviation from HTML,
         // whose "stop loading" sets only the stopped navigable's ongoing
-        // navigation to null - golden rule 2, no newer spec, all of Chrome
-        // and Safari's engines: Blink FrameLoader::StopAllLoaders recurses
-        // into each local child frame (InformAboutCanceledNavigation,
+        // navigation to null - golden rule 2, no newer spec, the majority:
+        // Chrome 157 and Firefox 159 cancel a descendant's navigation -
+        // srcdoc, a src whose fetch is in flight, a src not yet fetched -
+        // whether it started in stop()'s own task or earlier (lane nav2's
+        // three-browser probe, 2026-11-14: the child stays on its initial
+        // about:blank, no load event, a later navigation of it loads); Safari
+        // 27 cancels it only when it started in an earlier task (a child
+        // frame's navigation waits on its NavigationScheduler's timer, and
+        // FrameLoader::stopAllLoaders, unlike stopForBackForwardCache,
+        // cancels no NavigationScheduler). Blink FrameLoader::StopAllLoaders
+        // recurses into each local child frame (InformAboutCanceledNavigation,
         // CancelClientNavigation, DocumentLoader::StopLoading) and WebKit
         // FrameLoader::stopAllLoaders into each local child (its provisional
         // and current document loaders stopped), children before the frame
-        // itself. Setting the ongoing navigation informs the descendant's
-        // navigation API about aborting navigation, as Blink's does.
+        // itself. Crane test dw-abort-descendant-navigation-control.html.
+        // Setting the ongoing navigation informs the descendant's navigation
+        // API about aborting navigation, as Blink's does.
         if (!document_lifecycle.isUnloading(entry.document)) switch (descendant.ongoing_navigation) {
             .id => {
                 descendant.busy += 1;
