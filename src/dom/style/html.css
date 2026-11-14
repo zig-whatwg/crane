@@ -9,10 +9,6 @@
 
 /* 15.3.1 Hidden elements */
 @namespace "http://www.w3.org/1999/xhtml";
-/* Prefixes for the Fullscreen 5.2 rules at the end of the top-layer blocks
-   (lane ifr1): an @namespace counts only before the first style rule. */
-@namespace svg "http://www.w3.org/2000/svg";
-@namespace math "http://www.w3.org/1998/Math/MathML";
 
 area, base, basefont, datalist, head, link, meta, noembed,
 noframes, param, rp, script, style, template, title {
@@ -123,43 +119,6 @@ dialog:popover-open {
  inset: 0;
  pointer-events: none !important;
  background-color: transparent;
-}
-
-/* Fullscreen 5.2 "User-agent level style sheet defaults", copied verbatim
-   from https://fullscreen.spec.whatwg.org/#user-agent-level-style-sheet-defaults
-   (specs/whatwg/fullscreen.md, lane ifr1, 2026-11-14). Crane draws nothing;
-   the computed values are what getComputedStyle reads of a fullscreen
-   element (fullscreen/rendering/fullscreen-ua-stylesheet.html: 3/3 in Chrome,
-   Firefox and Safari). Copyright (c) WHATWG, CC BY 4.0.
-   Changed, stated: the spec's *|* is written as the three namespaces an
-   element can be fullscreen in - requestFullscreen step 5 admits HTML
-   elements, an SVG svg and a MathML math, and every container is HTML - the
-   same elements, each selector namespace-constrained as the rest of this
-   sheet is (ua_sheet.zig's test). */
-:not(:root):fullscreen, svg|svg:not(:root):fullscreen, math|math:not(:root):fullscreen {
- position:fixed !important;
- inset:0 !important;
- margin:0 !important;
- box-sizing:border-box !important;
- min-width:0 !important;
- max-width:none !important;
- min-height:0 !important;
- max-height:none !important;
- width:100% !important;
- height:100% !important;
- transform:none !important;
-
- /* intentionally not !important */
- object-fit:contain;
-}
-
-iframe:fullscreen {
- border:none !important;
- padding:0 !important;
-}
-
-:not(:root):fullscreen::backdrop, svg|svg:not(:root):fullscreen::backdrop, math|math:not(:root):fullscreen::backdrop {
- background:black;
 }
 
 slot {

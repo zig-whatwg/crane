@@ -17,8 +17,10 @@
 //! :-internal-list-box (selector parser), which this sheet's `.user_agent`
 //! parse alone accepts; their calc-size() min sizes are left out until
 //! Crane parses calc-size().
-//! Added: Fullscreen 5.2's user-agent rules (:fullscreen), at the end of
-//! html.css's top-layer blocks.
+//! A fourth sheet, fullscreen.css: Fullscreen 5.2's user-agent rules, which
+//! the style engine matches only while a document has a fullscreen element
+//! (as Blink's EnsureDefaultStyleSheetForFullscreen and WebKit add theirs on
+//! demand), after html.css and before html-quirks.css.
 //! Changed, stated in html.css: the link colors are LinkText, VisitedText and
 //! ActiveText rather than their light hex values, as in all three browsers
 //! (an anchor's color follows the element color scheme; whatwg/html#12761).
@@ -34,11 +36,15 @@ const Contents = sheet.Contents;
 pub const html_css = @embedFile("html.css");
 pub const hints_css = @embedFile("html-hints.css");
 pub const quirks_css = @embedFile("html-quirks.css");
+pub const fullscreen_css = @embedFile("fullscreen.css");
 
 pub const Sheets = struct {
     rules: *Contents,
     hints: *Contents,
     quirks: *Contents,
+    /// Fullscreen 5.2's rules (fullscreen.css), matched only for a document
+    /// that has a fullscreen element.
+    fullscreen: *Contents,
 };
 
 /// The process's allocator for the UA sheets (malloc: thread-safe).
@@ -73,14 +79,17 @@ pub fn buildWith(a: std.mem.Allocator) std.mem.Allocator.Error!Sheets {
     errdefer destroyContents(hints);
     const quirks = try Contents.parse(a, quirks_css, .{});
     errdefer destroyContents(quirks);
-    for ([_]*Contents{ rules, hints, quirks }) |c| makeImmortal(c);
-    return .{ .rules = rules, .hints = hints, .quirks = quirks };
+    const fullscreen = try Contents.parse(a, fullscreen_css, .{ .user_agent = true });
+    errdefer destroyContents(fullscreen);
+    for ([_]*Contents{ rules, hints, quirks, fullscreen }) |c| makeImmortal(c);
+    return .{ .rules = rules, .hints = hints, .quirks = quirks, .fullscreen = fullscreen };
 }
 
 pub fn destroySheets(s: Sheets) void {
     destroyContents(s.rules);
     destroyContents(s.hints);
     destroyContents(s.quirks);
+    destroyContents(s.fullscreen);
 }
 
 /// Every text value is uncounted from now on; `destroyContents` frees them.
@@ -134,7 +143,7 @@ test "the UA sheets parse with HTML namespace constraints on every selector" {
     const s = try buildWith(std.testing.allocator);
     defer destroySheets(s);
     // Namespaces are resolved per selector, not through a whole-sheet flag.
-    for ([_]*Contents{ s.rules, s.hints, s.quirks }) |contents| {
+    for ([_]*Contents{ s.rules, s.hints, s.quirks, s.fullscreen }) |contents| {
         try std.testing.expect(!contents.html_only);
         for (contents.rules.items) |rule| {
             var constrained = false;
