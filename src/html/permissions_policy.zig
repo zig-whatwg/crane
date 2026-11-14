@@ -205,10 +205,18 @@ pub const Feature = enum {
             .local_fonts,
             => .self_origin,
 
+            // Fullscreen 7: "Its default allowlist is 'self'" - a
+            // cross-origin frame has it only through allow or
+            // allowfullscreen (document-fullscreen-enabled-cross-origin.sub.html
+            // cross-origin-default: false in Chrome, Firefox and Safari, wpt.fyi
+            // 2358bd4835). It was listed with the * features, which made every
+            // cross-origin frame's fullscreenEnabled true once the getter read
+            // the policy (lane ifr1).
+            .fullscreen => .self_origin,
+
             // Features that default to * (most permissive)
             .autoplay,
             .deferred_fetch_minimal,
-            .fullscreen,
             .picture_in_picture,
             .document_domain,
             .encrypted_media,
@@ -925,9 +933,12 @@ test "PermissionsPolicy - default allowlists" {
     try std.testing.expect(policy.isFeatureAllowed(.geolocation, "https://example.com"));
     try std.testing.expect(!policy.isFeatureAllowed(.geolocation, "https://other.com"));
 
-    // Fullscreen defaults to *
+    // Fullscreen defaults to 'self' (Fullscreen 7)
     try std.testing.expect(policy.isFeatureAllowed(.fullscreen, "https://example.com"));
-    try std.testing.expect(policy.isFeatureAllowed(.fullscreen, "https://other.com"));
+    try std.testing.expect(!policy.isFeatureAllowed(.fullscreen, "https://other.com"));
+
+    // Sync XHR defaults to *
+    try std.testing.expect(policy.isFeatureAllowed(.sync_xhr, "https://other.com"));
 }
 
 test "PermissionsPolicy - fromHeader" {
