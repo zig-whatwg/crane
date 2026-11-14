@@ -684,7 +684,21 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     // document's base URL (CSSOM "style sheet base URL").
     const base = interfaces.Node.get_baseURI(load.document) catch null;
     defer if (base) |b| document_allocator.free(b);
-    fetchImports(load, null, text, base);
+    // A document no browsing context can show - a DOMParser or
+    // createHTMLDocument document, an SVG resource document parsed in
+    // secure static mode (SVG 2 §16.1.7.3; dom.style.svg_resources) -
+    // fetches no @import. The spec text does not say so: CSS Values 4
+    // "fetch a style resource" fetches with the rule's relevant settings
+    // object, which such a document has. All three browsers fetch nothing,
+    // so golden rule 2 (no newer spec; the browsers differ from its text):
+    // Chrome 157.0.8103.51, Firefox 159.0.1 and Safari 27.0 (lane quick1 b4's
+    // background probe, 2026-11-14) sent no request for a `<style>@import`
+    // nor a `<link rel=stylesheet>` in a DOMParser document or a
+    // createHTMLDocument document (tests/wpt/crane/quick1b4-domparser-
+    // import.html). A link in such a document already fetches nothing here
+    // (it is not browsing-context connected, HTML 4.2.4). A document still
+    // loading into its navigable is not gone.
+    if (dom.document_activity.activity(load.document, load.document_generation) != .gone) fetchImports(load, null, text, base);
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
     load.blocks_scripts = parser_created and load.in_flight > 0;
