@@ -13,7 +13,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change-ext
 //!
-//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement, HTMLElement, SVGElement
+//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement, HTMLElement, SVGElement, SVGStyleElement
 
 const std = @import("std");
 const hook = @import("hook.zig");
@@ -55,7 +55,8 @@ const AttributeEntry = struct {
 const max_entries = 32;
 /// Per (namespace, attribute) steps: nine at lane quick1 (2026-11-12: the
 /// nonce step for each of the three namespaces whose elements include
-/// HTMLOrSVGOrMathMLElement); past the bound, the process start panics.
+/// HTMLOrSVGOrMathMLElement), ten with the SVG style element's media step
+/// (quick1 b4); past the bound, the process start panics.
 const max_attribute_entries = 16;
 const Tables = struct {
     elements: hook.List(Entry, max_entries) = .empty,

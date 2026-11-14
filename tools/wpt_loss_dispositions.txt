@@ -2067,7 +2067,7 @@ wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
 [css/cssom/cssom-getPropertyValue-common-checks.html]
 generation = 224
 kind = upstream-test-change
-why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): two checks were rewritten: a shorthand whose initial longhands it cannot represent serializes as "" ("Legacy line clamp"); Crane gives "none". tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the style lane. F 11/11, C 10/11, S 8/11.
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): two checks were rewritten: a shorthand whose initial longhands it cannot represent serializes as "" ("Legacy line clamp"); Crane gives "none". The two checks are an upstream test bug, filed as web-platform-tests/wpt#65204 (2026-11-14, lane quick1 b4): they assume the rule CSSWG #14673 replaced (resolved 2026-10-29, spec edit acde592), which the same tree's css/css-overflow/parsing/webkit-line-clamp-computed.html tests (Crane 6/6); Chrome 157 and Firefox 159 skip them (-webkit-line-clamp is no shorthand there). F 11/11, C 10/11, S 8/11. Draft: tmp/plans/upstream-drafts/cssom-getPropertyValue-common-checks-webkit-line-clamp.md.
 wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
 wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
 

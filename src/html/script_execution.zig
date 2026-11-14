@@ -2860,9 +2860,17 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
     // one: the latter is classic even when language says something else.
     // WebKit ScriptElement::determineScriptType makes the same distinction.
     var language_type: ["text/javascript1.5".len]u8 = undefined;
+    // Step 8: the type string is the type attribute's value AS WRITTEN - not
+    // stripped. Only step 9 also tries the value stripped of ASCII
+    // whitespace, for a JavaScript MIME type; steps 10-12 match the string
+    // itself, so `type="module "` is no script at all (WPT
+    // html/semantics/scripting-1/the-script-element/module/type.html: Chrome
+    // and Safari 6/6 follow the spec; Firefox 3/6 runs it - golden rule 2,
+    // the spec and two browsers). The same holds for "importmap" and
+    // "speculationrules", and for an SVG script, which prepares through here.
     const type_string: []const u8 = if (type_attr) |value| blk: {
         if (value.len == 0) return .classic;
-        break :blk std.mem.trim(u8, value, " \t\n\r\x0c");
+        break :blk value;
     } else blk: {
         const language = getLanguageAttribute(element);
         if (language.len == 0) return .classic;
@@ -2874,9 +2882,14 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
         break :blk language_type[0 .. "text/".len + language.len];
     };
 
-    // Step 9: If type string is a JavaScript MIME type essence match -> classic
+    // Step 9: If the type string is a JavaScript MIME type essence match,
+    // or el has a type attribute whose value with leading and trailing
+    // ASCII whitespace stripped is one -> classic.
     if (isJavaScriptMimeType(type_string)) {
         return .classic;
+    }
+    if (type_attr) |value| {
+        if (isJavaScriptMimeType(std.mem.trim(u8, value, " \t\n\r\x0c"))) return .classic;
     }
 
     // Step 10: If type string is "module" (case-insensitive) -> module
@@ -4656,6 +4669,22 @@ pub const script_type_test_cases = if (@import("builtin").is_test) struct {
             .{ .type_value = " ", .language = "javascript", .expected = .null },
             .{ .type_value = "text/javascript\xc2\xa0", .language = null, .expected = .null },
             .{ .type_value = null, .language = repeatForTest("javascript", 20), .expected = .null },
+            // Steps 10-12 match the type string as written (step 8: the
+            // attribute's value); only step 9's JavaScript MIME type match
+            // also tries it stripped (WPT module/type.html; Chrome, Safari).
+            .{ .type_value = "module", .language = null, .expected = .module },
+            .{ .type_value = "MODULE", .language = null, .expected = .module },
+            .{ .type_value = " module", .language = null, .expected = .null },
+            .{ .type_value = "module ", .language = null, .expected = .null },
+            .{ .type_value = " module ", .language = null, .expected = .null },
+            .{ .type_value = "\tmodule\n", .language = null, .expected = .null },
+            .{ .type_value = "ImportMap", .language = null, .expected = .importmap },
+            .{ .type_value = "importmap ", .language = null, .expected = .null },
+            .{ .type_value = " importmap", .language = null, .expected = .null },
+            .{ .type_value = "SpeculationRules", .language = null, .expected = .speculationrules },
+            .{ .type_value = "speculationrules ", .language = null, .expected = .null },
+            .{ .type_value = " speculationrules", .language = null, .expected = .null },
+            .{ .type_value = " text/javascript ", .language = null, .expected = .classic },
         };
         for (cases) |case| {
             const element = try HTMLScriptElement.init(allocator, &context);

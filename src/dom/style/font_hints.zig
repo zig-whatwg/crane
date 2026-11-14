@@ -14,6 +14,7 @@
 const std = @import("std");
 const css = @import("css");
 const ElementStyle = @import("element_style.zig").ElementStyle;
+const Hint = @import("element_style.zig").Hint;
 
 const Allocator = std.mem.Allocator;
 const DeclarationBlock = css.declarations.DeclarationBlock;
@@ -45,6 +46,8 @@ pub const Attributes = struct {
 /// One font element's hint: the inputs it was built from (owned copies) and
 /// the declarations. No DOM or realm back link.
 pub const FontHint = struct {
+    /// The slot's header (element_style.Hint): ElementStyle keeps one hint.
+    header: Hint = .{ .kind = .font },
     allocator: Allocator,
     color: ?[]u8,
     face: ?[]u8,
@@ -84,7 +87,7 @@ pub fn fontHint(state: *ElementStyle, attributes: Attributes) Allocator.Error!?*
         state.dropFontHint();
         return null;
     }
-    if (state.font_hint) |old| {
+    if (state.fontHint()) |old| {
         if (old.matches(attributes)) return &old.block;
     }
     const allocator = state.allocator;
@@ -119,8 +122,7 @@ pub fn fontHint(state: *ElementStyle, attributes: Attributes) Allocator.Error!?*
             _ = try hint.block.setProperty(.{ .allocator = allocator }, "font-size", legacy_font_size_keywords[size - 1], "");
         }
     }
-    state.dropFontHint();
-    state.font_hint = hint;
+    state.setHint(&hint.header);
     return &hint.block;
 }
 

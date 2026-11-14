@@ -1520,15 +1520,27 @@ pub const IFrameIntegration = struct {
     /// the start tag is dropped by the parser's own "newline after pre" rule,
     /// which is why the spec emits it.
     ///
-    /// The bytes are decoded first, by the type's rules: a BOM, the
+    /// The bytes are decoded first, by the type's rules ("defined by the
+    /// specifications for the computed MIME type of the resource"): a JSON
+    /// MIME type's are RFC 8259's - JSON text "MUST be encoded using UTF-8"
+    /// (8.1), and a charset parameter "really has no effect on compliant
+    /// recipients" (11) - so Encoding's UTF-8 decode, whatever the charset, a
+    /// parent's encoding or a UTF-16 byte order mark says (WPT encoding/
+    /// json-document-utf8.html: Firefox ships it, since Firefox 53, bug
+    /// 1266023; WebKit trunk merged it, 324849@main, wpt#64300; Chrome
+    /// decodes JSON with no charset as UTF-8 too). Any other type: a BOM, the
     /// Content-Type's charset, else the default - the sniffing algorithm
     /// without the prescan, as text is not markup.
     fn commitTextDocument(self: *IFrameIntegration, bytes: []const u8, content_type: ?[]const u8, computed_type: []const u8) IFrameError!void {
-        const sniffed = encoding_sniffing.sniff(bytes, .{
+        const json = document_type.isJson(computed_type);
+        const encoding = if (json) encoding_sniffing.utf_8 else encoding_sniffing.sniff(bytes, .{
             .transport = if (content_type) |ct| encoding_sniffing.transportEncoding(self.allocator, ct) else null,
             .prescan = false,
-        });
-        const text = encoding_sniffing.decode(self.allocator, bytes, sniffed.encoding) catch return IFrameError.OutOfMemory;
+        }).encoding;
+        const text = (if (json)
+            encoding_sniffing.utf8Decode(self.allocator, bytes)
+        else
+            encoding_sniffing.decode(self.allocator, bytes, encoding)) catch return IFrameError.OutOfMemory;
         defer self.allocator.free(text);
         const markup = document_type.textDocumentMarkup(self.allocator, text) catch {
             return IFrameError.OutOfMemory;
@@ -1544,7 +1556,7 @@ pub const IFrameIntegration = struct {
         _ = try self.commitHtmlDocument(markup, null, .{
             .content_type = computed_type,
             .no_quirks = true,
-            .encoding = encoding_sniffing.canonicalName(sniffed.encoding),
+            .encoding = encoding_sniffing.canonicalName(encoding),
         });
     }
 
