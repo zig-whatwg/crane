@@ -724,8 +724,12 @@ def loss_disposition(generation, loss, dispositions, head=None, repo=None):
 # written by itself, and the parser refuses an entry for a byte-identical file.
 WPT_SHARED_PREFIXES = ('resources/', 'common/')   # the harness and the shared helpers
 _LOAD_ATTR = re.compile(r'<(?:script|link|iframe|frame|img|object|embed|audio|video|source|track)\b[^>]*?'
-                        r'\s(?:src|href|data)\s*=\s*["\']([^"\'#?]+)', re.I)
+                        r'\s(?:src|href|data)\s*=\s*(?:["\']([^"\'#?]+)|([^\s"\'>#?]+))', re.I)
 _IMPORT_SCRIPTS = re.compile(r'importScripts\(\s*["\']([^"\'#?]+)["\']')
+# Literal URLs a test loads at run time: fetch("..."), new Worker/SharedWorker("..."), an XMLHttpRequest's
+# open("GET", "..."). A template literal with ${...} is not followed (its URL is computed).
+_RUNTIME_LOAD = re.compile(r'(?:\bfetch|\bnew\s+(?:Shared)?Worker)\(\s*["\'`]([^"\'`#?$]+)["\'`]'
+                           r'|\.open\(\s*["\'][A-Za-z]+["\']\s*,\s*["\'`]([^"\'`#?$]+)["\'`]')
 _ES_IMPORT = re.compile(r'\bimport\b[^"\';]*?["\']((?:\.{1,2}/|/)[^"\'#?]+)["\']')
 _WRAPPED_JS = ('.any.js', '.window.js', '.worker.js', '.serviceworker.js', '.sharedworker.js')
 
@@ -755,8 +759,9 @@ def _wpt_blobs(wpt_repo, revision, paths):
 
 def wpt_loaded_files(path, revision, wpt_repo, depth=2):
     """The tree paths test `path` loads at `revision`, statically: the file itself and its
-    .headers, every src/href/data of a loading element, META script= lines, importScripts()
-    and relative ES imports - and theirs, `depth` levels down. A wrapped .any.js-style test
+    .headers, every src/href/data of a loading element, META script= lines, importScripts(),
+    relative ES imports and the literal URLs of fetch(), new (Shared)Worker() and
+    XMLHttpRequest.open() - and theirs, `depth` levels down. A wrapped .any.js-style test
     also loads the harness the runner wraps it in. A URL to another origin is not a file."""
     seen, frontier = set(), [path]
     if path.endswith(_WRAPPED_JS):
@@ -773,14 +778,21 @@ def wpt_loaded_files(path, revision, wpt_repo, depth=2):
             if text is None:
                 continue
             text = text.decode('utf-8', 'replace')
-            base = posixpath.dirname(f)
-            for ref in (_LOAD_ATTR.findall(text) + SCRIPT_META.findall(text) +
-                        _IMPORT_SCRIPTS.findall(text) + _ES_IMPORT.findall(text)):
+            static = ([q or u for q, u in _LOAD_ATTR.findall(text)] + SCRIPT_META.findall(text) +
+                      _IMPORT_SCRIPTS.findall(text) + _ES_IMPORT.findall(text))
+            runtime = [x or y for x, y in _RUNTIME_LOAD.findall(text)]
+            # A static reference resolves against the file that holds it; a run-time URL in a classic
+            # script resolves against the test's document, and in a worker against the worker script,
+            # so it is followed against both.
+            refs = [(r, (posixpath.dirname(f),)) for r in static] + \
+                   [(r, (posixpath.dirname(f), posixpath.dirname(path))) for r in runtime]
+            for ref, bases in refs:
                 if re.match(r'^[a-z][a-z0-9+.-]*:|^//', ref, re.I):
                     continue
-                joined = posixpath.normpath(ref.lstrip('/') if ref.startswith('/') else posixpath.join(base, ref))
-                if not joined.startswith('..') and joined != '.':
-                    nxt.append(joined)
+                for base in bases:
+                    joined = posixpath.normpath(ref.lstrip('/') if ref.startswith('/') else posixpath.join(base, ref))
+                    if not joined.startswith('..') and joined != '.':
+                        nxt.append(joined)
         frontier = nxt
     return seen
 
@@ -4091,6 +4103,12 @@ def _upstream_fixture_repo(d):
            'd/other.js': 'x\n',
            'e/meta.any.js': '// META: script=helper2.js\ntest(() => {});\n',
            'e/helper2.js': 'h1\n',
+           'f/fetch.any.js': 'promise_test(() => fetch("resources/data.json").then(r => r.json()));\n',
+           'f/resources/data.json': '[1]\n',
+           'g/worker.html': '<script>new Worker("w.js"); x.open("GET", "x.txt");</script>\n',
+           'g/w.js': 'w1\n', 'g/x.txt': 'x1\n',
+           'h/page.html': '<script src=resources/lib.js></script>\n',   # unquoted, as url/a-element.html
+           'h/resources/lib.js': 'fetch("resources/d.json");\n', 'h/resources/d.json': '1\n',
            '.crane-upstream-revision': '1' * 40 + '\n'})
     git('commit', '-q', '-m', 'BEFORE')
     before = git('rev-parse', 'HEAD')
@@ -4098,7 +4116,8 @@ def _upstream_fixture_repo(d):
     git('commit', '-q', '-m', 'CRANE TEST')
     crane_only = git('rev-parse', 'HEAD')
     write({'resources/testharness.js': 'v2\n', 'a/helper.js': 'two\n', 'd/other.js': 'y\n',
-           'e/helper2.js': 'h2\n', '.crane-upstream-revision': '2' * 40 + '\n'})
+           'e/helper2.js': 'h2\n', '.crane-upstream-revision': '2' * 40 + '\n',
+           'f/resources/data.json': '[1, 2]\n', 'g/x.txt': 'x2\n', 'h/resources/d.json': '2\n'})
     git('commit', '-q', '-m', 'AFTER')
     return repo, wpt, before, git('rev-parse', 'HEAD'), crane_only
 
@@ -4126,6 +4145,14 @@ def _check_upstream_test_change():
         assert change('d/unloaded.html') == {'own': [], 'shared': []}
         # A wrapped .any.js test loads the harness the runner wraps it in, too.
         assert change('e/meta.any.js') == {'own': ['e/helper2.js'], 'shared': ['resources/testharness.js']}
+        # Data a test fetches by a literal URL is a resource it loads (url/url-constructor.any.js fetches
+        # resources/urltestdata.json: generation 223 vs the update's compat run, 1,808 -> 1,824 subtests).
+        assert change('f/fetch.any.js') == {'own': ['f/resources/data.json'], 'shared': ['resources/testharness.js']}
+        # So are a worker script and an XMLHttpRequest's literal URL.
+        assert change('g/worker.html') == {'own': ['g/x.txt'], 'shared': []}
+        # A classic script's fetch() resolves against the DOCUMENT, not the script (url/a-element.html's
+        # resources/a-element.js fetches "resources/urltestdata.json", i.e. url/resources/...).
+        assert change('h/page.html') == {'own': ['h/resources/d.json'], 'shared': []}
         # A revision git cannot resolve proves nothing.
         assert upstream_test_change('a/test.html', before, 'f' * 40, wpt) is None
 
