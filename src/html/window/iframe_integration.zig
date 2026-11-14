@@ -108,7 +108,8 @@ pub const IFrameState = enum {
     initial_document_ready,
     /// Navigating to src or srcdoc content
     navigating,
-    /// Content loaded and ready
+    /// A navigation committed its document, before that document's parse
+    /// (IFrameIntegration.markCommitted)
     ready,
     /// Browsing context discarded (element removed from document)
     discarded,
@@ -1310,9 +1311,8 @@ pub const IFrameIntegration = struct {
         if (response.is_network_error) {
             if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
             self.updateLocationUrl(url);
+            try self.markCommitted(url, "text/html");
             _ = try self.commitHtmlDocument("", null, .{});
-            try self.recordCommit(url, "text/html");
-            self.state = .ready;
             return;
         }
         if (!navigation_fetch.shouldNavigationProceed(response.status)) return IFrameError.NoDocument;
@@ -1362,6 +1362,7 @@ pub const IFrameIntegration = struct {
         // .postMessage(...)`); updating after the commit handed them the
         // previous URL, they threw, and the page waiting on them timed out.
         self.updateLocationUrl(final_url);
+        try self.markCommitted(final_url, computed);
 
         switch (kind) {
             // "Load an HTML document": the parser decodes the response's
@@ -1378,9 +1379,8 @@ pub const IFrameIntegration = struct {
             .xml => try self.commitXmlDocument(body, .{ .content_type = response.content_type, .type = computed }),
             .multipart, .external => unreachable,
         }
-
-        try self.recordCommit(final_url, computed);
-        self.state = .ready;
+        // Nothing of the commit follows the parse: script ran in it, and its
+        // load listeners may have destroyed this navigable (markCommitted).
     }
 
     /// The origin of the document committing `response` - the fetch of `url`
@@ -1441,8 +1441,34 @@ pub const IFrameIntegration = struct {
         self.state = .navigating;
         if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(origin);
         self.updateLocationUrl(url);
+        try self.markCommitted(url, "text/html");
         _ = try self.commitHtmlDocument(html, null, .{});
-        try self.recordCommit(url, "text/html");
+    }
+
+    /// The commit's own record - the URL and content type it committed, and
+    /// the navigable ready with its new document - made BEFORE the document's
+    /// parse, as the spec has the navigable's new document active before its
+    /// parser runs ("finalize a cross-document navigation" activates the
+    /// entry, then the parser runs in later tasks). Crane parses the document
+    /// inside the commit, and "the end" completes its load in the parser's
+    /// task (Document lifecycleFinishLoading: the browsers' order, the user's
+    /// ruling 2026-11-12), so the container's load listeners - and the
+    /// document's own inline scripts - run before the commit returns. One of
+    /// them may remove the frame: "destroy a child navigable" sets the
+    /// container's content navigable to null (step 3) - `.discarded` here,
+    /// which `contentWindow` and `contentDocument` answer null for - and a
+    /// commit step still to come after the parse marked the destroyed
+    /// navigable ready again: the removed frame answered its Window
+    /// (crane/nav1-frame-load-removes-frame.html, since lane nav2 batch 12;
+    /// html/semantics/embedded-content/the-iframe-element/iframe-
+    /// synchronously-discard.html asserts null after a removal in a load
+    /// listener and passes in Chrome 157, Firefox 160 and Safari 27.2). The
+    /// browsers commit long before the parse ends - Blink's
+    /// DocumentLoader::CommitNavigation installs the document and its frame
+    /// state, and the body's bytes are parsed in later tasks - so nothing of
+    /// the commit is left to undo a removal; neither is anything here.
+    fn markCommitted(self: *IFrameIntegration, url: []const u8, content_type: []const u8) IFrameError!void {
+        try self.recordCommit(url, content_type);
         self.state = .ready;
     }
 
