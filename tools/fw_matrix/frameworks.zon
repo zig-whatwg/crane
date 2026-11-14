@@ -373,6 +373,22 @@
             },
             .excluded = "angular-22.2.6.txt",
             .skip_kinds = .{},
+            // The project's own runner in Chromium: `bazel test` of the 44
+            // targets' `_chromium` variants (web-test-runner through
+            // Puppeteer, rules_browsers' pinned headless shell), lane fw1 b5:
+            // per target its summary line summed. Its one failure is in core
+            // acceptance; zone.js browser_test also fails as a target on
+            // errors thrown outside its tests, with no spec failed.
+            .chrome_reference = .{
+                .browser = "Chrome for Testing headless shell 159.0.8154.2",
+                .runner = "bazel test <target>_chromium, web-test-runner through Puppeteer, the 44 targets",
+                .date = "2026-11-14",
+                .ran = 13165,
+                .passed = 13164,
+                .failed = 1,
+                .skipped = 96,
+                .source = "lane fw1 batch 5: each target's test.log summary (tmp/plans/lane-fw1-handoff.md, b5 ANGULAR)",
+            },
             .page_budget_s = 900,
             // Jasmine's console reporter prints only when the run ends: the
             // longest target took 16 s in Crane (core acceptance, 2,782
