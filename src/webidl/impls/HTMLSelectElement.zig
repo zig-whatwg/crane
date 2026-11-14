@@ -61,6 +61,8 @@ pub const InternalState = struct {
     typeahead: std.ArrayListUnmanaged(u8) = .empty,
     last_typeahead_time: f64 = -std.math.inf(f64),
     selectedcontent_interest: bool = false,
+    /// HTML 4.10.7 "pending selectedcontent update", initially false.
+    selectedcontent_pending: bool = false,
 
     /// What the state owns, without its element (dom.orphan_states): the
     /// custom validity message. The collections and the validity object are
@@ -154,6 +156,8 @@ pub fn installHooks() void {
         .set_picker_open = &setPickerOpen,
         .selectedcontent_interest = &selectedcontentInterest,
         .set_selectedcontent_interest = &setSelectedcontentInterest,
+        .selectedcontent_pending = &selectedcontentPending,
+        .set_selectedcontent_pending = &setSelectedcontentPending,
     });
     // The states no deinit reached - orphaned selects' - at their Browser's
     // end.
@@ -254,6 +258,16 @@ fn selectedcontentInterest(instance: *runtime.Instance) bool {
 fn setSelectedcontentInterest(instance: *runtime.Instance, present: bool) !void {
     if (!present and instance.getState(State).own._internal == null) return;
     (try internalState(instance)).selectedcontent_interest = present;
+}
+
+fn selectedcontentPending(instance: *runtime.Instance) bool {
+    return if (instance.getState(State).own._internal) |internal| internal.selectedcontent_pending else false;
+}
+
+/// False never allocates the state: the update steps set it on every select.
+fn setSelectedcontentPending(instance: *runtime.Instance, pending: bool) !void {
+    if (!pending and instance.getState(State).own._internal == null) return;
+    (try internalState(instance)).selectedcontent_pending = pending;
 }
 
 /// Initialize instance (creates the instance)

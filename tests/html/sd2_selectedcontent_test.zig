@@ -1,4 +1,5 @@
-//! Option and selectedcontent moving steps update clones in microtasks.
+//! A select's queued update of its descendant selectedcontent elements: a
+//! microtask that holds the select and runs while its update is pending.
 const std = @import("std");
 const dom = @import("dom");
 const html = @import("html");
@@ -7,9 +8,8 @@ const interfaces = @import("interfaces");
 const engine = @import("engine");
 const helpers = @import("edges_node_holders_helpers.zig");
 
-fn queueAllocationTrial(allocator: std.mem.Allocator, select: *runtime.Instance, content: *runtime.Instance) anyerror!void {
-    if (comptime !@hasDecl(html.forms.selected_content, "queueUpdate")) return error.SelectedcontentMicrotasksNotImplemented;
-    try html.forms.selected_content.queueUpdate(allocator, select, content);
+fn queueAllocationTrial(allocator: std.mem.Allocator, select: *runtime.Instance) anyerror!void {
+    try html.forms.selected_content.queueUpdate(allocator, select);
     try engine.performMicrotaskCheckpoint(select.ctx.agent.?);
 }
 
@@ -19,24 +19,22 @@ fn queueAllocationFailures() !void {
     try page.run("document.body.innerHTML = '<select id=s><button><selectedcontent id=c></selectedcontent></button><option>one</option></select>'");
     const document = page.browser.current_context.?.document_instance.?;
     const select = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("s"))).?;
-    const content = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("c"))).?;
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, queueAllocationTrial, .{ select, content });
+    // A failed queue leaves the pending flag false, so the next trial queues.
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, queueAllocationTrial, .{select});
+    try std.testing.expect(!dom.form_controls.selectedcontentPending(select));
 }
 
 fn queuedAtTeardown() !void {
-    if (comptime !@hasDecl(html.forms.selected_content, "queueUpdate")) return error.SelectedcontentMicrotasksNotImplemented;
     const page = try helpers.Page.open();
     defer page.close();
     try page.run("document.body.innerHTML = '<select id=s><button><selectedcontent id=c></selectedcontent></button><option>one</option></select>'");
     const document = page.browser.current_context.?.document_instance.?;
     const select = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("s"))).?;
-    const content = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("c"))).?;
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, select, content);
-    // No checkpoint: Browser teardown must drop the job and release both holds.
+    try html.forms.selected_content.queueUpdate(std.testing.allocator, select);
+    // No checkpoint: Browser teardown must drop the job and release the hold.
 }
 
 fn capturedNodesSurvive() !void {
-    if (comptime !@hasDecl(html.forms.selected_content, "queueUpdate")) return error.SelectedcontentMicrotasksNotImplemented;
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(
@@ -47,17 +45,15 @@ fn capturedNodesSurvive() !void {
     try page.turn(); // End WeakRef's creation job before exercising the keeps.
     const document = page.browser.current_context.?.document_instance.?;
     const select = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("s"))).?;
-    const content = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("c"))).?;
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, select, content);
+    try html.forms.selected_content.queueUpdate(std.testing.allocator, select);
     try page.run(
-        \\document.getElementById('c').remove();
         \\document.getElementById('s').remove();
         \\TestUtils.gc();
-        \\if (!selectWeak.deref() || !contentWeak.deref()) throw new Error('queued captures were collected');
+        \\if (!selectWeak.deref() || !contentWeak.deref()) throw new Error('the queued select or its content was collected');
         \\contentWeak.deref().textContent = 'old';
         \\globalThis.observedCapturedUpdate = false;
         \\queueMicrotask(() => {
-        \\  if (contentWeak.deref().textContent !== 'one') throw new Error('captured detached content was not updated');
+        \\  if (contentWeak.deref().textContent !== 'one') throw new Error('the detached select was not updated');
         \\  observedCapturedUpdate = true;
         \\});
     );
@@ -65,44 +61,39 @@ fn capturedNodesSurvive() !void {
     try page.run("if (!observedCapturedUpdate) throw new Error('observer microtask did not run')");
 }
 
-fn capturedOrderAndDisabledness() !void {
-    if (comptime !@hasDecl(html.forms.selected_content, "queueUpdate")) return error.SelectedcontentMicrotasksNotImplemented;
+/// HTML "queue an update of a select's descendant selectedcontent
+/// elements": the microtask updates while the select's pending flag is set,
+/// and does nothing once an update ran in the meantime.
+fn queuedUpdateRunsOnlyWhilePending() !void {
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(
-        \\document.body.innerHTML = '<select id=a><button></button><option>one</option></select><select id=b><button></button><option>two</option></select><selectedcontent id=c>seed</selectedcontent>';
+        \\document.body.innerHTML = '<select id=a><button><selectedcontent id=c></selectedcontent></button><option>one</option><option>two</option></select>';
         \\const a = document.getElementById('a');
-        \\const b = document.getElementById('b');
         \\const content = document.getElementById('c');
     );
     const document = page.browser.current_context.?.document_instance.?;
-    const first = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("a"))).?;
-    const second = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("b"))).?;
-    const content = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("c"))).?;
-    try page.run("content.remove()");
-    try std.testing.expect(!dom.selected_content.isDisabled(content));
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, first, content);
+    const select = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("a"))).?;
+    try html.forms.selected_content.queueUpdate(std.testing.allocator, select);
+    try std.testing.expect(dom.form_controls.selectedcontentPending(select));
+    // Queued once: a second request while pending queues nothing more.
+    try html.forms.selected_content.queueUpdate(std.testing.allocator, select);
     try page.run(
-        \\if (content.textContent !== 'seed') throw new Error('clone changed before checkpoint');
-        \\queueMicrotask(() => { if (content.textContent !== 'one') throw new Error('first captured select'); });
+        \\content.textContent = 'seed';
+        \\queueMicrotask(() => { if (content.textContent !== 'one') throw new Error('pending update did not run first'); });
     );
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, second, content);
-    try page.run("queueMicrotask(() => { if (content.textContent !== 'two') throw new Error('second captured select'); })");
     try page.turn();
-    try page.run("if (content.textContent !== 'two') throw new Error('last captured update missing')");
+    try std.testing.expect(!dom.form_controls.selectedcontentPending(select));
 
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, first, content);
-    try page.run("b.options[0].append(content); content.remove(); content.textContent = 'disabled'");
-    // Removal does not recalculate the flag set by insertion under an option.
-    try std.testing.expect(dom.selected_content.isDisabled(content));
+    try html.forms.selected_content.queueUpdate(std.testing.allocator, select);
+    try page.run(
+        \\a.options[1].selected = true;
+        \\if (content.textContent !== 'two') throw new Error('selected setter did not update at once');
+        \\content.textContent = 'after';
+        \\queueMicrotask(() => { if (content.textContent !== 'after') throw new Error('a stale microtask updated'); });
+    );
     try page.turn();
-    try page.run("if (content.textContent !== 'disabled') throw new Error('removed disabled content was updated')");
-
-    try page.run("b.firstElementChild.append(content); content.textContent = 'seed'");
-    try std.testing.expect(!dom.selected_content.isDisabled(content));
-    try html.forms.selected_content.queueUpdate(std.testing.allocator, first, content);
-    try page.turn();
-    try page.run("if (content.textContent !== 'one') throw new Error('current owner replaced the captured select')");
+    try page.run("if (content.textContent !== 'after') throw new Error('a stale microtask updated later')");
 }
 
 fn removedSelectSurvives() !void {
@@ -122,8 +113,8 @@ fn removedSelectSurvives() !void {
     try page.run("if (content.textContent !== 'two') throw new Error('detached select was not updated after collection')");
 }
 
-test "selectedcontent microtasks preserve captured select order and stored disabledness" {
-    try helpers.onFreshThread(capturedOrderAndDisabledness);
+test "a queued selectedcontent update runs only while the select's update is pending" {
+    try helpers.onFreshThread(queuedUpdateRunsOnlyWhilePending);
 }
 
 test "selectedcontent update keeps a detached select through collection" {
@@ -134,10 +125,10 @@ test "selectedcontent continuation frees its allocation on every failure" {
     try helpers.onFreshThread(queueAllocationFailures);
 }
 
-test "realm teardown drops a selectedcontent continuation and both captured nodes" {
+test "realm teardown drops a selectedcontent continuation and its captured select" {
     try helpers.onFreshThread(queuedAtTeardown);
 }
 
-test "selectedcontent microtask retains separately detached captured nodes through GC" {
+test "a queued selectedcontent update keeps a removed select and its content through GC" {
     try helpers.onFreshThread(capturedNodesSurvive);
 }
