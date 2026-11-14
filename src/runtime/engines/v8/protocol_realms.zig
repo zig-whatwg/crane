@@ -883,8 +883,33 @@ fn endCollectedRealm(data: ?*anyopaque) void {
     const record: *Detached = @ptrCast(@alignCast(data orelse return));
     record.task_queued = false;
     if (record.ended) return record.destroy();
+    // The collector took this realm because nothing reaches it - which says
+    // nothing of its children: a realm it holds (a predecessor E1 hung under
+    // it, a frame detached with its document) may still be reached by script
+    // elsewhere, and ends with its page, or when the collector takes it in
+    // turn - never with a realm that merely held it. So its children pass to
+    // its parent first (lane rep1 b2: page A's realm, under page B's, ended
+    // when B's was collected while a popup still held a function of A, whose
+    // sessionStorage then read through a severed Window - SecurityError).
+    passChildrenToParent(record.realm);
     // Ends the realm, and frees the record.
     endRealm(record.realm, .navigable_destroyed);
+}
+
+/// `realm`'s children become its parent's, in order - each ends with the
+/// parent from now on, or when the collector takes it. With no parent (a
+/// top-level realm), or out of memory, they stay and end with `realm`.
+fn passChildrenToParent(realm: Context) void {
+    const realms = realmsOf(realm) orelse return;
+    const state = realms.get(realm) orelse return;
+    const parent = state.parent orelse return;
+    const parent_state = realms.get(parent) orelse return;
+    parent_state.children.ensureUnusedCapacity(std.heap.c_allocator, state.children.items.len) catch return;
+    for (state.children.items) |child| {
+        parent_state.children.appendAssumeCapacity(child);
+        if (realms.get(child)) |child_state| child_state.parent = parent;
+    }
+    state.children.clearRetainingCapacity();
 }
 
 fn dropCollectedRealm(data: ?*anyopaque) void {
