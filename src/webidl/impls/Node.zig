@@ -74,6 +74,11 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
+    /// This is the node's state: an instance whose chain keeps it is a
+    /// counted node - its wrapper owns a reference, and its NodeBase holds
+    /// the wrapper slot (runtime.lifetime.countedOf reads this declaration).
+    pub const counted_node = true;
+
     // No allocator copy (lane perf2 batch 6): what the node allocates comes
     // from its Browser's allocator, runtime.allocatorOf(instance) - the one it
     // was made with, asserted in initOwn.
