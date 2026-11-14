@@ -2161,3 +2161,31 @@ kind = upstream-test-change
 why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the default configuration now lists 122 elements; Crane's has 121. No browser passes yet (0/1 each): the newer Sanitizer spec. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the sanitizer lane. Newly blocking.
 wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
 wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+# Generation 225 - lane nav2 batch 12 (the end of the parse: DOMContentLoaded, and the load when nothing delays it, in
+# the parser's task - the user's ruling 2026-11-12, golden rule 2).
+
+[html/syntax/parsing/DOMContentLoaded-defer.html]
+generation = 225
+kind = user-ruling
+why = DOMContentLoaded fires in the task in which the parser stops, as all three browsers fire it (Blink Document::FinishedParsing, "FIXME ... crbug.com/961428"; WebKit Document::finishedParsing, "FIXME ... webkit.org/b/82931"; Gecko's script runner), not in HTML's queued task: a zero-delay timer a defer script set now runs after DOMContentLoaded, 1 -> 0. Chrome 157, Firefox 160 and Safari 27.2 fail it the same way (wpt.fyi 24ddf405a0), and pass its tentative twin DOMContentLoaded-defer-task-order.tentative.html. Stable 3/3 in lane nav2 b12's isolation runs.
+date = 2026-11-12
+decision = the user, 2026-11-12 ~11:29 UTC, by prompt (option B: DOMContentLoaded synchronous at the end of the parse, then the load synchronously when nothing delays it), accepting this file's loss
+
+[html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-event-during-parse.html]
+generation = 225
+kind = user-ruling
+why = With the load completed in the parser's task (the user's 2026-11-12 ruling), the unhandledrejection a parse-time script's rejected promise queues (HTML "notify about rejected promises": a global task) fires after load: [readystatechange:interactive, readystatechange:complete] then the event, against the expected [interactive, unhandledrejection, complete], 1 -> 0. That is Safari 27.2's exact order. Chrome 157 logs [unhandledrejection, interactive, complete] (its parse ends in a later task than the script - Blink's body-finished task - and its notification is a posted task too: RejectedPromises::ProcessQueue -> ProcessQueueNow), FAIL; Firefox 160 passes (its load is posted). By mechanism (golden rule 2): the load at the end of the parse is Chrome + Safari's, the notification as a task Firefox + Safari's (and Blink's own) - together Safari's behaviour. Stable 3/3 in lane nav2 b12's isolation runs; the order is stated in Document.zig completeLoadUnlessDelayed.
+date = 2026-11-14
+decision = the user, 2026-11-14 12:17 UTC, by prompt (option b: keep the tip, Safari's order), after a corrected question (an earlier one said Chrome's order would pass; Chrome fails the file too)
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 225
+kind = timing-bound
+why = Re-measured after lane nav2 batch 12 touched its paths (the entry went STALE): unchanged cause - startTime is the time origin, the navigation's start (navigate() entry), and redirectStart the first hop's fetch start, both read from the monotonic clock and coarsened to the 125 us tick, with nothing waiting between them, so redirectStart is 0 unless the gap crosses a tick. A diagnostic production runner of 5cbd6e69fd7 (one warn line with the gap in createNavigationTimingEntry, deleted after) on chat.local, the file alone, 60 runs (wpt_runner --repeat, a fresh process per run): the iframe navigation's gap min 36 / p50 49 / max 67 us, 24 passes of 60 where the tick model (gap/125 per run, summed) predicts 23.7. Chrome and Safari pass through process hops of milliseconds; Firefox fails 2 of 3.
+tick_us = 125
+gap_us = min 36 / p50 49 / max 67
+pass_rate = 24/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 36-67 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 5cbd6e69fd7
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
