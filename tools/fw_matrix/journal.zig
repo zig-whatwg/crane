@@ -84,8 +84,10 @@ pub const SuiteKind = enum {
     pub fn label(k: SuiteKind) []const u8 {
         return switch (k) {
             .project => "the project's own browser suite",
-            // The user's words for these rows (2026-11-11).
-            .todomvc_port => "TodoMVC; Crane's port of the app spec; the project's own suite is not runnable without Node",
+            // Its own section of the report (the user, 2026-11-14: "TODOMVC
+            // is supposed to be called out separately"); never a stand-in
+            // for the framework's own suite.
+            .todomvc_port => "the framework's TodoMVC app, checked by Crane's port of the TodoMVC app spec",
         };
     }
 };
@@ -126,6 +128,10 @@ pub const TestRecord = struct {
     /// FAIL: the first failing assertion as the framework printed it.
     message: ?[]const u8 = null,
     duration_ms: ?u64 = null,
+    /// The browser that ran it, for the comparison column ("Chrome for
+    /// Testing 157.0.8103.78"); absent for Crane. Added in fw1 b5: lines
+    /// written before have none, and read the same.
+    browser: ?[]const u8 = null,
 };
 
 pub const PageStatus = enum {
@@ -174,6 +180,11 @@ pub const PageRecord = struct {
     ran: u32,
     /// Test records written for the page, all statuses.
     records: u32,
+    /// Tests the framework counted but did not name (Jasmine's console
+    /// reporter: a dot per passed spec, a star per pending one); counted with
+    /// the page's named tests on the report (fw1 b5).
+    unnamed_passed: ?u32 = null,
+    unnamed_pending: ?u32 = null,
     /// How the console ended ("exited with code 0", ...).
     exit: []const u8,
     /// Page errors the console printed (uncaught exceptions, unhandled
@@ -186,17 +197,29 @@ pub const PageRecord = struct {
     /// `server`); absent when the harness's static server served it. Added
     /// in fw1 b4: lines written before have none, and read the same.
     server: ?ServerInfo = null,
+    /// The browser that opened the page, for the comparison column; absent
+    /// for Crane (whose commit and console are the record's own). On a
+    /// browser's record `crane_commit` is "none" and `console_sha256` the
+    /// browser's executable's. Added in fw1 b5.
+    browser: ?[]const u8 = null,
 };
 
 /// A project's own test server, as a page record names it.
 pub const ServerInfo = struct {
     /// The manifest's name for it ("jquery-test-runner 0.3.0").
     name: []const u8,
-    /// The Node version it ran under ("24.22.3").
-    node: []const u8,
+    /// The Node version it ran under ("24.22.3"); absent for a server the
+    /// project's Bazel runs (its own Node toolchain).
+    node: ?[]const u8 = null,
     /// The hash of the tree's node_modules as `fw_matrix fetch` installed it
-    /// and the run found it (fetch.nodeModulesHash).
-    node_modules_sha256: []const u8,
+    /// and the run found it (fetch.dirHash).
+    node_modules_sha256: ?[]const u8 = null,
+    /// The Bazel release that ran it ("8.8.2"), and the sha256 of the tree's
+    /// MODULE.bazel.lock, which pins everything Bazel fetched (fw1 b5).
+    bazel: ?[]const u8 = null,
+    bazel_lock_sha256: ?[]const u8 = null,
+    /// The Bazel target that served the page.
+    target: ?[]const u8 = null,
 };
 
 pub const max_errors = 20;
@@ -224,7 +247,10 @@ pub fn validatePage(r: PageRecord) ValidationError!void {
     if (!std.mem.eql(u8, r.record, "page")) return error.BadRecordKind;
     if (!isSha256(r.console_sha256) or !isSha256(r.source_sha256)) return error.BadSha256;
     if (r.status != .OK and r.message == null) return error.MissingMessage;
-    if (r.server) |s| if (!isSha256(s.node_modules_sha256)) return error.BadSha256;
+    if (r.server) |s| {
+        if (s.node_modules_sha256) |h| if (!isSha256(h)) return error.BadSha256;
+        if (s.bazel_lock_sha256) |h| if (!isSha256(h)) return error.BadSha256;
+    }
 }
 
 pub const Line = union(enum) {
@@ -461,7 +487,7 @@ test "a page served by the project's own server names it, its Node and its node_
         out.written(),
     );
     const back = try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"));
-    try testing.expectEqualStrings("24.22.3", back.page_record.server.?.node);
+    try testing.expectEqualStrings("24.22.3", back.page_record.server.?.node.?);
     // A hash that is not one is refused.
     try testing.expectError(error.BadSha256, parseLine(arena, try std.mem.replaceOwned(u8, arena, std.mem.trimEnd(u8, out.written(), "\n"), "\"node_modules_sha256\":\"" ++ sha_a, "\"node_modules_sha256\":\"abc")));
     // A line written before the field existed reads with none.
@@ -471,6 +497,21 @@ test "a page served by the project's own server names it, its Node and its node_
     try writePage(&out.writer, plain);
     try testing.expect(std.mem.indexOf(u8, out.written(), "server") == null);
     try testing.expectEqual(@as(?ServerInfo, null), (try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"))).page_record.server);
+}
+
+test "a browser's record names it; Crane's records have none, as before" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var out: Io.Writer.Allocating = .init(a);
+    try writeTest(&out.writer, .{ .label = "c", .crane_commit = "none", .console_sha256 = sha_a, .framework = "react", .version = "19.2.5", .suite = "react-todomvc", .suite_kind = .todomvc_port, .source_sha256 = sha_b, .page = "todomvc", .module = "m", .name = "n", .id = "m: n", .status = .PASS, .browser = "Chrome for Testing 157.0.8103.78" });
+    try testing.expect(std.mem.endsWith(u8, out.written(), ",\"status\":\"PASS\",\"browser\":\"Chrome for Testing 157.0.8103.78\"}\n"));
+    const back = try parseLine(a, std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqualStrings("Chrome for Testing 157.0.8103.78", back.test_record.browser.?);
+    var crane: Io.Writer.Allocating = .init(a);
+    try writePage(&crane.writer, .{ .label = "x", .crane_commit = "c", .console_sha256 = sha_a, .framework = "f", .version = "1", .suite = "s", .suite_kind = .project, .source_sha256 = sha_b, .page = "p", .url = "u", .status = .OK, .wall_ms = 1, .ran = 1, .records = 1, .exit = "exited with code 0" });
+    try testing.expect(std.mem.indexOf(u8, crane.written(), "browser") == null);
+    try testing.expectEqual(@as(?[]const u8, null), (try parseLine(a, std.mem.trimEnd(u8, crane.written(), "\n"))).page_record.browser);
 }
 
 test "lines read back strictly: an unknown field, a wrong type or a missing kind fail" {
