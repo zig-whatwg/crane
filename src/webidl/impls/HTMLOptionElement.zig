@@ -138,20 +138,33 @@ pub fn installHooks() void {
     dom.mutation.registerMovingStepsCallback(&movingSteps) catch {};
 }
 
+/// HTML option children parsed steps, given option.
 fn finishedParsingChildren(option: *runtime.Instance) void {
+    // 1. Let select be option's cached nearest ancestor select element.
+    // 2. If select is null or option's selectedness is false, then return.
     const select = ownerSelect(option) orelse return;
     if (!dom.form_controls.selectedcontentInterest(select)) return;
     if (!(get_selected(option) catch false)) return;
+    // 3. Update a select's descendant selectedcontent elements given select.
     selected_content.updateAll(select) catch {};
 }
 
+/// HTML option post-connection steps, given insertedOption. The update
+/// happens here rather than in the insertion steps, as the tree is then in
+/// a consistent state, and only once when several options are inserted
+/// together: the select's pending flag, not this option's selectedness,
+/// decides.
 fn postConnectionSteps(node: *dom.NodeBase) void {
-    if (node.node_type != interfaces.Node.get_ELEMENT_NODE()) return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return));
-    if (instance.stateAs(State) == null) return;
-    // HTML option post-connection steps and parser-pop steps run the same
-    // update, only after the tree is consistent and only for a selected option.
-    finishedParsingChildren(instance);
+    const option = optionInstance(node) orelse return;
+    // 1. Let select be insertedOption's cached nearest ancestor select
+    // element. (Crane caches no owner: the ancestor walk answers it, and no
+    // script ran since the insertion steps that set it.)
+    // 2. If select is null or select's pending selectedcontent update is
+    // false, then return.
+    const select = ownerSelect(option) orelse return;
+    if (!dom.form_controls.selectedcontentPending(select)) return;
+    // 3. Update a select's descendant selectedcontent elements given select.
+    selected_content.updateAll(select) catch {};
 }
 
 /// HTMLOptionElement's own construction steps: the generated chain runs HTMLElement's first.
@@ -431,8 +444,14 @@ fn selectAttributeChanged(select: *runtime.Instance, name: []const u8, old: ?[]c
     defer options.deinit(select.ctx.allocator);
     collectOptions(select, select.ctx.allocator, &options) catch return;
     // A parser assigns attributes before adding options: preserve that
-    // empty-list fast path, with nothing to reset or clone.
-    if (options.items.len == 0) return;
+    // empty-list fast path, with nothing to reset. A multiple change still
+    // updates the selectedcontent elements ("reset a select's selectedness"
+    // given true): it clears their pending update, and clears their
+    // contents when multiple went away.
+    if (options.items.len == 0) {
+        if (multiple_change) selected_content.updateAll(select) catch {};
+        return;
+    }
     if (multiple_change and value == null) {
         var seen = false;
         for (options.items) |option| {
@@ -534,13 +553,25 @@ fn insertedInto(select: *runtime.Instance, option: *runtime.Instance) !bool {
     return try setSelectednessForInsertion(select, options.items, option);
 }
 
+/// HTML option insertion steps, given insertedOption.
 fn insertionSteps(node: *dom.NodeBase) void {
     const option = optionInstance(node) orelse return;
+    // 1. Let selects be the result of update an option's nearest ancestor
+    // select given insertedOption.
     const select = ownerSelect(option) orelse return;
-    // Updating the nearest ancestor select, step 4: insertion of a whole
-    // select preserves its options' owner, including a cleared selection.
+    // Update an option's nearest ancestor select, step 4: insertion of a
+    // whole select preserves its options' owner, including a cleared
+    // selection: no select needs its selectedcontent updated.
     if (controls.optionOwnerUnchanged(select)) return;
-    _ = insertedInto(select, option) catch return;
+    // Step 6.2-6.3: the selectedness setting algorithm, and the select is
+    // one to update when the option is selected or something changed.
+    const changed = insertedInto(select, option) catch return;
+    if (!ownSelectedness(option) and !changed) return;
+    // 2. If insertedOption is not connected, then return.
+    if (!node.is_connected) return;
+    // 3. For each select of selects: queue an update of a select's
+    // descendant selectedcontent elements given select.
+    selected_content.queueUpdate(select.ctx.allocator, select) catch {};
 }
 
 /// Reconstruct only the old ancestor walk, replacing the edge the DOM just
@@ -582,11 +613,11 @@ fn changedOwner(option: *runtime.Instance, old_select: ?*runtime.Instance) void 
             collectOptions(select, select.ctx.allocator, &options) catch return;
             changed = setSelectednessForList(select, options.items) catch return;
         }
-        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select, null) catch {};
+        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select) catch {};
     }
     if (new_select) |select| {
         const changed = insertedInto(select, option) catch return;
-        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select, null) catch {};
+        if (ownSelectedness(option) or changed) selected_content.queueUpdate(select.ctx.allocator, select) catch {};
     }
 }
 

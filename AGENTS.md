@@ -82,6 +82,7 @@ Then branch on type:
 - **Batch the expensive gates** (the user, 2026-11-01): each change still gets its own cheap red/green proof; changes whose files and WPT directories do not overlap share one native gate, one runner build and one A/B; before starting any gate or run over 20 minutes, batch in what else is about to land; merge current main into your branch before you report (docs/agents/working-on-crane.md).
 - **Handle-ownership changes:** `zig build test` and the DOM WPT files are not sufficient - run the regression protocol (timers x3), and call a sweep-only crash fixed only when same-list counts say so (tests/AGENTS.md).
 - Everything you generate that is not source or a committed doc goes in `tmp/`; background jobs use `$CLAUDE_JOB_DIR/tmp`; the project root holds committed docs only.
+- **Times are US Eastern, 12-hour, and say so** (the user, 2026-11-14: "don't show 24 hour time, 12-hour time only ... Eastern time only"): every time written for a person - messages, reports, START / END and window lines, held-files.md, briefs, commit messages, docs - reads like `4:52 PM ET`, never `16:52` and never UTC. Stamp it from the clock (`TZ=America/New_York date '+%-I:%M %p ET'`, which is right on the Mac and on the pool hosts alike). Machine-read timestamps (journal fields, data files, a tool's own output format) are data and keep their format.
 
 ## Tests come first, in short
 
