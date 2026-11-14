@@ -31,6 +31,23 @@
   const params = new URLSearchParams(location.search);
   const proveLayout = params.get('prove') === 'layout';
 
+  // Cypress's configuration as the project sets it in cypress.config.js
+  // (spec.js reads it before the run), Cypress's defaults where it sets
+  // nothing (packages/config: includeShadowDom false).
+  const config = { includeShadowDom: false };
+
+  // What cypress.config.js sets for the options the port honours. TodoMVC's
+  // sets includeShadowDom: true in its e2e block ("required for the spec's
+  // selectors to find anything in the web-component apps"); the port reads
+  // the project's file, never a copy, and refuses one it cannot read as one
+  // value.
+  function readCypressConfig(text) {
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((line) => line.replace(/^\s*\/\/.*$/, '')).join('\n');
+    const found = [...code.matchAll(/\bincludeShadowDom\s*:\s*(true|false)\b/g)];
+    if (found.length > 1) throw new Error('cypress.config.js sets includeShadowDom more than once; the port reads one value');
+    return { includeShadowDom: found.length === 1 && found[0][1] === 'true' };
+  }
+
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   class CommandError extends Error {}
@@ -144,21 +161,185 @@
   }
 
   // ---------------------------------------------------------------------
-  // Text, as cy.contains matches it: whitespace collapsed and trimmed.
+  // Text, as cy.contains matches it (Cypress dom/elements/utils.ts
+  // normalizeWhitespaces): textContent with each run of whitespace made one
+  // space, not trimmed; a <pre>'s text as it is.
 
-  const textOf = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
-  const textMatches = (el, content) => (content instanceof RegExp ? content.test(textOf(el)) : textOf(el).includes(String(content)));
+  const textOf = (el) => {
+    const text = el.textContent || '';
+    return el.localName === 'pre' ? text : text.replace(/\s+/g, ' ');
+  };
+
+  // ---------------------------------------------------------------------
+  // Shadow roots, as Cypress finds them (dom/elements/shadow.ts
+  // findAllShadowRoots): every open shadow root below `root`, depth first
+  // from the last one found, each root's own (a tree walker over elements
+  // that host one) before the roots inside them.
+
+  function findShadowRoots(root) {
+    const doc = root.getRootNode({ composed: true });
+    const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_DOCUMENT_FRAGMENT, {
+      acceptNode(node) {
+        return node.shadowRoot ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      },
+    });
+    const roots = [];
+    if (root.shadowRoot) roots.push(root.shadowRoot);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) roots.push(node.shadowRoot);
+    return roots;
+  }
+
+  function findAllShadowRoots(root) {
+    const pending = [root];
+    const nodes = [];
+    for (let current = pending.pop(); current; current = pending.pop()) {
+      const childRoots = findShadowRoots(current);
+      if (childRoots.length > 0) {
+        pending.push(...childRoots);
+        nodes.push(...childRoots);
+      }
+    }
+    return nodes;
+  }
+
+  // jQuery 3.7.1's uniqueSort (the jQuery Cypress 15.14.2 bundles), which
+  // orders what a query over several contexts found: document order within
+  // one tree; two nodes of different trees (compareDocumentPosition says
+  // DISCONNECTED: a shadow tree and the document, or two shadow trees)
+  // compare equal, as neither is in jQuery's own document (Cypress's spec
+  // frame), so the stable sort keeps the order they were found in.
+  function uniqueSort(nodes) {
+    let hasDuplicate = false;
+    nodes.sort((a, b) => {
+      if (a === b) {
+        hasDuplicate = true;
+        return 0;
+      }
+      const compare = (a.ownerDocument || a) === (b.ownerDocument || b) ? a.compareDocumentPosition(b) : 1;
+      if (compare & 1) return 0;
+      return compare & 4 ? -1 : 1;
+    });
+    if (!hasDuplicate) return nodes;
+    return nodes.filter((node, i) => i === 0 || node !== nodes[i - 1]);
+  }
 
   // ---------------------------------------------------------------------
   // Queries: a chain re-evaluated on every retry, as Cypress re-runs its
   // queries until the assertion that follows them passes or times out.
 
-  function querySelectorAllVisible(root, selector) {
-    // The spec's one jQuery extension, a trailing `:visible`
-    // (spec.cy.js:349,362; commands.js:42).
+  // A selector's comma-separated groups (outside brackets and strings).
+  function selectorGroups(selector) {
+    const groups = [];
+    let depth = 0;
+    let quote = null;
+    let start = 0;
+    for (let i = 0; i < selector.length; i++) {
+      const c = selector[i];
+      if (quote) {
+        if (c === '\\') i++;
+        else if (c === quote) quote = null;
+      } else if (c === '"' || c === "'") quote = c;
+      else if (c === '(' || c === '[') depth++;
+      else if (c === ')' || c === ']') depth--;
+      else if (c === ',' && depth === 0) {
+        groups.push(selector.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+    groups.push(selector.slice(start).trim());
+    return groups;
+  }
+
+  // jQuery.find(selector, context): in an element, each group of the
+  // selector is scoped to it (Sizzle's "#nid <group>" rewrite: the whole
+  // group matches inside the element); in a document or shadow root, as it
+  // is. The spec's one jQuery extension, a trailing `:visible`
+  // (spec.cy.js:349,362; commands.js:42), is Cypress's visibility (its
+  // config/jquery.ts replaces jQuery's).
+  function findIn(context, selector) {
     const m = /^(.*):visible$/.exec(selector);
-    if (!m) return [...root.querySelectorAll(selector)];
-    return [...root.querySelectorAll(m[1])].filter(isVisible);
+    const plain = m ? m[1] : selector;
+    const scoped = context.nodeType === 1 ? selectorGroups(plain).map((g) => ':scope ' + g).join(', ') : plain;
+    const found = [...context.querySelectorAll(scoped)];
+    return m ? found.filter((el) => isVisible(el)) : found;
+  }
+
+  // jQuery.fn.find over a set of contexts: each context's matches in turn,
+  // then uniqueSort when there was more than one context.
+  function findInEach(contexts, selector) {
+    const out = [];
+    for (const context of contexts) out.push(...findIn(context, selector));
+    return contexts.length > 1 ? uniqueSort(out) : out;
+  }
+
+  // cy.get within `root` (querying.ts get): with includeShadowDom, in each
+  // of root's shadow roots and then root itself; the document alone
+  // otherwise.
+  function getIn(root, selector) {
+    return findInEach(config.includeShadowDom ? findAllShadowRoots(root).concat(root) : [root], selector);
+  }
+
+  // The elements cy.contains' selector matches within one context
+  // (find.ts getContainsSelector): for each group of the filter (any
+  // element when there is none), an element whose text holds the content
+  // (`:cy-contains`, matched case and all) or matches the RegExp
+  // (`:cy-contains-regex`, a submit input by its value), or a submit input
+  // of that group whose value holds the content as a word
+  // (`[type='submit'][value~=...]`), in document order. Sizzle runs these
+  // non-native pseudos itself: a group's ancestors are not scoped to the
+  // context, as with querySelectorAll.
+  function containsMatch(el, filter, content) {
+    const groups = filter ? selectorGroups(filter) : ['*'];
+    const isSubmit = el.localName === 'input' && el.type === 'submit';
+    const literal = content instanceof RegExp ? content.toString() : String(content);
+    return groups.some((g) => {
+      if (!el.matches(g)) return false;
+      if (content instanceof RegExp) {
+        if (isSubmit ? content.test(el.value) : content.test(textOf(el))) return true;
+      } else if (textOf(el).includes(literal)) return true;
+      return el.getAttribute('type') === 'submit' && (el.getAttribute('value') || '').split(/\s+/).includes(literal);
+    });
+  }
+  function containsIn(context, filter, content) {
+    return [...context.querySelectorAll('*')].filter((el) => containsMatch(el, filter, content));
+  }
+
+  // find.ts getFirstDeepestElement: from the first match, step to the next
+  // while it is inside the current one (script and style skipped); stop at
+  // a priority element (submit input, button, a, label), else yield the
+  // last match that is a priority-element ancestor of the current one.
+  const PRIORITY = "input[type='submit'], button, a, label";
+  function jqContains(a, b) { // jQuery.contains
+    const up = b && b.parentNode;
+    return a === up || !!(up && up.nodeType === 1 && a.contains(up));
+  }
+  function getFirstDeepestElement(els, index = 0) {
+    const current = els[index];
+    if (current === undefined) return [];
+    const next = els[index + 1];
+    if (current.localName === 'script' || current.localName === 'style') return getFirstDeepestElement(els, index + 1);
+    if (jqContains(current, next)) return getFirstDeepestElement(els, index + 1);
+    if (current.matches(PRIORITY)) return [current];
+    const parents = [];
+    for (let p = parentOf(current); p; p = parentOf(p)) if (p.matches(PRIORITY)) parents.push(p);
+    const priorities = els.filter((el) => parents.includes(el));
+    return priorities.length ? [priorities[priorities.length - 1]] : [current];
+  }
+
+  // cy.contains on a subject (querying.ts contains): its matches in each
+  // subject element (and that element's shadow roots, with
+  // includeShadowDom), merged in jQuery's order; when there are none, the
+  // subject elements that match themselves; then the first deepest.
+  function containsWithin(subject, filter, content) {
+    let found = [];
+    for (const el of subject) {
+      const scope = config.includeShadowDom ? findAllShadowRoots(el).concat(el) : [el];
+      const inEl = [];
+      for (const context of scope) inEl.push(...containsIn(context, filter, content));
+      found = uniqueSort(found.concat(scope.length > 1 ? uniqueSort(inEl) : inEl));
+    }
+    if (found.length === 0) found = subject.filter((el) => containsMatch(el, filter, content));
+    return getFirstDeepestElement(found);
   }
 
   class Chain {
@@ -171,24 +352,23 @@
       return new Chain(() => { const els = this.run(); return els[i] ? [els[i]] : []; }, `${this.label}.eq(${i})`);
     }
 
+    // .find(selector) (traversals.ts): in the subject's elements, and with
+    // includeShadowDom in their shadow roots too (the set merged by
+    // jQuery's .add, which sorts it).
     find(selector) {
-      return new Chain(() => this.run().flatMap((el) => querySelectorAllVisible(el, selector)), `${this.label}.find('${selector}')`);
+      return new Chain(() => {
+        const subject = this.run();
+        const contexts = config.includeShadowDom ? uniqueSort(subject.concat(subject.flatMap((el) => findAllShadowRoots(el)))) : subject;
+        return findInEach(contexts, selector);
+      }, `${this.label}.find('${selector}')`);
     }
 
-    // .contains(content) / .contains(selector, content) within the subject:
-    // Cypress yields the deepest element containing the text, or the
-    // nearest a / button / label / submit input around it.
+    // .contains(content) / .contains(selector, content) within the subject
+    // (containsWithin above).
     contains(a, b) {
-      const selector = b === undefined ? null : a;
+      const filter = b === undefined ? '' : a;
       const content = b === undefined ? a : b;
-      return new Chain(() => {
-        const out = [];
-        for (const subject of this.run()) {
-          const found = containsWithin(subject, selector, content);
-          if (found) out.push(found);
-        }
-        return out.slice(0, 1);
-      }, `${this.label}.contains(${selector ? `'${selector}', ` : ''}${content})`);
+      return new Chain(() => containsWithin(this.run(), filter, content), `${this.label}.contains(${filter ? `'${filter}', ` : ''}${content})`);
     }
 
     // .as(name): Cypress 12+ re-runs an aliased query each time the alias
@@ -286,16 +466,6 @@
       throw e;
     }
     return new Chain(() => [el], chain.label);
-  }
-
-  function containsWithin(subject, selector, content) {
-    const candidates = [subject, ...subject.querySelectorAll(selector || '*')].filter((el) => (selector ? el.matches(selector) : true) && !['script', 'style'].includes(el.localName) && textMatches(el, content));
-    if (candidates.length === 0) return null;
-    if (selector) return candidates[0];
-    // The deepest: a candidate with no candidate inside it.
-    const deepest = candidates.find((el) => !candidates.some((o) => o !== el && el.contains(o)));
-    const priority = deepest.closest('input[type=submit], button, a, label');
-    return priority && subject.contains(priority) ? priority : deepest;
   }
 
   function evaluate(chainer, args, els) {
@@ -534,8 +704,24 @@
     });
   }
 
+  // complexElements.ts isFocused: the active element of the element's own
+  // root (its shadow root, else its document), which is not the default
+  // (none, or a body that is not editable).
+  function isFocused(el, root) {
+    const active = root.activeElement;
+    if (!active || (active === root.body && !active.isContentEditable)) return false;
+    return active === el;
+  }
+  function getFocused(root) {
+    if (!root) return null;
+    const active = root.activeElement;
+    if (!isFocused(active, root)) return null;
+    if (active.shadowRoot && active.shadowRoot.activeElement) return getFocused(active.shadowRoot);
+    return active;
+  }
+
   const cy = {
-    // cy.visit: Cypress 12+ test isolation clears the page (about:blank)
+    // cy.visit:Cypress 12+ test isolation clears the page (about:blank)
     // and the origin's storage before each test, then loads the URL.
     async visit(url) {
       try {
@@ -574,15 +760,19 @@
           return aliases[name]();
         }, `cy.get('${selector}')`);
       }
-      return new Chain(() => querySelectorAllVisible(aut.doc, selector), `cy.get('${selector}')`);
+      return new Chain(() => getIn(aut.doc, selector), `cy.get('${selector}')`);
     },
+    // cy.contains with no subject: within the body (querying.ts).
     contains(a, b) {
-      return new Chain(() => [aut.doc.documentElement], 'cy').contains(a, b);
+      return new Chain(() => (aut.doc.body ? [aut.doc.body] : []), 'cy').contains(a, b);
     },
+    // cy.focused() (cy/focused.ts getFocused): the document's focused
+    // element, or, when that hosts a shadow root with a focused element,
+    // that root's, innermost first - whatever includeShadowDom says.
     focused() {
       return new Chain(() => {
-        const a = aut.doc.activeElement;
-        return a && a !== aut.doc.body ? [a] : [];
+        const el = getFocused(aut.doc);
+        return el ? [el] : [];
       }, 'cy.focused()');
     },
     wrap(els, label) {
@@ -595,6 +785,8 @@
   global.Driver = {
     cy,
     aut,
+    config,
+    readCypressConfig,
     CommandError,
     proveLayout,
     isVisible,

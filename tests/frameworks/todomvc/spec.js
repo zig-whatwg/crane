@@ -9,14 +9,21 @@
 // served tree at run time, never copied here, and the list of tests is
 // checked against the spec's source before the run starts.
 //
-// The app: ?framework=<name> (a directory of examples/: react, vue,
-// knockoutjs, ...), at '/examples/' + the spec's folder for it, served from
-// the tree's root as the project's server serves it (cypress.config.js:
-// baseUrl http://localhost:8000/examples/; tests/server.js:
-// express.static(root)). &folder=<path below examples/> opens the build
-// todomvc.com links instead, where the spec's frameworkFolders table names
-// another or none (javascript-es5/dist, jquery/dist, emberjs/todomvc/dist):
-// the report measures the apps the site lists (the user, 2026-11-14).
+// The app: ?framework=<value>, exactly what Cypress takes as
+// `--env framework=<value>` (spec.cy.js:18): a directory of examples/
+// (react, vue, knockoutjs, ...) or a path below it, opened at '/examples/' +
+// frameworkFolders[value] || value (spec.cy.js:53), served from the tree's
+// root as the project's server serves it (cypress.config.js: baseUrl
+// http://localhost:8000/examples/; tests/server.js: express.static(root)).
+// The spec's own error text names the path form ("CYPRESS_framework=
+// angular-dart/web"); the matrix passes it for the five apps whose build
+// todomvc.com links is not the spec's default folder (backbone/dist,
+// emberjs/todomvc/dist, javascript-es5/dist, jquery/dist,
+// web-components/dist: the defaults are unbuilt sources), and those apps
+// lose their name-keyed tables exactly as they do in Cypress.
+//
+// Cypress's configuration is read from the project's cypress.config.js
+// (includeShadowDom: driver.js), never copied.
 'use strict';
 
 QUnit.config.autostart = false;
@@ -30,6 +37,7 @@ QUnit.config.reporters.tap = true;
   const { cy } = Driver;
   const SPEC = '/cypress/e2e/spec.cy.js';
   const KNOWN_ISSUES = '/tests/knownIssues.js';
+  const CONFIG = '/cypress.config.js';
 
   async function source(url) {
     const r = await fetch(url);
@@ -62,7 +70,8 @@ QUnit.config.reporters.tap = true;
 
   let spec;
   try {
-    const [specSource, knownSource] = await Promise.all([source(SPEC), source(KNOWN_ISSUES)]);
+    const [specSource, knownSource, configSource] = await Promise.all([source(SPEC), source(KNOWN_ISSUES), source(CONFIG)]);
+    Object.assign(Driver.config, Driver.readCypressConfig(configSource));
     spec = {
       source: specSource,
       frameworkFolders: table(specSource, 'frameworkFolders'), // spec.cy.js:38-52
@@ -82,21 +91,15 @@ QUnit.config.reporters.tap = true;
   }
 
   const framework = new URLSearchParams(location.search).get('framework');
-  if (!framework) {
-    QUnit.onUncaughtException(new Error('name the app: ?framework=<name> (a folder of examples/)'));
+  if (!framework || !/^[A-Za-z0-9_-][A-Za-z0-9_.-]*(\/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$/.test(framework)) {
+    QUnit.onUncaughtException(new Error('name the app: ?framework=<name> (a folder of examples/, or a path below it)'));
     QUnit.start();
     return;
   }
   document.title = `TodoMVC - ${framework} (Crane's port of the app spec)`;
 
-  // spec.cy.js:53, or the folder the site links (&folder=, above).
-  const siteFolder = new URLSearchParams(location.search).get('folder');
-  if (siteFolder !== null && !/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(siteFolder)) {
-    QUnit.onUncaughtException(new Error(`&folder=${siteFolder}: a path below examples/`));
-    QUnit.start();
-    return;
-  }
-  const getExampleFolder = (fw) => siteFolder || spec.frameworkFolders[fw] || fw;
+  // spec.cy.js:53
+  const getExampleFolder = (fw) => spec.frameworkFolders[fw] || fw;
   const { noLocalStorageCheck, noLocalStorageSpyCheck, badLocalStorageFormat, blurAfterType, usesIDSelectors } = spec;
 
   // spec.cy.js:124-129
