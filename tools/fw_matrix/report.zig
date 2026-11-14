@@ -324,7 +324,7 @@ pub const Axis = struct {
 };
 
 /// Two rates further apart than this split the axis.
-const cluster_gap = 5.0;
+const cluster_gap = 15.0;
 /// The gap between two segments, as a fraction of the plot.
 const break_width = 0.07;
 const steps = [_]f64{ 0.2, 0.5, 1, 2, 5, 10, 20, 25 };
@@ -352,9 +352,9 @@ fn segmentFor(min: f64, max: f64) Segment {
 }
 
 /// The axis for `values` (percentages): one segment around them, or two
-/// when they fall in two clusters more than `cluster_gap` apart, each as
-/// wide as its range (at least a quarter of the plot); 0-100 when they fall
-/// in more than two.
+/// when they fall in two clusters more than `cluster_gap` points apart, each
+/// given room by the rates it holds (at least a quarter of the plot); 0-100
+/// when they fall in more than two.
 pub fn axisFor(arena: Allocator, values: []const f64) !Axis {
     const whole: Axis = .{ .segs = .{ .{ .lo = 0, .hi = 100, .step = 20, .x0 = 0, .x1 = 1 }, undefined }, .n = 1 };
     if (values.len == 0) return whole;
@@ -371,7 +371,12 @@ pub fn axisFor(arena: Allocator, values: []const f64) !Axis {
     var a = segmentFor(v[0], v[cut - 1]);
     var b = segmentFor(v[cut], v[v.len - 1]);
     if (a.hi >= b.lo) return .{ .segs = .{ segmentFor(v[0], v[v.len - 1]), undefined }, .n = 1 };
-    const wa = @max(0.25, (a.hi - a.lo) / ((a.hi - a.lo) + (b.hi - b.lo)));
+    // Room by the rates each holds (direction A: the crowded 99-100% gets
+    // the most), never under a quarter; every tick is labelled, so the two
+    // scales are read apart.
+    const na: f64 = @floatFromInt(cut);
+    const nb: f64 = @floatFromInt(v.len - cut);
+    const wa = @max(0.25, na / (na + nb));
     const wb = @max(0.25, 1 - wa);
     const room = 1 - break_width;
     a.x0 = 0;
@@ -510,9 +515,9 @@ const style =
     \\:root[data-theme="dark"] .fw { --crane: #3987e5; }
     \\.fw .subtitle { max-width: 52rem; }
     \\.fw .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    \\.fw .chart { margin: 0 0 2.6rem; }
-    \\.fw .chart .box-head { align-items: center; flex-wrap: wrap; row-gap: 0.4rem; }
-    \\.fw .chart h2.box-title { position: static; }
+    \\.fw .rates { margin: 0 0 2.6rem; }
+    \\.fw .rates .box-head { align-items: center; flex-wrap: wrap; row-gap: 0.4rem; }
+    \\.fw .rates h2.box-title { position: static; }
     \\.fw .key { display: flex; gap: 1.2rem; margin: 0; padding: 0; list-style: none; font: 500 0.84rem/1 var(--sans); color: var(--ink); }
     \\.fw .key li { display: flex; align-items: center; gap: 0.4rem; }
     \\.fw .rows { padding: 0.5rem 1rem 0.2rem; }
@@ -638,7 +643,7 @@ fn writeChart(arena: Allocator, w: W, rows: []const Row) !void {
         if (r.chrome) |c| if (pct(c)) |v| try values.append(arena, v);
     }
     const axis = try axisFor(arena, values.items);
-    try w.writeAll("<section class=\"box chart\" id=\"rates\" aria-labelledby=\"rates-h\">\n<div class=\"box-head\"><h2 class=\"box-title\" id=\"rates-h\">Pass rate: Crane beside Chrome</h2>\n");
+    try w.writeAll("<section class=\"box rates\" id=\"rates\" aria-labelledby=\"rates-h\">\n<div class=\"box-head\"><h2 class=\"box-title\" id=\"rates-h\">Pass rate: Crane beside Chrome</h2>\n");
     try w.writeAll("<ul class=\"key\"><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"var(--crane)\"/></svg>Crane</li><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"var(--paper)\" stroke=\"var(--ink-2)\" stroke-width=\"2\"/></svg>Chrome</li></ul></div>\n");
     try w.writeAll("<div class=\"rows\" role=\"list\">\n<div class=\"dr dr-head\" aria-hidden=\"true\"><span>Crane</span><span>Chrome</span></div>\n");
     var buf: [16]u8 = undefined;
@@ -1321,10 +1326,17 @@ test "the axis: zoomed to the clusters the rates fall in, broken between two, ea
     try testing.expectEqual(@as(f64, 99), ax.segs[1].lo);
     try testing.expectEqual(@as(f64, 100), ax.segs[1].hi);
     try testing.expectEqual(@as(f64, 0.2), ax.segs[1].step);
-    // Equal ranges, equal widths; the gap between them; monotonic.
-    try testing.expectApproxEqAbs(ax.segs[0].x1 - ax.segs[0].x0, ax.segs[1].x1 - ax.segs[1].x0, 1e-9);
+    // Room by the rates held: five in 99-100, two in 76-77; monotonic.
+    try testing.expect(ax.segs[1].x1 - ax.segs[1].x0 > 2 * (ax.segs[0].x1 - ax.segs[0].x0));
+    try testing.expect(ax.segs[0].x1 - ax.segs[0].x0 >= 0.25 * (1 - break_width) - 1e-9);
     try testing.expect(ax.x(76.7) < ax.x(99.0) and ax.x(99.5) < ax.x(99.9));
     try testing.expectApproxEqAbs(@as(f64, 1), ax.x(100), 1e-9);
+    // Crane and Chrome ten points apart stay one cluster: 65-80 by 5.
+    const near = try axisFor(a, &.{ 99.8, 99.9, 99.4, 99.7, 76.4, 66.9 });
+    try testing.expect(near.broken());
+    try testing.expectEqual(@as(f64, 65), near.segs[0].lo);
+    try testing.expectEqual(@as(f64, 80), near.segs[0].hi);
+    try testing.expect(near.segs[0].x1 - near.segs[0].x0 < near.segs[1].x1 - near.segs[1].x0);
     // One cluster: one segment around it; all at 100%: 99-100.
     const one = try axisFor(a, &.{ 99.4, 99.8 });
     try testing.expect(!one.broken());
@@ -1351,7 +1363,7 @@ test "one page: the chart, TodoMVC open, what is not run and the method closed; 
     const out = try render(a, fx.m, fx.suites, .{});
     const h = out.index_html;
     // The order of the page.
-    const chart = std.mem.indexOf(u8, h, "<section class=\"box chart\" id=\"rates\"").?;
+    const chart = std.mem.indexOf(u8, h, "<section class=\"box rates\" id=\"rates\"").?;
     const todo = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"todomvc\" open>").?;
     const notrun = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"not-run\">").?;
     const method = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"method\">").?;
