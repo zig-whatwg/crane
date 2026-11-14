@@ -440,8 +440,6 @@ INCLUDE = [
     ('css/css-ui/appearance-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/appearance-serialization.html', 'ui value or rule serialization; no rendered boxes'),
     ('css/css-ui/caret-shape-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
-    ('css/css-ui/input-security-computed.html', 'ui computed style and inheritance; no rendered box assertions'),
-    ('css/css-ui/input-security-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/webkit-appearance-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/webkit-appearance-serialization.html', 'ui value or rule serialization; no rendered boxes'),
     ('css/css-values/attr-parse-url.html', 'values syntax and value parsing outside the parsing directory'),
@@ -797,9 +795,10 @@ EXCLUDE = [
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/nested-containers.html', 'keyboard focus target depends on nested visual layout order'),
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/partial-reordering.html', 'keyboard focus target depends on visual layout order'),
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/simple-mixed.html', 'keyboard focus target depends on visual flex layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/grid-', 'keyboard focus target depends on grid visual layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/flex-', 'keyboard focus target depends on flex visual layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/carousel-grid-order.html', 'keyboard focus target depends on grid/carousel visual layout order'),
+    # Upstream moved these out of tentative/ (WPT 2358bd4835, the 2026-11-14 update): the same files.
+    ('shadow-dom/focus-navigation/reading-flow/grid-', 'keyboard focus target depends on grid visual layout order'),
+    ('shadow-dom/focus-navigation/reading-flow/flex-', 'keyboard focus target depends on flex visual layout order'),
+    ('shadow-dom/focus-navigation/reading-flow/carousel-grid-order.html', 'keyboard focus target depends on grid/carousel visual layout order'),
     ('shadow-dom/focus-navigation/tentative/focus-navigation-scroller-', 'focus target depends on a scrollable box'),
     ('shadow-dom/focus-navigation/tentative/focus-scroller-layout-update.html', 'focus target changes when layout creates a scrollable box'),
     ('shadow-dom/focus/focus-scroll-under-delegatesFocus.html', 'waits for and asserts scrolling caused by focus'),
@@ -1287,16 +1286,57 @@ EXCLUDE = [
      'size as a width/height shorthand (CSS Sizing 4): Chrome 9/10 only through its @page size descriptor, Firefox 0/10, Safari 0/10'),
     ('css/css-text/parsing/text-align-all-valid.html',
      'text-align-all: 0/7 in all three'),
-    ('css/css-ui/input-security-computed.html',
-     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
-    ('css/css-ui/input-security-parsing.html',
-     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
     ('css/css-values/ident-function-computed.html',
      'ident() (CSS Values 5): 0/14 in all three'),
     ('css/css-writing-modes/text-combine-upright-parsing-digits-001.html',
      'text-combine-upright: digits <integer>: 0/10 in all three'),
     ('css/css-writing-modes/text-combine-upright-parsing-digits-002.html',
      'text-combine-upright: digits <integer>: 0/12 in all three'),
+    # The WPT update to 2358bd4835 (lane wptup1, 2026-11-14; the integrator's rulings under the
+    # scope line, 04:5x UTC). Evidence: wpt.fyi aligned stable runs at 2358bd4835 - Chrome
+    # 157.0.8103.78 (4786307730243584), Firefox 160.0 (4877168468033536), Safari 27.2
+    # (6479119966273536).
+    # Not ratified: upstream moved these out of .tentative names into their own directories.
+    # None tests only Ed25519/X25519 (those are in Web Cryptography and stay, by their own paths).
+    ('WebCryptoAPI/modern-algos/',
+     'not ratified: WICG Modern Algorithms draft; re-check when it enters the Web Cryptography spec'),
+    ('WebCryptoAPI/secure-curves/',
+     'not ratified: WICG Secure Curves draft (X448/Ed448); re-check when it enters the Web Cryptography spec'),
+    # Focus order from layout (the reading-flow geometry entries above); its siblings
+    # normal.html and source-order-{valid,invalid}.html need no layout and stay.
+    ('shadow-dom/focus-navigation/reading-flow/simplified-layout.html',
+     'keyboard focus target depends on visual layout order: 0/1 in all three'),
+    # MathML Core 3.6 (w3c/mathml-core#307, #330, #335) gives <a> the referrerpolicy content
+    # attribute but no referrerPolicy IDL attribute (MathMLAnchorElement has href, target and
+    # HyperlinkElementUtils only), so the getter/setter has no spec text. The navigation tests
+    # (referrer-policy/gen/**/mathml-a-tag.http.html) stay.
+    ('mathml/relations/html5-tree/a-referrerpolicy-getter-setter.html',
+     'MathMLAnchorElement.referrerPolicy is in no spec IDL: 0/1 in all three'),
+    # Tentative in fact: no spec change behind it (HTML "close the dialog" moves focus only to a
+    # previously focused element; with none, the focus fixup at the next rendering update resets
+    # it, not close() itself). Chromium-only behaviour, crbug.com/41284677 (2026-10-25); no
+    # whatwg/html PR or issue. 0/1 in all three.
+    ('html/semantics/interactive-elements/the-dialog-element/dialog-close-focus-no-previous.html',
+     'tentative in fact: expects body focused at close() with no previously focused element; no spec change (crbug 41284677 only)'),
+    # CSS features no browser ships (the cssprop1 rule above); their -invalid siblings stay.
+    ('css/css-sizing/parsing/max-size-shorthand.html',
+     'max-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/max-size-valid.html',
+     'max-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-shorthand.html',
+     'min-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-valid.html',
+     'min-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-computed.html',
+     'text-autospace-size: 0/5 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-valid.html',
+     'text-autospace-size: 0/4 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-shorthand-longhands.html',
+     'the white-space shorthand setting white-space-trim with its other longhands: 0/19 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-computed.html',
+     'white-space-trim: 0/7 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-valid.html',
+     'white-space-trim: 0/11 in all three (run 2358bd4835)'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),

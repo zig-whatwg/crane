@@ -17,6 +17,7 @@ passing-subtest loss, or the explicit --allow-unexplained override.
 import json
 import glob
 import os
+import posixpath
 import re
 import sys
 import html
@@ -636,6 +637,12 @@ def parse_loss_dispositions(text, worklist, repo=None):
                     error(f'{key} must be a full WPT revision (40 lowercase hex digits)')
             if values['wpt.before'] == values['wpt.after']:
                 error('WPT revisions must be different')
+            change = upstream_test_change(path, values['wpt.before'], values['wpt.after'],
+                                          os.path.join(repo, 'tests', 'wpt'))
+            if change is not None and not change['own'] and not change['shared']:
+                error(f'the file and every resource it loads are byte-identical between '
+                      f'{values["wpt.before"][:10]} and {values["wpt.after"][:10]}: a loss there is unexplained '
+                      '(a flake or a real bug), never an upstream test change')
         identity = path, generation
         if identity in out:
             error(f'generation {generation} is listed twice')
@@ -705,6 +712,182 @@ def loss_disposition(generation, loss, dispositions, head=None, repo=None):
         if git_contains(head, entry['commit'], repo or REPO) is not False:
             return None
     return entry
+
+
+# The WPT update (lane wptup1, 2026-11-14; plan step 5 of the user's 2026-11-12 "we can update the
+# WPT"): a generation swept on another WPT revision than the one before it is a WPT-UPDATE
+# generation (`wpt_update` in its history record). A loss there is explained per file, and ONLY
+# where the test file or a resource it loads changed between the two revisions (kind
+# upstream-test-change, wpt.before/wpt.after = the two fork commits the loss records); a loss in a
+# file that is byte-identical, resources included, is unexplained as always - a flake or a real
+# bug. `--upstream-test-changes` proposes the entries from the diff for review; nothing is
+# written by itself, and the parser refuses an entry for a byte-identical file.
+WPT_SHARED_PREFIXES = ('resources/', 'common/')   # the harness and the shared helpers
+_LOAD_ATTR = re.compile(r'<(?:script|link|iframe|frame|img|object|embed|audio|video|source|track)\b[^>]*?'
+                        r'\s(?:src|href|data)\s*=\s*["\']([^"\'#?]+)', re.I)
+_IMPORT_SCRIPTS = re.compile(r'importScripts\(\s*["\']([^"\'#?]+)["\']')
+_ES_IMPORT = re.compile(r'\bimport\b[^"\';]*?["\']((?:\.{1,2}/|/)[^"\'#?]+)["\']')
+_WRAPPED_JS = ('.any.js', '.window.js', '.worker.js', '.serviceworker.js', '.sharedworker.js')
+
+
+def _wpt_git(wpt_repo, *args):
+    try:
+        out = subprocess.run(['git', *args], cwd=wpt_repo, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def _wpt_blobs(wpt_repo, revision, paths):
+    """{path: blob id} for the files of `paths` that exist at `revision`."""
+    blobs = {}
+    paths = sorted(paths)
+    for i in range(0, len(paths), 200):
+        out = _wpt_git(wpt_repo, 'ls-tree', '-z', revision, '--', *paths[i:i + 200])
+        if out is None:
+            return None
+        for item in out.decode('utf-8', 'replace').split('\0'):
+            meta, _, name = item.partition('\t')
+            if name and meta.split(' ')[1:2] == ['blob']:
+                blobs[name] = meta.split(' ')[2]
+    return blobs
+
+
+def wpt_loaded_files(path, revision, wpt_repo, depth=2):
+    """The tree paths test `path` loads at `revision`, statically: the file itself and its
+    .headers, every src/href/data of a loading element, META script= lines, importScripts()
+    and relative ES imports - and theirs, `depth` levels down. A wrapped .any.js-style test
+    also loads the harness the runner wraps it in. A URL to another origin is not a file."""
+    seen, frontier = set(), [path]
+    if path.endswith(_WRAPPED_JS):
+        seen.update(('resources/testharness.js', 'resources/testharnessreport.js'))
+    for level in range(depth + 1):
+        nxt = []
+        for f in frontier:
+            if f in seen:
+                continue
+            seen.update((f, f + '.headers'))
+            if level == depth or not re.search(r'\.(?:html?|xhtml|js|mjs)$', f):
+                continue
+            text = _wpt_git(wpt_repo, 'cat-file', '-p', f'{revision}:{f}')
+            if text is None:
+                continue
+            text = text.decode('utf-8', 'replace')
+            base = posixpath.dirname(f)
+            for ref in (_LOAD_ATTR.findall(text) + SCRIPT_META.findall(text) +
+                        _IMPORT_SCRIPTS.findall(text) + _ES_IMPORT.findall(text)):
+                if re.match(r'^[a-z][a-z0-9+.-]*:|^//', ref, re.I):
+                    continue
+                joined = posixpath.normpath(ref.lstrip('/') if ref.startswith('/') else posixpath.join(base, ref))
+                if not joined.startswith('..') and joined != '.':
+                    nxt.append(joined)
+        frontier = nxt
+    return seen
+
+
+def upstream_test_change(path, before, after, wpt_repo):
+    """{'own': [...], 'shared': [...]}: the files `path` loads (at either revision) whose
+    content differs between WPT revisions `before` and `after`, outside and inside the shared
+    harness directories; None when git cannot resolve a revision (nothing is known)."""
+    if not all(r and re.fullmatch(r'[0-9a-f]{7,40}', r) for r in (before, after)):
+        return None
+    if any(_wpt_git(wpt_repo, 'cat-file', '-e', f'{r}^{{commit}}') is None for r in (before, after)):
+        return None
+    files = wpt_loaded_files(path, before, wpt_repo) | wpt_loaded_files(path, after, wpt_repo)
+    old, new = _wpt_blobs(wpt_repo, before, files), _wpt_blobs(wpt_repo, after, files)
+    if old is None or new is None:
+        return None
+    changed = sorted(f for f in files if old.get(f) != new.get(f))
+    return {'own': [f for f in changed if not f.startswith(WPT_SHARED_PREFIXES)],
+            'shared': [f for f in changed if f.startswith(WPT_SHARED_PREFIXES)]}
+
+
+def generation_wpt_revision(worklist, records):
+    """The WPT revision most of the generation's files were measured on, or None."""
+    counts = collections.Counter(records[p].get('_wpt_revision') for p in worklist if p in records)
+    counts.pop(None, None)
+    return counts.most_common(1)[0][0] if counts else None
+
+
+def wpt_upstream_revision(fork_commit, wpt_repo=None):
+    """The upstream WPT revision a fork commit is synced to (its .crane-upstream-revision,
+    CRANE-UPSTREAM.md), or None when git cannot read it."""
+    if not fork_commit or not re.fullmatch(r'[0-9a-f]{7,40}', fork_commit):
+        return None
+    out = _wpt_git(wpt_repo or WPT_ROOT, 'cat-file', '-p', f'{fork_commit}:.crane-upstream-revision')
+    text = out.decode('ascii', 'replace').strip() if out is not None else ''
+    return text if re.fullmatch(r'[0-9a-f]{40}', text) else None
+
+
+def wpt_update(previous_generation, revision, previous_passes=None, wpt_repo=None):
+    """{'before', 'after', 'upstream_before', 'upstream_after'} when this generation was
+    measured on a fork commit synced to another UPSTREAM revision than the previous
+    generation's; None otherwise. The fork moves with every Crane test it takes, so only the
+    upstream revision (.crane-upstream-revision) marks a WPT update. The previous fork commit is
+    the one the generation recorded, else the one most of its per-file counts (history's
+    last_passes) were measured on - generations before lane wptup1 recorded none. Whatever git
+    cannot read claims nothing."""
+    before = (previous_generation or {}).get('wpt_revision')
+    if not before and previous_generation and previous_passes:
+        counts = collections.Counter(v.get('revision') for v in previous_passes.values())
+        counts.pop(None, None)
+        before = counts.most_common(1)[0][0] if counts else None
+    if not before or not revision or before == revision:
+        return None
+    ub, ua = wpt_upstream_revision(before, wpt_repo), wpt_upstream_revision(revision, wpt_repo)
+    if ub and ua and ub != ua:
+        return {'before': before, 'after': revision, 'upstream_before': ub, 'upstream_after': ua}
+    return None
+
+
+def upstream_change_report(history, dispositions, generation, wpt_repo=None):
+    """The `--upstream-test-changes` text for `generation`: proposed upstream-test-change
+    entries (reviewed by a person before they go into tools/wpt_loss_dispositions.txt), the
+    losses only a shared-harness change touches (to review), and the losses no change explains."""
+    wpt_repo = wpt_repo or WPT_ROOT
+    g = next((x for x in history.get('generations', []) if x['n'] == generation), None)
+    if not g or not g.get('wpt_update'):
+        return (f'generation {generation} is not a WPT-update generation: it was measured on the WPT '
+                'revision of the generation before it (or recorded none), so its losses are explained '
+                'as any other generation\'s\n')
+    up = g['wpt_update']
+    proposed, review, unexplained = [], [], []
+    for loss in g.get('losses', []):
+        if loss_disposition(generation, loss, dispositions, g.get('head')) is not None:
+            continue
+        b, a = loss.get('before_revision'), loss.get('after_revision')
+        lost = f'{loss["path"]} ({loss["before"]} -> {loss["after"]})'
+        if not b or not a:
+            unexplained.append(f'{lost}: a revision is unknown')
+            continue
+        if b == a:
+            unexplained.append(f'{lost}: measured on the same WPT revision both times')
+            continue
+        change = upstream_test_change(loss['path'], b, a, wpt_repo)
+        if change is None:
+            unexplained.append(f'{lost}: git cannot resolve {b[:10]} or {a[:10]} in tests/wpt')
+        elif change['own']:
+            files = ', '.join(change['own'])
+            harness = f' (and the shared harness: {", ".join(change["shared"])})' if change['shared'] else ''
+            proposed.append(f'[{loss["path"]}]\ngeneration = {generation}\nkind = upstream-test-change\n'
+                            f'why = the test or a resource it loads changed between the two WPT revisions: '
+                            f'{files}{harness}; lost {loss["before"] - loss["after"]} subtests '
+                            f'(git -C tests/wpt diff {b[:10]} {a[:10]} -- {files})\n'
+                            f'wpt.before = {b}\nwpt.after = {a}\n')
+        elif change['shared']:
+            review.append(f'{lost}: only the shared harness changed ({", ".join(change["shared"])})')
+        else:
+            unexplained.append(f'{lost}: the file and every resource it loads are byte-identical')
+    out = [f'generation {generation} is the WPT update to upstream {up.get("upstream_after", "?")[:10]} from '
+           f'{up.get("upstream_before", "?")[:10]} (fork {up["before"][:10]} -> {up["after"][:10]}): '
+           f'{len(proposed)} proposed, {len(review)} to review, {len(unexplained)} unexplained\n']
+    out.append('\nPROPOSED - review each against its upstream diff before adding it to '
+               'tools/wpt_loss_dispositions.txt:\n\n' + '\n'.join(proposed))
+    out.append('\nREVIEW - the file is byte-identical and only a shared harness file changed; '
+               'add an entry only after reading the harness diff:\n' + ''.join(f'  {r}\n' for r in review))
+    out.append('\nUNEXPLAINED - no upstream change explains these (a flake or a real bug):\n' +
+               ''.join(f'  {u}\n' for u in unexplained))
+    return ''.join(out)
 
 
 def unexplained_losses(history, dispositions, repo=None):
@@ -1685,7 +1868,7 @@ def retry_summary(counts):
             f"{counts['retry_skipped']:,} not retried (same as the previous generation)")
 
 
-def record_generation(worklist, records, areas, previous_records=None):
+def record_generation(worklist, records, areas, previous_records=None, reference=None):
     """Append this generation to HISTORY if anything moved; return the history.
 
     Diff the previous generation's per-file statuses and passes. Each generation
@@ -1738,6 +1921,9 @@ def record_generation(worklist, records, areas, previous_records=None):
     subs = subtest_sums(worklist, records)
     build = generation_build(worklist, records)
     change = configuration_change(history['generations'][-1] if history['generations'] else None, build)
+    revision = generation_wpt_revision(worklist, records)
+    update = wpt_update(history['generations'][-1] if history['generations'] else None, revision,
+                        history.get('last_passes'))
     snap = {
         'n': history['generations'][-1]['n'] + 1 if history['generations'] else 1,
         'at': datetime.datetime.now().isoformat(timespec='seconds'),
@@ -1769,6 +1955,8 @@ def record_generation(worklist, records, areas, previous_records=None):
         'regenerations': 0,
         # The runner build whose results these are ('production', or None: the hybrid runner's).
         'build': build,
+        # The WPT revision most files were measured on; `wpt_update` when it moved (lane wptup1).
+        'wpt_revision': revision,
         'losses': losses,
         'loss_baseline_missing': sorted(p for p in worklist if prev is not None and
                                        p in prev and p not in (prev_passes or {})),
@@ -1829,6 +2017,9 @@ def record_generation(worklist, records, areas, previous_records=None):
     snap['gate_rule'] = GATE_RULE
     if change:
         snap['configuration_change'] = change
+    if update:
+        snap['wpt_update'] = update   # a WPT-UPDATE generation: losses need upstream-test-change evidence
+    snap.update(generation_upstream_fields(worklist, records, reference))
     history['generations'].append(snap)
     history['last_statuses'] = cur
     history['last_sources'] = idents
@@ -2406,6 +2597,32 @@ document.querySelectorAll('table.sortable').forEach(function (t) {
 </script>"""
 
 
+def crane_and_reference_upstreams(worklist, records, ref, wpt_repo=None):
+    """(Crane's, the reference's) upstream WPT revisions: Crane's from the fork commit most of
+    its files were measured on, the reference's from its run.wpt_revision; None where git cannot
+    tell (lane wptup1: the fork moves with every Crane test, so only upstream revisions compare)."""
+    crane = wpt_upstream_revision(generation_wpt_revision(worklist, records), wpt_repo)
+    reference = wpt_upstream_revision(((ref or {}).get('run') or {}).get('wpt_revision'), wpt_repo)
+    return crane, reference
+
+
+def generation_upstream_fields(worklist, records, ref, wpt_repo=None):
+    """The generation record's `wpt_upstream` (Crane's) and `reference_wpt_upstream` (the
+    reference run's), where known - the results site compares them without git."""
+    crane, reference = crane_and_reference_upstreams(worklist, records, ref, wpt_repo)
+    return {k: v for k, v in (('wpt_upstream', crane), ('reference_wpt_upstream', reference)) if v}
+
+
+def reference_revision_note(crane_upstream, reference_upstream):
+    """One sentence when Crane's column and the reference's were measured on different upstream
+    WPT revisions (after a WPT update, until the reference is re-run); '' otherwise."""
+    if not crane_upstream or not reference_upstream or crane_upstream == reference_upstream:
+        return ''
+    return (f' Crane&rsquo;s column is on upstream WPT <code>{html.escape(crane_upstream[:10])}</code>, the '
+            f'reference&rsquo;s on <code>{html.escape(reference_upstream[:10])}</code>: a file that changed between '
+            'the two revisions compares different tests.')
+
+
 def render_reference(worklist, records, ref):
     """The comparison with a reference run: the run's identity, both engines'
     numbers on the same files, the wall time with the harness overhead, and
@@ -2416,6 +2633,7 @@ def render_reference(worklist, records, ref):
     run = ref['run']
     cmp = compare_reference(worklist, records, ref)
     cr, rf = cmp['crane'], cmp['ref']
+    revision_note = reference_revision_note(*crane_and_reference_upstreams(worklist, records, ref))
     esc = html.escape
     when = run['date'].replace('T', ' ').replace('Z', ' UTC')
     driver = (f", {'ChromeDriver' if ref['engine'] == 'chrome' else 'WebDriver'} "
@@ -2593,7 +2811,7 @@ def render_reference(worklist, records, ref):
 <div class="panel">
   <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} {ran} on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
     {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
-    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window} Read from <code>{esc(src)}</code>;
+    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window}{revision_note} Read from <code>{esc(src)}</code>;
     never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{nums}</tbody></table>
@@ -2992,6 +3210,20 @@ def main():
                 print(f'warning: timing-bound {path} (generation {generation}) is STALE: '
                       f'{", ".join(moved)} changed {entry["paths"]} after {entry["measured_at"]}; '
                       're-measure its gap', file=sys.stderr)
+    if '--upstream-test-changes' in sys.argv:
+        # Read-only: proposes upstream-test-change entries for a WPT-update generation (the
+        # latest, or --generation N) from the diff between its two WPT revisions; records nothing.
+        try:
+            with open(HISTORY) as f:
+                existing = json.load(f)
+        except (OSError, json.JSONDecodeError) as err:
+            sys.exit(f'wpt_progress: cannot read loss history: {err}')
+        gens = existing.get('generations', [])
+        if not gens:
+            sys.exit('wpt_progress: no generation recorded')
+        n = int(sys.argv[sys.argv.index('--generation') + 1]) if '--generation' in sys.argv else gens[-1]['n']
+        print(upstream_change_report(existing, dispositions, n), end='')
+        return 0
     if '--rebuild-history' in sys.argv:
         try:
             with open(HISTORY) as f:
@@ -3010,8 +3242,8 @@ def main():
     if '--rebuild-history' in sys.argv:
         rebuild_history(worklist, records, shape)
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
-    history = record_generation(worklist, records, areas)
     reference = load_reference()
+    history = record_generation(worklist, records, areas, reference=reference)
     gate_met, gating, run, total, clean = render(
         areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions, reference)
 
@@ -3825,6 +4057,145 @@ def _check_fixed_disposition():
         assert len(parse_loss_dispositions(_LOSS_FIXTURE + _fixed_entry(b), wl, repo=repo)) == 2
 
 
+def _upstream_fixture_repo(d):
+    """A Crane checkout whose tests/wpt is a git repository of two WPT revisions (lane wptup1):
+    BEFORE and AFTER differ in a/helper.js (loaded by a/test.html), e/helper2.js (an .any.js's
+    META script), resources/testharness.js (the shared harness, loaded by c/shared.html) and
+    d/other.js (loaded by nothing). b/same.html loads nothing that changed."""
+    repo = os.path.join(d, 'crane')
+    wpt = os.path.join(repo, 'tests', 'wpt')
+    env = dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+               GIT_COMMITTER_EMAIL='t@t', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=wpt, env=env, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def write(files):
+        for path, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(wpt, path)), exist_ok=True)
+            with open(os.path.join(wpt, path), 'w') as f:
+                f.write(text)
+        git('add', '-A')
+
+    os.makedirs(wpt)
+    git('init', '-q', '-b', 'main')
+    harness = '<script src="/resources/testharness.js"></script>\n'
+    write({'resources/testharness.js': 'v1\n',
+           'a/test.html': harness + '<script src="helper.js"></script>\n',
+           'a/helper.js': 'one\n',
+           'b/same.html': '<p>nothing loaded</p>\n',
+           'c/shared.html': harness,
+           'd/unloaded.html': harness.replace('testharness', 'testharnessreport'),
+           'resources/testharnessreport.js': 'r\n',
+           'd/other.js': 'x\n',
+           'e/meta.any.js': '// META: script=helper2.js\ntest(() => {});\n',
+           'e/helper2.js': 'h1\n',
+           '.crane-upstream-revision': '1' * 40 + '\n'})
+    git('commit', '-q', '-m', 'BEFORE')
+    before = git('rev-parse', 'HEAD')
+    write({'crane/new-test.html': 'ours\n'})   # a Crane test: the fork moves, upstream does not
+    git('commit', '-q', '-m', 'CRANE TEST')
+    crane_only = git('rev-parse', 'HEAD')
+    write({'resources/testharness.js': 'v2\n', 'a/helper.js': 'two\n', 'd/other.js': 'y\n',
+           'e/helper2.js': 'h2\n', '.crane-upstream-revision': '2' * 40 + '\n'})
+    git('commit', '-q', '-m', 'AFTER')
+    return repo, wpt, before, git('rev-parse', 'HEAD'), crane_only
+
+
+def _upstream_entry(path, before, after, generation=223):
+    return (f'[{path}]\ngeneration = {generation}\nkind = upstream-test-change\n'
+            f'why = changed upstream\nwpt.before = {before}\nwpt.after = {after}\n')
+
+
+def _check_upstream_test_change():
+    """The WPT update (lane wptup1, 2026-11-14): a loss at a generation that moved to another
+    WPT revision is explained per file ONLY where the file or a resource it loads changed
+    between the two revisions - never blanket. The tool proposes entries for review and
+    names the losses it cannot explain; the parser refuses an entry for a file that is
+    byte-identical, resources included."""
+    import tempfile
+    wl = ['a/test.html', 'b/same.html', 'c/shared.html', 'd/unloaded.html', 'e/meta.any.js']
+    with tempfile.TemporaryDirectory() as d:
+        repo, wpt, before, after, crane_only = _upstream_fixture_repo(d)
+        change = lambda p: upstream_test_change(p, before, after, wpt)
+        assert change('a/test.html') == {'own': ['a/helper.js'], 'shared': ['resources/testharness.js']}
+        assert change('b/same.html') == {'own': [], 'shared': []}
+        assert change('c/shared.html') == {'own': [], 'shared': ['resources/testharness.js']}
+        # A sibling nothing loads does not explain a loss.
+        assert change('d/unloaded.html') == {'own': [], 'shared': []}
+        # A wrapped .any.js test loads the harness the runner wraps it in, too.
+        assert change('e/meta.any.js') == {'own': ['e/helper2.js'], 'shared': ['resources/testharness.js']}
+        # A revision git cannot resolve proves nothing.
+        assert upstream_test_change('a/test.html', before, 'f' * 40, wpt) is None
+
+        # The parser: an entry for a byte-identical file (resources included) is refused.
+        parsed = parse_loss_dispositions(_upstream_entry('a/test.html', before, after), wl, repo=repo)
+        assert parsed[('a/test.html', 223)]['kind'] == 'upstream-test-change'
+        try:
+            parse_loss_dispositions(_upstream_entry('b/same.html', before, after), wl, repo=repo)
+            raise AssertionError('accepted an upstream-test-change entry for a byte-identical file')
+        except LossDispositionError as err:
+            assert 'byte-identical' in str(err), str(err)
+        # Unknown revisions cannot be checked here; the loss's own revisions decide at explain time.
+        assert parse_loss_dispositions(_upstream_entry('b/same.html', 'a' * 40, 'b' * 40), wl, repo=repo)
+
+        # The generation's WPT revision and the WPT-update label.
+        recs = {p: {'path': p, '_wpt_revision': after} for p in wl}
+        recs['b/same.html']['_wpt_revision'] = before
+        assert generation_wpt_revision(wl, recs) == after
+        assert generation_wpt_revision(wl, {}) is None
+        moved = {'before': before, 'after': after, 'upstream_before': '1' * 40, 'upstream_after': '2' * 40}
+        assert wpt_update({'n': 222, 'wpt_revision': before}, after, wpt_repo=wpt) == moved
+        assert wpt_update({'n': 222, 'wpt_revision': after}, after, wpt_repo=wpt) is None
+        # The fork moves with every Crane test it takes; only a new UPSTREAM revision is an update.
+        assert wpt_update({'n': 222, 'wpt_revision': before}, crane_only, wpt_repo=wpt) is None
+        assert wpt_update({'n': 222}, after, wpt_repo=wpt) is None            # no revision recorded: no claim
+        assert wpt_update(None, after, wpt_repo=wpt) is None
+        # An upstream revision git cannot read claims nothing either.
+        assert wpt_update({'n': 222, 'wpt_revision': 'f' * 40}, after, wpt_repo=wpt) is None
+        # A generation from before `wpt_revision` existed: its per-file revisions (last_passes) tell.
+        last = {p: {'passed': 1, 'revision': before} for p in wl}
+        assert wpt_update({'n': 222}, after, last, wpt_repo=wpt) == moved
+        assert wpt_update({'n': 222}, before, last, wpt_repo=wpt) is None
+        assert wpt_update({'n': 222}, after, {p: {'passed': 1, 'revision': None} for p in wl}, wpt_repo=wpt) is None
+
+        # The report proposes entries for review, and only where the evidence is.
+        mk = lambda p, n: {'path': p, 'before': n, 'after': n - 1, 'best': n,
+                           'before_revision': before, 'after_revision': after}
+        history = {'generations': [{'n': 223, 'head': 'x', 'wpt_update': {'before': before, 'after': after},
+                                    'losses': [mk(p, 5) for p in wl] +
+                                              [dict(mk('a/test.html', 3), after_revision=before)]}]}
+        out = upstream_change_report(history, {}, 223, wpt)
+        assert out.count('kind = upstream-test-change') == 2, out          # a/test.html and e/meta.any.js
+        assert f'[a/test.html]\ngeneration = 223\nkind = upstream-test-change' in out
+        assert f'wpt.before = {before}\nwpt.after = {after}' in out
+        assert 'a/helper.js' in out
+        unexplained = out.split('UNEXPLAINED')[1]
+        for p in ('b/same.html', 'd/unloaded.html'):
+            assert p in unexplained, p
+        assert 'c/shared.html' in out.split('REVIEW')[1].split('UNEXPLAINED')[0]
+        # An entry already recorded is not proposed again.
+        recorded = parse_loss_dispositions(_upstream_entry('a/test.html', before, after), wl, repo=repo)
+        assert upstream_change_report(history, recorded, 223, wpt).count('kind = upstream-test-change') == 1
+        # The reference comparison names Crane's revision when it is not the reference's (upstream).
+        ref_note = reference_revision_note('2' * 40, '1' * 40)
+        assert 'Crane&rsquo;s column is on upstream WPT <code>2222222222</code>' in ref_note, ref_note
+        assert '<code>1111111111</code>' in ref_note
+        assert reference_revision_note('1' * 40, '1' * 40) == ''
+        assert reference_revision_note(None, '1' * 40) == '' and reference_revision_note('2' * 40, None) == ''
+        assert crane_and_reference_upstreams(wl, recs, {'run': {'wpt_revision': before}}, wpt) == ('2' * 40, '1' * 40)
+        assert crane_and_reference_upstreams(wl, recs, {'run': {'wpt_revision': 'f' * 40}}, wpt) == ('2' * 40, None)
+        # What the results site reads (it has no git): both upstream revisions on the generation.
+        assert generation_upstream_fields(wl, recs, {'run': {'wpt_revision': before}}, wpt) == \
+            {'wpt_upstream': '2' * 40, 'reference_wpt_upstream': '1' * 40}
+        assert generation_upstream_fields(wl, recs, None, wpt) == {'wpt_upstream': '2' * 40}
+        assert generation_upstream_fields(wl, {}, None, wpt) == {}
+        # A generation that did not move to another WPT revision is not a WPT-update generation.
+        assert 'not a WPT-update generation' in upstream_change_report(
+            {'generations': [{'n': 224, 'losses': []}]}, {}, 224, wpt)
+
+
 def _timing_bound_fixture_repo(d):
     """A git repository for the `timing-bound` kind's checks: A adds src/gap.zig (the
     code the gap runs through) and src/other.zig, B is the measured commit, C changes
@@ -4551,6 +4922,7 @@ if __name__ == '__main__':
         _check_one_flake_rule()
         _check_fixed_disposition()
         _check_timing_bound_disposition()
+        _check_upstream_test_change()
         _check_flaky_count()
         _check_retry_counts()
         _check_loss_baseline_migration()
