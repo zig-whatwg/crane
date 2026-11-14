@@ -118,6 +118,20 @@ pub const IFrameState = enum {
 /// decodes (HTML §13.2.3.2): the Content-Type the transport layer gave, and
 /// whether the container document is same origin with the new document, so
 /// that its encoding is the sniffing algorithm's step 6.
+/// How "create and initialize a Document object" sets up the document a parse
+/// fills, before the parser runs: the loading algorithm's content type, and
+/// for a text or media document its mode ("load a text document" steps 1-3,
+/// "load a media document" steps 1-2: the parser cannot change the mode flag
+/// and the mode "no-quirks" are set BEFORE the parse) and a text document's
+/// encoding, decoded before the parse. Set before the parse because the parse
+/// may end in "the end"'s load event (Document lifecycleFinishLoading), whose
+/// listeners read them.
+pub const DocumentSetup = struct {
+    content_type: []const u8 = "text/html",
+    no_quirks: bool = false,
+    encoding: ?[]const u8 = null,
+};
+
 pub const ByteStream = struct {
     content_type: ?[]const u8,
     parent_same_origin: bool,
@@ -375,7 +389,7 @@ pub const IFrameIntegration = struct {
     /// with parsed content that JavaScript can access via DOM APIs.
     /// Parameters: (runtime_context, browsing_context, html_content) -> document_instance
     /// Set by modules with interface access (e.g., impls/HTMLIFrameElement.zig)
-    parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream) ?*anyopaque,
+    parse_html_callback: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream, DocumentSetup) ?*anyopaque,
 
     /// HTML §7.5.3 "load an XML document": make the navigable's new document
     /// from the response's bytes with an XML parser.
@@ -517,6 +531,16 @@ pub const IFrameIntegration = struct {
     /// before a commit, taken when the document is made, cleared after.
     next_document_state: ?u64 = null,
 
+    /// The form control states a back/forward traversal's entry persisted
+    /// ("restore persisted state" step 2), BORROWED from the joint history:
+    /// the next document this navigable makes takes them when it is made,
+    /// before its parser runs (Blink DocumentLoader::DidInstallNewDocument ->
+    /// SetStateForNewControls), so a load at the end of the parse finds them
+    /// (Document's completeLoading restores them right after the window's
+    /// load). Set just before a commit, taken when the document is made,
+    /// cleared after.
+    next_persisted_state: ?[]const u8 = null,
+
     /// The referrer the next document this navigable makes is created with:
     /// for a fetched response, its request's referrer as main fetch left it
     /// ("create and initialize a Document object" step 14), and for a new
@@ -650,7 +674,7 @@ pub const IFrameIntegration = struct {
         runtime_ctx: ?*anyopaque,
         create_doc_fn: ?*const fn (?*anyopaque, *BrowsingContext) ?*anyopaque,
         cleanup_fn: ?*const fn (*IFrameIntegration) void,
-        parse_html_fn: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream) ?*anyopaque,
+        parse_html_fn: ?*const fn (?*anyopaque, *BrowsingContext, []const u8, ?ByteStream, DocumentSetup) ?*anyopaque,
     ) void {
         self.engine_context = context;
         self.realm = realm_ptr;
@@ -1172,7 +1196,7 @@ pub const IFrameIntegration = struct {
         // can access via DOM APIs like getElementById(), querySelector(), etc.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                _ = parse_html(self.runtime_context, ctx, content, null);
+                _ = parse_html(self.runtime_context, ctx, content, null, .{});
             }
 
             // Update the iframe's Location URL to about:srcdoc
@@ -1293,7 +1317,7 @@ pub const IFrameIntegration = struct {
         if (response.is_network_error) {
             if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
             self.updateLocationUrl(url);
-            _ = try self.commitHtmlDocument("", null);
+            _ = try self.commitHtmlDocument("", null, .{});
             try self.recordCommit(url, "text/html");
             self.state = .ready;
             return;
@@ -1355,7 +1379,7 @@ pub const IFrameIntegration = struct {
                 .content_type = response.content_type,
                 .parent_same_origin = new_origin.isSameOrigin(self.container_origin),
                 .body = response.body_stream,
-            }),
+            }, .{}),
             .text => try self.commitTextDocument(body, response.content_type, computed),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed), computed),
             .xml => try self.commitXmlDocument(body, .{ .content_type = response.content_type, .type = computed }),
@@ -1424,7 +1448,7 @@ pub const IFrameIntegration = struct {
         self.state = .navigating;
         if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(origin);
         self.updateLocationUrl(url);
-        _ = try self.commitHtmlDocument(html, null);
+        _ = try self.commitHtmlDocument(html, null, .{});
         try self.recordCommit(url, "text/html");
         self.state = .ready;
     }
@@ -1456,12 +1480,12 @@ pub const IFrameIntegration = struct {
 
     /// "Loading an HTML document": hand the bytes to the HTML parser. The
     /// document it made, when the parse callback returned one.
-    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8, byte_stream: ?ByteStream) IFrameError!?*anyopaque {
+    fn commitHtmlDocument(self: *IFrameIntegration, content: []const u8, byte_stream: ?ByteStream, setup: DocumentSetup) IFrameError!?*anyopaque {
         // The parse callback runs the scripted parser against the iframe's own
         // realm, so scripts in the loaded document see its DOM.
         if (self.parse_html_callback) |parse_html| {
             if (self.browsing_context) |ctx| {
-                return parse_html(self.runtime_context, ctx, content, byte_stream);
+                return parse_html(self.runtime_context, ctx, content, byte_stream, setup);
             }
         }
 
@@ -1510,26 +1534,18 @@ pub const IFrameIntegration = struct {
             return IFrameError.OutOfMemory;
         };
         defer self.allocator.free(markup);
-        // Steps 2-3: "Set document's parser cannot change the mode flag to
-        // true. Set document's mode to "no-quirks"." Here the mode is set
-        // after the parse instead: the synthesised markup has no DOCTYPE, so
-        // the parse picks quirks, but nothing in it runs script, so no one can
-        // observe the mode before this - the same as the parser cannot change
-        // the mode flag keeping no-quirks throughout.
-        const document = try self.commitHtmlDocument(markup, null);
-        if (document) |doc| {
-            // Step 1: create the HTML document with the response's computed
-            // MIME type. The inert synthesized markup cannot observe this
-            // assignment before the load event, just like the mode below.
-            @import("dom").document_internals.setContentType(@ptrCast(@alignCast(doc)), computed_type) catch return IFrameError.OutOfMemory;
-            setNoQuirks(doc);
-            @import("dom").document_internals.setEncoding(@ptrCast(@alignCast(doc)), encoding_sniffing.canonicalName(sniffed.encoding)) catch {};
-        }
-    }
-
-    /// Set the document the parse made to no-quirks mode.
-    fn setNoQuirks(document: *anyopaque) void {
-        @import("dom").document_internals.setMode(@ptrCast(@alignCast(document)), .no_quirks) catch {};
+        // Step 1: the HTML document is created with the response's computed
+        // MIME type; steps 2-3: "Set document's parser cannot change the mode
+        // flag to true. Set document's mode to "no-quirks"." - all before the
+        // parse, which may end in the load event (DocumentSetup), whose
+        // listeners read them (opening-the-input-stream/type-argument-
+        // plaintext.window.js); with them the encoding the bytes were decoded
+        // with.
+        _ = try self.commitHtmlDocument(markup, null, .{
+            .content_type = computed_type,
+            .no_quirks = true,
+            .encoding = encoding_sniffing.canonicalName(sniffed.encoding),
+        });
     }
 
     /// "Loading a media document" - HTML Standard §7.5.6.
@@ -1547,16 +1563,12 @@ pub const IFrameIntegration = struct {
             return IFrameError.OutOfMemory;
         };
         defer self.allocator.free(markup);
-        // Step 2: "Set document's mode to "no-quirks"." Nothing in the
-        // synthesised markup runs script, so setting it after the parse, which
-        // (with no DOCTYPE) chose quirks, is the mode ever seen.
-        const document = try self.commitHtmlDocument(markup, null);
-        if (document) |doc| {
-            // Step 1 uses the response's computed MIME type, even though
-            // its body is represented by a synthesized HTML tree.
-            @import("dom").document_internals.setContentType(@ptrCast(@alignCast(doc)), computed_type) catch return IFrameError.OutOfMemory;
-            setNoQuirks(doc);
-        }
+        // Step 1: the response's computed MIME type, though its body is a
+        // synthesized HTML tree; step 2: "Set document's mode to
+        // "no-quirks"" - both before the parse, which may end in the load
+        // event (DocumentSetup); the parser cannot change the mode, as for a
+        // text document.
+        _ = try self.commitHtmlDocument(markup, null, .{ .content_type = computed_type, .no_quirks = true });
     }
 
     /// "Loading an XML document" - HTML Standard §7.5.3: the document the

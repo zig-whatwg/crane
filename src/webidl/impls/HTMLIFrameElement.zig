@@ -416,6 +416,7 @@ fn parseHtmlForIframe(
     browsing_ctx_ptr: *html_core.BrowsingContext,
     html_content: []const u8,
     byte_stream: ?html_core.window.iframe_integration.ByteStream,
+    setup: html_core.window.iframe_integration.DocumentSetup,
 ) ?*anyopaque {
     const time_start = clock.monotonicNanos();
     log.debug("[parseHtmlForIframe] time={d}ns START content_len={d}", .{ time_start, html_content.len });
@@ -439,7 +440,13 @@ fn parseHtmlForIframe(
     // parsing finished left those scripts on the frame's initial about:blank
     // document: their getElementsByTagName, createElement and body were that
     // document's.
-    const document_instance = createNavigationDocument(allocator, runtime_ctx, browsing_ctx_ptr, window_instance, .html, "text/html") orelse return null;
+    const document_instance = createNavigationDocument(allocator, runtime_ctx, browsing_ctx_ptr, window_instance, .html, setup.content_type) orelse return null;
+    // "Load a text document" steps 2-3 / "load a media document" step 2: the
+    // mode is "no-quirks", and the parser cannot change it - set before the
+    // parse, as is a text document's encoding (iframe_integration
+    // DocumentSetup: the parse may end in the load event).
+    if (setup.no_quirks) document_internals.setMode(document_instance, .no_quirks) catch {};
+    if (setup.encoding) |encoding| document_internals.setEncoding(document_instance, encoding) catch {};
 
     // The parser's scripting flag: "scripting is enabled" for the new
     // document - not when its active sandboxing flag set, which the
@@ -474,6 +481,7 @@ fn parseHtmlForIframe(
             } else null,
             // The rest of the body, read as it arrives: the parser's now.
             .body_stream = if (byte_stream) |stream| (if (stream.body) |handoff| handoff.take() else null) else null,
+            .parser_cannot_change_mode = setup.no_quirks,
         },
     ) catch |err| {
         // The document stays - with whatever was parsed - as the frame's
@@ -560,6 +568,13 @@ fn createNavigationDocument(
         if (integration.next_document_state) |state| {
             integration.next_document_state = null;
             if (browsing_ctx_ptr.jointHistory() catch null) |history| history.setDocumentOfState(state, document_instance);
+        }
+        // "Restore persisted state" step 2: a back/forward traversal's form
+        // control states are the new document's before its parser runs
+        // (restorePersistedState).
+        if (integration.next_persisted_state) |bytes| {
+            integration.next_persisted_state = null;
+            html_module.forms.form_state.setStateForNewControls(document_instance, bytes);
         }
         // The host page's traversable: the host's names for the page's
         // document follow it now, before its parser runs.
@@ -4460,13 +4475,15 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
     defer integration.setNextOrigin(null);
     integration.next_document_state = document_state;
     defer integration.next_document_state = null;
+    integration.next_persisted_state = persistedStateOf(integration, record);
+    defer integration.next_persisted_state = null;
     integration.commitResponse(record.url, response) catch |err| {
         log.debug("[navigation] commit of {s} failed: {s}", .{ record.url, @errorName(err) });
         endLoadDelay(integration);
         return;
     };
     attachDocument(integration, document_state, response.is_network_error);
-    restorePersistedState(integration, record);
+    restorePersistedState(integration);
     // A push cleared the traversable's forward session history, other
     // navigables' entries with it: their navigation APIs dispose of them.
     if (record.traversal_entry == 0 and record.history_handling == .push) {
@@ -4515,13 +4532,26 @@ fn savePersistedState(integration: *IFrameIntegration, record: *const Navigation
 /// IsBackForwardOrRestore) and Safari (HistoryController::restoreDocumentState
 /// returns for FrameLoadType::Reload*) do not restore on reload, Firefox
 /// (nsDocShell's layout history state on a soft reload) does.
-fn restorePersistedState(integration: *IFrameIntegration, record: *const Navigation) void {
-    if (record.traversal_entry == 0 or record.traversal_entry == record.traversal_from) return;
-    const bc = integration.browsing_context orelse return;
+///
+/// The states go to the document when it is made, before its parser runs
+/// (createNavigationDocument takes `next_persisted_state`), so that a load
+/// completed at the end of the parse restores them; this gives them to a
+/// document made with no parser, which did not take them.
+fn restorePersistedState(integration: *IFrameIntegration) void {
+    const bytes = integration.next_persisted_state orelse return;
+    integration.next_persisted_state = null;
     const document = activeDocumentOf(integration) orelse return;
-    const history = bc.jointHistory() catch return;
-    const bytes = history.persistedUserState(record.traversal_entry) orelse return;
     html_module.forms.form_state.setStateForNewControls(document, bytes);
+}
+
+/// The persisted form control states `record`'s traversal restores
+/// (restorePersistedState), borrowed from the joint history; null for any
+/// other navigation.
+fn persistedStateOf(integration: *IFrameIntegration, record: *const Navigation) ?[]const u8 {
+    if (record.traversal_entry == 0 or record.traversal_entry == record.traversal_from) return null;
+    const bc = integration.browsing_context orelse return null;
+    const history = bc.jointHistory() catch return null;
+    return history.persistedUserState(record.traversal_entry);
 }
 
 /// "Finalize a cross-document navigation" steps 5-10: the new document's
