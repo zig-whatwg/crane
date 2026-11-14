@@ -1318,6 +1318,7 @@ A lane brief now carries the lessons chosen for its batch.
 - [A list that compacts only when it is full keeps its last burst for ever - and a move is not a removal](debugging-a-list-that-compacts-only-when-full-keeps-its-last-burst.md) - "Compact when full" is no bound after the last burst, and "removed" hooks see every move: split a footprint into object, kept and freed-dirty before charging it to the object.
 
 ### Workflow
+- [A Linux gate names its OS, or the pool moves the mirror to a Mac](workflow-a-linux-gate-names-its-os-or-the-pool-moves-the-mirror-to-a-mac.md) - **A job meant for one OS says so twice - `--os` to the pool and a `uname` check in the command - and its "placed on" line is read the moment it starts.**
 - [Workflow: A STOP watcher reads the host from the CLOSING NOTICE's header, never its body](workflow-a-stop-watcher-reads-the-hosts-from-the-notices-header.md) - A notice names the host it closes in its header and the hosts it spares in its body: match the header, and test the parser on real notices before trusting it with kills.
 - [A worklist change is a code change - run the tests before committing it](workflow-a-worklist-change-is-a-code-change.md) - **A worklist change is a code change: the runner pins the worklist's directories in a test, so regenerate, add the directory to config.zig, and run that test before pushing.**
 
