@@ -273,6 +273,10 @@ pub const StyleEngine = struct {
         /// document declares any, and what its last step-16 style update saw
         /// (`AnimationGate`).
         animations: AnimationGate = .{},
+        /// SVG 2 §6.6: the presentation-attribute hints elements with equal
+        /// presentation attributes share (svg_hints.Cache; Blink's
+        /// PresentationAttributeCache). Made at the first SVG hint.
+        svg_hints: ?*svg_hints.Cache = null,
         /// Moves whenever a slot's assigned nodes change (DOM "assign
         /// slottables"): part of each cached style's key, since a slotted
         /// element inherits from its slot. 1 while the engine has no Rare
@@ -280,6 +284,8 @@ pub const StyleEngine = struct {
         slot_version: u64 = 1,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
+            // Hints its elements still hold live on, uncached.
+            if (self.svg_hints) |cache| cache.destroy();
             if (self.resources) |resources| resources.destroy();
             if (self.images) |images| {
                 images.deinit();
@@ -436,6 +442,25 @@ pub const StyleEngine = struct {
         try registry.register(options, definition);
         self.generation +%= 1;
         if (self.resourceState()) |resources| resources.invalidate();
+    }
+
+    /// The document's SVG presentation-attribute hint cache, made on first
+    /// use; null when there is no room for it (each hint is then its
+    /// element's own).
+    pub fn svgHintCache(self: *StyleEngine) ?*svg_hints.Cache {
+        const rare = self.ensureRare() catch return null;
+        return rare.svg_hints orelse {
+            const made = svg_hints.Cache.create(self.allocator) catch return null;
+            rare.svg_hints = made;
+            return made;
+        };
+    }
+
+    /// How many hints the document's SVG hint cache holds (0 with none).
+    pub fn svgHintCount(self: *const StyleEngine) usize {
+        const rare = self.rare orelse return 0;
+        const cache = rare.svg_hints orelse return 0;
+        return cache.count();
     }
 
     pub fn resourceState(self: *StyleEngine) ?*resource_loading.State {
@@ -1876,7 +1901,7 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     };
     // At the author presentational hint origin, specificity 0, before every
     // author rule (SVG 2 §6.6; CSS Cascade 5 §6.2), as HTML's hints.
-    if (svg_eligible) if (try svg_hints.svgHint(element, state, data, local)) |hint| {
+    if (svg_eligible) if (try svg_hints.svgHint(element, state, data, local, res.engine.svgHintCache(), res.document)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
     };
