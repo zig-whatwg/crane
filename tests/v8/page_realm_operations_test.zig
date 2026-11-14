@@ -1710,6 +1710,41 @@ test "protocol: a page's navigation, a frame's navigation and a browsing context
     protocol.destroyWindowRealm(popup, .global_detached);
 }
 
+test "protocol: a popup's realm its navigation replaced lives while script reaches it, after the realm that replaced it is replaced and collected" {
+    // websockets/unload-a-document/001.html: a popup's first document
+    // registers a cleanup in its opener's test; the popup navigates twice;
+    // the cleanup still runs. A replaced realm is detached and lives while
+    // script reaches it (destroyWindowRealm), and a popup's is no realm's
+    // child: the end of the realm that replaced it does not end it.
+    defer test_agent.close();
+    const base = try realm();
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(page, .global_detached);
+    var first_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
+    const first = try first_realm.make();
+    {
+        const cleanup = try evalOwned(first, "(function () { return typeof globalThis; })");
+        defer cleanup.release();
+        try setGlobal(base, "popupCleanup", cleanup.value);
+    }
+    // The popup navigates: its next realm around its WindowProxy.
+    var second_realm: FrameRealm = .{ .parent = first, .auxiliary = true, .global_this = .{ .window_proxy_of = first } };
+    const second = try second_realm.make();
+    protocol.destroyWindowRealm(first, .global_detached);
+    // And again: the second realm is replaced too, and nothing reaches it.
+    var third_realm: FrameRealm = .{ .parent = second, .auxiliary = true, .global_this = .{ .window_proxy_of = second } };
+    const third = try third_realm.make();
+    protocol.destroyWindowRealm(second, .global_detached);
+    collectTwice();
+    collectTwice();
+    // The first realm's function still runs.
+    try expectEval(base, "(() => { try { return popupCleanup(); } catch (e) { return e.name; } })()", "object");
+    try expectEval(base, "delete globalThis.popupCleanup", "true");
+    protocol.destroyWindowRealm(third, .navigable_destroyed);
+    for ([_]runtime.Context{ first, second, third }) |r| protocol.destroyWindowRealm(r, .global_detached);
+}
+
 test "protocol: a realm made around a WindowProxy that runs out of memory at any allocation leaves nothing of itself, and the proxy with no global" {
     // createWindowRealm(.window_proxy_of) hands the proxy on before its
     // first fallible allocation (its ORDER comment): V8 builds a context
