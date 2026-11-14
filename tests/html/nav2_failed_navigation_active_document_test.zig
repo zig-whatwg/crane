@@ -99,21 +99,24 @@ test "forgetWindow clears a context's active document whatever its active window
     try testing.expect(own.active_document == null);
 }
 
-test "forgetWindow reaches a retired context: it stays on the live list until freeRetired" {
+test "forgetWindow reaches a discarded context a Window still holds: it stays on the live list until that hold is released" {
     const allocator = testing.allocator;
     var objects: StandIns = .{};
     var navigables = Navigables.init(allocator);
     defer navigables.deinit();
     const top = try BrowsingContext.initTopLevel(allocator, &navigables);
     defer top.deinit();
-    // A removed iframe's context: a Window was active in it, so discard
-    // retires it rather than freeing it (freed by navigables.deinit's
-    // freeRetired).
+    // A removed iframe's context: a Window still holds it (lane rep1 b2:
+    // BrowsingContext.window_holds - this stands in for that Window), so
+    // discard leaves it to the hold's release rather than freeing it; it was
+    // once retired until the Browser's end (Navigables.retired, now the
+    // Browser-end net that stays empty).
     const removed = try BrowsingContext.initChild(allocator, top);
     removed.active_window = StandIns.ptr(&objects.new_window);
     removed.active_document = StandIns.ptr(&objects.old_document);
+    removed.holdForWindow();
     try testing.expect(!removed.discard());
-    try testing.expectEqual(@as(usize, 1), navigables.retired.items.len);
+    try testing.expectEqual(@as(usize, 0), navigables.retired.items.len);
     var on_live = false;
     for (navigables.live.items) |ctx| {
         if (ctx == removed) on_live = true;
@@ -125,6 +128,8 @@ test "forgetWindow reaches a retired context: it stays on the live list until fr
     try testing.expect(removed.active_window == StandIns.ptr(&objects.new_window));
     navigables.forgetWindow(StandIns.ptr(&objects.new_window), null);
     try testing.expect(removed.active_window == null);
+    // The Window's end releases the last hold: the context is freed.
+    try testing.expect(removed.releaseFromWindow());
 }
 
 // ----------------------------------------------------------------------------

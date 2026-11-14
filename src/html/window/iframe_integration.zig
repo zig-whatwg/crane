@@ -355,12 +355,6 @@ pub const IFrameIntegration = struct {
     /// `retireRealmContext`. Set with the context.
     retired_realm_destroy: ?*const fn (data: *anyopaque, global: ?*anyopaque, allocator: Allocator) void = null,
 
-    /// The realm an auxiliary navigable's first realm was made under - the
-    /// opener's (a runtime.Context, opaque here) - for the realms later
-    /// navigations make; an iframe's parent realm is its parent navigable's
-    /// window's. Not owned.
-    parent_realm: ?*anyopaque = null,
-
     /// Guard flag to prevent recursive cleanup during context teardown
     /// Set to true when cleanupRealmContext is entered
     cleanup_in_progress: bool,
@@ -616,12 +610,11 @@ pub const IFrameIntegration = struct {
         // Likewise a pending origin record.
         self.setNextOrigin(null);
 
-        // Destroy the browsing context if it exists
-        // NOTE: BrowsingContext.deinit() already calls self.allocator.destroy(self)
-        // so we only need to call deinit() here.
+        // The owner lets its browsing context go: freed now, or by the end of
+        // the last Window that still holds it (BrowsingContext.window_holds).
         if (self.browsing_context) |ctx| {
             log.debug("[IFrameIntegration.deinit] integration={*} -> BC {*}\n", .{ self, ctx });
-            ctx.deinit();
+            ctx.releaseByOwner();
         } else {
             log.debug("[IFrameIntegration.deinit] integration={*} -> BC null\n", .{self});
         }

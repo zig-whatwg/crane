@@ -1,11 +1,14 @@
 //! A popup belongs to the user agent, not to the Window that opened it (HTML
 //! 7.3.1.2: top-level traversables are the user agent's; window.opener is the
-//! opener BROWSING CONTEXT's WindowProxy). Once a load gives the opener's
-//! navigable a new Window (lane newwin1, B3/B5), the popups the old Window
-//! opened move with the navigable (B7): the new Window keeps them, their
-//! realms follow the opener's WindowProxy (engine WindowRealmOptions.auxiliary,
-//! E2), and the realm their next document's realm is made under is the
-//! opener's current one - never the realm the opener's navigation replaced.
+//! opener BROWSING CONTEXT's WindowProxy). A load that gives the opener's
+//! navigable a new Window (lane newwin1, B3/B5) leaves the popup running, its
+//! opener the navigable's WindowProxy - so the new Window - and the popup's
+//! next realm is made from the popup's own current realm, never from a realm
+//! of its opener's (lane rep1 b2: a popup is its Browser's and no realm's
+//! child - engine WindowRealmOptions.auxiliary; this file pinned the older
+//! model, where the old Window's popups moved to the new Window and their
+//! next realms were made under the opener's current realm, and its checks
+//! hold in both).
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -94,8 +97,8 @@ fn popupOutlivesOpenersLoad() !void {
     // the new Window.
     try expectEval(page, "[heldPopup.closed, heldPopup.marker, heldPopup.opener === window].join()", "false,popup,true");
     // Its first document replaces its initial about:blank one and keeps the
-    // Window (step 6); the next needs a new realm made under its opener's -
-    // the opener's current realm, not the one its load replaced.
+    // Window (step 6); the next needs a new realm, made from the popup's own
+    // current one - nothing of its opener's old realm is read.
     try page.runScript("heldPopup.location.href = 'javascript:\"<p id=p>next</p>\"';");
     try until(browser, "heldPopup.document.getElementById('p') !== null");
     try expectEval(page, "typeof heldPopup.marker", "string");
@@ -104,6 +107,6 @@ fn popupOutlivesOpenersLoad() !void {
     try expectEval(page, "[typeof heldPopup.marker, heldPopup.opener === window].join()", "undefined,true");
 }
 
-test "a popup outlives a load that gives its opener's navigable a new Window, and its next realm is made under the opener's current one" {
+test "a popup outlives a load that gives its opener's navigable a new Window, and navigates twice after it" {
     try onFreshThread(popupOutlivesOpenersLoad);
 }
