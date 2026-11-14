@@ -2178,3 +2178,14 @@ kind = user-ruling
 why = With the load completed in the parser's task (the user's 2026-11-12 ruling), the unhandledrejection a parse-time script's rejected promise queues (HTML "notify about rejected promises": a global task) fires after load: [readystatechange:interactive, readystatechange:complete] then the event, against the expected [interactive, unhandledrejection, complete], 1 -> 0. That is Safari 27.2's exact order. Chrome 157 logs [unhandledrejection, interactive, complete] (its parse ends in a later task than the script - Blink's body-finished task - and its notification is a posted task too: RejectedPromises::ProcessQueue -> ProcessQueueNow), FAIL; Firefox 160 passes (its load is posted). By mechanism (golden rule 2): the load at the end of the parse is Chrome + Safari's, the notification as a task Firefox + Safari's (and Blink's own) - together Safari's behaviour. Stable 3/3 in lane nav2 b12's isolation runs; the order is stated in Document.zig completeLoadUnlessDelayed.
 date = 2026-11-14
 decision = the user, 2026-11-14 12:17 UTC, by prompt (option b: keep the tip, Safari's order), after a corrected question (an earlier one said Chrome's order would pass; Chrome fails the file too)
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 225
+kind = timing-bound
+why = Re-measured after lane nav2 batch 12 touched its paths (the entry went STALE): unchanged cause - startTime is the time origin, the navigation's start (navigate() entry), and redirectStart the first hop's fetch start, both read from the monotonic clock and coarsened to the 125 us tick, with nothing waiting between them, so redirectStart is 0 unless the gap crosses a tick. A diagnostic production runner of 5cbd6e69fd7 (one warn line with the gap in createNavigationTimingEntry, deleted after) on chat.local, the file alone, 60 runs (wpt_runner --repeat, a fresh process per run): the iframe navigation's gap min 36 / p50 49 / max 67 us, 24 passes of 60 where the tick model (gap/125 per run, summed) predicts 23.7. Chrome and Safari pass through process hops of milliseconds; Firefox fails 2 of 3.
+tick_us = 125
+gap_us = min 36 / p50 49 / max 67
+pass_rate = 24/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 36-67 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = 5cbd6e69fd7
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
