@@ -896,7 +896,10 @@
 <ol class="subtests">
 <li class="sub s-fail" id="s-6c3f00c90786"><details><summary><span class="mark">FAIL</span><span class="sub-name">document.adoptedStyleSheets should allow mutation in-place</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 255, 0)&quot; but got &quot;rgb(0, 0, 255)&quot;</pre></details><a class="self" href="#s-6c3f00c90786" aria-label="Link to this subtest">&para;</a></li>
 <li class="sub s-fail" id="s-e6c572437a85"><details><summary><span class="mark">FAIL</span><span class="sub-name">shadowRoot.adoptedStyleSheets should allow mutation in-place</span></summary><pre class="msg">assert_equals: expected &quot;rgb(0, 255, 0)&quot; but got &quot;rgb(0, 0, 255)&quot;</pre></details><a class="self" href="#s-e6c572437a85" aria-label="Link to this subtest">&para;</a></li>
-<li class="sub s-fail" id="s-c728f46ee2e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptedStyleSheets defineProperty should reject accessors that become non-callable during descriptor conversion</span></summary><pre class="msg">&#39;getOwnPropertyDescriptor&#39; on proxy: trap returned descriptor for property &#39;reentrantAccessor&#39; that is incompatible with the existing property in the proxy target</pre></details><a class="self" href="#s-c728f46ee2e9" aria-label="Link to this subtest">&para;</a></li>
+<li class="sub s-fail" id="s-c728f46ee2e9"><details><summary><span class="mark">FAIL</span><span class="sub-name">adoptedStyleSheets defineProperty should reject accessors that become non-callable during descriptor conversion</span></summary><pre class="msg">assert_throws_js: function &quot;() =&gt; {
+      Reflect.defineProperty(document.adoptedStyleSheets, &quot;reentrantAccessor&quot;,
+                             descriptor);
+    }&quot; did not throw</pre></details><a class="self" href="#s-c728f46ee2e9" aria-label="Link to this subtest">&para;</a></li>
 </ol>
 <details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>adoptedStyleSheets should return true for isArray()</li><li>adoptedStyleSheets should not expose its backing object via prototype</li></ol></details>
 </div>

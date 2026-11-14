@@ -21,8 +21,8 @@
 <nav class="crumbs" aria-label="Breadcrumb"><ol><li><a href="../../">Crane WPT results</a></li><li><a href="../../dom/"><code>dom/</code></a></li><li aria-current="page"><code>collections/</code></li></ol></nav>
 <h1 class="page-title"><span class="secno">14.2</span><code>dom/<wbr>collections/</code></h1>
 <div class="figures" role="group" aria-label="dom/collections/">
-<p class="figures-main"><span class="fg-pass">53</span><span class="fg-of"> / 55</span> <span class="fg-label">WPT subtests passing</span></p>
-<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>2</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>11</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
+<p class="figures-main"><span class="fg-pass">54</span><span class="fg-of"> / 55</span> <span class="fg-label">WPT subtests passing</span></p>
+<dl class="figures-counts"><div class="fail"><dt>Failed</dt><dd>1</dd></div><div><dt>Timed out</dt><dd>0</dd></div><div><dt>Not run</dt><dd>0</dd></div><div><dt>Test files</dt><dd>11</dd></div><div><dt>Blocking files</dt><dd>0</dd></div></dl>
 </div>
 <p class="figures-ref"><span class="ref-name">Chrome</span> <b>54</b> / 55 WPT subtests passing on the same files, <span class="quiet">none blocking</span></p>
 </header>
@@ -30,8 +30,8 @@
 <aside class="box conf" aria-label="Conformance of dom/collections/">
 <div class="box-head"><h3 class="box-title">Conformance</h3><span class="box-sub">11 files</span></div>
 <div class="conf-body">
-<div class="meter" role="img" aria-label="9 clean, 2 with failures, 0 blocking, 0 with no subtests, 0 not run, of 11 files"><span class="m-clean" style="width:81.818%"></span><span class="m-partial" style="width:18.182%"></span></div>
-<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>9</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>2</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
+<div class="meter" role="img" aria-label="10 clean, 1 with failures, 0 blocking, 0 with no subtests, 0 not run, of 11 files"><span class="m-clean" style="width:90.909%"></span><span class="m-partial" style="width:9.091%"></span></div>
+<dl><div><dt><span class="key key-clean"></span>Clean</dt><dd>10</dd></div><div><dt><span class="key key-partial"></span>With failures</dt><dd>1</dd></div><div><dt><span class="key key-blocking"></span>Blocking</dt><dd>0</dd></div></dl>
 </div>
 </aside>
 <div class="box tests">
@@ -39,18 +39,15 @@
 <div class="tf-list has-ref">
 <p class="tf-hint">Each test file opens in place to its subtests, and each subtest that did not pass to its message.</p>
 <div class="tf-head"><span>Test file</span><span>Subtests passing</span><span>Chrome</span><span>Failed</span><span>Standing</span></div>
-<details class="tf" id="HTMLCollection-as-prototype.html" data-gate="partial" data-pass="1" data-of="2" data-failed="1" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>HTMLCollection-<wbr>as-<wbr>prototype.<wbr>html</code></span><span class="tf-n"><b>1</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="fail">1</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-partial">With failures</span></span></summary>
+<details class="tf" id="HTMLCollection-as-prototype.html" data-gate="clean" data-pass="2" data-of="2" data-failed="0" data-ref-pass="1" data-ref-of="2"><summary><span class="tf-name"><code>HTMLCollection-<wbr>as-<wbr>prototype.<wbr>html</code></span><span class="tf-n"><b>2</b> / 2<span class="tf-lbl"> passing</span></span><span class="tf-ref"><span class="tf-lbl">Chrome </span><b>1</b> / 2</span><span class="tf-fail"><span class="quiet">0</span><span class="tf-lbl"> failed</span></span><span class="tf-gate"><span class="gate gate-clean">Clean</span></span></summary>
 <div class="tf-body">
 <dl class="file-meta">
-<div><dt>Standing</dt><dd><span class="gate gate-partial">With failures</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
+<div><dt>Standing</dt><dd><span class="gate gate-clean">Clean</span> <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Chrome</dt><dd><span class="gate gate-partial">With failures</span> <b>1</b> / 2 WPT subtests passing <span class="quiet">runner status <code>OK</code></span></dd></div>
 <div><dt>Test source</dt><dd><a href="https://github.com/web-platform-tests/wpt/blob/afe89a5df4dcc7c6bcb317b07d6eee31a383c466/dom/collections/HTMLCollection-as-prototype.html"><code>dom/<wbr>collections/<wbr>HTMLCollection-<wbr>as-<wbr>prototype.<wbr>html</code></a></dd></div>
 </dl>
 <div class="run">
-<ol class="subtests">
-<li class="sub s-fail" id="s-cedd2fb3221a"><details><summary><span class="mark">FAIL</span><span class="sub-name">HTMLCollection as a prototype and setting own properties</span></summary><pre class="msg">assert_equals: expected (string) &quot;foo&quot; but got (object) Element node &lt;p id=&quot;named&quot;&gt;&lt;/p&gt;</pre></details><a class="self" href="#s-cedd2fb3221a" aria-label="Link to this subtest">&para;</a></li>
-</ol>
-<details class="passing"><summary>1 passing subtest</summary><ol class="pass-list"><li>HTMLCollection as a prototype should not allow getting .length on the base object</li></ol></details>
+<details class="passing"><summary>2 passing subtests</summary><ol class="pass-list"><li>HTMLCollection as a prototype should not allow getting .length on the base object</li><li>HTMLCollection as a prototype and setting own properties</li></ol></details>
 </div>
 </div>
 </details>
