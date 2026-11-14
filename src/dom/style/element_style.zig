@@ -170,8 +170,9 @@ pub const ElementStyle = struct {
     computed_map: ?*ComputedMapLink = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
     /// The element's presentational hint (`Hint`): a background hint
-    /// (resource_loading.backgroundHint) or an HTML font element's
-    /// color/face/size hint (font_hints.zig).
+    /// (resource_loading.backgroundHint), an HTML font element's
+    /// color/face/size hint (font_hints.zig) or an SVG element's
+    /// presentation attributes (svg_hints.zig).
     hint: ?*Hint = null,
     /// CSS Transitions 1 section 3 and CSS Animations 1 section 2: the
     /// element's transitions and CSS animations (dom.animations), made at the
@@ -237,6 +238,13 @@ pub const ElementStyle = struct {
         return @alignCast(@fieldParentPtr("header", hint));
     }
 
+    /// The SVG presentation-attribute hint, if the slot holds one.
+    pub fn svgHint(self: *const ElementStyle) ?*@import("svg_hints.zig").SvgHint {
+        const hint = self.hint orelse return null;
+        if (hint.kind != .svg) return null;
+        return @alignCast(@fieldParentPtr("header", hint));
+    }
+
     /// Keep `hint` in the slot, dropping the one of its kind it replaces.
     /// One element carries hints of one kind only (`Hint`): a slot holding
     /// another kind is a broken assumption, which fails here, loudly, in
@@ -263,6 +271,13 @@ pub const ElementStyle = struct {
         self.hint = null;
     }
 
+    pub fn dropSvgHint(self: *ElementStyle) void {
+        const hint = self.hint orelse return;
+        if (hint.kind != .svg) return;
+        destroyHint(hint);
+        self.hint = null;
+    }
+
     /// Drop the slot's hint, whatever its kind.
     pub fn dropHint(self: *ElementStyle) void {
         const hint = self.hint orelse return;
@@ -274,7 +289,7 @@ pub const ElementStyle = struct {
         switch (hint.kind) {
             .background => @as(*BackgroundHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
             .font => @as(*@import("font_hints.zig").FontHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
-            .svg => unreachable,
+            .svg => @as(*@import("svg_hints.zig").SvgHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
         }
     }
 

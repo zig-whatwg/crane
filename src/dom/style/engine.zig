@@ -71,6 +71,7 @@ const animations = struct {
 const environment_variables = @import("environment_variables.zig");
 pub const resource_loading = @import("resource_loading.zig");
 const font_hints = @import("font_hints.zig");
+const svg_hints = @import("svg_hints.zig");
 pub const available_images = @import("available_images.zig");
 const matched_properties_cache = @import("matched_properties_cache.zig");
 
@@ -1832,6 +1833,9 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     var background: ?[]const u8 = null;
     // HTML 15.3.4: an HTML font element's color, face and size hints.
     const font_eligible = pseudo == null and is_html and std.mem.eql(u8, local, "font");
+    // SVG 2 §6.6: an SVG element's presentation attributes. An HTML element
+    // pays only the `is_html` test here.
+    const svg_eligible = pseudo == null and !is_html and if (ns) |n| std.mem.eql(u8, n, svg_namespace) else false;
     var font_attributes: font_hints.Attributes = .{};
     var it = data.attributeIterator();
     while (it.next()) |entry| {
@@ -1868,6 +1872,12 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     };
     if (font_eligible) if (try font_hints.fontHint(state, font_attributes)) |hint| {
         try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true } });
+        res.own_blocks = true;
+    };
+    // At the author presentational hint origin, specificity 0, before every
+    // author rule (SVG 2 §6.6; CSS Cascade 5 §6.2), as HTML's hints.
+    if (svg_eligible) if (try svg_hints.svgHint(element, state, data, local)) |hint| {
+        try res.matched.append(res.allocator, .{ .block = hint, .source = .{ .origin = .presentational_hint, .per_element = true, .tree_scope = .{ .serial = own_scope } } });
         res.own_blocks = true;
     };
 
