@@ -50,15 +50,15 @@ pub const ParserSteps = struct {
     popped: *const fn (element: *runtime.Instance) void,
     /// The parser made a link, with all token attributes installed.
     link_created: ?*const fn (element: *runtime.Instance) void = null,
+    /// The SVG style element's steps, installed by its own type.
+    svg_style: ?SvgStyleParserSteps = null,
 };
 
 var load_delay: Hook(?LoadDelay) = .init(null);
 var parser_steps: Hook(?ParserSteps) = .init(null);
-/// The SVG style element's created and popped steps (SVG 2 15.3: an SVG
-/// style element is processed as HTML's), installed by its own type.
-var svg_style_parser_steps: Hook(?SvgStyleParserSteps) = .init(null);
-
-/// What the SVG style element does when the parser creates and pops it.
+/// What the SVG style element does when the parser creates and pops it
+/// (SVG 2 15.3: an SVG style element is processed as HTML's); carried in
+/// the same hook as HTML's style element steps.
 pub const SvgStyleParserSteps = struct {
     created: *const fn (element: *runtime.Instance, start: ?Position) void,
     popped: *const fn (element: *runtime.Instance) void,
@@ -72,15 +72,19 @@ pub fn installLoadDelay(delay: LoadDelay) void {
 /// Called by the style element. Idempotent.
 pub fn installParserSteps(steps: ParserSteps) void {
     var combined = steps;
-    if (combined.link_created == null) {
-        if (parser_steps.installing().*) |old| combined.link_created = old.link_created;
+    if (parser_steps.installing().*) |old| {
+        if (combined.link_created == null) combined.link_created = old.link_created;
+        if (combined.svg_style == null) combined.svg_style = old.svg_style;
     }
     parser_steps.install(combined);
 }
 
-/// Called by the SVG style element. Idempotent.
+/// Called by the SVG style element. Keeps the HTML style element's and the
+/// link's parser hooks. Idempotent.
 pub fn installSvgStyleParserSteps(steps: SvgStyleParserSteps) void {
-    svg_style_parser_steps.install(steps);
+    var combined = parser_steps.installing().* orelse ParserSteps{ .created = &ignoreCreatedStep, .popped = &ignoreParserStep };
+    combined.svg_style = steps;
+    parser_steps.install(combined);
 }
 
 /// Called by the link element. Keeps the style element's parser hooks.
@@ -119,8 +123,8 @@ pub fn blocksScripts(document: *runtime.Instance) bool {
 /// after its start tag (null: unknown). Each type's steps leave alone an
 /// element that is not of their type.
 pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
-    if (svg_style_parser_steps.get()) |svg| svg.created(element, start);
     const steps = parser_steps.get() orelse return;
+    if (steps.svg_style) |svg| svg.created(element, start);
     steps.created(element, start);
     if (steps.link_created) |created| created(element);
 }
@@ -128,8 +132,8 @@ pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
 /// The HTML parser popped `element`, a style element it created (HTML's or
 /// SVG's), off its stack of open elements.
 pub fn poppedByParser(element: *runtime.Instance) void {
-    if (svg_style_parser_steps.get()) |svg| svg.popped(element);
     const steps = parser_steps.get() orelse return;
+    if (steps.svg_style) |svg| svg.popped(element);
     steps.popped(element);
 }
 
