@@ -1292,6 +1292,45 @@ EXCLUDE = [
      'text-combine-upright: digits <integer>: 0/10 in all three'),
     ('css/css-writing-modes/text-combine-upright-parsing-digits-002.html',
      'text-combine-upright: digits <integer>: 0/12 in all three'),
+    # The WPT update to 2358bd4835 (lane wptup1, 2026-11-14; the integrator's rulings under the
+    # scope line, 04:5x UTC). Evidence: wpt.fyi aligned stable runs at 2358bd4835 - Chrome
+    # 157.0.8103.78 (4786307730243584), Firefox 160.0 (4877168468033536), Safari 27.2
+    # (6479119966273536).
+    # Not ratified: upstream moved these out of .tentative names into their own directories.
+    # None tests only Ed25519/X25519 (those are in Web Cryptography and stay, by their own paths).
+    ('WebCryptoAPI/modern-algos/',
+     'not ratified: WICG Modern Algorithms draft; re-check when it enters the Web Cryptography spec'),
+    ('WebCryptoAPI/secure-curves/',
+     'not ratified: WICG Secure Curves draft (X448/Ed448); re-check when it enters the Web Cryptography spec'),
+    # Focus order from layout (the reading-flow geometry entries above); its siblings
+    # normal.html and source-order-{valid,invalid}.html need no layout and stay.
+    ('shadow-dom/focus-navigation/reading-flow/simplified-layout.html',
+     'keyboard focus target depends on visual layout order: 0/1 in all three'),
+    # MathML Core 3.6 (w3c/mathml-core#307, #330, #335) gives <a> the referrerpolicy content
+    # attribute but no referrerPolicy IDL attribute (MathMLAnchorElement has href, target and
+    # HyperlinkElementUtils only), so the getter/setter has no spec text. The navigation tests
+    # (referrer-policy/gen/**/mathml-a-tag.http.html) stay.
+    ('mathml/relations/html5-tree/a-referrerpolicy-getter-setter.html',
+     'MathMLAnchorElement.referrerPolicy is in no spec IDL: 0/1 in all three'),
+    # CSS features no browser ships (the cssprop1 rule above); their -invalid siblings stay.
+    ('css/css-sizing/parsing/max-size-shorthand.html',
+     'max-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/max-size-valid.html',
+     'max-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-shorthand.html',
+     'min-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-valid.html',
+     'min-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-computed.html',
+     'text-autospace-size: 0/5 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-valid.html',
+     'text-autospace-size: 0/4 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-shorthand-longhands.html',
+     'the white-space shorthand setting white-space-trim with its other longhands: 0/19 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-computed.html',
+     'white-space-trim: 0/7 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-valid.html',
+     'white-space-trim: 0/11 in all three (run 2358bd4835)'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),
