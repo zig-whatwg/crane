@@ -1,0 +1,12 @@
+# Architecture: Pop-then-invoke on a reaction stack sends the invocation's own reactions to the backup queue
+
+**Date**: 2026-11-14
+**Lesson**: A [CEReactions] scope that pops its element queue before invoking it (HTML's literal order) makes every reaction enqueued during the outermost invocation - an upgrade's connectedCallback - go to the backup element queue, leaving a stale entry that reorders later reactions; Blink, WebKit and Gecko all invoke first and pop after.
+
+**Why**: "Enqueue an element on the appropriate element queue" picks the backup queue when the reactions stack is empty. Popped first, the outermost scope's stack IS empty while its queue runs. The upgrade's own connectedCallback still runs at once (the element's reaction queue drains), so nothing looks wrong - but the element now sits on the backup queue with "processing the backup element queue" set and a microtask pending. The next reaction from a path with no scope (the parser, user editing, a native microtask) joins the backup queue BEHIND the stale element, and when the backup queue runs, the stale element's newer reactions run first.
+
+**What Happened**: Lane sel1 batch 1 made the select's selectedcontent update follow HTML's queued microtask. The update then ran in the microtask queued during an append(), while a stale backup entry from that append's upgrades was still pending. selectedcontent-custom-element-reactions.html lost its remove subtest (the old clone's disconnectedCallback ran before the new clone's constructor and connectedCallback). A Debug runner with temporary logs showed "enqueue ... type=callback depth=0 schedule=true" during the outermost scope's invocation.
+
+**Fix**: src/html/custom_elements/reactions.zig `Reactions.end` invokes the top frame by index while the depth is unchanged (the frame grows while it is invoked; no pointer survives a script call), then removes it and lowers the depth - Blink CustomElementReactionStack::PopInvokingReactions, WebKit ~CustomElementReactionStack, Gecko PopAndInvokeElementQueue. Test: tests/html/ce_reactions_queue_test.zig, "a reaction enqueued while the outermost queue is invoked joins that queue, never the backup queue".
+
+**Takeaway**: **When a spec step says "pop, then invoke", check whether the invocation can enqueue onto the thing just popped: all three engines keep the queue current while it runs, and the literal order leaks reactions to the backup queue.**

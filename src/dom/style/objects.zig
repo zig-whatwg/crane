@@ -90,6 +90,7 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
         .supports => interfaces.CSSSupportsRule.initWith(a, realm, args),
         .layer_block => interfaces.CSSLayerBlockRule.initWith(a, realm, args),
         .layer_statement => interfaces.CSSLayerStatementRule.initWith(a, realm, args),
+        .starting_style => interfaces.CSSStartingStyleRule.initWith(a, realm, args),
         .namespace => interfaces.CSSNamespaceRule.initWith(a, realm, args),
         .font_face => interfaces.CSSFontFaceRule.initWith(a, realm, args),
         .page => interfaces.CSSPageRule.initWith(a, realm, args),

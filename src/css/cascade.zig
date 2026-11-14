@@ -172,6 +172,9 @@ pub const Context = struct {
     viewport_height: f64 = 768,
     /// The element is the root element (Display 4 2.8).
     is_root: bool = false,
+    /// The element's computed display is blockified whatever its parent: an
+    /// HTML legend (adjust(), golden rule 2).
+    blockify_display: bool = false,
     /// CSS Color Adjustment 1 2.1, the page color scheme: the used color
     /// scheme of the page's supported color schemes - an element whose
     /// color-scheme is `normal` has it.
@@ -2253,6 +2256,19 @@ const Builder = struct {
         // display type."
         const parent_blockifies = if (self.ctx.parent) |p| blockifiesChildren(p) else false;
         if (self.ctx.is_root or out_of_flow or floated or parent_blockifies) display = display.blockified();
+        // HTML 15.3.13: a rendered legend's display "is expected to behave as
+        // if its computed value was blockified. This does not change the
+        // computed value." Chrome and Safari blockify the COMPUTED display of
+        // every legend element, in a fieldset or not, except display:
+        // contents: Blink StyleAdjuster::AdjustStyleForHTMLElement ("according
+        // to the spec, this shouldn't affect computed style (like we do
+        // here)"), WebKit Style::Adjuster::adjust (`legendTag`). Gecko follows
+        // HTML. No newer spec is involved, so the majority decides (golden
+        // rule 2): html/rendering/.../legend-display.html Chrome 28/80,
+        // Firefox 80/80, Safari 28/80; css/css-transitions/starting-style-
+        // adjustment.html, whose starting style display: inline must
+        // blockify, passes in all three (wpt.fyi 2358bd4835).
+        if (self.ctx.blockify_display and display.box != .contents) display = display.blockified();
         // Display 4 2.8: "a display of contents computes to block on the root
         // element."
         if (self.ctx.is_root and display.box == .contents) display = Display.block_flow;
@@ -2585,6 +2601,28 @@ test "a flex container blockifies its children" {
     const child = try cascade(.{ .allocator = testing.allocator, .parent = parent }, &.{.{ .block = &child_block.block, .source = .{ .origin = .author } }});
     defer child.destroy();
     try expectResolved(child, .display, "block");
+}
+
+test "blockify_display (a legend) blockifies the computed display, but not contents" {
+    const cases = [_][2][]const u8{
+        .{ "display: inline", "block" },
+        .{ "display: inline-flex", "flex" },
+        .{ "display: inline-grid", "grid" },
+        .{ "display: contents", "contents" },
+        .{ "display: none", "none" },
+    };
+    for (cases) |case| {
+        var block = try TestBlock.make(case[0]);
+        defer block.deinit();
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null, .blockify_display = true }, &.{.{ .block = &block.block, .source = .{ .origin = .author } }});
+        defer style.destroy();
+        try expectResolved(style, .display, case[1]);
+    }
+    var plain = try TestBlock.make("display: inline");
+    defer plain.deinit();
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &plain.block, .source = .{ .origin = .author } }});
+    defer style.destroy();
+    try expectResolved(style, .display, "inline");
 }
 
 test "text values are shared, not leaked" {

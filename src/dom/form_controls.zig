@@ -56,6 +56,9 @@ pub const Control = struct {
     set_picker_open: ?*const fn (select: *runtime.Instance, open: bool) anyerror!void = null,
     selectedcontent_interest: ?*const fn (select: *runtime.Instance) bool = null,
     set_selectedcontent_interest: ?*const fn (select: *runtime.Instance, present: bool) anyerror!void = null,
+    /// HTML 4.10.7: a select's "pending selectedcontent update" boolean.
+    selectedcontent_pending: ?*const fn (select: *runtime.Instance) bool = null,
+    set_selectedcontent_pending: ?*const fn (select: *runtime.Instance, pending: bool) anyerror!void = null,
 };
 
 const max_controls = 16;
@@ -201,6 +204,21 @@ pub fn selectedcontentInterest(select: *runtime.Instance) bool {
 pub fn setSelectedcontentInterest(select: *runtime.Instance, present: bool) !void {
     for (controls.read().slice()) |control| {
         if (control.set_selectedcontent_interest) |set| if (control.is(select)) return set(select, present);
+    }
+    return error.NotSupported;
+}
+
+/// HTML 4.10.7: the select's pending selectedcontent update, initially false.
+pub fn selectedcontentPending(select: *runtime.Instance) bool {
+    for (controls.read().slice()) |control| {
+        if (control.selectedcontent_pending) |read| if (control.is(select)) return read(select);
+    }
+    return false;
+}
+
+pub fn setSelectedcontentPending(select: *runtime.Instance, pending: bool) !void {
+    for (controls.read().slice()) |control| {
+        if (control.set_selectedcontent_pending) |set| if (control.is(select)) return set(select, pending);
     }
     return error.NotSupported;
 }

@@ -782,3 +782,12 @@ chrome.result   = wpt.fyi run 4918833408901120: 0/0 (ERROR, Chrome 157, 24ddf405
 firefox.result  = wpt.fyi run 4888858429489152: 0/0 (ERROR, Firefox 160, 24ddf405a0)
 safari.result   = wpt.fyi run 5440535234609152: 0/0 (ERROR, Safari 27.2, 24ddf405a0)
 revisit         = when https://github.com/web-platform-tests/wpt/issues/65067 is resolved
+
+# needs-renderer (the user, 2026-11-14 6:00 PM ET, "2 yes"; lane sel1 batch 1): subtests 1-3 click the middle
+# of a list box with test_driver and expect its second option; which option sits under that point is the
+# renderer's hit test. Subtest 4 (typeahead) passes, so the file does not block today; the entry records why
+# the other three fail (production run, sel1 FULL A/B #2, server1, 2026-11-14).
+[html/semantics/forms/the-select-element/select-user-selection-dirtiness.html]
+kind      = needs-renderer
+why       = the test clicks the centre of a list box (test_driver.click on the select) and expects the option laid out under that point to be picked; with no renderer the select has no layout box and no option lies under the click, so nothing is picked
+assertion = assert_equals: clicking the middle of the list box picks its second option expected "two" but got ""

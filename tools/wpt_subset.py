@@ -136,6 +136,25 @@ INCLUDE = [
     ('css/css-text/parsing/', 'text property syntax and computed values, not shaping'),
     ('css/css-transforms/parsing/', 'transform property syntax and computed values'),
     ('css/css-transitions/parsing/', 'transition property syntax and computed values'),
+    # CSS Transitions 2 @starting-style (the integrator, 2026-11-14, lane sel1
+    # batch 1, with the feature): all three browsers ship it (wpt.fyi 2358bd4835:
+    # Chrome 157, Firefox 160 and Safari 27.2 pass these files, Safari 0/2 on the
+    # revert-layer one and 1/6 on after-change-style-inherited). Not
+    # starting-style-size-container.html (its @starting-style sits in a size
+    # @container query: the container's laid-out width, geometry) and not
+    # starting-style-first-letter-crash.html (a crashtest, no subtests). The rest
+    # of css/css-transitions/ is queued as a worklist expansion of the animation
+    # area.
+    ('css/css-transitions/starting-style-adjustment.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-cascade.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-name-defining-rules.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-revert-layer-cascade.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-basic.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-none.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-pseudo-elements.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/idlharness-2.html', 'CSS Transitions 2 @starting-style (CSSStartingStyleRule, CSSTransition IDL); all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/after-change-style-inherited.html', 'CSS Transitions 2 @starting-style (it stays out of the after-change style); all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-cascade/scope-starting-style.html', 'CSS Transitions 2 @starting-style inside @scope; all three browsers ship it; added by lane sel1 with the feature'),
     ('css/css-typed-om/the-stylepropertymap/computed/', 'typed computed style values, not box geometry'),
     ('css/css-ui/parsing/', 'UI property syntax and computed values, not native widgets'),
     ('css/css-view-transitions/parsing/', 'view transition property syntax and computed values, not screenshots'),
@@ -893,6 +912,14 @@ EXCLUDE = [
     # selectedcontent for multiple selects.
     ('html/semantics/forms/the-select-element/customizable-select-multiple-popup/selectedcontent-multiple-restore.optional.html',
      'selectedcontent for select multiple, unspecified'),
+    # Two .optional customizable-select files (WPT's .optional: behaviour the spec allows but does not
+    # require) that lane sel1 batch 1 did not implement: the picker's event sequence and its dialog-mode
+    # focus. The user, 2026-11-14 6:00 PM ET ("1 skip"): not part of the 0.1 gate. Re-include when the
+    # customizable select's picker work takes them up.
+    ('html/semantics/forms/the-select-element/customizable-select/select-events.optional.html',
+     'optional picker event sequence, not in the 0.1 gate (the user, 2026-11-14)'),
+    ('html/semantics/forms/the-select-element/customizable-select/select-dialog-mode-focus.optional.html',
+     'optional picker dialog-mode focus, not in the 0.1 gate (the user, 2026-11-14)'),
     # Needs Gecko's test preference dom.serviceWorkers.testUpdateOverOneDay
     # ("treat all registrations as older than 24 hours", the file's opening
     # comment); there is no WebDriver or testdriver way to set it, and Chrome,

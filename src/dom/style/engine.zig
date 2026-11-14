@@ -151,6 +151,9 @@ const Active = struct {
     /// Whether an author sheet here styles ::before, ::after or ::marker
     /// (generatedPseudoRules); null until first asked.
     generated_pseudo_rules: ?bool = null,
+    /// Whether a sheet here has a style rule inside @starting-style
+    /// (startingStyleRules); null until first asked.
+    starting_style_rules: ?bool = null,
     /// Every top-level sheet the build looked at - the disabled ones and
     /// those whose media did not match too - with the version it saw, held:
     /// a sheet enabled again or edited moves its version.
@@ -1115,6 +1118,11 @@ const Resolution = struct {
     /// attribute's, a presentational hint ElementStyle keeps).
     own_blocks: bool = false,
     candidates: std.ArrayList(u32) = .empty,
+    /// collectMatched matches the rules inside @starting-style too: the
+    /// starting style's cascade (CSS Transitions 2 3.3).
+    starting: bool = false,
+    /// A rule inside @starting-style matched since `starting` was set.
+    starting_matched: bool = false,
 
     fn deinit(self: *Resolution) void {
         self.matched.deinit(self.allocator);
@@ -1183,6 +1191,9 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
 
     // From the root down: reuse each valid cache, resolve the rest.
     var parent_style: ?*const ComputedStyle = null;
+    // The parent's after-change (base) style, which a starting style
+    // inherits from (CSS Transitions 2 3.3).
+    var parent_after_change: ?*const ComputedStyle = null;
     var parent_volatile = false;
     var parent_serial: u64 = 0;
     var parent_rendered = true;
@@ -1210,6 +1221,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
             const resolved = try resolveOne(&res, e, entry.node, state, null, parent_style, i == lineage.items.len - 1, &reads, .{
                 .event = styleChangeEvent(state.cached, res.key, parent_volatile),
                 .parent_rendered = parent_rendered,
+                .parent_after_change = parent_after_change,
                 .generation = &generation,
             });
             if (resolved.transitions_changed) animation_reader = animations.effect_stack.reader(element);
@@ -1232,6 +1244,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
             res.root_upright = cached.style.keyword(.text_orientation) == .upright;
         }
         parent_style = cached.style;
+        parent_after_change = cached.base orelse cached.style;
         parent_volatile = cached.@"volatile";
         parent_serial = cached.serial;
         parent_rendered = cached.rendered;
@@ -1245,6 +1258,7 @@ pub fn computedStyle(element: *runtime.Instance, pseudo: ?[]const u8) Error!?*co
         if (i > 0 and selectKind(e) == .drop_down and !isSelectButton(e, lineage.items[i - 1].node)) {
             const picker = try pseudoStyle(&res, e, entry.node, state, "picker", &animation_reader, &generation);
             parent_style = picker.style;
+            parent_after_change = picker.base orelse picker.style;
             parent_volatile = picker.@"volatile";
             parent_serial = picker.serial;
             parent_rendered = picker.rendered;
@@ -1271,6 +1285,7 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
     const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
         .event = styleChangeEvent(previous, res.key, own.@"volatile"),
         .parent_rendered = own.rendered,
+        .parent_after_change = own.base orelse own.style,
         .generation = generation,
     });
     if (resolved.transitions_changed) animation_reader.* = animations.effect_stack.reader(element);
@@ -1357,6 +1372,14 @@ fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
 /// What base appearance the element or pseudo-element can have
 /// (css.cascade.AppearanceSupport): a select, and a drop-down select's
 /// ::picker(select).
+/// An HTML legend element: its computed display is blockified (css.cascade
+/// adjust, golden rule 2).
+fn isHtmlLegend(element: *runtime.Instance) bool {
+    const data = element_data.of(element) orelse return false;
+    const ns = data.namespaceSlice() orelse return false;
+    return std.mem.eql(u8, ns, html_namespace) and std.mem.eql(u8, data.localName(), "legend");
+}
+
 fn appearanceSupport(element: *runtime.Instance, pseudo: ?[]const u8) css.cascade.AppearanceSupport {
     const kind = selectKind(element);
     if (kind == .none) return .none;
@@ -1380,6 +1403,10 @@ const StyleChange = struct {
     /// The flat-tree parent was being rendered (no `display: none` up the
     /// lineage).
     parent_rendered: bool,
+    /// The flat-tree parent's after-change style - its base style - which
+    /// the starting style inherits from (CSS Transitions 2 3.3); null at
+    /// the root.
+    parent_after_change: ?*const ComputedStyle,
     generation: *?u64,
 
     const Event = struct {
@@ -1457,6 +1484,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .registered = res.registered,
         // HTML 15.5.16: a select and its picker support base appearance.
         .appearance_support = appearanceSupport(element, pseudo),
+        // A legend's computed display is blockified (css.cascade adjust).
+        .blockify_display = pseudo == null and isHtmlLegend(element),
     };
     const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();
@@ -1473,8 +1502,15 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
             .keyframes = .{ .context = &lookup, .find = KeyframesLookup.find },
             .generation = res.engine.generation,
         });
+        // CSS Transitions 2 3.3: "If an element does not have a
+        // before-change style for a given style change event, the starting
+        // style is used instead of the before-change style to compare with
+        // the after-change style to start transitions."
+        var starting: ?*ComputedStyle = null;
+        defer if (starting) |style| style.destroy();
+        if (event.before == null and rendered) starting = try startingStyle(res, element, node, state, pseudo, ctx, change.parent_after_change);
         transitions_changed = animations.css_transitions.styleChangeEvent(element, pseudo, .{
-            .before = event.before,
+            .before = event.before orelse starting,
             .after = base,
             .rendered = rendered,
             .generation = change.generation,
@@ -1487,6 +1523,67 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         }
     }
     return .{ .style = base, .base = null, .rendered = rendered, .transitions_changed = transitions_changed };
+}
+
+/// CSS Transitions 2 3.3, the starting style of `element` (or its
+/// pseudo-element): "the after-change style with @starting-style rules
+/// applied in addition", inheriting "from the parent's after-change style
+/// just like after-change style does" - the cascade of every rule that
+/// matches, those inside @starting-style too, over the parent's base style.
+/// OWNED. Null - no starting style to transition from - when:
+/// - no @starting-style rule matches: the starting style is the after-change
+///   style, and comparing the two starts nothing;
+/// - the starting style is display: none: an element whose starting style
+///   generates no box has nothing to transition from (Blink
+///   Element::StyleForLayoutObject: "old_style = style->Display() ==
+///   EDisplay::kNone ? nullptr : style"; css/css-transitions/
+///   starting-style-rule-none.html passes in Chrome, Firefox and Safari).
+/// Blink resolves the style twice when a starting rule matched, the first
+/// one with the starting rules; this resolves the starting style only for an
+/// element with no before-change style, after the after-change style.
+fn startingStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, state: *ElementStyle, pseudo: ?[]const u8, after_change: css.cascade.Context, parent_after_change: ?*const ComputedStyle) Error!?*ComputedStyle {
+    if (!startingStyleRules(res.active)) return null;
+    // The after-change cascade's own list stays for the animated cascade
+    // (resolveAnimated reads it): this one is the starting style's alone.
+    const after_matched = res.matched;
+    const after_own_blocks = res.own_blocks;
+    res.matched = .empty;
+    res.starting = true;
+    res.starting_matched = false;
+    defer {
+        res.matched.deinit(res.allocator);
+        res.matched = after_matched;
+        res.own_blocks = after_own_blocks;
+        res.starting = false;
+    }
+    // Its state reads mark nothing: the starting style is never cached.
+    var reads: selector_matching.StateReads = .{};
+    try collectMatched(res, element, node, state, pseudo, &reads);
+    if (!res.starting_matched) return null;
+    var ctx = after_change;
+    ctx.parent = parent_after_change;
+    const style = try css.cascade.cascade(ctx, res.matched.items);
+    if (style.display().box == .none) {
+        style.destroy();
+        return null;
+    }
+    return style;
+}
+
+/// Whether a sheet of the active sheets - the document's or a shadow
+/// tree's - has a style rule inside @starting-style (found once per build
+/// of the active sheets). Without one no element has a starting style.
+fn startingStyleRules(active: *Active) bool {
+    if (active.starting_style_rules) |known| return known;
+    const found = for (active.sheets.items) |*s| {
+        if (s.contents.starting_rules) break true;
+    } else for (active.scopes.items) |*scope| {
+        if (for (scope.sheets.items) |*s| {
+            if (s.contents.starting_rules) break true;
+        } else false) break true;
+    } else false;
+    active.starting_style_rules = found;
+    return found;
 }
 
 /// The style the cascade computes for `ctx` over res.matched (CSS Cascade 5
@@ -1511,8 +1608,10 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     // matched a block of the element's own is looked up by that block's
     // content (design 3.6; Blink MatchResult::AddMatchedProperties).
     const pseudo_slot = matched_properties_cache.Pseudo.of(pseudo);
+    // A legend neither (its blockified display is an input no entry keys on;
+    // Blink IsCacheCompatible keys a legend's entry by its element type).
     const cacheable = ctx.parent != null and !ctx.is_root and ctx.appearance_support == .none and
-        pseudo_slot != null;
+        !ctx.blockify_display and pseudo_slot != null;
     if (cacheable) {
         lookup.pseudo = pseudo_slot.?;
         if (cache.find(lookup)) |held| {
@@ -2051,12 +2150,16 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
     const candidates = if (pseudo != null) contents.buckets.pseudo.items else contents.buckets.universal.items;
     for (candidates) |index| {
         const rule = &contents.rules.items[index];
+        // CSS Transitions 2 3.3: "Style rules in @starting-style do not
+        // apply to after-change style."
+        if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
         if (!matcher.matchesHost(host, rule.complex, pseudo)) continue;
         var source = base;
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
+        if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
     }
 }
@@ -2072,6 +2175,9 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
     };
     for (candidates) |index| {
         const rule = &contents.rules.items[index];
+        // CSS Transitions 2 3.3: "Style rules in @starting-style do not
+        // apply to after-change style."
+        if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
         const matched = switch (kind) {
             .slotted => matcher.matchesSlotted(element, outer, rule.complex, pseudo),
@@ -2083,6 +2189,7 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
+        if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
     }
 }
@@ -2093,6 +2200,9 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
     try contents.collectCandidates(keys, pseudo != null, quirks, &res.candidates, res.allocator);
     for (res.candidates.items) |index| {
         const rule = &contents.rules.items[index];
+        // CSS Transitions 2 3.3: "Style rules in @starting-style do not
+        // apply to after-change style."
+        if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
         if (!matcher.matches(element, rule.complex, pseudo)) continue;
         var source = base;
@@ -2101,6 +2211,7 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
         if (active_sheet) |s| {
             if (rule.layer) |l| source.layer = s.layer_order[l] else if (s.import_layer) |l| source.layer = l;
         }
+        if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
     }
 }
@@ -2177,15 +2288,20 @@ pub fn reparseInline(element: *runtime.Instance, state: *ElementStyle, value: []
 //    an unread change, starts from that older value or, for an element never
 //    resolved, not at all.
 // 2. A pseudo-element never read has no before-change style: the update
-//    resolves the pseudo-element styles already cached, and ::before,
-//    ::after and ::marker when an author sheet styles one of them (lane
-//    anim1 C2: their CSS animations start at the update).
+//    resolves the pseudo-element styles already cached, ::before, ::after
+//    and ::marker when an author sheet styles one of them (lane anim1 C2:
+//    their CSS animations start at the update), and a drop-down select's
+//    ::picker(select) (lane sel1). The others (::backdrop, ::placeholder,
+//    ::first-line, ...) still start their transitions only when read.
 // 3. An inherited property under an animating ancestor: the child's base
 //    style inherits the ancestor's animated value (Blink re-resolves the
 //    base chain through animating ancestors), so a child's own transition on
 //    it can start when the child is resolved for an unrelated change while
-//    the ancestor animates.
-// 4. @starting-style gives no before-change style: the cascade skips it.
+//    the ancestor animates. A starting style inherits from its parent's base
+//    style (CSS Transitions 2 3.3), which itself inherits a grandparent's
+//    animated value the same way.
+// (@starting-style, once the fourth, is CSS Transitions 2 3.3's starting
+// style since lane sel1: `startingStyle`.)
 
 /// A document's CSS transitions and CSS animations gate (StyleEngine.Rare).
 pub const AnimationGate = struct {
@@ -2403,6 +2519,12 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         // of them: their CSS animations and transitions start at this update
         // as a browser's frame starts them, with no read.
         if (generated.?) try addGeneratedPseudos(allocator, &names, state);
+        // A drop-down select's ::picker(select) too: its box exists whether
+        // or not script reads it, so its style change events - and the
+        // transitions they start, @starting-style's among them - come at
+        // this update (HTML 15.5.16; customizable-select/select-picker-
+        // starting-style.html, Chrome 157 1/1).
+        if (selectKind(element) == .drop_down) try addPseudo(allocator, &names, "picker");
         for (names.items) |n| _ = computedStyle(element, n) catch continue;
     }
     return any_volatile;
@@ -2415,11 +2537,14 @@ fn addGeneratedPseudos(allocator: Allocator, names: *std.ArrayList([]u8), state:
     const list_item = if (state.cached) |cached| cached.style.display().list_item else false;
     for ([_][]const u8{ "marker", "before", "after" }) |name| {
         if (std.mem.eql(u8, name, "marker") and !list_item) continue;
-        const known = for (names.items) |n| {
-            if (std.mem.eql(u8, n, name)) break true;
-        } else false;
-        if (!known) try names.append(allocator, try allocator.dupe(u8, name));
+        try addPseudo(allocator, names, name);
     }
+}
+
+/// Add the pseudo-element `name` to `names` unless it is there.
+fn addPseudo(allocator: Allocator, names: *std.ArrayList([]u8), name: []const u8) Allocator.Error!void {
+    for (names.items) |n| if (std.mem.eql(u8, n, name)) return;
+    try names.append(allocator, try allocator.dupe(u8, name));
 }
 
 /// Whether an author sheet of `node`'s document or of one of its shadow

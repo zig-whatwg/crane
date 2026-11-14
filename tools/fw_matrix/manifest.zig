@@ -236,25 +236,6 @@ pub const Suite = struct {
     /// its tests are classified, what does not run and why); shown on its
     /// row and its page.
     note: ?[]const u8 = null,
-    /// Chrome's numbers for the suite by the project's own runner, for the
-    /// comparison column, where no journal holds them (a project runner's
-    /// summary, read from its log; `source` says which).
-    chrome_reference: ?ChromeReference = null,
-};
-
-pub const ChromeReference = struct {
-    /// "Chrome for Testing 157.0.8103.78".
-    browser: []const u8,
-    /// How the project ran it ("jquery-test-runner 0.3.0, headless, one page as its CI runs it").
-    runner: []const u8,
-    /// The day of the run (YYYY-MM-DD).
-    date: []const u8,
-    ran: u32,
-    passed: u32,
-    failed: u32,
-    skipped: u32 = 0,
-    /// Where its log is kept.
-    source: []const u8,
 };
 
 /// One app of TodoMVC (the report's second section).
@@ -325,6 +306,76 @@ pub const OwnSuiteNotRun = struct {
     tests: ?u32 = null,
     /// Why Crane does not run them.
     why: []const u8,
+    /// The browser-automation protocol their runner drives the browser
+    /// through, which Crane does not speak yet (the user, 2026-11-14: suites
+    /// needing CDP or WebDriver BiDi wait until after Crane 0.1); null for
+    /// tests not run for another reason (an application's tests, not the
+    /// framework's).
+    waits_for: ?Protocol = null,
+};
+
+/// A browser-automation protocol a project's test runner needs.
+pub const Protocol = enum {
+    /// Playwright's Chromium, Vitest's cdp(): only CDP.
+    cdp,
+    /// Puppeteer: either.
+    cdp_or_bidi,
+
+    pub fn label(p: Protocol) []const u8 {
+        return switch (p) {
+            .cdp => "the Chrome DevTools Protocol (CDP)",
+            .cdp_or_bidi => "CDP or WebDriver BiDi",
+        };
+    }
+
+    /// The short name a table cell holds.
+    pub fn short(p: Protocol) []const u8 {
+        return switch (p) {
+            .cdp => "CDP",
+            .cdp_or_bidi => "CDP or WebDriver BiDi",
+        };
+    }
+};
+
+/// A framework waits when Crane runs none of its own suites and every own
+/// suite it lists waits for a protocol (the report's second group of rows).
+pub fn waits(m: Manifest, fw: Framework) bool {
+    for (m.suites) |s| {
+        if (s.kind == .project and std.mem.eql(u8, s.framework, fw.id)) return false;
+    }
+    if (fw.not_run.len == 0) return false;
+    for (fw.not_run) |n| if (n.waits_for == null) return false;
+    return true;
+}
+
+/// What a failure is, on the report: a gap in Crane, or an API only Chrome
+/// ships that is no standard yet (the integrator, 2026-11-14: "keep it on
+/// the page but under its own small heading ... so the main list is the
+/// real Crane gaps").
+pub const CauseKind = enum { crane_gap, chrome_only_api };
+
+/// Which failures a cause covers: a test matches when every field given
+/// matches it (`suite` and `page` exactly, the others as substrings of the
+/// test's id or its first failing assertion); a page that stopped before its
+/// tests ran matches a `suite` + `page` match, or one whose
+/// `message_contains` is in the page's own message.
+pub const Match = struct {
+    suite: ?[]const u8 = null,
+    page: ?[]const u8 = null,
+    id_contains: ?[]const u8 = null,
+    message_contains: ?[]const u8 = null,
+};
+
+/// One cause of the failures Crane has and Chrome does not (the report's
+/// "What fails in Crane and passes in Chrome"), written by hand from the
+/// failures' messages; the report counts what it covers from the journals,
+/// drops a cause that covers nothing any more, and names every Crane-only
+/// failure no cause covers.
+pub const Cause = struct {
+    /// What Crane lacks, as one line ("console.timeStamp() is missing").
+    title: []const u8,
+    kind: CauseKind = .crane_gap,
+    covers: []const Match,
 };
 
 /// A framework of the matrix's first section, "The frameworks' own test
@@ -346,9 +397,11 @@ pub const Manifest = struct {
     /// After `parse`, its served apps are suites too (at the end of
     /// `suites`, in the block's order).
     todomvc: ?TodoMvc = null,
+    /// The causes of Crane-only failures, in the order shown.
+    causes: []const Cause = &.{},
 };
 
-pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun, DuplicateApp, AppWithoutPin, BadApp, BadChromeReference, PageWithoutTarget };
+pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun, DuplicateApp, AppWithoutPin, BadApp, PageWithoutTarget, BadCause };
 
 /// The text a server argument holds where the harness's port goes.
 pub const port_placeholder = "{port}";
@@ -629,13 +682,31 @@ pub fn validate(m: Manifest, failure: *Failure) Error!void {
         }
         failure.what = "excluded";
         if (!isRelativePath(f.excluded)) return error.BadPath;
-        if (f.chrome_reference) |c| {
-            failure.what = "chrome_reference";
-            if (c.passed + c.failed > c.ran or c.browser.len == 0 or c.runner.len == 0 or c.source.len == 0 or c.date.len != 10) return error.BadChromeReference;
-        }
     }
     try validateFrameworks(m, failure);
+    try validateCauses(m, failure);
     failure.* = .{ .diagnostics = failure.diagnostics };
+}
+
+/// Every cause has a title and covers something; every match names at
+/// least one field, a suite the manifest has, and a page only within its
+/// suite.
+fn validateCauses(m: Manifest, failure: *Failure) Error!void {
+    for (m.causes) |c| {
+        failure.suite = "causes";
+        failure.what = c.title;
+        if (c.title.len == 0 or c.covers.len == 0) return error.BadCause;
+        for (c.covers) |match| {
+            if (match.suite == null and match.page == null and match.id_contains == null and match.message_contains == null) return error.BadCause;
+            if (match.page != null and match.suite == null) return error.BadCause;
+            const sid = match.suite orelse continue;
+            const s = find(m, sid) orelse return error.BadCause;
+            const pid = match.page orelse continue;
+            for (s.pages) |p| {
+                if (std.mem.eql(u8, p.id, pid)) break;
+            } else return error.BadCause;
+        }
+    }
 }
 
 /// The first section: each framework once; each project suite under a
@@ -984,6 +1055,69 @@ test "frameworks: the first section's list; each project suite under one, each f
     for (cases) |c| {
         const bad = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{c[0]}));
         try testing.expectError(c[1], parse(testing.allocator, a, try a.dupeSentinel(u8, bad, 0), &f));
+    }
+}
+
+test "frameworks: an own suite that waits names the protocol it waits for; one that does not, none" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const frameworks =
+        \\.{ .frameworks = .{ .{ .id = "jquery", .title = "jQuery", .not_run = .{.{ .name = "docs", .version = "4.0.0", .repository = "https://x", .tag = "t", .runner = "r", .why = "an app" }} },
+        \\    .{ .id = "vue", .title = "Vue", .not_run = .{
+        \\        .{ .name = "e2e", .version = "3.5.45", .repository = "https://x", .tag = "t", .runner = "Puppeteer", .tests = 36, .why = "w", .waits_for = .cdp_or_bidi },
+        \\        .{ .name = "e2e-browser", .version = "3.5.45", .repository = "https://x", .tag = "t", .runner = "Playwright", .tests = 84, .why = "w", .waits_for = .cdp },
+        \\    } } },
+    ;
+    const text = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{frameworks}));
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try a.dupeSentinel(u8, text, 0), &f);
+    const vue = findFramework(m, "vue").?;
+    try testing.expectEqual(@as(?Protocol, .cdp_or_bidi), vue.not_run[0].waits_for);
+    try testing.expectEqual(@as(?Protocol, .cdp), vue.not_run[1].waits_for);
+    try testing.expectEqual(@as(?Protocol, null), findFramework(m, "jquery").?.not_run[0].waits_for);
+    // A framework waits when it runs nothing and every own suite of it waits.
+    try testing.expect(waits(m, vue));
+    try testing.expect(!waits(m, findFramework(m, "jquery").?));
+    try testing.expectEqualStrings("the Chrome DevTools Protocol (CDP)", Protocol.label(.cdp));
+}
+
+test "causes: each covers failures by suite, page, test name or message; checked against the suites" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const causes =
+        \\.{ .causes = .{
+        \\    .{ .title = "console.timeStamp() is missing", .covers = .{.{ .suite = "jquery-qunit", .message_contains = "timeStamp() method does not exist" }} },
+        \\    .{ .title = "navigator.modelContext (WebMCP)", .kind = .chrome_only_api, .covers = .{ .{ .id_contains = "WebMcp" }, .{ .id_contains = "WebMCP" } } },
+        \\    .{ .title = "A page stops", .covers = .{.{ .suite = "jquery-qunit", .page = "basic" }} },
+        \\},
+    ;
+    const text = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{causes}));
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try a.dupeSentinel(u8, text, 0), &f);
+    try testing.expectEqual(@as(usize, 3), m.causes.len);
+    try testing.expectEqual(CauseKind.crane_gap, m.causes[0].kind);
+    try testing.expectEqual(CauseKind.chrome_only_api, m.causes[1].kind);
+
+    const bad = [_][]const u8{
+        // No title; nothing covered; a match with no field; a suite or page the manifest lacks.
+        \\.{ .causes = .{.{ .title = "", .covers = .{.{ .id_contains = "x" }} }},
+        ,
+        \\.{ .causes = .{.{ .title = "t", .covers = .{} }},
+        ,
+        \\.{ .causes = .{.{ .title = "t", .covers = .{.{}} }},
+        ,
+        \\.{ .causes = .{.{ .title = "t", .covers = .{.{ .suite = "nope", .id_contains = "x" }} }},
+        ,
+        \\.{ .causes = .{.{ .title = "t", .covers = .{.{ .suite = "jquery-qunit", .page = "nope" }} }},
+        ,
+        \\.{ .causes = .{.{ .title = "t", .covers = .{.{ .page = "basic" }} }},
+        ,
+    };
+    for (bad) |c| {
+        const t = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, "{s}\n    .suites", .{c}));
+        try testing.expectError(error.BadCause, parse(testing.allocator, a, try a.dupeSentinel(u8, t, 0), &f));
     }
 }
 

@@ -48,10 +48,14 @@ fn exercise(comptime which: Case) !void {
             try expectInvariant(select);
             try std.testing.expect(try interfaces.HTMLOptionElement.get_selected(first));
             try std.testing.expectEqual(@as(i32, 0), try interfaces.HTMLSelectElement.get_selectedIndex(select));
-            // HTML option insertion ignores its returned selects. Only the
-            // inserted option's post-connection step can clone, and it is
-            // unselected here (cached HTML :82870-82880, row61 Q22).
-            try expectText(content, "");
+            // HTML option insertion steps 1-3 (whatwg/html#13201): the
+            // selectedness setting algorithm changed the select (the first
+            // option became selected), so the select's update is queued, and
+            // the inserted option's post-connection steps perform it - they
+            // read the select's pending flag, not the inserted option's
+            // selectedness ("it also happens when insertedOption causes
+            // another option element to become selected").
+            try expectText(content, "one");
         },
         .append_first_enabled => {
             try interfaces.HTMLSelectElement.set_selectedIndex(select, -1);
@@ -158,7 +162,7 @@ fn fresh(comptime which: Case) !void {
     if (result) |err| return err;
 }
 
-test "appending after selectedIndex minus one selects the first option without cloning it" {
+test "appending after selectedIndex minus one selects the first option and clones it in the post-connection steps" {
     try fresh(.append_after_clear);
 }
 test "an appended first enabled option clones in its post-connection step" {
