@@ -1343,6 +1343,14 @@ fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
 /// What base appearance the element or pseudo-element can have
 /// (css.cascade.AppearanceSupport): a select, and a drop-down select's
 /// ::picker(select).
+/// An HTML legend element: its computed display is blockified (css.cascade
+/// adjust, golden rule 2).
+fn isHtmlLegend(element: *runtime.Instance) bool {
+    const data = element_data.of(element) orelse return false;
+    const ns = data.namespaceSlice() orelse return false;
+    return std.mem.eql(u8, ns, html_namespace) and std.mem.eql(u8, data.localName(), "legend");
+}
+
 fn appearanceSupport(element: *runtime.Instance, pseudo: ?[]const u8) css.cascade.AppearanceSupport {
     const kind = selectKind(element);
     if (kind == .none) return .none;
@@ -1447,6 +1455,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .registered = res.registered,
         // HTML 15.5.16: a select and its picker support base appearance.
         .appearance_support = appearanceSupport(element, pseudo),
+        // A legend's computed display is blockified (css.cascade adjust).
+        .blockify_display = pseudo == null and isHtmlLegend(element),
     };
     const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();
@@ -1569,8 +1579,10 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     // matched a block of the element's own is looked up by that block's
     // content (design 3.6; Blink MatchResult::AddMatchedProperties).
     const pseudo_slot = matched_properties_cache.Pseudo.of(pseudo);
+    // A legend neither (its blockified display is an input no entry keys on;
+    // Blink IsCacheCompatible keys a legend's entry by its element type).
     const cacheable = ctx.parent != null and !ctx.is_root and ctx.appearance_support == .none and
-        pseudo_slot != null;
+        !ctx.blockify_display and pseudo_slot != null;
     if (cacheable) {
         lookup.pseudo = pseudo_slot.?;
         if (cache.find(lookup)) |held| {
