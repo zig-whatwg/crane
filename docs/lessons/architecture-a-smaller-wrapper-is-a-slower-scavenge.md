@@ -1,0 +1,15 @@
+# Architecture: A smaller wrapper is a slower scavenge - each cycle then holds more dead instances the collector was never told about
+
+**Date**: 2026-11-13
+**Lesson**: V8 scavenges when its young space fills with JS bytes. A wrapper that takes few JS bytes and keeps a large native instance alive makes that cadence unrelated to the memory at stake. Shrink the wrapper and the scavenger runs less often, so MORE dead instances wait per cycle. A measurement of kept objects shows only the saving; a make-and-drop loop on the engine's own schedule shows the cost.
+
+**Why**: A non-node wrapper was a 24 B object with one internal field. Lane wrap1's batch 2 removed the field (the instance moved to `v8::Object::Wrap`): 16 B. In a loop that makes and drops 650,000 Events the scavenger ran 15 times before and 12 or 13 times after (19 against 14 or 15 with the event loop turned every 5,000). A dead wrapper keeps its instance until a scavenge finds it, an Event's instance is 1.7 KB of host memory, and V8 was told nothing about those bytes (external memory 0 for non-node instances). Resident memory at the end of the loop, production builds: chat.local 87.8 -> 98.5 MB and 75.5 -> 89.1 MB; server1 87.6 -> 103.1 MB and 77.9 -> 94.0 MB (+12% to +21%). The arithmetic fits: 650,000 / 15 cycles = 43,300 Events x 1.7 KB = 74 MB, plus the 14 MB floor = 88 MB.
+
+**What Happened**: The batch's kept-object rows were as designed (8 B less V8 heap per wrapper, 24 B less C++ heap per holder of nodes) and every unit test, the full test step and verify mode were green. The re-measurement the brief asked for after the change also ran the dropped rows, and those were over the 3% bar on both hosts. Nothing leaked: with a forced collection after every 5,000 objects the two sides read the same, and the cache entries and weak records returned to the same counts. The integrator split the batch: the change that shrinks the wrapper was reverted on the branch (lane/wrap1 cd17108630e) and lands in the next batch together with the accounting (tmp/plans/wrap1-evidence/meas1-c.out, meas1-l.out).
+
+**Fix**:
+1. Measure a change to a wrapper's size in both directions: bytes per KEPT object, and resident memory at the end of a make-and-drop loop with no forced collection, with the scavenge and full-collection counts beside it.
+2. When resident memory moves and nothing leaks (the forced-collection floor is equal, the record counts are equal), read the collector's cycle counts first: objects / cycles x bytes per instance + the floor should reproduce the figure.
+3. A change that makes a wrapper smaller lands with the accounting that tells the engine what the wrapper's instance holds (V8: `ExternalMemoryAccounter`, which the host already feeds for nodes), taken back where the collector recomputes its limits (lesson architecture-freeing-ahead-of-the-collector-removes-the-growth-it-paced-itself-by.md).
+
+**Takeaway**: **The collector schedules by the bytes it can see. Make an object smaller without telling the collector what hangs off it, and the same garbage waits longer.**

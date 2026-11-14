@@ -3213,6 +3213,10 @@ pub extern fn v8_SnapshotCreator_GetIsolate(creator: *SnapshotCreator) ?*Isolate
 /// @param context - Global handle to the context to snapshot
 pub extern fn v8_SnapshotCreator_SetDefaultContext(creator: *SnapshotCreator, context: *Context) void;
 
+/// tests/v8/wrap1_platform_anchor_test.zig: whether the snapshot generator refuses to write an API object whose
+/// CppHeap pointer is `cpp_heap_pointer` into a blob (a platform object's anchor cannot be in one).
+pub extern fn v8_test_SnapshotRefusesApiWrapper(cpp_heap_pointer: ?*anyopaque) bool;
+
 /// Create a context and set it as default for snapshot
 ///
 /// This function creates a new context using Local handles (not Global) and
