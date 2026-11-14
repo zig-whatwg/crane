@@ -246,7 +246,10 @@ fn windowFirst() !void {
     // Then its owner: the popup closes, and with its last Window gone the
     // record and the context go.
     try page.runScript("p.close();");
+    // closed reads true from close() on (its is closing flag); the popup is
+    // destroyed by the task close() queued, and then has no opener.
     try until(browser, "p.closed");
+    _ = try browser.runEventLoopBlocking(50);
     try expectEval(page, "[p.closed, p.opener === null].join()", "true,true");
     try page.runScript("globalThis.p = null;");
     try collect(browser);
