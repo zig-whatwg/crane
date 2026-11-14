@@ -1172,11 +1172,8 @@ const FrameRealm = struct {
     host: WindowHost = .{},
     parent: runtime.Context,
     global_this: protocol.GlobalThis = .new_window_proxy,
-    /// WindowRealmOptions.auxiliary: a popup's realm under its opener's.
+    /// WindowRealmOptions.auxiliary: a popup's realm, `parent` its creator.
     auxiliary: bool = false,
-    /// WindowRealmOptions.replaces: the realm a browsing context group
-    /// switch replaces with this one.
-    replaces: ?runtime.Context = null,
     /// WindowRealmOptions.allocator.
     allocator: std.mem.Allocator = std.heap.c_allocator,
     made: ?runtime.Context = null,
@@ -1202,7 +1199,6 @@ const FrameRealm = struct {
             .global_this = self.global_this,
             .parent = self.parent,
             .auxiliary = self.auxiliary,
-            .replaces = self.replaces,
             .create_global_object = WindowHost.createGlobalObject,
             .host = &self.host,
         }) catch |err| {
@@ -1380,13 +1376,19 @@ test "protocol: a frame's realm a navigation replaced is collected once nothing 
 }
 
 // ----------------------------------------------------------------------------
-// A top-level page's realm a navigation replaced (lane newwin1, E1), and the
-// popups that follow their opener's WindowProxy (E2). The host page is a
-// parentless realm, entered for its life: its successor is built around its
-// proxy, takes over its entries, and the old realm is detached - kept while
-// script reaches it, ended at collection or with the realm that took its
-// proxy - as a frame's is (Blink LocalWindowProxy::DisposeContext
+// A top-level page's realm a navigation replaced (lane newwin1, E1). The host
+// page is a parentless realm, entered for its life: its successor is built
+// around its proxy, takes over its entries, and the old realm is detached -
+// kept while script reaches it, ended at collection or with the realm that
+// took its proxy - as a frame's is (Blink LocalWindowProxy::DisposeContext
 // kGlobalObjectIsDetached, then CreateContext around global_proxy_).
+//
+// A popup's realm (WindowRealmOptions.auxiliary) is a top-level realm too, but
+// no realm's child (lane rep1 b2): its creator gives it window operations
+// while it is made, and nothing else - no realm's end ends it, it is not
+// entered for its life, and it ends only through destroyWindowRealm, when its
+// own navigable is destroyed. Blink: a popup's frame is the main frame of its
+// own Page; the opener is a weak link (OpenedFrameTracker), cleared on detach.
 // ----------------------------------------------------------------------------
 
 /// A task's steps that do nothing: runTaskInRealm answers whether the realm
@@ -1519,120 +1521,140 @@ test "protocol: a top-level realm's successor takes over its isolate entry" {
     try std.testing.expectEqual(file_isolate, ffi.v8_Isolate_GetCurrent().?);
 }
 
-test "protocol: a popup's realm follows its opener page's WindowProxy to the realm a navigation made" {
+/// The Window realms of the file's agent, from the adapter's own record: the
+/// count protocol_agents' end checks (its error when any is left).
+fn agentRealmCount() usize {
+    const record = v8.protocol_agents.recordOf(@ptrCast(@alignCast(test_isolate.?))) orelse return 0;
+    return record.window_realms.count();
+}
+
+test "protocol: a popup's realm is made inside its creator's script and is not left on the entry stack" {
     defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
+    defer protocol.destroyWindowRealm(page, .global_detached);
     var popup_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
     const popup = try popup_realm.make();
-    var frame_realm: FrameRealm = .{ .parent = page };
-    const frame = try frame_realm.make();
-
-    var host_next: WindowHost = .{};
-    const next = try windowRealm(&host_next, false, .{ .window_proxy_of = page });
-    protocol.destroyWindowRealm(page, .global_detached);
-    collectTwice();
-    // The popup was adopted: it is not its opener page's to end, and runs.
-    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    // Inside the creator's steps the creator was still the entry realm, and
+    // after them the page is: the popup's context was entered only while it
+    // was made (a frame's rule), never for its life.
+    try std.testing.expectEqual(page, popup_realm.entry_after.?);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
     try expectEval(popup, "self === globalThis", "true");
-    // The page's frame was not: it is destroyed with the page's document.
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(frame, NoSteps.steps, null));
-
-    // Both end with the realm that adopted the popup.
-    protocol.destroyWindowRealm(next, .global_detached);
-    try std.testing.expect(popup.engine_ctx == null);
-    try std.testing.expect(frame.engine_ctx == null);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
+    // A popup opened by a popup: the same.
+    var second_realm: FrameRealm = .{ .parent = popup, .auxiliary = true };
+    const second = try second_realm.make();
+    try std.testing.expectEqual(popup, second_realm.entry_after.?);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
+    protocol.destroyWindowRealm(second, .navigable_destroyed);
+    protocol.destroyWindowRealm(popup, .navigable_destroyed);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
 }
 
-test "protocol: a popup a frame opened outlives that frame's navigation" {
+test "protocol: a popup's realm outlives its creator's: the creator ends, then the popup runs a task and a timer, navigates and ends" {
     defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(page, .global_detached);
-    var old_frame_realm: FrameRealm = .{ .parent = page };
-    const old_frame = try old_frame_realm.make();
-    var popup_realm: FrameRealm = .{ .parent = old_frame, .auxiliary = true };
+    try v8.page_realm.installWindowOperations(page, &test_operations);
+    seen = .{};
+    // P1, a popup of the page, opens P2.
+    var opener_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
+    const opener = try opener_realm.make();
+    var popup_realm: FrameRealm = .{ .parent = opener, .auxiliary = true };
     const popup = try popup_realm.make();
-
-    var new_frame_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
-    const new_frame = try new_frame_realm.make();
-    protocol.destroyWindowRealm(old_frame, .global_detached);
+    // P1's navigable is destroyed (its window closed): its realm is detached,
+    // then ends - and P2 is not its to end.
+    protocol.destroyWindowRealm(opener, .navigable_destroyed);
     collectTwice();
+    protocol.destroyWindowRealm(opener, .global_detached);
     try protocol.runTaskInRealm(popup, NoSteps.steps, null);
-    // Adopted by the frame's new realm: it ends when that realm does.
-    protocol.destroyWindowRealm(new_frame, .navigable_destroyed);
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
-}
-
-test "protocol: a popup stays its opener's when the realm made around the opener's WindowProxy ends before the opener's document goes" {
-    // A navigation abandoned before its document exists ends only its new
-    // realm (HTMLIFrameElement settleRealmReplacement): the popups pass to
-    // the new realm when the old realm's document goes (destroyWindowRealm
-    // .global_detached), not when the new realm is made.
-    defer test_agent.close();
-    var host_page: WindowHost = .{};
-    const page = try windowRealm(&host_page, false, .new_window_proxy);
-    defer protocol.destroyWindowRealm(page, .global_detached);
-    var old_frame_realm: FrameRealm = .{ .parent = page };
-    const old_frame = try old_frame_realm.make();
-    var popup_realm: FrameRealm = .{ .parent = old_frame, .auxiliary = true };
-    const popup = try popup_realm.make();
-
-    var abandoned_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
-    const abandoned = try abandoned_realm.make();
-    protocol.destroyWindowRealm(abandoned, .global_detached);
-    collectTwice();
-    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
-    try expectEval(popup, "self === globalThis", "true");
-
-    // The next replacement commits: the popup passes to it then.
-    var next_realm: FrameRealm = .{ .parent = page, .global_this = .{ .window_proxy_of = old_frame } };
+    try expectEval(popup, "typeof setTimeout(function () {}, 1)", "number");
+    try std.testing.expect(seen.realm.? == popup);
+    // P2 navigates: its next realm is made around its WindowProxy, the old
+    // realm its creator.
+    var next_realm: FrameRealm = .{ .parent = popup, .auxiliary = true, .global_this = .{ .window_proxy_of = popup } };
     const next = try next_realm.make();
-    protocol.destroyWindowRealm(old_frame, .global_detached);
+    protocol.destroyWindowRealm(popup, .global_detached);
     collectTwice();
-    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    try protocol.runTaskInRealm(next, NoSteps.steps, null);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
+    // Its own navigable destroyed: it ends, and nothing of it is left.
     protocol.destroyWindowRealm(next, .navigable_destroyed);
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
+    protocol.destroyWindowRealm(next, .global_detached);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
 }
 
-test "protocol: a popup's realm follows its opener to the realm a browsing context group switch made" {
-    // HTML "obtain a browsing context to use for a navigation response"
-    // steps 10-14: the opener popup P1's navigation needs a browsing context
-    // group switch, so its next document is in a new browsing context, with
-    // a new WindowProxy (WindowRealmOptions.replaces names the realm it
-    // replaces). The popup P2 that P1 opened is a top-level traversable of
-    // its own and keeps running; P1's frame is destroyed with P1's old
-    // document (html/cross-origin-opener-policy/coop-popup-opener-navigates).
+const EndInCreator = struct {
+    victim: runtime.Context,
+    entry_inside: ?runtime.Context = null,
+    fn steps(data: ?*anyopaque) void {
+        const self: *EndInCreator = @ptrCast(@alignCast(data.?));
+        protocol.destroyWindowRealm(self.victim, .navigable_destroyed);
+        protocol.destroyWindowRealm(self.victim, .global_detached);
+        self.entry_inside = protocol.entryRealm();
+    }
+};
+
+test "protocol: a popup's realm ends while its creator is entered, and while it is not" {
     defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
     defer protocol.destroyWindowRealm(page, .global_detached);
     var opener_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
     const opener = try opener_realm.make();
-    var popup_realm: FrameRealm = .{ .parent = opener, .auxiliary = true };
-    const popup = try popup_realm.make();
-    var frame_realm: FrameRealm = .{ .parent = opener };
-    const frame = try frame_realm.make();
-
-    var switched_realm: FrameRealm = .{ .parent = page, .auxiliary = true, .replaces = opener };
-    const switched = try switched_realm.make();
-    // The old browsing context is discarded for whoever holds its
-    // WindowProxy: its realm ends as a destroyed navigable's.
+    // Ended inside the creator's script (its window.close() of the popup).
+    var first_realm: FrameRealm = .{ .parent = opener, .auxiliary = true };
+    const first = try first_realm.make();
+    var end_in: EndInCreator = .{ .victim = first };
+    try protocol.runInRealm(opener, EndInCreator.steps, &end_in);
+    try std.testing.expectEqual(opener, end_in.entry_inside.?);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
+    // Ended from a task, no script running.
+    var second_realm: FrameRealm = .{ .parent = opener, .auxiliary = true };
+    const second = try second_realm.make();
+    protocol.destroyWindowRealm(second, .navigable_destroyed);
+    protocol.destroyWindowRealm(second, .global_detached);
+    try std.testing.expectEqual(page, protocol.entryRealm().?);
+    try protocol.runTaskInRealm(opener, NoSteps.steps, null);
     protocol.destroyWindowRealm(opener, .navigable_destroyed);
-    collectTwice();
-    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
-    try expectEval(popup, "self === globalThis", "true");
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(frame, NoSteps.steps, null));
-    try expectEval(switched, "self === globalThis", "true");
-
-    // Adopted by the new realm: the popup ends when that realm does.
-    protocol.destroyWindowRealm(switched, .navigable_destroyed);
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
+    protocol.destroyWindowRealm(opener, .global_detached);
 }
 
-test "protocol: a destroyed navigable's realm with no successor takes its popups with it" {
-    // A removed iframe's realm, or a realm nothing replaced: no realm
-    // adopts its popups, so its destruction reaches them, as before.
+fn browserEnd(first_ends_first: bool) !void {
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    const before = agentRealmCount();
+    var opener_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
+    const opener = try opener_realm.make();
+    var popup_realm: FrameRealm = .{ .parent = opener, .auxiliary = true };
+    const popup = try popup_realm.make();
+    try std.testing.expectEqual(before + 2, agentRealmCount());
+    // The Browser's end closes its popups, in either order, before its page.
+    const order = if (first_ends_first) [_]runtime.Context{ opener, popup } else [_]runtime.Context{ popup, opener };
+    for (order) |r| protocol.destroyWindowRealm(r, .global_detached);
+    try std.testing.expectEqual(before, agentRealmCount());
+    protocol.destroyWindowRealm(page, .global_detached);
+}
+
+test "protocol: at the Browser's end two popups, one opened by the other, end in either order, and no realm is left for the agent's end" {
+    // protocol_agents' "the agent ended with N Window realm(s) still alive"
+    // is a log.err: it fails this test if any realm is left.
+    {
+        defer test_agent.close();
+        try browserEnd(true);
+    }
+    {
+        defer test_agent.close();
+        try browserEnd(false);
+    }
+}
+
+test "protocol: a removed frame's realm does not take the popup it opened with it" {
+    // html/cross-origin-opener-policy/iframe-popup-*: removing the iframe
+    // that opened a popup ("destroy a child navigable") leaves the popup, a
+    // top-level traversable, running.
     defer test_agent.close();
     var host_page: WindowHost = .{};
     const page = try windowRealm(&host_page, false, .new_window_proxy);
@@ -1641,15 +1663,47 @@ test "protocol: a destroyed navigable's realm with no successor takes its popups
     const frame = try frame_realm.make();
     var popup_realm: FrameRealm = .{ .parent = frame, .auxiliary = true };
     const popup = try popup_realm.make();
-    // A realm made with a new WindowProxy that replaces nothing is no
-    // successor of the frame's.
-    var other_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
-    const other = try other_realm.make();
-    defer protocol.destroyWindowRealm(other, .navigable_destroyed);
+    var inner_realm: FrameRealm = .{ .parent = frame };
+    const inner = try inner_realm.make();
 
     protocol.destroyWindowRealm(frame, .navigable_destroyed);
     collectTwice();
-    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(popup, NoSteps.steps, null));
+    // The frame's own frame goes with it; its popup does not.
+    try std.testing.expectError(error.OperationFailed, protocol.runTaskInRealm(inner, NoSteps.steps, null));
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    try expectEval(popup, "self === globalThis", "true");
+    protocol.destroyWindowRealm(popup, .navigable_destroyed);
+    protocol.destroyWindowRealm(popup, .global_detached);
+}
+
+test "protocol: a page's navigation, a frame's navigation and a browsing context group switch leave a popup they did not open alone - and the ones they opened too" {
+    defer test_agent.close();
+    var host_page: WindowHost = .{};
+    const page = try windowRealm(&host_page, false, .new_window_proxy);
+    var popup_realm: FrameRealm = .{ .parent = page, .auxiliary = true };
+    const popup = try popup_realm.make();
+    // The page navigates: its next realm around its WindowProxy.
+    var host_next: WindowHost = .{};
+    const next = try windowRealm(&host_next, false, .{ .window_proxy_of = page });
+    protocol.destroyWindowRealm(page, .global_detached);
+    collectTwice();
+    try protocol.runTaskInRealm(popup, NoSteps.steps, null);
+    // P2, opened by the popup, then the popup's browsing context group
+    // switch: a new realm with a new WindowProxy, the old one ended as a
+    // destroyed navigable's.
+    var p2_realm: FrameRealm = .{ .parent = popup, .auxiliary = true };
+    const p2 = try p2_realm.make();
+    var switched_realm: FrameRealm = .{ .parent = popup, .auxiliary = true };
+    const switched = try switched_realm.make();
+    protocol.destroyWindowRealm(popup, .navigable_destroyed);
+    collectTwice();
+    try protocol.runTaskInRealm(p2, NoSteps.steps, null);
+    // The page's end - the realm that took its proxy - ends no popup either.
+    protocol.destroyWindowRealm(next, .global_detached);
+    try protocol.runTaskInRealm(p2, NoSteps.steps, null);
+    try protocol.runTaskInRealm(switched, NoSteps.steps, null);
+    for ([_]runtime.Context{ p2, switched }) |r| protocol.destroyWindowRealm(r, .global_detached);
+    protocol.destroyWindowRealm(popup, .global_detached);
 }
 
 test "protocol: a realm made around a WindowProxy that runs out of memory at any allocation leaves nothing of itself, and the proxy with no global" {
