@@ -27,10 +27,16 @@
 //!   (8), and the childNodes list is cached once (8). NodeBase is an extern
 //!   struct at +24 of every node State (tests/dom/nm1_node_layout_pins_test.zig
 //!   pins the structure).
+//! - 144 after lane nm1's step 5: the node document is one word of NodeBase
+//!   (the Document's Instance; it was that in Node's state and the Document's
+//!   NodeBase in NodeBase, 8 bytes each), and its generation moved into
+//!   NodeBase beside it (tests/dom/nm1_node_document_word_test.zig). An exact
+//!   144-byte arena block: 48 bytes less than the 192-byte block of 184.
 //!
 //! A Text's and a Comment's block: 160 after the wrapper redesign's P6 (their
 //! history is in tests/dom/nd1_text_data_layout_test.zig); 136 after lane
-//! nm1's steps 1-4 (Node's 24 bytes above; a Text has no element flags).
+//! nm1's steps 1-4 (Node's 24 bytes above; a Text has no element flags); 128
+//! after its step 5.
 //!
 //! NodeBase, and Node's and Element's embedded states, are pinned here too
 //! since lane nm1: perf2b5_node_layout_test.zig, perf2b6_node_layout_test.zig,
@@ -77,22 +83,23 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 /// a State - Node's childNodes (NodeRareData is not a sparse block yet) and a
 /// DocumentFragment's children.
 const pins = [_]Pin{
-    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 152, .generated = 16 },
-    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 152, .generated = 16 },
-    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 152, .generated = 16 },
-    .{ .name = "Element", .State = interfaces.Element.State, .block = 152, .generated = 16 },
-    .{ .name = "Text", .State = interfaces.Text.State, .block = 136, .generated = 16 },
-    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 136, .generated = 16 },
-    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 136, .generated = 16 },
+    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 144, .generated = 16 },
+    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 144, .generated = 16 },
+    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 144, .generated = 16 },
+    .{ .name = "Element", .State = interfaces.Element.State, .block = 144, .generated = 16 },
+    .{ .name = "Text", .State = interfaces.Text.State, .block = 128, .generated = 16 },
+    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 128, .generated = 16 },
+    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 128, .generated = 16 },
 };
 
 /// The parts every node's block is made of.
 const part_pins = .{
-    // The tree links 32, the node document 8, the rare data 8, the wrapper
-    // slot 8, the owner 8, the two counts 8, and 8 bytes of type and flags.
-    .{ "NodeBase", dom.NodeBase, 80 },
-    // The NodeBase, the node document's Instance and its generation.
-    .{ "Node's embedded state", Embedded(interfaces.Node.State), 96 },
+    // The tree links 32, the node document 8 and its generation 8, the rare
+    // data 8, the wrapper slot 8, the owner 8, the two counts 8, and 8 bytes
+    // of type and flags.
+    .{ "NodeBase", dom.NodeBase, 88 },
+    // The NodeBase, and nothing else.
+    .{ "Node's embedded state", Embedded(interfaces.Node.State), 88 },
     // The name 8, the attributes 8, the style 8, the rare word 8.
     .{ "Element's embedded state", Embedded(interfaces.Element.State), 32 },
 };

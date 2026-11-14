@@ -152,7 +152,8 @@ test "src/dom finds NodeBase at the pinned offset of a node's State block" {
 const FieldPin = struct { name: []const u8, offset: usize, size: usize };
 
 /// NodeBase, field by field: the walk's window first (0..32), then what a
-/// link or a wrap reads (32..64), then the owner and the counts.
+/// link or a wrap reads (32..64), then the owner, the counts and the node
+/// document's generation.
 const node_base_fields = [_]FieldPin{
     .{ .name = "parent_node", .offset = 0, .size = 8 },
     .{ .name = "first_child", .offset = 8, .size = 8 },
@@ -165,12 +166,13 @@ const node_base_fields = [_]FieldPin{
     .{ .name = "element", .offset = 30, .size = 1 },
     .{ .name = "spare", .offset = 31, .size = 1 },
     .{ .name = "previous_or_last", .offset = 32, .size = 8 },
-    .{ .name = "owner_document", .offset = 40, .size = 8 },
+    .{ .name = "document_word", .offset = 40, .size = 8 },
     .{ .name = "rare", .offset = 48, .size = 8 },
     .{ .name = "wrapper", .offset = 56, .size = 8 },
     .{ .name = "owner", .offset = 64, .size = 8 },
     .{ .name = "rc", .offset = 72, .size = 4 },
     .{ .name = "subtree_holds", .offset = 76, .size = 4 },
+    .{ .name = "document_generation", .offset = 80, .size = 8 },
 };
 
 test "NodeBase is an extern struct: every field at its pinned offset, no padding" {
