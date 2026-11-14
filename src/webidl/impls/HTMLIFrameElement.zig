@@ -8038,12 +8038,23 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 // Operations (§4.8.5)
 // ============================================================================
 
-/// Operation: getSVGDocument
-/// Returns the nested SVG document if applicable.
+/// Operation: getSVGDocument (HTML 4.8.5, the GetSVGDocument steps):
+/// "1. Let document be this's content document. 2. If document is non-null
+/// and was created by the page load processing model for XML files section
+/// because the computed type of the resource in the navigate algorithm was
+/// image/svg+xml, then return document. 3. Return null."
+///
+/// The content document is `contentDocument`'s, origin-domain check
+/// included, so the two agree (cross-origin-to-whom.window.js). A document
+/// made for image/svg+xml has that content type, as embed's and object's
+/// check (html.embedded_content.svgDocument).
 pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // TODO: Implement SVG document retrieval
-    return null;
+    // 1.
+    const document = (try get_contentDocument(instance)) orelse return null;
+    // 2-3.
+    var content_type = try interfaces.Document.get_contentType(document);
+    defer content_type.deinit(document.ctx.allocator);
+    return if (std.mem.eql(u8, content_type.asSlice(), "image/svg+xml")) document else null;
 }
 
 // ============================================================================
