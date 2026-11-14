@@ -1584,9 +1584,12 @@ test "protocol: a popup's realm outlives its creator's: the creator ends, then t
     collectTwice();
     try protocol.runTaskInRealm(next, NoSteps.steps, null);
     try std.testing.expectEqual(page, protocol.entryRealm().?);
-    // Its own navigable destroyed: it ends, and nothing of it is left.
+    // Its own navigable destroyed: it ends, and nothing of it is left - its
+    // replaced realm included, which is no realm's child either: the host
+    // (the popup's record) ends it.
     protocol.destroyWindowRealm(next, .navigable_destroyed);
     protocol.destroyWindowRealm(next, .global_detached);
+    protocol.destroyWindowRealm(popup, .global_detached);
     try std.testing.expectEqual(page, protocol.entryRealm().?);
 }
 
