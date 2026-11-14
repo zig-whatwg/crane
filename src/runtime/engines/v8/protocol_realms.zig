@@ -438,7 +438,7 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     // Room for a parentless predecessor (E1 below), taken before the realm is
     // recorded: nothing fails once it is.
     if (predecessor) |old_state| {
-        if (old_state.parent == null) state.children.ensureTotalCapacity(std.heap.c_allocator, 1) catch return error.OutOfMemory;
+        if (old_state.parent == null and !old_state.auxiliary) state.children.ensureTotalCapacity(std.heap.c_allocator, 1) catch return error.OutOfMemory;
     }
     const parent_state: ?*WindowRealmState = if (tree_parent) |parent| realms.get(parent) else null;
     if (parent_state) |ps| appendChild(ps, realm) catch return error.OutOfMemory;
@@ -448,9 +448,14 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
     if (predecessor) |old_state| {
         // E1: a top-level predecessor's page is this realm now: detached by
         // its navigation (destroyWindowRealm .global_detached, as a frame's),
-        // it ends when the collector takes it or when this realm ends. Its
-        // popups are no concern of either: no realm's end ends a popup.
-        if (old_state.parent == null) {
+        // it ends when the collector takes it or when this realm ends. Not a
+        // popup's: a popup's realm is no realm's child, its replaced one
+        // included - it lives while script reaches it, whatever becomes of
+        // the realm that replaced it (a second navigation, its collection),
+        // and its host ends it if the collector has not (the popup's record
+        // keeps it). Its popups are no concern of either: no realm's end
+        // ends a popup.
+        if (old_state.parent == null and !old_state.auxiliary) {
             old_state.parent = realm;
             state.children.appendAssumeCapacity(predecessor_realm.?);
         }

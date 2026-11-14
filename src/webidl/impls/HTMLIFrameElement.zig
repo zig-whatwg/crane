@@ -6977,12 +6977,12 @@ fn settleRealmReplacement(integration: *IFrameIntegration) void {
         // Window opened are not its: their Browser keeps them, and no realm's
         // end ends one (dom.auxiliary_navigables.Popups).
         engine.destroyWindowRealm(old, old_end);
-        // A group switch's old realm is detached, not ended, and - a popup's
-        // being no realm's child - nothing would end it but the collector:
-        // the record keeps it with the realms it retired, so that its own
-        // end (or its Browser's) ends it if the collector has not. Out of
-        // memory, it ends now.
-        if (pending.switched) {
+        // A popup's replaced realm - by a navigation or a group switch - is
+        // detached, not ended, and, a popup's realm being no realm's child,
+        // nothing would end it but the collector: the record keeps it with
+        // the realms it retired, so that its own end (or its Browser's) ends
+        // it if the collector has not. Out of memory, it ends now.
+        if (ownedByBrowser(integration)) {
             integration.retired_realms.append(integration.allocator, .{ .data = @ptrCast(old), .destroy = destroyRetiredRealm }) catch engine.destroyWindowRealm(old, .global_detached);
         }
         return;
