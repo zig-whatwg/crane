@@ -90,6 +90,12 @@ pub const Generation = struct {
     /// change: production build" at the first production generation. Marked
     /// like the `events` below.
     configuration_change: ?[]const u8 = null,
+    /// The upstream WPT revisions of this generation's results and of the reference run it
+    /// was compared with (wpt_progress.py `generation_upstream_fields`, lane wptup1); null
+    /// where the history records none. They differ after a WPT update until the reference
+    /// is re-run, and the comparison then says so.
+    wpt_upstream: ?[]const u8 = null,
+    reference_wpt_upstream: ?[]const u8 = null,
 
     /// The run that supplied most of this generation's results: its sweep,
     /// beside any smaller targeted run. Null when the history names none.

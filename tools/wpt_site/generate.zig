@@ -2419,13 +2419,17 @@ const fixture_reference =
 ;
 
 fn runFixtureRef(gpa: Allocator, f: *Fixture, out_name: []const u8, ref_json: ?[]const u8) !Summary {
+    return runFixtureRefHistory(gpa, f, out_name, ref_json, fixture_history);
+}
+
+fn runFixtureRefHistory(gpa: Allocator, f: *Fixture, out_name: []const u8, ref_json: ?[]const u8, history_json: []const u8) !Summary {
     const st = try f.state(gpa);
     defer gpa.free(st);
     var out = try f.tmp.dir.createDirPathOpen(testing.io, out_name, .{ .open_options = .{ .iterate = true } });
     defer out.close(testing.io);
     return generate(gpa, testing.io, .{
         .state_json = st,
-        .history_json = fixture_history,
+        .history_json = history_json,
         .worklist_text = fixture_worklist,
         .results = f.results,
         .assets = null,
@@ -2638,6 +2642,39 @@ test "site: the wall time says where each pool's time goes, and the engine's mem
     defer gpa.free(plain);
     try testing.expect(std.mem.indexOf(u8, plain, "own wall clock, per runner") == null);
     try testing.expect(std.mem.indexOf(u8, plain, "without the runaway file") == null);
+}
+
+// The latest generation's upstream WPT revisions (wpt_progress.py generation_upstream_fields; lane wptup1).
+const fixture_history_upstreams =
+    \\{"gate_rule":2,"generations":[
+    \\{"n":2,"at":"2026-09-30T11:21:23","head":"5c8dd64da","gate_rule":2,"total":5,"run":4,"unrun":1,"blocking":2,"crash":0,"timeout":1,"error":0,"none_passed":1,"clean":1,"partial":1,"sub_pass":5,"sub_fail":3,"sub_passing":5,"sub_targeted":8,
+    \\"wpt_upstream":"2358bd48357992d5f3f9d6aaa2040aa018aaa093","reference_wpt_upstream":"afe89a5df4dcc7c6bcb317b07d6eee31a383c466"}
+    \\],"last_statuses":{}}
+;
+
+test "site: after a WPT update the comparison says which upstream WPT revision Crane's column is on" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    const note = "Crane&rsquo;s column is on upstream WPT <code>2358bd4835</code>, the reference&rsquo;s on <code>afe89a5df4</code>: a file that changed between the two revisions compares different tests.";
+    _ = try runFixtureRefHistory(gpa, &f, "moved", fixture_reference, fixture_history_upstreams);
+    const index = try readOut(gpa, &f, "moved/index.html");
+    defer gpa.free(index);
+    try expectHas(index, note);
+    const page = try readOut(gpa, &f, "moved/chrome.html");
+    defer gpa.free(page);
+    try expectHas(page, note);
+    // The same revision, or a history that records none: no sentence.
+    const same = try std.mem.replaceOwned(u8, gpa, fixture_history_upstreams, "2358bd48357992d5f3f9d6aaa2040aa018aaa093", "afe89a5df4dcc7c6bcb317b07d6eee31a383c466");
+    defer gpa.free(same);
+    _ = try runFixtureRefHistory(gpa, &f, "same", fixture_reference, same);
+    const index_same = try readOut(gpa, &f, "same/index.html");
+    defer gpa.free(index_same);
+    try testing.expect(std.mem.indexOf(u8, index_same, "column is on upstream WPT") == null);
+    _ = try runFixtureRef(gpa, &f, "none", fixture_reference);
+    const index_none = try readOut(gpa, &f, "none/index.html");
+    defer gpa.free(index_none);
+    try testing.expect(std.mem.indexOf(u8, index_none, "column is on upstream WPT") == null);
 }
 
 test "site: a reference run's records are never Crane's" {

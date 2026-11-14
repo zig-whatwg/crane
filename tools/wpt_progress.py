@@ -1868,7 +1868,7 @@ def retry_summary(counts):
             f"{counts['retry_skipped']:,} not retried (same as the previous generation)")
 
 
-def record_generation(worklist, records, areas, previous_records=None):
+def record_generation(worklist, records, areas, previous_records=None, reference=None):
     """Append this generation to HISTORY if anything moved; return the history.
 
     Diff the previous generation's per-file statuses and passes. Each generation
@@ -2019,6 +2019,7 @@ def record_generation(worklist, records, areas, previous_records=None):
         snap['configuration_change'] = change
     if update:
         snap['wpt_update'] = update   # a WPT-UPDATE generation: losses need upstream-test-change evidence
+    snap.update(generation_upstream_fields(worklist, records, reference))
     history['generations'].append(snap)
     history['last_statuses'] = cur
     history['last_sources'] = idents
@@ -2596,6 +2597,32 @@ document.querySelectorAll('table.sortable').forEach(function (t) {
 </script>"""
 
 
+def crane_and_reference_upstreams(worklist, records, ref, wpt_repo=None):
+    """(Crane's, the reference's) upstream WPT revisions: Crane's from the fork commit most of
+    its files were measured on, the reference's from its run.wpt_revision; None where git cannot
+    tell (lane wptup1: the fork moves with every Crane test, so only upstream revisions compare)."""
+    crane = wpt_upstream_revision(generation_wpt_revision(worklist, records), wpt_repo)
+    reference = wpt_upstream_revision(((ref or {}).get('run') or {}).get('wpt_revision'), wpt_repo)
+    return crane, reference
+
+
+def generation_upstream_fields(worklist, records, ref, wpt_repo=None):
+    """The generation record's `wpt_upstream` (Crane's) and `reference_wpt_upstream` (the
+    reference run's), where known - the results site compares them without git."""
+    crane, reference = crane_and_reference_upstreams(worklist, records, ref, wpt_repo)
+    return {k: v for k, v in (('wpt_upstream', crane), ('reference_wpt_upstream', reference)) if v}
+
+
+def reference_revision_note(crane_upstream, reference_upstream):
+    """One sentence when Crane's column and the reference's were measured on different upstream
+    WPT revisions (after a WPT update, until the reference is re-run); '' otherwise."""
+    if not crane_upstream or not reference_upstream or crane_upstream == reference_upstream:
+        return ''
+    return (f' Crane&rsquo;s column is on upstream WPT <code>{html.escape(crane_upstream[:10])}</code>, the '
+            f'reference&rsquo;s on <code>{html.escape(reference_upstream[:10])}</code>: a file that changed between '
+            'the two revisions compares different tests.')
+
+
 def render_reference(worklist, records, ref):
     """The comparison with a reference run: the run's identity, both engines'
     numbers on the same files, the wall time with the harness overhead, and
@@ -2606,6 +2633,7 @@ def render_reference(worklist, records, ref):
     run = ref['run']
     cmp = compare_reference(worklist, records, ref)
     cr, rf = cmp['crane'], cmp['ref']
+    revision_note = reference_revision_note(*crane_and_reference_upstreams(worklist, records, ref))
     esc = html.escape
     when = run['date'].replace('T', ' ').replace('Z', ' UTC')
     driver = (f", {'ChromeDriver' if ref['engine'] == 'chrome' else 'WebDriver'} "
@@ -2783,7 +2811,7 @@ def render_reference(worklist, records, ref):
 <div class="panel">
   <p class="sub2">{name} <code>{esc(run['browser_version'])}</code>{channel} {ran} on {esc(when)} with WPT&rsquo;s own runner (<code>wpt run</code>, headless{driver},
     {run['processes']} processes{where}), on WPT revision <code>{esc(run['wpt_revision'][:10])}</code>, over the
-    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window} Read from <code>{esc(src)}</code>;
+    worklist of Crane <code>{esc(run['worklist_commit'])}</code>.{same_window}{revision_note} Read from <code>{esc(src)}</code>;
     never counted as Crane&rsquo;s. Both columns are journal counts: subtests passed of those reported.</p>
   <table class="comp versus"><thead><tr><th></th><th>Crane</th><th>{name}</th></tr></thead>
   <tbody>{nums}</tbody></table>
@@ -3214,8 +3242,8 @@ def main():
     if '--rebuild-history' in sys.argv:
         rebuild_history(worklist, records, shape)
         print(f"history rebuilt from per-record timestamps -> {HISTORY}")
-    history = record_generation(worklist, records, areas)
     reference = load_reference()
+    history = record_generation(worklist, records, areas, reference=reference)
     gate_met, gating, run, total, clean = render(
         areas, worklist, records, files, out, history, shape, load_roadmap(), dispositions, reference)
 
@@ -4150,6 +4178,19 @@ def _check_upstream_test_change():
         # An entry already recorded is not proposed again.
         recorded = parse_loss_dispositions(_upstream_entry('a/test.html', before, after), wl, repo=repo)
         assert upstream_change_report(history, recorded, 223, wpt).count('kind = upstream-test-change') == 1
+        # The reference comparison names Crane's revision when it is not the reference's (upstream).
+        ref_note = reference_revision_note('2' * 40, '1' * 40)
+        assert 'Crane&rsquo;s column is on upstream WPT <code>2222222222</code>' in ref_note, ref_note
+        assert '<code>1111111111</code>' in ref_note
+        assert reference_revision_note('1' * 40, '1' * 40) == ''
+        assert reference_revision_note(None, '1' * 40) == '' and reference_revision_note('2' * 40, None) == ''
+        assert crane_and_reference_upstreams(wl, recs, {'run': {'wpt_revision': before}}, wpt) == ('2' * 40, '1' * 40)
+        assert crane_and_reference_upstreams(wl, recs, {'run': {'wpt_revision': 'f' * 40}}, wpt) == ('2' * 40, None)
+        # What the results site reads (it has no git): both upstream revisions on the generation.
+        assert generation_upstream_fields(wl, recs, {'run': {'wpt_revision': before}}, wpt) == \
+            {'wpt_upstream': '2' * 40, 'reference_wpt_upstream': '1' * 40}
+        assert generation_upstream_fields(wl, recs, None, wpt) == {'wpt_upstream': '2' * 40}
+        assert generation_upstream_fields(wl, {}, None, wpt) == {}
         # A generation that did not move to another WPT revision is not a WPT-update generation.
         assert 'not a WPT-update generation' in upstream_change_report(
             {'generations': [{'n': 224, 'losses': []}]}, {}, 224, wpt)
