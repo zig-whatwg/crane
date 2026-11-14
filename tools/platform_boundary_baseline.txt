@@ -61,7 +61,6 @@ src/fetch/network/connection_pool.zig curl.CURLMOPT_MAX_HOST_CONNECTIONS 1
 src/fetch/network/connection_pool.zig curl.CURLMOPT_MAX_TOTAL_CONNECTIONS 1
 src/fetch/network/connection_pool.zig curl.CURLMSG_DONE 1
 src/fetch/network/connection_pool.zig curl.CURLM_OK 2
-src/fetch/network/connection_pool.zig curl.CURLOPT_ACCEPT_ENCODING 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_CONNECTTIMEOUT_MS 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_CUSTOMREQUEST 1
 src/fetch/network/connection_pool.zig curl.CURLOPT_FOLLOWLOCATION 1
@@ -112,7 +111,6 @@ src/fetch/network/curl_backend.zig curl.CURLINFO_RESPONSE_CODE 3
 src/fetch/network/curl_backend.zig curl.CURLINFO_STARTTRANSFER_TIME 2
 src/fetch/network/curl_backend.zig curl.CURLINFO_TLS_SSL_PTR 1
 src/fetch/network/curl_backend.zig curl.CURLINFO_TOTAL_TIME 1
-src/fetch/network/curl_backend.zig curl.CURLOPT_ACCEPT_ENCODING 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_CONNECTTIMEOUT_MS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_COPYPOSTFIELDS 1
 src/fetch/network/curl_backend.zig curl.CURLOPT_CUSTOMREQUEST 1

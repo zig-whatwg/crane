@@ -36,6 +36,9 @@ pub const mixed_content = @import("mixed_content.zig");
 pub const referrer_policy = @import("referrer_policy");
 pub const cors = @import("cors/root.zig");
 pub const network = @import("network/root.zig");
+/// Content codings: the one table (Accept-Encoding, filtered coding,
+/// decoders) and the decoder chain HTTP-network fetch runs.
+pub const content_coding = @import("content_coding/root.zig");
 pub const cache = @import("cache/root.zig");
 pub const algorithms = @import("algorithms/root.zig");
 pub const webidl = @import("webidl/root.zig");
@@ -81,6 +84,7 @@ test {
     _ = referrer_policy;
     _ = cors;
     _ = network;
+    _ = content_coding;
     _ = cache;
     _ = algorithms;
     _ = webidl;

@@ -59,6 +59,12 @@ pub const StreamClient = struct {
     /// call. A transfer that failed before its headers were in ends here
     /// without a `head`.
     end: *const fn (context: ?*anyopaque, result: NetworkError!void) void,
+    /// How many bytes of the body have arrived so far, before their content
+    /// codings were undone (`data` hands on decoded bytes): the body info's
+    /// encoded size (HTTP-network fetch 18.1.1.1.8). Called before each
+    /// `data` and once more before `end` - the last bytes, a gzip trailer
+    /// say, may decode to nothing.
+    encoded: ?*const fn (context: ?*anyopaque, total: u64) void = null,
 };
 
 pub const NetworkScheduler = struct {
@@ -416,12 +422,15 @@ pub const NetworkScheduler = struct {
                         const allocator = job.allocator;
                         defer allocator.free(bytes);
                         job.transfer.consumeBody();
+                        if (client.encoded) |encoded| encoded(client.context, job.transfer.encodedBodyBytes());
                         client.data(client.context, bytes);
                         continue;
                     }
                     const result = job.ended.?;
                     const outcome = job.transfer.outcome(result);
+                    const encoded_total = job.transfer.encodedBodyBytes();
                     self.finalize(job);
+                    if (client.encoded) |encoded| encoded(client.context, encoded_total);
                     client.end(client.context, outcome);
                 },
                 .complete => |client| {

@@ -846,6 +846,25 @@ pub const WindowRealmOptions = struct {
     /// The realm's origin, serialized; null for an opaque one.
     origin: ?[]const u8 = null,
     global_this: GlobalThis = .new_window_proxy,
+    /// The realm this one replaces as its navigable's realm when it gets a
+    /// NEW WindowProxy (`global_this = .new_window_proxy`): a browsing context
+    /// group switch (HTML "obtain a browsing context to use for a navigation
+    /// response"), where the navigable's next document is in a new browsing
+    /// context. The new realm adopts the old realm's auxiliary realms once
+    /// the old realm ends, as it does for `.window_proxy_of`: a popup is a
+    /// top-level traversable of the user agent, which its opener's group
+    /// switch does not destroy. BORROWED - the engine reads it during
+    /// creation and keeps no reference past the old realm's end. An engine
+    /// without [reuse_window_proxy] ignores it.
+    ///
+    /// CONTRACT, for every adapter with [reuse_window_proxy] (the integrator,
+    /// 2026-11-14, from lane rep1 batch 1): when a Window realm ends while
+    /// another realm replaces it as its navigable's realm - made with
+    /// `global_this = .window_proxy_of` it, or with `replaces` it - the
+    /// replacing realm adopts the old realm's auxiliary realms before the old
+    /// realm's frames are destroyed; only a realm that nothing replaces (a
+    /// removed frame, a closed page) takes its auxiliary realms with it.
+    replaces: ?Context = null,
     /// The realm of the navigable's parent - an iframe's container document's
     /// window, or a popup's opener - or null for a top-level one. A realm
     /// with a parent does not share engine-level access with it: every

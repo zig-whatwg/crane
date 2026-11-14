@@ -75,8 +75,13 @@ pub const DescendantAbort = struct {
         // stopped document (lifecycleStopLoad's evidence: no load in Chrome
         // and Firefox), here because Blink FrameLoader::StopAllLoaders runs
         // Document::CancelParsing in every local descendant frame, and WebKit
-        // FrameLoader::stopAllLoaders stops each local child's loaders. Only
-        // "stop loading" queues these tasks (its step 3).
+        // FrameLoader::stopAllLoaders stops each local child's loaders.
+        // Firefox 159 agrees with Chrome 157: a descendant's navigation in
+        // flight is cancelled too, from stop()'s own task or a later one;
+        // Safari 27 lets one started in stop()'s own task commit (lane
+        // nav2's three-browser probe, 2026-11-14; HTMLIFrameElement's
+        // stopLoadingDocument ends those navigations). Only "stop loading"
+        // queues these tasks (its step 3).
         //
         // BEFORE the abort: cancelling the descendant's fetches ends what
         // delayed its load, which queues "the end" step 9's task and marks the

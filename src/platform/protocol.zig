@@ -313,6 +313,9 @@ pub const Capabilities = struct {
     http3: Support,
     /// Compression Streams rejects "brotli" with TypeError; no br content decoding.
     brotli: Support,
+    /// Fetch's gzip and deflate content codings decode with Zig's slower
+    /// std.compress.flate (src/fetch/content_coding/flate.zig).
+    deflate_decoding: Support,
     /// Threads run at the default priority.
     thread_qos: Support,
     /// Diagnostics report no resident memory.
@@ -975,6 +978,32 @@ pub inline fn compressBrotli(encoder: *BrotliEncoder, input: Bytes, output: []u8
 pub inline fn destroyBrotliEncoder(encoder: *BrotliEncoder) void {
     comptime gate(.brotli, "destroyBrotliEncoder");
     return impl.destroyBrotliEncoder(encoder);
+}
+
+/// One raw DEFLATE decoding context, OWNED until destroyDeflateDecoder;
+/// thread rules as BrotliDecoder's.
+pub const DeflateDecoder = opaque {};
+
+/// Create an RFC 1951 raw DEFLATE decoder (no zlib or gzip wrapper: the
+/// caller parses containers; the built-ins run zlib's inflate), using
+/// allocator for ALL its native storage. Synchronous, any thread.
+pub inline fn createDeflateDecoder(allocator: std.mem.Allocator) CodecError!*DeflateDecoder {
+    comptime gate(.deflate_decoding, "createDeflateDecoder");
+    return impl.createDeflateDecoder(allocator);
+}
+
+/// Decode into caller storage without retaining input/output pointers. Input
+/// after the final block is left unconsumed (finished); need_input at the end
+/// of input means truncation; invalid DEFLATE is InvalidData.
+pub inline fn decompressDeflate(decoder: *DeflateDecoder, input: Bytes, output: []u8) CodecError!CodecProgress {
+    comptime gate(.deflate_decoding, "decompressDeflate");
+    return impl.decompressDeflate(decoder, input, output);
+}
+
+/// Release the context and all native allocations, including after a failed call.
+pub inline fn destroyDeflateDecoder(decoder: *DeflateDecoder) void {
+    comptime gate(.deflate_decoding, "destroyDeflateDecoder");
+    return impl.destroyDeflateDecoder(decoder);
 }
 
 // ============================================================================
