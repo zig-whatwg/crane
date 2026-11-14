@@ -174,3 +174,20 @@ test "the Browser's end closes two popups, one opened by the other, before its p
     try onFreshThread(browserEndOpenerClosedFirst);
     try onFreshThread(browserEndOpeneeClosedFirst);
 }
+
+fn hostPageClose() !void {
+    const browser = try startBrowser();
+    defer browser.deinit();
+    const page = try loadPage(browser);
+    // html/browsers/browsing-the-web/unloading-documents/prompt-and-unload-
+    // script-closeable.html: the host's page closes itself. Its documents
+    // unload; its realm is the host's, which ends it with its page - only a
+    // popup's realm detaches when its navigable is destroyed.
+    try page.runScript("globalThis.unloaded = false; addEventListener('unload', () => { globalThis.unloaded = true; }); window.close();");
+    _ = try browser.runEventLoopBlocking(50);
+    try expectEval(page, "String(globalThis.unloaded)", "true");
+}
+
+test "the host's page that closes itself unloads, and its realm stays the host's until its end" {
+    try onFreshThread(hostPageClose);
+}
