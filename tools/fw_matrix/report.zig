@@ -68,7 +68,7 @@ pub const statement =
 /// Where Node runs (the user, 2026-11-11 17:43 ET: "we can run node for the
 /// purposes of these tests").
 pub const node_note =
-    "Node runs only a project's own build step, test server and test runner, never inside Crane: jQuery's pages are served by its own test server (jquery-test-runner) with the project's own dependencies, as its CI serves them.";
+    "Node runs only a project's own build step, test server and test runner, never inside Crane. jQuery's pages are served by its own test server (jquery-test-runner) with its own dependencies, as its CI serves them; Angular's are built by its own Bazel and served by its own web-test-runner debug targets, one per page; htmx's test page and the TodoMVC apps are static files, served as they are.";
 
 /// The first section's introduction.
 pub const own_suites_intro =

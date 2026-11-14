@@ -666,6 +666,9 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     var buf: Io.Writer.Allocating = .init(arena);
     for (records.items) |rec| try journal.writeTest(&buf.writer, rec);
     try journal.writePage(&buf.writer, page_record);
+    // The tests the framework counted without naming, in the run's totals.
+    counts.pass += page_record.unnamed_passed orelse 0;
+    counts.project_skip += page_record.unnamed_pending orelse 0;
 
     shared.mutex.lockUncancelable(io);
     defer shared.mutex.unlock(io);
