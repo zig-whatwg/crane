@@ -122,10 +122,9 @@ test "a name record is 88 bytes, its count (batch 1-fix) in what was padding" {
     try expectSize(ElementName, 88);
 }
 
-test "Element's InternalState is 88 bytes at N2, 40 after N3" {
-    // 136 at main b1bd4eae568, less ElementData's 48: 88; N3 48 more.
-    try expectSize(ElementState, 40);
-}
+// Element's InternalState: 136 at main b1bd4eae568, less ElementData's 48: 88
+// at N2; N3 48 more: 40. Its size is pinned in ONE place,
+// tests/dom/node_block_sizes_test.zig (lane nm1: seven files carried a copy).
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig
 // (lane cg1; lesson testing-a-total-pinned-in-six-files-moves-in-six-files.md).

@@ -766,8 +766,7 @@ fn lowered(tree_root: *NodeBase) void {
 /// The foreign holds of `node`'s node document fell: the document may be
 /// garbage now (decision D6: its tree waits for them).
 fn documentLowered(node: *NodeBase) void {
-    const raw = node.owner_document orelse return;
-    lowered(@ptrCast(@alignCast(raw)));
+    lowered(node.documentBase() orelse return);
 }
 
 /// `node`'s node document's NodeBase while that document is alive (the
@@ -776,8 +775,7 @@ fn documentLowered(node: *NodeBase) void {
 pub fn liveNodeDocument(node: *NodeBase) ?*NodeBase {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return node;
     _ = countsOfNodeDocument(node) orelse return null;
-    const raw = node.owner_document orelse return null;
-    return @ptrCast(@alignCast(raw));
+    return node.documentBase();
 }
 
 /// The foreign holds of `document` (a Document's NodeBase), or null when it
@@ -986,7 +984,7 @@ fn adjustForeign(tree_root: *NodeBase, delta: i64) void {
 /// Whether `node` may be a detached root that counts in its document: not a
 /// Document, and named by one.
 fn countsAsForeign(node: *const NodeBase) bool {
-    return node.node_type != NodeBase.DOCUMENT_NODE and node.owner_document != null;
+    return node.node_type != NodeBase.DOCUMENT_NODE and node.documentKey() != 0;
 }
 
 // ============================================================================
@@ -1023,7 +1021,7 @@ pub fn linkChild(node: *NodeBase, parent: *NodeBase) void {
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
     const tree_root = reached orelse return;
     // Within one document's detached trees, a move changes nothing there.
-    if (was_foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
+    if (was_foreign and tree_root.rc_flags.foreign and node.documentKey() == tree_root.documentKey()) return;
     if (was_foreign) {
         const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
         if (own) |counts| addTo(&counts.foreign_holds, -delta, "foreign_holds");
@@ -1104,7 +1102,7 @@ fn unlink(node: *NodeBase, held: bool) void {
     const document = if (reached) |r| countsAt(parent, r) else countsOfParent(parent);
     if (document) |counts| bumpTreeVersion(counts, .{ .node = parent });
     const tree_root = reached orelse return;
-    if (foreign and tree_root.rc_flags.foreign and node.owner_document == tree_root.owner_document) return;
+    if (foreign and tree_root.rc_flags.foreign and node.documentKey() == tree_root.documentKey()) return;
     adjustForeign(tree_root, -delta);
     if (!foreign) return;
     const own = if (sameNodeDocument(node, parent)) document else countsOfNodeDocument(node);
@@ -1143,7 +1141,7 @@ pub fn moveChild(node: *NodeBase, new_parent: *NodeBase) void {
 /// accessor (a document freed under its node answers none).
 fn countsOfParent(parent: *NodeBase) ?*DocumentCounts {
     if (parent.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(parent);
-    if (parent.is_connected) if (parent.owner_document) |raw| return countsOfDocumentNode(@ptrCast(@alignCast(raw)));
+    if (parent.is_connected) if (parent.documentBase()) |document| return countsOfDocumentNode(document);
     return countsOfNodeDocument(parent);
 }
 
@@ -1156,10 +1154,11 @@ fn countsAt(parent: *NodeBase, tree_root: *NodeBase) ?*DocumentCounts {
     return countsOfNodeDocument(parent);
 }
 
-/// Whether `node`'s node document is `parent`'s (pointer compares only).
+/// Whether `node`'s node document is `parent`'s (key compares only: nothing
+/// is read through either node's document word).
 fn sameNodeDocument(node: *const NodeBase, parent: *const NodeBase) bool {
-    const parents: usize = if (parent.node_type == NodeBase.DOCUMENT_NODE) @intFromPtr(parent) else @intFromPtr(parent.owner_document);
-    return @intFromPtr(node.owner_document) == parents;
+    const parents: usize = if (parent.node_type == NodeBase.DOCUMENT_NODE) parent.keyAsDocument() else parent.documentKey();
+    return node.documentKey() == parents;
 }
 
 /// A dying tree's teardown unlinks a child (dom.tree_teardown): the pointer
@@ -1285,10 +1284,10 @@ pub fn nodeFreed(node: *NodeBase, counts: ?*DocumentCounts) void {
     if (lowers) documentLowered(node);
 }
 
-/// Whether `tree_root` is `node`'s node document (a pointer compare: no read
-/// through `owner_document`).
+/// Whether `tree_root` is `node`'s node document (a key compare: no read
+/// through the node's document word).
 fn isNodeDocumentOf(node: *const NodeBase, tree_root: *const NodeBase) bool {
-    return tree_root.node_type == NodeBase.DOCUMENT_NODE and @intFromPtr(node.owner_document) == @intFromPtr(tree_root);
+    return tree_root.node_type == NodeBase.DOCUMENT_NODE and node.documentKey() == tree_root.keyAsDocument();
 }
 
 // ============================================================================
@@ -1522,8 +1521,7 @@ pub const weak_refs_see_garbage = true;
 pub fn inGarbageTree(node: *NodeBase) bool {
     if (node.rc_flags.garbage) return true;
     if (node.is_connected and node.node_type != NodeBase.DOCUMENT_NODE) {
-        if (node.owner_document) |raw| {
-            const document: *NodeBase = @ptrCast(@alignCast(raw));
+        if (node.documentBase()) |document| {
             if (document.node_type == NodeBase.DOCUMENT_NODE and document.parent_node == null) return document.rc_flags.garbage;
         }
     }

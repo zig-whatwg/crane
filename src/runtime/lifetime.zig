@@ -207,9 +207,9 @@ pub fn wrapperForgotten() void {
 }
 
 /// The comptime predicate `buildVTable` fills `VTable.counted` with: `&node`
-/// when some level of `State`'s `base` chain keeps a state with a `node_base`
-/// field (Node's InternalState - the one node state; nodes are what count,
-/// decision D3) - by value (`_embedded`, as Node's is since lane perf2 batch
+/// when some level of `State`'s `base` chain keeps a state that declares
+/// `counted_node` (Node's InternalState - the one node state; nodes are what
+/// count, decision D3) - by value (`_embedded`, as Node's is since lane perf2 batch
 /// 5, with no `_internal` pointer since batch 6) or behind its `_internal`
 /// pointer - else null - the DEFAULT, pinned by
 /// tests/runtime/vtable_counted_test.zig and perf2b6_live_flags_test.zig.
@@ -287,13 +287,21 @@ fn tracerOf(comptime Field: type) ?type {
 }
 
 /// Whether `Internal` - an `_internal` field's type, or a pointer to an
-/// `_embedded` one - points at a struct with a `node_base` field.
+/// `_embedded` one - points at a node's state: a struct that DECLARES it,
+/// `pub const counted_node = true;` (Node's InternalState, which keeps the
+/// node's NodeBase by value). A declaration, as `embedded_in_state` is - not
+/// a field's name: the predicate keyed on a field called `node_base` until
+/// lane nm1 removed that field (Node's pointer to its own NodeBase, 8 bytes
+/// a node), and a field kept for its name is read by no one who can see why
+/// (lesson codegen-a-generated-field-can-be-read-for-its-presence). The
+/// DEFAULT is "not counted": no declaration, or a false one.
 fn keepsNodeBase(comptime Internal: type) bool {
     comptime {
         var T: type = Internal;
         if (@typeInfo(T) == .optional) T = @typeInfo(T).optional.child;
         if (@typeInfo(T) != .pointer) return false;
         T = @typeInfo(T).pointer.child;
-        return @typeInfo(T) == .@"struct" and @hasField(T, "node_base");
+        if (@typeInfo(T) != .@"struct" or !@hasDecl(T, "counted_node")) return false;
+        return T.counted_node;
     }
 }

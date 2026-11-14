@@ -37,7 +37,6 @@ pub const TextWithBase = struct {
                 .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.TEXT_NODE,
                 .parent_node = null,
-                .owner_document = null,
             },
             .data = try allocator.dupe(u8, data),
         };
@@ -110,7 +109,6 @@ pub const CommentWithBase = struct {
                 .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.COMMENT_NODE,
                 .parent_node = null,
-                .owner_document = null,
             },
             .data = try allocator.dupe(u8, data),
         };

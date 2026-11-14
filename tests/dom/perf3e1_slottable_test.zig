@@ -59,7 +59,7 @@ const has_rare_slottable = @hasField(dom.element_rare_data.Field, "slottable");
 // Sizes (red until item 2)
 // ============================================================================
 
-test "Element's InternalState keeps no slottable state: 40 bytes" {
+test "Element's InternalState keeps no slottable state" {
     if (comptime @hasField(ElementState, "slottable")) {
         printLayout(ElementState);
         return error.SlottableStillInElement;
@@ -67,8 +67,8 @@ test "Element's InternalState keeps no slottable state: 40 bytes" {
     // 200 after item 1: - 64 (the assigned slot and the manual slot
     // assignment, two NodeRefs with their optional tags).
     // 136 at E1; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
-    // nd2 N3: the ID and classes views (48) are indices in the list's header.
-    try expectSize(ElementState, 40);
+    // nd2 N3: the ID and classes views (48) are indices in the list's header: 40.
+    // Its size is pinned in ONE place, tests/dom/node_block_sizes_test.zig (lane nm1).
 }
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig

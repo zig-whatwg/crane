@@ -1,8 +1,9 @@
 //! `VTable.counted` (refcount design 2.1, step 4): which types' wrappers own a
 //! counted reference. Nodes only (decision D3), found at comptime by
 //! `buildVTable` from the State's shape: some level of its `base` chain keeps an
-//! `_internal` pointer whose target has a `node_base` field - Node's
-//! InternalState, and nothing else's.
+//! `_internal` pointer whose target declares `pub const counted_node = true;`
+//! - Node's InternalState, and nothing else's. (It was "has a field named
+//! `node_base`" until lane nm1 removed that field from Node's state.)
 //!
 //! The DEFAULT is pinned here, not only the known case: a type that is not
 //! counted keeps today's path (the collector frees it through
@@ -16,10 +17,21 @@ const runtime = @import("runtime");
 
 const Instance = runtime.Instance;
 
-/// A node-shaped InternalState: the one field the predicate looks for.
+/// A node-shaped InternalState: the one declaration the predicate looks for.
 const FakeNodeBase = struct { rc: u32 = 0 };
-const NodeInternal = struct { node_base: ?*FakeNodeBase = null };
+const NodeInternal = struct {
+    base: FakeNodeBase = .{},
+    pub const counted_node = true;
+};
 const OtherInternal = struct { value: u32 = 0 };
+/// Declared, and false: not counted.
+const DeclinedInternal = struct {
+    value: u32 = 0,
+    pub const counted_node = false;
+};
+/// The predicate's old key - a field NAMED `node_base` - and no declaration:
+/// not counted. A name is not a statement.
+const NamedOnlyInternal = struct { node_base: ?*FakeNodeBase = null };
 
 const NodeState = runtime.FlattenedState(null, &.{}, struct {
     nodeType: u16 = 0,
@@ -38,6 +50,15 @@ const HeadersState = runtime.FlattenedState(null, &.{}, struct {
     _internal: ?*OtherInternal = null,
 });
 const NoInternalState = runtime.FlattenedState(null, &.{}, struct { x: u8 = 0 });
+const DeclinedState = runtime.FlattenedState(null, &.{}, struct {
+    _internal: ?*DeclinedInternal = null,
+});
+const NamedOnlyState = runtime.FlattenedState(null, &.{}, struct {
+    _internal: ?*NamedOnlyInternal = null,
+});
+const OnDeclinedState = runtime.FlattenedState(DeclinedState, &.{}, struct {
+    _internal: ?*OtherInternal = null,
+});
 
 const delegates = .{};
 
@@ -53,6 +74,18 @@ test "buildVTable: a State with no node level is not counted" {
     try testing.expect(bare.counted == null);
     const plain = comptime runtime.buildVTable(&delegates, "Plain", struct { a: u32 });
     try testing.expect(plain.counted == null);
+}
+
+test "buildVTable: the predicate's default is not counted - no declaration, a false one, or only the old field name" {
+    // tests/AGENTS.md "Comptime predicates": the default, both ways.
+    const declined = comptime runtime.buildVTable(&delegates, "Declined", DeclinedState);
+    try testing.expect(declined.counted == null);
+    const on_declined = comptime runtime.buildVTable(&delegates, "OnDeclined", OnDeclinedState);
+    try testing.expect(on_declined.counted == null);
+    const named_only = comptime runtime.buildVTable(&delegates, "NamedOnly", NamedOnlyState);
+    try testing.expect(named_only.counted == null);
+    try testing.expect((comptime runtime.lifetime.countedOf(HeadersState)) == null);
+    try testing.expect((comptime runtime.lifetime.countedOf(NodeState)) != null);
 }
 
 test "buildVTable: a node's State, and every State built on it, is counted" {

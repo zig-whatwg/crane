@@ -58,7 +58,7 @@ pub const InternalState = struct {
     // ElementInternals and element.style objects with their edges, the
     // internals flags, 88 bytes on every HTML element - is in the element's
     // sparse rare block (dom.element_rare_data; lane rare1), each made on
-    // first use; click()'s flag is in Element's padding. Reached through
+    // first use; click()'s flag is a bit of the element's NodeBase. Reached through
     // the hook Element installs (dom.element_rare_data.access), never
     // through Element's impl.
 
@@ -673,8 +673,8 @@ pub fn call_click(instance: *runtime.Instance) anyerror!void {
     const a = accessOf(instance) orelse return;
     // Step 2: "If this element's click in progress flag is set, then return."
     if (a.click_in_progress.*) return;
-    // Step 3: "Set this element's click in progress flag." In Element's
-    // padding, no rare block (lane rare1).
+    // Step 3: "Set this element's click in progress flag." A bit of the
+    // element's NodeBase, no rare block (lanes rare1, nm1).
     a.click_in_progress.* = true;
     // Step 5, however the dispatch leaves. Looked up again: the handlers can
     // run anything, its element's teardown included.

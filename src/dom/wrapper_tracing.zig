@@ -121,7 +121,7 @@ pub fn traceHeld(node: *NodeBase, tracer: *engine.Tracer) void {
 pub fn connectedDocument(node: *NodeBase) ?*NodeBase {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return node;
     if (!node.is_connected) return null;
-    return @ptrCast(@alignCast(node.owner_document orelse return null));
+    return node.documentBase();
 }
 
 /// `node` holds nodes for script itself (`NodeBase.traces_held`): its

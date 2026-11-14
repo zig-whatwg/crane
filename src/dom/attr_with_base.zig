@@ -62,7 +62,6 @@ pub const AttrWithBase = struct {
                 .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.ATTRIBUTE_NODE,
                 .parent_node = null,
-                .owner_document = null,
             },
             .local_name = try allocator.dupe(u8, local_name),
             .value = "",

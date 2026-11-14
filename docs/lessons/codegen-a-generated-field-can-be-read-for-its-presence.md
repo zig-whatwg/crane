@@ -13,3 +13,5 @@
 3. Prove the edge with a test that fails without it: keep the child, drop and collect the owner, use the child, under the poisoning runner.
 
 **Takeaway**: **A comptime presence check on a generated field fails open when the field moves: find every `@hasField` reader before moving one, and give the fact it encoded a declaration of its own.**
+
+**Status (2026-11-14, lane nm1)**: It happened again with a HAND-WRITTEN field. runtime.lifetime's `countedOf` decided "this type is a node" by `@hasField(T, "node_base")` on a level's state; lane nm1 removed Node's `node_base` field (its pointer to its own NodeBase) and no type was counted any more: no wrapper slot, 60 failing tests in tests/v8 and tests/html, and nothing at compile time. The first full native test run found it; the size pins and the one-directory test runs did not. The predicate now reads a declaration (`pub const counted_node = true;`), pinned both ways with its default. The grep in Fix 1 belongs before removing ANY field of a state struct, generated or not: `grep -rn '"<field>"' src tests tools`.
