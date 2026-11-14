@@ -204,7 +204,10 @@ pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instan
         // animations keeps it (`watchStyle`), and so does one whose lazy
         // load intersection observer has targets not yet intersecting
         // (dom.lazy_load_observer).
-        refcount.watchRendering(document, style_engine.declaresAnimations(document) or @import("lazy_load_observer.zig").hasTargets(document));
+        // The lazy targets are read only of a live Document (its counts,
+        // which the watch itself needs).
+        const lazy_waiting = refcount.documentCounts(document) != null and @import("lazy_load_observer.zig").hasTargets(document);
+        refcount.watchRendering(document, style_engine.declaresAnimations(document) or lazy_waiting);
         return;
     }
     refcount.watchRendering(document, true);
