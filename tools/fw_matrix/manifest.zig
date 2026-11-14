@@ -192,6 +192,82 @@ pub const Suite = struct {
     /// (longer than the framework's own per-test timeout: QUnit's 60 s in
     /// jQuery's testrunner.js).
     page_stall_s: u32 = 150,
+    /// A tree several suites share, by its directory name below the
+    /// frameworks directory; null: the suite's own, "<id>-<version>". Set
+    /// only by the `todomvc` block's expansion.
+    tree: ?[]const u8 = null,
+    /// The TodoMVC app a suite checks; set only by the expansion.
+    app: ?App = null,
+    /// Chrome's numbers for the suite by the project's own runner, for the
+    /// comparison column, where no journal holds them (a project runner's
+    /// summary, read from its log; `source` says which).
+    chrome_reference: ?ChromeReference = null,
+};
+
+pub const ChromeReference = struct {
+    /// "Chrome for Testing 157.0.8103.78".
+    browser: []const u8,
+    /// How the project ran it ("jquery-test-runner 0.3.0, headless, one page as its CI runs it").
+    runner: []const u8,
+    /// The day of the run (YYYY-MM-DD).
+    date: []const u8,
+    ran: u32,
+    passed: u32,
+    failed: u32,
+    skipped: u32 = 0,
+    /// Where its log is kept.
+    source: []const u8,
+};
+
+/// One app of TodoMVC (the report's second section).
+pub const App = struct {
+    /// Its directory below examples/, which is also the name TodoMVC's app
+    /// spec keys its tables by and the port's `?framework=` ("react").
+    id: []const u8,
+    /// todomvc.com's name for it ("React", "Vue.js").
+    title: []const u8,
+    /// Its folder below examples/ as todomvc.com links it ("react/dist"):
+    /// the build the port opens (`&folder=`).
+    folder: []const u8,
+    /// The framework's version the app's files state (its package-lock.json,
+    /// or the framework file's own header); null where they state none.
+    version: ?[]const u8 = null,
+    /// examples/<id>/ as one sha256 (fetch.dirHash), checked at every
+    /// fetch: the pin of the app's build. Required for a served app.
+    sha256: ?[]const u8 = null,
+    /// TodoMVC's own runner skips the app (tests/excluded.js): its reason,
+    /// shown beside the row. The app is run all the same.
+    skipped_by_todomvc: ?[]const u8 = null,
+    /// The app cannot be served, and why: it gets a row saying so and no
+    /// suite.
+    not_served: ?[]const u8 = null,
+};
+
+/// TodoMVC (the user, 2026-11-14: "We should report on as many frameworks
+/// for TODOMVC as the actual TODOMVC site"): every app todomvc.com lists,
+/// each the unmodified build committed in tastejs/todomvc, checked by
+/// Crane's port of the app spec. `parse` makes a suite of kind
+/// `.todomvc_port` per served app, all sharing one tree.
+pub const TodoMvc = struct {
+    repository: []const u8,
+    commit: []const u8,
+    licence: []const u8,
+    runner: []const u8,
+    reader: exclusions.Reader,
+    source: Archive,
+    dependencies: []const Dependency = &.{},
+    overlay: []const Overlay = &.{},
+    /// The port's page below the tree ("crane/todomvc/index.html").
+    page: []const u8,
+    excluded: []const u8,
+    page_budget_s: u32 = 900,
+    page_stall_s: u32 = 150,
+    apps: []const App,
+
+    /// The shared tree's directory: "todomvc-<first 12 of the commit>".
+    pub fn treeDir(t: TodoMvc, arena: Allocator) ![]const u8 {
+        return std.fmt.allocPrint(arena, "todomvc-{s}", .{t.commit[0..@min(12, t.commit.len)]});
+    }
 };
 
 /// A framework's own browser tests that do not run in Crane, and why: a row
@@ -229,9 +305,12 @@ pub const Manifest = struct {
     /// manifest that only runs suites.
     frameworks: []const Framework = &.{},
     suites: []const Suite,
+    /// After `parse`, its served apps are suites too (at the end of
+    /// `suites`, in the block's order).
+    todomvc: ?TodoMvc = null,
 };
 
-pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun };
+pub const Error = error{ OutOfMemory, ParseZon, BadName, BadSha256, BadPath, BadUrl, DuplicatePage, DuplicateSuite, NoPages, LiveLoadsNotAllowed, BadIntegrity, OverlappingOverlay, NpmWithoutNode, ServerWithoutNode, BadServer, ServerWithoutPort, ServerWithOverlay, DuplicateFramework, UnknownFramework, FrameworkWithoutSuite, BadNotRun, DuplicateApp, AppWithoutPin, BadApp, BadChromeReference };
 
 /// The text a server argument holds where the harness's port goes.
 pub const port_placeholder = "{port}";
@@ -243,9 +322,75 @@ pub const Failure = struct {
 };
 
 pub fn parse(gpa: Allocator, arena: Allocator, source: [:0]const u8, failure: *Failure) Error!Manifest {
-    const m = try std.zon.parse.fromSlice(Manifest, .{ .gpa = gpa, .arena = arena, .source = source, .diagnostics = &failure.diagnostics });
+    var m = try std.zon.parse.fromSlice(Manifest, .{ .gpa = gpa, .arena = arena, .source = source, .diagnostics = &failure.diagnostics });
+    if (m.todomvc) |t| {
+        try validateTodoMvc(t, failure);
+        m.suites = try expandTodoMvc(arena, m.suites, t);
+    }
     try validate(m, failure);
     return m;
+}
+
+/// The served apps of the TodoMVC block as suites, after `suites`: one page
+/// each, the port opened on the app's folder as todomvc.com links it.
+pub fn expandTodoMvc(arena: Allocator, suites: []const Suite, t: TodoMvc) Error![]const Suite {
+    var out: std.ArrayList(Suite) = .empty;
+    try out.appendSlice(arena, suites);
+    const tree = try t.treeDir(arena);
+    for (t.apps) |app| {
+        if (app.not_served != null) continue;
+        const pages = try arena.alloc(Page, 1);
+        pages[0] = .{ .id = "todomvc", .path = try std.fmt.allocPrint(arena, "{s}?framework={s}&folder={s}", .{ t.page, app.id, app.folder }) };
+        try out.append(arena, .{
+            .id = try std.fmt.allocPrint(arena, "{s}-todomvc", .{app.id}),
+            .framework = app.id,
+            .title = app.title,
+            // The app's framework version where its files state one; else
+            // the commit its build is pinned by.
+            .version = app.version orelse t.commit[0..@min(12, t.commit.len)],
+            .kind = .todomvc_port,
+            .repository = t.repository,
+            .tag = try std.fmt.allocPrint(arena, "examples/{s}", .{app.folder}),
+            .commit = t.commit,
+            .licence = t.licence,
+            .runner = t.runner,
+            .reader = t.reader,
+            .source = t.source,
+            .dependencies = t.dependencies,
+            .overlay = t.overlay,
+            .pages = pages,
+            .excluded = t.excluded,
+            .page_budget_s = t.page_budget_s,
+            .page_stall_s = t.page_stall_s,
+            .tree = tree,
+            .app = app,
+        });
+    }
+    return out.items;
+}
+
+fn validateTodoMvc(t: TodoMvc, failure: *Failure) Error!void {
+    failure.suite = "todomvc";
+    failure.what = "page";
+    if (!isRelativePath(t.page) or std.mem.indexOfScalar(u8, t.page, '?') != null) return error.BadPath;
+    failure.what = "commit";
+    if (t.commit.len < 12) return error.BadName;
+    for (t.apps, 0..) |app, i| {
+        failure.what = app.id;
+        if (!isName(app.id) or app.title.len == 0) return error.BadName;
+        for (t.apps[0..i]) |o| if (std.mem.eql(u8, o.id, app.id)) return error.DuplicateApp;
+        // The folder is the app's, below its own directory.
+        if (!isRelativePath(app.folder) or !underPrefix(app.folder, app.id)) return error.BadPath;
+        for (app.folder) |c| if (c == '&' or c == '?' or c == '#' or c == '%' or c == ' ') return error.BadPath;
+        if (app.version) |v| if (!isName(v)) return error.BadName;
+        if (app.not_served) |why| {
+            if (why.len == 0 or app.sha256 != null) return error.BadApp;
+        } else {
+            const h = app.sha256 orelse return error.AppWithoutPin;
+            if (!journal.isSha256(h)) return error.BadSha256;
+        }
+        if (app.skipped_by_todomvc) |why| if (why.len == 0) return error.BadApp;
+    }
 }
 
 fn isName(s: []const u8) bool {
@@ -400,6 +545,10 @@ pub fn validate(m: Manifest, failure: *Failure) Error!void {
         }
         failure.what = "excluded";
         if (!isRelativePath(f.excluded)) return error.BadPath;
+        if (f.chrome_reference) |c| {
+            failure.what = "chrome_reference";
+            if (c.passed + c.failed > c.ran or c.browser.len == 0 or c.runner.len == 0 or c.source.len == 0 or c.date.len != 10) return error.BadChromeReference;
+        }
     }
     try validateFrameworks(m, failure);
     failure.* = .{ .diagnostics = failure.diagnostics };
@@ -447,8 +596,10 @@ pub fn find(m: Manifest, id: []const u8) ?Suite {
     return null;
 }
 
-/// The suite's tree below the frameworks directory: "<id>-<version>".
+/// The suite's tree below the frameworks directory: "<id>-<version>", or
+/// the tree it shares.
 pub fn treeName(arena: Allocator, f: Suite) ![]const u8 {
+    if (f.tree) |t| return arena.dupe(u8, t);
     return std.fmt.allocPrint(arena, "{s}-{s}", .{ f.id, f.version });
 }
 
@@ -603,6 +754,80 @@ test "validate: npm and a server need Node; a server takes its port from the har
         var f: Failure = .{};
         try testing.expectError(c[1], parse(testing.allocator, a, try withFields(a, c[0]), &f));
         try testing.expectEqualStrings("jquery-qunit", f.suite);
+    }
+}
+
+const todomvc_block =
+    \\    .todomvc = .{
+    \\        .repository = "https://github.com/tastejs/todomvc",
+    \\        .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+    \\        .licence = "MIT",
+    \\        .runner = "QUnit 2.24.2",
+    \\        .reader = .qunit,
+    \\        .source = .{ .url = "https://codeload.github.com/tastejs/todomvc/tar.gz/ff43b02e59dfa604386bb382034b2cd07c2bcd8a", .sha256 = "22fd7c5251b636773561cc0ab606896f48c8dbcad80e79b427989bfc0e134718" },
+    \\        .overlay = .{.{ .prefix = "crane/todomvc", .dir = "tests/frameworks/todomvc" }},
+    \\        .page = "crane/todomvc/index.html",
+    \\        .excluded = "todomvc-port.txt",
+    \\        .page_budget_s = 300,
+    \\        .apps = .{
+    \\            .{ .id = "react", .title = "React", .folder = "react/dist", .version = "19.2.5", .sha256 = "1111111111111111111111111111111111111111111111111111111111111111" },
+    \\            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .sha256 = "2222222222222222222222222222222222222222222222222222222222222222" },
+    \\            .{ .id = "gwt", .title = "GWT", .folder = "gwt", .sha256 = "3333333333333333333333333333333333333333333333333333333333333333", .skipped_by_todomvc = "deviates from the specification" },
+    \\            .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "404 on todomvc.com; not in the repository" },
+    \\        },
+    \\    },
+    \\
+;
+
+fn withTodoMvc(a: Allocator, block: []const u8) ![:0]const u8 {
+    const text = try std.mem.replaceOwned(u8, a, sample, ".{\n    .suites", try std.fmt.allocPrint(a, ".{{\n{s}    .suites", .{block}));
+    return a.dupeSentinel(u8, text, 0);
+}
+
+test "todomvc: a suite per served app, sharing one tree; the app spec's page opened on the app's folder" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var f: Failure = .{};
+    const m = try parse(testing.allocator, a, try withTodoMvc(a, todomvc_block), &f);
+    // jQuery's suite, then three apps: soma.js is not served, so no suite.
+    try testing.expectEqual(@as(usize, 4), m.suites.len);
+    try testing.expect(find(m, "somajs-todomvc") == null);
+    const react = find(m, "react-todomvc").?;
+    try testing.expectEqual(journal.SuiteKind.todomvc_port, react.kind);
+    try testing.expectEqualStrings("react", react.framework);
+    try testing.expectEqualStrings("19.2.5", react.version);
+    try testing.expectEqualStrings("examples/react/dist", react.tag);
+    try testing.expectEqualStrings("crane/todomvc/index.html?framework=react&folder=react/dist", react.pages[0].path);
+    try testing.expectEqualStrings("todomvc", react.pages[0].id);
+    try testing.expectEqualStrings("tests/frameworks/todomvc", react.overlay[0].dir);
+    try testing.expectEqual(@as(u32, 300), react.page_budget_s);
+    // One tree for every app, named by the commit.
+    try testing.expectEqualStrings("todomvc-ff43b02e59df", try treeName(a, react));
+    try testing.expectEqualStrings("todomvc-ff43b02e59df", try treeName(a, find(m, "gwt-todomvc").?));
+    // No version stated: the commit stands for it.
+    try testing.expectEqualStrings("ff43b02e59df", find(m, "javascript-es5-todomvc").?.version);
+    try testing.expectEqualStrings("deviates from the specification", find(m, "gwt-todomvc").?.app.?.skipped_by_todomvc.?);
+    try testing.expectEqualStrings("jquery-qunit-4.0.0", try treeName(a, find(m, "jquery-qunit").?));
+
+    const cases = [_]struct { []const u8, []const u8, Error }{
+        // A served app is pinned by its directory's hash.
+        .{ ", .sha256 = \"1111111111111111111111111111111111111111111111111111111111111111\" }", " }", error.AppWithoutPin },
+        .{ "\"1111111111111111111111111111111111111111111111111111111111111111\"", "\"11\"", error.BadSha256 },
+        // Its folder is below its own directory, and safe in a URL.
+        .{ ".folder = \"react/dist\"", ".folder = \"vue/dist\"", error.BadPath },
+        .{ ".folder = \"react/dist\"", ".folder = \"react/../vue\"", error.BadPath },
+        .{ ".folder = \"react/dist\"", ".folder = \"react/d&x=1\"", error.BadPath },
+        .{ ".id = \"gwt\"", ".id = \"react\"", error.DuplicateApp },
+        // An app that cannot be served says why, and has no pin.
+        .{ ".not_served = \"404 on todomvc.com; not in the repository\"", ".not_served = \"\"", error.BadApp },
+        .{ ".folder = \"somajs\",", ".folder = \"somajs\", .sha256 = \"1111111111111111111111111111111111111111111111111111111111111111\",", error.BadApp },
+    };
+    for (cases) |c| {
+        const block = try std.mem.replaceOwned(u8, a, todomvc_block, c[0], c[1]);
+        try testing.expect(!std.mem.eql(u8, block, todomvc_block));
+        var f2: Failure = .{};
+        try testing.expectError(c[2], parse(testing.allocator, a, try withTodoMvc(a, block), &f2));
     }
 }
 

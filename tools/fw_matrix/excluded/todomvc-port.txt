@@ -1,7 +1,7 @@
-# Crane's port of TodoMVC's app spec (tests/frameworks/todomvc/), run on the
-# prebuilt React, Vue, Svelte and Angular apps of tastejs/todomvc at
-# ff43b02e59df: the tests it does not run, each with its reason
-# (tools/fw_matrix/exclusions.zig documents the format).
+# Crane's port of TodoMVC's app spec (tests/frameworks/todomvc/), run on
+# every app todomvc.com lists, each the build committed in tastejs/todomvc at
+# ff43b02e59df (frameworks.zon `todomvc`): the tests it does not run, each
+# with its reason (tools/fw_matrix/exclusions.zig documents the format).
 #
 # No test is excluded. What the port does not run is part of a test, and is
 # said here so a reader finds it beside the lists of the other suites:
@@ -26,6 +26,5 @@
 # Tests TodoMVC's own spec skips for an app run as QUnit.skip, with the
 # spec's reason, and are reported as skipped by the app spec - not listed
 # here: 'should persist its data' for apps that keep nothing in
-# localStorage (spec.cy.js noLocalStorageCheck: all four), and the app's
-# entries of tests/knownIssues.js (Angular: 'should respect the back
-# button').
+# localStorage (spec.cy.js noLocalStorageCheck), and the app's entries of
+# tests/knownIssues.js.

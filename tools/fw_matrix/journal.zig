@@ -128,6 +128,10 @@ pub const TestRecord = struct {
     /// FAIL: the first failing assertion as the framework printed it.
     message: ?[]const u8 = null,
     duration_ms: ?u64 = null,
+    /// The browser that ran it, for the comparison column ("Chrome for
+    /// Testing 157.0.8103.78"); absent for Crane. Added in fw1 b5: lines
+    /// written before have none, and read the same.
+    browser: ?[]const u8 = null,
 };
 
 pub const PageStatus = enum {
@@ -188,6 +192,11 @@ pub const PageRecord = struct {
     /// `server`); absent when the harness's static server served it. Added
     /// in fw1 b4: lines written before have none, and read the same.
     server: ?ServerInfo = null,
+    /// The browser that opened the page, for the comparison column; absent
+    /// for Crane (whose commit and console are the record's own). On a
+    /// browser's record `crane_commit` is "none" and `console_sha256` the
+    /// browser's executable's. Added in fw1 b5.
+    browser: ?[]const u8 = null,
 };
 
 /// A project's own test server, as a page record names it.
@@ -197,7 +206,7 @@ pub const ServerInfo = struct {
     /// The Node version it ran under ("24.22.3").
     node: []const u8,
     /// The hash of the tree's node_modules as `fw_matrix fetch` installed it
-    /// and the run found it (fetch.nodeModulesHash).
+    /// and the run found it (fetch.dirHash).
     node_modules_sha256: []const u8,
 };
 
@@ -473,6 +482,21 @@ test "a page served by the project's own server names it, its Node and its node_
     try writePage(&out.writer, plain);
     try testing.expect(std.mem.indexOf(u8, out.written(), "server") == null);
     try testing.expectEqual(@as(?ServerInfo, null), (try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"))).page_record.server);
+}
+
+test "a browser's record names it; Crane's records have none, as before" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    var out: Io.Writer.Allocating = .init(a);
+    try writeTest(&out.writer, .{ .label = "c", .crane_commit = "none", .console_sha256 = sha_a, .framework = "react", .version = "19.2.5", .suite = "react-todomvc", .suite_kind = .todomvc_port, .source_sha256 = sha_b, .page = "todomvc", .module = "m", .name = "n", .id = "m: n", .status = .PASS, .browser = "Chrome for Testing 157.0.8103.78" });
+    try testing.expect(std.mem.endsWith(u8, out.written(), ",\"status\":\"PASS\",\"browser\":\"Chrome for Testing 157.0.8103.78\"}\n"));
+    const back = try parseLine(a, std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqualStrings("Chrome for Testing 157.0.8103.78", back.test_record.browser.?);
+    var crane: Io.Writer.Allocating = .init(a);
+    try writePage(&crane.writer, .{ .label = "x", .crane_commit = "c", .console_sha256 = sha_a, .framework = "f", .version = "1", .suite = "s", .suite_kind = .project, .source_sha256 = sha_b, .page = "p", .url = "u", .status = .OK, .wall_ms = 1, .ran = 1, .records = 1, .exit = "exited with code 0" });
+    try testing.expect(std.mem.indexOf(u8, crane.written(), "browser") == null);
+    try testing.expectEqual(@as(?[]const u8, null), (try parseLine(a, std.mem.trimEnd(u8, crane.written(), "\n"))).page_record.browser);
 }
 
 test "lines read back strictly: an unknown field, a wrong type or a missing kind fail" {

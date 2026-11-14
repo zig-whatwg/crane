@@ -9,10 +9,14 @@
 // served tree at run time, never copied here, and the list of tests is
 // checked against the spec's source before the run starts.
 //
-// The app: ?framework=<name> (react, vue, svelte, angular), at
-// '/examples/' + the spec's folder for it, served from the tree's root as
-// the project's server serves it (cypress.config.js: baseUrl
-// http://localhost:8000/examples/; tests/server.js: express.static(root)).
+// The app: ?framework=<name> (a directory of examples/: react, vue,
+// knockoutjs, ...), at '/examples/' + the spec's folder for it, served from
+// the tree's root as the project's server serves it (cypress.config.js:
+// baseUrl http://localhost:8000/examples/; tests/server.js:
+// express.static(root)). &folder=<path below examples/> opens the build
+// todomvc.com links instead, where the spec's frameworkFolders table names
+// another or none (javascript-es5/dist, jquery/dist, emberjs/todomvc/dist):
+// the report measures the apps the site lists (the user, 2026-11-14).
 'use strict';
 
 QUnit.config.autostart = false;
@@ -85,8 +89,14 @@ QUnit.config.reporters.tap = true;
   }
   document.title = `TodoMVC - ${framework} (Crane's port of the app spec)`;
 
-  // spec.cy.js:53
-  const getExampleFolder = (fw) => spec.frameworkFolders[fw] || fw;
+  // spec.cy.js:53, or the folder the site links (&folder=, above).
+  const siteFolder = new URLSearchParams(location.search).get('folder');
+  if (siteFolder !== null && !/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/.test(siteFolder)) {
+    QUnit.onUncaughtException(new Error(`&folder=${siteFolder}: a path below examples/`));
+    QUnit.start();
+    return;
+  }
+  const getExampleFolder = (fw) => siteFolder || spec.frameworkFolders[fw] || fw;
   const { noLocalStorageCheck, noLocalStorageSpyCheck, badLocalStorageFormat, blurAfterType, usesIDSelectors } = spec;
 
   // spec.cy.js:124-129

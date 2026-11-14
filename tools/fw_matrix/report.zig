@@ -37,6 +37,8 @@ pub const Options = struct {
 /// One run of one suite: its records.
 pub const Run = struct {
     label: []const u8,
+    /// The browser of a comparison run; null for Crane.
+    browser: ?[]const u8 = null,
     generation: ?u32,
     crane_commit: []const u8,
     console_sha256: []const u8,
@@ -51,6 +53,8 @@ pub const SuiteRuns = struct {
     runs: []const Run,
     /// The `[file:...]` entries of its exclusion list (not in a journal).
     file_entries: []const exclusions.Entry,
+    /// The latest comparison run in a browser (`fw_matrix run --browser`).
+    chrome: ?Run = null,
 };
 
 /// What the TodoMVC port does not run of a test (it excludes no test):
@@ -68,7 +72,7 @@ pub const node_note =
 
 /// The first section's introduction.
 pub const own_suites_intro =
-    "Each framework's own browser tests, run in Crane the way the project runs them in a browser: its own build, its own test server and its own test runner. A framework's own tests that Crane cannot run yet are listed with why.";
+    "Each framework's own browser tests, run in Crane the way the project runs them in a browser: its own build, its own test server and its own test runner. A framework's own tests that Crane cannot run yet are listed with why. Suites whose runner drives the browser through a protocol Crane does not speak yet (the Chrome DevTools Protocol, WebDriver BiDi) wait until after Crane 0.1; Crane does not run them through a harness of its own instead.";
 
 /// The second section's introduction.
 pub const todomvc_intro =
@@ -80,6 +84,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
     var out: std.ArrayList(SuiteRuns) = .empty;
     for (m.suites, 0..) |s, si| {
         var runs: std.ArrayList(Run) = .empty;
+        var chrome: ?Run = null;
         for (journals) |j| {
             var labels: std.ArrayList([]const u8) = .empty;
             for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.version, s.version)) {
@@ -97,7 +102,11 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 };
                 for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.label, label)) try pages.append(arena, p);
                 const first = pages.items[0];
-                try runs.append(arena, .{ .label = label, .generation = first.generation, .crane_commit = first.crane_commit, .console_sha256 = first.console_sha256, .tests = tests.items, .pages = pages.items, .counts = counts });
+                const run: Run = .{ .label = label, .browser = first.browser, .generation = first.generation, .crane_commit = first.crane_commit, .console_sha256 = first.console_sha256, .tests = tests.items, .pages = pages.items, .counts = counts };
+                if (run.browser != null) {
+                    // The latest by label (labels name their time).
+                    if (chrome == null or std.mem.order(u8, chrome.?.label, label) == .lt) chrome = run;
+                } else try runs.append(arena, run);
             }
         }
         std.mem.sort(Run, runs.items, {}, struct {
@@ -108,7 +117,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 return std.mem.order(u8, a.label, b.label) == .lt;
             }
         }.lt);
-        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{} });
+        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{}, .chrome = chrome });
     }
     return out.items;
 }
@@ -199,8 +208,23 @@ fn latest(s: SuiteRuns) ?Run {
 }
 
 /// "the project's own browser suite (test/index.html, QUnit 2.24.2, 23 pages)".
+/// A TodoMVC app: "React 19.2.5 &mdash; examples/react/dist, checked by
+/// Crane's port of the TodoMVC app spec (QUnit 2.24.2)"; the version is left
+/// out where the app's files state none.
 fn suiteLabel(w: W, s: manifest.Suite) !void {
     try html.text(w, s.title);
+    if (s.app) |app| {
+        if (app.version) |v| {
+            try w.writeByte(' ');
+            try html.text(w, v);
+        }
+        try w.writeAll(" &mdash; <code>");
+        try html.text(w, s.tag);
+        try w.writeAll("</code>, checked by Crane&#39;s port of the TodoMVC app spec (");
+        try html.text(w, s.runner);
+        try w.writeAll(")");
+        return;
+    }
     try w.writeByte(' ');
     try html.text(w, s.version);
     try w.writeAll(" &mdash; ");
@@ -210,7 +234,16 @@ fn suiteLabel(w: W, s: manifest.Suite) !void {
     try w.print(", {d} page{s})", .{ s.pages.len, if (s.pages.len == 1) "" else "s" });
 }
 
-const table_head = "<table class=\"listing\">\n<thead><tr><th>{s}</th><th class=\"n\">Run</th><th class=\"n\">Passed</th><th class=\"n\">Failed</th><th class=\"n\">Errored</th><th class=\"n\">Excluded: rendering</th><th class=\"n\">Not run</th><th class=\"n\">Pass rate</th><th>History</th></tr></thead>\n<tbody>\n";
+/// What TodoMVC's own runner says of the app, where it skips it.
+fn appNote(w: W, s: manifest.Suite) !void {
+    const app = s.app orelse return;
+    const why = app.skipped_by_todomvc orelse return;
+    try w.writeAll("<span class=\"why\">TodoMVC&#39;s own runner skips this app (tests/excluded.js): ");
+    try html.text(w, why);
+    try w.writeAll(". It is run here all the same.</span>");
+}
+
+const table_head = "<table class=\"listing\">\n<thead><tr><th>{s}</th><th class=\"n\">Run</th><th class=\"n\">Passed</th><th class=\"n\">Failed</th><th class=\"n\">Errored</th><th class=\"n\">Excluded: rendering</th><th class=\"n\">Not run</th><th class=\"n\">Pass rate</th><th class=\"n\">Chrome</th><th>History</th></tr></thead>\n<tbody>\n";
 
 /// Where a suite's page is, below the matrix: a framework's own suites at
 /// "<framework>/", a TodoMVC app at "todomvc/<app>/".
@@ -232,6 +265,7 @@ fn suiteRow(w: W, s: SuiteRuns) !void {
     try w.writeAll("</a><span class=\"kind\">");
     try suiteLabel(w, s.suite);
     try w.writeAll("</span>");
+    try appNote(w, s.suite);
     if (latest(s)) |r| try meter(w, r.counts);
     try w.writeAll("</th>");
     if (latest(s)) |r| {
@@ -240,10 +274,46 @@ fn suiteRow(w: W, s: SuiteRuns) !void {
             c.ran(), c.pass, if (c.fail > 0) " fail" else "", c.fail, if (c.errored() > 0) " fail" else "", c.errored(), c.rendering, c.not_run + c.project_skip + @as(u32, @intCast(s.file_entries.len)),
         });
         try rate(w, c.pass, c.ran());
-        try w.writeAll("</td><td>");
+        try w.writeAll("</td>");
+        try chromeCell(w, s);
+        try w.writeAll("<td>");
         try sparkline(w, s.runs);
         try w.writeAll("</td></tr>\n");
-    } else try w.writeAll("<td class=\"n\" colspan=\"8\">no run yet</td></tr>\n");
+    } else {
+        try w.writeAll("<td class=\"n\" colspan=\"7\">no run yet</td>");
+        try chromeCell(w, s);
+        try w.writeAll("<td></td></tr>\n");
+    }
+}
+
+/// Chrome's passed of run for the suite: its latest comparison run, else
+/// the project runner's numbers the manifest records; a dash with neither.
+fn chromeCell(w: W, s: SuiteRuns) !void {
+    if (s.chrome) |r| {
+        try w.writeAll("<td class=\"n\" title=\"");
+        try html.text(w, r.browser orelse "");
+        try w.writeAll(", run ");
+        try html.text(w, r.label);
+        try w.writeAll(": passed of run\">");
+        try html.num(w, r.counts.pass);
+        try w.writeAll(" of ");
+        try html.num(w, r.counts.ran());
+        return w.writeAll("</td>");
+    }
+    if (s.suite.chrome_reference) |c| {
+        try w.writeAll("<td class=\"n\" title=\"");
+        try html.text(w, c.browser);
+        try w.writeAll(", ");
+        try html.text(w, c.runner);
+        try w.writeAll(", ");
+        try html.text(w, c.date);
+        try w.writeAll(": passed of run\">");
+        try html.num(w, c.passed);
+        try w.writeAll(" of ");
+        try html.num(w, c.ran);
+        return w.writeAll("</td>");
+    }
+    try w.writeAll("<td class=\"n grey\">&mdash;</td>");
 }
 
 /// "e2e (Puppeteer on Chrome), Vue 3.5.45": what a not-run row names.
@@ -270,10 +340,10 @@ fn notRunRow(w: W, fw: manifest.Framework, n: manifest.OwnSuiteNotRun) !void {
     try html.text(w, n.why);
     try w.writeAll("</span></th><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">");
     if (n.tests) |t| try html.num(w, t) else try w.writeAll("all");
-    try w.writeAll("</td><td class=\"n grey\">&mdash;</td><td></td></tr>\n");
+    try w.writeAll("</td><td class=\"n grey\">&mdash;</td><td class=\"n grey\">&mdash;</td><td></td></tr>\n");
 }
 
-pub fn writeIndex(w: W, frameworks: []const manifest.Framework, suites: []const SuiteRuns, o: Options) !void {
+pub fn writeIndex(w: W, frameworks: []const manifest.Framework, todomvc: ?manifest.TodoMvc, suites: []const SuiteRuns, o: Options) !void {
     try head(w, "Crane: JS framework compatibility matrix", "JavaScript frameworks' own browser tests, and the TodoMVC apps, run in Crane, with rendering tests excluded and named.", o, 0);
     try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">JS framework compatibility matrix</span></h1>\n<p class=\"subtitle\">Two sections: the frameworks' own test suites, and the TodoMVC apps. Each page is opened in Crane's console as a user opens it and read from the test framework's own report. ");
     try html.text(w, node_note);
@@ -292,14 +362,31 @@ pub fn writeIndex(w: W, frameworks: []const manifest.Framework, suites: []const 
     }
     try w.writeAll("</tbody>\n</table>\n");
 
-    var any_app = false;
+    var any_app = todomvc != null;
     for (suites) |s| any_app = any_app or s.suite.kind == .todomvc_port;
     if (any_app) {
         try w.writeAll("<h2 id=\"todomvc\">TodoMVC (Crane's port of the TodoMVC app spec)</h2>\n<p>");
         try html.text(w, todomvc_intro);
+        if (todomvc) |t| {
+            var served: usize = 0;
+            for (t.apps) |app| served += @intFromBool(app.not_served == null);
+            try w.print(" todomvc.com lists {d} apps; {d} are run, ", .{ t.apps.len, served });
+            try w.writeAll("from tastejs/todomvc at <code>");
+            try html.text(w, t.commit[0..@min(12, t.commit.len)]);
+            try w.writeAll("</code>.");
+        }
         try w.writeAll("</p>\n");
         try w.print(table_head, .{"App"});
         for (suites) |s| if (s.suite.kind == .todomvc_port) try suiteRow(w, s);
+        if (todomvc) |t| for (t.apps) |app| if (app.not_served) |why| {
+            try w.writeAll("<tr><th>");
+            try html.text(w, app.title);
+            try w.writeAll("<span class=\"kind\"><code>examples/");
+            try html.text(w, app.folder);
+            try w.writeAll("</code></span><span class=\"why\">Cannot be served: ");
+            try html.text(w, why);
+            try w.writeAll("</span></th><td class=\"n grey\" colspan=\"9\">not run</td></tr>\n");
+        };
         try w.writeAll("</tbody>\n</table>\n");
     }
     try w.writeAll("<p class=\"grey\">Pass rate is passed over run. Errored: due to run and never reported (the page's time ran out, or the console ended). Not run: every kind is counted under What we do not run, below.</p>\n");
@@ -457,6 +544,25 @@ pub fn writeApp(w: W, s: SuiteRuns, o: Options) !void {
     try suiteLabel(w, s.suite);
     try w.writeAll(". <a href=\"../../#todomvc\">The matrix</a>.</p>\n</header>\n");
     try statementNote(w);
+    if (s.suite.app) |app| {
+        try w.writeAll("<p>The app&#39;s build: <code>examples/");
+        try html.text(w, app.folder);
+        try w.writeAll("</code> as committed in ");
+        try html.text(w, s.suite.repository);
+        try w.writeAll(" at <code>");
+        try html.text(w, s.suite.commit[0..@min(12, s.suite.commit.len)]);
+        try w.writeAll("</code>, unmodified; <code>examples/");
+        try html.text(w, app.id);
+        try w.writeAll("/</code> is pinned by its sha256 <code>");
+        if (app.sha256) |h| try html.text(w, h[0..@min(16, h.len)]);
+        try w.writeAll("&hellip;</code>, checked at every fetch.");
+        if (app.skipped_by_todomvc) |why| {
+            try w.writeAll(" TodoMVC&#39;s own runner skips this app (tests/excluded.js): ");
+            try html.text(w, why);
+            try w.writeAll(". It is run here all the same.");
+        }
+        try w.writeAll("</p>\n");
+    }
     try w.writeAll("<p>");
     try html.text(w, todomvc_port_note);
     try w.writeAll(" The port: <code>tests/frameworks/todomvc/</code> in Crane; the spec: <a href=\"");
@@ -510,6 +616,35 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         };
         try w.writeAll("</p>\n");
         try meter(w, r.counts);
+        if (s.chrome) |c| {
+            try w.writeAll("<p>For comparison, ");
+            try html.text(w, c.browser orelse "");
+            try w.writeAll(" ran the same page");
+            if (c.pages.len != 1) try w.writeAll("s");
+            try w.writeAll(" (run <code>");
+            try html.text(w, c.label);
+            try w.writeAll("</code>): ");
+            try html.num(w, c.counts.pass);
+            try w.writeAll(" passed of ");
+            try html.num(w, c.counts.ran());
+            try w.writeAll(" run, ");
+            try html.num(w, c.counts.fail + c.counts.errored());
+            try w.writeAll(" failed or errored.</p>\n");
+        } else if (s.suite.chrome_reference) |c| {
+            try w.writeAll("<p>For comparison, ");
+            try html.text(w, c.browser);
+            try w.writeAll(" by the project&#39;s own runner (");
+            try html.text(w, c.runner);
+            try w.writeAll(", ");
+            try html.text(w, c.date);
+            try w.writeAll("): ");
+            try html.num(w, c.passed);
+            try w.writeAll(" passed of ");
+            try html.num(w, c.ran);
+            try w.writeAll(" run, ");
+            try html.num(w, c.failed);
+            try w.writeAll(" failed.</p>\n");
+        }
 
         try w.writeAll("<table class=\"listing\">\n<thead><tr><th>Page</th><th>Outcome</th><th class=\"n\">Run</th><th class=\"n\">Failed</th><th class=\"n\">Excluded</th><th class=\"n\">Not run</th><th class=\"n\">Seconds</th></tr></thead>\n<tbody>\n");
         for (r.pages) |p| {
@@ -526,9 +661,9 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
         }
         try w.writeAll("</tbody>\n</table>\n");
 
-        try section(w, s.suite.kind, r, "Failed and errored", .failed);
-        try section(w, s.suite.kind, r, "Excluded: rendering", .rendering);
-        try section(w, s.suite.kind, r, "Not run", .not_run);
+        try section(w, s.suite.kind, r, s.chrome, "Failed and errored", .failed);
+        try section(w, s.suite.kind, r, null, "Excluded: rendering", .rendering);
+        try section(w, s.suite.kind, r, null, "Not run", .not_run);
         if (s.file_entries.len > 0) {
             try w.writeAll("<h3>Files not run</h3>\n<table class=\"listing\">\n<tbody>\n");
             for (s.file_entries) |e| {
@@ -540,7 +675,7 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
             }
             try w.writeAll("</tbody>\n</table>\n");
         }
-        try section(w, s.suite.kind, r, if (s.suite.kind == .todomvc_port) "Skipped by TodoMVC's app spec" else "Skipped by the project", .project_skip);
+        try section(w, s.suite.kind, r, null, if (s.suite.kind == .todomvc_port) "Skipped by TodoMVC's app spec" else "Skipped by the project", .project_skip);
 
         var any_loaded = false;
         for (r.pages) |p| for (p.loaded) |l| {
@@ -562,7 +697,10 @@ fn suiteBody(w: W, s: SuiteRuns) !void {
 
 const Section = enum { failed, rendering, not_run, project_skip };
 
-fn section(w: W, kind: journal.SuiteKind, r: Run, title: []const u8, which: Section) !void {
+/// A failure Chrome's comparison run shares is marked: it is not a Crane
+/// finding (lesson testing-a-framework-failure-chrome-shares-is-not-a-
+/// crane-finding.md).
+fn section(w: W, kind: journal.SuiteKind, r: Run, chrome: ?Run, title: []const u8, which: Section) !void {
     var n: usize = 0;
     for (r.tests) |t| {
         const in = switch (which) {
@@ -583,6 +721,12 @@ fn section(w: W, kind: journal.SuiteKind, r: Run, title: []const u8, which: Sect
         try w.writeAll("<tr><th>");
         try html.text(w, t.id);
         if (which == .failed and t.status != .FAIL) try w.print(" <span class=\"fail\">({s})</span>", .{statusText(t.status)});
+        if (chrome) |c| for (c.tests) |ct| {
+            if (std.mem.eql(u8, ct.id, t.id) and (ct.status == .FAIL or ct.status.errored())) {
+                try w.writeAll(" <span class=\"grey\">(Chrome fails it too)</span>");
+                break;
+            }
+        };
         try w.writeAll("</th><td><code>");
         try html.text(w, t.page);
         try w.writeAll("</code></td><td class=\"msg\"><pre>");
@@ -663,7 +807,7 @@ test "the matrix: a row per suite with its counts and kind, the statement; text 
     try testing.expectEqual(@as(u32, 1), suites[0].runs[0].counts.pass);
 
     var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(&out.writer, &.{}, suites, .{});
+    try writeIndex(&out.writer, &.{}, null, suites, .{});
     const page_html = out.written();
     try testing.expect(std.mem.indexOf(u8, page_html, "Crane draws nothing") != null);
     try testing.expect(std.mem.indexOf(u8, page_html, "the project&#39;s own browser suite") != null);
@@ -716,7 +860,7 @@ test "two sections: the frameworks' own suites (with those not run, and why), th
     var out: Io.Writer.Allocating = .init(a);
     const react: manifest.Framework = .{ .id = "react", .title = "React", .not_run = &.{.{ .name = "Playwright end-to-end tests", .version = "19.3.1", .repository = "https://github.com/facebook/react", .tag = "v19.3.1", .runner = "Playwright on Chromium", .tests = 19, .why = "Playwright drives Chromium through the Chrome DevTools Protocol." }} };
     const frameworks = [_]manifest.Framework{ .{ .id = "htmx", .title = "htmx" }, react, .{ .id = "angular", .title = "Angular", .not_run = &.{.{ .name = "web tests", .version = "22.2.6", .repository = "https://github.com/angular/angular", .tag = "v22.2.6", .runner = "web-test-runner", .why = "w" }} } };
-    try writeIndex(&out.writer, &frameworks, suites, .{});
+    try writeIndex(&out.writer, &frameworks, null, suites, .{});
     const html_out = out.written();
     // The user, 2026-11-14: TodoMVC is its own section; an app never stands
     // in for its framework's own suite.
@@ -781,7 +925,7 @@ test "where Node runs is said: on the matrix, and on the page of a suite its pro
     const suites = try collect(a, .{ .suites = &.{suite} }, &.{.{ .tests = &.{t}, .pages = &.{p} }}, &.{});
 
     var out: Io.Writer.Allocating = .init(a);
-    try writeIndex(&out.writer, &.{}, suites, .{});
+    try writeIndex(&out.writer, &.{}, null, suites, .{});
     // The b3 page said "No Node runs at any step": no longer true.
     try testing.expect(std.mem.indexOf(u8, out.written(), "No Node runs") == null);
     try testing.expect(std.mem.indexOf(u8, out.written(), "Node runs only a project&#39;s own build step, test server and test runner, never inside Crane") != null);
@@ -789,6 +933,101 @@ test "where Node runs is said: on the matrix, and on the page of a suite its pro
     var fw_out: Io.Writer.Allocating = .init(a);
     try writeFramework(&fw_out.writer, .{ .id = "jquery", .title = "jQuery" }, suites, .{});
     try testing.expect(std.mem.indexOf(u8, fw_out.written(), "Served by the project's own test server, jquery-test-runner 0.3.0, under Node 24.22.3 (its node_modules sha256 <code>cccccccccccccccc&hellip;</code>).") != null);
+}
+
+test "TodoMVC rows: each app's build and pin, TodoMVC's own skip beside it, and the apps that cannot be served" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    const pin: [64]u8 = @splat('b');
+    const gwt_app: manifest.App = .{ .id = "gwt", .title = "GWT", .folder = "gwt", .sha256 = &pin, .skipped_by_todomvc = "this implementation deviates from the specification" };
+    const es5_app: manifest.App = .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .sha256 = &pin };
+    const t: manifest.TodoMvc = .{
+        .repository = "https://github.com/tastejs/todomvc",
+        .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
+        .licence = "MIT",
+        .runner = "QUnit 2.24.2",
+        .reader = .qunit,
+        .source = .{ .url = "https://x", .sha256 = "b" },
+        .page = "crane/todomvc/index.html",
+        .excluded = "todomvc-port.txt",
+        .apps = &.{ gwt_app, es5_app, .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "404 on todomvc.com itself" } },
+    };
+    const expanded = try manifest.expandTodoMvc(a, &.{}, t);
+    try testing.expectEqual(@as(usize, 2), expanded.len);
+    const rec: journal.TestRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "javascript-es5", .version = "ff43b02e59df", .suite = "javascript-es5-todomvc", .suite_kind = .todomvc_port, .source_sha256 = &sha, .page = "todomvc", .module = "New Todo", .name = "should allow me to add todo items", .id = "New Todo: should allow me to add todo items", .status = .PASS };
+    const page: journal.PageRecord = .{ .label = "l1", .crane_commit = "c", .console_sha256 = &sha, .framework = "javascript-es5", .version = "ff43b02e59df", .suite = "javascript-es5-todomvc", .suite_kind = .todomvc_port, .source_sha256 = &sha, .page = "todomvc", .url = "u", .status = .OK, .wall_ms = 1000, .ran = 1, .records = 1, .exit = "exited with code 0" };
+    const suites = try collect(a, .{ .suites = expanded }, &.{.{ .tests = &.{rec}, .pages = &.{page} }}, &.{});
+
+    var out: Io.Writer.Allocating = .init(a);
+    try writeIndex(&out.writer, &.{}, t, suites, .{});
+    const h = out.written();
+    try testing.expect(std.mem.indexOf(u8, h, "todomvc.com lists 3 apps; 2 are run, from tastejs/todomvc at <code>ff43b02e59df</code>.") != null);
+    // No version the app's files state: none shown (the commit pins it).
+    try testing.expect(std.mem.indexOf(u8, h, "<a href=\"todomvc/javascript-es5/\">JavaScript ES5</a><span class=\"kind\">JavaScript ES5 &mdash; <code>examples/javascript-es5/dist</code>, checked by Crane&#39;s port of the TodoMVC app spec (QUnit 2.24.2)</span>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "TodoMVC&#39;s own runner skips this app (tests/excluded.js): this implementation deviates from the specification. It is run here all the same.") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"why\">Cannot be served: 404 on todomvc.com itself</span></th><td class=\"n grey\" colspan=\"9\">not run</td>") != null);
+    // GWT has no run yet: its row says so.
+    try testing.expect(std.mem.indexOf(u8, h, "no run yet") != null);
+
+    var app_out: Io.Writer.Allocating = .init(a);
+    try writeApp(&app_out.writer, suites[0], .{});
+    try testing.expect(std.mem.indexOf(u8, app_out.written(), "<code>examples/gwt/</code> is pinned by its sha256 <code>bbbbbbbbbbbbbbbb&hellip;</code>, checked at every fetch.") != null);
+}
+
+test "the Chrome column: a browser's run is kept apart from Crane's, shown beside it; a failure Chrome shares is marked" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    var suite = sampleTodoMvcSuite();
+    suite.id = "react-todomvc";
+    suite.framework = "react";
+    suite.version = "19.2.5";
+    const pass: journal.TestRecord = .{ .label = "crane-1", .crane_commit = "c", .console_sha256 = &sha, .framework = "react", .version = "19.2.5", .suite = "react-todomvc", .suite_kind = .todomvc_port, .source_sha256 = &sha, .page = "todomvc", .module = "New Todo", .name = "a", .id = "New Todo: a", .status = .PASS };
+    var fail = pass;
+    fail.id = "New Todo: b";
+    fail.status = .FAIL;
+    fail.message = "expected 2";
+    var fail2 = fail;
+    fail2.id = "New Todo: c";
+    const page: journal.PageRecord = .{ .label = "crane-1", .crane_commit = "c", .console_sha256 = &sha, .framework = "react", .version = "19.2.5", .suite = "react-todomvc", .suite_kind = .todomvc_port, .source_sha256 = &sha, .page = "todomvc", .url = "u", .status = .OK, .wall_ms = 1000, .ran = 3, .records = 3, .exit = "exited with code 0" };
+    // Chrome: a and b pass, c fails as in Crane.
+    var c_pass = pass;
+    c_pass.label = "chrome-1";
+    c_pass.crane_commit = "none";
+    c_pass.browser = "Chrome for Testing 157.0.8103.78";
+    var c_b = c_pass;
+    c_b.id = "New Todo: b";
+    var c_c = c_pass;
+    c_c.id = "New Todo: c";
+    c_c.status = .FAIL;
+    c_c.message = "expected 2";
+    var c_page = page;
+    c_page.label = "chrome-1";
+    c_page.crane_commit = "none";
+    c_page.browser = "Chrome for Testing 157.0.8103.78";
+    const j: journal.Journal = .{ .tests = &.{ pass, fail, fail2, c_pass, c_b, c_c }, .pages = &.{ page, c_page } };
+    const suites = try collect(a, .{ .suites = &.{suite} }, &.{j}, &.{});
+    // One Crane run; Chrome's is apart.
+    try testing.expectEqual(@as(usize, 1), suites[0].runs.len);
+    try testing.expectEqual(@as(u32, 1), suites[0].runs[0].counts.pass);
+    try testing.expectEqual(@as(u32, 2), suites[0].chrome.?.counts.pass);
+
+    var out: Io.Writer.Allocating = .init(a);
+    try writeIndex(&out.writer, &.{}, null, suites, .{});
+    try testing.expect(std.mem.indexOf(u8, out.written(), "<th class=\"n\">Chrome</th>") != null);
+    try testing.expect(std.mem.indexOf(u8, out.written(), "run chrome-1: passed of run\">2 of 3</td>") != null);
+
+    var app_out: Io.Writer.Allocating = .init(a);
+    try writeApp(&app_out.writer, suites[0], .{});
+    const h = app_out.written();
+    try testing.expect(std.mem.indexOf(u8, h, "For comparison, Chrome for Testing 157.0.8103.78 ran the same page (run <code>chrome-1</code>): 2 passed of 3 run, 1 failed or errored.") != null);
+    // c fails in both: marked; b fails in Crane only: not marked.
+    const c_at = std.mem.indexOf(u8, h, "<tr><th>New Todo: c (Chrome fails it too)") orelse std.mem.indexOf(u8, h, "New Todo: c <span class=\"grey\">(Chrome fails it too)</span>");
+    try testing.expect(c_at != null);
+    try testing.expect(std.mem.indexOf(u8, h, "New Todo: b <span class=\"grey\">(Chrome fails it too)</span>") == null);
 }
 
 test "rate: one decimal, rounded; nothing run is a dash" {

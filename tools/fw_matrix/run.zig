@@ -57,6 +57,10 @@ pub const Config = struct {
     stop_file: ?[]const u8 = null,
     /// The environment a project's own server starts from (the tool's).
     environ: ?*const std.process.Environ.Map = null,
+    /// The comparison run: `console` is this browser's executable (headless
+    /// Chrome), named so in every record; the page's result is QUnit's TAP
+    /// on its console, read from its stderr (readers.parseChromeTap).
+    browser: ?[]const u8 = null,
 };
 
 pub const Totals = struct {
@@ -273,17 +277,22 @@ const ConsoleEnd = struct {
     killed: bool,
     /// Ended because the stop file appeared: the page is not recorded.
     stopped: bool = false,
+    /// A browser ended by the harness once its page's run had ended: the
+    /// normal end of a browser that never exits by itself.
+    at_end: bool = false,
     wall_ms: u64,
 
     fn text(e: ConsoleEnd, arena: Allocator) ![]const u8 {
         if (e.term) |t| {
             const s = try std.fmt.allocPrint(arena, "{f}", .{t});
+            if (e.at_end) return std.fmt.allocPrint(arena, "{s} (ended by the harness after the page's run ended)", .{s});
             return if (e.killed) std.fmt.allocPrint(arena, "{s} (ended by the harness at its deadline)", .{s}) else s;
         }
         return "unknown";
     }
 
     fn clean(e: ConsoleEnd) bool {
+        if (e.at_end) return true;
         const t = e.term orelse return false;
         return !e.killed and t == .exited and t.exited == 0;
     }
@@ -293,8 +302,10 @@ const Waiter = external.Waiter;
 const signalGroup = external.signalGroup;
 
 /// One console: `argv`, `input` on its stdin (then closed), its output to
-/// the two files; ended by the harness at `deadline_ms`.
-fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8) !ConsoleEnd {
+/// the two files; ended by the harness at `deadline_ms`, or - `until_tap_end`,
+/// a browser that never exits by itself - once its stderr holds the end of
+/// QUnit's TAP.
+fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until_tap_end: bool) !ConsoleEnd {
     const out_file = try Io.Dir.cwd().createFile(io, out_path, .{});
     defer out_file.close(io);
     const err_file = try Io.Dir.cwd().createFile(io, err_path, .{});
@@ -318,12 +329,22 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     // ends the console within a second.
     var waited: u64 = 0;
     var stopped = false;
+    var at_end = false;
     while (!w.done.load(.acquire) and waited < deadline_ms) : (waited += 1000) {
         w.waitFor(@min(1000, deadline_ms - waited));
         if (stop_file) |f| if (Io.Dir.cwd().access(io, f, .{})) {
             stopped = true;
             break;
         } else |_| {};
+        if (until_tap_end) {
+            var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+            defer arena_state.deinit();
+            const log = Io.Dir.cwd().readFileAlloc(io, err_path, arena_state.allocator(), .limited(1 << 30)) catch "";
+            if (readers.tapEnded(arena_state.allocator(), log) catch false) {
+                at_end = true;
+                break;
+            }
+        }
     }
     var killed = false;
     if (!w.done.load(.acquire)) {
@@ -337,7 +358,7 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     }
     thread.join();
     const wall: u64 = @intCast(@max(0, t0.durationTo(Io.Timestamp.now(io, .awake)).toMilliseconds()));
-    return .{ .term = w.term, .killed = killed, .stopped = stopped, .wall_ms = wall };
+    return .{ .term = w.term, .killed = killed and !at_end, .stopped = stopped, .at_end = at_end, .wall_ms = wall };
 }
 
 /// The tests `defined` that belong to a page: a QUnit module page's module
@@ -390,7 +411,20 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     const timeout_arg = try std.fmt.allocPrint(arena, "--timeout={d}", .{budget_ms + 60_000});
     const out_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.out", .{ config.out_dir, suite.id, page.id });
     const err_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.err", .{ config.out_dir, suite.id, page.id });
-    const end = try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file);
+    // A browser for the comparison column: headless, a profile of its own
+    // deleted after, its console on stderr (lesson workflow-headless-chromes-
+    // console-log-carries-a-pages-tap.md); the page's run read from there.
+    const profile = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.profile", .{ config.out_dir, suite.id, page.id });
+    defer if (config.browser != null) Io.Dir.cwd().deleteTree(io, profile) catch {};
+    const browser_argv = [_][]const u8{
+        config.console,                                                   "--headless=new",             "--no-first-run",          "--no-default-browser-check",
+        "--disable-background-networking",                                "--disable-component-update", "--enable-logging=stderr", "--log-level=0",
+        try std.fmt.allocPrint(arena, "--user-data-dir={s}", .{profile}), url,
+    };
+    const end = if (config.browser != null)
+        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, true)
+    else
+        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, false);
     if (end.stopped) {
         shared.mutex.lockUncancelable(io);
         defer shared.mutex.unlock(io);
@@ -400,8 +434,12 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     }
 
     const output = Io.Dir.cwd().readFileAlloc(io, out_path, arena, .limited(2 << 30)) catch "";
-    const result_json = readers.findResult(output);
-    const result: ?readers.PageResult = if (result_json) |j| readers.parse(arena, suite.reader, j) catch null else null;
+    const result_json = if (config.browser != null) null else readers.findResult(output);
+    const result: ?readers.PageResult = if (config.browser != null) blk: {
+        const log = Io.Dir.cwd().readFileAlloc(io, err_path, arena, .limited(2 << 30)) catch "";
+        const r = readers.parseChromeTap(arena, log) catch break :blk null;
+        break :blk if (r.tests.len == 0 and r.reported_total == null) null else r;
+    } else if (result_json) |j| readers.parse(arena, suite.reader, j) catch null else null;
 
     var problems: std.ArrayList([]const u8) = .empty;
     var console_errors: std.ArrayList([]const u8) = .empty;
@@ -421,6 +459,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .name = "",
         .id = "",
         .status = .PASS,
+        .browser = config.browser,
     };
     var status: journal.PageStatus = .OK;
     var missing_count: u32 = 0;
@@ -506,7 +545,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         if (status == .TIMEOUT) try problems.append(arena, try std.fmt.allocPrint(arena, "the framework's run did not end within the page's budget ({d} s) or stalled ({d} s without progress); {d} due test(s) unreported", .{ suite.page_budget_s, suite.page_stall_s, unreported }));
     } else {
         status = if (!end.clean()) .CRASH else .ERROR;
-        try problems.append(arena, if (result_json == null) "the console printed no report" else "the report could not be parsed");
+        try problems.append(arena, if (config.browser != null) "the browser's console carried no TAP report" else if (result_json == null) "the console printed no report" else "the report could not be parsed");
     }
     try uncaughtLines(arena, output, &console_errors);
 
@@ -544,6 +583,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .loaded = loaded.items,
         .message = if (problems.items.len > 0) try std.mem.join(arena, "; ", problems.items) else null,
         .server = shared.server,
+        .browser = config.browser,
     };
 
     var buf: Io.Writer.Allocating = .init(arena);
@@ -592,13 +632,13 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const err = try std.fmt.allocPrint(testing.allocator, "{s}/c.err", .{dir});
     defer testing.allocator.free(err);
 
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, false);
     try testing.expect(e.clean());
     const got = try tmp.dir.readFileAlloc(testing.io, "c.out", testing.allocator, .limited(100));
     defer testing.allocator.free(got);
     try testing.expectEqualStrings("{}", readers.findResult(got).?);
 
-    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null);
+    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, false);
     try testing.expect(hung.killed);
     try testing.expect(!hung.clean());
 
@@ -606,7 +646,27 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const stop = try std.fmt.allocPrint(testing.allocator, "{s}/STOP", .{dir});
     defer testing.allocator.free(stop);
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "STOP", .data = "" });
-    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop);
+    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, false);
     try testing.expect(stopped.stopped);
     try testing.expect(stopped.wall_ms < 20_000);
+}
+
+test "a browser that never exits: ended once its stderr holds the end of QUnit's TAP, a clean end" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(dir);
+    const out = try std.fmt.allocPrint(testing.allocator, "{s}/b.out", .{dir});
+    defer testing.allocator.free(out);
+    const err = try std.fmt.allocPrint(testing.allocator, "{s}/b.err", .{dir});
+    defer testing.allocator.free(err);
+    // Prints the TAP end, then keeps running as Chrome does.
+    const script = "printf '[1:INFO:CONSOLE:1] \"1..1\", source: x (1)\\n[1:INFO:CONSOLE:1] \"# fail 0\", source: x (1)\\n' >&2; while :; do sleep 0.1; done";
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, true);
+    try testing.expect(e.at_end);
+    try testing.expect(e.clean());
+    try testing.expect(e.wall_ms < 15_000);
+    // Without the end it runs to its deadline, and that is not clean.
+    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, true);
+    try testing.expect(!cut.at_end and !cut.clean());
 }

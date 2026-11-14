@@ -8,6 +8,7 @@
 //!       the manifest and every exclusion list, read strictly; each list
 //!       entry belongs to a page (zig build test runs it)
 //!   fw_matrix fetch --frameworks-dir=<dir> [--suite=<id>[,<id>...]]
+//!       (`--suite=todomvc`: every TodoMVC app, here and in `run`)
 //!       every pinned file downloaded and checked by sha256 into <dir>
 //!       (~/crane-frameworks on the run host), the trees made
 //!   fw_matrix run --frameworks-dir=<dir> --console=<repl> --crane-commit=<sha>
@@ -16,6 +17,10 @@
 //!                 [--stop-file=<f>]
 //!       each suite's pages in a fresh console per page; <out>/journal.jsonl
 //!       (crane-fw/1) and <out>/console/<suite>-<page>.{out,err}
+//!   fw_matrix run --browser=<name> --console=<headless Chrome> ...
+//!       the comparison column: the same pages in headless Chrome, read from
+//!       QUnit's TAP on its console (an in-page QUnit suite with TAP on: the
+//!       TodoMVC port); every record names the browser
 //!   fw_matrix summary <journal.jsonl> ...
 //!       per suite: pages, tests run / passed / failed / errored / excluded
 //!       as rendering / not run; every failure with its first assertion
@@ -125,7 +130,14 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "fetch")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const dir = args.need("frameworks-dir");
-        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| try fetch.fetchSuite(gpa, io, dir, s, init.environ_map);
+        // Every app's pin is checked before the fetch fails on one, so one
+        // fetch names every app whose build is not the pinned one.
+        var mismatched: usize = 0;
+        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| fetch.fetchSuite(gpa, io, dir, s, init.environ_map) catch |err| switch (err) {
+            error.AppMismatch, error.AppMissing => mismatched += 1,
+            else => return err,
+        };
+        if (mismatched > 0) fail("{d} TodoMVC app(s) are not the pinned build (each named above)", .{mismatched});
     } else if (std.mem.eql(u8, cmd, "run")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const excluded_dir = args.get("excluded-dir") orelse default_excluded;
@@ -142,7 +154,8 @@ pub fn main(init: std.process.Init) !void {
             .excluded_dir = excluded_dir,
             .console = console,
             .console_sha256 = try arena.dupe(u8, &console_sha),
-            .crane_commit = args.need("crane-commit"),
+            // A browser's run for the comparison column has no Crane commit.
+            .crane_commit = if (args.get("browser") != null) "none" else args.need("crane-commit"),
             .label = args.need("label"),
             .generation = generation,
             .out_dir = args.need("out"),
@@ -151,6 +164,7 @@ pub fn main(init: std.process.Init) !void {
             .parallel = parallel,
             .stop_file = args.get("stop-file"),
             .environ = init.environ_map,
+            .browser = args.get("browser"),
         });
         const c = totals.counts;
         std.debug.print("fw_matrix: run done{s}: {d} pages ({d} OK); {d} ran: {d} pass, {d} fail; {d} errored; {d} rendering; {d} not run; {d} skipped by the project\n", .{
@@ -201,10 +215,17 @@ fn loadManifest(gpa: Allocator, arena: Allocator, io: Io, path: []const u8) !man
     };
 }
 
+/// The suites `--suite` names; "todomvc" names every TodoMVC app.
 fn selectSuites(arena: Allocator, m: manifest.Manifest, only: ?[]const []const u8) ![]const manifest.Suite {
     const ids = only orelse return m.suites;
     var out: std.ArrayList(manifest.Suite) = .empty;
-    for (ids) |id| try out.append(arena, manifest.find(m, id) orelse fail("no suite {s} in the manifest", .{id}));
+    for (ids) |id| {
+        if (std.mem.eql(u8, id, "todomvc")) {
+            for (m.suites) |s| if (s.kind == .todomvc_port) try out.append(arena, s);
+            continue;
+        }
+        try out.append(arena, manifest.find(m, id) orelse fail("no suite {s} in the manifest", .{id}));
+    }
     return out.items;
 }
 
@@ -329,7 +350,7 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     const suites = try report.collect(arena, m, journals.items, files.items);
     try Io.Dir.cwd().createDirPath(io, out_dir);
     var index: Io.Writer.Allocating = .init(arena);
-    try report.writeIndex(&index.writer, m.frameworks, suites, o);
+    try report.writeIndex(&index.writer, m.frameworks, m.todomvc, suites, o);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
     var written: usize = 1;
     // A page per framework of the first section (or, in a manifest without
