@@ -14684,7 +14684,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
             //    a. Let parent be ? O.[[GetPrototypeOf]]().
             //    (O's [[GetPrototypeOf]] is ordinary: WebIDL defines none, and
             //    the target is an API object - no page code runs here.)
-            Local<Value> parent = target->GetPrototypeV2();
+            Local<Value> parent = target->GetPrototype();
             if (parent->IsObject() && receiver->IsObject()) {
                 //    b. If parent is not null, return ? parent.[[Set]](P, V,
                 //       Receiver).
@@ -14724,7 +14724,7 @@ void TrapSet(const FunctionCallbackInfo<Value>& info) {
                     Local<Value> desc_value;
                     if (!holder->GetOwnPropertyDescriptor(context, name).ToLocal(&desc_value)) return;
                     if (desc_value->IsUndefined()) {
-                        holder_value = holder->GetPrototypeV2();
+                        holder_value = holder->GetPrototype();
                         continue;
                     }
                     own_desc = desc_value;

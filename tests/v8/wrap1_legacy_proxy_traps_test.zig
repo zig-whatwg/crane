@@ -417,6 +417,8 @@ test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain
     // trap used to walk the chain itself, reading each object's own property descriptor and prototype through
     // V8's API: an ordinary parent cannot tell, but a Proxy a page put on the chain was asked for
     // getOwnPropertyDescriptor and getPrototypeOf, and its `set` trap - the one a browser calls - never ran.
+    // The Proxy is made the collection's own prototype (Object.setPrototypeOf on the collection, which WebIDL
+    // allows: only a [Global] interface's objects have an immutable prototype).
     // (Lane wrap1 b3. In a browser a legacy platform object is no Proxy: its [[Set]] is the engine's own
     // ordinary set with the interceptors, which reaches a Proxy on the chain through JSProxy's [[Set]].)
     const page = try Realm.open();
@@ -425,7 +427,12 @@ test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain
         \\const failures = [];
         \\const check = (name, got, want) => { if (got !== want) failures.push(name + ": " + saved.String(got)); };
         \\const log = [];
-        \\const backing = saved.create(null);
+        \\const subject = collection();
+        \\const heir = saved.create(subject);
+        \\// The Proxy goes between the collection and its interface prototype object (whose own prototype
+        \\// Crane makes immutable): its target inherits from that prototype, so members still resolve.
+        \\const interfacePrototype = saved.getPrototypeOf(subject);
+        \\const backing = saved.create(interfacePrototype);
         \\saved.defineProperty(backing, "viaSetter", descriptor({ set(v) { log.push("setter " + v + " on " + (this === subject ? "the collection" : "another object")); }, configurable: true }));
         \\saved.defineProperty(backing, "frozen", descriptor({ value: 1, writable: false, configurable: true }));
         \\const set = Reflect.set, gopd = Reflect.getOwnPropertyDescriptor, gpo = Reflect.getPrototypeOf, define = Reflect.defineProperty, has = Reflect.has, get = Reflect.get;
@@ -437,12 +444,7 @@ test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain
         \\  has(t, k) { log.push("has " + saved.String(k)); return has(t, k); },
         \\  get(t, k, r) { return get(t, k, r); },
         \\});
-        \\const subject = collection();
-        \\const heir = saved.create(subject);
-        \\// The interface prototype object's own prototype becomes the page's Proxy.
-        \\const interfacePrototype = saved.getPrototypeOf(subject);
-        \\const before = saved.getPrototypeOf(interfacePrototype);
-        \\saved.setPrototypeOf(interfacePrototype, onChain);
+        \\saved.setPrototypeOf(subject, onChain);
         \\try {
         \\  // A new name: the Proxy's [[Set]] runs once, finds nothing, and the value becomes the collection's own.
         \\  log.length = 0;
@@ -473,7 +475,7 @@ test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain
         \\  check("a symbol: the traps called", log.join(" | "), "set Symbol(mark) receiver the collection");
         \\  check("a symbol: the collection's own property", subject[mark], 1);
         \\} finally {
-        \\  saved.setPrototypeOf(interfacePrototype, before);
+        \\  saved.setPrototypeOf(subject, interfacePrototype);
         \\}
         \\failures.join("; ") || "ok"
     );
