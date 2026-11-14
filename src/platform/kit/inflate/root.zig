@@ -27,6 +27,10 @@
 
 const std = @import("std");
 
+/// zlib's own inflate, for the platform's zlib_inflate capability (HTTP
+/// content codings; why it sits beside this one: zlib.zig's comment).
+pub const zlib_inflate = @import("zlib.zig");
+
 /// Why `zlib` stopped.
 pub const End = enum {
     /// `out` is full.
@@ -328,4 +332,8 @@ test "zlibWhole: exactly out.len bytes, the stream ended, the Adler-32 matching"
     bad[bad.len - 1] ^= 1;
     try std.testing.expect(!zlibWhole(&out, &bad));
     try std.testing.expect(!zlibWhole(&out, stream[0 .. stream.len - 2]));
+}
+
+test {
+    _ = zlib_inflate;
 }

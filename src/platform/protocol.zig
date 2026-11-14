@@ -313,6 +313,9 @@ pub const Capabilities = struct {
     http3: Support,
     /// Compression Streams rejects "brotli" with TypeError; no br content decoding.
     brotli: Support,
+    /// Fetch's gzip and deflate content codings decode with Zig's
+    /// std.compress.flate instead of zlib (src/fetch/content_coding/flate.zig).
+    zlib_inflate: Support,
     /// Threads run at the default priority.
     thread_qos: Support,
     /// Diagnostics report no resident memory.
@@ -975,6 +978,32 @@ pub inline fn compressBrotli(encoder: *BrotliEncoder, input: Bytes, output: []u8
 pub inline fn destroyBrotliEncoder(encoder: *BrotliEncoder) void {
     comptime gate(.brotli, "destroyBrotliEncoder");
     return impl.destroyBrotliEncoder(encoder);
+}
+
+/// One zlib raw-DEFLATE context, OWNED until destroyInflateDecoder; thread
+/// rules as BrotliDecoder's.
+pub const InflateDecoder = opaque {};
+
+/// Create an RFC 1951 raw DEFLATE decoder (zlib's inflate, no zlib or gzip
+/// wrapper: the caller parses containers), using allocator for ALL its native
+/// storage. Synchronous, any thread.
+pub inline fn createInflateDecoder(allocator: std.mem.Allocator) CodecError!*InflateDecoder {
+    comptime gate(.zlib_inflate, "createInflateDecoder");
+    return impl.createInflateDecoder(allocator);
+}
+
+/// Decode into caller storage without retaining input/output pointers. Input
+/// after the final block is left unconsumed (finished); need_input at the end
+/// of input means truncation; invalid DEFLATE is InvalidData.
+pub inline fn inflateChunk(decoder: *InflateDecoder, input: Bytes, output: []u8) CodecError!CodecProgress {
+    comptime gate(.zlib_inflate, "inflateChunk");
+    return impl.inflateChunk(decoder, input, output);
+}
+
+/// Release the context and all native allocations, including after a failed call.
+pub inline fn destroyInflateDecoder(decoder: *InflateDecoder) void {
+    comptime gate(.zlib_inflate, "destroyInflateDecoder");
+    return impl.destroyInflateDecoder(decoder);
 }
 
 // ============================================================================

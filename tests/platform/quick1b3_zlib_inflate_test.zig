@@ -122,7 +122,10 @@ test "zlib_inflate: a truncated stream asks for more input and keeps what decode
         const result = try decodePieces(testing.allocator, &.{small_deflate[0..len]}, 256);
         defer testing.allocator.free(result.bytes);
         try testing.expectEqual(platform.CodecStatus.need_input, result.status);
-        try testing.expect(result.bytes.len < text.len);
+        // Without its last byte the stream may still have made all its
+        // output (only the end-of-block code is missing): never more.
+        try testing.expect(result.bytes.len <= text.len);
+        if (len < small_deflate.len / 2) try testing.expect(result.bytes.len < text.len);
         try testing.expect(std.mem.startsWith(u8, text, result.bytes));
     }
 }
