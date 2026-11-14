@@ -13,3 +13,5 @@
 3. When lanes change different levels at once, say in the merge report which totals each moved by how much, so the integrator writes the sum.
 
 **Takeaway**: **Pin the level you changed; pin a total in one place only - a sum pinned in every batch's file breaks in all of them at once.**
+
+**Status (2026-11-14, lane nm1)**: The one place for a div's total existed (tests/dom/node_block_sizes_test.zig), but the parts were still pinned many times: NodeBase's 80 in four files, Element's embedded 40 in seven, Node's embedded 120 in two, a Text's 160 in two. Lane nm1's layout batch moved all four and found the copies in three rounds of the full native step, not one. node_block_sizes_test.zig now pins the parts too (NodeBase, Node's and Element's embedded states, a Text's and a Comment's block); every other file keeps the FACT it tests (a field is gone, a field's type) and its history as a comment. Before a layout batch: `grep -rnE 'expectSize\(|@sizeOf\(' tests | grep -E '<the types you change>'` and move every hit first.

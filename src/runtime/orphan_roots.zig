@@ -114,6 +114,18 @@ pub fn record(realm: *ContextData, instance: *Instance) void {
             kept += 1;
         }
         list.records.shrinkRetainingCapacity(kept);
+        // And it gives the room back when what is left is a small part of
+        // it: a burst of removals (a page emptying a list of thousands)
+        // must not leave its high-water mark allocated to the realm's end
+        // (lane nm1). Twice what is kept, so the next records do not grow
+        // it at once; a failed shrink keeps the block it has.
+        const room = @max(kept * 2, List.compact_threshold);
+        if (kept * 4 <= list.records.capacity and room < list.records.capacity) {
+            if (realm.allocator.realloc(list.records.allocatedSlice(), room)) |smaller| {
+                list.records.items.ptr = smaller.ptr;
+                list.records.capacity = smaller.len;
+            } else |_| {}
+        }
     }
     list.records.append(realm.allocator, .{ .instance = instance, .generation = SlabAllocator.generationOf(instance) }) catch return;
 }

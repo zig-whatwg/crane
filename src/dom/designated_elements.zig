@@ -56,7 +56,7 @@ fn designated(this_node: *NodeBase, kind: Kind) ?*runtime.Instance {
     const document_node: *NodeBase = if (this_node.node_type == NodeBase.DOCUMENT_NODE)
         this_node
     else
-        @ptrCast(@alignCast(this_node.owner_document orelse return null));
+        this_node.documentBase() orelse return null;
     const document = retarget.instanceOf(document_node) orelse return null;
     const internal = document_internals.getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;

@@ -200,8 +200,9 @@ test "OwnState's count and sweep read the live bits" {
 /// (runtime.lifetime.countedOf) finds it with no `_internal` pointer to read.
 const FakeNodeBase = struct { rc: u32 = 0 };
 const NodeInternal = struct {
-    node_base: ?*FakeNodeBase = null,
+    base: FakeNodeBase = .{},
     pub const embedded_in_state = true;
+    pub const counted_node = true;
 };
 const NodeState = runtime.FlattenedState(RootState, &.{}, struct {
     _internal: ?*NodeInternal = null,
