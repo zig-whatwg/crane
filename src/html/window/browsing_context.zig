@@ -929,7 +929,10 @@ pub const BrowsingContext = struct {
         self.target_name = "";
         if (self.navigables) |navigables| {
             for (navigables.contexts()) |other| {
-                if (other != self and other.opener == self) other.opener = null;
+                // Disowned, not only unlinked: Window's opener getter reads
+                // `disowned` before the opener Window it kept from open(),
+                // which would still answer the old Window.
+                if (other != self and other.opener == self) other.disown();
             }
         }
     }
