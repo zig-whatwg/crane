@@ -4112,6 +4112,19 @@ fn domContentLoadedSteps(data: ?*anyopaque) void {
 /// https.html, which listens for the frame's parse-time message only after
 /// with_iframe's load (wpt.fyi 24ddf405a0: Chrome 157 10/10, Safari 27.2
 /// 10/10, Firefox 160 TIMEOUT).
+///
+/// So too an unhandledrejection a parse-time script's rejected promise
+/// queues (rejected_promises' notification task): it fires after load, and
+/// unhandled-promise-rejections/promise-rejection-event-during-parse.html's
+/// expected [readystatechange:interactive, unhandledrejection,
+/// readystatechange:complete] becomes [interactive, complete] with the event
+/// after - stated, the user's ruling 2026-11-14 12:17 UTC (option b): Safari
+/// 27.2's exact order. Chrome 157 logs the event first (its parse ends in a
+/// later task than the script, Blink's body-finished task, and its own
+/// rejection notification is a posted task too), Firefox 160 passes (its
+/// load is posted); by mechanism, the load at the end of the parse is Chrome
+/// + Safari's and the notification as a task Firefox + Safari's (and
+/// Blink's), together Safari's behaviour.
 fn completeLoadUnlessDelayed(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     const scripts_pending = internal.scripts.scripts_to_execute_asap.items.len > 0 or internal.scripts.scripts_to_execute_in_order_asap.items.len > 0;
