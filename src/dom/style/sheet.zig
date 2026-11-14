@@ -660,6 +660,8 @@ const Compiler = struct {
                 const sub = try self.declareLayer(layer, l.name orelse "");
                 try self.ruleList(l.children.items, condition, sub);
             },
+            // The starting style is not compiled yet: no cascade reads it.
+            .starting_style => {},
             // CSS Font Loading 3 §4.2: @font-face is indexed in the same
             // conditional context, but contributes no selector or layer rank.
             .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
