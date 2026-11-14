@@ -279,6 +279,77 @@ pub fn cancelQueuedJavascriptNavigation(scope: *runtime.Instance, navigable_id: 
     }
 }
 
+/// Whether a navigation of the navigable that shows `document`, or of one
+/// of its descendant navigables, is planned or started but has not
+/// committed, at the end of `document`'s parse: "the end" then does not
+/// complete the load in the parser's task (Document's
+/// completeLoadUnlessDelayed). The load stays the queued task of step 9,
+/// which the navigation's own task, queued earlier - its beforeunload and
+/// abort of the document (HTMLIFrameElement runBeforeUnload, navigate step
+/// 24), a form submission's, a javascript: URL's - runs before. HTML's "the
+/// end" has no such condition: it never completes the load in the parser's
+/// task. The browsers that do wait:
+///
+/// - WebKit Document::implicitClose skips the load while the frame's
+///   NavigationScheduler::locationChangePending() - a scheduled location
+///   change (location.href, assign, replace, window.open to itself), a
+///   reload, a history navigation or a form submission aimed at the current
+///   frame, not a meta refresh (ScheduledRedirect passes isLocationChange
+///   false) - and FrameLoader::checkCompleted waits for
+///   allChildrenAreComplete();
+/// - Blink Document::ShouldComplete refuses while javascript_url_task_handle_
+///   is active and while AllDescendantsAreComplete() is false;
+/// - Gecko posts its onload (Document::PostUnblockOnloadEvent), so every task
+///   queued during the parse runs first.
+///
+/// Counted, as the majority (WebKit's own frame, Gecko's posted onload):
+/// - the document's own navigable: any navigation it has in flight. Its
+///   commit set its ongoing navigation to null before this document was made
+///   ("deactivate a document for a cross-document navigation" step 5.2), so
+///   one in flight now started during the parse - location.href in a
+///   parser-blocking script, the commonest case, when its navigation has not
+///   yet aborted the document (HTMLIFrameElement runBeforeUnload, navigate
+///   step 24.3);
+/// - every navigable: a javascript: URL queued in it, or a form submission's
+///   planned navigation aimed at it (replace-before-load/form-submit.html,
+///   navigating-across-documents/014.html, execution-timing/028.html - all
+///   pass in Chrome, Firefox and Safari). A descendant's navigation already
+///   in flight delays the load anyway (its container delays it).
+/// Not counted: a meta refresh, which waits for the load in every engine
+/// (HTML's shared declarative refresh steps).
+pub fn navigationPlanned(document: *runtime.Instance) bool {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return false;
+    const own: *BrowsingContext = @import("browser_state.zig").browsingContextOf(window) orelse return false;
+    if (integrationOf(own)) |integration| switch (integration.ongoing_navigation) {
+        .id => return true,
+        else => {},
+    };
+    if (navigablePlanned(document, own)) return true;
+    var descendants = inclusiveDescendantDocuments(document, document.ctx.allocator);
+    defer descendants.deinit(document.ctx.allocator);
+    for (descendants.items) |entry| {
+        const browsing_context = entry.browsing_context orelse continue;
+        if (navigablePlanned(document, browsing_context)) return true;
+    }
+    return false;
+}
+
+/// navigationPlanned's test for any navigable: a queued javascript: URL, or
+/// a planned form navigation aimed at it.
+fn navigablePlanned(scope: *runtime.Instance, browsing_context: *BrowsingContext) bool {
+    if (integrationOf(browsing_context)) |integration| switch (integration.ongoing_navigation) {
+        .id => |id| if (browsing_context.navigables) |navigables| {
+            if (navigables.navigation(id)) |record| {
+                if (navigationUrl(record)) |url| {
+                    if (html_core.navigation.navigate_steps.isJavascript(url)) return true;
+                }
+            }
+        },
+        else => {},
+    };
+    return @import("form_submission.zig").hasPlannedNavigationTo(scope, browsing_context.id);
+}
+
 // ============================================================================
 // Child navigables of navigable containers (HTML 7.3.1)
 // ============================================================================
