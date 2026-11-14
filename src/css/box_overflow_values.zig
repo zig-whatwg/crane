@@ -197,6 +197,10 @@ pub fn parseClamp(options: properties.ParseOptions, legacy: bool, stream: *Strea
     // Chromium's flagged implementation is the design reference (not copied):
     // https://github.com/chromium/chromium/blob/3fefddfc43edcf3a5d62ed60f15cb592f299ab18/third_party/blink/renderer/core/css/properties/shorthands/shorthands_custom.cc
     // https://github.com/chromium/chromium/blob/3fefddfc43edcf3a5d62ed60f15cb592f299ab18/third_party/blink/renderer/core/css/style_property_serializer.cc
+    // #14673 was resolved this way (2026-10-29; spec edit acde592, tested by
+    // css/css-overflow/parsing/webkit-line-clamp-computed.html). The two
+    // -webkit-line-clamp checks of css/cssom/cssom-getPropertyValue-common-
+    // checks.html still expect the replaced rule: web-platform-tests/wpt#65204.
     // Integrator probe, 2026-10-27, tmp/cssbox/probe-q65/: Chrome 156,
     // Firefox 158 and Safari 27 read initial and none as "none"; their shipped
     // standalone property does not expose the newer shorthand constituents.
