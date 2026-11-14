@@ -124,8 +124,26 @@ pub const NodeBase = extern struct {
 
     previous_or_last: ?*NodeBase = null,
 
-    // Document ownership
-    owner_document: ?*DocumentType = null,
+    /// The node document, in ONE word (lane nm1's layout batch; the design's
+    /// N4). Read through `documentInstance`, `documentBase`, `documentKey`;
+    /// written through `setDocumentInstance` (Node's impl, the one setter of
+    /// a platform node's document) and `setDocumentBase` (owner-less trees).
+    ///
+    /// - 0: none (a Document, which is its own; a node not yet given one).
+    /// - bit 0 set: the Document's runtime.Instance, for a node an Instance
+    ///   owns. With bit 1 too: the Document had no live NodeBase when it was
+    ///   set - `documentBase` then answers null, as the NodeBase copy this
+    ///   word replaced was null there.
+    /// - bit 0 clear: the Document's NodeBase, for an owner-less tree (the
+    ///   tests' fixtures and the test-only WithBase types), whose document is
+    ///   no Instance.
+    ///
+    /// It was two fields: this one as the Document's NodeBase, which
+    /// src/dom's algorithms read with no check, and the Document's Instance
+    /// in Node's own state, with a slab generation as the net under "a node
+    /// keeps its document". One setter wrote both. Blink and WebKit keep one
+    /// (Node::tree_scope_, Node::m_treeScope), Gecko one (the NodeInfo's).
+    document_word: usize = 0,
 
     /// The fields few nodes use - the registered observer list, the node
     /// name - or null while none has been needed (NodeRareData).
@@ -180,10 +198,21 @@ pub const NodeBase = extern struct {
     /// total is 0. A node is born held (`rc_one`), so it starts at 1.
     subtree_holds: u32 = 1,
 
+    /// The slab generation of the node document's Instance when
+    /// `document_word` was set to it: the net under the rule that a node
+    /// keeps its document (its referencing-node count, and for its wrappers
+    /// the walk's D6 rule, dom.wrapper_tracing). A document freed under a
+    /// node that names it - a hole in that rule - reads as none
+    /// (`documentBase`, Node's ownerDocument), never as the freed object or
+    /// whatever took its slot. It was Node's own field, beside the Instance
+    /// pointer; with the pointer here, src/dom's readers pass the net too.
+    /// 0 for an owner-less tree's document.
+    document_generation: u64 = 0,
+
     comptime {
         // The tests pin every offset; these two are what this file itself
         // computes with.
-        std.debug.assert(@sizeOf(NodeBase) == 80);
+        std.debug.assert(@sizeOf(NodeBase) == 88);
         std.debug.assert(@alignOf(NodeBase) == 8);
     }
 
@@ -289,6 +318,104 @@ pub const NodeBase = extern struct {
         /// refcount.zig.
         removal_held: bool = false,
     };
+
+    // ========================================================================
+    // The node document (lane nm1: one word)
+    // ========================================================================
+
+    /// `document_word` names a Document's Instance (else its NodeBase, or none).
+    const document_instance_tag: usize = 1;
+    /// With `document_instance_tag`: the Document had no live NodeBase when
+    /// the word was set.
+    const document_no_base_tag: usize = 2;
+    const document_tags: usize = document_instance_tag | document_no_base_tag;
+
+    /// The node document's Instance - what Node's impl hands script and every
+    /// caller outside src/dom - or null: none set, or an owner-less tree's
+    /// document, which no Instance owns. NOT checked against the net: Node's
+    /// impl checks `documentIsLive` where it did before.
+    pub inline fn documentInstance(self: *const NodeBase) ?*runtime.Instance {
+        const word = self.document_word;
+        if (word & document_instance_tag == 0) return null;
+        return @ptrFromInt(word & ~document_tags);
+    }
+
+    /// Whether the node document's Instance is still the one that was set:
+    /// its slot was not freed (or freed and reissued) under this node. True
+    /// for a node that names no Instance.
+    pub inline fn documentIsLive(self: *const NodeBase) bool {
+        const instance = self.documentInstance() orelse return true;
+        return runtime.SlabAllocator.generationOf(instance) == self.document_generation;
+    }
+
+    /// The node document's own NodeBase, for src/dom's algorithms, or null:
+    /// none set, the document had no NodeBase when it was set, or - the net -
+    /// its Instance was freed under this node (this was a dangling pointer
+    /// then). A Document's own answer is null: `getNodeDocument` is DOM's
+    /// "node document", which for a document is itself.
+    pub inline fn documentBase(self: *const NodeBase) ?*NodeBase {
+        const word = self.document_word;
+        if (word & document_instance_tag == 0) return @ptrFromInt(word);
+        if (word & document_no_base_tag != 0) return null;
+        const instance: *const runtime.Instance = @ptrFromInt(word & ~document_tags);
+        if (runtime.SlabAllocator.generationOf(instance) != self.document_generation) return null;
+        return ofState(instance.state);
+    }
+
+    /// The node document's identity, for `==`, `!= 0` and cache keys: equal
+    /// for two nodes exactly when `documentBase` named one document for both,
+    /// and 0 where it was null. Reads nothing through the word and never
+    /// asks the net, so the counts' bookkeeping at a teardown - where a
+    /// document can go before a node that names it - compares what it always
+    /// compared. A Document's own key is `keyAsDocument`.
+    pub inline fn documentKey(self: *const NodeBase) usize {
+        const word = self.document_word;
+        if (word & document_instance_tag == 0) return word;
+        if (word & document_no_base_tag != 0) return 0;
+        return word & ~document_tags;
+    }
+
+    /// This node's key as a node document - what `documentKey` answers for
+    /// the nodes that name it: its Instance for a Document an Instance owns,
+    /// its own address for an owner-less one.
+    pub inline fn keyAsDocument(self: *const NodeBase) usize {
+        if (self.owner != 0 and self.owner & ownerless_tag == 0) return self.owner;
+        return @intFromPtr(self);
+    }
+
+    /// Node's impl, the one setter of a platform node's document: name
+    /// `document`'s Instance, with its generation. `has_base` is whether the
+    /// document has a live NodeBase now (its Node state is made and not torn
+    /// down); without one `documentBase` answers null.
+    pub fn setDocumentInstance(self: *NodeBase, document: ?*runtime.Instance, has_base: bool) void {
+        const instance = document orelse {
+            self.document_word = 0;
+            self.document_generation = 0;
+            return;
+        };
+        std.debug.assert(@intFromPtr(instance) & document_tags == 0);
+        self.document_word = @intFromPtr(instance) | document_instance_tag | if (has_base) @as(usize, 0) else document_no_base_tag;
+        self.document_generation = runtime.SlabAllocator.generationOf(instance);
+    }
+
+    /// An owner-less tree's node document: `document`'s NodeBase, or none.
+    /// For a Document an Instance owns, the Instance is named (so every
+    /// reader of the word agrees) - src/dom's adopt on a platform tree goes
+    /// through dom.node_document, which calls `setDocumentInstance`.
+    pub fn setDocumentBase(self: *NodeBase, document: ?*NodeBase) void {
+        const base = document orelse {
+            self.document_word = 0;
+            self.document_generation = 0;
+            return;
+        };
+        if (base.ownerInstance()) |raw| {
+            self.setDocumentInstance(@ptrCast(@alignCast(raw)), true);
+            return;
+        }
+        std.debug.assert(@intFromPtr(base) & document_tags == 0);
+        self.document_word = @intFromPtr(base);
+        self.document_generation = 0;
+    }
 
     // ========================================================================
     // The owner word (lane perf2 batch 6)
@@ -744,31 +871,20 @@ pub const NodeBase = extern struct {
         return current.node_type == DOCUMENT_NODE;
     }
 
-    /// Get the node document for this node
-    /// DOM Spec: https://dom.spec.whatwg.org/#concept-node-document
-    ///
-    /// Per spec §4.2.5:
-    /// - Every node has an associated node document (set upon creation)
-    /// - For Document nodes, the node document is itself
-    /// - Can ONLY be changed by the adopt algorithm
-    /// - NEVER null at any time after creation
-    ///
-    /// Note: Returns null only during node construction before document assignment.
-    /// After proper initialization, this should never return null.
-    pub fn getNodeDocument(self: *NodeBase) ?*DocumentType {
-        // For Document nodes, the node document is itself
-        if (self.node_type == DOCUMENT_NODE) {
-            return @ptrCast(self);
-        }
-        return self.owner_document;
+    /// DOM "node document" (https://dom.spec.whatwg.org/#concept-node-document),
+    /// as its own NodeBase: a Document's is itself, every other node's is the
+    /// one it was given at creation and that only "adopt" changes
+    /// (`documentBase`). Null before a node is given one, and for a document
+    /// freed under its node.
+    pub fn getNodeDocument(self: *NodeBase) ?*NodeBase {
+        if (self.node_type == DOCUMENT_NODE) return self;
+        return self.documentBase();
     }
 
-    /// Get the node document for this node (const version)
-    pub fn getNodeDocumentConst(self: *const NodeBase) ?*const DocumentType {
-        if (self.node_type == DOCUMENT_NODE) {
-            return @ptrCast(self);
-        }
-        return self.owner_document;
+    /// `getNodeDocument` for a const node.
+    pub fn getNodeDocumentConst(self: *const NodeBase) ?*const NodeBase {
+        if (self.node_type == DOCUMENT_NODE) return self;
+        return self.documentBase();
     }
 };
 

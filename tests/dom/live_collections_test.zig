@@ -45,7 +45,6 @@ const TestDocument = struct {
                 .owner = NodeBase.ownerless(&std.testing.allocator),
                 .node_type = NodeBase.DOCUMENT_NODE,
                 .parent_node = null,
-                .owner_document = null,
             },
             .children = .empty,
             .elements = .empty,

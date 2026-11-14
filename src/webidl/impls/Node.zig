@@ -104,15 +104,11 @@ pub const InternalState = struct {
     // element's names are its ElementData's, a CharacterData's value its
     // data, an Attr's value its own state, a PI's target its own.
 
-    /// The owner document for this node
-    /// Document nodes return null from ownerDocument getter
-    owner_document: ?*runtime.Instance = null,
-    /// `owner_document`'s slab generation when it was set: the net under the
-    /// rule that a node keeps its document (its referencing-node count, and
-    /// for its wrappers the walk's D6 rule, dom.wrapper_tracing).
-    /// A document freed under a node that names it - a hole in that rule -
-    /// reads as an error and a log line, never as the freed object.
-    owner_document_generation: u64 = 0,
+    // No node document here (lane nm1; the design's N4): it is ONE word of
+    // the NodeBase, with its generation beside it (NodeBase.document_word,
+    // `documentInstance`, `documentIsLive`). This state kept the Document's
+    // Instance and the generation, and the NodeBase kept the Document's
+    // NodeBase: two pointers to one document, 8 bytes a node.
 
     // No childNodes list here (lane nm1): the interface's [SameObject] cache
     // (the generated State's `cached_childNodes`) is the one copy; this
@@ -228,7 +224,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             .first_child = null,
             .previous_or_last = null,
             .next_sibling = null,
-            .owner_document = null,
             .is_connected = false,
             // Born with one reference, its creator's (rc_one), which it offers to
             // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
@@ -561,7 +556,7 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     const document = if (internal.base.node_type == NodeType.DOCUMENT_NODE)
         instance
     else
-        internal.owner_document orelse return error.InvalidStateError;
+        internal.base.documentInstance() orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
     // HTML document base URL step 1: the first base[href]'s URL is frozen
@@ -667,12 +662,12 @@ pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     return liveOwnerDocument(internal);
 }
 
-/// `internal`'s node document, through the net (`owner_document_generation`):
+/// `internal`'s node document, through the net (NodeBase.document_generation):
 /// a document freed under the node that names it is never handed out. A node
 /// keeps its document, so a freed one is a bug, logged.
 fn liveOwnerDocument(internal: *const InternalState) error{InvalidStateError}!?*runtime.Instance {
-    const document = internal.owner_document orelse return null;
-    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) {
+    const document = internal.base.documentInstance() orelse return null;
+    if (!internal.base.documentIsLive()) {
         log.warn("a node's document was freed while the node named it (node type {d})", .{internal.base.node_type});
         return error.InvalidStateError;
     }
@@ -952,7 +947,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
                     .{ .data = slice },
                 );
                 errdefer interfaces.Text.deinit(text_node);
-                if (internal.owner_document) |owner_doc| {
+                if (internal.base.documentInstance()) |owner_doc| {
                     try setOwnerDocument(text_node, owner_doc);
                 }
                 text_base = instance_bridge.getNodeBase(@ptrCast(text_node)) orelse return error.InvalidStateError;
@@ -1245,7 +1240,7 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     // set to subtree" - document defaulting to this's node document, which
     // for a document is itself.
     const deep = if (subtree.was_passed) subtree.value else false;
-    const document = if (internal.base.node_type == NodeType.DOCUMENT_NODE) instance else internal.owner_document;
+    const document = if (internal.base.node_type == NodeType.DOCUMENT_NODE) instance else internal.base.documentInstance();
     return dom_module.node_creation.clone(instance, document, deep, null);
 }
 
@@ -1302,7 +1297,7 @@ pub fn cloneANode(
         if (try interfaces.ShadowRoot.get_clonable(shadow)) {
             var registry = try interfaces.ShadowRoot.get_customElementRegistry(shadow);
             if (registry) |value| if (!dom_module.custom_elements.isScoped(value)) {
-                const target = document orelse node_internal.owner_document orelse return error.InvalidStateError;
+                const target = document orelse node_internal.base.documentInstance() orelse return error.InvalidStateError;
                 registry = dom_module.custom_elements.effectiveGlobal(try interfaces.Document.get_customElementRegistry(target));
             };
             const shadow_copy = try dom_module.custom_elements.attachShadow(copy, .{
@@ -1346,7 +1341,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         => {
             // Clone a single node step 4 / create a node step 2: the copy is
             // created in the destination node document's relevant realm.
-            const copy_ctx = if (document orelse node_internal.owner_document) |owner| owner.ctx else node.ctx;
+            const copy_ctx = if (document orelse node_internal.base.documentInstance()) |owner| owner.ctx else node.ctx;
             var data_str = try interfaces.CharacterData.get_data(node);
             defer data_str.deinit(node.ctx.allocator);
 
@@ -1383,7 +1378,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             };
             errdefer runtime.Instance.deinit(copy);
 
-            if (document orelse node_internal.owner_document) |owner_doc| {
+            if (document orelse node_internal.base.documentInstance()) |owner_doc| {
                 try setOwnerDocument(copy, owner_doc);
             }
             return copy;
@@ -1394,7 +1389,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         // A bare Node copy has no Element state, so every later attribute or
         // name access on the clone fails with InvalidStateError.
         NodeType.ELEMENT_NODE => {
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             // These getters BORROW the element's own name record (lane nd2
             // N2, dom.element_name): valid while `node` lives, and their
@@ -1484,7 +1479,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // "DocumentType: set copy's name, public ID, and system ID to those
             // of node." Built by the owner's DOMImplementation, which is the one
             // factory the interfaces expose for a doctype.
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const instance_allocator = node.ctx.allocator;
             // Getters clone; the caller frees (AGENTS.md, "Interface getters clone").
@@ -1509,7 +1504,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // value to those of node." Field for field through the Attr hook:
             // createAttributeNS would validate, and reject a name an attribute
             // made by setAttribute legitimately holds ("a:b" as a local name).
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const instance_allocator = node.ctx.allocator;
             var namespace = try interfaces.Attr.get_namespaceURI(node);
@@ -1535,7 +1530,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         NodeType.DOCUMENT_FRAGMENT_NODE => {
             // "Otherwise: do nothing." A fragment carries no fields; it only has
             // to be a fragment of the right document.
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const copy = try interfaces.Document.call_createDocumentFragment(owner);
             try setOwnerDocument(copy, owner);
@@ -1664,7 +1659,7 @@ fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
     }
 
     // Otherwise, return the ownerDocument
-    return internal.owner_document;
+    return internal.base.documentInstance();
 }
 
 /// Operation: appendChild
@@ -1893,29 +1888,23 @@ fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) do
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const previous = internal.owner_document;
+    const base = &internal.base;
+    const previous = base.documentInstance();
     const previous_counts = liveDocumentCounts(internal);
-    internal.owner_document = doc;
-    internal.owner_document_generation = if (doc) |document| runtime.SlabAllocator.generationOf(document) else 0;
 
-    // The tree algorithms in src/dom read the node document off the NodeBase,
-    // as the document's own NodeBase. Both copies name the same document:
-    // `insert` adopts into it, and adopting is what removes a node from its
-    // old parent, so a NodeBase with no document made every move into a node
-    // built through the DOM API leave the moved node in two child lists.
-    {
-        const base = &internal.base;
-        base.owner_document = null;
-        if (doc) |document| {
-            if (getInternal(document)) |document_internal| {
-                base.owner_document = @ptrCast(@alignCast(&document_internal.base));
-            }
-        }
-        if (doc != previous) {
-            // The node's reference - and, a detached root, its holds - move
-            // to the new document's counts (refcount design 1.5, D6).
-            dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
-        }
+    // One word for every reader (lane nm1): the Document's Instance, which
+    // the ownerDocument getter and everything outside src/dom read, and from
+    // which src/dom's tree algorithms find the document's own NodeBase
+    // (NodeBase.documentBase) - `insert` adopts into it, and adopting is what
+    // removes a node from its old parent, so a NodeBase with no document made
+    // every move into a node built through the DOM API leave the moved node
+    // in two child lists. A document whose own Node state is gone has no
+    // NodeBase to hand src/dom: the word says so.
+    base.setDocumentInstance(doc, if (doc) |document| getInternal(document) != null else false);
+    if (doc != previous) {
+        // The node's reference - and, a detached root, its holds - move
+        // to the new document's counts (refcount design 1.5, D6).
+        dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
     }
 }
 
@@ -1923,8 +1912,8 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
 /// none - or one freed under it (its slot's generation moved on), whose
 /// counts went with it.
 fn liveDocumentCounts(internal: *InternalState) ?*dom_module.refcount.DocumentCounts {
-    const document = internal.owner_document orelse return null;
-    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) return null;
+    const document = internal.base.documentInstance() orelse return null;
+    if (!internal.base.documentIsLive()) return null;
     return dom_module.refcount.documentCounts(document);
 }
 
@@ -1942,9 +1931,7 @@ fn nodeDocumentCounts(node: *runtime.Instance) ?*dom_module.refcount.DocumentCou
 /// storage until the count is zero.
 fn releaseDocumentCounts(internal: *InternalState, base: *NodeBase) void {
     const counts = liveDocumentCounts(internal);
-    if (counts == null and internal.owner_document != null and
-        runtime.SlabAllocator.generationOf(internal.owner_document.?) != internal.owner_document_generation)
-    {
+    if (counts == null and !base.documentIsLive()) {
         if (dom_module.refcount.diagnosticsOn()) refcount_log.warn("a node outlived its node document's storage (node type {d})", .{base.node_type});
     }
     dom_module.refcount.nodeFreed(base, counts);

@@ -524,9 +524,8 @@ test "nm1 probe: what each field of a real node holds" {
     const node_internal = &node_state._embedded;
     const nb = &node_internal.base;
     print("\n##### LINKS on the parsed div\n", .{});
-    const nb_doc: usize = if (nb.owner_document) |d| @intFromPtr(d) else 0;
-    const node_doc: usize = if (node_internal.owner_document) |d| @intFromPtr(d) else 0;
-    print("  NodeBase.owner_document 0x{x}, Node.owner_document 0x{x} (Instance), the document's Instance 0x{x}\n", .{ nb_doc, node_doc, @intFromPtr(page.document) });
+    const node_doc: usize = if (nb.documentInstance()) |d| @intFromPtr(d) else 0;
+    print("  NodeBase.document_word 0x{x} names the Instance 0x{x}; the document's Instance 0x{x}\n", .{ nb.document_word, node_doc, @intFromPtr(page.document) });
     print("  NodeBase.owner 0x{x} == the div's Instance 0x{x}: {}\n", .{ nb.owner, @intFromPtr(pdiv), nb.owner == @intFromPtr(pdiv) });
     print("  Instance.state 0x{x} == the State block 0x{x}: {}\n", .{ @intFromPtr(pdiv.state), @intFromPtr(s), @intFromPtr(pdiv.state) == @intFromPtr(s) });
     print("  each level's state, offset from the block (stateAs reads the vtable's ancestry table):\n", .{});

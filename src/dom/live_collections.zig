@@ -66,11 +66,11 @@ pub const Link = struct {
     }
 };
 
-/// What a node's tree node names as its node document - the document's own
-/// tree node; a document names itself - as a key `IndexCache.fresh` compares.
+/// What a node's tree node names as its node document - a document names
+/// itself - as a key `IndexCache.fresh` compares (NodeBase.documentKey).
 fn documentKey(root_base: *const NodeBase) usize {
-    if (root_base.node_type == NodeBase.DOCUMENT_NODE) return @intFromPtr(root_base);
-    return @intFromPtr(root_base.owner_document);
+    if (root_base.node_type == NodeBase.DOCUMENT_NODE) return root_base.keyAsDocument();
+    return root_base.documentKey();
 }
 
 /// The root's CURRENT node document, so adoption cannot reuse the old

@@ -1048,7 +1048,7 @@ pub fn appendChildren(
         }
 
         // Adopt child into parent's document
-        if (parent.owner_document) |doc| {
+        if (parent.documentBase()) |doc| {
             try adoptHeld(child, doc);
         }
     }
@@ -1177,7 +1177,7 @@ pub fn insertChildrenBefore(
         if (child.parent_node != null) {
             try removeHeld(child, true);
         }
-        if (parent.owner_document) |doc| {
+        if (parent.documentBase()) |doc| {
             try adoptHeld(child, doc);
         }
     }
@@ -2039,9 +2039,8 @@ fn hostsTemplateContents(node: *const NodeBase) bool {
 //   - removed_nodes: *NodeList (WebIDL interface)
 
 /// `node`'s node document, which the live-range and NodeIterator steps key
-/// their lists on. `NodeBase.owner_document` is written only by `adopt`, so it
-/// is null for nearly every node - the document lives in the Node impl's state,
-/// read here through the Node interface. A document is its own node document.
+/// their lists on, read through the Node interface. A document is its own node
+/// document.
 fn nodeDocument(node: anytype) ?*runtime.Instance {
     const base: *NodeBase = @ptrCast(@constCast(node));
     const instance_opaque = instance_bridge.getInstance(base) orelse return null;
@@ -2659,10 +2658,15 @@ pub fn adopt(
 /// the node on), and the moved tree must not count zero there.
 fn adoptHeld(
     node: anytype,
-    document: anytype,
+    document_any: anytype,
 ) DOMException!void {
-    // Step 1: Let oldDocument be node's node document
-    const oldDocument = node.owner_document;
+    // The document, as its own NodeBase: what NodeBase.getNodeDocument and
+    // documentBase answer. A caller that names it as `*interfaces.Document`
+    // names the same address.
+    const document: *NodeBase = @ptrCast(@alignCast(document_any));
+    // Step 1: Let oldDocument be node's node document (its own NodeBase;
+    // null for none, and for one freed under the node - NodeBase.documentBase)
+    const oldDocument: ?*NodeBase = node.documentBase();
 
     // Step 2: If node's parent is non-null, then remove node
     if (node.parent_node != null) {
@@ -2671,7 +2675,7 @@ fn adoptHeld(
     errdefer refcount.endRemovalHold(@ptrCast(node));
 
     // Step 3: If document is not oldDocument
-    if (document != oldDocument) {
+    if (@as(?*NodeBase, document) != oldDocument) {
         // Step 3.1: Collect the shadow-including inclusive descendants in
         // tree order, including closed shadow roots and their descendants.
         var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator(), node);
@@ -2681,7 +2685,7 @@ fn adoptHeld(
         // the ownerDocument getter and everything outside src/dom read; the
         // node_document hook keeps that copy - and through it this one - in
         // step.
-        const document_instance: ?*runtime.Instance = if (instance_bridge.getInstance(@ptrCast(@alignCast(document)))) |opaque_instance|
+        const document_instance: ?*runtime.Instance = if (instance_bridge.getInstance(document)) |opaque_instance|
             @ptrCast(@alignCast(opaque_instance))
         else
             null;
@@ -2690,8 +2694,12 @@ fn adoptHeld(
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
 
-            // Step 3.1.1: Set node document to document
-            desc.owner_document = document;
+            // Step 3.1.1: Set node document to document. A platform node's
+            // is set by the node_document hook below (the Node impl's setter,
+            // which also moves the node between the documents' counts and
+            // must see the OLD document still named: the word is one, since
+            // lane nm1); an owner-less node's is written here.
+            if (document_instance == null or instance_bridge.getInstance(desc) == null) desc.setDocumentBase(document);
             if (document_instance) |doc_instance| {
                 if (instance_bridge.getInstance(desc)) |desc_opaque| {
                     const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
@@ -2749,7 +2757,7 @@ fn adoptHeld(
                     const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
                     for (0..element.attributes.size()) |attr_idx| {
                         if (element.attributes.get(attr_idx)) |attr| {
-                            attr.base.owner_document = document;
+                            attr.base.setDocumentBase(document);
                         }
                     }
                 } else if (document_instance) |doc_instance| {
@@ -2772,7 +2780,7 @@ fn adoptHeld(
         // document's live ranges re-checks which document it belongs to, so
         // a range whose boundary moved with the tree follows it.
         if (oldDocument) |old_document| {
-            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
+            if (instance_bridge.getInstance(old_document)) |old_opaque| {
                 moveLiveRangesAfterAdoption(@ptrCast(@alignCast(old_opaque)));
             }
         }
@@ -2780,7 +2788,7 @@ fn adoptHeld(
         // Step 3.2.3: adoptedCallback receives the old and new documents in
         // shadow-including tree order. Queued arguments retain both documents.
         if (oldDocument) |old_document| {
-            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
+            if (instance_bridge.getInstance(old_document)) |old_opaque| {
                 if (document_instance) |new_document| {
                     for (descendants.toSlice()) |descendant| enqueueCustomElementCallback(descendant, .adopted, .{
                         .adopted = .{ .old_document = @ptrCast(@alignCast(old_opaque)), .new_document = new_document },
