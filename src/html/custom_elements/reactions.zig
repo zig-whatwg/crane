@@ -71,16 +71,39 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
             return self.depth != 0 and self.frames.len != 0 and self.frames.get(self.frames.len - 1).?.depth == self.depth;
         }
 
-        /// [CEReactions] step 3: pop before invoking, even on abrupt completion.
-        /// No pointer into the frames or pending map survives a script call.
+        /// [CEReactions] step 3, even on abrupt completion: invoke the custom
+        /// element reactions in the current element queue, then pop it.
+        ///
+        /// Stated deviation from HTML's order ("Pop the element queue from the
+        /// custom element reactions stack, and invoke custom element reactions
+        /// in that queue"), golden rule 2 with all three engines agreeing: Blink
+        /// CustomElementReactionStack::PopInvokingReactions (InvokeReactions,
+        /// then stack_.pop_back()), WebKit ~CustomElementReactionStack
+        /// (processQueue while s_currentProcessingStack is still this one) and
+        /// Gecko CustomElementReactionsStack::PopAndInvokeElementQueue
+        /// (InvokeReactions, then RemoveLastElement) invoke the queue while it
+        /// is still the current one. A reaction the invocation enqueues - an
+        /// upgrade's connectedCallback - joins this queue and runs before the
+        /// scope returns; popped first, it went to the backup element queue,
+        /// whose stale entry then ran ahead of later reactions
+        /// (selectedcontent-custom-element-reactions.html, lane sel1). The
+        /// frame grows while it is invoked: it is read by index, and no pointer
+        /// into the frames or the pending map survives a script call.
         pub fn end(self: *Self, context: anytype, comptime invoke: anytype) void {
             std.debug.assert(self.depth != 0);
             const depth = self.depth;
-            self.depth -= 1;
+            defer self.depth -= 1;
             if (self.frames.len == 0 or self.frames.get(self.frames.len - 1).?.depth != depth) return;
-            var frame = self.frames.remove(self.frames.len - 1) catch unreachable;
-            defer frame.elements.deinit();
-            for (frame.elements.toSlice()) |element| self.invokeElement(element, context, invoke);
+            // Nested scopes push their frames after this one and remove them
+            // before they return, so this frame keeps its index.
+            const index = self.frames.len - 1;
+            var next: usize = 0;
+            while (next < self.frames.get(index).?.elements.len) : (next += 1) {
+                const element = self.frames.get(index).?.elements.get(next).?;
+                self.invokeElement(element, context, invoke);
+            }
+            var frame = self.frames.remove(index) catch unreachable;
+            frame.elements.deinit();
         }
 
         /// The engine cannot set aside the pending exception in this native
