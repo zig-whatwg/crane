@@ -24,10 +24,6 @@
 //! event (EventRecord): the navigation reads and settles it.
 //!
 //! Deviations, stated:
-//! - A navigate event nobody intercepts keeps its API method tracker ongoing
-//!   when its destination is cross-document (Blink, and ordering-and-
-//!   transition/navigate-cross-document-double: a later navigation rejects
-//!   its promises); "commit a navigate event" step 9 would clean it up.
 //! - The event's formData carries a form's string entries only; the focus
 //!   reset runs the focusing steps on the body (or document element)
 //!   without an autofocus delegate; scroll behavior records only that
@@ -1712,13 +1708,22 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // A same-document navigation nobody intercepted settles when its update
     // runs the navigate event intercept commit handler steps ("update the
     // navigation API entries for a same-document navigation" step 14) - with
-    // no handlers, navigatesuccess a microtask later. A cross-document one
-    // keeps its navigate event and API method tracker ongoing: a later
-    // navigation aborts them, rejecting the tracker's promises
-    // (ordering-and-transition/navigate-cross-document-double). Deviation,
-    // stated: step 30 commits it, and commit step 9 cleans that tracker up -
-    // which leaves it ongoing in Blink and the WPT ordering tests.
-    if (record.interception_state == .none) return true;
+    // no handlers, navigatesuccess a microtask later. A cross-document one:
+    // step 30 committed it ("commit a navigate event" with an empty precommit
+    // handler list; its steps 7-8 do nothing for an event nobody
+    // intercepted), and commit step 9 - "If endResultIsSameDocument is false
+    // and apiMethodTracker is non-null, then clean up apiMethodTracker" -
+    // cleans its tracker up. Its navigate event stays the ongoing one, so a
+    // later navigation still aborts it (AbortSignal abort, navigateerror),
+    // but its promises never settle: ordering-and-transition/navigate-cross-
+    // document-double.html and navigate-204-205-download-then-same-document.html
+    // since wpt 02db739ab5 (Firefox bug 2087199, gecko db62bca19d: the tests
+    // were corrected to the spec text). Before, Crane kept the tracker ongoing
+    // as Blink does and rejected its promises at the abort.
+    if (record.interception_state == .none) {
+        if (!firing.is_same_document) cleanUp(internal, api_tracker);
+        return true;
+    }
 
     // Steps 32-33: "Let fromNHE be the current entry of navigation."
     const from = (currentEntryObject(instance, internal) catch null) orelse {
