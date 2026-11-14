@@ -82,7 +82,8 @@ pub fn Reactions(comptime Element: type, comptime Payload: type) type {
         /// (processQueue while s_currentProcessingStack is still this one) and
         /// Gecko CustomElementReactionsStack::PopAndInvokeElementQueue
         /// (InvokeReactions, then RemoveLastElement) invoke the queue while it
-        /// is still the current one. A reaction the invocation enqueues - an
+        /// is still the current one (whatwg/html#13263 asks HTML to say so,
+        /// filed 2026-11-14). A reaction the invocation enqueues - an
         /// upgrade's connectedCallback - joins this queue and runs before the
         /// scope returns; popped first, it went to the backup element queue,
         /// whose stale entry then ran ahead of later reactions
