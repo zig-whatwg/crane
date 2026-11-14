@@ -122,7 +122,11 @@ fn closedOpenerKeepsPopup() !void {
         \\document.body.append(frame);
     );
     try until(browser, "globalThis.p1 !== undefined && p1 !== null");
-    try page.runScript("globalThis.p2 = p1.eval('window.open(\"about:blank\", \"p2\")');");
+    // P1's own script opens P2 (window.open's opener is the entry global's
+    // navigable: a task of P1's).
+    try page.runScript("p1.setTimeout('window.p2 = window.open(\"about:blank\", \"p2\")', 0);");
+    try until(browser, "p1.p2 !== undefined && p1.p2 !== null");
+    try page.runScript("globalThis.p2 = p1.p2;");
     try expectEval(page, "p2.opener === p1", "true");
     try page.runScript("p1.close();");
     try until(browser, "p1.closed");
@@ -141,7 +145,9 @@ fn browserEndWithPopups(comptime close_first: ?[]const u8) !void {
     defer browser.deinit();
     const page = try loadPage(browser);
     // P1 opened by the page, P2 opened by P1 (its script).
-    try page.runScript("globalThis.p1 = window.open('about:blank', 'p1'); globalThis.p2 = p1.eval('window.open(\"about:blank\", \"p2\")');");
+    try page.runScript("globalThis.p1 = window.open('about:blank', 'p1'); p1.setTimeout('window.p2 = window.open(\"about:blank\", \"p2\")', 0);");
+    try until(browser, "p1.p2 !== undefined && p1.p2 !== null");
+    try page.runScript("globalThis.p2 = p1.p2;");
     try expectPopupRuns(browser, "p1");
     try expectPopupRuns(browser, "p2");
     // One of them closed first by script, then the Browser ends with the

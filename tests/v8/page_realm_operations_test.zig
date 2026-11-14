@@ -1547,8 +1547,12 @@ test "protocol: a popup's realm is made inside its creator's script and is not l
     const second = try second_realm.make();
     try std.testing.expectEqual(popup, second_realm.entry_after.?);
     try std.testing.expectEqual(page, protocol.entryRealm().?);
-    protocol.destroyWindowRealm(second, .navigable_destroyed);
-    protocol.destroyWindowRealm(popup, .navigable_destroyed);
+    // Destroyed navigables detach their realms; the host ends them (here,
+    // as its Browser's end would).
+    for ([_]runtime.Context{ second, popup }) |r| {
+        protocol.destroyWindowRealm(r, .navigable_destroyed);
+        protocol.destroyWindowRealm(r, .global_detached);
+    }
     try std.testing.expectEqual(page, protocol.entryRealm().?);
 }
 
