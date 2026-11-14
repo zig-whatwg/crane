@@ -200,9 +200,11 @@ pub fn requestFrame(document: *runtime.Instance) void {
 /// asks for a frame and starts the watch.
 pub fn focusedAreaChanged(document: *runtime.Instance, element: ?*runtime.Instance) void {
     if (element == null) {
-        // One watch, two reasons: a document that declares transitions or
-        // animations keeps it (`watchStyle`).
-        refcount.watchRendering(document, style_engine.declaresAnimations(document));
+        // One watch, three reasons: a document that declares transitions or
+        // animations keeps it (`watchStyle`), and so does one whose lazy
+        // load intersection observer has targets not yet intersecting
+        // (dom.lazy_load_observer).
+        refcount.watchRendering(document, style_engine.declaresAnimations(document) or @import("lazy_load_observer.zig").hasTargets(document));
         return;
     }
     refcount.watchRendering(document, true);

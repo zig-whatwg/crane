@@ -93,6 +93,11 @@ pub const DocumentRareData = struct {
     /// links, generation-checked: they keep nothing alive.
     parser_form_associations: std.ArrayListUnmanaged(ParserFormAssociation) = .empty,
 
+    /// HTML 2.5.7: the document's lazy load intersection observer - its
+    /// targets, weak links (dom.lazy_load_observer). Empty for a document
+    /// with no lazy element.
+    lazy_load_targets: @import("lazy_load_observer.zig").Targets = .empty,
+
     fn init(allocator: std.mem.Allocator) DocumentRareData {
         return .{
             .import_map_imports = .init(allocator),
@@ -134,6 +139,7 @@ pub const DocumentRareData = struct {
         if (self.frozen_base_url) |url| allocator.free(url);
         if (self.pragma_language) |language| allocator.free(language);
         self.parser_form_associations.deinit(allocator);
+        self.lazy_load_targets.deinit(allocator);
         if (self.counted_in) |memory| memory.sub(@sizeOf(DocumentRareData));
         allocator.destroy(self);
     }
