@@ -56,7 +56,8 @@ fn isDisabled(content: *runtime.Instance) bool {
 /// NodeBase is freed (MutationObserver's liveNode; lesson
 /// debugging-a-nodes-slab-generation-can-outlive-its-nodebase.md).
 fn cachedSelect(content: *runtime.Instance) ?*runtime.Instance {
-    const internal = content.getState(State).own._internal orelse return null;
+    const state = content.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
     const weak = internal.cached_select orelse return null;
     if (runtime.SlabAllocator.generationOf(weak.instance) != weak.generation) return null;
     const instance: *runtime.Instance = @constCast(weak.instance);
@@ -69,7 +70,8 @@ fn cachedSelect(content: *runtime.Instance) ?*runtime.Instance {
 /// nearest ancestor select (step 5), whether or not it is disabled.
 fn recalculate(content: *runtime.Instance) ?*runtime.Instance {
     const result = selected_content.disabledness(content);
-    const internal = content.getState(State).own._internal orelse return result.select;
+    const state = content.stateAs(State) orelse return result.select;
+    const internal = state.own._internal orelse return result.select;
     internal.disabled = result.disabled;
     internal.cached_select = null;
     if (result.select) |select| if (dom.instance_bridge.getNodeBase(select)) |base| {

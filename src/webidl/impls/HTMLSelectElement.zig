@@ -261,12 +261,14 @@ fn setSelectedcontentInterest(instance: *runtime.Instance, present: bool) !void 
 }
 
 fn selectedcontentPending(instance: *runtime.Instance) bool {
-    return if (instance.getState(State).own._internal) |internal| internal.selectedcontent_pending else false;
+    const state = instance.stateAs(State) orelse return false;
+    return if (state.own._internal) |internal| internal.selectedcontent_pending else false;
 }
 
 /// False never allocates the state: the update steps set it on every select.
 fn setSelectedcontentPending(instance: *runtime.Instance, pending: bool) !void {
-    if (!pending and instance.getState(State).own._internal == null) return;
+    const state = instance.stateAs(State) orelse return;
+    if (!pending and state.own._internal == null) return;
     (try internalState(instance)).selectedcontent_pending = pending;
 }
 
