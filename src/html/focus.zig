@@ -448,8 +448,38 @@ fn globalOf(document: *Instance) ?*Instance {
     return windowOf(document);
 }
 
+/// Service Workers matchAll() step 2.6.4 sorts window clients by when their
+/// browsing context was last focused. A focus update that moves the focus
+/// into another document focuses that document's browsing context and - by
+/// this new chain, which holds every ancestor document - each ancestor's
+/// (the integrator's ruling of 2026-11-12 on the spec's reading; Gecko
+/// nsFocusManager::SetFocusedWindowInternal sets the focused window's and
+/// every in-process ancestor document's last focus time likewise): one clock
+/// read for all of them, so they tie and keep creation order
+/// (w3c/ServiceWorker#1080). A move within one document focuses no other
+/// browsing context (Gecko: the focused window is unchanged).
+fn reportFocusedDocuments(old_chain: Chain, new_chain: Chain) void {
+    const new_document = firstDocument(new_chain) orelse return;
+    if (firstDocument(old_chain) == new_document) return;
+    const at_ns: u64 = @intCast(@import("platform").monotonicNow().ns);
+    for (0..new_chain.len) |i| {
+        if (!new_chain.isLive(i)) continue;
+        const entry = new_chain.items[i];
+        if (isDocument(entry)) dom.service_worker_clients.focused(entry.ctx, at_ns);
+    }
+}
+
+/// The innermost Document of a focus chain: the focused area's document.
+fn firstDocument(chain: Chain) ?*Instance {
+    for (0..chain.len) |i| {
+        if (chain.isLive(i) and isDocument(chain.items[i])) return chain.items[i];
+    }
+    return null;
+}
+
 /// HTML "focus update steps".
 fn focusUpdateSteps(old_chain_in: Chain, new_chain_in: Chain, new_focus_target: ?*Instance) void {
+    reportFocusedDocuments(old_chain_in, new_chain_in);
     var old_chain = old_chain_in;
     var new_chain = new_chain_in;
     // Step 1: "If the last entry in old chain and the last entry in new chain

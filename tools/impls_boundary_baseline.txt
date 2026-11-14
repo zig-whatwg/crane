@@ -2,10 +2,6 @@
 # A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
 # count rises or a new pair appears. After paying debt down, lower it with
 # `zig build lint-impls -- --update`. Never raise it by hand.
-src/runtime/engines/v8/context_manager.zig Window.getInternal 1
-src/runtime/engines/v8/context_manager.zig Window.getNamedProperty 1
-src/runtime/engines/v8/context_manager.zig Window.hasNamedProperty 1
-src/runtime/engines/v8/context_manager.zig Window.setBoundV8Global 2
 src/runtime/engines/v8/window_properties.zig Window.getNamedProperty 2
 src/runtime/engines/v8/window_properties.zig Window.hasNamedProperty 1
 src/runtime/engines/v8/wrapper_cache.zig Document.getInternalState 1

@@ -70,6 +70,17 @@ pub const InternalState = struct {
         .{ .edge = .{ .slot = .{ .name = "intersectionRect" } } },
     },
     target: node_holds.MemberHold = .{},
+
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the target, in the collector's atomic pause. Blink's
+    /// IntersectionObserverEntry::Trace visits target_ (core/
+    /// intersection_observer/intersection_observer_entry.cc, Chromium
+    /// 131.0.6778.0). A queued entry, unwrapped, is traced from its
+    /// observer (IntersectionObserver's own trace).
+    pub fn traceHeldNodes(instance: *runtime.Instance, tracer: *engine.Tracer) void {
+        const self = getInternal(instance) orelse return;
+        self.target.trace(tracer);
+    }
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {

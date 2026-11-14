@@ -318,6 +318,14 @@ const StorageTask = struct {
         engine.runTaskInRealm(window.ctx, steps, self) catch {};
     }
 
+    /// The timer's end with this task still armed: its window's loop never
+    /// turns again, so the event is never fired and the task's copies go here
+    /// (`TimerInterface.setTimeoutOwned`).
+    fn drop(data: ?*anyopaque) void {
+        const self: *StorageTask = @ptrCast(@alignCast(data orelse return));
+        self.destroy();
+    }
+
     fn steps(data: ?*anyopaque) void {
         const self: *StorageTask = @ptrCast(@alignCast(data orelse return));
         const window = self.target() orelse return;
@@ -372,5 +380,15 @@ fn queueStorageEvent(window: *runtime.Instance, kind: WebStorageType, key: ?[]co
     task.old_value = if (old_value) |v| allocator.dupe(u8, v) catch return task.destroy() else null;
     task.new_value = if (new_value) |v| allocator.dupe(u8, v) catch return task.destroy() else null;
     task.url = allocator.dupe(u8, url) catch return task.destroy();
+    // Owned by the timer: a task its window's loop never runs is freed when
+    // the timer ends. With the plain form nobody freed it: a storage change
+    // just before the remote window's Browser ended leaked the task and its
+    // three copies - 12 allocations at one WPT runner child's exit, from the
+    // three changes in the cleanup of html/browsers/windows/
+    // auxiliary-browsing-contexts/opener-noopener.html (lane wrap1 b2;
+    // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md;
+    // Window.zig queueDefinitelyClose is the same cure).
+    if (timer.setTimeoutOwned(0, StorageTask.run, task, StorageTask.drop) != 0) return;
+    // A timer that cannot promise the drop: the plain one, as before.
     if (timer.setTimeout(0, StorageTask.run, task) == 0) task.destroy();
 }

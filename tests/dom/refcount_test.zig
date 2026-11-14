@@ -83,7 +83,7 @@ const Fixture = struct {
     }
 };
 
-test "NodeBase is 88 bytes: the counts' 8 beside nodeholds' `holds` (until step 9b), the rest R6's" {
+test "NodeBase keeps the counts in 8 bytes, and no `holds` chain (step 9b)" {
     // 440 bytes before NodeBase.is_shadow_host, 448 since lane nodeholds' hold
     // chain head (`holds`, a pointer: the padding beside node_type and the
     // bools was 3 bytes), and 456 with `rc` and `subtree_holds` (8 bytes that
@@ -96,8 +96,15 @@ test "NodeBase is 88 bytes: the counts' 8 beside nodeholds' `holds` (until step 
     // list carried in safe builds): the sibling links are the children, 112 in
     // every build. Lane perf2 batch 6 took the allocator copy (16: an owner
     // word names it) and last_child (8: the first child's previous link): 88.
-    // Step 9b of tmp/plans/refcount-design.md deletes `holds` and pins 8 fewer.
-    try testing.expectEqual(@as(usize, 88), @sizeOf(NodeBase));
+    // Step 9b of tmp/plans/refcount-design.md deletes `holds` (the wrapper
+    // redesign's P6, lane wr1 batch 6: holders trace their nodes): 80.
+    try testing.expect(!@hasField(NodeBase, "holds"));
+    // Lane nm1: 88 with the node document's generation (it was Node's own
+    // field). The size is pinned in ONE place, node_block_sizes_test.zig;
+    // what this test holds is the counts' own 8 bytes and the chain's absence.
+    try testing.expectEqual(@as(usize, 4), @sizeOf(@FieldType(NodeBase, "rc")));
+    try testing.expectEqual(@as(usize, 4), @sizeOf(@FieldType(NodeBase, "subtree_holds")));
+    try testing.expect(!@hasField(NodeBase, "holds"));
 }
 
 test "a node is born with one reference and one hold" {

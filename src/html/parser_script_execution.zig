@@ -312,10 +312,10 @@ pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.styl
 }
 
 /// HTML 13.2.6.1 "create an element for a token": "Append each attribute in
-/// the given token to element" - at once, the list from the parser run's
-/// `cache` (dom.element_attributes.setParsed: shared with the run's elements
-/// whose set is equal; lane nd2 batch 4).
-pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+/// the given token to element" - at once, the list from the cache of the
+/// parser `run`'s document (dom.element_attributes.setParsed: shared with
+/// every element whose set is equal; lane nd2 batches 4 and 5).
+pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
     // The conversion buffer is declared without ReleaseSafe's 0xaa fill -
     // over a kilobyte written for every element with an attribute, on the
     // parser's path (the user's approval of 2026-11-06 for hot-path buffer
@@ -324,10 +324,10 @@ pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_co
     @setRuntimeSafety(false);
     if (attrs.len == 0) return;
     var stack: [16]dom.element_attributes.Attribute = undefined;
-    return appendParsedAttributesIn(&stack, element, attrs, cache);
+    return appendParsedAttributesIn(&stack, element, attrs, run);
 }
 
-fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, cache: ?*dom.element_attributes.SharingCache) void {
+fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
     const on_heap = attrs.len > stack.len;
     const allocator = runtime.allocatorOf(element);
     const converted = if (on_heap) allocator.alloc(dom.element_attributes.Attribute, attrs.len) catch |err| {
@@ -341,7 +341,7 @@ fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, elemen
         .local_name = attr.name,
         .value = attr.value,
     };
-    dom.element_attributes.setParsed(element, converted, cache) catch |err| log.debug("parser attributes not appended: {}", .{err});
+    dom.element_attributes.setParsed(element, converted, if (run) |r| r.blocks() else null) catch |err| log.debug("parser attributes not appended: {}", .{err});
 }
 
 pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
@@ -385,9 +385,7 @@ pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *Tre
     adapter.inserting = if (child.node_type == .element) child else null;
     defer adapter.inserting = outer;
     const inserted = parser_mutation.insert(adapter, location, child) catch false;
-    if (inserted) {
-        adapter.removeOrphan(child);
-    } else adapter.keepFailedInsertion(child);
+    if (inserted) adapter.removeOrphan(child);
     adapter.endPendingHold(child);
 }
 
@@ -405,6 +403,25 @@ pub fn domAdapterOnStructureHold(tree_node: *TreeNode, context: ?*anyopaque) voi
 pub fn domAdapterOnStructureRelease(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     adapter.releaseForStructures(tree_node);
+}
+
+/// Free a parentless node the adapter made and no wrapper holds - with its
+/// subtree - unless a node of its tree is wrapped. Since the wrapper
+/// redesign's P7 a wrap wraps no ancestor, so the root's own wrapper no longer
+/// answers for its tree: a script may have read a node out of it while it was
+/// in the document (getElementById), and HTML "in body" (a start tag
+/// "frameset" with the frameset-ok flag "ok": "remove the second element on
+/// the stack of open elements from its parent node") removes the body with
+/// everything parsed into it (tests/wpt/crane/wr7-parser-removed-body-keeps-
+/// held-node.html). A tree script reaches is left to the counts (refcount
+/// step 7): only its creator's reference ends here, and the agent's queue
+/// frees it once its last wrapper's reference goes - WebKit's removed body
+/// lives while a node of it is ref'd.
+fn freeOrphan(dom_node: *runtime.Instance) void {
+    if (dom.instance_bridge.getNodeBase(dom_node)) |base| {
+        if (dom.wrapper_tracing.holdsWrapper(base)) return dom.refcount.releaseCreatorReference(base);
+    }
+    dom.node_creation.destroyUninserted(dom_node);
 }
 
 pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
@@ -726,14 +743,6 @@ pub const DomTreeAdapter = struct {
         owned: engine.Owned,
     };
 
-    /// The owning parser's rescue (design 5.3, trigger 2), for an element
-    /// whose insertion failed: it is parentless, or in a tree its Document
-    /// does not keep, and may be or become held.
-    pub const Rescuer = struct {
-        context: ?*anyopaque,
-        rescue: *const fn (?*anyopaque, *runtime.Instance) void,
-    };
-
     /// What a node's creation can have done before the adapter asks whether
     /// it has a wrapper.
     pub const Creation = enum {
@@ -798,14 +807,15 @@ pub const DomTreeAdapter = struct {
     /// element wrapped at its creation is held, until its first insertion
     /// attempt (usually empty).
     pending: std.ArrayListUnmanaged(PendingHold) = .empty,
-    rescuer: ?Rescuer = null,
     /// The patching templates' counted holds (`PatchHold`); usually empty.
     patch_holds: std.ArrayListUnmanaged(PatchHold) = .empty,
-    /// This parse's shared attribute blocks (dom.element_data.SharingCache):
-    /// one per distinct attribute set, for this parser run only - freed in
-    /// `deinit`, which every path the parser ends by reaches (its last
-    /// reference: finished, aborted by document.open, stopped).
-    attribute_blocks: dom.element_attributes.SharingCache = .{},
+    /// This parse's share in its document's attribute-block cache
+    /// (dom.attribute_block_cache.Run): ended when the parse finishes
+    /// (`finishedParsing`: the cache's 10 s start there, as Blink's
+    /// Document::FinishedParsing starts its timer) and in `deinit`, which
+    /// every other path the parser ends by reaches (its last reference:
+    /// aborted by document.open, stopped, its document destroyed).
+    attribute_run: dom.element_attributes.ParserRun,
     /// What the node being created can have done (`mustCheckWrapper`); set by
     /// the create step, consumed by onNodeCreated.
     last_creation: ?Creation = null,
@@ -833,9 +843,15 @@ pub const DomTreeAdapter = struct {
             .allocator = allocator,
             .ctx = ctx,
             .document = document,
+            .attribute_run = .begin(document, .document),
             .document_generation = runtime.SlabAllocator.generationOf(document),
             .had_engine = ctx.hasEngine(),
         };
+    }
+
+    /// The parser processed its end of file: it makes no more elements.
+    pub fn finishedParsing(self: *DomTreeAdapter) void {
+        self.attribute_run.end();
     }
 
     pub fn deinit(self: *DomTreeAdapter) void {
@@ -852,14 +868,14 @@ pub const DomTreeAdapter = struct {
             // Belt: a node that somehow acquired a parent without going through
             // onChildAppended is attached, whatever the list says.
             const parent = interfaces.Node.get_parentNode(dom_node) catch null;
-            if (parent == null) dom.node_creation.destroyUninserted(dom_node);
+            if (parent == null) freeOrphan(dom_node);
         }
         self.orphans.deinit(self.allocator);
         for (self.pending.items) |held| held.owned.release();
         self.pending.deinit(self.allocator);
         for (self.patch_holds.items) |*held| held.release();
         self.patch_holds.deinit(self.allocator);
-        self.attribute_blocks.deinit();
+        self.attribute_run.end();
     }
 
     /// Hold `patch`'s live target and markers counted (see `PatchHold`),
@@ -940,7 +956,7 @@ pub const DomTreeAdapter = struct {
                 const previous: *runtime.Instance = @ptrCast(@alignCast(previous_opaque));
                 if (previous != dom_node and runtime.SlabAllocator.generationOf(previous) == tree_node.dom_generation and
                     !engine.hasWrapper(previous) and (interfaces.Node.get_parentNode(previous) catch null) == null)
-                    dom.node_creation.destroyUninserted(previous);
+                    freeOrphan(previous);
             }
         }
         tree_node.dom_node = dom_node;
@@ -963,7 +979,7 @@ pub const DomTreeAdapter = struct {
                 }
             }
         }
-        // Wrapped nodes belong to engine cleanup (a pending hold, a rescue,
+        // Wrapped nodes belong to engine cleanup (a pending hold,
         // or script that wrapped them); an unwrapped one is the adapter's
         // until an insertion takes it.
         if (dom_node != self.document and !(mustCheckWrapper(creation) and engine.hasWrapper(dom_node)))
@@ -979,11 +995,9 @@ pub const DomTreeAdapter = struct {
         // Hand the child over to V8 only if it really was attached: a failed
         // append leaves it orphaned and still ours to free.
         const inserted = parser_mutation.insert(self, .{ .parent = parent, .before = child.next_sibling, .move = true }, child) catch |err| {
-            self.keepFailedInsertion(child);
             self.endPendingHold(child);
             return err;
         };
-        if (!inserted) self.keepFailedInsertion(child);
         self.endPendingHold(child);
         if (!inserted) return;
         self.removeOrphan(child);
@@ -1012,25 +1026,12 @@ pub const DomTreeAdapter = struct {
         interfaces.CharacterData.set_data(dom_node, dom_string) catch {};
     }
 
-    /// After a failed parser insertion of an element (design 5.3, trigger 2):
-    /// rescue the root of the tree it is in, unless that is the Document -
-    /// a pre-insert error leaves it parentless, and a reaction may have put
-    /// it in a tree nothing else keeps. Rare and script-induced: one wrapper
-    /// until the parser ends.
-    pub fn keepFailedInsertion(self: *DomTreeAdapter, tree_node: *TreeNode) void {
-        if (tree_node.node_type != .element) return;
-        const rescuer = self.rescuer orelse return;
-        const node = self.getDomNode(tree_node) orelse return;
-        const base = dom.instance_bridge.getNodeBase(node) orelse return;
-        const root_base = @import("parser_holds.zig").hostIncludingRoot(base);
-        const document_base = dom.instance_bridge.getNodeBase(self.document);
-        if (document_base != null and root_base == document_base.?) return;
-        const root_opaque = dom.instance_bridge.getInstance(root_base) orelse return;
-        rescuer.rescue(rescuer.context, @ptrCast(@alignCast(root_opaque)));
-    }
-
     /// The first insertion attempt of `tree_node` has ended: its pending
-    /// hold, if it has one, goes. A failed attempt was rescued first.
+    /// hold, if it has one, goes. An element a failed attempt left outside
+    /// the Document is kept, with its tree's wrappers, by the parser's own
+    /// structures while they name it (counted; traced from the Document: the
+    /// wrapper redesign's P6), as Blink's HTMLConstructionSite::Trace keeps
+    /// it - no wrapper is rooted for it.
     pub fn endPendingHold(self: *DomTreeAdapter, tree_node: *TreeNode) void {
         if (self.pending.items.len == 0) return;
         for (self.pending.items, 0..) |held, i| {
@@ -1042,10 +1043,10 @@ pub const DomTreeAdapter = struct {
     }
 
     // =========================================================================
-    // Counted references (refcount design step 5a). SHADOW MODE: the counts
-    // decide nothing yet; the parser's rescues (parser_holds) are what keeps
-    // a held node from the collector until step 7. A node freed under one
-    // of these (its realm's end) is forgotten, never released.
+    // Counted references (refcount design step 5a): the counts decide every
+    // free since step 7, and the Document traces what the structures hold
+    // (the wrapper redesign's P6). A node freed under one of these (its
+    // realm's forced end) is forgotten, never released.
     // =========================================================================
 
     /// `tree_node`'s DOM node as a live tree node, or null once it is gone
@@ -1198,7 +1199,7 @@ pub const DomTreeAdapter = struct {
             dom.finish_parsing_children.createdByParser(element, local_name);
         }
 
-        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_blocks);
+        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_run);
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.

@@ -1,0 +1,16 @@
+# Testing: Read what a workload keeps before naming a footprint row's cause - a row that drops everything measures how long the dead wait, not how big the living are
+
+**Date**: 2026-11-13
+**Lesson**: A footprint row is either "bytes per object kept" or "garbage waiting to be released", and only the workload's source says which. `dom.create-element` makes 20,000 divs a sample and keeps none, so its footprint is the high-water mark of dead nodes that have not been released yet; it was read as a per-wrapper object's cost, and the three rows after it on the page (getter, setter and method loops, 16 elements each) carried the same figure.
+
+**Why**: The V8 15.7 port left four rows over the 3% bar (dom.create-element 1.053 of the 13.1 main, the three loops 1.06). A heap breakdown at the row's end showed a C++ heap that the old engine did not have (one cppgc object per wrapper), and the row was filed under that object: "R2, the wrapper link, node wrappers ... for 100,000 kept elements". The object is real, and it is 24 bytes a wrapper. But the page keeps no element, so the bytes at the mark are whatever the collector has found dead and the host has not freed - and that is set by WHEN a dead wrapper's node is released, not by what a live wrapper weighs. The breakdown named a component that was present; it could not say whether that component moved the row.
+
+**What Happened**: Lane wr1 batch 11 re-measured the wrapper redesign on V8 15.7 against main (chat.local, 2026-11-13, x7, steady mark). The redesign makes a KEPT node smaller - 466 against 513-518 bytes for a kept div in gc_bench, with a C++ object that is 8 bytes BIGGER than main's - and yet the four rows read 1.060-1.068 of main: worse. The same binary with one change, node wrappers' releases owed to the agent's safe point in the collection that found them dead instead of where V8 runs a second pass, read 0.909-0.915 (create-element 72.0 MB in all seven runs against 78.0-78.8 and 83.9-84.1). Nothing about a wrapper's size had changed between those two binaries. `dom.clone-node` (50 clones of a 1,000-node tree a sample, each dropped) moved the same way, 145.5 to 126.7 MB. So the plan's "R2: shrink the per-node cppgc object" would have saved 8 bytes on kept nodes and left its own rows where they were; R3's timing change was R2's fix.
+
+**Fix**:
+1. Before assigning a cause to a row, open the workload and write down what it KEEPS at the mark. Nothing kept: the row is a release-latency row, and its candidates are the collector's schedule and the host's release timing.
+2. Check the page's later rows against its first: a figure that repeats down a page (here to four digits) is inherited from an earlier workload's high-water mark, not produced by each row.
+3. Test the cause with a build that changes only it. A heap breakdown at one mark shows what is there, not what a change would move.
+4. Keep a kept-object measurement beside the suite for the size question (`gc_bench --bench=div`, tests/perf/elements.json): it answered "is the object bigger" in seconds, with the opposite sign to the row.
+
+**Takeaway**: **A memory row has a kind: what is kept, or how long the dead wait. Read the workload to learn which before naming a cause - and prove the cause with a build that changes nothing else.**

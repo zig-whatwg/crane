@@ -4,8 +4,8 @@
 //! `wrapper: engine.NodeWrapperSlot`, which starts `.empty`; the host asks it
 //! only `isEmpty()` (dom.mutation's opaque-root tests, orphanRemoved, Node's
 //! teardown), and the adapter reaches it only through runtime.lifetime's
-//! `slotOf` - never by naming the field. NodeBase stays 88 bytes
-//! (tests/dom/refcount_test.zig).
+//! `slotOf` - never by naming the field. NodeBase is 80 bytes since the
+//! redesign's P6 (tests/dom/refcount_test.zig).
 
 const std = @import("std");
 const dom = @import("dom");
@@ -17,7 +17,9 @@ const NodeBase = dom.NodeBase;
 test "NodeBase's wrapper is the engine's slot, and nothing else names the old alias" {
     try std.testing.expect(@FieldType(NodeBase, "wrapper") == engine.NodeWrapperSlot);
     try std.testing.expect(!@hasField(NodeBase, "bound_v8_wrapper"));
-    try std.testing.expectEqual(@as(usize, 88), @sizeOf(NodeBase));
+    // The slot is one word of NodeBase; NodeBase's size is pinned in ONE
+    // place, tests/dom/node_block_sizes_test.zig (lane nm1).
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(NodeBase, "wrapper")));
 }
 
 test "a new node's slot is empty" {

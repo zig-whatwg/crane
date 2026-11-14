@@ -39,7 +39,6 @@ const runtime = @import("runtime");
 /// Public for tests/v8, which builds and frees overloads with the testing
 /// allocator.
 pub const overload_resolver = @import("overload_resolver.zig");
-const wrapper_type_info = @import("wrapper_type_info.zig");
 const template_registry = @import("template_registry.zig");
 const window_properties = @import("window_properties.zig");
 const value_operations = @import("value_operations.zig");
@@ -47,16 +46,17 @@ const binding_plumbing = @import("binding_plumbing.zig");
 const CallFrame = @import("call_frame.zig").CallFrame;
 const ArgumentRead = @import("call_frame.zig").ArgumentRead;
 
-/// Re-export WrapperTypeInfo for use by generated bindings
-pub const WrapperTypeInfo = wrapper_type_info.WrapperTypeInfo;
-
 /// Import webidl for Opt type checking
 const webidl = @import("webidl");
 
-/// Number of internal fields required for wrapped objects
-/// Slot 0: Zig instance pointer
-/// Slot 1: WrapperTypeInfo pointer (for type-safe unwrapping)
-pub const INTERNAL_FIELD_COUNT: c_int = 2;
+/// The internal fields of a platform object's wrapper: one, the Zig instance
+/// (*runtime.Instance). The brand check is the instance's state ancestry
+/// (`conv.implements`), so no WrapperTypeInfo is kept beside it: on V8 >= 15.7
+/// every aligned pointer in a field is a cppgc EmbedderDataSlotWrapper of its
+/// own (d04704a20fc), and the second field cost one per typed wrapper for a
+/// check the ancestry makes (lane v8up A0; tmp/plans/object-wrap-design.md
+/// 3.3). Blink keeps one CppHeap pointer (Object::Wrap) and checks its tag.
+pub const INTERNAL_FIELD_COUNT: c_int = 1;
 
 /// Check if a type is a webidl.Opt (Optional) wrapper type by checking for notPassed() declaration
 fn isWebIdlOpt(comptime T: type) bool {
@@ -2198,6 +2198,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
     const Meta = Interface.Meta;
     const interface_name = Meta.name;
+    // A node interface - every instance a node (its State keeps a NodeBase:
+    // the VTable's `counted`, runtime.lifetime.countedOf) - has wrappers with
+    // NO internal field: each points at its node's anchor on the agent's C++
+    // heap through Object::Wrap, and its members unwrap their receiver with
+    // Object::Unwrap (the wrapper redesign's P4, design 4.2-4.3). Every other
+    // interface keeps its one field, the instance (INTERNAL_FIELD_COUNT).
+    const node_interface = comptime runtime.lifetime.countedOf(Interface.State) != null;
 
     // WebIDL 2.5.6: the special operations, from codegen's table
     // (specialBinding). The indexed getter is `call_item` for `getter T?
@@ -2284,7 +2291,7 @@ pub fn V8Interface(comptime Interface: type) type {
     // and operations - its mixins' included - are properties of the global
     // object, not of the interface prototype object. The globals this engine
     // gives them as own properties are Window's (protocol_realms
-    // bindWindowToGlobal, context_manager hydrateWindowContext) and the
+    // bindWindowToGlobal) and the
     // worker scopes' (worker_realm bindGlobalScope); their prototypes hold
     // none. Other [Global] interfaces (the worklets', ShadowRealmGlobalScope)
     // keep them on the prototype until their globals do the same.
@@ -3436,12 +3443,14 @@ pub fn V8Interface(comptime Interface: type) type {
             // that's a V8 limitation we cannot work around without V8 internal APIs.
             v8.v8_FunctionTemplate_ReadOnlyPrototype(template);
 
-            // Get instance template and set internal field count
-            // Field 0: pointer to Zig instance (*runtime.Instance)
-            // Field 1: pointer to type tag (for type-safe unwrapping)
+            // The instance template's one internal field: the Zig instance
+            // (*runtime.Instance; INTERNAL_FIELD_COUNT says why there is no other).
+            // A node interface's: none (`node_interface`: the wrapper points at
+            // its node's anchor through Object::Wrap; the snapshot holds the
+            // templates, so it is regenerated with them - design 4.8).
             const instance_tmpl = v8.v8_FunctionTemplate_InstanceTemplate(template);
             defer v8.v8_ObjectTemplate_Dispose(instance_tmpl);
-            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, 2);
+            v8.v8_ObjectTemplate_SetInternalFieldCount(instance_tmpl, if (node_interface) 0 else INTERNAL_FIELD_COUNT);
 
             // Per WebIDL spec, platform objects of [Global] interfaces have immutable [[Prototype]].
             // Also some specific interfaces like Location.
@@ -3695,7 +3704,7 @@ pub fn V8Interface(comptime Interface: type) type {
                     if (special.named_properties_in_own_keys) namedPropertyEnumerator else null,
                     namedPropertyDefiner,
                     namedPropertyDescriptor,
-                    if (named_properties_mask) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
+                    if (named_properties_mask or named_setter_masks) .kOnlyInterceptStrings else .kNonMaskingAndOnlyInterceptStrings,
                 );
             }
             // Named properties and no indexed ones: an array index is a
@@ -3929,16 +3938,12 @@ pub fn V8Interface(comptime Interface: type) type {
         /// other `this`, which the generic path brand-checks.
         const answerWindowGetter = binding_plumbing.answerWindowGetter;
 
-        const realmWindow = binding_plumbing.realmWindow;
-        const globalReceiverWindow = binding_plumbing.globalReceiverWindow;
-
         /// WebIDL 3.7.6 attribute getter and setter step 1: "If O is not a
         /// platform object that implements the interface, throw a TypeError"
-        /// ([LegacyLenientThis]: return undefined). The receiver checks in
-        /// the accessor callbacks read WrapperTypeInfo, which
-        /// `wrapper_type_info_registry` never supplies and `dom_type_info`
-        /// supplies for 24 interfaces, so every other wrapper - and every
-        /// constructor-made one - was unwrapped unchecked, and
+        /// ([LegacyLenientThis]: return undefined). The accessor callbacks
+        /// once read a WrapperTypeInfo that only 24 interfaces' wrappers
+        /// carried (gone since lane v8up A0), so every other wrapper - and
+        /// every constructor-made one - was unwrapped unchecked, and
         /// `HTMLInputElement.value` answered for a textarea. The state
         /// ancestry is the brand, as it is for operations (MethodCallback)
         /// and for an interface-typed value (`conv.implements`). A vtable
@@ -3982,6 +3987,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// attribute of every interface.
                 const plumbing: binding_plumbing.Getter = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .getter_name = getter_name,
                     .kind = kind,
                     .checks_receiver = std.mem.eql(u8, iface_name, "Location") and
@@ -4218,6 +4224,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// shared by every operation of every interface.
                 const plumbing: binding_plumbing.Operation = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .operation_name = if (std.mem.startsWith(u8, zig_name, "call_static_")) zig_name["call_static_".len..] else if (std.mem.startsWith(u8, zig_name, "call_")) zig_name["call_".len..] else zig_name,
                     .returns_promise = returnsPromise(Interface, zig_name),
                     .ce_reactions = dispatchRunsCEReactions(Interface, zig_name),
@@ -5196,9 +5203,9 @@ pub fn V8Interface(comptime Interface: type) type {
                 if (err == conv.ConversionError.ExceptionPending) {
                     return .kNo;
                 }
-                // The receiver's realm, the error's: `this` is taken here,
-                // on the throwing path only.
-                const this_obj = info.getThis();
+                // The holder's realm, the error's (V8 >= 14 gives a property
+                // callback no receiver): taken here, on the throwing path only.
+                const this_obj = info.getHolder() orelse return .kNo;
                 defer v8.v8_Object_Dispose(this_obj);
                 // Owned when V8 answers it - a fresh Global<Context>.
                 const creation_ctx = v8.v8_Object_GetCreationContext(this_obj);
@@ -5295,7 +5302,7 @@ pub fn V8Interface(comptime Interface: type) type {
             defer v8.v8_Context_Dispose(v8_context);
 
             // Get the 'this' object (the interface instance)
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5546,7 +5553,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
 
             // Get the 'this' object
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5613,7 +5620,7 @@ pub fn V8Interface(comptime Interface: type) type {
             const isolate = info.getIsolate();
 
             // Get the 'this' object
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
 
             // Extract instance pointer from internal field
@@ -5708,7 +5715,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn indexedPropertyDefiner(
             index: u32,
             desc: *const v8.PropertyDescriptor,
-            info: *const v8.PropertyCallbackInfoVoid,
+            info: *const v8.PropertyCallbackInfoBoolean,
         ) callconv(.c) v8.Intercepted {
             const isolate = info.getIsolate();
             // The current context is acquired below, only where a value is
@@ -5737,8 +5744,8 @@ pub fn V8Interface(comptime Interface: type) type {
 
             // Step 1.7: Invoke indexed property setter with value
             // Extract instance pointer from internal field of the actual instance (This)
-            // Note: getThis() returns the actual object, getHolder() returns the prototype
-            const this_obj = info.getThis();
+            // The holder: V8 calls a definer only on the object it defines on (the receiver)
+            const this_obj = info.getHolder() orelse return .kNo;
             defer v8.v8_Object_Dispose(this_obj);
             const instance_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0);
             if (instance_ptr) |ptr| {
@@ -5808,6 +5815,28 @@ pub fn V8Interface(comptime Interface: type) type {
         /// algorithm's step 3, and a masking interceptor), or CSS's.
         const named_properties_mask = special.legacy_override_built_ins or is_css_style_declaration;
 
+        /// Whether a named SETTER makes the named interceptor masking where
+        /// visibility alone would not (no [LegacyOverrideBuiltIns]): WebIDL
+        /// 3.9.2 [[Set]] step 1.2 sends every String to the named setter and
+        /// 3.9.3 [[DefineOwnProperty]] step 2.2 every name O has no own
+        /// property for, whatever the prototype chain has. V8 15.7
+        /// (fa6c1824b06, "[lookup] Support own property lookup in
+        /// non-masking interceptors", bug 483413086) no longer consults a
+        /// non-masking interceptor in an OWN lookup for a name the prototype
+        /// chain has: the definer the legacy proxy's [[Set]] trap reaches
+        /// through DefineProperty never ran for `localStorage.key = v`, and
+        /// V8 made an own data property. A masking interceptor is consulted
+        /// in every lookup; its getter then runs the whole visibility
+        /// algorithm (namedGet), as [LegacyOverrideBuiltIns]'s does, and its
+        /// query, descriptor and deleter already did. Golden rule 2, no newer
+        /// spec involved: Firefox 159 and Safari 27.2 call the named setter
+        /// (webstorage/set.window.html 16/20 each, its "data property on
+        /// prototype" subtests passing), Chrome 157 makes the own property
+        /// (8/20, those failing) - the majority, and the spec. Storage is the
+        /// one interface this reaches: DOMStringMap masks already, and the CSS
+        /// declarations' named properties are Crane's CSS attributes.
+        const named_setter_masks = has_named_setter and !named_properties_mask and !special.crane_css_properties;
+
         /// A property key's text as a DOMString holds it: WTF-8 (WriteUtf8
         /// without REPLACE_INVALID_UTF8 keeps a lone surrogate as its three
         /// bytes), of any length, the empty string included - a key past the
@@ -5865,10 +5894,10 @@ pub fn V8Interface(comptime Interface: type) type {
             return instanceOf(info.holderAlignedPointer(0));
         }
 
-        /// O for a write: the receiver (V8 runs a setter or definer
-        /// interceptor only on the holder itself).
+        /// O for a write: the holder, which is the receiver (V8 runs a setter
+        /// or definer interceptor only on the holder itself).
         fn receiverInstance(info: anytype) ?*runtime.Instance {
-            const this_obj = info.getThis();
+            const this_obj = info.getHolder() orelse return null;
             defer v8.v8_Object_Dispose(this_obj);
             return instanceOf(v8.v8_Object_GetAlignedPointerFromInternalField(this_obj, 0));
         }
@@ -6045,7 +6074,8 @@ pub fn V8Interface(comptime Interface: type) type {
         /// LegacyPlatformObjectGetOwnProperty step 2, for [[Get]]: the value
         /// of a named property the visibility algorithm (3.9.7) finds visible.
         /// What V8 has already answered decides which steps are asked here:
-        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns]) is
+        ///   - a non-masking interceptor (no [LegacyOverrideBuiltIns], no named
+        ///     setter: `named_setter_masks`) is
         ///     consulted only once O's own properties and its prototype chain
         ///     have no P - steps 2 and 4-6 - so it asks step 1;
         ///   - a masking one is consulted BEFORE O's own properties
@@ -6061,7 +6091,7 @@ pub fn V8Interface(comptime Interface: type) type {
         fn namedGet(info: *const v8.PropertyCallbackInfo, key: []const u8, comptime whole_visibility: bool) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const instance = holderInstance(info) orelse return .kNo;
-            if (whole_visibility or (comptime special.legacy_override_built_ins and !is_css_style_declaration)) {
+            if (whole_visibility or (comptime (special.legacy_override_built_ins or named_setter_masks) and !is_css_style_declaration)) {
                 // isVisible stops at step 1 for an unsupported name: the
                 // own-property question is asked only of a supported one.
                 if (!isVisible(instance, info, key)) return .kNo;
@@ -6218,7 +6248,7 @@ pub fn V8Interface(comptime Interface: type) type {
         ///         otherwise invoke it with P and Desc.[[Value]], return true.
         ///   3. Otherwise OrdinaryDefineOwnProperty.
         /// "Return false" is refuseDefine's.
-        fn namedDefine(info: *const v8.PropertyCallbackInfoVoid, key: []const u8, desc: *const v8.PropertyDescriptor) v8.Intercepted {
+        fn namedDefine(info: *const v8.PropertyCallbackInfoBoolean, key: []const u8, desc: *const v8.PropertyDescriptor) v8.Intercepted {
             if (comptime !has_named_getter) return .kNo;
             const isolate = info.getIsolate();
             if (comptime special.crane_css_properties) {
@@ -6261,7 +6291,7 @@ pub fn V8Interface(comptime Interface: type) type {
         /// 'x', {get() {}})`). With the exception pending, V8 propagates it
         /// (GetBooleanReturnValue answers Nothing). The indexed definer
         /// throws its own the same way.
-        fn refuseDefine(info: *const v8.PropertyCallbackInfoVoid, isolate: *v8.Isolate) v8.Intercepted {
+        fn refuseDefine(info: *const v8.PropertyCallbackInfoBoolean, isolate: *v8.Isolate) v8.Intercepted {
             info.setFalse();
             if (info.shouldThrowOnError()) conv.throwTypeError(isolate, "Cannot define this property of a legacy platform object");
             return .kYes;
@@ -6337,7 +6367,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedSetReadOnly(info, key.read(property) orelse return .kNo);
         }
 
-        fn namedPropertyDefiner(property: *v8.Name, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+        fn namedPropertyDefiner(property: *v8.Name, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoBoolean) callconv(.c) v8.Intercepted {
             var key: PropertyName = .{};
             defer key.deinit();
             return namedDefine(info, key.read(property) orelse return .kNo, desc);
@@ -6374,7 +6404,7 @@ pub fn V8Interface(comptime Interface: type) type {
             return namedSetReadOnly(info, key.of(index));
         }
 
-        fn forwardedIndexDefiner(index: u32, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoVoid) callconv(.c) v8.Intercepted {
+        fn forwardedIndexDefiner(index: u32, desc: *const v8.PropertyDescriptor, info: *const v8.PropertyCallbackInfoBoolean) callconv(.c) v8.Intercepted {
             var key: IndexName = .{};
             return namedDefine(info, key.of(index), desc);
         }
@@ -7646,20 +7676,9 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
 
-            // Try type-safe unwrapping first
-            const wrapper_type_info_registry_iter = @import("wrapper_type_info_registry.zig");
-            const instance = blk: {
-                if (wrapper_type_info_registry_iter.getWrapperTypeInfoByName(interface_name)) |expected_type| {
-                    break :blk getInstanceTypeSafe(runtime.Instance, this_obj, expected_type) orelse {
-                        conv.throwError(isolate, "Invalid instance for async iterator - type mismatch");
-                        return;
-                    };
-                } else {
-                    break :blk getInstance(runtime.Instance, this_obj) orelse {
-                        conv.throwError(isolate, "Invalid instance for async iterator");
-                        return;
-                    };
-                }
+            const instance = getInstance(runtime.Instance, this_obj) orelse {
+                conv.throwError(isolate, "Invalid instance for async iterator");
+                return;
             };
 
             // Call interface's call_values() method to get the Zig iterator
@@ -7828,6 +7847,7 @@ pub fn V8Interface(comptime Interface: type) type {
                 /// attribute of every interface.
                 const plumbing: binding_plumbing.Setter = .{
                     .interface_name = interface_name,
+                    .node_receiver = node_interface,
                     .ce_reactions = runsCEReactions(Interface, setter_name_param),
                     // Released unless converting the value may keep it - the
                     // allowlist every other binding path consults.
@@ -8412,14 +8432,6 @@ pub fn V8Interface(comptime Interface: type) type {
 //
 // ============================================================================
 
-/// Extract Zig instance from V8 object internal field (legacy - no type checking)
-/// Prefer getInstanceTypeSafe for production code.
-///
-/// ## Pointer Tagging Note
-///
-/// This function returns an UNTAGGED pointer. The pointer is extracted directly
-/// from V8's internal field storage, not from conv.fromV8Value(). No untagging
-/// is required by callers.
 /// The overload resolution algorithm's view of one call's arguments
 /// (webidl.overload_resolution.select calls `at` for the distinguishing index).
 ///
@@ -8544,6 +8556,17 @@ pub const OverloadArg = struct {
     }
 };
 
+/// The Zig instance in `object`'s internal field, its only one; null for an
+/// object with none, or a poisoned (freed) pointer. Whether it implements an
+/// interface is the caller's brand check, the instance's state ancestry
+/// (`conv.implements`): a wrapper keeps no WrapperTypeInfo beside it (lane
+/// v8up A0).
+///
+/// ## Pointer Tagging Note
+///
+/// This function returns an UNTAGGED pointer. The pointer is extracted directly
+/// from V8's internal field storage, not from conv.fromV8Value(). No untagging
+/// is required by callers.
 pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
     if (ptr == null) return null;
@@ -8561,70 +8584,9 @@ pub fn getInstance(comptime T: type, object: *v8.Object) ?*T {
     return @ptrCast(@alignCast(ptr));
 }
 
-/// Extract Zig instance from V8 object with type-safe unwrapping
-///
-/// Validates that the stored type tag matches the expected type before returning.
-/// Returns null if:
-/// - The object has no internal fields set
-/// - The stored type is not compatible with the expected type
-/// - The instance pointer appears to be freed (poison pattern detected)
-pub fn getInstanceTypeSafe(
-    comptime T: type,
-    object: *v8.Object,
-    expected_type: *const WrapperTypeInfo,
-) ?*T {
-    // Get stored type info from slot 1
-    const type_info_ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 1);
-    if (type_info_ptr == null) {
-        // No type info stored - fall back to legacy behavior for compatibility
-        return getInstance(T, object);
-    }
-
-    // Safety check: detect use-after-free on type info pointer
-    const type_ptr_as_int = @intFromPtr(type_info_ptr);
-    const poison_pattern_aa: usize = 0xaaaaaaaaaaaaaaaa;
-    const poison_pattern_dead: usize = 0xdeaddeaddeaddead;
-    if (type_ptr_as_int == poison_pattern_aa or type_ptr_as_int == poison_pattern_dead or
-        (type_ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-    {
-        return null;
-    }
-
-    const stored_type_info: *const WrapperTypeInfo = @ptrCast(@alignCast(type_info_ptr));
-
-    // Validate that stored type is compatible with expected type
-    // Use registry.isSubclassOf for authoritative check (walks parent chain using registry indices)
-    // The tag check is just a fast path/preliminary check, and WrapperTypeInfo.parent pointers
-    // are null in the registry, so we must use the registry helper.
-    const wrapper_type_info_registry = @import("wrapper_type_info_registry.zig");
-    if (!wrapper_type_info_registry.isSubclassOf(stored_type_info, expected_type)) {
-        return null;
-    }
-
-    // Type check passed, get the instance pointer from slot 0
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 0);
-    if (ptr == null) return null;
-
-    // Safety check: detect use-after-free on instance pointer
-    const ptr_as_int = @intFromPtr(ptr);
-    if (ptr_as_int == poison_pattern_aa or ptr_as_int == poison_pattern_dead or
-        (ptr_as_int & 0xFFFF000000000000) == 0xaaaa000000000000)
-    {
-        return null;
-    }
-
-    return @ptrCast(@alignCast(ptr));
-}
-
-/// Get the WrapperTypeInfo from a V8 object (if set)
-pub fn getWrapperTypeInfo(object: *v8.Object) ?*const WrapperTypeInfo {
-    const ptr = v8.v8_Object_GetAlignedPointerFromInternalField(object, 1);
-    if (ptr == null) return null;
-    return @ptrCast(@alignCast(ptr));
-}
-
-/// Store Zig instance in V8 object internal field (legacy - no type info)
-/// Prefer setInstanceWithTypeInfo for new code.
+/// Store the Zig instance in `object`'s internal field, its only one (lane
+/// v8up A0: no WrapperTypeInfo beside it; on V8 >= 15.7 each aligned pointer
+/// in a field is a cppgc object of its own, d04704a20fc).
 ///
 /// ## Pointer Tagging Note
 ///
@@ -8632,40 +8594,18 @@ pub fn getWrapperTypeInfo(object: *v8.Object) ?*const WrapperTypeInfo {
 /// The pointer can later be retrieved via getInstance(), which also returns
 /// it untagged. This bypasses the pointer tagging system entirely.
 pub fn setInstance(comptime T: type, object: *v8.Object, instance: *T) void {
-    v8.v8_Object_SetAlignedPointerInInternalField(
-        object,
-        0,
-        @ptrCast(instance),
-    );
     // [wrap_tracking]: the object reaches the instance from here.
-    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
-}
-
-/// Store Zig instance in V8 object with type info for safe unwrapping
-///
-/// Stores:
-/// - Slot 0: Zig instance pointer
-/// - Slot 1: WrapperTypeInfo pointer (for type checking during unwrap)
-pub fn setInstanceWithTypeInfo(
-    comptime T: type,
-    object: *v8.Object,
-    instance: *T,
-    type_info: *const WrapperTypeInfo,
-) void {
-    // Store instance pointer in slot 0
+    if (T == runtime.Instance) {
+        runtime.instance_lifecycle.markWrapped(instance);
+        // A node's wrapper has no internal field (the wrapper redesign's
+        // P4): it reaches the node through its anchor, which the wrap makes
+        // (WrapperCache.set -> node_wrappers.adopt).
+        if (instance.vtable.counted != null) return;
+    }
     v8.v8_Object_SetAlignedPointerInInternalField(
         object,
         0,
         @ptrCast(instance),
-    );
-    // [wrap_tracking]: the object reaches the instance from here - a
-    // constructor's `this`, a custom element's at construction or upgrade.
-    if (T == runtime.Instance) runtime.instance_lifecycle.markWrapped(instance);
-    // Store type info pointer in slot 1
-    v8.v8_Object_SetAlignedPointerInInternalField(
-        object,
-        1,
-        @ptrCast(@constCast(type_info)),
     );
 }
 
@@ -8847,53 +8787,20 @@ fn getFunctionRealmWithDepth(func: *v8.Value, isolate: *v8.Isolate, depth: u32) 
 /// Per WebIDL spec and WPT tests (DOMException-custom-bindings.any.js):
 /// "If the implementation has a stack property on normal errors, it also does on DOMExceptions"
 ///
-/// This function compiles and runs a small JS snippet that uses Error.captureStackTrace
-/// (V8-specific) to capture the current stack trace and assign it to the DOMException.
+/// v8::Exception::CaptureStackTrace on the new instance, in its constructor's
+/// realm - Blink's V8ThrowDOMException::AttachStackProperty. It replaced a
+/// script that set the instance as a global property through
+/// `Context::Global()` and read it back by name: in a realm whose WindowProxy
+/// went on, that global is the NEW Window's, so the script threw a
+/// ReferenceError, the instance had no stack, and the property stayed on the
+/// new Window (lane v8up b3e; tests/v8/v8up_old_realm_members_test.zig).
 pub fn captureDOMExceptionStack(
     this_obj: *v8.Object,
     isolate: *v8.Isolate,
     v8_context: *v8.Context,
 ) void {
-    // Use Error.captureStackTrace if available (V8/Node.js specific)
-    // This creates a proper stack trace on the target object
-    //
-    // We pass 'this_obj' as a temporary global variable for the script to use
-    // Every handle below is an owned Global, and each is released here: the
-    // global object, the script and its completion value. v8_Object_Set and
-    // v8_Script_Run read them as Locals and keep nothing. Kept, they were three
-    // Globals per DOMException - the global object is the whole page, and
-    // the script is bound to the realm - so every page that made or threw
-    // one stayed alive for the life of the process.
-    const global = v8.v8_Context_Global(v8_context) orelse return;
-    defer v8.v8_Object_Dispose(global);
-
-    // Store the DOMException object as a temporary global for the script to access
-    const temp_key = v8.v8_String_NewFromUtf8(isolate, "__domex_stack_target__", 22) orelse return;
-    defer v8.v8_String_Dispose(temp_key);
-    _ = v8.v8_Object_Set(global, v8_context, @ptrCast(temp_key), @ptrCast(this_obj));
-
-    // Compile and run a script that captures the stack trace
-    // This handles the case where Error.captureStackTrace may not exist
-    const script_src =
-        \\(function() {
-        \\  if (typeof Error.captureStackTrace === 'function') {
-        \\    Error.captureStackTrace(__domex_stack_target__, DOMException);
-        \\  } else {
-        \\    // Fallback: create an Error and copy its stack
-        \\    var e = new Error();
-        \\    if (e.stack !== undefined) {
-        \\      __domex_stack_target__.stack = e.stack;
-        \\    }
-        \\  }
-        \\  // Clean up temporary global
-        \\  delete __domex_stack_target__;
-        \\})();
-    ;
-    const source = v8.v8_String_NewFromUtf8(isolate, script_src.ptr, @intCast(script_src.len)) orelse return;
-    defer v8.v8_String_Dispose(source);
-    const script = v8.v8_Script_Compile(v8_context, source) orelse return;
-    defer v8.v8_Script_Dispose(script);
-    if (v8.v8_Script_Run(v8_context, script)) |result| v8.v8_Value_Dispose(result);
+    _ = isolate;
+    _ = v8.v8_Exception_CaptureStackTrace(v8_context, this_obj);
 }
 
 // ============================================================================

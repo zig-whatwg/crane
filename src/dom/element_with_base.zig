@@ -54,7 +54,6 @@ pub const ElementWithBase = struct {
                 .owner = NodeBase.ownerless(allocator),
                 .node_type = NodeBase.ELEMENT_NODE,
                 .parent_node = null,
-                .owner_document = null,
             },
             .tag_name = tag_name,
             .namespace_uri = null,

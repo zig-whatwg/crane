@@ -1,6 +1,7 @@
 # Architecture: A collected wrapper's instance is torn down in V8's second pass
 
 **Date**: 2026-10-02
+**Status (2026-11-12, lane v8up b6 and b7)**: superseded. On V8 15.7 the second pass runs under DisallowJSObjectModification, so no finalizer runs there (b6: architecture-a-collector-callback-only-records-the-finalizer-runs-at-the-agents-safe-point.md), and since b7 the adapter sets no second pass at all: the first pass queues the finalizer for the agent's safe point (architecture-a-dead-wrappers-finalizer-is-queued-in-the-first-pass-a-second-pass-is-a-collection-late.md). The three points under What Happened - unlink in the first pass, a wrap in between owns the instance, cancellation - still hold, with "the second pass" read as "the finalizer at the agent's safe point".
 **Lesson**: V8 allows no API call in the first pass of its weak callbacks, and
 every instance's deinit ran there. The wrapper cache now only unlinks a
 collected entry in the first pass and tears the instance down in the second

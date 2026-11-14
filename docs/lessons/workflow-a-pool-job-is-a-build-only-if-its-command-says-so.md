@@ -1,0 +1,16 @@
+# Workflow: A pool job is a build only if its command text says so - a script-wrapped build stays on its mirror's home host, and a mirror cannot leave a closed host
+
+**Date**: 2026-11-13
+**Lesson**: `crane-remote.sh` decides whether a job may be placed on any free host from the command STRING: only a command containing `zig build`, `gate` or `test-isolation` is a build (tmp/remote/crane-remote.sh:71-72). A job that runs its build inside a script (`bash .lane/job-console.sh`) is "not a build", so it is eligible only on its mirror's home host - and when that host is closed for another lane's timed window it queues there, printing a line that lists free slots elsewhere.
+
+**Why**: The pool keeps a non-build job (a light command, a script that reads the mirror) beside the mirror's files, which live on one host. A build can go anywhere because the tree is synced for it. The tool cannot read the scripts a command runs, so it goes by the text. Separately, moving a mirror copies its zig-out, tmp and bins FROM its old home, which is I/O on that host: the pool refuses the move while the old home is closed for a window ("moving wr1 would copy it on chat.local inside that window - not running").
+
+**What Happened**: Lane wr1 batch 11 had three release consoles building on chat.local when the host closed for lane v8up's timed window. The integrator asked for the job to stop and restart on chat2.local. The relaunch (`bash .wr1/job11-console.sh ...`, no build word in the command) printed "no room for wr1 yet - chat.local: closed for a timed window; chat2.local: 0/2 slots busy, 0 waiting there; ... queued" and sat. With a leading no-op naming the work (`: "zig build repl-exe ..."; ...`) the pool placed it on chat2.local at once - and then refused to move the mirror off the closed host. It ran under a second mirror name (wr1-c2), which has no home; its frozen consoles are copied to the timing host when that host is open again. Two more things the same half hour: a job whose commands were joined with `;` went on to its SECOND build after its tree was killed (the helper shell took the TERM last and started the next command first) - it had to be found by its script's command line and stopped again; and the stop itself needed the job pid crane-remote printed, not the number in its log file's name, which is what the closing notice's EXCEPTION had quoted.
+
+**Fix**:
+1. A pool job that builds through a script names its work in the command: begin it with `: "zig build <what>";`. (A launcher written with the Write tool keeps the words out of a Bash command line, where the local-compile guard reads them.)
+2. Needing another host while the mirror's home is closed: use a new mirror name for the build, and move the frozen directory yourself once the home is open, checking its SHA256SUMS on arrival. Say in the results where each binary was built.
+3. Chain a job's steps with `&&` inside one `{ ...; }`, so a kill of one step ends the job.
+4. Give the integrator the pid from `crane-remote: job pid N on <host>`; that is the one a stop can match.
+
+**Takeaway**: **The pool reads the command, not the script: say `zig build` in the command of anything that should be free to move, and give a build that must leave a closed host a mirror of its own.**

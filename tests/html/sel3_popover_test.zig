@@ -113,7 +113,10 @@ fn repeatedOpenClose() !void {
     const document = browser.current_context.?.document_instance.?;
     const popover = (try interfaces.Document.call_getElementById(document, runtime.DOMString.initInterned("popover"))).?;
     const base = dom.instance_bridge.getNodeBase(popover).?;
-    try std.testing.expect(base.holds == null);
+    // No hold is left on it: its one reference is its wrapper's (script
+    // read it). (The per-node chain of holds went with the wrapper
+    // redesign's P6; the count is what every hold took.)
+    try std.testing.expectEqual(@as(u32, @intFromBool(!base.wrapper.isEmpty())), dom.refcount.count(base));
     const tasks = dom.node_holds.ElementTasks.existingOf(browser.getRealm().?).?;
     try std.testing.expectEqual(tasks.holds_taken, tasks.holds_released);
     try std.testing.expectEqual(tasks.queued, tasks.ended);

@@ -105,28 +105,21 @@ pub const InternalState = struct {
     /// it. Freed by `end` at both of the element's exits.
     rare: rare_data.Holder = .{},
 
-    /// Custom element state per HTML spec
-    custom_element_state: CustomElementState = .undefined,
-    /// Whether a custom element reaction was ever enqueued for the element
-    /// (its queue must be cancelled at its teardown).
-    custom_element_ever_enqueued: bool = false,
-    /// Set only while `appendAttributeHook` appends a style attribute copied
-    /// by cloning, and consumed by the style attribute's change steps
-    /// (`styleAttributeChangeSteps`), which then skip their CSP check.
-    appending_clone: bool = false,
-    /// DOM: where the element's custom element registry is - none, its node
-    /// document's (most elements: read from the document), or its rare
-    /// data's association (lane perf3 E1, dom.custom_elements.RegistryPlace;
-    /// 40 bytes on every element before). Written only by
-    /// `setCustomElementRegistry`.
-    registry_place: dom.custom_elements.RegistryPlace = .none,
-    /// HTMLElement's: HTML click() steps 2-5's "click in progress flag",
-    /// read and written only by HTMLElement through
-    /// dom.element_rare_data.access. In this state's padding (0 bytes): the
-    /// one bool that would make a rare block on its own (lane rare1; Blink
-    /// and WebKit keep it out of the element too - EventDispatcher::
-    /// DispatchSimulatedClick's and simulateClick's set of elements).
-    click_in_progress: bool = false,
+    // No flag bytes here (lane nm1's layout batch; node-memory-plan-v2 I1,
+    // the design's N7): the custom element state, whether a reaction was
+    // ever enqueued, `appending_clone`, where the registry is and click()'s
+    // in-progress flag are bits of ONE byte of the element's NodeBase
+    // (dom.NodeBase.ElementBits, read through `bits`). Five bytes here cost
+    // 8 with this state's padding; Blink keeps the custom element state in
+    // Node::node_flags_, WebKit an element's state flags in Node.
+
+    /// The element's flags, in its NodeBase - which is in the same State
+    /// block as this state, at a fixed offset (dom.node_base.ofState). Only
+    /// for the state of a live element (what `getInternal` returns).
+    pub fn bits(self: *const InternalState) *dom.NodeBase.ElementBits {
+        const state: *const State = @alignCast(@fieldParentPtr("_embedded", self));
+        return &dom.node_base.ofState(state).element;
+    }
 
     pub fn init() InternalState {
         return .{ .data = ElementData.init() };
@@ -328,7 +321,7 @@ fn elementName(scope: *runtime.BrowserScope, namespace: ?[]const u8, prefix: ?[]
 /// so good for the element's life.
 fn rareHolderHook(instance: *runtime.Instance) ?rare_data.Access {
     const internal = getInternal(instance) orelse return null;
-    return .{ .holder = &internal.rare, .click_in_progress = &internal.click_in_progress };
+    return .{ .holder = &internal.rare, .click_in_progress = &internal.bits().click_in_progress };
 }
 
 /// dom.node_creation's names: this element's namespace, prefix and local
@@ -363,7 +356,7 @@ fn ensureSlottableOf(instance: *runtime.Instance) error{OutOfMemory}!?*dom.slot_
 }
 
 fn markCustomElementEnqueued(instance: *runtime.Instance) void {
-    (getInternal(instance) orelse return).custom_element_ever_enqueued = true;
+    (getInternal(instance) orelse return).bits().custom_element_ever_enqueued = true;
 }
 
 fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Instance) !void {
@@ -382,11 +375,11 @@ fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Ins
         // Made before anything changes, so a failure leaves the old value.
         const association = try rare_data.ensureOwn(rare_data.contextOf(instance), &internal.rare, .custom_element_registry);
         association.set(instance, registry);
-    } else if (internal.registry_place == .rare) {
+    } else if (internal.bits().registry_place == .rare) {
         // Its association let go; its block stays until the element goes.
         if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.set(instance, null);
     }
-    internal.registry_place = place;
+    internal.bits().registry_place = place;
 }
 
 /// DOM: the element's custom element registry, from where it is kept
@@ -398,7 +391,7 @@ fn setCustomElementRegistry(instance: *runtime.Instance, registry: ?*runtime.Ins
 /// in that order). A registry whose keeper went reads null (CE2-M2), here as
 /// through the document's own association.
 fn customElementRegistryOf(instance: *runtime.Instance, internal: *const InternalState) ?*runtime.Instance {
-    return switch (internal.registry_place) {
+    return switch (internal.bits().registry_place) {
         .none => null,
         .node_document => {
             const document = (interfaces.Node.get_ownerDocument(instance) catch return null) orelse return null;
@@ -412,7 +405,7 @@ fn customElementRegistryOf(instance: *runtime.Instance, internal: *const Interna
 fn customElementData(instance: *runtime.Instance) ?dom.custom_elements.ElementData {
     const internal = getInternal(instance) orelse return null;
     return .{
-        .state = internal.custom_element_state,
+        .state = internal.bits().customElementState(),
         .definition = rare_data.get(internal.rare, .custom_element_definition),
         .is_value = isValueOf(internal),
     };
@@ -437,12 +430,12 @@ fn initializeCustomElement(instance: *runtime.Instance, prefix: ?[]const u8, is_
     const rare_ctx: rare_data.Context = .{ .allocator = allocator, .memory = &scope.dom_memory };
     if (is_value) |value| try rare_data.putBytes(rare_ctx, &internal.rare, .is_value, value) else rare_data.clearBytes(rare_ctx, &internal.rare, .is_value);
     if (renamed) |name| internal.data.rename(scope, name);
-    internal.custom_element_state = state;
+    internal.bits().setCustomElementState(state);
 }
 
 fn setCustomElementState(instance: *runtime.Instance, state: CustomElementState) void {
     const internal = getInternal(instance) orelse return;
-    internal.custom_element_state = state;
+    internal.bits().setCustomElementState(state);
 }
 
 fn setCustomElementDefinition(instance: *runtime.Instance, definition: ?*dom.custom_elements.Definition) void {
@@ -497,9 +490,9 @@ pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
     if (Registry.get(instance)) |internal| {
-        if (internal.custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
+        if (internal.bits().custom_element_ever_enqueued) dom.custom_elements.cancelElement(instance);
         // Only a rare association draws an edge to forget.
-        if (internal.registry_place == .rare) if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.release(instance);
+        if (internal.bits().registry_place == .rare) if (rare_data.get(internal.rare, .custom_element_registry)) |association| association.release(instance);
         // The host lets its shadow root go: the shadow root forgets its host
         // (dom.shadow_hosts); the host's edge to it goes with the host's
         // wrapper, so the wrapper cache frees it - and its subtree - once
@@ -1098,7 +1091,7 @@ fn handleAttributeChanges(
     // reaction with element, callback name "attributeChangedCallback", and
     // « attribute's local name, oldValue, newValue, attribute's namespace »."
     if (getInternal(instance)) |internal| {
-        if (internal.custom_element_state == .custom) dom.custom_elements.enqueueCallback(instance, .attribute_changed, .{
+        if (internal.bits().customElementState() == .custom) dom.custom_elements.enqueueCallback(instance, .attribute_changed, .{
             .attribute_changed = .{ .local_name = local_name, .old_value = old_value, .new_value = new_value, .namespace = namespace },
         });
     }
@@ -1397,8 +1390,8 @@ fn handleSetAttributes(instance: *runtime.Instance, internal: *InternalState, sc
         const record = tables.name(entry.name);
         // A style attribute a clone copies skips its CSP check (see
         // styleAttributeChangeSteps).
-        internal.appending_clone = by_cloning and record.namespace_uri == null and std.mem.eql(u8, record.local_name, "style");
-        defer internal.appending_clone = false;
+        internal.bits().appending_clone = by_cloning and record.namespace_uri == null and std.mem.eql(u8, record.local_name, "style");
+        defer internal.bits().appending_clone = false;
         handleAttributeChanges(instance, record.namespace_uri, record.local_name, null, tables.value(entry.value));
     }
 }
@@ -1490,8 +1483,8 @@ fn appendAttributeHook(element: *runtime.Instance, attribute: dom.element_attrib
     // A style attribute a clone copies skips its CSP check (see
     // styleAttributeChangeSteps). Cleared however the append ends, so an
     // error or a later change cannot see it.
-    internal.appending_clone = attribute.by_cloning and attribute.namespace == null and std.mem.eql(u8, attribute.local_name, "style");
-    defer internal.appending_clone = false;
+    internal.bits().appending_clone = attribute.by_cloning and attribute.namespace == null and std.mem.eql(u8, attribute.local_name, "style");
+    defer internal.bits().appending_clone = false;
     return appendAttribute(element, internal, attribute.namespace, attribute.prefix, attribute.local_name, attribute.value);
 }
 
@@ -2796,8 +2789,8 @@ fn styleAttributeChangeSteps(instance: *runtime.Instance, internal: *InternalSta
         if (internal.style) |style_state| style_state.inline_state = .unparsed;
         return;
     };
-    const by_cloning = internal.appending_clone;
-    internal.appending_clone = false;
+    const by_cloning = internal.bits().appending_clone;
+    internal.bits().appending_clone = false;
     if (!by_cloning and dom.csp_violations.shouldBlockInline(instance, .style_attribute, v, .{})) {
         const style_state = dom.style.element_style.of(instance) orelse return;
         if (style_state.inline_block) |*block| block.clear();

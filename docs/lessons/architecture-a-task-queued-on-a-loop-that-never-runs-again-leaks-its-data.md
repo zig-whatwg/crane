@@ -1,6 +1,7 @@
 # Architecture: A task queued on a loop that never runs again leaks its data
 
 **Date**: 2026-10-02
+**Status (2026-11-13)**: Another instance, found the same way (leaked allocations at a WPT runner child's exit): the `storage` event's task (src/webidl/impls/Storage.zig queueStorageEvent) was on a plain zero-delay timer. It is now armed with `TimerInterface.setTimeoutOwned` and a drop, as Window.zig's close task is; tests/html/wrap1_storage_event_task_owner_test.zig shows the leak without a runner (a Browser under std.testing.allocator that ends with the task pending). The other plain-timer sites that carry heap data were listed for the queue by lane wrap1 b2.
 **Lesson**: A task armed with heap data (`timer.setTimeout(0, run, data)`) frees its data when it runs. A loop that ends drops its pending entries without running them, and the data goes with nothing.
 
 **Why**: The timer interface takes an opaque `user_data` and has no destructor for it: `NativeTimerManager.deinit` frees its entries, not what they point at. Whoever queues the task owns its data until it runs - and must also be there when it will never run.

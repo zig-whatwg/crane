@@ -310,11 +310,17 @@ pub const Executor = struct {
         } else {
             if (p.child.stdin) |f| f.close(io);
             p.child.stdin = null;
+            // What it printed after its last result - while it exited - kept
+            // past the reader's end for the report below.
+            var printed_buf: [exit_report_tail]u8 = undefined;
+            const printed = tail(&printed_buf, p.mr.reader(1).buffered());
             p.mr.deinit();
             term = p.child.wait(io) catch null;
             if (how == .exit) {
                 if (term) |tm| if (!tm.success()) {
                     _ = e.exit_failures.fetchAdd(1, .monotonic);
+                    var line_buf: [exit_report_tail + 256]u8 = undefined;
+                    log.warn("{s}", .{exitFailureReport(&line_buf, tm, printed)});
                 };
             }
         }
@@ -391,6 +397,34 @@ pub const FmtError = struct {
         if (errno) |n| try w.print(" ({s})", .{n});
     }
 };
+
+const log = std.log.scoped(.test_launcher);
+
+/// The most of what a process printed while exiting that a report keeps:
+/// its last bytes, where a fatal check or a sanitizer names itself.
+const exit_report_tail = 2048;
+
+/// The last `buf.len` bytes of `text`, copied into `buf`.
+fn tail(buf: []u8, text: []const u8) []const u8 {
+    const kept = text[text.len -| buf.len..];
+    @memcpy(buf[0..kept.len], kept);
+    return buf[0..kept.len];
+}
+
+/// The line `finish` logs for a test process that exited non-zero after its
+/// tests passed and it was asked to exit (Chromium's TEST_FAILURE_ON_EXIT):
+/// how it ended - the exit code or the signal - and what it printed while
+/// exiting. main.zig's count alone said neither (lane v8up b3c: an after-exit
+/// flake on V8 15.7 under load, page_realm_operations_test).
+/// `printed` is at most `exit_report_tail` bytes (`tail`); a `buf` too small
+/// for the line gives an empty one.
+fn exitFailureReport(buf: []u8, term: std.process.Child.Term, printed: []const u8) []const u8 {
+    return std.fmt.bufPrint(buf, "test process {f} after exit; it printed while exiting ({d} bytes): {s}", .{
+        FmtTerm{ .term = term },
+        printed.len,
+        if (printed.len == 0) "nothing" else printed,
+    }) catch buf[0..0];
+}
 
 const FmtTerm = struct {
     term: ?std.process.Child.Term,
@@ -911,6 +945,105 @@ test "real processes: the many-Browsers variant runs a busy Browser beside each 
     if (@hasDecl(fixture, "many_browsers_path")) try manyBrowsersFixture(fixture.many_browsers_path) else return error.SkipZigTest;
 }
 
+test "real processes: the launcher's listing run of an executable that links the engine starts no engine - no thread of V8's, and under ThreadSanitizer no report" {
+    // The many-Browsers fixture is the one executable the launcher's own
+    // tests have that links the engine and runs under the Crane test runner
+    // (build.zig compiles it only with -Dmany-browsers). The listing run -
+    // the process `queryMetadata` asks for its tests' names and nothing
+    // else - runs no test, so it starts no engine: in a -Dsanitize-thread
+    // build it has none of a test child's TSAN_OPTIONS, and a V8 started
+    // there printed four of V8's own worker-start reports per listing into
+    // every sanitizer log (lane build3, 2026-11-13).
+    const fixture = @import("launcher_fixture");
+    if (!@hasDecl(fixture, "many_browsers_path")) return error.SkipZigTest;
+    const gpa = testing.allocator;
+    const argv = [_][]const u8{ fixture.many_browsers_path, "--listen=-", "--seed=0x1" };
+
+    const listing = try listingRun(gpa, testing.io, &argv, null);
+    defer gpa.free(listing.printed);
+    errdefer std.debug.print("the listing run had {?d} thread(s) and printed {d} bytes on stderr:\n{s}\n", .{ listing.threads, listing.printed.len, listing.printed[0..@min(listing.printed.len, 2048)] });
+    try testing.expect(std.mem.indexOf(u8, listing.printed, "ThreadSanitizer") == null);
+
+    // And by count, sanitizer or not: the listing process has the threads
+    // of the same executable told not to start the engine at all (the
+    // runner's CRANE_TEST_ENGINE_EARLY=0) - V8's platform alone would add a
+    // worker thread per core it uses. Where the system lists a process's
+    // threads (Linux).
+    var late: std.process.Environ.Map = .init(gpa);
+    defer late.deinit();
+    try late.put("CRANE_TEST_ENGINE_EARLY", "0");
+    const without_engine = try listingRun(gpa, testing.io, &argv, &late);
+    defer gpa.free(without_engine.printed);
+    if (listing.threads) |threads| {
+        try testing.expectEqual(without_engine.threads.?, threads);
+        // Outright, where no sanitizer runtime keeps a thread of its own:
+        // a process that has run no test has its main thread and no other -
+        // nothing the runner does before its first test starts one, which
+        // is what lets it start the engine "before any thread exists" then.
+        if (!fixture.many_browsers_sanitized) try testing.expectEqual(@as(usize, 1), threads);
+    }
+}
+
+const ListingRun = struct {
+    /// What the process printed on stderr; the caller frees it.
+    printed: []u8,
+    /// How many threads it had once it had answered, before it was told to
+    /// exit: the entries of /proc/<pid>/task. Null where the system has no
+    /// such listing.
+    threads: ?usize,
+};
+
+/// The listing run of `argv[0]`, observed: the process is asked for its
+/// tests' names and to exit, as `queryMetadata` asks, with its stderr read
+/// here where `queryMetadata` lets it through, and its threads counted while
+/// it waits for its next message. `environ_map`: its environment, or null
+/// for this process's own, as `queryMetadata`'s is.
+fn listingRun(gpa: Allocator, io: Io, argv: []const []const u8, environ_map: ?*const std.process.Environ.Map) !ListingRun {
+    var child = try std.process.spawn(io, .{ .argv = argv, .stdin = .pipe, .stdout = .pipe, .stderr = .pipe, .environ_map = environ_map });
+    var mr_buf: Io.File.MultiReader.Buffer(2) = undefined;
+    var mr: Io.File.MultiReader = undefined;
+    mr.init(gpa, io, mr_buf.toStreams(), &.{ child.stdout.?, child.stderr.? });
+    var stdin_writer = child.stdin.?.writerStreaming(io, &.{});
+    var client: std.zig.Client = .{ .in = mr.reader(0), .out = &stdin_writer.interface };
+    var ok = false;
+    defer if (!ok) {
+        child.kill(io);
+        mr.deinit();
+    };
+
+    try client.serveBodylessMessage(.query_test_metadata);
+    const timeout: Io.Timeout = .{ .duration = .{ .clock = .awake, .raw = .fromSeconds(120) } };
+    while (true) {
+        const header = try client.receiveMessageWithMultiReader(&mr, timeout);
+        _ = client.in.take(header.bytes_len) catch unreachable;
+        if (header.tag == .test_metadata) break;
+    }
+    const threads = threadsOf(io, child.id.?);
+    client.serveBodylessMessage(.exit) catch {};
+    mr.fillRemaining(timeout) catch {};
+    if (child.stdin) |f| f.close(io);
+    child.stdin = null;
+    const printed = try gpa.dupe(u8, mr.reader(1).buffered());
+    mr.deinit();
+    ok = true;
+    _ = child.wait(io) catch {};
+    return .{ .printed = printed, .threads = threads };
+}
+
+/// How many threads the child `pid` has: the entries of /proc/<pid>/task
+/// (this process is its parent, which may read them). Null off Linux.
+fn threadsOf(io: Io, pid: std.process.Child.Id) ?usize {
+    if (builtin.os.tag != .linux) return null;
+    var path_buf: [64]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buf, "/proc/{d}/task", .{pid}) catch return null;
+    var tasks = Io.Dir.cwd().openDir(io, path, .{ .iterate = true }) catch return null;
+    defer tasks.close(io);
+    var count: usize = 0;
+    var entries = tasks.iterate();
+    while (entries.next(io) catch return null) |_| count += 1;
+    return count;
+}
+
 fn manyBrowsersFixture(path: []const u8) !void {
     const gpa = testing.allocator;
     const io = testing.io;
@@ -921,13 +1054,26 @@ fn manyBrowsersFixture(path: []const u8) !void {
     try testing.expect(std.mem.endsWith(u8, md.names[0], "assumes it is the only Browser in its process"));
     try testing.expect(std.mem.endsWith(u8, md.names[1], "assumes nothing"));
 
+    // The fixture's children run as any test child of this build does: in a
+    // -Dsanitize-thread build with the launcher's TSAN_OPTIONS - a race
+    // halts the child, V8's own proven reports are suppressed. Without
+    // them the busy Browser's V8 printed thousands of unsuppressed reports
+    // into this test's output and its children exited 66.
+    const fixture = @import("launcher_fixture");
+    const sanitized: ?EnvironmentOptions.SanitizeThread = if (fixture.many_browsers_sanitized) .{ .suppressions = fixture.tsan_suppressions_path } else null;
     var base: std.process.Environ.Map = .init(gpa);
     defer base.deinit();
+    // The suppression file names functions, and the sanitizer learns a
+    // frame's function from a symbolizer it finds on PATH (llvm-symbolizer,
+    // addr2line): a child with no PATH prints `<null>` frames, matches no
+    // suppression and halts on V8's first suppressed report. The launcher's
+    // real children have its whole environment; these get its PATH.
+    if (sanitized != null) if (testing.environ.getPosix("PATH")) |search_path| try base.put("PATH", search_path);
     for ([_]struct { many: bool, want: [2]sched.Status }{
         .{ .many = false, .want = .{ .pass, .pass } },
         .{ .many = true, .want = .{ .fail, .pass } },
     }) |case| {
-        var env = try testEnvironment(gpa, &base, .{ .many_browsers = case.many });
+        var env = try testEnvironment(gpa, &base, .{ .many_browsers = case.many, .sanitize_thread = sanitized });
         defer env.deinit();
         var all = [_]u32{ 0, 1 };
         var plan = try @import("plan.zig").make(gpa, &all, .{ .seed = 1, .shuffle = false, .batch_size = 1 });
@@ -1208,4 +1354,25 @@ test "an error prints with the errno it stands for, where it has one" {
     var buf: [64]u8 = undefined;
     try testing.expectEqualStrings("FileNotFound (ENOENT)", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.FileNotFound }}));
     try testing.expectEqualStrings("Unexpected", try std.fmt.bufPrint(&buf, "{f}", .{FmtError{ .err = error.Unexpected }}));
+}
+
+test "a process that exits non-zero after exit is reported with its code or signal and what it printed while exiting" {
+    var buf: [exit_report_tail + 256]u8 = undefined;
+    const by_signal = exitFailureReport(&buf, .{ .signal = .SEGV }, "# Fatal error in v8::Isolate::Dispose\n");
+    try std.testing.expect(std.mem.indexOf(u8, by_signal, "terminated with signal SEGV") != null);
+    try std.testing.expect(std.mem.indexOf(u8, by_signal, "# Fatal error in v8::Isolate::Dispose") != null);
+    const by_code = exitFailureReport(&buf, .{ .exited = 134 }, "");
+    try std.testing.expect(std.mem.indexOf(u8, by_code, "exited with code 134") != null);
+    try std.testing.expect(std.mem.indexOf(u8, by_code, "nothing") != null);
+}
+
+test "the report keeps the last bytes of what a process printed while exiting" {
+    var long: [exit_report_tail * 2]u8 = undefined;
+    @memset(long[0..exit_report_tail], 'a');
+    @memset(long[exit_report_tail..], 'z');
+    var kept_buf: [exit_report_tail]u8 = undefined;
+    const kept = tail(&kept_buf, &long);
+    try std.testing.expectEqual(@as(usize, exit_report_tail), kept.len);
+    try std.testing.expect(std.mem.allEqual(u8, kept, 'z'));
+    try std.testing.expectEqualStrings("short", tail(&kept_buf, "short"));
 }

@@ -401,6 +401,11 @@ pub const Browser = struct {
         @import("back_forward_cache.zig").evictAllIn(self.scope);
         // Destroy current context if any
         if (self.current_context) |ctx| {
+            // HTML "destroy a top-level traversable" step 2: "destroy a
+            // document and its descendants" - every frame's document is
+            // destroyed and its fetches aborted before the realms end
+            // (dom.navigables.destroyDocumentsAtBrowserEnd).
+            if (ctx.browsing_context) |bc| @import("dom").navigables.destroyDocumentsAtBrowserEnd(bc);
             ctx.deinit();
             self.allocator.destroy(ctx);
             self.current_context = null;
@@ -536,9 +541,15 @@ pub const Browser = struct {
 
             // The page was let go: what it held is garbage now, and the
             // engine collects it before the next page's realm is made
-            // (engine.notifyMemoryPressure .critical - on V8, three full
-            // collections with checkpoints between). This is critical for
-            // sequential test execution to prevent heap growth.
+            // (engine.notifyMemoryPressure .critical - on V8,
+            // Isolate::MemoryPressureNotification(kCritical): one full
+            // collection, a second when the first left much to free). This is
+            // critical for sequential test execution to prevent heap growth.
+            // KNOWN, queued (lane v8up b5, tmp/plans/feature-queue.md): not a
+            // browser's path - when a page goes Blink tells V8 only that a
+            // context was disposed (V8GCForContextDispose::
+            // NotifyContextDisposed, which the realm's end sends), and sends
+            // critical pressure at a navigation only on low-end Android.
             engine.notifyMemoryPressure(agent, .critical);
         }
 

@@ -166,7 +166,7 @@ const Tally = struct {
         // The whole table is overridden: dom.refcount's slot hook goes in
         // with the tallied pair (the adapter reaches a node's wrapper slot
         // only through it, wrapper redesign P1).
-        return runtime.lifetime.overrideHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget, .slot_of = dom.refcount.wrapperSlotOf });
+        return runtime.lifetime.overrideHooksForTest(.{ .acquire = acquire, .release = release, .forget = forget, .slot_of = dom.refcount.wrapperSlotOf, .target_of_slot = dom.refcount.wrapperTargetOfSlot });
     }
 };
 
@@ -177,11 +177,13 @@ test "a node's wrapper holds one reference, made with the wrapper" {
     defer releaseChain(nodes);
     for (nodes) |node| try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(node)));
 
-    // Wrapping the leaf wraps its ancestors (node tracing): each wrapper takes
-    // its reference.
+    // Wrapping the leaf takes the leaf's reference, and no ancestor's: since
+    // the wrapper redesign's P7 a wrap wraps no ancestor (until P7 node
+    // tracing's upward closure wrapped each, and each wrapper took one).
     const leaf = try protocol.retainValue(page.realm, .{ .instance = nodes[2] });
     defer leaf.release();
-    for (nodes) |node| try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(node)));
+    try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[2])));
+    for (nodes[0..2]) |node| try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(node)));
     // A second read of the same wrapper takes nothing.
     const again = try protocol.retainValue(page.realm, .{ .instance = nodes[2] });
     again.release();
@@ -224,19 +226,20 @@ test "a node whose teardown begins under its live wrapper lets the wrapper's ref
     defer releaseChain(nodes);
     // The chain's document is wrapped (script made it); its nodes are not.
     const before = Tally.acquired;
-    // The middle node's wrapper, and its root's (node tracing).
+    // The middle node's wrapper alone (since the wrapper redesign's P7 its
+    // root is not wrapped with it).
     const middle = try protocol.retainValue(page.realm, .{ .instance = nodes[1] });
-    try testing.expectEqual(before + 2, Tally.acquired);
+    try testing.expectEqual(before + 1, Tally.acquired);
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(nodeBase(nodes[1])));
     // What deinitNodeByType tells the engine as a node's teardown starts.
     protocol.platformObjectDestroyed(nodes[1]);
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(nodeBase(nodes[1])));
     try testing.expectEqual(@as(usize, 1), Tally.released);
-    // The tree goes once script lets go: the root's wrapper lets its
-    // reference go, and the middle node's finalization has nothing left to.
+    // Once script lets go, the middle node's finalization has nothing left
+    // to let go.
     middle.release();
     try page.collect();
-    try testing.expectEqual(@as(usize, 2), Tally.released);
+    try testing.expectEqual(@as(usize, 1), Tally.released);
     try testing.expectEqual(@as(usize, 0), Tally.forgotten);
 }
 

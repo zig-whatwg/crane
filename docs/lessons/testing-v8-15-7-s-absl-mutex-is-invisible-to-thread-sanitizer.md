@@ -1,0 +1,14 @@
+# Testing: V8 15.7's mutex is absl's, so ThreadSanitizer sees none of V8's locking
+
+**Date**: 2026-11-11
+**Lesson**: Under -Dsanitize-thread, a binary that links the uninstrumented V8 15.7 archive reports V8's own thread handoffs as data races. V8's `base::Mutex` is now an `absl::Mutex` (src/base/platform/mutex.h), which locks with futexes and atomics in uninstrumented code. ThreadSanitizer never sees those locks, but it still sees V8's calls into its interceptors (memcpy, operator new and delete, free).
+
+**Why**: ThreadSanitizer learns happens-before from instrumented atomics and from the libc calls it intercepts. V8 13.1's `base::Mutex` was a pthread mutex, and pthread_mutex_lock is intercepted, so V8's internal locking was visible even though V8 itself was not instrumented. absl's futex path is invisible. Chromium does not meet this, because its TSAN builds instrument V8, absl and libc++ along with everything else (build/config/sanitizers).
+
+**What Happened**: Lane v8up b3e ran the first -Dsanitize-thread verify on 15.7, on server1. It failed in the snapshot generator, before any test ran: 336 reports, all inside `v8::platform::DefaultWorkerThreadsTaskRunner` and V8's heap (memcpy against operator new, free against delete). The generator shares instrumented modules with the tests, so it is instrumented too. The two runs before that had failed to build at all: once on Zig's libc++ flags against Chromium's libc++ headers, once on duplicate `__cxa_guard_*` symbols between Zig's static TSAN runtime and libc++_chromium.a.
+
+**Fix**: build.zig `tsan_v8_options` = `ignore_interceptors_accesses=1`, given to every launcher run and to the generator's runs under -Dsanitize-thread. With it, uninstrumented code makes no access that TSAN sees, while every instrumented Zig access is still checked: a deliberate race between two Zig writes still crashes its test. What it gives up: a race whose one side is a libc free or memcpy called by Zig code on c_allocator memory. The writes std.testing.allocator's poisoning makes are instrumented and still count. The V8 wrapper is compiled apart (V8Link.wrapper_apart), and on Linux weak `__cxa_guard_*` definitions keep libc++abi's from being linked.
+
+**Takeaway**: **When an uninstrumented dependency changes its synchronization primitive, TSAN's view of it changes with it. Check what its mutex is before reading the reports as races, and prove the gate still bites with a deliberate race in the same binary.**
+
+**Status** (2026-11-11, lane v8up b3f): the Fix above is superseded. `ignore_interceptors_accesses=1` was too wide (integrator ruling: it drops a Zig free or memcpy racing a Zig read); V8 15.7's reports are now suppressed by V8's namespaces, unanchored, in tools/test_launcher/tsan_suppressions.txt section 5, proven by three planted races ([lesson](testing-a-tsan-suppression-anchored-at-the-namespace-misses-template-frames.md)).

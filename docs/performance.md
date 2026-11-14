@@ -36,6 +36,15 @@ These are the user's (2026-11-02 and 2026-11-04) and the runner enforces what it
   build host's: every Crane build a published round times - ReleaseSafe, ReleaseFast, a base -
   is compiled with `-Dcpu=apple_m1`, the CPU every Apple Silicon Mac runs, as the browsers ship
   one build for all of them. See "The CPU target" below.
+- **Crane is timed with its default young generation, 8 MB semispaces** (the user, 2026-11-12):
+  V8's young generation is a build option, `-Dv8-young-generation-mb=<n>` - megabytes of the
+  WHOLE young generation of each isolate, three semispaces' worth (docs/engine-protocol.md, 7b,
+  has the unit table). A published round's Crane builds pass nothing, which is the default, 24 =
+  8 MB semispaces: less memory held between collections, slower on allocation-heavy pages than
+  V8's own 32 MB semispaces (`-Dv8-young-generation-mb=0`, a desktop host's choice - and what
+  Chrome runs on desktop, so the trade is visible in Crane's rows beside Chrome's). A console
+  built with the option is a measurement of that option, never the `crane` row; its pin's
+  `build=` line names the value.
 - **Browsers launch headless, in the background, never taking focus.** Safari has no headless
   mode: it runs through `safaridriver` in chat.local's console session, one session at a time.
   Lightpanda runs through its CDP server.
@@ -93,6 +102,9 @@ statement, the workload says so: that is its browser equivalent.
 | `timers.promise-chain` | a chain of 100,000 `then` | |
 | `timers.queue-microtask` | 100,000 `queueMicrotask` one after another | |
 | `timers.message-channel` | 2,000 `MessageChannel` round trips | |
+| `workers.start-stop` | 8 dedicated workers one after another, each started, sent one message, answered and terminated: an engine instance's whole life, the worker doing nothing (from round 9) | |
+| `workers.start-work-stop` | the same, each worker allocating 4,000 arrays of 1,024 numbers and keeping every second one until it answers: its heap grows and is given back at its end | |
+| `workers.four-at-once` | four allocating workers alive together, then terminated, twice. The three rows exist from round 9 (rounds 0 to 8 have no value for them); an engine that has `Worker` but never runs one - no message, no error within 5 s of the page's first worker - reads `unsupported` (Lightpanda's nightly of 2026-11-05 as the suite launches it: its log says "resource skipped ... resource=worker") | |
 | `load.news`, `load.docs`, `load.app` | a real-world-shaped page loaded 10 times in one tab: from the document's time origin to its load event, or to when its script says it is ready (the app's data rendered) | |
 | `memory.idle-page` | one small page, left alone 3 s: the footprint | |
 | `startup.idle-page` | from launching the engine to that page's load event: start-up, reported apart so no other row includes it | |
@@ -234,14 +246,17 @@ zig build repl-exe -j2 -Dwpt-runner-release-fast -Dcpu=apple_m1 # the ReleaseFas
 
 # Crane's pins (the browsers' pins are written by their setup scripts on the host); `optimize`
 # and `target_cpu` are the build's own repl.modes lines. For the ReleaseFast build:
-# name=crane_fast, <fast>/.
+# name=crane_fast, <fast>/. `v8` is the LINKED archive's version - the directory -Dv8 selects,
+# jsengines/v8/15.7.112.43/include/v8-version.h (jsengines/v8/include is still 13.1.203's and is
+# linked by nothing) - checked in the console's own bytes before the pin is written:
+LC_ALL=C grep -a -q -F 15.7.112.43 <safe>/repl
 cat > crane.pin <<PIN
 name=crane
 version=$(git rev-parse --short=11 HEAD)
 commit=$(git rev-parse --short=11 HEAD)
 build=release: -Dwpt-runner-release -Dcpu=apple_m1 (ReleaseSafe everywhere, C .trap, libc malloc)
 $(cat <safe>/repl.modes)
-v8=13.1.203 static
+v8=15.7.112.43 static
 binary=<safe>/repl
 sha256=$(shasum -a 256 <safe>/repl | cut -d' ' -f1)
 PIN
@@ -422,7 +437,9 @@ points (`report.zig` `progress`).
   script is needed. The line's colour is the first categorical slot of the dataviz reference
   palette, with its own step for dark (`report.zig` `style`).
 - **What each round changed** is one line in `report.zig` `round_notes`, written when the round is
-  published (a test holds every round to one); every figure beside it is the journals'.
+  published (a test holds every round to one, BY NUMBER through the latest: publishing round N
+  extends the test's range to N first, then writes the line - rounds 3-6 went out with none while
+  the test only walked the lines that existed); every figure beside it is the journals'.
 
 ## The browsers on chat.local
 

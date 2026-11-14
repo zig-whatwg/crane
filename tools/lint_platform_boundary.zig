@@ -29,7 +29,9 @@
 //!     `PSA_*`; `sqlite3_*`, `SQLITE_*`; `leveldb_*`.
 //! Exempt: src/platform/ (the facade, the kit, the platforms), build-time code
 //! (tools/, src/webidl/codegen/, src/webidl/parser/, the snapshot generator,
-//! src/main.zig), src/webdriver/ while it is a separate executable (decision
+//! src/main.zig, and the build side of the engine protocol: its build file,
+//! each adapter's engine_build.zig and build/ directory, which the configure
+//! step runs), src/webdriver/ while it is a separate executable (decision
 //! 18), tests/, and `test` declarations; synchronisation, allocators,
 //! `std.fs.path` and `std.time` constants are not OS access.
 //!
@@ -91,8 +93,27 @@ pub fn scopeOf(path: []const u8) Scope {
     for (build_time) |prefix| if (std.mem.startsWith(u8, path, prefix)) return .facade_rules;
     const entry_files = [_][]const u8{ "src/main.zig", "src/runtime/engines/v8/snapshot_generator.zig" };
     for (entry_files) |file| if (std.mem.eql(u8, path, file)) return .facade_rules;
+    if (isEngineBuildFile(path)) return .facade_rules;
     if (std.mem.startsWith(u8, path, "src/")) return .full;
     return .none;
+}
+
+/// Whether `path` is the build side of the engine protocol
+/// (docs/engine-protocol.md 7b): the protocol's build file, an engine
+/// adapter's build file (src/runtime/engines/<engine>/engine_build.zig) or a
+/// file of that adapter's build/ directory, its build file's helpers. The
+/// configure step runs them and nothing compiles them into Crane, so they are
+/// build-time code, as the root build.zig and tools/ are: an adapter's build
+/// file reads the checkout and what its engine's archive keeps beside itself.
+/// (The platform's build files are under src/platform/, never scanned.)
+fn isEngineBuildFile(path: []const u8) bool {
+    if (std.mem.eql(u8, path, "src/runtime/engine_build_protocol.zig")) return true;
+    const engines = "src/runtime/engines/";
+    if (!std.mem.startsWith(u8, path, engines)) return false;
+    const in_engines = path[engines.len..];
+    const slash = std.mem.indexOfScalar(u8, in_engines, '/') orelse return false;
+    const in_adapter = in_engines[slash + 1 ..];
+    return std.mem.eql(u8, in_adapter, "engine_build.zig") or std.mem.startsWith(u8, in_adapter, "build/");
 }
 
 /// One reference: its line and the key it is counted under.
@@ -708,6 +729,31 @@ test "scope: the platform, upstream WPT and this tool are not scanned; build-tim
     try testing.expectEqual(Scope.full, scopeOf("src/fetch/network/curl_backend.zig"));
     try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/v8/context_manager.zig"));
     try testing.expectEqual(Scope.none, scopeOf("src/runtime/engines/v8/v8_wrapper.cpp"));
+}
+
+test "scope: the build side of the engine protocol is build-time code - the protocol's build file, each adapter's and an adapter's build/ helpers" {
+    // Run by the configure step, never compiled into Crane: they read the
+    // checkout and the archives beside it as build.zig does.
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engine_build_protocol.zig"));
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engines/v8/engine_build.zig"));
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engines/jsc/engine_build.zig"));
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engines/quickjs/engine_build.zig"));
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engines/v8/build/archives.zig"));
+    try testing.expectEqual(Scope.facade_rules, scopeOf("src/runtime/engines/v8/build/sub/helper.zig"));
+    // Only those: the adapter's own code is held in full, whatever it is
+    // called, and so is a build/ directory or a *_build.zig anywhere else.
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/v8/protocol.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/v8/engine_build_helpers.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/v8/sub/engine_build.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/v8/sub/build/archives.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/engines/engine_build.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/runtime/build/x.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/fetch/engine_build.zig"));
+    try testing.expectEqual(Scope.full, scopeOf("src/fetch/build/x.zig"));
+    // The platform's build files are under src/platform/, which is not
+    // scanned at all.
+    try testing.expectEqual(Scope.none, scopeOf("src/platform/build_protocol.zig"));
+    try testing.expectEqual(Scope.none, scopeOf("src/platform/adapters/darwin/platform_build.zig"));
 }
 
 test "the bridges: their imports and every member reached through them" {

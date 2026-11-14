@@ -75,7 +75,8 @@ fn endCache(cache: ?*anyopaque) void {
 /// Wrap `instance` as the binding leaves an object script has seen and then
 /// dropped: a real V8 object, held by the cache alone.
 fn wrap(instance: *runtime.Instance) !void {
-    const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+    // A node's wrapper is an API object (P4: its anchor is Wrapped onto it).
+    const wrapper = test_process.nodeWrapperObject(test_isolate.?, test_agent.context.?) orelse return error.ObjectFailed;
     _ = try test_cache.?.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
 }
 

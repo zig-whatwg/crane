@@ -56,6 +56,19 @@ pub const InternalState = struct {
         self.request_close_return_value = given.clone(self.allocator) catch null;
     }
 
+    /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
+    /// 4.4 "Holders"): the saved focus and the request close source, in the
+    /// collector's atomic pause, where the walk visits the dialog
+    /// (NodeBase.traces_held; Blink's HTMLDialogElement::Trace visits
+    /// previously_focused_element_). Reads only: a dialog that made no state
+    /// holds nothing.
+    pub fn traceHeldNodes(instance: *Instance, tracer: *@import("engine").Tracer) void {
+        const state = instance.stateAs(State) orelse return;
+        const self = state.own._internal orelse return;
+        self.previous_focus.trace(tracer);
+        self.request_close_source.trace(tracer);
+    }
+
     /// Replace the request close source element.
     fn setRequestCloseSource(self: *InternalState, source: ?*Instance) void {
         const dialog = self.owner.get() orelse return;
