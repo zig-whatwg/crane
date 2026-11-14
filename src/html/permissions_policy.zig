@@ -348,8 +348,10 @@ pub const Allowlist = struct {
             // Blink's Allowlist matches_opaque_src, set when the declared
             // origin is opaque); Firefox follows the text - the declared and
             // the document's opaque origins are two origins - and fails it at
-            // "after reload" (0/1). (Lane ifr1.)
-            if (src.isOpaque() and std.mem.eql(u8, origin.serialized, "null")) return true;
+            // "after reload" (0/1). (Lane ifr1.) An origin with no record
+            // - a bare "null" serialization - names no opaque origin and
+            // matches nothing.
+            if (src.isOpaque()) if (origin.record) |record| if (record.isOpaque()) return true;
         }
         if (std.mem.eql(u8, origin.serialized, "null")) return false;
         // 5. Exact origin entries compare their canonical tuples. Attribute
