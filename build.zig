@@ -4381,7 +4381,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "linux", .platform = .linux, .without = &.{} },
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
             .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
-            .{ .name = "testing_without_deflate_decoding", .platform = .testing, .without = &.{"deflate_decoding"} },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
             .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
             .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
