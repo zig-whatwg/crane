@@ -80,7 +80,7 @@ pub const todomvc_port_note =
 
 /// How Chrome's TodoMVC numbers are made.
 pub const todomvc_chrome_note =
-    "Chrome's TodoMVC numbers are TodoMVC's own Cypress suite, not the port: Cypress 15.14.2 with the project's cypress.config.js and spec unmodified (only the port of its test server's address moved), one app per run as its tests/cya.js runs them, read from Cypress's own results. A test Cypress does not run because a hook failed earlier in its suite (Mocha then skips the rest of that suite) counts as not passed, so both columns count the spec's tests.";
+    "Chrome's TodoMVC numbers are TodoMVC's own Cypress suite, not the port: Cypress 15.14.2 with the project's cypress.config.js and spec unmodified (its test server listens on a free TCP port instead of 8000), one app per run as its tests/cya.js runs them, read from Cypress's own results. A test Cypress does not run because a hook failed earlier in its suite (Mocha then skips the rest of that suite) counts as not passed, so both columns count the spec's tests.";
 
 /// What a test's message says when Cypress did not run it after a failed
 /// hook (main.zig importCypress).
