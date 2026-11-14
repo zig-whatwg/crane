@@ -140,7 +140,12 @@ test "the UA sheets parse with HTML namespace constraints on every selector" {
             var constrained = false;
             for (rule.complex.compound.simple_selectors) |simple| {
                 if (simple == .NamespaceURI) {
-                    try std.testing.expectEqualStrings("http://www.w3.org/1999/xhtml", simple.NamespaceURI.uri);
+                    // HTML's rules are HTML's; Fullscreen 5.2's also name an
+                    // SVG svg and a MathML math (html.css says why).
+                    const uri = simple.NamespaceURI.uri;
+                    try std.testing.expect(std.mem.eql(u8, uri, "http://www.w3.org/1999/xhtml") or
+                        std.mem.eql(u8, uri, "http://www.w3.org/2000/svg") or
+                        std.mem.eql(u8, uri, "http://www.w3.org/1998/Math/MathML"));
                     constrained = true;
                 }
             }
