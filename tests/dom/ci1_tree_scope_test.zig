@@ -131,6 +131,34 @@ test "adoption reassigns every nested shadow root from the new document counter"
     try isolated(adoption);
 }
 
+/// A loop that only records the tasks queued on it: nothing runs them, so a
+/// queued load task's token can be read.
+const LoopQueue = struct {
+    tasks: [8]runtime.EventLoopTask = undefined,
+    count: usize = 0,
+    fn queue(context: *anyopaque, task: runtime.EventLoopTask) void {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        std.debug.assert(self.count < self.tasks.len);
+        self.tasks[self.count] = task;
+        self.count += 1;
+    }
+    fn microtask(_: *anyopaque, _: runtime.EventLoopMicrotask) void {}
+    fn flush(_: *anyopaque) void {}
+    fn once(_: *anyopaque) bool {
+        return false;
+    }
+    fn allocator(_: *anyopaque) std.mem.Allocator {
+        return testing.allocator;
+    }
+    const vtable: runtime.EventLoop.VTable = .{
+        .queueTask = queue,
+        .queueMicrotask = microtask,
+        .runMicrotasks = flush,
+        .runOnce = once,
+        .promiseAllocator = allocator,
+    };
+};
+
 // Q89: observe token values through the existing document-state facade;
 // no impl import, private-state cast, helper call, or new observation hook.
 fn interleavedLoadTokens() !void {
@@ -138,33 +166,8 @@ fn interleavedLoadTokens() !void {
     var f: Fixture = undefined;
     try f.init();
     defer f.deinit();
-    const Queue = struct {
-        tasks: [8]runtime.EventLoopTask = undefined,
-        count: usize = 0,
-        fn queue(context: *anyopaque, task: runtime.EventLoopTask) void {
-            const self: *@This() = @ptrCast(@alignCast(context));
-            std.debug.assert(self.count < self.tasks.len);
-            self.tasks[self.count] = task;
-            self.count += 1;
-        }
-        fn microtask(_: *anyopaque, _: runtime.EventLoopMicrotask) void {}
-        fn flush(_: *anyopaque) void {}
-        fn once(_: *anyopaque) bool {
-            return false;
-        }
-        fn allocator(_: *anyopaque) std.mem.Allocator {
-            return testing.allocator;
-        }
-        const vtable: runtime.EventLoop.VTable = .{
-            .queueTask = queue,
-            .queueMicrotask = microtask,
-            .runMicrotasks = flush,
-            .runOnce = once,
-            .promiseAllocator = allocator,
-        };
-    };
-    var queue: Queue = .{};
-    f.ctx.event_loop = .{ .ptr = &queue, .vtable = &Queue.vtable };
+    var queue: LoopQueue = .{};
+    f.ctx.event_loop = .{ .ptr = &queue, .vtable = &LoopQueue.vtable };
     defer {
         for (queue.tasks[0..queue.count]) |task| if (task.drop) |drop| drop(task.context);
         f.ctx.event_loop = null;
@@ -188,4 +191,42 @@ fn interleavedLoadTokens() !void {
 
 test "load tokens stay nonzero and unique when shadow scope serials interleave" {
     try isolated(interleavedLoadTokens);
+}
+
+// The delayed path of "the end" (lane nav2 batch 11): a load something
+// delays over the parser's end draws no token while it waits - its
+// DOMContentLoaded task is queued, its load is not - and draws a nonzero
+// token, ordered after every serial drawn before it, when the delay ends and
+// step 9's task is queued (Document's lifecycleLoadDelayMayHaveEnded ->
+// queueLoadUnlessDelayed).
+fn delayedLoadTokens() !void {
+    if (comptime !@hasDecl(dom, "tree_scope")) return error.TreeScopeSerialNotImplemented;
+    var f: Fixture = undefined;
+    try f.init();
+    defer f.deinit();
+    var queue: LoopQueue = .{};
+    f.ctx.event_loop = .{ .ptr = &queue, .vtable = &LoopQueue.vtable };
+    defer {
+        for (queue.tasks[0..queue.count]) |task| if (task.drop) |drop| drop(task.context);
+        f.ctx.event_loop = null;
+    }
+    const document = f.document.?;
+    dom.document_lifecycle.delayLoadEvent(document);
+    dom.document_lifecycle.finishLoading(document);
+    const state = dom.document_internals.getInternal(document) orelse return error.NoDocumentState;
+    try testing.expectEqual(@as(u64, 0), state.pending_load_token);
+    try testing.expect(state.load_waiting_on_delay);
+    try testing.expectEqual(@as(usize, 1), queue.count); // DOMContentLoaded only.
+    const a = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "div")));
+    dom.document_lifecycle.undelayLoadEvent(document);
+    const token = state.pending_load_token;
+    const b = dom.tree_scope.serialOf(try f.attach(try Fixture.element(document, f.container, "span")));
+    try testing.expect(a != 0 and token != 0 and a < token and token < b);
+    try testing.expect(!state.load_waiting_on_delay);
+    try testing.expectEqual(@as(u64, 0), state.early_load_token);
+    try testing.expectEqual(@as(usize, 2), queue.count); // And the load's task.
+}
+
+test "load tokens stay nonzero and unique when the load is delayed over the end" {
+    try isolated(delayedLoadTokens);
 }

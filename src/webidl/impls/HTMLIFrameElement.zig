@@ -5643,6 +5643,28 @@ fn stopLoadingDocument(document: *runtime.Instance) void {
         if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
         const descendant = navigableOfDocument(entry.document) orelse continue;
         const context = descendant.browsing_context orelse continue;
+        // Each descendant navigable's navigation in flight ends too, as the
+        // stopped navigable's does at step 2. Stated deviation from HTML,
+        // whose "stop loading" sets only the stopped navigable's ongoing
+        // navigation to null - golden rule 2, no newer spec, all of Chrome
+        // and Safari's engines: Blink FrameLoader::StopAllLoaders recurses
+        // into each local child frame (InformAboutCanceledNavigation,
+        // CancelClientNavigation, DocumentLoader::StopLoading) and WebKit
+        // FrameLoader::stopAllLoaders into each local child (its provisional
+        // and current document loaders stopped), children before the frame
+        // itself. Setting the ongoing navigation informs the descendant's
+        // navigation API about aborting navigation, as Blink's does.
+        if (!document_lifecycle.isUnloading(entry.document)) switch (descendant.ongoing_navigation) {
+            .id => {
+                descendant.busy += 1;
+                defer finishBusy(descendant);
+                setOngoingNavigation(descendant, .none);
+                endLoadDelay(descendant);
+            },
+            else => {},
+        };
+        if (runtime.SlabAllocator.generationOf(document) != generation) return;
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
         html_module.document_abort.DescendantAbort.queue(document, entry.document, context.id);
     }
     document_lifecycle.abort(document);
