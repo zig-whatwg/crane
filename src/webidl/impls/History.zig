@@ -269,6 +269,29 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // navigable's allowed to perform a navigation or history update returns
     // blocked, then return."
     if (!bc.allowedToNavigateOrUpdateHistory()) return;
+    // Not while the document is unloading - its beforeunload, pagehide or
+    // unload handlers running (its unload counter above 0). Stated deviation
+    // from HTML, whose go() checks no such thing - golden rule 2, no newer
+    // spec, Chrome and Safari: Blink's History::go returns while
+    // !LocalFrame::IsNavigationAllowed(), which FrameLoader::ShouldClose
+    // (beforeunload) and DispatchUnloadEventAndFillOldDocInfo (pagehide,
+    // unload) clear with a FrameNavigationDisabler; WebKit's
+    // NavigationScheduler::shouldScheduleNavigation refuses while a
+    // NavigationDisabler (FrameLoader::shouldClose's, around beforeunload) is
+    // alive. history/the-history-interface/traverse-during-beforeunload.html:
+    // a history.back() in the beforeunload of a navigation's leaving document
+    // goes nowhere (Chrome, Firefox and Safari pass). Before the load moved
+    // to the end of the parse, Crane passed it another way: its popup's first
+    // page had not completely loaded when the opener set its location, so
+    // that navigation replaced it ("Location-object navigate") and
+    // history.back() had no entry to go to. With the load completed as
+    // Chrome and Safari complete it, it needs their rule (lane nav2 batch
+    // 12's trace: the navigation pushed, and back() won).
+    if (internal.window) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            if (@import("dom").document_lifecycle.isUnloading(document)) return;
+        }
+    }
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
     const top = bc.getTop();
     // Stated exceptions to the spec's queue for reloads (golden rule 2: the

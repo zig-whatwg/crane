@@ -1832,8 +1832,17 @@ const QueuedSvgScript = struct {
     /// The script's muted errors.
     muted: bool,
     credentials_mode: fetch.internal.CredentialsMode = .same_origin,
+    /// The node document whose load event the queued run delays, with its
+    /// slab generation (embedded_content's delay holder): undelayed when the
+    /// task is done or dropped, skipped for a document that is gone.
+    delayed_document: ?*runtime.Instance = null,
+    delayed_document_generation: u64 = 0,
 
     fn destroy(self: *QueuedSvgScript) void {
+        if (self.delayed_document) |document| {
+            self.delayed_document = null;
+            if (runtime.SlabAllocator.generationOf(document) == self.delayed_document_generation) dom.document_lifecycle.undelayLoadEvent(document);
+        }
         const root = self.element_root;
         self.element_ref.release(self.element);
         if (self.source) |b| std.heap.c_allocator.free(b);
@@ -1862,6 +1871,20 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
     // element from being run or fired at.
     if (element.ctx.hasEngine()) task.element_root = engine.retainValue(element.ctx, .{ .instance = element }) catch null;
     task.element_ref.take(element, dom.instance_bridge.getNodeBase(element));
+    // The queued run delays its document's load event until it has run, as
+    // HTML's force-async script does: "prepare the script element" step 35.2
+    // appends it to the preparation-time document's "set of scripts that will
+    // execute as soon as possible", which "the end" step 7 waits on. With the
+    // load completed at the end of the parse when nothing delays it
+    // (Document's completeLoadUnlessDelayed), the run of an external SVG
+    // script an inline one inserted came after the load:
+    // execution-timing/135.html (passes in Chrome, Firefox and Safari) wants
+    // "external script #1" before onload.
+    if (getNodeDocument(element)) |document| {
+        task.delayed_document = document;
+        task.delayed_document_generation = runtime.SlabAllocator.generationOf(document);
+        dom.document_lifecycle.delayLoadEvent(document);
+    }
     loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
 }
 

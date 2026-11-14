@@ -146,6 +146,14 @@ pub const ParseOptions = struct {
     /// and the input given with these options is empty. Implies a byte
     /// stream: `byte_stream`'s Content-Type and parent encoding still apply.
     body_stream: ?*StreamedBody = null,
+
+    /// The tree builder's "parser cannot change the mode flag": set by "load
+    /// a text document" steps 2-3 ("Set document's parser cannot change the
+    /// mode flag to true. Set document's mode to "no-quirks"") before the
+    /// parse - and by the media document Crane parses from synthesized markup
+    /// ("load a media document" step 2's no-quirks) - so the markup's missing
+    /// DOCTYPE leaves the mode alone.
+    parser_cannot_change_mode: bool = false,
 };
 
 /// What the encoding sniffing algorithm knows about a byte stream besides
@@ -469,6 +477,8 @@ pub const DocumentParser = struct {
         self.tree_builder.allow_declarative_shadow_roots = document_internals.allowsDeclarativeShadowRoots(document);
         self.adapter.notifies_children_finished = true;
         if (document_internals.getURL(document)) |url| self.tree_builder.iframe_srcdoc = matchesAboutSrcdoc(url);
+        // "Load a text document" steps 2-3 / "load a media document" step 2.
+        self.tree_builder.parser_cannot_change_mode = options.parser_cannot_change_mode;
         self.script_context = ParserScriptContext.init(
             allocator,
             ctx,
