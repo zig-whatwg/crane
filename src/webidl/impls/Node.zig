@@ -74,16 +74,22 @@ pub const InternalState = struct {
     /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
     pub const embedded_in_state = true;
 
+    /// This is the node's state: an instance whose chain keeps it is a
+    /// counted node - its wrapper owns a reference, and its NodeBase holds
+    /// the wrapper slot (runtime.lifetime.countedOf reads this declaration).
+    pub const counted_node = true;
+
     // No allocator copy (lane perf2 batch 6): what the node allocates comes
     // from its Browser's allocator, runtime.allocatorOf(instance) - the one it
     // was made with, asserted in initOwn.
 
-    /// NodeBase - THE source of truth for tree structure
-    /// Contains: parent_node, first_child, previous_or_last, next_sibling
-    /// All tree operations go through this via src/dom/mutation.zig
-    /// `&base` while the node lives; null once its teardown released it
-    /// (`releaseNodeBase`).
-    node_base: ?*NodeBase = null,
+    // No pointer to its own NodeBase and no second node type (lane nm1's
+    // layout batch; node-memory-plan-v2 section 6 items 4-5, the design's
+    // N4): `node_base` was always `&base` while the node lived and null
+    // once its teardown released it - which is exactly this level's live bit
+    // (runtime.OwnState: `releaseNodeBase` clears it), so a holder of this
+    // state holds a live NodeBase - and `node_type` was a copy of the
+    // NodeBase's. 16 bytes a node.
 
     /// The node's NodeBase, by value (lane perf2 batch 5, Z7): with this
     /// state in the node's State block, the tree node is in that block too -
@@ -93,36 +99,25 @@ pub const InternalState = struct {
     /// destruction chain).
     base: NodeBase,
 
-    /// The type of this node (ELEMENT_NODE, TEXT_NODE, etc.)
-    /// This determines behavior of many getters (nodeName, nodeValue, textContent)
-    node_type: u16 = NodeType.ELEMENT_NODE,
-
     // No local name, namespace, prefix or node value here (lane perf2 b5:
     // 128 bytes on every node, set on 186 of 6.07 M - and never read): an
     // element's names are its ElementData's, a CharacterData's value its
     // data, an Attr's value its own state, a PI's target its own.
 
-    /// The owner document for this node
-    /// Document nodes return null from ownerDocument getter
-    owner_document: ?*runtime.Instance = null,
-    /// `owner_document`'s slab generation when it was set: the net under the
-    /// rule that a node keeps its document (dom.node_document.traced_slot).
-    /// A document freed under a node that names it - a hole in that rule -
-    /// reads as an error and a log line, never as the freed object.
-    owner_document_generation: u64 = 0,
+    // No node document here (lane nm1; the design's N4): it is ONE word of
+    // the NodeBase, with its generation beside it (NodeBase.document_word,
+    // `documentInstance`, `documentIsLive`). This state kept the Document's
+    // Instance and the generation, and the NodeBase kept the Document's
+    // NodeBase: two pointers to one document, 8 bytes a node.
 
-    /// Cached childNodes NodeList (lazily created)
-    /// This is a live NodeList that reflects changes to the tree. RAW: the
-    /// list holds this node (a counted reference, refcount design 5h), never
-    /// the reverse, and clears this - and the interface's [SameObject] cache
-    /// of it - when it is freed (`childNodesFreed`).
-    child_nodes_list: ?*runtime.Instance = null,
+    // No childNodes list here (lane nm1): the interface's [SameObject] cache
+    // (the generated State's `cached_childNodes`) is the one copy; this
+    // state kept a second pointer to the same list. 8 bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
 
-    /// Owns nothing: node_base and child_nodes_list are managed separately
-    /// (releaseNodeBase, childNodesFreed).
+    /// Owns nothing: the NodeBase is released by `releaseNodeBase`.
     pub fn deinit(self: *InternalState) void {
         _ = self;
     }
@@ -136,7 +131,7 @@ const Registry = runtime.OwnState(State, InternalState);
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
     const internal = Registry.get(instance) orelse return null;
     // Refcount step 6: a read of a node step 7 would have freed is reported.
-    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    if (dom_module.refcount_audit.on()) dom_module.refcount_audit.checkRead(&internal.base, .node_state, @returnAddress());
     return internal;
 }
 
@@ -170,16 +165,23 @@ pub fn installHooks() void {
 /// Node state, or null when it is no node or its NodeBase is gone.
 fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
     const internal = Registry.get(instance) orelse return null;
-    return internal.node_base;
+    return &internal.base;
 }
 
 /// runtime.orphan_roots' check, for a recorded root whose generation and
 /// cleanup flags still name it: still parentless, and still reached by no
-/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]).
+/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]) -
+/// nor any node of its tree. Since the wrapper redesign's P7 a wrap reaches
+/// no ancestor, so a node of the tree can be wrapped under an unwrapped
+/// root: its wrapper's reference holds the tree, and the counts (refcount
+/// step 7) free it once that wrapper goes. Only a wrapper refuses: a tree
+/// held by holders' counts alone is freed here as before P7 (dom.mutation
+/// orphanRemoved says why; refcount step 7b owns that drain).
 fn stillOrphan(instance: *runtime.Instance) bool {
     const internal = Registry.get(instance) orelse return false;
-    const node_base = internal.node_base orelse return false;
+    const node_base = &internal.base;
     if (node_base.parent_node != null or !node_base.wrapper.isEmpty()) return false;
+    if (dom_module.wrapper_tracing.holdsWrapper(node_base)) return false;
     return runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance);
 }
 
@@ -216,14 +218,12 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
         std.debug.panic("a node ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
     internal.* = .{
-        .node_type = node_type,
         .base = .{
             .node_type = node_type,
             .parent_node = null,
             .first_child = null,
             .previous_or_last = null,
             .next_sibling = null,
-            .owner_document = null,
             .is_connected = false,
             // Born with one reference, its creator's (rc_one), which it offers to
             // whoever takes it on first (NodeBase.RcFlags.creator; refcount7) -
@@ -233,11 +233,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
             .rc_flags = .{},
         },
     };
-    const node_base = &internal.base;
-    internal.node_base = node_base;
 
     // Register the Instance <-> NodeBase mapping
-    try instance_bridge.register(instance, node_base);
+    try instance_bridge.register(instance, &internal.base);
 }
 
 /// DOM 4.4: the node type of a node whose most-derived State is
@@ -263,7 +261,7 @@ fn nodeTypeOf(comptime StateType: type) u16 {
 pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
     const internal = Registry.get(instance) orelse return null;
     // Refcount step 6: a read of a node step 7 would have freed is reported.
-    if (dom_module.refcount_audit.on()) if (internal.node_base) |base| dom_module.refcount_audit.checkRead(base, .node_state, @returnAddress());
+    if (dom_module.refcount_audit.on()) dom_module.refcount_audit.checkRead(&internal.base, .node_state, @returnAddress());
     return internal;
 }
 
@@ -316,13 +314,9 @@ pub fn deinit(instance: *runtime.Instance) void {
     // whose teardown another path began already is unlinked and left to
     // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
-        if (internal.node_base) |node_base| {
-            _ = dom_module.tree_teardown.freeAllDescendants(node_base, &deinitNodeByType);
-            releaseNodeBase(instance, internal, node_base, .with_document_counts);
-        }
-
-        // Deinit the internal state's owned resources (strings, etc.)
-        internal.deinit();
+        _ = dom_module.tree_teardown.freeAllDescendants(&internal.base, &deinitNodeByType);
+        // Releases the NodeBase and clears this level's live bit.
+        releaseNodeBase(instance, internal, .with_document_counts);
     }
 
     // Clean up its internal state
@@ -432,13 +426,13 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
         return;
     };
     provably_unwrapped = runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance) and
-        if (internal.node_base) |node_base| node_base.wrapper.isEmpty() else false;
+        internal.base.wrapper.isEmpty();
 
     // Dispatch based on node type to call the appropriate interface's deinit.
     // Each interface's deinit chains back to Node.deinit, which frees the
     // node's subtree (if it still has one: a root) through its links - so
     // DO NOT clear the child links here.
-    switch (internal.node_type) {
+    switch (internal.base.node_type) {
         NodeType.TEXT_NODE => {
             interfaces.Text.deinit(instance);
         },
@@ -507,7 +501,7 @@ fn deinitElement(instance: *runtime.Instance) void {
 /// Returns an integer corresponding to the type of the node
 pub fn get_nodeType(instance: *runtime.Instance) anyerror!u16 {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    return internal.node_type;
+    return internal.base.node_type;
 }
 
 /// Getter for nodeName
@@ -516,7 +510,7 @@ pub fn get_nodeType(instance: *runtime.Instance) anyerror!u16 {
 pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    return switch (internal.node_type) {
+    return switch (internal.base.node_type) {
         NodeType.ELEMENT_NODE => blk: {
             // For Element: its HTML-uppercased qualified name - which is
             // exactly what Element.tagName is defined as (DOM 4.9), so this
@@ -559,10 +553,10 @@ pub fn get_nodeName(instance: *runtime.Instance) anyerror!runtime.DOMString {
 /// The binding frees the returned string.
 pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const document = if (internal.node_type == NodeType.DOCUMENT_NODE)
+    const document = if (internal.base.node_type == NodeType.DOCUMENT_NODE)
         instance
     else
-        internal.owner_document orelse return error.InvalidStateError;
+        internal.base.documentInstance() orelse return error.InvalidStateError;
     const allocator = instance.ctx.allocator;
 
     // HTML document base URL step 1: the first base[href]'s URL is frozen
@@ -598,7 +592,7 @@ pub fn get_baseURI(instance: *runtime.Instance) anyerror!runtime.USVString {
 /// to dynamic computation for shadow DOM nodes where the flag may not be set correctly.
 pub fn get_isConnected(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return false;
+    const node_base = &internal.base;
 
     // Fast path: if cached value is true, we're connected
     if (node_base.is_connected) {
@@ -639,14 +633,13 @@ fn isConnectedThroughShadow(instance: *runtime.Instance, node_base: *NodeBase) b
             if (interfaces.ShadowRoot.get_host(root_instance) catch null) |host| {
                 // Recursively check if the host element is connected
                 if (getInternal(host)) |host_internal| {
-                    if (host_internal.node_base) |host_node_base| {
-                        // Check cached value first
-                        if (host_node_base.is_connected) {
-                            return true;
-                        }
-                        // Recurse to follow further shadow hosts
-                        return isConnectedThroughShadow(host, host_node_base);
+                    const host_node_base = &host_internal.base;
+                    // Check cached value first
+                    if (host_node_base.is_connected) {
+                        return true;
                     }
+                    // Recurse to follow further shadow hosts
+                    return isConnectedThroughShadow(host, host_node_base);
                 }
             }
         }
@@ -662,20 +655,20 @@ pub fn get_ownerDocument(instance: *runtime.Instance) anyerror!?*runtime.Instanc
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
     // Document nodes return null
-    if (internal.node_type == NodeType.DOCUMENT_NODE) {
+    if (internal.base.node_type == NodeType.DOCUMENT_NODE) {
         return null;
     }
 
     return liveOwnerDocument(internal);
 }
 
-/// `internal`'s node document, through the net (`owner_document_generation`):
+/// `internal`'s node document, through the net (NodeBase.document_generation):
 /// a document freed under the node that names it is never handed out. A node
 /// keeps its document, so a freed one is a bug, logged.
 fn liveOwnerDocument(internal: *const InternalState) error{InvalidStateError}!?*runtime.Instance {
-    const document = internal.owner_document orelse return null;
-    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) {
-        log.warn("a node's document was freed while the node named it (node type {d})", .{internal.node_type});
+    const document = internal.base.documentInstance() orelse return null;
+    if (!internal.base.documentIsLive()) {
+        log.warn("a node's document was freed while the node named it (node type {d})", .{internal.base.node_type});
         return error.InvalidStateError;
     }
     return document;
@@ -685,7 +678,7 @@ fn liveOwnerDocument(internal: *const InternalState) error{InvalidStateError}!?*
 /// https://dom.spec.whatwg.org/#dom-node-parentnode
 pub fn get_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const parent_base = node_base.parent_node orelse return null;
     const parent_opaque = instance_bridge.getInstance(parent_base) orelse return null;
     return @ptrCast(@alignCast(parent_opaque));
@@ -696,7 +689,7 @@ pub fn get_parentNode(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// Returns parent if parent is an Element, otherwise null
 pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const parent_base = node_base.parent_node orelse return null;
 
     // Check if parent is an Element (node_type == ELEMENT_NODE)
@@ -709,38 +702,28 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 }
 
 /// dom.refcount's hook: `list`, `node`'s childNodes list, is being freed.
-/// The node's two caches of it - this impl's and the generated interface's
-/// [SameObject] one - are raw (the list holds the node, never the reverse:
-/// refcount design section 3), and let it go: the next read makes a new list.
+/// The node's cache of it - the generated interface's [SameObject] one - is
+/// raw (the list holds the node, never the reverse: refcount design section
+/// 3), and lets it go: the next read makes a new list.
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
-    if (getInternal(node)) |internal| {
-        if (internal.child_nodes_list == list) internal.child_nodes_list = null;
-    }
     const state = node.getState(State);
     if (state.own.cached_childNodes == list) state.own.cached_childNodes = null;
 }
 
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
-/// Returns a live NodeList of child nodes
-/// The [SameObject] extended attribute means the same object must be returned
-/// on every access, which is achieved by caching in child_nodes_list.
+/// Returns a live NodeList of child nodes.
+/// [SameObject]: the generated interface caches what this makes
+/// (`cached_childNodes`, the one copy; `childNodesFreed` clears it) and calls
+/// here only while it holds none - so this makes the list and keeps nothing.
 pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = getInternal(instance) orelse return error.InvalidStateError;
-
-    // Return cached NodeList if it exists ([SameObject] semantics)
-    if (internal.child_nodes_list) |list| {
-        return list;
-    }
+    _ = getInternal(instance) orelse return error.InvalidStateError;
 
     // Create a live NodeList for this node's children: made through its
     // interface, made live over them by NodeList's step (dom.node_lists).
     const list = try interfaces.NodeList.init(runtime.allocatorOf(instance), instance.ctx);
     errdefer interfaces.NodeList.deinit(list);
     try dom_module.node_lists.childNodes(list, instance);
-
-    // Cache for [SameObject] semantics
-    internal.child_nodes_list = list;
 
     return list;
 }
@@ -749,7 +732,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// https://dom.spec.whatwg.org/#dom-node-firstchild
 pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const first = node_base.first_child orelse return null;
     const first_opaque = instance_bridge.getInstance(first) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
@@ -759,7 +742,7 @@ pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// https://dom.spec.whatwg.org/#dom-node-lastchild
 pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const last = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
@@ -769,7 +752,7 @@ pub fn get_lastChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
 /// https://dom.spec.whatwg.org/#dom-node-previoussibling
 pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const prev = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
@@ -779,7 +762,7 @@ pub fn get_previousSibling(instance: *runtime.Instance) anyerror!?*runtime.Insta
 /// https://dom.spec.whatwg.org/#dom-node-nextsibling
 pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const next = node_base.next_sibling orelse return null;
     const next_opaque = instance_bridge.getInstance(next) orelse return null;
     return @ptrCast(@alignCast(next_opaque));
@@ -791,7 +774,7 @@ pub fn get_nextSibling(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 pub fn get_nodeValue(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    return switch (internal.node_type) {
+    return switch (internal.base.node_type) {
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.PROCESSING_INSTRUCTION_NODE,
@@ -819,8 +802,8 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
     const node_internal = getInternal(node) orelse return;
 
     // If this is a text node, add its content from CharacterData storage
-    if (node_internal.node_type == NodeType.TEXT_NODE or
-        node_internal.node_type == NodeType.CDATA_SECTION_NODE)
+    if (node_internal.base.node_type == NodeType.TEXT_NODE or
+        node_internal.base.node_type == NodeType.CDATA_SECTION_NODE)
     {
         if (dom_module.character_data.dataOf(node)) |data_slice| {
             try result.appendSlice(allocator, data_slice);
@@ -829,7 +812,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
     }
 
     // Otherwise, recursively collect from children using NodeBase
-    const node_base = node_internal.node_base orelse return;
+    const node_base = &node_internal.base;
     var child_base = node_base.first_child;
     while (child_base) |c| {
         const child_opaque = instance_bridge.getInstance(c) orelse {
@@ -848,7 +831,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
 pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    return switch (internal.node_type) {
+    return switch (internal.base.node_type) {
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
             // Returns null
             return null;
@@ -900,7 +883,7 @@ pub fn get_textContent(instance: *runtime.Instance) anyerror!?runtime.DOMString 
 pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    switch (internal.node_type) {
+    switch (internal.base.node_type) {
         // DOM 4.4: for CharacterData, "replace data with node this, offset 0,
         // count this's length, and data the given value". That lives in
         // CharacterData's own state and must go through replace data so live
@@ -930,7 +913,7 @@ pub fn set_nodeValue(instance: *runtime.Instance, value: ?runtime.DOMString) any
 pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
 
-    switch (internal.node_type) {
+    switch (internal.base.node_type) {
         NodeType.DOCUMENT_NODE, NodeType.DOCUMENT_TYPE_NODE => {
             // Do nothing
         },
@@ -949,7 +932,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
         },
         NodeType.ELEMENT_NODE, NodeType.DOCUMENT_FRAGMENT_NODE => {
             // DOM "string replace all" with the given value within this.
-            const node_base = internal.node_base orelse return error.InvalidStateError;
+            const node_base = &internal.base;
 
             // Step 1: "Let node be null."
             // Step 2: "If string is not the empty string, then set node to a
@@ -964,7 +947,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
                     .{ .data = slice },
                 );
                 errdefer interfaces.Text.deinit(text_node);
-                if (internal.owner_document) |owner_doc| {
+                if (internal.base.documentInstance()) |owner_doc| {
                     try setOwnerDocument(text_node, owner_doc);
                 }
                 text_base = instance_bridge.getNodeBase(@ptrCast(text_node)) orelse return error.InvalidStateError;
@@ -987,7 +970,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
 /// https://dom.spec.whatwg.org/#dom-node-haschildnodes
 pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return false;
+    const node_base = &internal.base;
     return node_base.first_child != null;
 }
 
@@ -995,7 +978,7 @@ pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
 /// https://dom.spec.whatwg.org/#dom-node-getrootnode
 pub fn call_getRootNode(instance: *runtime.Instance, options: webidl.Opt(dictionaries.GetRootNodeOptions)) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const node_base = internal.node_base orelse return instance;
+    const node_base = &internal.base;
 
     // Walk up the tree to find the root using NodeBase
     var current_base = node_base;
@@ -1029,10 +1012,10 @@ pub fn call_contains(instance: *runtime.Instance, other: ?*runtime.Instance) any
 
     // Get NodeBase for both nodes
     const internal = getInternal(instance) orelse return false;
-    const self_base = internal.node_base orelse return false;
+    const self_base = &internal.base;
 
     const other_internal = getInternal(other_instance) orelse return false;
-    const other_base = other_internal.node_base orelse return false;
+    const other_base = &other_internal.base;
 
     // Walk up from other to see if we find self
     var current: ?*NodeBase = other_base;
@@ -1139,8 +1122,8 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
     // allocation - comparing each pair as it is reached, so the answer and the
     // order of the comparisons are the recursion's.
     if (!try equalsShallow(instance, other_node)) return false;
-    const self_root = (getInternal(instance) orelse return false).node_base orelse return true;
-    const other_root = (getInternal(other_node) orelse return false).node_base orelse return true;
+    const self_root = &(getInternal(instance) orelse return false).base;
+    const other_root = &(getInternal(other_node) orelse return false).base;
     var a: *NodeBase = self_root;
     var b: *NodeBase = other_root;
     while (true) {
@@ -1178,12 +1161,12 @@ fn equalsShallow(instance: *runtime.Instance, other_node: *runtime.Instance) !bo
     const other_internal = getInternal(other_node) orelse return false;
 
     // Must be same node type
-    if (self_internal.node_type != other_internal.node_type) return false;
+    if (self_internal.base.node_type != other_internal.base.node_type) return false;
 
     // DOM "equals": compare the interface's own fields, not Node's legacy
     // copies. Like WebKit Node::isEqualNode, compare attributes independent
     // of their list order (and without their namespace prefixes).
-    switch (self_internal.node_type) {
+    switch (self_internal.base.node_type) {
         NodeType.DOCUMENT_TYPE_NODE => {
             if (!try equalStringMember(interfaces.DocumentType.get_name, instance, other_node) or
                 !try equalStringMember(interfaces.DocumentType.get_publicId, instance, other_node) or
@@ -1257,7 +1240,7 @@ pub fn call_cloneNode(instance: *runtime.Instance, subtree: webidl.Opt(bool)) an
     // set to subtree" - document defaulting to this's node document, which
     // for a document is itself.
     const deep = if (subtree.was_passed) subtree.value else false;
-    const document = if (internal.node_type == NodeType.DOCUMENT_NODE) instance else internal.owner_document;
+    const document = if (internal.base.node_type == NodeType.DOCUMENT_NODE) instance else internal.base.documentInstance();
     return dom_module.node_creation.clone(instance, document, deep, null);
 }
 
@@ -1299,8 +1282,8 @@ pub fn cloneANode(
     // 5 sets document to copy when node is a document, and Blink creates each
     // child in the clone's own document (ContainerNode::CloneChildNodesFrom).
     if (subtree) {
-        const children_document = if (node_internal.node_type == NodeType.DOCUMENT_NODE) copy else document;
-        const node_base = node_internal.node_base orelse return copy;
+        const children_document = if (node_internal.base.node_type == NodeType.DOCUMENT_NODE) copy else document;
+        const node_base = &node_internal.base;
         var child_base = node_base.first_child;
         while (child_base) |c| : (child_base = c.next_sibling) {
             const child_opaque = instance_bridge.getInstance(c) orelse continue;
@@ -1314,7 +1297,7 @@ pub fn cloneANode(
         if (try interfaces.ShadowRoot.get_clonable(shadow)) {
             var registry = try interfaces.ShadowRoot.get_customElementRegistry(shadow);
             if (registry) |value| if (!dom_module.custom_elements.isScoped(value)) {
-                const target = document orelse node_internal.owner_document orelse return error.InvalidStateError;
+                const target = document orelse node_internal.base.documentInstance() orelse return error.InvalidStateError;
                 registry = dom_module.custom_elements.effectiveGlobal(try interfaces.Document.get_customElementRegistry(target));
             };
             const shadow_copy = try dom_module.custom_elements.attachShadow(copy, .{
@@ -1350,7 +1333,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
     // its data is silently lost. Build those through their own interfaces, which
     // also keeps them off `Registry.createIn` (see AGENTS.md: createIn hands out
     // a block the arena will reissue).
-    switch (node_internal.node_type) {
+    switch (node_internal.base.node_type) {
         NodeType.TEXT_NODE,
         NodeType.CDATA_SECTION_NODE,
         NodeType.COMMENT_NODE,
@@ -1358,11 +1341,11 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         => {
             // Clone a single node step 4 / create a node step 2: the copy is
             // created in the destination node document's relevant realm.
-            const copy_ctx = if (document orelse node_internal.owner_document) |owner| owner.ctx else node.ctx;
+            const copy_ctx = if (document orelse node_internal.base.documentInstance()) |owner| owner.ctx else node.ctx;
             var data_str = try interfaces.CharacterData.get_data(node);
             defer data_str.deinit(node.ctx.allocator);
 
-            const copy = switch (node_internal.node_type) {
+            const copy = switch (node_internal.base.node_type) {
                 NodeType.TEXT_NODE => try interfaces.Text.initWith(
                     copy_ctx.allocator,
                     copy_ctx,
@@ -1395,7 +1378,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             };
             errdefer runtime.Instance.deinit(copy);
 
-            if (document orelse node_internal.owner_document) |owner_doc| {
+            if (document orelse node_internal.base.documentInstance()) |owner_doc| {
                 try setOwnerDocument(copy, owner_doc);
             }
             return copy;
@@ -1406,7 +1389,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         // A bare Node copy has no Element state, so every later attribute or
         // name access on the clone fails with InvalidStateError.
         NodeType.ELEMENT_NODE => {
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             // These getters BORROW the element's own name record (lane nd2
             // N2, dom.element_name): valid while `node` lives, and their
@@ -1496,7 +1479,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // "DocumentType: set copy's name, public ID, and system ID to those
             // of node." Built by the owner's DOMImplementation, which is the one
             // factory the interfaces expose for a doctype.
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const instance_allocator = node.ctx.allocator;
             // Getters clone; the caller frees (AGENTS.md, "Interface getters clone").
@@ -1521,7 +1504,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
             // value to those of node." Field for field through the Attr hook:
             // createAttributeNS would validate, and reject a name an attribute
             // made by setAttribute legitimately holds ("a:b" as a local name).
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const instance_allocator = node.ctx.allocator;
             var namespace = try interfaces.Attr.get_namespaceURI(node);
@@ -1547,7 +1530,7 @@ fn cloneSingleNode(node: *runtime.Instance, document: ?*runtime.Instance, fallba
         NodeType.DOCUMENT_FRAGMENT_NODE => {
             // "Otherwise: do nothing." A fragment carries no fields; it only has
             // to be a fragment of the right document.
-            const owner = document orelse node_internal.owner_document orelse
+            const owner = document orelse node_internal.base.documentInstance() orelse
                 return error.InvalidStateError;
             const copy = try interfaces.Document.call_createDocumentFragment(owner);
             try setOwnerDocument(copy, owner);
@@ -1671,12 +1654,12 @@ fn findOwnerDocument(node: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(node) orelse return null;
 
     // If this is a Document, return it
-    if (internal.node_type == NodeType.DOCUMENT_NODE) {
+    if (internal.base.node_type == NodeType.DOCUMENT_NODE) {
         return node;
     }
 
     // Otherwise, return the ownerDocument
-    return internal.owner_document;
+    return internal.base.documentInstance();
 }
 
 /// Operation: appendChild
@@ -1686,8 +1669,8 @@ pub fn call_appendChild(instance: *runtime.Instance, node: *runtime.Instance) an
     const parent_internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
+    const parent_base = &parent_internal.base;
+    const node_base = &node_internal.base;
 
     // Delegate to src/dom/mutation.zig - single source of truth
     _ = dom_module.mutation.append(node_base, parent_base) catch |err| {
@@ -1708,12 +1691,12 @@ pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, c
     const parent_internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    const parent_base = parent_internal.node_base orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
+    const parent_base = &parent_internal.base;
+    const node_base = &node_internal.base;
 
     const child_base: ?*NodeBase = if (child) |c| blk: {
         const c_internal = getInternal(c) orelse break :blk null;
-        break :blk c_internal.node_base;
+        break :blk &c_internal.base;
     } else null;
 
     // Delegate to src/dom/mutation.zig - single source of truth
@@ -1734,8 +1717,8 @@ pub fn call_insertBefore(instance: *runtime.Instance, node: *runtime.Instance, c
 pub fn call_removeChild(instance: *runtime.Instance, child: *runtime.Instance) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
-    const parent_base = internal.node_base orelse return error.InvalidStateError;
-    const child_base = child_internal.node_base orelse return error.InvalidStateError;
+    const parent_base = &internal.base;
+    const child_base = &child_internal.base;
 
     // Delegate to src/dom/mutation.zig - single source of truth
     // preRemove checks that child's parent is parent and throws NotFoundError if not
@@ -1758,9 +1741,9 @@ pub fn call_replaceChild(instance: *runtime.Instance, node: *runtime.Instance, c
     const child_internal = getInternal(child) orelse return error.InvalidStateError;
     const node_internal = getInternal(node) orelse return error.InvalidStateError;
 
-    const parent_base = internal.node_base orelse return error.InvalidStateError;
-    const child_base = child_internal.node_base orelse return error.InvalidStateError;
-    const node_base = node_internal.node_base orelse return error.InvalidStateError;
+    const parent_base = &internal.base;
+    const child_base = &child_internal.base;
+    const node_base = &node_internal.base;
 
     // Delegate to src/dom/mutation.zig - single source of truth
     _ = dom_module.mutation.replace(child_base, node_base, parent_base) catch |err| {
@@ -1879,7 +1862,8 @@ pub fn setLocalName(instance: *runtime.Instance, name: runtime.DOMString) !void 
 
     // Also name the NodeBase for DOM operations (post-connection steps, etc.):
     // the uppercase of the local name, owned by the node (its rare data).
-    if (internal.node_base) |node_base| {
+    {
+        const node_base = &internal.base;
         const name_slice = name.asSlice();
         // The NodeBase owns it, and frees it with its own allocator.
         const upper_name = try node_base.allocator().alloc(u8, name_slice.len);
@@ -1904,29 +1888,23 @@ fn setNodeDocumentHook(node: *runtime.Instance, document: ?*runtime.Instance) do
 
 pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    const previous = internal.owner_document;
+    const base = &internal.base;
+    const previous = base.documentInstance();
     const previous_counts = liveDocumentCounts(internal);
-    internal.owner_document = doc;
-    internal.owner_document_generation = if (doc) |document| runtime.SlabAllocator.generationOf(document) else 0;
 
-    // The tree algorithms in src/dom read the node document off the NodeBase,
-    // as the document's own NodeBase. Both copies name the same document:
-    // `insert` adopts into it, and adopting is what removes a node from its
-    // old parent, so a NodeBase with no document made every move into a node
-    // built through the DOM API leave the moved node in two child lists.
-    if (internal.node_base) |base| {
-        base.owner_document = null;
-        if (doc) |document| {
-            if (getInternal(document)) |document_internal| {
-                if (document_internal.node_base) |document_base| base.owner_document = @ptrCast(@alignCast(document_base));
-            }
-        }
-        if (doc != previous) {
-            keepNodeDocument(instance, internal.node_type, base, doc);
-            // The node's reference - and, a detached root, its holds - move
-            // to the new document's counts (refcount design 1.5, D6).
-            dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
-        }
+    // One word for every reader (lane nm1): the Document's Instance, which
+    // the ownerDocument getter and everything outside src/dom read, and from
+    // which src/dom's tree algorithms find the document's own NodeBase
+    // (NodeBase.documentBase) - `insert` adopts into it, and adopting is what
+    // removes a node from its old parent, so a NodeBase with no document made
+    // every move into a node built through the DOM API leave the moved node
+    // in two child lists. A document whose own Node state is gone has no
+    // NodeBase to hand src/dom: the word says so.
+    base.setDocumentInstance(doc, if (doc) |document| getInternal(document) != null else false);
+    if (doc != previous) {
+        // The node's reference - and, a detached root, its holds - move
+        // to the new document's counts (refcount design 1.5, D6).
+        dom_module.refcount.nodeDocumentChanged(base, previous_counts, if (doc) |document| dom_module.refcount.documentCounts(document) else null);
     }
 }
 
@@ -1934,8 +1912,8 @@ pub fn setOwnerDocument(instance: *runtime.Instance, doc: ?*runtime.Instance) !v
 /// none - or one freed under it (its slot's generation moved on), whose
 /// counts went with it.
 fn liveDocumentCounts(internal: *InternalState) ?*dom_module.refcount.DocumentCounts {
-    const document = internal.owner_document orelse return null;
-    if (runtime.SlabAllocator.generationOf(document) != internal.owner_document_generation) return null;
+    const document = internal.base.documentInstance() orelse return null;
+    if (!internal.base.documentIsLive()) return null;
     return dom_module.refcount.documentCounts(document);
 }
 
@@ -1953,53 +1931,23 @@ fn nodeDocumentCounts(node: *runtime.Instance) ?*dom_module.refcount.DocumentCou
 /// storage until the count is zero.
 fn releaseDocumentCounts(internal: *InternalState, base: *NodeBase) void {
     const counts = liveDocumentCounts(internal);
-    if (counts == null and internal.owner_document != null and
-        runtime.SlabAllocator.generationOf(internal.owner_document.?) != internal.owner_document_generation)
-    {
+    if (counts == null and !base.documentIsLive()) {
         if (dom_module.refcount.diagnosticsOn()) refcount_log.warn("a node outlived its node document's storage (node type {d})", .{base.node_type});
     }
     dom_module.refcount.nodeFreed(base, counts);
 }
 
-/// A node keeps its node document alive for as long as the node lives
-/// (dom.node_document.traced_slot): a wrapped root's upward edge, which the
-/// engine adapter's node tracing points at the document, is redrawn here when
-/// adopt changes the root's document, and REPLACES the old target, so the node
-/// lets its old document go. Adopt removes a node from its parent first, so
-/// the adopted node is a root here; its wrapped descendants keep their
-/// parents, whose chain reaches it. Blink moves the traced tree scope
-/// (TreeScopeAdopter); WebKit moves the node's count from the old document
-/// to the new (Node::moveTreeToNewScope,
-/// Document::decrementReferencingNodeCount).
-///
-/// A node script has not seen draws nothing - never engine.traceChild for an
-/// unwrapped owner, which would hold the document strongly until a wrapper
-/// that may never come (every node a parser makes): its wrapper, when made,
-/// points at the document it has then. The pointer test comes first, so a
-/// node being created pays one field read (refcount design 2.2).
-fn keepNodeDocument(instance: *runtime.Instance, node_type: u16, base: *NodeBase, doc: ?*runtime.Instance) void {
-    // A node in a tree reaches its document through its parent: the slot
-    // holds the parent there (node tracing), and a root's holds its document.
-    if (node_type == NodeType.DOCUMENT_NODE or base.parent_node != null) return;
-    if (base.wrapper.isEmpty() or !engine.hasWrapper(instance)) return;
-    if (doc) |document| {
-        engine.traceChild(instance, document, dom_module.node_document.traced_slot);
-    } else {
-        engine.forgetTracedChild(instance, dom_module.node_document.traced_slot);
-    }
-}
-
 /// Get the node type
 pub fn getNodeType(instance: *runtime.Instance) ?u16 {
     const internal = getInternal(instance) orelse return null;
-    return internal.node_type;
+    return internal.base.node_type;
 }
 
 /// Get the parent node (returns null if no parent or instance has no state)
 /// This is a convenience helper for Range and other impls that need nullable parent access
 pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const parent_base = node_base.parent_node orelse return null;
     const parent_opaque = instance_bridge.getInstance(parent_base) orelse return null;
     return @ptrCast(@alignCast(parent_opaque));
@@ -2009,7 +1957,7 @@ pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
 /// This is a convenience helper for iterating children
 pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const first_base = node_base.first_child orelse return null;
     const first_opaque = instance_bridge.getInstance(first_base) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
@@ -2019,7 +1967,7 @@ pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
 /// This is a convenience helper for iterating children
 pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const next_base = node_base.next_sibling orelse return null;
     const next_opaque = instance_bridge.getInstance(next_base) orelse return null;
     return @ptrCast(@alignCast(next_opaque));
@@ -2029,7 +1977,7 @@ pub fn getNextSibling(instance: *runtime.Instance) ?*runtime.Instance {
 /// This is a convenience helper for traversing siblings backwards
 pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const prev_base = node_base.previousSibling() orelse return null;
     const prev_opaque = instance_bridge.getInstance(prev_base) orelse return null;
     return @ptrCast(@alignCast(prev_opaque));
@@ -2039,7 +1987,7 @@ pub fn getPreviousSibling(instance: *runtime.Instance) ?*runtime.Instance {
 /// This is a convenience helper for reverse child iteration
 pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
-    const node_base = internal.node_base orelse return null;
+    const node_base = &internal.base;
     const last_base = node_base.lastChild() orelse return null;
     const last_opaque = instance_bridge.getInstance(last_base) orelse return null;
     return @ptrCast(@alignCast(last_opaque));
@@ -2049,7 +1997,7 @@ pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
 /// This is a convenience helper for tree traversal
 pub fn hasChildren(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
-    const node_base = internal.node_base orelse return false;
+    const node_base = &internal.base;
     return node_base.first_child != null;
 }
 
@@ -2057,7 +2005,7 @@ pub fn hasChildren(instance: *runtime.Instance) bool {
 /// This is a convenience helper for Range and other impls
 pub fn getChildCount(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
-    const node_base = internal.node_base orelse return 0;
+    const node_base = &internal.base;
     var count: u32 = 0;
     var child = node_base.first_child;
     // Safety limit to prevent infinite loops from corrupted DOM trees
@@ -2081,7 +2029,7 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
 pub fn getOwnerDocument(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     // Document nodes have no owner document (they ARE the document)
-    if (internal.node_type == NodeType.DOCUMENT_NODE) return null;
+    if (internal.base.node_type == NodeType.DOCUMENT_NODE) return null;
     return liveOwnerDocument(internal) catch null;
 }
 
@@ -2103,16 +2051,33 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 ///    (dom.observer_registrations.releaseList), while the bridge still names
 ///    the node;
 /// 2. the rare data that held them goes, an owned node name with it;
-/// 3. every hold on the node is emptied (dom.node_holds.nodeReleased: the
-///    slab generation can outlive the NodeBase);
+/// 3. its teardown is marked begun (instance_lifecycle.markCleanupStarted,
+///    which Node.deinit made already; the final sweep's release makes it
+///    here): the slab generation can outlive the NodeBase, and a hold on
+///    the node (dom.node_holds) reads it as gone from here and forgets its
+///    reference - the redesign's P6 deleted the per-node chain of holds;
 /// 4. the node document's counts let it go (not in the final sweep, whose
 ///    documents go in no order);
 /// 5. the bridge forgets the node - an observer's `liveNode` reads null from
 ///    here - and the NodeBase is freed.
-fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_base: *NodeBase, counts: DocumentCounts) void {
+///
+/// Before any of it, in a Debug build: the node's wrapper slot is empty. No
+/// node is released while its engine wrapper is bound - an engine's
+/// reference to the slot (V8's node anchor, `slot_`) would outlive the bytes
+/// it names (tmp/redesign/wrapper-redesign-design.md 4.9 "Browser end": "a
+/// Debug check in the batch free asserts every slot is empty"; risk 8 of
+/// tmp/redesign/node-memory-architecture.md). A node's own teardown ends its
+/// wrapper first (engine.platformObjectDestroyed); the Browser's end ends
+/// every one (engine.releaseNodeWrappers) before its sweeps reach
+/// `sweepOne`. Debug only (`builtin.optimize`, never std.debug.assert, which
+/// ReleaseSafe keeps: the deep review's Z3).
+fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts: DocumentCounts) void {
+    const node_base = &internal.base;
+    if (@import("builtin").optimize == .debug and !node_base.wrapper.isEmpty())
+        std.debug.panic("Node: a {s} was released with its wrapper slot still bound - its wrapper must end first (engine.platformObjectDestroyed; at the Browser's end engine.releaseNodeWrappers, before the teardown sweeps)", .{instance.vtable.name});
     dom_module.observer_registrations.releaseList(instance, node_base);
     node_base.deinitRareData();
-    dom_module.node_holds.nodeReleased(node_base);
+    _ = runtime.instance_lifecycle.markCleanupStarted(instance);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
     instance_bridge.unregister(instance);
     // The NodeBase is the State block's (`InternalState.base`): released, not
@@ -2123,7 +2088,10 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, node_b
     // one did.
     if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes())
         @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
-    internal.node_base = null;
+    // "The node has no NodeBase from here": this level's live bit, which
+    // every reader of this state passes first (Registry.get). It was a null
+    // `node_base` pointer; both of the callers cleared the bit right after.
+    Registry.remove(instance);
 }
 
 /// dom.teardown_sweeps: clean up ALL of `scope`'s remaining Node internal
@@ -2142,11 +2110,5 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
 }
 
 fn sweepOne(_: void, instance: *runtime.Instance, internal: *InternalState) void {
-    // Free NodeBase if present
-    if (internal.node_base) |node_base| {
-        releaseNodeBase(instance, internal, node_base, .without_document_counts);
-    }
-
-    // Clean up InternalState owned strings
-    internal.deinit();
+    releaseNodeBase(instance, internal, .without_document_counts);
 }

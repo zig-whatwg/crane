@@ -255,6 +255,24 @@ pub const State = struct {
         self.dialog_pointerdown_target_removed = true;
     }
 
+    /// Every node the top layer holds for script - each entry's element, its
+    /// source and saved focus, the open dialogs, the pointerdown targets and
+    /// the hint parent - named to the collector from the Document's trace
+    /// (the wrapper redesign's P6, design 4.4 "Holders"; Blink's Document
+    /// traces top_layer_elements_ and its popover and dialog pointers). In
+    /// the collector's atomic pause: reads only.
+    pub fn trace(self: *const State, tracer: *engine.Tracer) void {
+        for (self.entries.items) |entry| {
+            entry.element.trace(tracer);
+            entry.source.trace(tracer);
+            entry.previous_focus.trace(tracer);
+        }
+        for (self.open_dialogs.items) |dialog| dialog.element.trace(tracer);
+        self.pointerdown_target.trace(tracer);
+        self.hint_parent.trace(tracer);
+        self.dialog_pointerdown_target.trace(tracer);
+    }
+
     pub fn deinit(self: *State) void {
         self.setDialogPointerdownTarget(null);
         for (self.open_dialogs.items) |entry| {

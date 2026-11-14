@@ -1059,6 +1059,20 @@ pub fn registrationCount(scope: *runtime.BrowserScope) usize {
     return manager.registrationCount();
 }
 
+/// dom.service_worker_clients' `focused`: html.focus's focus update steps
+/// report that `realm`'s document's browsing context was focused at `at_ns`
+/// (monotonic, nanoseconds) - the window client's last focus time, which
+/// Clients' matchAll() sorts by (4.3.4 step 2.6.4; Manager.environmentFocused).
+/// A realm that is no window client (an opaque origin's, one ended) reports
+/// nothing.
+pub fn documentFocused(realm: runtime.Context, at_ns: u64) void {
+    const manager = Manager.existingOf(realm) orelse return;
+    const endpoint = manager.endpointOf(realm) orelse return;
+    const self = RealmEnvironment.ofEndpoint(endpoint);
+    if (self.ended or self.kind != .window) return;
+    manager.environmentFocused(self.id, at_ns);
+}
+
 /// dom.service_worker_clients' `route_for_global`: "populate request from
 /// client" - the route of a controlled client's requests.
 pub fn routeForGlobal(global: *runtime.Instance) ?@import("fetch").internal.ServiceWorkerRoute {

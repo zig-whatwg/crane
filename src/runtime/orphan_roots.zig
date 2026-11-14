@@ -1,11 +1,16 @@
 //! A realm's orphan roots: the roots of subtrees removed from their trees
 //! while no wrapper reached them, which the realm's end frees.
 //!
-//! Until reference counting decides (refcount design step 7,
-//! tmp/plans/refcount-design.md), a node removed while script holds no
-//! wrapper of it - and of nothing in its subtree, since a wrap reaches up to
-//! the root - is reached by no tree teardown and no collector: its tree no
-//! longer holds it, and no wrapper exists to be collected. It used to stay
+//! Until reference counting decided (refcount design step 7,
+//! tmp/plans/refcount-design.md), a node removed while script held no
+//! wrapper of it - and of nothing in its subtree, since a wrap then reached up
+//! to the root - was reached by no tree teardown and no collector: its tree no
+//! longer held it, and no wrapper existed to be collected. Since step 7 a
+//! removed tree nothing holds is garbage at its removal and the agent's queue
+//! frees it, and since the wrapper redesign's P7 (a wrap reaches no ancestor)
+//! a recorded root must also have no wrapped node in its tree
+//! (dom.wrapper_tracing.holdsWrapper, the Node impl's `still_orphan`): a tree
+//! a wrapper holds is the counts' to free. It used to stay
 //! until its Browser ended (dom.teardown_sweeps freed what was left), so a
 //! long-lived Browser grew by every page's orphans
 //! (ce3-state-selector-cost: +9,333 nodes a page). Its realm now frees it
@@ -109,6 +114,18 @@ pub fn record(realm: *ContextData, instance: *Instance) void {
             kept += 1;
         }
         list.records.shrinkRetainingCapacity(kept);
+        // And it gives the room back when what is left is a small part of
+        // it: a burst of removals (a page emptying a list of thousands)
+        // must not leave its high-water mark allocated to the realm's end
+        // (lane nm1). Twice what is kept, so the next records do not grow
+        // it at once; a failed shrink keeps the block it has.
+        const room = @max(kept * 2, List.compact_threshold);
+        if (kept * 4 <= list.records.capacity and room < list.records.capacity) {
+            if (realm.allocator.realloc(list.records.allocatedSlice(), room)) |smaller| {
+                list.records.items.ptr = smaller.ptr;
+                list.records.capacity = smaller.len;
+            } else |_| {}
+        }
     }
     list.records.append(realm.allocator, .{ .instance = instance, .generation = SlabAllocator.generationOf(instance) }) catch return;
 }

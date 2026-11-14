@@ -33,9 +33,10 @@
 //! (f28a39571849), and so do Gecko and Ladybird.
 //!
 //! Sharing (lane nd2 batch 4, plan-v2 A3): elements with equal attribute
-//! sets share one immutable block - a parser run's `SharingCache` hands
-//! out one per distinct set, and a clone shares its source's - and every
-//! writer copies first (`ElementData.writable`). See `AttributeList`.
+//! sets share one immutable block - a parser's document's `SharingCache`
+//! (dom.attribute_block_cache, batch 5) hands out one per distinct set, and
+//! a clone shares its source's - and every writer copies first
+//! (`ElementData.writable`). See `AttributeList`.
 //!
 //! Reads are DOM's own read algorithms, plain functions over a `View` of
 //! the data: the data and its element's Browser's tables, which decode the
@@ -234,7 +235,7 @@ fn namesLocal(tables: Tables, id: NameId, comptime static: NameId) bool {
 ///
 /// SHARED blocks (lane nd2 batch 4, plan-v2 A3): elements whose attribute
 /// sets are equal - names and values, in order - share ONE block, made by
-/// the parser through a `SharingCache` or by a clone from its source (Blink
+/// the parser through its document's `SharingCache` or by a clone from its source (Blink
 /// core/dom/element_data_cache.cc ElementDataCache::
 /// CachedShareableElementDataWithAttributes and Element::CloneAttributesFrom;
 /// WebKit Source/WebCore/dom/DocumentSharedObjectPool.cpp and
@@ -255,7 +256,7 @@ pub const AttributeList = struct {
     /// Where the class attribute in no namespace is.
     class_index: u8 = no_index,
     /// 0: one element's own list. 1 to `max_holders`: a shared, immutable
-    /// block with that many holders (elements, and a parser's cache).
+    /// block with that many holders (elements, and a document's cache).
     holders: u8 = 0,
 
     /// No such attribute.
@@ -670,8 +671,8 @@ pub const ElementData = struct {
     }
 
     /// The list of an element that has none yet: `entries`, whose references
-    /// it takes on success - from `cache`, a parser's (shared with every
-    /// element of the parse whose set is equal), or with no cache a block of
+    /// it takes on success - from `cache`, its parser's document's (shared
+    /// with every element whose set is equal), or with no cache a block of
     /// its own. "Create an element for a token" (HTML 13.2.6.1: "Append each
     /// attribute in the given token to element") through Element: Blink's
     /// Element::ParserSetAttributes, WebKit's Element::parserSetAttributes.
@@ -784,10 +785,10 @@ pub const ElementData = struct {
     }
 };
 
-/// A parser's shared attribute blocks: one per distinct attribute set -
-/// names and values, in order - that the parse has made (plan-v2 A3). The
+/// Shared attribute blocks by content: one per distinct attribute set -
+/// names and values, in order - that its parsers have made (plan-v2 A3). A
 /// parser hands an element's entries to `share` and gets the block every
-/// element of the parse with an equal set holds.
+/// element with an equal set got from this table.
 ///
 /// The key is the CONTENT, compared in full: the entries' bytes, which are
 /// the name and value ids - one id per distinct name and value in a Browser,
@@ -795,38 +796,33 @@ pub const ElementData = struct {
 /// the atomized attribute spans the same way; Blink compares the attribute
 /// vectors). The hash only picks the slot.
 ///
-/// LIFETIME: one parser run - a document's parse, or one fragment parse
-/// (innerHTML, insertAdjacentHTML, DOMParser, an XML parse) - and freed with
-/// it on every path its parser ends by (finished, aborted, stopped). Blink
-/// and WebKit keep theirs on the Document from the start of its parse until
-/// a one-shot timer 10 s after parsing finishes (Blink Document::
-/// SetParsingState and FinishedParsing's element_data_cache_clear_timer_;
-/// WebKit Document::finishedParsing's
-/// timeToKeepSharedObjectPoolAliveAfterParsingFinished), so fragments parsed
-/// in those 10 s share with the document. Which elements share is not web-
-/// observable, so the shorter lifetime is a memory trade, not a behaviour
-/// deviation: measured over the node-memory walker's 17 pages (lane nd2
-/// batch 4 census, 2026-11-11), a cache per parser run saves what the 10 s
-/// document cache saves on 15 of them; the other two lose 3,136 B
-/// (load-news) and 4,128 B (grid), their innerHTML calls after the parse.
-/// The integrator's ruling of 2026-11-11: per parser run now; the Document
-/// cache with a timer that keeps no event loop alive is a queued follow-up.
+/// LIFETIME: its owner's. A Document owns the one its parsers share
+/// through, from its first parser run with an attribute until 10 s after
+/// its parse (dom.attribute_block_cache, lane nd2 batch 5: Blink's
+/// Document::element_data_cache_ and its element_data_cache_clear_timer_,
+/// WebKit's Document::m_sharedObjectPool). Batch 4 gave every parser run a
+/// table of its own, freed with the run; measured over the node-memory
+/// walker's 17 pages, that lost 3,136 B (load-news) and 4,128 B (grid)
+/// against the Document's - their innerHTML calls after the parse - and
+/// cost every run the table's init and deinit. The table holds one holder
+/// on each block, so a block lives while an element OR the table holds it;
+/// `grow` lets go of the blocks only the table holds.
 pub const SharingCache = struct {
     /// The Browser whose tables the blocks' ids are, set by the first share.
     scope: ?*runtime.BrowserScope = null,
     /// How many blocks the table holds.
     count: usize = 0,
-    /// The table of a run with more than `inline_len * 3 / 4` distinct sets:
-    /// open addressing, linear probing, a power of two long. Empty while the
-    /// run's table is the inline one.
+    /// The table past `inline_len * 3 / 4` distinct sets: open addressing,
+    /// linear probing, a power of two long. Empty while the table is the
+    /// inline one.
     heap_slots: []?*const AttributeList = &.{},
     heap_hashes: []u32 = &.{},
-    /// The table every run starts with, in the cache itself: most runs are a
-    /// fragment of a few elements (`el.innerHTML = '<b class=x>..</b>'`),
-    /// and a table from the allocator cost such a parse two allocations and
-    /// two frees - 1.8% of its instructions (lane nd2 batch 4, the cost
-    /// pair's tiny-fragment rows, 2026-11-11). Blink's cache is a HashMap
-    /// its Document keeps, so its fragments never pay for one either.
+    /// The table every cache starts with, in the cache itself: a document
+    /// with a dozen distinct sets or fewer (DOMParser on a snippet, a small
+    /// frame) allocates no table. (Batch 4's cache per parser run needed it
+    /// for every fragment: a table from the allocator cost
+    /// `el.innerHTML = '<b class=x>..</b>'` two allocations and two frees,
+    /// 1.8% of its instructions.)
     inline_slots: [inline_len]?*const AttributeList = @splat(null),
     inline_hashes: [inline_len]u32 = @splat(0),
 
@@ -901,27 +897,78 @@ pub const SharingCache = struct {
         return fresh;
     }
 
-    /// A table four times as long, from the allocator: a run with many
-    /// distinct sets grows it few times (16 -> 64 -> 256 -> 1,024).
+    /// Room for one more block. FIRST the blocks no element holds any more
+    /// go (one holder: the cache alone): they serve nothing, and a cache
+    /// that outlives its parser run - a Document's (dom.
+    /// attribute_block_cache) - would otherwise keep every set a page
+    /// parsed and dropped for as long as it lives, the "huge caches" Blink
+    /// and WebKit name as the reason their document cache's timer is never
+    /// restarted (Document::FinishedParsing, Document::finishedParsing).
+    /// THEN the table the blocks still held need: at most half full, so a
+    /// table that lost nothing is four times as long (16 -> 64 -> 256 ->
+    /// 1,024: a run with many distinct sets grows it few times) and one that
+    /// lost most of its blocks gets shorter, back to the inline one.
     noinline fn grow(self: *SharingCache, scope: *runtime.BrowserScope) error{OutOfMemory}!void {
         const old_slots = self.slots();
         const old_hashes = self.hashes();
-        const len = old_slots.len * 4;
-        const new_slots = try scope.allocator.alloc(?*const AttributeList, len);
-        errdefer scope.allocator.free(new_slots);
-        const new_hashes = try scope.allocator.alloc(u32, len);
-        @memset(new_slots, null);
-        for (old_slots, old_hashes) |slot, hash| {
+        var held: usize = 0;
+        for (old_slots) |slot| {
             const list = slot orelse continue;
-            var at: usize = hash & (len - 1);
-            while (new_slots[at] != null) at = (at + 1) & (len - 1);
-            new_slots[at] = list;
-            new_hashes[at] = hash;
+            if (list.holders > 1) held += 1;
         }
-        scope.allocator.free(self.heap_slots);
-        scope.allocator.free(self.heap_hashes);
-        self.heap_slots = new_slots;
-        self.heap_hashes = new_hashes;
+        var len: usize = inline_len;
+        while ((held + 1) * 2 > len) len *= 4;
+
+        if (len == inline_len) {
+            // Into the inline table - from itself (a copy first) or from
+            // the heap's, which goes.
+            var slots_copy: [inline_len]?*const AttributeList = undefined;
+            var hashes_copy: [inline_len]u32 = undefined;
+            const from_inline = self.heap_slots.len == 0;
+            if (from_inline) {
+                slots_copy = self.inline_slots;
+                hashes_copy = self.inline_hashes;
+            }
+            const from_slots: []const ?*const AttributeList = if (from_inline) &slots_copy else old_slots;
+            const from_hashes: []const u32 = if (from_inline) &hashes_copy else old_hashes;
+            self.inline_slots = @splat(null);
+            rehash(scope, from_slots, from_hashes, &self.inline_slots, &self.inline_hashes);
+            if (!from_inline) {
+                scope.allocator.free(self.heap_slots);
+                scope.allocator.free(self.heap_hashes);
+                self.heap_slots = &.{};
+                self.heap_hashes = &.{};
+            }
+        } else {
+            const new_slots = try scope.allocator.alloc(?*const AttributeList, len);
+            errdefer scope.allocator.free(new_slots);
+            const new_hashes = try scope.allocator.alloc(u32, len);
+            @memset(new_slots, null);
+            rehash(scope, old_slots, old_hashes, new_slots, new_hashes);
+            scope.allocator.free(self.heap_slots);
+            scope.allocator.free(self.heap_hashes);
+            self.heap_slots = new_slots;
+            self.heap_hashes = new_hashes;
+        }
+        self.count = held;
+    }
+
+    /// Move the blocks an element still holds from one table into another,
+    /// empty one (a power of two long, with room for them), and let go of
+    /// the rest.
+    fn rehash(scope: *runtime.BrowserScope, from_slots: []const ?*const AttributeList, from_hashes: []const u32, to_slots: []?*const AttributeList, to_hashes: []u32) void {
+        const mask = to_slots.len - 1;
+        for (from_slots, from_hashes) |slot, hash| {
+            const list = slot orelse continue;
+            if (list.holders == 1) {
+                list.drop(scope);
+                continue;
+            }
+            var at: usize = hash & mask;
+            while (to_slots[at] != null) at = (at + 1) & mask;
+            to_slots[at] = list;
+            to_hashes[at] = hash;
+        }
     }
 };
 
@@ -1572,6 +1619,81 @@ test "A3: a run of up to twelve distinct sets allocates no table; the thirteenth
         try std.testing.expectEqual(@as(u8, 3), data.attrs.?.holders);
     }
     try std.testing.expectEqual(@as(usize, 20), cache.count);
+}
+
+/// How many references `scope`'s value table counts on `bytes`: 0 when no
+/// entry of any block names it.
+fn testValueReferences(scope: *runtime.BrowserScope, bytes: []const u8) u32 {
+    const table = attribute_values.tableOf(scope) orelse return 0;
+    const id = table.find(bytes) orelse return 0;
+    return table.get(id).references;
+}
+
+test "A5: a table that would grow first lets go of the blocks no element holds" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [12]ElementData = undefined;
+    var value: [8]u8 = undefined;
+    for (&elements, 0..) |*data, i| data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+    defer for (elements[0..2]) |*data| data.deinit(&scope);
+    // Ten of the twelve elements go: their blocks are the table's alone.
+    for (elements[2..]) |*data| data.deinit(&scope);
+    try std.testing.expectEqual(@as(usize, 12), cache.count);
+    try std.testing.expectEqual(@as(u32, 1), testValueReferences(&scope, "#5"));
+    // The thirteenth set would grow the table (it is three quarters full):
+    // the ten unheld blocks go instead, and it stays the inline one.
+    var next = try testParsed(&scope, &cache, &.{"href"}, &.{"#12"});
+    defer next.deinit(&scope);
+    try std.testing.expectEqual(@as(usize, 3), cache.count);
+    try std.testing.expectEqual(@as(usize, 0), cache.heap_slots.len);
+    try std.testing.expectEqual(@as(u32, 0), testValueReferences(&scope, "#5"));
+    // The held blocks are still found...
+    for (elements[0..2], 0..) |*data, i| {
+        var again = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        defer again.deinit(&scope);
+        try std.testing.expect(again.attrs.? == data.attrs.?);
+    }
+    // ...and a set that went is made again.
+    var remade = try testParsed(&scope, &cache, &.{"href"}, &.{"#5"});
+    defer remade.deinit(&scope);
+    try std.testing.expectEqual(@as(u8, 2), remade.attrs.?.holders);
+    try std.testing.expectEqual(@as(usize, 4), cache.count);
+}
+
+test "A5: a table that lost most of its blocks gets shorter - back to the inline one - and a churn of unheld sets never grows it" {
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    defer scope.deinit();
+    var cache: SharingCache = .{};
+    defer cache.deinit();
+    var elements: [49]ElementData = undefined;
+    var value: [12]u8 = undefined;
+    for (&elements, 0..) |*data, i| data.* = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+    defer for (elements[0..4]) |*data| data.deinit(&scope);
+    try std.testing.expectEqual(@as(usize, 256), cache.heap_slots.len);
+    for (elements[4..]) |*data| data.deinit(&scope);
+    // 5,000 sets, each dropped at once (a page setting innerHTML on a
+    // timer): every growth point finds only unheld blocks beside the four
+    // held ones, so the table never passes its first heap size, and what it
+    // keeps at any moment is under one table's worth.
+    var longest: usize = 0;
+    for (0..5000) |i| {
+        var data = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "x{d}", .{i})});
+        data.deinit(&scope);
+        longest = @max(longest, cache.heap_slots.len);
+        try std.testing.expect(cache.count <= 192);
+    }
+    try std.testing.expectEqual(@as(usize, 256), longest);
+    // After the first growth point the four held blocks fit the inline
+    // table, which the churn then fills and empties.
+    try std.testing.expectEqual(@as(usize, 0), cache.heap_slots.len);
+    try std.testing.expect(cache.count <= 12);
+    for (elements[0..4], 0..) |*data, i| {
+        var again = try testParsed(&scope, &cache, &.{"href"}, &.{try std.fmt.bufPrint(&value, "#{d}", .{i})});
+        defer again.deinit(&scope);
+        try std.testing.expect(again.attrs.? == data.attrs.?);
+    }
 }
 
 test "A3: an allocation failure in a share, the cache's growth, a copy on write or a clone leaves nothing behind" {

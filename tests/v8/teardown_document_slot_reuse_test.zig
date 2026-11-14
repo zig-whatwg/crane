@@ -91,7 +91,9 @@ const Realm = struct {
     /// real V8 object, held weakly. Answers its handle, BORROWED.
     fn wrap(self: Realm, instance: *runtime.Instance) !*ffi.Object {
         runtime.instance_lifecycle.markWrapped(instance);
-        const wrapper = ffi.v8_Object_New(test_isolate.?) orelse return error.ObjectFailed;
+        // A node's wrapper is an API object (P4: its anchor is Wrapped onto
+        // it).
+        const wrapper = test_process.nodeWrapperObject(test_isolate.?, test_context.?) orelse return error.ObjectFailed;
         return try self.cache.set(instance, @ptrCast(wrapper), @ptrCast(test_isolate.?));
     }
 };

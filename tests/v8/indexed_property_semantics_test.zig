@@ -376,7 +376,7 @@ test "an indexed read and an `in` check make no handle for the list" {
     // times each in NodeList-static-length-getter-tampered-*.html. Neither
     // needs a Global for the list (the receiver or the holder): the instance
     // is read from the holder's internal field. Before, each made one
-    // (v8_PropertyCallbackInfo_This) and disposed it.
+    // (then v8_PropertyCallbackInfo_This, now _Holder) and disposed it.
     try page.expect(fixture ++
         \\globalThis.probe = lists();
         \\'ready'
@@ -398,11 +398,11 @@ test "an indexed read and an `in` check make no handle for the list" {
     // What is made is the adapter's count of creations through the entry
     // point, the process's (so the test runs alone: build.zig v8_alone);
     // what is left, the agent's own global handles.
-    const this_before = try counter("object_globals_from.PropertyCallbackInfo_This");
+    const this_before = try counter("object_globals_from.PropertyCallbackInfo_Holder");
     const bytes_before: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()));
     try page.expect(read_all, "210");
     try page.collect();
-    const this_made = try counter("object_globals_from.PropertyCallbackInfo_This") - this_before;
+    const this_made = try counter("object_globals_from.PropertyCallbackInfo_Holder") - this_before;
     const bytes_left = @as(i64, @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(page.isolate()))) - bytes_before;
     if (this_made != 0 or bytes_left > 0) {
         std.debug.print("384 indexed reads and 384 `in` checks made {d} `this` Globals and left {d} global handle bytes\n", .{ this_made, bytes_left });

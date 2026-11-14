@@ -28,6 +28,7 @@ const webidl_helpers = @import("webidl").helpers;
 const EngineError = runtime.EngineError;
 
 const ffi = @import("ffi.zig");
+const realm_global = @import("realm_global.zig");
 const engine = @import("engine.zig");
 const conversions = @import("conversions.zig");
 const value_operations = @import("value_operations.zig");
@@ -103,6 +104,9 @@ pub fn hasPendingEngineWork(agent: *runtime.Agent) bool {
 /// Engine table `runEngineTasks`: run the tasks V8 has posted to the platform
 /// for `agent`; whether any ran.
 pub fn runEngineTasks(agent: *runtime.Agent) bool {
+    // The collection a navigation owed, when its page left much behind
+    // (navigation_collection.zig): here, at the event loop's own turn.
+    @import("protocol_agents.zig").payNavigationCollection(agent);
     const entered = EnteredAgent.enter(agent);
     defer entered.leave();
     return event_loop.pumpPlatformTasks(entered.isolate);
@@ -290,7 +294,7 @@ fn createWorkerRealmOf(comptime Kind: type, agent: *runtime.Agent, options: runt
 /// a dedicated or a shared worker's - whose global object is the global
 /// scope and whose intrinsics
 /// are the context's - as a window realm's record has its Window and its
-/// intrinsics (context_manager.bindWindowToContext). The host reaches "the
+/// intrinsics (protocol_realms.bindWindowToGlobal). The host reaches "the
 /// realm's global object" through it (report_exception: an exception a
 /// listener threw in the worker is reported to the global scope). Attached to
 /// the realm (ContextData.realm) and to the context manager's entry, whose
@@ -332,13 +336,14 @@ fn defineSelf(isolate: *ffi.Isolate, context: *ffi.Context) void {
 /// interface template.
 ///
 /// - The global scope Instance (`Interface`'s), created through its interface
-///   in the realm's own runtime context, goes in internal field 0 of the
+///   in the realm's own runtime context, is bound by THE attach function
+///   (`bindGlobalFields`, realm_global.attach): internal field 0 of the
 ///   global proxy - which the bindings read for every [Global] member and
-///   every receiver check - and of the global object behind it (Blink's
-///   SetNativeInfoForGlobal does both).
+///   every receiver check - and a GlobalAnchor on the proxy and the global
+///   object behind it (Blink's SetNativeInfoForGlobal, Object::WrapGlobal).
 /// - The realm's wrapper cache maps it to the global proxy, so handing the
 ///   scope to script (`self`, an event's currentTarget) returns the global
-///   itself - as createWindowBoundToGlobal does for a Window.
+///   itself - as protocol_realms.bindWindowToGlobal does for a Window.
 /// - The prototype chain: global -> `Interface`.prototype ->
 ///   WorkerGlobalScope.prototype -> EventTarget.prototype.
 /// - `Interface`'s own members as own properties of the global: WebIDL puts
@@ -368,20 +373,23 @@ pub fn bindGlobalScope(comptime Interface: type, isolate: *ffi.Isolate, context:
     return instance;
 }
 
-/// Point internal field 0 of the global proxy, and of the global object
-/// behind it, at `instance` - or at nothing, before the instance is freed.
+/// Bind `instance` - the realm's global scope - to its global through THE
+/// attach function every realm global goes through (realm_global.attach:
+/// field 0 of the proxy and a GlobalAnchor on the proxy and its hidden global
+/// object, Object::WrapGlobal - Blink's WorkerOrWorkletScriptController
+/// SetNativeInfoForGlobal, worker_or_worklet_script_controller.cc 205-213); or,
+/// with null, let go of it before it is freed (Blink's DisposeContextIfNeeded
+/// ClearNativeInfoForGlobal, :83-107: both pointers - here field 0 and the
+/// anchor's instance, one write for the proxy and the hidden global).
+///
+/// Never the hidden global object's own field: on V8 >= 14 no API reaches it
+/// (crbug.com/333672197) - the V1 GetPrototype that once wrote it answers
+/// Object.getPrototypeOf on 15.7, the WorkerGlobalScope.prototype, which has
+/// no internal field ("Internal field out of bounds": design 2.1's RED, 42
+/// tests/v8 crashes in worker and worklet realms).
 pub fn bindGlobalFields(context: *ffi.Context, instance: ?*runtime.Instance) void {
-    const global = ffi.v8_Context_Global(context) orelse return;
-    defer ffi.v8_Object_Dispose(global);
-    // [wrap_tracking]: the global objects reach the instance from here.
-    if (instance) |bound| runtime.instance_lifecycle.markWrapped(bound);
-    ffi.v8_Object_SetAlignedPointerInInternalField(global, 0, @ptrCast(instance));
-    // The V1 GetPrototype on a global proxy is V8's from_javascript=false
-    // path: it returns the hidden JSGlobalObject, not what script sees.
-    const inner_val = ffi.v8_Object_GetPrototype(global) orelse return;
-    defer ffi.v8_Value_Dispose(inner_val);
-    const inner = helpers.asObject(inner_val) orelse return;
-    ffi.v8_Object_SetAlignedPointerInInternalField(inner, 0, @ptrCast(instance));
+    if (instance) |bound| return realm_global.attach(context, bound);
+    realm_global.clearInstance(context, null);
 }
 
 /// Make `Interface`.prototype - the global scope interface's - the global

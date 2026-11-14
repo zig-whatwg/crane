@@ -319,6 +319,19 @@ pub fn decodeImage(allocator: std.mem.Allocator, mime: Str, bytes: Bytes, limits
     return error.NotSupported;
 }
 
+/// This platform has no image encoder.
+pub fn imageEncodingMimeTypeSupported(essence: Str) bool {
+    _ = essence;
+    return false;
+}
+
+/// No image encodes: every serialization of a bitmap as a file is null
+/// (HTML 4.12.5.5).
+pub fn encodeImage(allocator: std.mem.Allocator, mime: Str, source: platform.EncodeSource, quality: f64) platform.ImageEncodeError!Bytes {
+    _ = .{ allocator, mime, source, quality };
+    return error.NotSupported;
+}
+
 /// No font decodes: every web font fails to load (CSS Font Loading 2.2 step
 /// 5.2), and no face has metrics.
 pub fn decodeFont(allocator: std.mem.Allocator, bytes: Bytes, postscript_name: Str, limits: platform.FontLimits) platform.FontError!platform.DecodedFont {

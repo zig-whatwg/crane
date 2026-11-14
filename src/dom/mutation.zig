@@ -37,6 +37,7 @@ const element_with_base = @import("element_with_base.zig");
 const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
+const wrapper_tracing = @import("wrapper_tracing.zig");
 const engine = @import("engine");
 const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
@@ -817,13 +818,27 @@ fn insertWith(
     // removal below keeps its remover's hold, and the node's link in step
     // 7.3 ends it. A node an error leaves unlinked ends it here.
     var linked: usize = 0;
-    errdefer for (nodes[linked..nodes_count]) |n| refcount.endRemovalHold(n);
+    errdefer for (nodes[linked..nodes_count]) |n| {
+        // A fragment's child step 4.1 took out and no step 7.3 linked is out
+        // of every tree now: recorded as a possible orphan here, while its
+        // remover's hold still stands, as its removal would have recorded
+        // it (a child step 4.1 never reached still has its parent, and is
+        // not).
+        if (isDocumentFragment(node)) orphanRemoved(n);
+        refcount.endRemovalHold(n);
+    };
 
     // Step 4: If node is a DocumentFragment node:
     if (isDocumentFragment(node)) {
-        // Step 4.1: Remove its children with suppress observers flag set
+        // Step 4.1: Remove its children with suppress observers flag set.
+        // Moves, not removals: each child is linked into `parent` in step
+        // 7.3, so none is recorded as a possible orphan (removeHeldMoving).
+        // Nothing can reach one in between: the record is only ever made
+        // for a node no wrapper reaches, the fragment no longer lists it,
+        // and its remover's hold keeps it until its link or the errdefer
+        // above.
         for (nodes[0..nodes_count]) |child_node| {
-            try removeHeld(child_node, true);
+            try removeHeldMoving(child_node, true);
         }
 
         // Step 4.2: Queue a tree mutation record for node
@@ -1047,7 +1062,7 @@ pub fn appendChildren(
         }
 
         // Adopt child into parent's document
-        if (parent.owner_document) |doc| {
+        if (parent.documentBase()) |doc| {
             try adoptHeld(child, doc);
         }
     }
@@ -1176,7 +1191,7 @@ pub fn insertChildrenBefore(
         if (child.parent_node != null) {
             try removeHeld(child, true);
         }
-        if (parent.owner_document) |doc| {
+        if (parent.documentBase()) |doc| {
             try adoptHeld(child, doc);
         }
     }
@@ -1517,6 +1532,25 @@ fn removeHeld(
     node: anytype,
     suppress_observers: bool,
 ) (DOMException || error{OutOfMemory})!void {
+    try removeHeldMoving(node, suppress_observers);
+    orphanRemoved(@ptrCast(node));
+}
+
+/// `removeHeld` for a caller that removes `node` only to link it again in
+/// the same algorithm - "insert"'s step 4.1, which takes a fragment's
+/// children out to give them to the parent in step 7.3: a MOVE. It does not
+/// record the node as a possible orphan (`orphanRemoved`): the record was
+/// stale the moment the node was linked, and `host.innerHTML` of 100,000
+/// spans left 100,000 of them, 2.2 MB, in the realm's list to its end (lane
+/// nm1; MEASURED, malloc_history: one block under removeHeld <- insert <-
+/// replaceAll). The caller records what it leaves unlinked on an error.
+/// Blink and WebKit move a fragment's children with no bookkeeping beyond
+/// the removal itself (ContainerNode::InsertBefore -> CollectChildrenAnd
+/// RemoveFromOldParent, a NodeVector of the held children).
+fn removeHeldMoving(
+    node: anytype,
+    suppress_observers: bool,
+) (DOMException || error{OutOfMemory})!void {
     // Step 1: Let parent be node's parent
     const parent = node.parent_node orelse {
         // Step 2: Assert parent is non-null
@@ -1624,23 +1658,29 @@ fn removeHeld(
         refcount.checkAround(@ptrCast(parent));
         refcount.checkAround(@ptrCast(node));
     }
-
-    orphanRemoved(@ptrCast(node));
 }
 
 /// `node` left its tree. A root no wrapper of any realm ever reached - nor
-/// anything in its subtree, since a wrap reaches up to the root - is an
-/// ORPHAN: no tree teardown and no collector reaches it until reference
-/// counting decides (refcount design step 7). Its realm frees it at its end
-/// unless a tree or a wrapper takes it first (runtime.orphan_roots; lane
-/// unwrapped1). Only where the engine marks every wrap ([wrap_tracking]):
-/// elsewhere the missing mark proves nothing, and the orphan stays until its
-/// Browser ends, as before. A holder that holds the root rescued it with a
-/// wrapper in the removing steps above (node_holds), so a held root is never
-/// recorded.
+/// any node of its tree (dom.wrapper_tracing.holdsWrapper) - is an ORPHAN:
+/// no tree teardown and no collector reaches it until reference counting
+/// decides (refcount design step 7). Its realm frees it at its end unless a
+/// tree or a wrapper takes it first (runtime.orphan_roots; lane unwrapped1).
+/// Only where the engine marks every wrap ([wrap_tracking]): elsewhere the
+/// missing mark proves nothing, and the orphan stays until its Browser ends,
+/// as before. The root's own wrapper state no longer speaks for its subtree:
+/// since the wrapper redesign's P7 a wrap reaches no ancestor, so a node
+/// script read out of the tree - getElementById - can be wrapped and held
+/// under a root no script ever saw (tests/wpt/crane/wr7-removed-unwrapped-
+/// root-keeps-held-node.html); its wrapper's reference holds the tree, and
+/// the counts decide that tree's free. Exactly that question - is a node of
+/// the tree WRAPPED - and no broader one: a tree held only by holders'
+/// counts is still recorded and freed at the realm's end, as before P7
+/// (refusing every held tree left lone elements held at the agent's end in
+/// the editing1/2/3 tests; that drain's own fate is refcount step 7b's).
 fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
     if (node.parent_node != null or !node.wrapper.isEmpty()) return;
+    if (wrapper_tracing.holdsWrapper(node)) return;
     const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
@@ -2030,9 +2070,8 @@ fn hostsTemplateContents(node: *const NodeBase) bool {
 //   - removed_nodes: *NodeList (WebIDL interface)
 
 /// `node`'s node document, which the live-range and NodeIterator steps key
-/// their lists on. `NodeBase.owner_document` is written only by `adopt`, so it
-/// is null for nearly every node - the document lives in the Node impl's state,
-/// read here through the Node interface. A document is its own node document.
+/// their lists on, read through the Node interface. A document is its own node
+/// document.
 fn nodeDocument(node: anytype) ?*runtime.Instance {
     const base: *NodeBase = @ptrCast(@constCast(node));
     const instance_opaque = instance_bridge.getInstance(base) orelse return null;
@@ -2458,12 +2497,17 @@ fn linkForMove(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase, ch
 
 /// Node tracing's opaque root follows the tree (refcount design 2.2, section 7
 /// step 4): `node` - the root of a subtree just linked under `parent` - joins
-/// `parent`'s opaque root, if it has a wrapper. One field test (the engine's
-/// wrapper slot on NodeBase, `wrapper.isEmpty()`), so a parse or an innerHTML of unwrapped nodes
-/// never calls the engine; only the subtree's root changes trees, so its
-/// descendants are not visited (the adapter's insertion-steps hook visited
-/// and looked up each one).
+/// `parent`'s opaque root, if it has a wrapper. Only for an engine that
+/// emulates wrapper tracing with edges (engine.capabilities.wrapper_tracing
+/// == .emulated): one that traces natively - V8 since the wrapper redesign's
+/// P7 - finds a tree's wrappers from its nodes while it marks, so the call
+/// compiles out there (tmp/redesign/wrapper-redesign-design.md 3.3). One
+/// field test (the engine's wrapper slot on NodeBase, `wrapper.isEmpty()`),
+/// so a parse or an innerHTML of unwrapped nodes never calls the engine;
+/// only the subtree's root changes trees, so its descendants are not visited
+/// (the adapter's insertion-steps hook visited and looked up each one).
 fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
+    if (engine.capabilities.wrapper_tracing != .emulated) return;
     if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(parent) orelse return;
@@ -2471,8 +2515,10 @@ fn joinedTree(node: *NodeBase, parent: *NodeBase) void {
 }
 
 /// `node` - the root of a subtree just unlinked from `old_parent` - leaves
-/// its old tree's opaque root and is a root of its own, if it has a wrapper.
+/// its old tree's opaque root and is a root of its own, if it has a wrapper
+/// (an `.emulated` engine's only, as `joinedTree`).
 fn leftTree(node: *NodeBase, old_parent: *NodeBase) void {
+    if (engine.capabilities.wrapper_tracing != .emulated) return;
     if (node.wrapper.isEmpty()) return;
     const member = instance_bridge.getInstance(node) orelse return;
     const owner = instance_bridge.getInstance(old_parent) orelse return;
@@ -2643,10 +2689,15 @@ pub fn adopt(
 /// the node on), and the moved tree must not count zero there.
 fn adoptHeld(
     node: anytype,
-    document: anytype,
+    document_any: anytype,
 ) DOMException!void {
-    // Step 1: Let oldDocument be node's node document
-    const oldDocument = node.owner_document;
+    // The document, as its own NodeBase: what NodeBase.getNodeDocument and
+    // documentBase answer. A caller that names it as `*interfaces.Document`
+    // names the same address.
+    const document: *NodeBase = @ptrCast(@alignCast(document_any));
+    // Step 1: Let oldDocument be node's node document (its own NodeBase;
+    // null for none, and for one freed under the node - NodeBase.documentBase)
+    const oldDocument: ?*NodeBase = node.documentBase();
 
     // Step 2: If node's parent is non-null, then remove node
     if (node.parent_node != null) {
@@ -2655,7 +2706,7 @@ fn adoptHeld(
     errdefer refcount.endRemovalHold(@ptrCast(node));
 
     // Step 3: If document is not oldDocument
-    if (document != oldDocument) {
+    if (@as(?*NodeBase, document) != oldDocument) {
         // Step 3.1: Collect the shadow-including inclusive descendants in
         // tree order, including closed shadow roots and their descendants.
         var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(node.allocator(), node);
@@ -2665,7 +2716,7 @@ fn adoptHeld(
         // the ownerDocument getter and everything outside src/dom read; the
         // node_document hook keeps that copy - and through it this one - in
         // step.
-        const document_instance: ?*runtime.Instance = if (instance_bridge.getInstance(@ptrCast(@alignCast(document)))) |opaque_instance|
+        const document_instance: ?*runtime.Instance = if (instance_bridge.getInstance(document)) |opaque_instance|
             @ptrCast(@alignCast(opaque_instance))
         else
             null;
@@ -2674,8 +2725,12 @@ fn adoptHeld(
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
 
-            // Step 3.1.1: Set node document to document
-            desc.owner_document = document;
+            // Step 3.1.1: Set node document to document. A platform node's
+            // is set by the node_document hook below (the Node impl's setter,
+            // which also moves the node between the documents' counts and
+            // must see the OLD document still named: the word is one, since
+            // lane nm1); an owner-less node's is written here.
+            if (document_instance == null or instance_bridge.getInstance(desc) == null) desc.setDocumentBase(document);
             if (document_instance) |doc_instance| {
                 if (instance_bridge.getInstance(desc)) |desc_opaque| {
                     const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
@@ -2733,7 +2788,7 @@ fn adoptHeld(
                     const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
                     for (0..element.attributes.size()) |attr_idx| {
                         if (element.attributes.get(attr_idx)) |attr| {
-                            attr.base.owner_document = document;
+                            attr.base.setDocumentBase(document);
                         }
                     }
                 } else if (document_instance) |doc_instance| {
@@ -2756,7 +2811,7 @@ fn adoptHeld(
         // document's live ranges re-checks which document it belongs to, so
         // a range whose boundary moved with the tree follows it.
         if (oldDocument) |old_document| {
-            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
+            if (instance_bridge.getInstance(old_document)) |old_opaque| {
                 moveLiveRangesAfterAdoption(@ptrCast(@alignCast(old_opaque)));
             }
         }
@@ -2764,7 +2819,7 @@ fn adoptHeld(
         // Step 3.2.3: adoptedCallback receives the old and new documents in
         // shadow-including tree order. Queued arguments retain both documents.
         if (oldDocument) |old_document| {
-            if (instance_bridge.getInstance(@ptrCast(@alignCast(old_document)))) |old_opaque| {
+            if (instance_bridge.getInstance(old_document)) |old_opaque| {
                 if (document_instance) |new_document| {
                     for (descendants.toSlice()) |descendant| enqueueCustomElementCallback(descendant, .adopted, .{
                         .adopted = .{ .old_document = @ptrCast(@alignCast(old_opaque)), .new_document = new_document },

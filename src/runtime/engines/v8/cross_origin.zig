@@ -148,10 +148,7 @@ pub fn isSecurityChecked(comptime iface: []const u8) bool {
 /// origin-domain with; true for any other `this`, which the brand check
 /// judges.
 pub fn receiverIsAccessible(info: *const v8.FunctionCallbackInfo) bool {
-    var instance_ptr: ?*anyopaque = null;
-    var type_info: ?*anyopaque = null;
-    v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstanceFields(info, &instance_ptr, &type_info);
-    const object = instanceOf(instance_ptr) orelse return true;
+    const object = instanceOf(v8.FunctionCallbackInfo.v8_FunctionCallbackInfo_ThisInstance(info)) orelse return true;
     const kind = object.vtable.name;
     if (!std.mem.eql(u8, kind, "Window") and !std.mem.eql(u8, kind, "Location")) return true;
     // The C++ half unwraps the same Proxy layer, with Local handles only.

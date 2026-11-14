@@ -7,12 +7,16 @@
 //! - L1: the collector frees a node only as a root, or inside a root's subtree:
 //!   a parented node whose wrapper dies is kept (`treeOwns`), and an unwrapped
 //!   root is never freed by the collector at all;
-//! - L2: wrappers in a tree are upward-closed and linked both ways: wrapping a
-//!   node wraps every ancestor, and one rooted wrapper keeps its tree's root.
+//! - L2: one rooted wrapper keeps its tree's root - until the wrapper
+//!   redesign's P7 because wrappers in a tree were upward-closed and linked
+//!   both ways (wrapping a node wrapped every ancestor), since P7 because its
+//!   reference counts in the tree's total (refcount step 7) and the walk
+//!   keeps the tree's wrappers. The parser no longer leans on L2: since P6
+//!   the Document traces its parser's held nodes and the rescue is gone.
 //!
-//! A change to either - freeing parented nodes on collection, lazy tree edges -
-//! voids the parser's proof, so these tests pin both, the predicate's default
-//! included.
+//! A change to either - freeing parented nodes on collection - voids the
+//! proof, so these tests pin both, the predicate's default included; P7's
+//! "a wrap wraps no ancestor" is pinned where the upward closure was.
 //!
 //! The file shares tests/v8's process: it starts the engine as any file may
 //! (initializeEngine is idempotent) and makes its own agent.
@@ -172,15 +176,18 @@ test "L1: the collector never frees an unwrapped root, and frees a wrapped root 
     try testing.expect(!chain.alive(2));
 }
 
-test "L2: wrapping a deep node of a detached unwrapped tree wraps every ancestor" {
+test "L2, since P7: wrapping a deep node of a detached unwrapped tree wraps no ancestor" {
     const page = try Page.open();
     defer page.close();
     const chain = try Chain.make(page);
+    defer chain.release();
     try testing.expect(!protocol.hasWrapper(chain.root));
     const leaf_wrapper = try protocol.retainValue(page.realm, .{ .instance = chain.leaf });
     defer leaf_wrapper.release();
-    try testing.expect(protocol.hasWrapper(chain.middle));
-    try testing.expect(protocol.hasWrapper(chain.root));
+    // Until P7 the wrap wrapped the middle and the root (node tracing's
+    // upward closure); the walk keeps the tree's wrappers instead.
+    try testing.expect(!protocol.hasWrapper(chain.middle));
+    try testing.expect(!protocol.hasWrapper(chain.root));
 }
 
 test "L2: one rooted wrapper keeps its tree's root through a collection, and the tree goes with it" {
@@ -195,6 +202,13 @@ test "L2: one rooted wrapper keeps its tree's root through a collection, and the
     try testing.expect(chain.alive(0) and chain.alive(1) and chain.alive(2));
     held.?.release();
     held = null;
+    // The root still carries its native creator's reference: since P7 the
+    // leaf's wrap no longer wrapped it (a root's first wrapper took that
+    // reference over), so the creator lets go of it, as it does of a tree it
+    // is done with - and nothing holds the tree any more.
+    try page.collect();
+    try testing.expect(chain.alive(0));
+    chain.release();
     try page.collect();
     try testing.expect(!chain.alive(0));
     try testing.expect(!chain.alive(2));

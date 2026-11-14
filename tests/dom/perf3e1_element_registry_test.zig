@@ -65,7 +65,7 @@ const has_rare_registry = @hasField(dom.element_rare_data.Field, "custom_element
 // Sizes (red until E1)
 // ============================================================================
 
-test "Element's InternalState keeps no 40-byte registry association: a one-byte place, 40 bytes" {
+test "Element's InternalState keeps no 40-byte registry association" {
     if (comptime @hasField(ElementState, "custom_element_registry")) {
         const F = @FieldType(ElementState, "custom_element_registry");
         if (@sizeOf(F) > 1) {
@@ -76,8 +76,9 @@ test "Element's InternalState keeps no 40-byte registry association: a one-byte 
     // 240 after D2: - 40 (the association) + a one-byte place, in the
     // padding after the three one-byte fields: 200; item 2 then took the
     // slottable state out (tests/dom/perf3e1_slottable_test.zig): 136; lane nd2 N2 took the name into one record pointer (tests/dom/nd2_element_name_test.zig): 88.
-    // nd2 N3: the ID and classes views (48) are indices in the list's header.
-    try expectSize(ElementState, 40);
+    // nd2 N3: the ID and classes views (48) are indices in the list's header: 40.
+    // Lane nm1: the place is two bits of the element's byte in NodeBase.
+    // Its size is pinned in ONE place, tests/dom/node_block_sizes_test.zig (lane nm1).
 }
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig

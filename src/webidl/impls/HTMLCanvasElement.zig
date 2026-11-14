@@ -14,6 +14,8 @@ const dom = @import("dom");
 const same_object = @import("same_object.zig");
 const reflection = @import("dom").reflection;
 
+const log = std.log.scoped(.html_canvas);
+
 pub const State = HTMLCanvasElement.State;
 
 pub const ImplError = error{
@@ -204,21 +206,213 @@ pub fn call_getContext(instance: *runtime.Instance, contextId: runtime.DOMString
     return typedefs.RenderingContext{ .canvas_rendering_context2d = context };
 }
 
-/// Operation: toDataURL
-pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
-    _ = instance;
-    _ = @"type";
-    _ = quality;
-    return error.NotImplemented;
+/// This canvas element's bitmap: its 2D context's output bitmap, or - with
+/// no context - transparent black of the width and height attributes' size,
+/// origin-clean (nothing has been drawn on it).
+const CanvasBitmap = struct {
+    width: u32,
+    height: u32,
+    /// Premultiplied RGBA8, BORROWED from the context; null for transparent
+    /// black.
+    pixels: ?[]const u8,
+    origin_clean: bool,
+
+    fn of(instance: *runtime.Instance) CanvasBitmap {
+        if (internalOf(instance)) |internal| if (internal.mode == .@"2d") if (internal.context) |context| {
+            if (dom.image_sources.outputBitmap(context)) |bitmap| return .{
+                .width = bitmap.width,
+                .height = bitmap.height,
+                .pixels = bitmap.pixels,
+                .origin_clean = bitmap.origin_clean,
+            };
+        };
+        const width, const height = bitmapSize(instance);
+        return .{ .width = width, .height = height, .pixels = null, .origin_clean = true };
+    }
+
+    fn hasPixels(self: CanvasBitmap) bool {
+        return self.width != 0 and self.height != 0;
+    }
+
+    fn serializable(self: CanvasBitmap) dom.bitmap_serialization.Bitmap {
+        return .{ .width = self.width, .height = self.height, .pixels = self.pixels };
+    }
+};
+
+/// The `type` argument, when given (its IDL default "image/png" counts as
+/// given: the serialization's PNG either way).
+fn typeArgument(@"type": webidl.Opt(runtime.DOMString)) ?[]const u8 {
+    if (!@"type".was_passed) return null;
+    return @"type".value.asSlice();
 }
 
-/// Operation: toBlob
+/// HTML 4.12.5.5: "if quality is a Number in the range 0.0 to 1.0
+/// inclusive, the user agent must treat quality as the desired quality
+/// level. Otherwise, the user agent must use its default quality value" -
+/// null. ("The use of type-testing here, instead of simply declaring quality
+/// as a Web IDL double, is a historical artifact.")
+fn qualityArgument(quality: webidl.Opt(runtime.JSValue)) ?f64 {
+    if (!quality.was_passed) return null;
+    return switch (quality.value) {
+        .number => |n| if (n >= 0.0 and n <= 1.0) n else null,
+        else => null,
+    };
+}
+
+/// HTML 4.12.5.1, toDataURL(type, quality).
+///
+/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-todataurl
+pub fn call_toDataURL(instance: *runtime.Instance, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!runtime.USVString {
+    const allocator = instance.ctx.allocator;
+    const bitmap = CanvasBitmap.of(instance);
+    // 1. "If this canvas element's bitmap's origin-clean flag is set to
+    //    false, then throw a "SecurityError" DOMException."
+    if (!bitmap.origin_clean) return error.SecurityError;
+    // 2. "If this canvas element's bitmap has no pixels (i.e. either its
+    //    horizontal dimension or its vertical dimension is zero), then
+    //    return the string "data:,"."
+    if (!bitmap.hasPixels()) return allocator.dupe(u8, "data:,");
+    // 3. "Let file be a serialization of this canvas element's bitmap as a
+    //    file, passing type and quality if given."
+    const file = dom.bitmap_serialization.serialize(allocator, bitmap.serializable(), typeArgument(@"type"), qualityArgument(quality)) orelse {
+        // 4. "If file is null, then return "data:,"."
+        return allocator.dupe(u8, "data:,");
+    };
+    defer file.deinit(allocator);
+    // 5. "Return a data: URL representing file."
+    return dom.bitmap_serialization.dataUrl(allocator, &file);
+}
+
+/// HTML 4.12.5.1, toBlob(callback, type, quality).
+///
+/// Deviation, stated (the integrator's condition, 2026-11-12): step 4's
+/// serialization runs "in parallel" in the spec, and here on the agent's
+/// thread, before the call returns - as image decoding runs today. The task
+/// that hands the Blob over is still queued, so script sees the same order.
+/// TODO(platform thread pool): move the encode to the platform's thread
+/// pool when it exists (queued by the integrator), with the copy of step 3
+/// as its input.
+///
+/// Spec: https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-toblob
 pub fn call_toBlob(instance: *runtime.Instance, _callback: callbacks.BlobCallback, @"type": webidl.Opt(runtime.DOMString), quality: webidl.Opt(runtime.JSValue)) anyerror!void {
-    _ = instance;
-    _ = _callback;
-    _ = @"type";
-    _ = quality;
-    return error.NotImplemented;
+    // The binding hands the callback over: take it before anything can fail.
+    const callback = engine.takeCallbackFunction(@ptrCast(_callback));
+    var callback_owned = true;
+    defer if (callback_owned) callback.release();
+    const allocator = instance.ctx.allocator;
+    const bitmap = CanvasBitmap.of(instance);
+    // 1. "If this canvas element's bitmap's origin-clean flag is set to
+    //    false, then throw a "SecurityError" DOMException."
+    if (!bitmap.origin_clean) return error.SecurityError;
+    // 2-3. "Let result be null." "If this canvas element's bitmap has pixels
+    //    ..., then set result to a copy of this canvas element's bitmap."
+    // 4.1. "If result is non-null, then set result to a serialization of
+    //    result as a file with type and quality if given" (stated above).
+    const file: ?dom.bitmap_serialization.File = if (bitmap.hasPixels())
+        dom.bitmap_serialization.serialize(allocator, bitmap.serializable(), typeArgument(@"type"), qualityArgument(quality))
+    else
+        null;
+    var file_owned = true;
+    defer if (file_owned) if (file) |f| f.deinit(allocator);
+
+    // 4.2. "Queue an element task on the canvas blob serialization task
+    //    source given the canvas element".
+    const global = realmGlobal(instance.ctx) orelse return;
+    const loop = instance.ctx.getOptionalEventLoop() orelse return error.InvalidStateError;
+    const task = try allocator.create(BlobTask);
+    task.* = .{
+        .allocator = allocator,
+        .global = global,
+        .global_generation = runtime.SlabAllocator.generationOf(global),
+        .callback = callback,
+        .file = file,
+    };
+    callback_owned = false;
+    file_owned = false;
+    var queued: runtime.EventLoopTask = .{ .callback = BlobTask.run, .context = task, .drop = BlobTask.drop };
+    if (interfaces.Node.get_ownerDocument(instance) catch null) |document| {
+        queued.document = document;
+        queued.document_generation = runtime.SlabAllocator.generationOf(document);
+    }
+    loop.queueTask(queued);
+}
+
+/// The global of `realm`.
+fn realmGlobal(realm: runtime.Context) ?*runtime.Instance {
+    const record = realm.getRealm() orelse return null;
+    return @ptrCast(@alignCast(record.global_object orelse return null));
+}
+
+/// toBlob step 4.2's task: the file and the callback, OWNED until it runs
+/// or is dropped. It keeps the canvas's relevant global, not the canvas: the
+/// Blob is made in the canvas's relevant realm, and the canvas itself may be
+/// gone by then (document.open removes it from its tree;
+/// opening-the-input-stream/tasks.window.js "canvas.toBlob()").
+const BlobTask = struct {
+    allocator: std.mem.Allocator,
+    global: *runtime.Instance,
+    global_generation: u64,
+    callback: engine.CallbackFunction,
+    file: ?dom.bitmap_serialization.File,
+
+    fn deinit(self: *BlobTask) void {
+        self.callback.release();
+        if (self.file) |file| file.deinit(self.allocator);
+        self.allocator.destroy(self);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *BlobTask = @ptrCast(@alignCast(data.?));
+        self.deinit();
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const self: *BlobTask = @ptrCast(@alignCast(data.?));
+        defer self.deinit();
+        // A realm that has gone runs nothing.
+        if (runtime.SlabAllocator.generationOf(self.global) != self.global_generation) return;
+        const realm = self.global.ctx;
+        if (!realm.hasEngine()) return;
+        // 4.2.1. "If result is non-null, then set result to a new Blob
+        //    object, created in the relevant realm of this canvas element,
+        //    representing result." Its type is the file's.
+        const blob: ?*runtime.Instance = if (self.file) |*file| dom.blob_bytes.create(realm, file.bytes, file.mime()) catch |err| blk: {
+            // Not modelled, stated: a Blob that cannot be made hands null
+            // over, as a failed serialization does.
+            log.debug("toBlob: the Blob was not made: {s}", .{@errorName(err)});
+            break :blk null;
+        } else null;
+        // Wrapped, the Blob is its wrapper's; never wrapped, it is ours.
+        const generation = if (blob) |b| runtime.SlabAllocator.generationOf(b) else 0;
+        defer if (blob) |b| runtime.Instance.releaseIfUnwrapped(b, generation);
+        // 4.2.2. "Invoke callback with « result » and "report"."
+        const argument: runtime.JSValue = if (blob) |b| .{ .instance = b } else .null;
+        const completion = engine.invokeCallbackFunction(realm, &self.callback, .undefined, &.{argument}, .{
+            .report = .{ .report = reportCallbackException, .host = realm },
+        }) catch |err| {
+            log.debug("toBlob: the callback was not invoked: {s}", .{@errorName(err)});
+            return;
+        };
+        switch (completion) {
+            inline else => |value| value.release(),
+        }
+    }
+};
+
+/// HTML "report an exception" for the global of the realm the engine names -
+/// the callback's - or else the canvas's (`host`).
+fn reportCallbackException(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+    const canvas_realm: runtime.Context = @ptrCast(@alignCast(host orelse return));
+    const realm = info.realm orelse canvas_realm;
+    const global = realmGlobal(realm) orelse return;
+    const extracted: runtime.ErrorInfo = .{
+        .message = info.message,
+        .filename = info.filename,
+        .lineno = info.lineno,
+        .colno = info.colno,
+        .error_value = if (info.error_value == .undefined) null else info.error_value,
+    };
+    _ = @import("html").report_exception.reportErrorInfo(global, &extracted, .{});
 }
 
 /// Operation: transferControlToOffscreen

@@ -1,17 +1,29 @@
 //! The opaque-root operations (refcount design 2.2-2.3, section 7 step 4):
 //! `joinOpaqueRoot` / `leaveOpaqueRoot`, which the host (dom.mutation) calls
-//! for a wrapped subtree root that gains or loses a parent, in place of the
-//! adapter's own mutation hooks. On V8 they are node tracing's edges: a
-//! wrapped node's wrapper holds its parent's - its node document's while it
-//! is a root, one slot (dom.node_document.traced_slot, lane ownerdoc) - and a
-//! parent's holds a Set of its wrapped children's. WebKit computes the same
-//! rule at marking time (JSNodeOwner::isReachableFromOpaqueRoots, the root
-//! node as the opaque root); V8 13.1 has no public way to, short of cppgc
-//! (decision D4).
+//! for a wrapped subtree root that gains or loses a parent, and
+//! `keepOpaqueRoot`, which a holder (dom.node_holds) calls for a member. They
+//! are the `.emulated` engines' way to keep the browsers' wrapper
+//! reachability rule (WebKit's JSNodeOwner::isReachableFromOpaqueRoots): edges
+//! drawn when the host says a tree changed (public-API JavaScriptCore, design
+//! 5.2).
 //!
-//! Wrappers are made the way the binding makes them (script) and collected by
-//! the engine; the operations are also called directly, on a node that stays
-//! in its tree, to pin what each one draws.
+//! V8's wrapper tracing is NATIVE since the wrapper redesign's P7
+//! (tmp/redesign/wrapper-redesign-design.md section 7): the walk keeps trees
+//! in cppgc's atomic pause, and node tracing's JS edges are gone - the edge
+//! each wrapped node drew to its parent's wrapper (its node document's for a
+//! root), its parent's Set of wrapped children, and the upward closure that
+//! wrapped every ancestor first. So the host calls none of them for a node
+//! on V8 (the calls compile out), and V8's operations draw nothing for a
+//! node; a holder's member that is not a node is still kept as traceChild
+//! keeps it. The cases that pinned the edges went with them: "a wrapped node
+//! inserted under a parent joins its opaque root" (the edge-only case: it ran
+//! with the walk turned off, the one state the edges alone decided), "a
+//! removed wrapped root keeps its node document through the same slot"
+//! (tests/v8/wrapper_walk_test.zig's node -> document cases keep the rule),
+//! "joining under a parent script has not seen wraps the parent's chain"
+//! (inverted: tests/v8/wr7_edges_gone_test.zig), and keepOpaqueRoot's three
+//! node cases (the holders' tracing keeps their nodes: tests/v8/
+//! wr6_holder_tracing_test.zig).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -20,7 +32,6 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
 
 const WindowHost = struct {
     fn createGlobalObject(r: runtime.Context, global_this: runtime.JSValue, host: ?*anyopaque) ?*runtime.Instance {
@@ -117,163 +128,56 @@ const Page = struct {
 
 const xhtml = "http://www.w3.org/1999/xhtml";
 
-/// What `node`'s upward slot holds is `expected`'s wrapper.
-fn expectSlot(page: Page, node: *runtime.Instance, expected: *runtime.Instance) !void {
-    const value = protocol.tracedValue(node, dom.node_document.traced_slot) orelse return error.EmptySlot;
-    defer value.release();
-    try testing.expect(protocol.sameValue(page.realm, value.borrow(), .{ .instance = expected }));
+/// The slot `keepOpaqueRoot` keeps its member in.
+const kept_slot: protocol.TracedSlot = .{ .name = "rc4:opaque-root-test" };
+
+/// The key node tracing's upward edge was kept under, in traceChild's slot
+/// namespace (`dom.node_document.traced_slot`, until P7).
+const upward_slot: protocol.TracedSlot = .{ .name = "tree parent or node document" };
+
+test "V8 traces node wrappers natively: the host's opaque-root calls compile out" {
+    comptime std.debug.assert(protocol.capabilities.wrapper_tracing == .native);
 }
 
-test "a wrapped node inserted under a parent joins its opaque root: the parent's wrapper keeps it" {
-    const page = try Page.open();
-    defer page.close();
-    try page.eval(
-        \\globalThis.d = new Document();
-        \\globalThis.p = d.createElement('div');
-        \\(() => { const c = d.createElement('span'); c.mark = 'kept'; p.appendChild(c); })();
-    );
-    const parent = try page.instance("p");
-    const child = try page.instance("p.firstChild");
-    try expectSlot(page, child, parent);
-    try page.collect();
-    // Only the parent's wrapper reached the child's: its expando survived.
-    try page.expect("p.firstChild.mark", "kept");
-
-    // Left directly (the node stays in its tree): the edges between the two
-    // go, and the child's wrapper is the collector's; the node is its
-    // tree's, and a later read makes a new wrapper.
-    protocol.leaveOpaqueRoot(child, parent);
-    try expectSlot(page, child, try page.instance("d"));
-    try page.collect();
-    try page.expect("String(p.firstChild.mark)", "undefined");
-
-    // Joined again: the new wrapper is kept again.
-    try page.eval("p.firstChild.mark = 'again'");
-    protocol.joinOpaqueRoot(child, parent);
-    try expectSlot(page, child, parent);
-    try page.collect();
-    try page.expect("p.firstChild.mark", "again");
-}
-
-test "a removed wrapped root keeps its node document through the same slot, and its old parent lets it go" {
+test "joinOpaqueRoot and leaveOpaqueRoot draw nothing for a node on V8" {
     const page = try Page.open();
     defer page.close();
     try page.eval(
         \\globalThis.d = new Document();
         \\globalThis.p = d.createElement('div');
         \\globalThis.c = p.appendChild(d.createElement('span'));
-        \\c.mark = 'root';
     );
+    const parent = try page.instance("p");
     const child = try page.instance("c");
-    try expectSlot(page, child, try page.instance("p"));
-    try page.eval("p.removeChild(c)");
-    try expectSlot(page, child, try page.instance("d"));
-    // Moved under another parent with moveBefore: the edges follow it.
-    try page.eval("globalThis.q = d.createElement('section'); d.appendChild(q); d.documentElement.appendChild(p); q.appendChild(c); 'ok'");
-    try page.eval("p.moveBefore(c, null)");
-    try expectSlot(page, child, try page.instance("p"));
-}
-
-test "joining under a parent script has not seen wraps the parent's chain: the wrapped part of a tree is upward-closed" {
-    const page = try Page.open();
-    defer page.close();
-    const document = try page.instance("globalThis.d = new Document(); d");
-    var nodes: [3]*runtime.Instance = undefined;
-    for (&nodes) |*node| {
-        node.* = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
+    protocol.leaveOpaqueRoot(child, parent);
+    protocol.joinOpaqueRoot(child, parent);
+    for ([_]*runtime.Instance{ parent, child }) |node| {
+        if (protocol.tracedValue(node, upward_slot)) |edge| {
+            edge.release();
+            return error.EdgeDrawn;
+        }
     }
-    _ = try interfaces.Node.call_appendChild(nodes[0], nodes[1]);
-    try testing.expect(!protocol.hasWrapper(nodes[0]));
-    // The leaf is wrapped, then inserted natively under the unwrapped middle.
-    const leaf = try protocol.retainValue(page.realm, .{ .instance = nodes[2] });
-    defer leaf.release();
-    _ = try interfaces.Node.call_appendChild(nodes[1], nodes[2]);
-    try testing.expect(protocol.hasWrapper(nodes[1]));
-    try testing.expect(protocol.hasWrapper(nodes[0]));
-    try expectSlot(page, nodes[2], nodes[1]);
-    try expectSlot(page, nodes[1], nodes[0]);
 }
 
-// ============================================================================
-// keepOpaqueRoot: a holder's wrapper keeps a node's opaque root
-// ============================================================================
-
-const kept_slot: protocol.TracedSlot = .{ .name = "rc4:opaque-root-test" };
-
-test "keepOpaqueRoot: a wrapped member is kept by the owner's wrapper itself" {
+test "keepOpaqueRoot: a node member needs no edge on V8 - the slot is emptied - and a member that is not a node is kept as traceChild keeps it" {
     const page = try Page.open();
     defer page.close();
     try page.eval(
         \\globalThis.d = new Document();
         \\globalThis.owner = new Event('holder');
-        \\globalThis.m = d.createElement('b'); m.mark = 'member';
+        \\globalThis.m = d.createElement('b');
+        \\globalThis.other = new Event('member'); other.mark = 'member';
     );
     const owner = try page.instance("owner");
-    const member = try page.instance("m");
-    protocol.keepOpaqueRoot(owner, member, kept_slot);
-    try expectKept(page, owner, member);
-    const generation = runtime.SlabAllocator.generationOf(member);
-    try page.eval("delete globalThis.m");
+    const other = try page.instance("other");
+    protocol.keepOpaqueRoot(owner, other, kept_slot);
+    try expectKept(page, owner, other);
+    const generation = runtime.SlabAllocator.generationOf(other);
+    try page.eval("delete globalThis.other");
     try page.collect();
-    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(member));
-    // The same wrapper, expando and all.
-    const value = protocol.tracedValue(owner, kept_slot) orelse return error.EmptySlot;
-    defer value.release();
-    try testing.expect(protocol.sameValue(page.realm, value.borrow(), .{ .instance = member }));
-}
-
-test "keepOpaqueRoot: an unwrapped member's tree is kept through its wrapped root, and forgetTracedChild ends it" {
-    const page = try Page.open();
-    defer page.close();
-    try page.eval(
-        \\globalThis.d = new Document();
-        \\globalThis.owner = new Event('holder');
-        \\globalThis.r = d.createElement('section'); r.mark = 'root';
-    );
-    const document = try page.instance("d");
-    const root = try page.instance("r");
-    // An unwrapped member deep in the tree.
-    const middle = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("div"), .{ .was_passed = false, .value = undefined });
-    const member = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
-    _ = try interfaces.Node.call_appendChild(middle, member);
-    _ = try interfaces.Node.call_appendChild(root, middle);
-    try testing.expect(!protocol.hasWrapper(member));
-
-    const owner = try page.instance("owner");
-    protocol.keepOpaqueRoot(owner, member, kept_slot);
-    // No wrapper made for the member: the edge goes to its tree's root.
-    try testing.expect(!protocol.hasWrapper(member));
-    try expectKept(page, owner, root);
-    const generation = runtime.SlabAllocator.generationOf(member);
-    try page.eval("delete globalThis.r");
-    try page.collect();
-    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(member));
-
-    // Ended: nothing keeps the tree, and it goes.
-    protocol.forgetTracedChild(owner, kept_slot);
-    try page.collect();
-    try testing.expect(generation != runtime.SlabAllocator.generationOf(member));
-}
-
-test "keepOpaqueRoot: a tree with no wrapper has nothing to keep, and the slot is emptied" {
-    const page = try Page.open();
-    defer page.close();
-    try page.eval(
-        \\globalThis.d = new Document();
-        \\globalThis.owner = new Event('holder');
-        \\globalThis.w = d.createElement('p');
-    );
-    const owner = try page.instance("owner");
-    const document = try page.instance("d");
-    const member = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
-    // Script never saw it: the test frees it, as a native creator frees a
-    // node it is done with.
-    const member_generation = runtime.SlabAllocator.generationOf(member);
-    defer dom.node_creation.releaseIfUnwrapped(member, member_generation);
-    // A member kept earlier is replaced by the new one's (nothing).
-    protocol.keepOpaqueRoot(owner, try page.instance("w"), kept_slot);
-    protocol.keepOpaqueRoot(owner, member, kept_slot);
-    try testing.expect(!protocol.hasWrapper(member));
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(other));
+    // A node member replaces it with nothing.
+    protocol.keepOpaqueRoot(owner, try page.instance("m"), kept_slot);
     try testing.expect(protocol.tracedValue(owner, kept_slot) == null);
 }
 
@@ -293,27 +197,30 @@ test "joinOpaqueRoot, leaveOpaqueRoot and keepOpaqueRoot leave no global handle 
         \\globalThis.p = d.createElement('div');
         \\globalThis.c = p.appendChild(d.createElement('span'));
         \\globalThis.owner = new Event('holder');
+        \\globalThis.member = new Event('member');
     );
     const parent = try page.instance("p");
     const child = try page.instance("c");
     const owner = try page.instance("owner");
+    const member = try page.instance("member");
     const document = try page.instance("d");
     const unwrapped = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned(xhtml), runtime.DOMString.initInterned("i"), .{ .was_passed = false, .value = undefined });
     _ = try interfaces.Node.call_appendChild(child, unwrapped);
     const Round = struct {
-        fn run(member: *runtime.Instance, from: *runtime.Instance, holder: *runtime.Instance, deep: *runtime.Instance) void {
-            protocol.leaveOpaqueRoot(member, from);
-            protocol.joinOpaqueRoot(member, from);
-            protocol.keepOpaqueRoot(holder, member, kept_slot);
+        fn run(node: *runtime.Instance, from: *runtime.Instance, holder: *runtime.Instance, kept: *runtime.Instance, deep: *runtime.Instance) void {
+            protocol.leaveOpaqueRoot(node, from);
+            protocol.joinOpaqueRoot(node, from);
+            protocol.keepOpaqueRoot(holder, kept, kept_slot);
             protocol.keepOpaqueRoot(holder, deep, kept_slot);
+            protocol.keepOpaqueRoot(holder, kept, kept_slot);
             protocol.forgetTracedChild(holder, kept_slot);
         }
     };
     // The first round makes what every later one reuses.
-    Round.run(child, parent, owner, unwrapped);
+    Round.run(child, parent, owner, member, unwrapped);
     try page.collect();
     const before = v8.ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
-    for (0..32) |_| Round.run(child, parent, owner, unwrapped);
+    for (0..32) |_| Round.run(child, parent, owner, member, unwrapped);
     try page.collect();
     const after = v8.ffi.v8_Isolate_GetGlobalHandleBytes(isolate);
     if (after > before) {

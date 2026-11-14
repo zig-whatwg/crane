@@ -147,9 +147,6 @@ fn installHooks() void {
     @import("interfaces").process_hooks.install();
     @import("mixins").process_hooks.install();
     @import("Context.zig").installHooks();
-    // The live parsers' removing steps: a tree script detaches from under a
-    // parser is rescued (tmp/plans/parser-holds-design.md 5.3).
-    @import("html").scripted_parser.installHooks();
     @import("html").platform_state.installHooks();
 }
 

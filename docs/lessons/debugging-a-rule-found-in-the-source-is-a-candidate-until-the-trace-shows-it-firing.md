@@ -1,0 +1,12 @@
+# Debugging: A rule found in the source is a candidate until the trace shows it firing
+
+**Date**: 2026-11-13
+**Lesson**: A mechanism read in the engine's source that would explain a number is a hypothesis; it becomes the cause only when the engine's own trace shows it happening in the run that produced the number.
+
+**Why**: Reading the collector's source for what changed between two versions finds real differences, and a real difference that points the right way is very persuasive. But a workload meets only some of the code. Whether a rule fires depends on values the reader does not have - how many bytes of what kind were alive at that moment - and those are in the trace, not in the source.
+
+**What Happened**: fetch.loopback-stream read 1.455 of main's memory after the V8 13.1 -> 15.7 port. V8 15.7's Heap::AllocateExternalBackingStore scavenges when young ArrayBuffer backing stores reach twice the DEFAULT maximum semispace - 64 MB on every non-Android build - where 13.1 used 16 MB (heap.cc:2882-2901; 13.1 heap.cc:3165-3178). The workload streams 4 MB bodies as chunks. The rule is real, the direction is right, the size of the effect fits, and lane v8up b8 reported it to the integrator as the first finding, marked "source only, trace owed". The trace (`--trace-gc-nvp`, a heap dump at every harness mark) showed no scavenge in that workload at all, none anywhere with the reason "external memory pressure", and 3.3 MB of backing stores at its end mark. The footprint was a high-water mark set two workloads earlier, held in V8's page pool and in malloc. The finding was withdrawn the same hour; it had been written into the integrator's log by then.
+
+**Fix**: Say "candidate" and name the observation that would confirm or kill it (a trace line with a reason, a byte count at a mark) in the same message that reports the reading, and run that observation before building anything on it. The collector prints why each collection ran (`reason=` in `--trace-gc-nvp`; the phrase after the last parenthesis in `--trace-gc`): a rule that triggers a collection is confirmed or killed by one grep.
+
+**Takeaway**: **A source reading tells you what the engine can do; only the trace of the run tells you what it did. Report a mechanism found by reading as a candidate, with the trace line that would prove it, and do not let it into a plan, a table or another agent's log as a cause before that line exists.**
