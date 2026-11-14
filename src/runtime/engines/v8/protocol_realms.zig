@@ -286,29 +286,49 @@ pub fn createWindowRealm(options: *const engine.WindowRealmOptions) Error!Contex
                 realm_global.handOn(old_context);
                 ffi.v8_Context_DetachGlobal(old_context);
             }
-            if (old_state) |state| {
-                state.window_proxy_handed_on = true;
-                predecessor = state;
-                predecessor_realm = old;
-                // The new realm is entered in the old one's place: V8 exits
-                // contexts only in reverse order, and the old realm ends
-                // while the new one lives.
-                if (state.context_entered and isLastEntered(isolate, old_context)) {
-                    ffi.v8_Context_Exit(old_context);
-                    state.context_entered = false;
-                    exited_predecessor = old_context;
-                }
-                // A top-level page's realm entered its isolate for its life:
-                // that entry is the new realm's now. Left with the old realm,
-                // its end - at collection, or a detach that could not be made
-                // - would exit the isolate under the page that lives on.
-                if (state.parent == null and state.entered_isolate) {
-                    state.entered_isolate = false;
-                    takes_isolate_entry = true;
-                }
-            }
+            if (old_state) |state| state.window_proxy_handed_on = true;
         },
     }
+    // The realm this one replaces as its navigable's realm: the one whose
+    // WindowProxy it takes over, or - with a new WindowProxy - the one a
+    // browsing context group switch replaces (WindowRealmOptions.replaces;
+    // HTML "obtain a browsing context to use for a navigation response"
+    // steps 10-14: the navigable's next document is in a new browsing
+    // context). Either way the popups the old realm parented follow the
+    // navigable here (E2 below): a popup is a top-level traversable of the
+    // user agent, and its opener's group switch only takes its opener away
+    // (the old browsing context is discarded for whoever holds its
+    // WindowProxy). Chrome, Firefox and Safari keep the popup running:
+    // html/cross-origin-opener-policy/coop-popup-opener-navigates.https.html
+    // 1/1 in each (wpt.fyi cc74d2669f). Before, a group switch's old realm
+    // ended (.navigable_destroyed) with the popups still its children, and
+    // its detach destroyed their realms: their script stopped.
+    const replaced: ?Context = switch (options.global_this) {
+        .new_window_proxy => options.replaces,
+        .window_proxy_of => |old| old,
+    };
+    if (replaced) |old| if (realms.get(old)) |state| {
+        predecessor = state;
+        predecessor_realm = old;
+        // The new realm is entered in the old one's place: V8 exits
+        // contexts only in reverse order, and the old realm ends
+        // while the new one lives.
+        if (contextOf(old)) |old_context| {
+            if (state.context_entered and isLastEntered(isolate, old_context)) {
+                ffi.v8_Context_Exit(old_context);
+                state.context_entered = false;
+                exited_predecessor = old_context;
+            }
+        }
+        // A top-level page's realm entered its isolate for its life:
+        // that entry is the new realm's now. Left with the old realm,
+        // its end - at collection, or a detach that could not be made
+        // - would exit the isolate under the page that lives on.
+        if (state.parent == null and state.entered_isolate) {
+            state.entered_isolate = false;
+            takes_isolate_entry = true;
+        }
+    };
 
     // The context: restored from the snapshot, whose global already has the
     // WebIDL interfaces (~2 ms), or made afresh with them defined below
@@ -810,7 +830,12 @@ pub fn destroyWindowRealm(realm: Context, how: engine.WindowRealmEnd) void {
     if (stateOf(realm)) |state| {
         // A navigation replaced this realm's document and committed: its
         // popups pass to the new realm first (E2, `passAuxiliaryChildren`).
-        if (how == .global_detached) passAuxiliaryChildren(realm, state);
+        // So does one a browsing context group switch replaced
+        // (WindowRealmOptions.replaces): it ends as its navigable's were
+        // destroyed for whoever holds its WindowProxy (.navigable_destroyed),
+        // but its navigable lives on in the successor, and so do its popups.
+        // A removed frame's realm has no successor: nothing passes.
+        if (how == .global_detached or state.successor != null) passAuxiliaryChildren(realm, state);
         if (state.parent != null and state.detached == null) switch (how) {
             .navigable_destroyed => return detach(realm, state),
             .global_detached => if (state.window_proxy_handed_on) return detach(realm, state),

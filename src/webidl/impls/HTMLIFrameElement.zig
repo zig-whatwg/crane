@@ -6459,7 +6459,7 @@ fn attachNavigableContext(
     // HTML 8.1.3.5 for the initial about:blank document: its creator's
     // answer - the parent's for a frame, the opener's for a popup (`parent`
     // is the opener's realm then) - as html.secure_context.ofDocument has it.
-    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, parent.secure_context, allocator) orelse return null;
+    const realm = attachRealm(integration, parent, browsing_context, origin, .new_window_proxy, null, parent.secure_context, allocator) orelse return null;
     makeInitialAboutBlank(integration, realm, browsing_context, origin, creator, parent, allocator);
     return realm;
 }
@@ -6646,13 +6646,16 @@ fn failInheritanceClosed(document: *runtime.Instance) void {
 /// `parent`), with a Window bound to its global - built around the
 /// navigable's WindowProxy when `global_this` names the realm a navigation
 /// replaces - wired to the integration and made the browsing context's
-/// active window. No document: the caller makes that.
+/// active window. `replaces`: the realm a browsing context group switch
+/// replaces with this one, which gets a new WindowProxy
+/// (engine.WindowRealmOptions.replaces). No document: the caller makes that.
 fn attachRealm(
     integration: *IFrameIntegration,
     parent: runtime.Context,
     browsing_context: *html_core.BrowsingContext,
     origin: ?[]const u8,
     global_this: engine.GlobalThis,
+    replaces: ?runtime.Context,
     secure_context: bool,
     allocator: std.mem.Allocator,
 ) ?runtime.Context {
@@ -6672,6 +6675,7 @@ fn attachRealm(
         .event_loop = parent.event_loop,
         .origin = origin,
         .global_this = global_this,
+        .replaces = replaces,
         .parent = parent,
         // A popup's realm (window.open's navigable, no container) follows its
         // opener's WindowProxy to the realm the opener's navigation makes
@@ -6857,7 +6861,7 @@ fn replaceRealm(integration: *IFrameIntegration, new_origin: html_core.Origin) b
     const switched = integration.next_new_window_proxy;
     const kept = integration.currentRealm();
     _ = integration.releaseCurrentRealm() orelse return false;
-    if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, secure_context, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, if (switched) .new_window_proxy else .{ .window_proxy_of = old }, if (switched) old else null, secure_context, allocator) == null) {
         // No new realm - out of memory, which HTML does not let "create and
         // initialize a Document object" step 7 ("create a new realm") do:
         // the navigation fails before its document exists, as one whose
@@ -7183,7 +7187,7 @@ fn keepAndReplaceRealm(integration: *IFrameIntegration, kept: KeptDocument, new_
         record.destroy();
         return false;
     };
-    if (attachRealm(integration, parent, browsing_context, origin_copy, .new_window_proxy, secure_context, allocator) == null) {
+    if (attachRealm(integration, parent, browsing_context, origin_copy, .new_window_proxy, null, secure_context, allocator) == null) {
         // No new realm: the kept page goes, as an unkept one would have.
         record.destroy();
         destroyKeptDocumentAndRealm(kept, old);
