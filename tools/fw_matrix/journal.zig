@@ -182,6 +182,21 @@ pub const PageRecord = struct {
     loaded: []const Loaded = &.{},
     /// ERROR/TIMEOUT/CRASH: what went wrong.
     message: ?[]const u8 = null,
+    /// The project's own test server the page was served by (the manifest's
+    /// `server`); absent when the harness's static server served it. Added
+    /// in fw1 b4: lines written before have none, and read the same.
+    server: ?ServerInfo = null,
+};
+
+/// A project's own test server, as a page record names it.
+pub const ServerInfo = struct {
+    /// The manifest's name for it ("jquery-test-runner 0.3.0").
+    name: []const u8,
+    /// The Node version it ran under ("24.22.3").
+    node: []const u8,
+    /// The hash of the tree's node_modules as `fw_matrix fetch` installed it
+    /// and the run found it (fetch.nodeModulesHash).
+    node_modules_sha256: []const u8,
 };
 
 pub const max_errors = 20;
@@ -209,6 +224,7 @@ pub fn validatePage(r: PageRecord) ValidationError!void {
     if (!std.mem.eql(u8, r.record, "page")) return error.BadRecordKind;
     if (!isSha256(r.console_sha256) or !isSha256(r.source_sha256)) return error.BadSha256;
     if (r.status != .OK and r.message == null) return error.MissingMessage;
+    if (r.server) |s| if (!isSha256(s.node_modules_sha256)) return error.BadSha256;
 }
 
 pub const Line = union(enum) {
@@ -411,6 +427,50 @@ test "a page record: one line, byte for byte" {
             "\",\"page\":\"test\",\"url\":\"http://127.0.0.1:1/test/test.html\",\"status\":\"OK\",\"wall_ms\":161000,\"reported_total\":1790,\"reported_failed\":12,\"ran\":1786,\"records\":1790,\"exit\":\"exited with code 0\",\"console_errors\":[],\"loaded\":[{\"url\":\"https://unpkg.com/mocha@11.7.5/mocha.js\",\"sha256\":\"" ++ sha_a ++ "\"}]}\n",
         out.written(),
     );
+}
+
+test "a page served by the project's own server names it, its Node and its node_modules' hash; a line without it reads as before" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    const page: PageRecord = .{
+        .label = "x",
+        .crane_commit = "c",
+        .console_sha256 = sha_a,
+        .framework = "jquery",
+        .version = "4.0.0",
+        .suite = "s",
+        .suite_kind = .project,
+        .source_sha256 = sha_b,
+        .page = "ajax",
+        .url = "http://localhost:4100/test/?module=ajax",
+        .status = .OK,
+        .wall_ms = 1,
+        .ran = 1,
+        .records = 1,
+        .exit = "exited with code 0",
+        .server = .{ .name = "jquery-test-runner 0.3.0", .node = "24.22.3", .node_modules_sha256 = sha_a },
+    };
+    try writePage(&out.writer, page);
+    try testing.expectEqualStrings(
+        "{\"format\":\"crane-fw/1\",\"record\":\"page\",\"label\":\"x\",\"crane_commit\":\"c\",\"console_sha256\":\"" ++ sha_a ++
+            "\",\"framework\":\"jquery\",\"version\":\"4.0.0\",\"suite\":\"s\",\"suite_kind\":\"project\",\"source_sha256\":\"" ++ sha_b ++
+            "\",\"page\":\"ajax\",\"url\":\"http://localhost:4100/test/?module=ajax\",\"status\":\"OK\",\"wall_ms\":1,\"ran\":1,\"records\":1,\"exit\":\"exited with code 0\",\"console_errors\":[],\"loaded\":[],\"server\":{\"name\":\"jquery-test-runner 0.3.0\",\"node\":\"24.22.3\",\"node_modules_sha256\":\"" ++ sha_a ++ "\"}}\n",
+        out.written(),
+    );
+    const back = try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqualStrings("24.22.3", back.page_record.server.?.node);
+    // A hash that is not one is refused.
+    try testing.expectError(error.BadSha256, parseLine(arena, try std.mem.replaceOwned(u8, arena, std.mem.trimEnd(u8, out.written(), "\n"), "\"node_modules_sha256\":\"" ++ sha_a, "\"node_modules_sha256\":\"abc")));
+    // A line written before the field existed reads with none.
+    var plain = page;
+    plain.server = null;
+    out.clearRetainingCapacity();
+    try writePage(&out.writer, plain);
+    try testing.expect(std.mem.indexOf(u8, out.written(), "server") == null);
+    try testing.expectEqual(@as(?ServerInfo, null), (try parseLine(arena, std.mem.trimEnd(u8, out.written(), "\n"))).page_record.server);
 }
 
 test "lines read back strictly: an unknown field, a wrong type or a missing kind fail" {

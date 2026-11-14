@@ -2,12 +2,16 @@
 //! from the framework's own report, one journal record per test and per
 //! page (tmp/plans/framework-matrix-plan.md, section 2.1).
 //!
-//! Per suite: a static server over its fetched tree (server.zig), then per
+//! Per suite: a static server over its fetched tree (server.zig) - or the
+//! project's own test server where the manifest names one (external.zig:
+//! jQuery's jtr serve under the pinned Node) - then per
 //! page a FRESH console - `repl <url> --timeout=<ms>` - given three lines of
 //! input: the reader's wait, its read and `.exit` (readers.zig). The console
 //! IS the browser (tools/repl.zig): the page is opened the way a user opens
-//! it and read the way a user reads it in DevTools; nothing is injected and
-//! no upstream file is edited. The exclusion list becomes the framework's
+//! it and read the way a user reads it in DevTools; the harness injects
+//! nothing and edits no upstream file (jQuery's own server adds its runner's
+//! listeners.js to test/'s page, as it does for every browser; without a
+//! reportId in the URL that script returns at once). The exclusion list becomes the framework's
 //! own URL filter (exclusions.zig), so excluded tests never run, and each is
 //! journaled as NOTRUN with its kind and reason. At most `parallel` consoles
 //! at once (perf_bench's shape: a process per page, its own process group,
@@ -32,6 +36,7 @@ const exclusions = @import("exclusions.zig");
 const readers = @import("readers.zig");
 const journal = @import("journal.zig");
 const server_mod = @import("server.zig");
+const external = @import("external.zig");
 const fetch = @import("fetch.zig");
 
 pub const Config = struct {
@@ -50,6 +55,8 @@ pub const Config = struct {
     no_exclusions: bool = false,
     parallel: u32 = 2,
     stop_file: ?[]const u8 = null,
+    /// The environment a project's own server starts from (the tool's).
+    environ: ?*const std.process.Environ.Map = null,
 };
 
 pub const Totals = struct {
@@ -66,7 +73,11 @@ const Shared = struct {
     config: *const Config,
     suite: manifest.Suite,
     entries: []const exclusions.Entry,
+    /// The page URLs' host and port.
+    host: []const u8,
     port: u16,
+    /// The project's own server, when it serves the pages.
+    server: ?journal.ServerInfo,
     journal_file: Io.File,
     mutex: Io.Mutex = .init,
     next: std.atomic.Value(usize) = .init(0),
@@ -146,9 +157,45 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         try pages.append(arena, p);
     }
 
-    const server = try server_mod.Server.start(gpa, io, .{ .root = tree, .overlays = try serverOverlays(arena, suite) });
-    defer server.stop();
-    std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served from {s} on 127.0.0.1:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, tree, server.port() });
+    // The pages' server: the project's own when the manifest names one (its
+    // Node and node_modules checked as fetched first), else the harness's
+    // static server over the tree.
+    var host: []const u8 = "127.0.0.1";
+    var port: u16 = 0;
+    var server_info: ?journal.ServerInfo = null;
+    var static: ?*server_mod.Server = null;
+    defer if (static) |s| s.stop();
+    var project_server: ?*external.External = null;
+    defer if (project_server) |s| {
+        s.stop();
+        std.debug.print("fw_matrix: {s}: its server stopped\n", .{suite.id});
+    };
+    if (suite.server) |s| {
+        const node = suite.node.?; // manifest.validate: a server needs Node
+        const node_dir = try fetch.nodeDirChecked(arena, io, config.frameworks_dir, node);
+        const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, tree, arena);
+        const node_modules = try fetch.checkNodeModules(gpa, io, tree_abs);
+        const npm_cache = try std.fmt.allocPrint(arena, "{s}/downloads/npm-cache", .{try Io.Dir.cwd().realPathFileAlloc(io, config.frameworks_dir, arena)});
+        const env = try arena.create(std.process.Environ.Map);
+        env.* = try fetch.nodeEnviron(arena, config.environ, try std.fmt.allocPrint(arena, "{s}/bin", .{node_dir}), npm_cache);
+        project_server = try external.External.start(gpa, io, .{
+            .argv = s.argv,
+            .cwd = tree_abs,
+            .environ = env,
+            .ready_path = s.ready_path,
+            .ready_ms = @as(u64, s.ready_s) * 1000,
+            .log_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-server.log", .{ config.out_dir, suite.id }),
+            .pid_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-server.pid", .{ config.out_dir, suite.id }),
+        });
+        host = s.host;
+        port = project_server.?.port();
+        server_info = .{ .name = s.name, .node = node.version, .node_modules_sha256 = try arena.dupe(u8, &node_modules) };
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served by the project's own server ({s}, Node {s}, pid {d}) from {s} at {s}:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, s.name, node.version, project_server.?.pid, tree, host, port });
+    } else {
+        static = try server_mod.Server.start(gpa, io, .{ .root = tree, .overlays = try serverOverlays(arena, suite) });
+        port = static.?.port();
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served from {s} on 127.0.0.1:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, tree, port });
+    }
 
     var shared: Shared = .{
         .gpa = gpa,
@@ -156,7 +203,9 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         .config = config,
         .suite = suite,
         .entries = entries,
-        .port = server.port(),
+        .host = host,
+        .port = port,
+        .server = server_info,
         .journal_file = journal_file,
         .pages = pages.items,
         .totals = totals,
@@ -189,7 +238,7 @@ fn checkFileEntries(arena: Allocator, io: Io, tree: []const u8, suite: manifest.
             continue;
         };
         for (suite.pages) |p| {
-            const page_file = p.path[0 .. std.mem.indexOfScalar(u8, p.path, '?') orelse p.path.len];
+            const page_file = try manifest.pageFile(arena, p.path);
             const html = try Io.Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(arena, "{s}/{s}", .{ tree, page_file }), arena, .limited(16 << 20));
             const base = std.fs.path.basename(e.id);
             if (std.mem.indexOf(u8, html, base) != null) {
@@ -240,27 +289,8 @@ const ConsoleEnd = struct {
     }
 };
 
-const Waiter = struct {
-    child: std.process.Child,
-    io: Io,
-    term: ?std.process.Child.Term = null,
-    done: std.atomic.Value(bool) = .init(false),
-
-    fn wait(self: *Waiter) void {
-        self.term = self.child.wait(self.io) catch null;
-        self.done.store(true, .release);
-    }
-
-    fn waitFor(self: *Waiter, ms: u64) void {
-        var waited: u64 = 0;
-        while (!self.done.load(.acquire) and waited < ms) : (waited += 50) Io.sleep(self.io, .fromMilliseconds(50), .awake) catch {};
-    }
-};
-
-fn signalGroup(pid: i32, sig: std.posix.SIG) void {
-    std.posix.kill(-pid, sig) catch {};
-    std.posix.kill(pid, sig) catch {};
-}
+const Waiter = external.Waiter;
+const signalGroup = external.signalGroup;
 
 /// One console: `argv`, `input` on its stdin (then closed), its output to
 /// the two files; ended by the harness at `deadline_ms`.
@@ -352,7 +382,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     const page_entries = try exclusions.forPage(arena, shared.entries, page.module, &all_kinds);
     const applied = if (config.no_exclusions) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
     const query = try exclusions.filterQuery(arena, suite.reader, applied);
-    const url = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}", .{ shared.port, try exclusions.withQuery(arena, page.path, query) });
+    const url = try std.fmt.allocPrint(arena, "http://{s}:{d}/{s}", .{ shared.host, shared.port, try exclusions.withQuery(arena, page.path, query) });
 
     const budget_ms: u64 = @as(u64, suite.page_budget_s) * 1000;
     const stall_ms: u64 = @as(u64, suite.page_stall_s) * 1000;
@@ -513,6 +543,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .console_errors = console_errors.items,
         .loaded = loaded.items,
         .message = if (problems.items.len > 0) try std.mem.join(arena, "; ", problems.items) else null,
+        .server = shared.server,
     };
 
     var buf: Io.Writer.Allocating = .init(arena);
