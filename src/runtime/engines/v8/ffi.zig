@@ -1567,18 +1567,79 @@ pub extern fn v8_Object_Instance(object: *Object) ?*anyopaque;
 /// THE LINK (platform_anchor.zig `bind`; Blink's V8DOMWrapper::SetNativeInfo):
 /// `box`'s object - through a legacy platform object's proxy, its target -
 /// reaches `instance` from here, by a new anchor on `isolate`'s C++ heap that
-/// the object is Wrapped with (v8::Object::Wrap): a HolderAnchor carrying the
-/// instance's slab `generation` when `holds_nodes` (a collection that marks
-/// the wrapper then calls the record's `trace_holder`: the wrapper
-/// redesign's P6), a PlatformAnchor otherwise. An object that has an
-/// internal field (a realm's global) has the instance written there. False,
-/// with nothing bound, for an object that is no API object.
-pub extern fn v8_PlatformObject_Bind(isolate: *Isolate, box: *Object, instance: *anyopaque, generation: u64, holds_nodes: bool) bool;
+/// the object is Wrapped with (v8::Object::Wrap): a HolderAnchor when
+/// `holds_nodes` (once the realm's cache has taken the wrapper, a collection
+/// that marks it calls the record's `trace_holder`: the wrapper redesign's
+/// P6), a PlatformAnchor otherwise. An object that has an internal field (a
+/// realm's global) has the instance written there. False, with nothing bound,
+/// for an object that is no API object.
+pub extern fn v8_PlatformObject_Bind(isolate: *Isolate, box: *Object, instance: *anyopaque, holds_nodes: bool) bool;
 /// `box`'s object reaches no instance from here (platform_anchor.zig `sever`;
-/// Blink's V8DOMWrapper::ClearNativeInfo): its anchor's instance is cleared -
-/// or its internal field 0, where it has one. Nothing for an object never
-/// bound. The isolate is the current one.
+/// Blink's V8DOMWrapper::ClearNativeInfo): its anchor is severed - or its
+/// internal field 0 cleared, where it has one. Nothing for an object never
+/// bound, and nothing for a wrapper its realm's cache holds (the cache severs
+/// that one with its record: v8_WrapperCell_Detach). The isolate is the
+/// current one.
 pub extern fn v8_PlatformObject_Sever(box: *Object) void;
+
+/// The wrapper cache's record of one non-node wrapper as v8_wrapper.cpp reads
+/// it (CraneWrapperCell): wrapper_cache.zig's `Cell`.
+pub const WrapperCell = opaque {};
+/// The realm's cache takes the wrapper in `box` (wrapper_cache.zig `set`):
+/// `cell`'s reference becomes a droppable v8::TracedReference to it and the
+/// wrapper's anchor names `cell`. False, with nothing changed, when the
+/// object has no platform anchor of its own instance to attach (a realm's
+/// global, a plain object) or the isolate has no weak processing for it: the
+/// cache then holds the wrapper by a weak Global.
+pub extern fn v8_WrapperCell_Attach(isolate: *Isolate, box: *Object, cell: *WrapperCell) bool;
+/// The cache lets go of the wrapper `cell` holds, outside a collection: its
+/// reference is Reset, and the wrapper's anchor stops naming `cell` - it
+/// reaches the instance itself again when `keep_link`, nothing otherwise
+/// (severed). Nothing for an empty reference. On `isolate`'s thread; it is
+/// entered for the call if it is not current.
+pub extern fn v8_WrapperCell_Detach(isolate: *Isolate, cell: *WrapperCell, keep_link: bool) void;
+/// The cache holds `cell`'s wrapper strongly from here (`strong`: a strong
+/// handle beside the record's reference, kept by the isolate's record), or
+/// no more. On `isolate`'s thread; it is entered for the call if it is not
+/// current.
+pub extern fn v8_WrapperCell_SetStrong(isolate: *Isolate, cell: *WrapperCell, strong: bool) void;
+/// The wrapper caches' two steps inside `isolate`'s collections, installed
+/// once per isolate: `weak(data)` in a full collection's atomic pause after
+/// its marking, `dropped(data, cell)` when a young-generation collection
+/// dropped `cell`'s wrapper (its reference Reset, its anchor severed). No V8
+/// call from either but v8_Isolate_QueueFinalizer. False for an isolate with
+/// no record or no anchors' registry (node_wrappers.prepareHolderTracing
+/// makes it).
+pub extern fn v8_Isolate_SetPlatformWrapperHooks(
+    isolate: *Isolate,
+    data: ?*anyopaque,
+    weak: *const fn (?*anyopaque) callconv(.c) void,
+    dropped: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
+) bool;
+/// `finalize(user_data, 0)` joins `isolate`'s finalizer queue: it runs at the
+/// agent's next safe point, as a collected weak Global's finalizer does.
+/// Callable inside a collection. False, with nothing queued, for an isolate
+/// with no record.
+pub extern fn v8_Isolate_QueueFinalizer(isolate: *Isolate, finalize: WeakCallbackFn, user_data: ?*anyopaque) bool;
+/// Every finalizer on `isolate`'s queue that is `finalize` and that `belongs`
+/// claims leaves the queue uncalled; `taken` is then called with each one's
+/// user data, oldest first (a realm's cache at its end).
+pub extern fn v8_Isolate_TakeQueuedFinalizers(
+    isolate: *Isolate,
+    finalize: WeakCallbackFn,
+    belongs: *const fn (?*anyopaque, ?*anyopaque) callconv(.c) bool,
+    taken: *const fn (?*anyopaque, ?*anyopaque) callconv(.c) void,
+    context: ?*anyopaque,
+) void;
+/// The realm's cache took a wrapper whose instance holds `bytes` of host
+/// memory: V8 is told at the agent's next safe point once 128 KB wait, and
+/// forgets the figure as its next full collection begins (v8_wrapper.cpp,
+/// "What the instances behind non-node wrappers hold"). No V8 call here.
+pub extern fn v8_Isolate_NoteWrappedInstance(isolate: *Isolate, bytes: usize) void;
+/// What V8 holds now as external memory for the instances behind non-node
+/// wrappers (`reported`), or what was noted since the last full collection
+/// began. Diagnostics and tests.
+pub extern fn v8_Debug_WrappedInstanceBytes(isolate: ?*Isolate, reported: bool) u64;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 

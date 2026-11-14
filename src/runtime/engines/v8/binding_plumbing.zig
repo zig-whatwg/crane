@@ -165,12 +165,12 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     };
 
     // Get 'this' object (the newly created instance). Owned, like
-    // every getThis(), until the wrapper cache takes it: `cache.set`
-    // below stores this exact pointer as `entry.wrapper` and arms
-    // `v8_Global_SetWeak` on it, so from a successful set the cache
-    // owns it and frees it via `disposeEntryWrapper` - disposing it
-    // then is a double free plus a weak callback pointing at freed
-    // memory. Every other exit releases it here: a conversion that
+    // every getThis(), until the wrapper cache takes it: from a
+    // successful `cache.set` below the cache owns this box - it keeps it
+    // as its record's Global (a realm's global) or disposes it once its
+    // own reference holds the receiver (every other object: its record's
+    // traced reference, a node's slot) - so disposing it then is a double
+    // free. Every other exit releases it here: a conversion that
     // threw, an impl that failed, an instance that already had a
     // wrapper, no cache, a failed set. Those exits used to keep it,
     // one Global<Object> per failed `new X()` of any interface (Codex
@@ -256,6 +256,9 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // CACHE THE WRAPPER: Store constructor-created wrapper for identity
     // ========================================
     if (self.install_conditional_unforgeables) |install| install(isolate, constructor_context, this_obj);
+    // The handle of the receiver from here: `this_obj` until the cache takes
+    // it.
+    var receiver: *v8.Object = this_obj;
     if (ctx.getV8WrapperCacheStorage()) |cache_storage| {
         const cache: *WrapperCache = @ptrCast(@alignCast(cache_storage));
 
@@ -267,8 +270,11 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         // dispose above (a set that fails stored nothing); the
         // instance, which nothing else ever wrapped, is freed, and the
         // error is thrown.
-        // A node's receiver moves into its slot (its box goes): nothing
-        // below reads `this_obj` but a DOMException's, which is no node.
+        // The receiver's box goes once the cache holds the wrapper - a
+        // node's moves into its slot, any other platform object's into the
+        // cache's record: what is read below is the handle the cache
+        // answers (`receiver`), which V8's own receiver keeps alive for
+        // the rest of this call.
         // The instance was created by this call (WebIDL 3.7.2: the
         // constructor steps make a new object) and is first wrapped here -
         // one a traced edge wrapped while it was made returned above: inside
@@ -278,7 +284,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
         // the constructor itself ran - a dictionary getter, a callback - has
         // returned; a callback it invoked has ended.
         const stamp: u32 = if (algorithm) |queue| queue.freshStamp() else 0;
-        _ = cache.setConstructed(instance, this_obj, isolate, stamp) catch |err| {
+        receiver = cache.setConstructed(instance, this_obj, isolate, stamp) catch |err| {
             unbindReceiver(this_obj);
             instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
             const function_ctx_owned = info.getFunctionCreationContext();
@@ -295,7 +301,7 @@ pub fn construct(info: *const v8.FunctionCallbackInfo, self: *const Constructor)
     // For DOMException: add stack property per WebIDL spec
     // If the implementation has a stack property on normal errors, DOMException must too
     if (self.dom_exception) {
-        interface.captureDOMExceptionStack(this_obj, isolate, constructor_context);
+        interface.captureDOMExceptionStack(receiver, isolate, constructor_context);
     }
 
     // Return 'this' (V8 does this automatically for constructors)

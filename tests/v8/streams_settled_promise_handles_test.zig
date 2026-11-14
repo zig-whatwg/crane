@@ -26,25 +26,31 @@ test "a settled streams promise keeps one handle, a pending one its three" {
     defer page.end();
     try rounds_lib.expectEval(page.realm, "globalThis.kept = []; 'ok'", "ok");
 
+    // Counted in bytes of V8's handle tables: a v8::Global is 32 of them, and
+    // the wrapper cache's reference to a wrapper - a traced reference since
+    // lane wrap1 b3 - is 16.
+    const global = try rounds_lib.handleBytes(page.realm, page.isolate());
+    const traced = 16;
+
     // A reader of a closed stream: its wrapper, and its [[closedPromise]],
     // resolved at once (ReadableStreamReaderGenericInitialize step 4.1).
-    const closed_stream = try rounds_lib.handlesPerRound(page.agent, page.realm, "kept.push(new ReadableStream({ start(c) { c.close(); } })); 'ok'", rounds);
-    const with_reader = try rounds_lib.handlesPerRound(page.agent, page.realm, "kept.push(new ReadableStream({ start(c) { c.close(); } }).getReader()); 'ok'", rounds);
+    const closed_stream = try rounds_lib.handleBytesPerRound(page.agent, page.realm, "kept.push(new ReadableStream({ start(c) { c.close(); } })); 'ok'", rounds);
+    const with_reader = try rounds_lib.handleBytesPerRound(page.agent, page.realm, "kept.push(new ReadableStream({ start(c) { c.close(); } }).getReader()); 'ok'", rounds);
     // A writer of a writable stream with no backpressure: its wrapper, its
     // [[readyPromise]] resolved at once and its [[closedPromise]] pending
     // (SetUpWritableStreamDefaultWriter steps 5.2 and 5.3).
-    const writable = try rounds_lib.handlesPerRound(page.agent, page.realm, "kept.push(new WritableStream()); 'ok'", rounds);
-    const with_writer = try rounds_lib.handlesPerRound(page.agent, page.realm, "kept.push(new WritableStream().getWriter()); 'ok'", rounds);
+    const writable = try rounds_lib.handleBytesPerRound(page.agent, page.realm, "kept.push(new WritableStream()); 'ok'", rounds);
+    const with_writer = try rounds_lib.handleBytesPerRound(page.agent, page.realm, "kept.push(new WritableStream().getWriter()); 'ok'", rounds);
 
     const reader_kept = with_reader - closed_stream;
     const writer_kept = with_writer - writable;
-    // The wrapper, and 1 for the settled [[closedPromise]].
-    const reader_expected = 1 + 1;
-    // The wrapper, 1 for the settled [[readyPromise]], 3 for the pending
-    // [[closedPromise]].
-    const writer_expected = 1 + 1 + 3;
+    // The wrapper, and 1 handle for the settled [[closedPromise]].
+    const reader_expected = traced + global;
+    // The wrapper, 1 handle for the settled [[readyPromise]], 3 for the
+    // pending [[closedPromise]].
+    const writer_expected = traced + global + 3 * global;
     if (reader_kept != reader_expected or writer_kept != writer_expected) {
-        std.debug.print("handles kept a call: {d} by a reader of a closed stream (expected {d}), {d} by a writer (expected {d})\n", .{ reader_kept, reader_expected, writer_kept, writer_expected });
+        std.debug.print("handle bytes kept a call: {d} by a reader of a closed stream (expected {d}), {d} by a writer (expected {d})\n", .{ reader_kept, reader_expected, writer_kept, writer_expected });
         return error.SettledPromisesKept;
     }
 }

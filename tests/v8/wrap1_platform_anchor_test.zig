@@ -462,6 +462,9 @@ const KeptShape = struct {
     /// a node's when the row makes one too).
     cpp_least: f64,
     cpp_most: f64,
+    /// V8's handle tables per kept object, bytes: 16 for each traced reference - the cache's record's, and the
+    /// node's slot when the row makes a node too. (A weak v8::Global was 32.)
+    handles_most: f64,
 };
 
 /// Every wrapper shape the binding makes for a non-node platform object (lesson
@@ -470,24 +473,26 @@ const KeptShape = struct {
 /// object's proxy. The DOMTokenList and the HTMLCollection each come with the div they hang from (its node
 /// anchor: 32 B).
 const kept_shapes = [_]KeptShape{
-    .{ .name = "Event (a constructor's receiver)", .make = "o.keep.push(new Event('x'))", .cpp_least = 16.0, .cpp_most = 26.0 },
-    .{ .name = "URLSearchParams (a constructor's receiver)", .make = "o.keep.push(new URLSearchParams('a=b'))", .cpp_least = 16.0, .cpp_most = 26.0 },
-    .{ .name = "Headers (a constructor's receiver)", .make = "o.keep.push(new Headers())", .cpp_least = 16.0, .cpp_most = 26.0 },
-    .{ .name = "createEvent's Event (wrapped by Crane)", .make = "o.keep.push(doc2.createEvent('Event'))", .cpp_least = 16.0, .cpp_most = 26.0 },
-    .{ .name = "a div's DOMTokenList (indexed properties; with its div)", .make = "o.keep.push(doc2.createElement('div').classList)", .cpp_least = 48.0, .cpp_most = 60.0 },
-    .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .cpp_least = 16.0, .cpp_most = 26.0 },
-    .{ .name = "a div's HTMLCollection (a holder behind a proxy; with its div)", .make = "o.keep.push(doc2.createElement('div').children)", .cpp_least = 48.0, .cpp_most = 60.0 },
+    .{ .name = "Event (a constructor's receiver)", .make = "o.keep.push(new Event('x'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "URLSearchParams (a constructor's receiver)", .make = "o.keep.push(new URLSearchParams('a=b'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "Headers (a constructor's receiver)", .make = "o.keep.push(new Headers())", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "createEvent's Event (wrapped by Crane)", .make = "o.keep.push(doc2.createEvent('Event'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "a div's DOMTokenList (indexed properties; with its div)", .make = "o.keep.push(doc2.createElement('div').classList)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 32.5 },
+    .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "a div's HTMLCollection (a holder behind a proxy; with its div)", .make = "o.keep.push(doc2.createElement('div').children)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 32.5 },
 };
 
-test "a kept non-node wrapper of every shape costs no V8 global handle, and one anchor on the C++ heap" {
+test "a kept non-node wrapper of every shape costs one traced handle of V8's and one anchor on the C++ heap, no weak global handle" {
     // Until lane wrap1's batch 3 the wrapper cache kept each non-node wrapper by a weak v8::Global with a
     // callback record: a 32 B global-handle node of V8's, a 16 B box, a 48 B record, a node in the adapter's
     // armed-handle map and an 88 B cache entry - about 200 of the 312-320 B a kept wrapper cost (gc_bench,
     // tmp/plans/wrap1-evidence/meas0-c.out). Now the wrapper's anchor is what the cache holds it by: the anchor
     // names a 32 B record of the cache's (instance, slab generation, the wrapper as a v8::TracedReference - 16 B
-    // of V8's traced handles, which this does not count), the cache's map names the record, and the collector
-    // finds a dead wrapper through its anchor. Blink holds a wrapper the same way: a TraceWrapperV8Reference
-    // in the ScriptWrappable, no v8::Global (platform/bindings/script_wrappable.h:147, dom_data_store.h).
+    // of V8's traced handles, which its handle bytes count where a weak Global's node was 32), the cache's map
+    // names the record, and the collector finds a dead wrapper through its anchor. Blink holds a wrapper the
+    // same way: a TraceWrapperV8Reference in the ScriptWrappable, no v8::Global
+    // (platform/bindings/script_wrappable.h:147, dom_data_store.h). The record's own size is pinned where it is
+    // declared (wrapper_cache.zig `Cell`: 32 bytes, checked at compile time).
     const page = try Page.open();
     defer page.close();
     try page.run(objects);
@@ -510,44 +515,52 @@ test "a kept non-node wrapper of every shape costs no V8 global handle, and one 
         const cpp = @as(f64, @floatFromInt(cpp_after -| cpp_before)) / @as(f64, n);
         const handles = @as(f64, @floatFromInt(handles_after - handles_before)) / @as(f64, n);
         const entries = @as(f64, @floatFromInt(entries_after - entries_before)) / @as(f64, n);
-        std.debug.print("{s}: {d:.1} B of V8 global handles, {d:.1} B of CppHeap, {d:.2} cache entries per kept object\n", .{ shape.name, handles, cpp, entries });
+        std.debug.print("{s}: {d:.1} B of V8 handles, {d:.1} B of CppHeap, {d:.2} cache entries per kept object\n", .{ shape.name, handles, cpp, entries });
         // The cache still knows each one (identity), by one entry.
         if (entries < 0.99 or entries > 1.01) wrong += 1;
-        if (handles > 1.0) wrong += 1;
+        if (handles > shape.handles_most) wrong += 1;
         if (cpp < shape.cpp_least or cpp > shape.cpp_most) wrong += 1;
         try page.run("o.keep = null; 0");
     }
     try testing.expectEqual(@as(usize, 0), wrong);
 }
 
-test "a wrapper script changed waits for a full collection; an unchanged one goes in a young one" {
+test "a wrapper script changed, or one born with an own property, waits for a full collection; an unchanged one goes in a young one" {
     // The cache holds a wrapper by a DROPPABLE traced reference: in a young-generation collection V8 treats it
-    // as weak only while the wrapper is an unmodified API object - nothing script could tell from a fresh
-    // wrapper (15.7.112.43 src/handles/traced-handles.cc:519-533, src/objects/js-objects.cc:3152-3168) - and as
-    // a root otherwise, so a wrapper with an expando is collected by the next FULL collection. Blink's rule,
-    // which is V8's (DOMDataStore::SetWrapperInInlineStorage makes the reference droppable; nothing is added on
-    // top). Until lane wrap1's batch 3 a weak v8::Global let either kind go in a young collection.
+    // as weak only while the wrapper is an unmodified API object - one whose map is still its constructor's
+    // initial map, with no elements and no identity hash: nothing script could tell from a fresh wrapper
+    // (15.7.112.43 src/handles/traced-handles.cc:519-533, src/objects/js-objects.cc:3152-3168) - and as a root
+    // otherwise, so such a wrapper is collected by the next FULL collection. Blink's rule, which is V8's
+    // (DOMDataStore::SetWrapperInInlineStorage makes the reference droppable; nothing is added on top). Two
+    // kinds are roots there:
+    // - a wrapper script changed (an expando);
+    // - a wrapper whose interface gives every instance an own property - an Event's [LegacyUnforgeable]
+    //   isTrusted (DOM 2.2): V8 adds an instance template's properties after the object is made, so its map
+    //   is never its constructor's initial map (src/api/api-natives.cc InstantiateObject -> ConfigureInstance).
+    //   Blink installs isTrusted the same way, so its Event wrappers wait for a full collection too.
+    // Until lane wrap1's batch 3 a weak v8::Global let every kind go in a young collection.
     const page = try Page.open();
     defer page.close();
     const n = 1000;
-    try page.run("for (let i = 0; i < 64; i++) void new Event('x'); 0");
+    try page.run("for (let i = 0; i < 64; i++) { void new Event('x'); void new URLSearchParams('a=b'); } 0");
 
     var attempt: usize = 0;
     while (attempt < 4) : (attempt += 1) {
         page.fullGC();
         const entries_before = try page.counter("wrapper_cache_entries");
         const full_before = page.fullCollections();
-        var source: [160]u8 = undefined;
-        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {{ const e = new Event('x'); e.mine = i; }} 0", .{n}));
+        var source: [200]u8 = undefined;
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {{ const p = new URLSearchParams('a=b'); p.mine = i; }} 0", .{n}));
         try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) void new Event('x'); 0", .{n}));
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) void new URLSearchParams('a=b'); 0", .{n}));
         try page.minorGC(4);
-        // A full collection V8 chose to run meanwhile took both kinds: read again.
+        // A full collection V8 chose to run meanwhile took every kind: read again.
         if (page.fullCollections() != full_before) continue;
         const entries_young = try page.counter("wrapper_cache_entries");
-        std.debug.print("after young collections: {d} of {d} changed and {d} unchanged dead wrappers are still cached\n", .{ entries_young - entries_before, n, n });
-        // The changed ones wait; the unchanged ones went.
-        try testing.expect(entries_young >= entries_before + n - 8);
-        try testing.expect(entries_young <= entries_before + n + 8);
+        std.debug.print("after young collections: {d} dead wrappers are still cached, of {d} changed URLSearchParams, {d} Events and {d} unchanged URLSearchParams\n", .{ entries_young - entries_before, n, n, n });
+        // The changed ones and the Events wait; the unchanged ones went.
+        try testing.expect(entries_young >= entries_before + 2 * n - 8);
+        try testing.expect(entries_young <= entries_before + 2 * n + 8);
         page.fullGC();
         try testing.expect(try page.counter("wrapper_cache_entries") <= entries_before + 8);
         return;
@@ -556,22 +569,26 @@ test "a wrapper script changed waits for a full collection; an unchanged one goe
     return error.TestInconclusive;
 }
 
-/// The next batch changes this to true too, and the test below then holds the fixed value.
-const dead_wrappers_freed_ahead_of_the_collector = false;
+/// True since lane wrap1's batch 3: the test below holds the fixed value (until then a dead wrapper left its
+/// 24 B cppgc object until the next full collection: 20 to 28 B per dead Event, measured by this test).
+const dead_wrappers_freed_ahead_of_the_collector = true;
 
-test "the next batch's, pinned at today's value: a dead non-node wrapper leaves a cppgc object until the next full collection" {
+test "a dead non-node wrapper's anchor is freed at the agent's safe point after the young collection that dropped it" {
     // The perf suite's dom.event-ctor and dom.event-ctor-dict each make and drop 650,000 Events
     // (tests/perf/workloads/attributes.html). A scavenge takes each dead wrapper and its finalizer frees the
-    // Event, but the wrapper's cppgc object - V8's slot wrapper before the link, the PlatformAnchor after it,
-    // 24 B either way - and its 8 B CppHeapPointerTable entry wait for a FULL collection, which V8 does not
-    // schedule for them: 20.8 MB at the row's mark when none lands in the page (lane wrap1 b2 step 0, gc_bench:
-    // 8.77 MB of C++ heap after 650,000 dropped Events and one full collection). The next batch frees the anchor at the
-    // agent's safe point after the scavenge and tells V8 of the table entry, as wr1 does for a node's
-    // (v8_wrapper.cpp freeDroppedAnchors, reportDroppedTableEntries).
+    // Event, but until lane wrap1's batch 3 the wrapper's cppgc object - V8's slot wrapper before the link, the
+    // PlatformAnchor after it, 24 B either way - and its 8 B CppHeapPointerTable entry waited for a FULL
+    // collection, which V8 does not schedule for them: 20.8 MB at the row's mark when none lands in the page
+    // (lane wrap1 b2 step 0, gc_bench: 8.77 MB of C++ heap after 650,000 dropped Events and one full
+    // collection). Now the anchor is freed at the agent's safe point after the scavenge and V8 is told of the
+    // table entry, as wr1 does for a node's (v8_wrapper.cpp resetPlatformRoot, freeDroppedAnchors,
+    // reportDroppedTableEntries). The test drops URLSearchParams: an Event's wrapper is no unmodified API
+    // object - its own isTrusted (the test above) - so V8 leaves it, and its anchor, to a full collection, as
+    // Blink does; what paces that collection is the account of what the instances hold (the last test).
     const page = try Page.open();
     defer page.close();
     const n = 5000;
-    try page.run("for (let i = 0; i < 64; i++) void new Event('x'); 0");
+    try page.run("for (let i = 0; i < 64; i++) void new URLSearchParams('a=b'); 0");
 
     var attempt: usize = 0;
     while (attempt < 4) : (attempt += 1) {
@@ -581,17 +598,17 @@ test "the next batch's, pinned at today's value: a dead non-node wrapper leaves 
         const full_before = page.fullCollections();
 
         var source: [120]u8 = undefined;
-        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) void new Event('x'); 0", .{n}));
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) void new URLSearchParams('a=b'); 0", .{n}));
         try page.minorGC(4);
 
         // A full collection V8 chose to run meanwhile took what this reads: read again.
         if (page.fullCollections() != full_before) continue;
-        // The scavenges took the wrappers and their finalizers ran: nothing of the Events is left but what
+        // The scavenges took the wrappers and their finalizers ran: nothing of the objects is left but what
         // V8 keeps for them.
         try testing.expect(try page.counter("wrapper_cache_entries") <= entries_before + 8);
         const live_after = page.cppLiveBytes();
         const per = @as(f64, @floatFromInt(live_after -| live_before)) / @as(f64, n);
-        std.debug.print("a dead Event wrapper leaves {d:.1} B of CppHeap until the next full collection ({d} -> {d})\n", .{ per, live_before, live_after });
+        std.debug.print("a dead URLSearchParams wrapper leaves {d:.1} B of CppHeap until the next full collection ({d} -> {d})\n", .{ per, live_before, live_after });
         if (dead_wrappers_freed_ahead_of_the_collector) {
             try testing.expect(per < 2.0);
         } else {
@@ -603,6 +620,99 @@ test "the next batch's, pinned at today's value: a dead non-node wrapper leaves 
         const live_end = page.cppLiveBytes();
         const left = @as(f64, @floatFromInt(live_end -| live_before)) / @as(f64, n);
         try testing.expect(left < 2.0);
+        return;
+    }
+    std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
+    return error.TestInconclusive;
+}
+
+test "a handle borrowed from the cache reads empty once a collection took its wrapper, until the finalizer frees its record" {
+    // Every caller of the binding borrows the cache's handle to a wrapper by ADDRESS (WrapperCache.get,
+    // conversions.instanceToV8). The handle is the cache's record of the wrapper, which is the cache's own
+    // memory and not the wrapper's anchor: an anchor a full collection finds dead is swept at once and its
+    // memory given to the next anchor, so a handle inside it could read another object's wrapper. The record
+    // outlives the wrapper - emptied by the collection, out of the cache's map, freed by the wrapper's
+    // finalizer at the agent's safe point - as the weak v8::Global's box did before lane wrap1's batch 3 (the
+    // integrator's ruling, 2026-11-14: 8 B a wrapper is the price).
+    const WrapperCache = @import("v8").WrapperCache;
+    const page = try Page.open();
+    defer page.close();
+    const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+
+    const Kind = enum { young, full };
+    for ([_]Kind{ .young, .full }) |kind| {
+        // An unchanged wrapper for the young collection (V8 drops it there); an Event script changed for the
+        // full one (a root in young collections, so only the full collection takes it).
+        const got = try page.evalOwned(switch (kind) {
+            .young => "globalThis.h = new URLSearchParams('a=b'); h",
+            .full => "globalThis.h = new Event('x'); h.mine = 1; h",
+        });
+        const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
+        const generation = runtime.SlabAllocator.generationOf(instance);
+        const handle = cache.get(instance) orelse return error.NotCached;
+        try testing.expect(!ffi.v8_Global_IsEmpty(@ptrCast(handle)));
+        got.release();
+        try page.run("globalThis.h = null; 0");
+        const pending_before = cache.pendingFinalizerCount();
+
+        {
+            const entered = page.enter();
+            defer page.leave(entered);
+            switch (kind) {
+                .young => ffi.v8_test_Isolate_MinorGC(page.isolate(), 4),
+                .full => ffi.v8_test_Isolate_CollectWithoutDrain(page.isolate()),
+            }
+            // The collection took the wrapper and nothing ran after it: the record waits for its finalizer.
+            // The borrowed handle is still the record's, and reads empty; the cache answers nothing for the
+            // instance, which is not torn down yet.
+            try testing.expect(ffi.v8_Global_IsEmpty(@ptrCast(handle)));
+            try testing.expect(cache.get(instance) == null);
+            try testing.expectEqual(pending_before + 1, cache.pendingFinalizerCount());
+            try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
+            // The agent's safe point: the finalizer tears the instance down and frees the record.
+            while (ffi.v8_Platform_PumpMessageLoop(page.isolate())) {}
+            _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
+        }
+        try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
+        try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
+    }
+}
+
+test "what the instances behind non-node wrappers hold is noted for the collector, reported at a safe point, and forgotten as a full collection begins" {
+    // A wrapper is 16 B of V8's heap and keeps an instance V8 cannot see; V8 schedules collections by what it
+    // sees. The adapter notes each wrapped non-node instance's slab slot, state block and cache record, tells
+    // V8 through its own ExternalMemoryAccounter once 128 KB wait (at the agent's safe point: a binding's
+    // return into script), and takes the whole figure back in the next full collection's prologue - the bytes
+    // put behind wrappers since the last full collection began, which is what Blink's C++ heap growth shows V8
+    // (v8_wrapper.cpp, "What the instances behind non-node wrappers hold"). The measure of what it buys is
+    // gc_bench's (650,000 dropped Events); this pins the mechanism.
+    const page = try Page.open();
+    defer page.close();
+    const n = 6000;
+    try page.run("for (let i = 0; i < 64; i++) void new URLSearchParams('a=b'); 0");
+
+    var attempt: usize = 0;
+    while (attempt < 4) : (attempt += 1) {
+        page.fullGC();
+        // A full collection forgets the figure.
+        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_noted"));
+        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_reported"));
+        const full_before = page.fullCollections();
+        var source: [160]u8 = undefined;
+        try page.run(try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < {d}; i++) keep.push(new URLSearchParams('a=b')); 0", .{n}));
+        const noted = try page.counter("wrapped_instance_bytes_noted");
+        const reported = try page.counter("wrapped_instance_bytes_reported");
+        // A full collection V8 chose to run meanwhile forgot what this reads: read again.
+        if (page.fullCollections() != full_before) continue;
+        std.debug.print("{d} wrapped URLSearchParams: {d} B noted ({d:.1} each), {d} B reported to V8\n", .{ n, noted, @as(f64, @floatFromInt(noted)) / @as(f64, n), reported });
+        // At least the slab slot and the cache's record each (64 B), and no more than a page each.
+        try testing.expect(noted >= n * 64 and noted <= n * 4096);
+        // Reported in steps of 128 KB or more, never ahead of what was noted.
+        try testing.expect(reported >= 128 * 1024 and reported <= noted);
+        try testing.expect(noted - reported < 128 * 1024 + 4096);
+        try page.run("globalThis.keep = null; 0");
+        page.fullGC();
+        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_reported"));
         return;
     }
     std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});

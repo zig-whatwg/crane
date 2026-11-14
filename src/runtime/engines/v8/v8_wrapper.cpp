@@ -3147,40 +3147,113 @@ static constexpr CppHeapPointerTag kPlatformAnchorTag = crane_tags::tag(crane_ta
 
 static void traceHolderNodes(IsolateData* record, void* instance, uint64_t generation, cppgc::Visitor* visitor);
 
-/// What a non-node platform object's wrapper points at (lane wrap1 b2,
-/// tmp/plans/object-wrap-design.md 3.4): a cppgc object behind the wrapper's
-/// CppHeap pointer that names the Zig instance - the link the binding reads
-/// (`instanceOfObject`). Blink's wrapper points at the DOM object itself,
-/// which is its cppgc object (V8DOMWrapper::SetNativeInfo: Object::Wrap with
-/// the ScriptWrappable; platform/bindings/v8_dom_wrapper.h:103-110, Chromium
-/// 157.0.8103.51); Crane's instances are Zig objects that live by their own
-/// counts, so the wrapper points at this anchor and the anchor at the
-/// instance. The interface's instance template has no internal field
+/// The wrapper cache's record of one non-node platform object's wrapper
+/// (wrapper_cache.zig `Cell`, which this mirrors field for field; lane wrap1
+/// b3, tmp/plans/object-wrap-design.md 3.4): 32 bytes of the realm's cache,
+/// which Zig owns - made when the cache takes the wrapper, freed by the
+/// wrapper's finalizer at the agent's safe point or by the realm's end. It
+/// holds what the cache's entry, its weak v8::Global and that handle's
+/// callback record held until then.
+///
+/// `wrapper` is the cache's one reference to the wrapper, a
+/// v8::TracedReference - Blink's ScriptWrappable::wrapper_ (a
+/// TraceWrapperV8Reference, platform/bindings/script_wrappable.h:147,
+/// Chromium 157.0.8103.51). Its ADDRESS is the handle every borrower of the
+/// wrapper gets (WrapperCache.get), read as a Global is, exactly as a node's
+/// slot is (the static_assert below "Node wrappers on the agent's C++ heap").
+/// It lives in the record and not in the anchor so that the handle outlives
+/// the wrapper as the weak Global's box did: a borrower that reads it after a
+/// collection took the wrapper reads an EMPTY handle until the finalizer
+/// frees the record at the agent's safe point - an anchor found dead by a
+/// full collection is swept at once, and its memory given to the next anchor.
+///
+/// Only two things here are written from this file: `wrapper` (attached,
+/// traced, reset) and the marked bit of `bits`.
+struct CraneWrapperCell {
+    TracedReference<Object> wrapper;
+    void* instance;
+    uint64_t generation;
+    uint32_t fresh;
+    uint32_t bits;
+};
+/// `bits`: a full collection's marking reached the record's anchor
+/// (PlatformAnchor::Trace). The cache's weak processing, after the marking,
+/// takes every attached record without it for dead and clears it on the
+/// rest (wrapper_cache.zig `processWeak`).
+static constexpr uint32_t kWrapperCellMarked = 1u << 31;
+static_assert(sizeof(CraneWrapperCell) == 32 && offsetof(CraneWrapperCell, instance) == 8 &&
+                  offsetof(CraneWrapperCell, generation) == 16 && offsetof(CraneWrapperCell, bits) == 28,
+              "CraneWrapperCell mirrors wrapper_cache.zig's Cell");
+
+/// What a non-node platform object's wrapper points at (lane wrap1 b2 and
+/// b3, tmp/plans/object-wrap-design.md 3.4): a cppgc object behind the
+/// wrapper's CppHeap pointer through which the binding reads the Zig instance
+/// (`instanceOfObject`) and V8's marker consults the wrapper cache about the
+/// wrapper. Blink's wrapper points at the DOM object itself, which is its
+/// cppgc object and holds its wrapper reference inline
+/// (V8DOMWrapper::SetNativeInfo: Object::Wrap with the ScriptWrappable;
+/// platform/bindings/v8_dom_wrapper.h:103-110, Chromium 157.0.8103.51);
+/// Crane's instances are Zig objects that live by their own counts, so the
+/// wrapper points at this anchor and the anchor at the cache's record of the
+/// wrapper. The interface's instance template has no internal field
 /// (interface.zig), as Blink's has none.
 ///
-/// It replaces V8 15.7's own box for an aligned pointer in an internal field
-/// (EmbedderDataSlotWrapper {pointer, tag}: 16 bytes and cppgc's header,
-/// 15.7.112.43 src/objects/embedder-data-slot-inl.h:209-227) byte for byte:
-/// the Wrappable's vptr and the instance, 16 bytes of payload, 24 with the
-/// header - and the wrapper loses its 8-byte field.
-///
-/// `instance_` is null once the instance went while the wrapper may live on
-/// (its realm's end, a wrap that failed: v8_PlatformObject_Sever) - Blink's
-/// ClearNativeInfo; the binding's read then answers null, a TypeError, never
-/// the freed instance. The anchor owns nothing: the instance's lifetime is
-/// the wrapper cache's (wrapper_cache.zig), whose weak handle on the wrapper
-/// decides when it goes - until that lifetime moves here too (design 3.4,
-/// the batch after this one). Its destructor is the base's and does nothing
+/// One word after the Wrappable's vptr - 16 bytes of payload, 24 with cppgc's
+/// header, what V8 15.7's own box for an aligned pointer in an internal field
+/// cost (EmbedderDataSlotWrapper, 15.7.112.43
+/// src/objects/embedder-data-slot-inl.h:209-227). `link_` is one of three:
+/// - the wrapper cache's record (`CraneWrapperCell*`, its low bit set) once
+///   the realm's cache took the wrapper (v8_WrapperCell_Attach): the instance
+///   is the record's, and the anchor's Trace keeps the record's reference to
+///   the wrapper and marks the record (the cache's weak processing);
+/// - the Zig instance itself (its low bit clear: an instance is at least
+///   8-aligned), between the bind and the cache's take, and for a wrapper no
+///   cache holds (a realm made with none; WrapperCache.remove);
+/// - 0: severed. The instance went while the wrapper may live on (its
+///   realm's end, a wrap that failed: v8_PlatformObject_Sever) - Blink's
+///   ClearNativeInfo; the binding's read answers null, a TypeError, never the
+///   freed instance.
+/// The anchor owns nothing. Its destructor is the base's and does nothing
 /// (the CraneWrappable contract).
 class PlatformAnchor : public CraneWrappable {
  public:
-    explicit PlatformAnchor(void* instance) : instance_(instance) {}
+    explicit PlatformAnchor(void* instance) : link_(reinterpret_cast<uintptr_t>(instance)) {}
     const char* GetHumanReadableName() const override { return "Crane PlatformAnchor"; }
 
-    void* instance_;
+    static constexpr uintptr_t kCellBit = 1;
+
+    /// The cache's record, or null while no cache holds the wrapper.
+    CraneWrapperCell* cell() const {
+        return (link_ & kCellBit) ? reinterpret_cast<CraneWrapperCell*>(link_ & ~kCellBit) : nullptr;
+    }
+    /// The instance the wrapper reaches, or null once severed.
+    void* instance() const {
+        if (CraneWrapperCell* record = cell()) return record->instance;
+        return reinterpret_cast<void*>(link_);
+    }
+    void attach(CraneWrapperCell* record) { link_ = reinterpret_cast<uintptr_t>(record) | kCellBit; }
+    void sever() { link_ = 0; }
+
+    /// The record's reference to the wrapper is kept while the wrapper is:
+    /// the wrapper reaches this anchor through its CppHeap pointer, and the
+    /// anchor the wrapper through the record's TracedReference - Blink's
+    /// ScriptWrappable::Trace of `wrapper_` (script_wrappable.cc:63-66),
+    /// Node's CppgcMixin (src/cppgc_helpers.h). Both go when script holds
+    /// neither. In a collection's atomic pause - the only place a Trace runs
+    /// while the heap marks (collectingRecord) - it also marks the record,
+    /// which is how the cache's weak processing tells a dead wrapper's.
+    void Trace(cppgc::Visitor* visitor) const override {
+        CraneWrappable::Trace(visitor);
+        CraneWrapperCell* record = cell();
+        if (!record) return;
+        visitor->Trace(record->wrapper);
+        if (collectingRecord(this)) record->bits |= kWrapperCellMarked;
+    }
+
+    uintptr_t link_;
 };
 
-static_assert(sizeof(PlatformAnchor) == 2 * sizeof(void*), "a platform anchor is the vptr and its instance: 16 bytes");
+static_assert(sizeof(PlatformAnchor) == 2 * sizeof(void*), "a platform anchor is the vptr and one word: 16 bytes");
 
 /// What a HOLDER's wrapper points at (the wrapper redesign's P6, design 4.4
 /// "Holders"): the platform anchor of an object that holds nodes for script
@@ -3189,34 +3262,32 @@ static_assert(sizeof(PlatformAnchor) == 2 * sizeof(void*), "a platform anchor is
 /// about what the holder holds. Blink's holders are themselves cppgc objects
 /// whose Trace visits their `Member<Node>`s (StaticNodeTypeList::Trace,
 /// ChildListRecord::Trace; Chromium 131.0.6778.0); Crane's holders are Zig
-/// instances, reached through this anchor. Until lane wrap1 b2 it stood
-/// beside the instance in an internal field: a holder's wrapper paid V8's
-/// box for the field and this anchor, and now pays this anchor alone.
+/// instances, reached through this anchor.
 ///
-/// It adds the holder's slab generation to the platform anchor - 24 bytes,
-/// 32 with cppgc's header, one per holder wrapper, none per node. Its Trace
-/// runs in the collection's atomic pause, under the node anchors' rule
-/// (collectingRecord: kAtomic marking, the collecting isolate's record):
-/// the host reads its holder's state, which has no write barrier either.
-/// `instance_` null (PlatformAnchor) traces nothing; the generation is the
-/// net for any other way the instance went - the Zig side compares it before
-/// it reads the instance. Its destructor is the base's and does nothing.
+/// It adds nothing to the platform anchor but its Trace, which runs in the
+/// collection's atomic pause under the node anchors' rule (collectingRecord:
+/// kAtomic marking, the collecting isolate's record): the host reads its
+/// holder's state, which has no write barrier either. The instance and the
+/// slab generation the Zig side compares before it reads the instance are
+/// the cache's record's; a holder's wrapper no cache holds - between its
+/// bind and the cache's take - traces nothing (what it holds are counted
+/// holds, never freed under it). Its destructor is the base's and does
+/// nothing.
 class HolderAnchor final : public PlatformAnchor {
  public:
-    HolderAnchor(void* instance, uint64_t generation) : PlatformAnchor(instance), generation_(generation) {}
+    explicit HolderAnchor(void* instance) : PlatformAnchor(instance) {}
 
     void Trace(cppgc::Visitor* visitor) const override {
         PlatformAnchor::Trace(visitor);
-        if (!instance_) return;
-        IsolateData* record = collectingRecord(this);
-        if (record) traceHolderNodes(record, instance_, generation_, visitor);
+        CraneWrapperCell* record = cell();
+        if (!record || !record->instance) return;
+        IsolateData* collecting = collectingRecord(this);
+        if (collecting) traceHolderNodes(collecting, record->instance, record->generation, visitor);
     }
     const char* GetHumanReadableName() const override { return "Crane HolderAnchor"; }
-
-    uint64_t generation_;
 };
 
-static_assert(sizeof(HolderAnchor) == 3 * sizeof(void*), "a holder anchor is the vptr, its instance and its generation: 24 bytes");
+static_assert(sizeof(HolderAnchor) == sizeof(PlatformAnchor), "a holder anchor adds only its Trace");
 
 /// The agent's node anchors, for weak processing (design 4.5): a cppgc
 /// object rooted by its record (IsolateData::node_anchors), whose Trace only
@@ -3451,6 +3522,26 @@ struct IsolateData {
     /// and untraced: nothing keeps them, so a full collection that comes
     /// first takes them (ProcessWeak drops them from here).
     std::vector<NodeAnchor*> dropped_anchors;
+    /// The same for the non-node platform objects' wrappers a
+    /// young-generation collection dropped (lane wrap1 b3): severed, their
+    /// cache's record told, waiting for the same free.
+    std::vector<PlatformAnchor*> dropped_platform_anchors;
+    /// The wrapper caches' two steps inside a collection (wrapper_cache.zig,
+    /// set once per isolate by v8_Isolate_SetPlatformWrapperHooks with
+    /// `platform_wrappers`, the isolate itself, as their data): the weak
+    /// processing of a full collection's atomic pause, after its marking -
+    /// every attached record no anchor marked is a dead wrapper's - and the
+    /// record of one wrapper a young-generation collection dropped. Zig
+    /// bookkeeping only, as node_wrapper_collected: no V8 call, no free of an
+    /// instance.
+    void* platform_wrappers = nullptr;
+    /// The strong handle of each wrapper cache record whose wrapper the cache
+    /// holds strongly now (v8_WrapperCell_SetStrong: pending activity, a
+    /// window's Location or History), beside the record's own traced
+    /// reference, which is no root. Few. Emptied by v8_Isolate_Dispose.
+    std::unordered_map<CraneWrapperCell*, Global<Object>> strong_wrappers;
+    void (*platform_wrappers_weak)(void* data) = nullptr;
+    void (*platform_wrapper_dropped)(void* data, CraneWrapperCell* cell) = nullptr;
     /// The dropped anchors freed so far, and the frees cppgc refused because
     /// its heap was collecting (one per anchor per refusal): diagnostics and
     /// tests/v8 (engine.diagnosticCounters).
@@ -3464,6 +3555,13 @@ struct IsolateData {
     ExternalMemoryAccounter table_accounter;
     size_t table_bytes_reported = 0;
     uint64_t table_dropped_base = 0;
+    /// What V8 was told the instances behind non-node wrappers hold
+    /// (`reportWrappedInstances`): the bytes noted since the last full
+    /// collection began (v8_Isolate_NoteWrappedInstance), how many of them V8
+    /// holds now, and the accounter.
+    ExternalMemoryAccounter instance_accounter;
+    size_t instance_bytes_noted = 0;
+    size_t instance_bytes_reported = 0;
 #ifndef NDEBUG
     /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
     /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
@@ -3540,6 +3638,8 @@ static void gcPauseEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
     pauses->record(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()));
 }
 
+static void wrappedInstancesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data);
+
 /// Record `isolate`'s full-collection pauses in its record from now on: right
 /// after Isolate::Initialize, by each function that makes an isolate with a
 /// record. The callbacks go with the isolate; the record outlives it
@@ -3553,6 +3653,9 @@ static void installGCPauseRecorder(Isolate* isolate) {
     isolate->AddGCEpilogueCallback(gcPauseEpilogue, &record->gc_pauses, kGCTypeMarkSweepCompact);
     isolate->AddGCPrologueCallback(gcMinorPrologue, &record->gc_pauses,
                                    static_cast<GCType>(kGCTypeScavenge | kGCTypeMinorMarkSweep));
+    // What V8 was told the instances behind non-node wrappers hold leaves
+    // its account as a full collection begins (`reportWrappedInstances`).
+    isolate->AddGCPrologueCallback(wrappedInstancesPrologue, record, kGCTypeMarkSweepCompact);
 #if CRANE_GC_PHASE_METRICS
     isolate->SetMetricsRecorder(std::make_shared<GCPhaseRecorder>(&record->gc_phases));
 #endif
@@ -3896,7 +3999,7 @@ extern "C" void v8_Debug_NodeAnchorStats(Isolate* isolate, CraneNodeAnchorStats*
     IsolateData* record = isolateData(isolate);
     if (!record) return;
     if (NodeWrapperRegistry* registry = record->node_anchors.Get()) out->registered = registry->anchors.size();
-    out->dropped_waiting = record->dropped_anchors.size();
+    out->dropped_waiting = record->dropped_anchors.size() + record->dropped_platform_anchors.size();
     out->freed = record->node_anchors_freed;
     out->frees_deferred = record->node_anchor_frees_deferred;
     const GCPhaseStats& phases = record->gc_phases;
@@ -4036,7 +4139,7 @@ static void* instanceOfObject(Isolate* isolate, Local<Object> object) {
     }
     if (object->IsApiWrapper()) {
         if (PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, object, crane_tags::kPlatformObjectAnchorRange)) {
-            return anchor->instance_;
+            return anchor->instance();
         }
         NODE_ANCHOR_IN_FRAME(isolate);
         if (NodeAnchor* anchor = Object::Unwrap<NodeAnchor>(isolate, object, kNodeAnchorTagRange)) {
@@ -4103,6 +4206,13 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
         if (broker.IsHeapObjectAlive(anchor)) dropped[waiting++] = anchor;
     }
     dropped.resize(waiting);
+    // The same for the platform anchors that wait for their free.
+    std::vector<PlatformAnchor*>& dropped_platform = record->dropped_platform_anchors;
+    size_t platform_waiting = 0;
+    for (PlatformAnchor* anchor : dropped_platform) {
+        if (broker.IsHeapObjectAlive(anchor)) dropped_platform[platform_waiting++] = anchor;
+    }
+    dropped_platform.resize(platform_waiting);
     size_t kept = 0;
     bool released = false;
     for (NodeAnchor* anchor : anchors) {
@@ -4138,9 +4248,17 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     // The releases recorded above - and the frees of anchors still waiting
     // (one a stale word of the stack kept) - are owed to the agent's next
     // safe point: one flag and one byte, nothing of Zig's runs in the pause.
-    if (released || !dropped.empty()) noteNodeWrappersCollected(record);
+    if (released || !dropped.empty() || !dropped_platform.empty()) noteNodeWrappersCollected(record);
     // Marking is over: the walk's per-collection sets end.
     if (record->node_wrappers && record->node_wrappers_marked) record->node_wrappers_marked(record->node_wrappers);
+    // The wrapper caches' weak processing (lane wrap1 b3): every live
+    // platform anchor's Trace has marked its cache's record by now, so each
+    // attached record left unmarked is a dead wrapper's - its reference is
+    // written empty (raw: V8 frees the unmarked TracedNode itself in this
+    // pause, TracedHandles::ResetDeadNodes), it leaves its cache's map and
+    // its finalizer joins the agent's queue (v8_Isolate_QueueFinalizer). The
+    // dead anchors go with the sweep; nothing here reads one.
+    if (record->platform_wrappers_weak) record->platform_wrappers_weak(record->platform_wrappers);
 }
 
 // ---- The young generation (design 4.11, P8) ----
@@ -4239,9 +4357,14 @@ class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
         }
 #endif
         const TracedReference<Object>& traced = handle.As<Object>();
-        // Only node slots are droppable, and only node wrappers are Wrapped
-        // under the anchors' tag. The dying wrapper's CppHeap pointer still
-        // reads its anchor (Blink's ToAnyScriptWrappable, the same read).
+        // Two kinds of reference are droppable: a node's slot and a wrapper
+        // cache record's (v8_WrapperCell_Attach), each wrapped under its own
+        // anchors' tags. The dying wrapper's CppHeap pointer still reads its
+        // anchor (Blink's ToAnyScriptWrappable, the same read).
+        if (PlatformAnchor* platform = Object::Unwrap<PlatformAnchor>(isolate_, traced, crane_tags::kPlatformObjectAnchorRange)) {
+            resetPlatformRoot(platform, traced);
+            return;
+        }
         NodeAnchor* anchor = Object::Unwrap<NodeAnchor>(isolate_, traced, kNodeAnchorTagRange);
         void* slot = anchor ? anchor->slot_ : nullptr;
         TracedReference<Object>* reference = static_cast<TracedReference<Object>*>(slot);
@@ -4280,6 +4403,35 @@ class NodeWrapperRootsHandler final : public EmbedderRootsHandler {
         if (record->node_wrappers && record->node_wrapper_collected) record->node_wrapper_collected(record->node_wrappers, slot);
         // The anchor's free and the wrapper's release are owed to the agent's
         // next safe point (one flag and one byte: no V8 call, no allocation).
+        noteNodeWrappersCollected(record);
+    }
+
+    /// ResetRoot for a non-node platform object's wrapper (lane wrap1 b3):
+    /// V8 dropped an unmodified wrapper nothing reaches, in a
+    /// young-generation collection. Its cache's record holds the reference V8
+    /// found (CHECKed, as for a node's slot): the reference is Reset - which
+    /// V8 requires, it frees the TracedNode - the anchor severed, and the
+    /// record handed to its cache (wrapper_cache.zig `dropped`: out of the
+    /// cache's map, its finalizer onto the agent's queue - bookkeeping, no
+    /// V8 call but the queue push, no C++-heap allocation). The anchor is
+    /// garbage from here and waits for its free at the agent's drain, with
+    /// the node anchors (freeDroppedAnchors); its pointer-table entry is
+    /// counted with theirs (reportDroppedTableEntries). A wrapper the cache
+    /// keeps (pending activity, a window's Location) is held by a strong
+    /// handle beside the reference, so V8 never offers it here.
+    void resetPlatformRoot(PlatformAnchor* anchor, const TracedReference<Object>& traced) {
+        CraneWrapperCell* cell = anchor->cell();
+        if (!cell || !(cell->wrapper == traced)) {
+            fprintf(stderr, "v8_wrapper: ResetRoot for a platform object's wrapper whose cache record does not hold it\n");
+            abort();
+        }
+        anchor->sever();
+        cell->wrapper.Reset();
+        IsolateData* record = isolateData(isolate_);
+        if (!record) return;
+        record->node_wrappers_dropped += 1;
+        record->dropped_platform_anchors.push_back(anchor);
+        if (record->platform_wrapper_dropped) record->platform_wrapper_dropped(record->platform_wrappers, cell);
         noteNodeWrappersCollected(record);
     }
 
@@ -4370,10 +4522,12 @@ static bool cppHeapCollecting(const cppgc::HeapHandle& handle) {
 /// together and dropped together is reused by bump allocation.
 static void freeDroppedAnchors(IsolateData* record) {
     std::vector<NodeAnchor*>& dropped = record->dropped_anchors;
-    if (dropped.empty()) return;
-    cppgc::HeapHandle& heap = cppgc::internal::BasePageHandle::FromPayload(dropped.front())->heap_handle();
+    std::vector<PlatformAnchor*>& dropped_platform = record->dropped_platform_anchors;
+    if (dropped.empty() && dropped_platform.empty()) return;
+    void* any = dropped.empty() ? static_cast<void*>(dropped_platform.front()) : static_cast<void*>(dropped.front());
+    cppgc::HeapHandle& heap = cppgc::internal::BasePageHandle::FromPayload(any)->heap_handle();
     if (cppHeapCollecting(heap)) {
-        record->node_anchor_frees_deferred += dropped.size();
+        record->node_anchor_frees_deferred += dropped.size() + dropped_platform.size();
         return;
     }
     for (auto it = dropped.rbegin(); it != dropped.rend(); ++it) {
@@ -4386,12 +4540,31 @@ static void freeDroppedAnchors(IsolateData* record) {
 #endif
         cppgc::subtle::FreeUnreferencedObject(heap, *anchor);
     }
-    record->node_anchors_freed += dropped.size();
+    // A platform object's anchor (lane wrap1 b3) by the same guarantee: its
+    // wrapper is dead and ResetRoot severed it, its cache's record no longer
+    // names it (the record never did: the anchor names the record), and this
+    // list is the only pointer to it.
+    for (auto it = dropped_platform.rbegin(); it != dropped_platform.rend(); ++it) {
+        PlatformAnchor* anchor = *it;
+#ifndef NDEBUG
+        if (anchor->link_ != 0) {
+            fprintf(stderr, "v8_wrapper: freeing a platform anchor that is still in use\n");
+            abort();
+        }
+#endif
+        cppgc::subtle::FreeUnreferencedObject(heap, *anchor);
+    }
+    record->node_anchors_freed += dropped.size() + dropped_platform.size();
     dropped.clear();
-    // The list follows the drops down, as the registry does.
+    dropped_platform.clear();
+    // The lists follow the drops down, as the registry does.
     if (dropped.capacity() > NodeWrapperRegistry::kShrinkFloor) {
         std::vector<NodeAnchor*>().swap(dropped);
         dropped.reserve(NodeWrapperRegistry::kShrinkFloor);
+    }
+    if (dropped_platform.capacity() > NodeWrapperRegistry::kShrinkFloor) {
+        std::vector<PlatformAnchor*>().swap(dropped_platform);
+        dropped_platform.reserve(NodeWrapperRegistry::kShrinkFloor);
     }
 }
 
@@ -4500,6 +4673,105 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
     takeBackTableEntries(static_cast<IsolateData*>(data), isolate);
 }
 
+// ---- What the instances behind non-node wrappers hold (lane wrap1 b3) ----
+//
+// A non-node platform object's wrapper is 16 bytes of V8's heap and 24 of
+// the C++ heap, and keeps a Zig instance alive that V8 cannot see: an
+// Event's state is 1,072 bytes, a URLSearchParams' 216. V8 schedules a
+// young-generation collection by the bytes of its own young space, so a
+// script that makes and drops such objects holds the dead ones' instances
+// until V8's own allocation asks for a collection - and the smaller the
+// wrapper, the longer that is (650,000 dropped Events ended 12% to 21%
+// higher with the 16-byte wrapper than with the 24-byte one: lesson
+// architecture-a-smaller-wrapper-is-a-slower-scavenge.md).
+//
+// In Blink V8 sees those bytes, because the object behind the wrapper IS on
+// the C++ heap: a ScriptWrappable is freed by a full collection only, the
+// C++ heap's allocated bytes count toward V8's global limit
+// (src/heap/heap.cc:5356-5359 GlobalSizeOfObjects; cpp-heap.cc
+// ReportBufferedAllocationSizeIfPossible), and that growth is what asks for
+// the full collection. Crane's instances are Zig memory, so the adapter
+// tells V8 the same thing through a v8::ExternalMemoryAccounter of its own:
+// the bytes put behind non-node wrappers since the last full collection
+// began. WHAT: for each wrapper the realm's cache takes - of every shape:
+// one script never changed, which a young collection can drop, and the ones
+// that wait for a full collection and so lean on this most (a wrapper with
+// an expando, one with a traced child, a legacy platform object behind its
+// proxy) - its instance's state block and slab slot and the cache's record
+// (wrapper_cache.zig `noteWrapped`, the one call site). NOT COUNTED - the
+// figure's floor: the cache's map slot (about 22 bytes), and whatever a
+// state allocates beyond its block, which the adapter cannot see - a
+// URLSearchParams' or Headers' list, a Response's body and URL list, a
+// stream's queue. For an Event the block is nearly all of it: of the 1.2 KB
+// a kept Event holds by allocation site, 1,079 bytes are its state block
+// and 32 its slab slot (gc_bench --profile, tmp/plans/wrap1-evidence/
+// sites0-c.out; the rest was the cache's old entry). WHERE AND WHEN: noted
+// at the wrap (a store, no V8 call), reported at the agent's drain once
+// 128 KB wait (V8's own step: kExternalAllocationLimitForInterrupt) - the
+// report may start a collection, so it is made at a safe point - and taken
+// back whole in the PROLOGUE of the next full collection, before V8
+// recomputes its limits (heap.cc:1604, the epilogue callbacks run at :1621:
+// the dropped table entries' rule, above). The collection it asks for finds
+// the dead wrappers and their finalizers free the instances.
+//
+// It is an account of ALLOCATION, not of what is alive: what survives the
+// collection is not counted again. Lane dm1 designs the figure computed in
+// the collector's pause from what the surviving wrappers keep
+// (tmp/plans/dom-memory-figure-design.md); it replaces this - the call in
+// wrapper_cache.zig and the prologue callback below are all there is to
+// delete.
+
+/// What the adapter waits for before it tells V8 (ExternalMemory.report_step).
+static constexpr size_t kWrappedInstanceReportStep = 128 * 1024;
+
+/// The realm's cache took a wrapper whose instance holds `bytes`: noted, and
+/// owed to the agent's next safe point once a report's worth waits. One add
+/// and a compare; no V8 call.
+extern "C" void v8_Isolate_NoteWrappedInstance(Isolate* isolate, size_t bytes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->instance_bytes_noted += bytes;
+    if (record->instance_bytes_noted - record->instance_bytes_reported >= kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
+}
+
+/// V8 is told what was noted since the last report. At the agent's safe
+/// point, the isolate entered: the report may run a collection, whose
+/// prologue takes the whole figure back - so the figure is recorded before
+/// V8 is called.
+static void reportWrappedInstances(IsolateData* record) {
+    if (record->instance_bytes_noted - record->instance_bytes_reported < kWrappedInstanceReportStep) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    if (!isolate) return;
+    const size_t more = record->instance_bytes_noted - record->instance_bytes_reported;
+    record->instance_bytes_reported = record->instance_bytes_noted;
+    CollectingScope collecting(isolate);
+    record->instance_accounter.Increase(isolate, more);
+}
+
+/// The figure goes back to V8: a full collection begins (its prologue), or
+/// the agent ends. A decrease starts no collection.
+static void takeBackWrappedInstances(IsolateData* record, Isolate* isolate) {
+    const size_t back = record->instance_bytes_reported;
+    record->instance_bytes_reported = 0;
+    record->instance_bytes_noted = 0;
+    if (back) record->instance_accounter.Decrease(isolate, back);
+}
+
+/// Before every full collection (kGCTypeMarkSweepCompact).
+static void wrappedInstancesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data) {
+    takeBackWrappedInstances(static_cast<IsolateData*>(data), isolate);
+}
+
+/// The bytes V8 holds now as external memory for the instances behind
+/// non-node wrappers (`reportWrappedInstances`), and the bytes noted since
+/// the last full collection began. 0 for a null isolate or one the adapter
+/// did not make.
+extern "C" uint64_t v8_Debug_WrappedInstanceBytes(Isolate* isolate, bool reported) {
+    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
+    if (!record) return 0;
+    return reported ? record->instance_bytes_reported : record->instance_bytes_noted;
+}
+
 /// The agent's drain, now: V8 is told of the table entries the dropped
 /// wrappers left, the anchors scavenges dropped are freed, and the releases
 /// its collections recorded go (the Zig side defers them while a walk holds
@@ -4508,6 +4780,7 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 /// callbacks.
 static void drainNodeWrappers(IsolateData* record) {
     reportDroppedTableEntries(record);
+    reportWrappedInstances(record);
     freeDroppedAnchors(record);
     if (record->node_wrappers && record->node_wrappers_drain) record->node_wrappers_drain(record->node_wrappers);
 }
@@ -4556,7 +4829,7 @@ static void noteNodeWrappersCollected(IsolateData* record) {
 /// them (ProcessWeak).
 static void oweWaitingAnchorFrees(Isolate* isolate) {
     IsolateData* record = isolateData(isolate);
-    if (record && !record->dropped_anchors.empty()) noteNodeWrappersCollected(record);
+    if (record && (!record->dropped_anchors.empty() || !record->dropped_platform_anchors.empty())) noteNodeWrappersCollected(record);
 }
 
 /// The isolate's node wrapper registry (IsolateData::node_wrappers), or null
@@ -4624,11 +4897,12 @@ static Local<Object> anchorHolderOf(Local<Object> object) {
 /// or the receiver V8 made for a constructor's NewTarget; a legacy platform
 /// object's proxy stands for its target - reaches `instance` from here. Its
 /// anchor is made on the isolate's C++ heap and the object Wrapped with it: a
-/// HolderAnchor with the instance's slab `generation` when `holds_nodes` (its
-/// type has VTable.trace_held_nodes), from which a collection that marks the
-/// wrapper traces the nodes the instance holds; a PlatformAnchor otherwise.
-/// A realm's global, whose template keeps internal field 0, has the instance
-/// written there (its GlobalAnchor is v8_GlobalAnchor_Attach's).
+/// HolderAnchor when `holds_nodes` (its type has VTable.trace_held_nodes),
+/// from which a collection that marks the wrapper traces the nodes the
+/// instance holds once the realm's cache has taken the wrapper; a
+/// PlatformAnchor otherwise. A realm's global, whose template keeps internal
+/// field 0, has the instance written there (its GlobalAnchor is
+/// v8_GlobalAnchor_Attach's).
 ///
 /// False - and nothing bound - for an object that is no API object
 /// (Object::Wrap needs one; every template's instance is) or an isolate with
@@ -4636,7 +4910,7 @@ static Local<Object> anchorHolderOf(Local<Object> object) {
 /// collection the anchor's allocation starts runs before the anchor exists
 /// and takes nothing of it, and the Wrap's write barrier marks the anchor if
 /// the wrapper is already marked.
-extern "C" bool v8_PlatformObject_Bind(Isolate* isolate, Global<Object>* box, void* instance, uint64_t generation, bool holds_nodes) {
+extern "C" bool v8_PlatformObject_Bind(Isolate* isolate, Global<Object>* box, void* instance, bool holds_nodes) {
     HandleScope scope(isolate);
     Local<Object> wrappable = anchorHolderOf(box->Get(isolate));
     if (wrappable->InternalFieldCount() >= 1) {
@@ -4646,7 +4920,7 @@ extern "C" bool v8_PlatformObject_Bind(Isolate* isolate, Global<Object>* box, vo
     CppHeap* heap = isolate->GetCppHeap();
     if (!heap || !wrappable->IsApiWrapper()) return false;
     if (holds_nodes) {
-        HolderAnchor* anchor = cppgc::MakeGarbageCollected<HolderAnchor>(heap->GetAllocationHandle(), instance, generation);
+        HolderAnchor* anchor = cppgc::MakeGarbageCollected<HolderAnchor>(heap->GetAllocationHandle(), instance);
         Object::Wrap<kHolderAnchorTag>(isolate, wrappable, anchor);
     } else {
         PlatformAnchor* anchor = cppgc::MakeGarbageCollected<PlatformAnchor>(heap->GetAllocationHandle(), instance);
@@ -4656,12 +4930,13 @@ extern "C" bool v8_PlatformObject_Bind(Isolate* isolate, Global<Object>* box, vo
 }
 
 /// `box`'s object reaches no instance from here (Blink's
-/// V8DOMWrapper::ClearNativeInfo): its instance goes while the wrapper may
-/// live on - its realm's end severing it (wrapper_cache.zig severWrapper, on
-/// the realm's thread with its isolate current) - or the wrap that bound it
-/// failed. One write on its anchor: the binding's next read answers null, and
-/// a holder's anchor traces nothing. A realm's global has its field cleared.
-/// Nothing for an object never bound, or a node's wrapper.
+/// V8DOMWrapper::ClearNativeInfo): the wrap that bound it failed, or the
+/// constructor's receiver the cache did not take is unbound. One write on its
+/// anchor: the binding's next read answers null. A realm's global has its
+/// field cleared. Nothing for an object never bound, or a node's wrapper. A
+/// wrapper its realm's cache holds is severed by the cache, with its record
+/// (v8_WrapperCell_Detach): one that reaches here keeps its link, which the
+/// cache still owns.
 extern "C" void v8_PlatformObject_Sever(Global<Object>* box) {
     Isolate* isolate = Isolate::GetCurrent();
     if (!isolate || !box || box->IsEmpty()) return;
@@ -4673,7 +4948,194 @@ extern "C" void v8_PlatformObject_Sever(Global<Object>* box) {
     }
     if (!isolate->GetCppHeap() || !wrappable->IsApiWrapper()) return;
     PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
-    if (anchor) anchor->instance_ = nullptr;
+    if (anchor && !anchor->cell()) anchor->sever();
+}
+
+// ---- The wrapper cache's records (lane wrap1 b3) ----
+//
+// tmp/plans/object-wrap-design.md 3.4, "the cache entry is the anchor", in
+// the shape the node wrappers have (a TracedReference in memory Zig owns, an
+// anchor that names it): a non-node platform object's wrapper is held by its
+// realm's cache through a v8::TracedReference in the cache's 32-byte record
+// (CraneWrapperCell), which the wrapper's anchor names. Until this batch the
+// cache held it by a weak v8::Global with a first-pass callback and a
+// finalizer: a 16-byte box, a 32-byte global-handle node, a 48-byte callback
+// record, a node in the process-wide armed-handle map (under its lock on
+// every arm and disarm) and an 88-byte cache entry per wrapper.
+//
+// - Reachability is V8's: the wrapper marks its anchor, the anchor's Trace
+//   marks the record's reference; neither is a root. Blink:
+//   ScriptWrappable::Trace(wrapper_) with the wrapper's CppHeap pointer back.
+// - A wrapper the cache must KEEP (pending activity, a window's Location or
+//   History) is held by a strong v8::Global beside the reference
+//   (wrapper_cache.zig syncEntry), as it was held by making its Global
+//   strong; in a detached realm by an edge from the realm's retained store.
+// - A full collection: the caches' weak processing, after the marking
+//   (NodeWrapperRegistry::ProcessWeak -> IsolateData::platform_wrappers_weak).
+// - A young-generation collection: the reference is DROPPABLE, so V8
+//   reclaims an unmodified wrapper nothing reaches and calls ResetRoot
+//   (NodeWrapperRootsHandler::resetPlatformRoot). A wrapper script changed -
+//   an expando, a traced child's private property - is a root there and
+//   waits for a full collection, as in Blink (the unmodified-API-object rule
+//   is V8's: traced-handles.cc ComputeWeaknessProcessor).
+// - The finalizer - the instance's teardown - runs at the agent's safe point,
+//   never in the collection: the dead record joins the agent's finalizer
+//   queue where a weak Global's first pass put its callback record
+//   (v8_Isolate_QueueFinalizer).
+
+/// The realm's cache takes the wrapper in `box` - an object
+/// v8_PlatformObject_Bind bound, or a legacy platform object's proxy around
+/// one: `cell`, the cache's record (its instance and generation written, its
+/// reference empty), gets the cache's reference to the wrapper, droppable,
+/// and the wrapper's anchor names the record from here. False - nothing
+/// changed, and the cache holds the wrapper by a weak Global as before this
+/// batch - when the object has no platform anchor (a realm's global, a test's
+/// plain object), when its anchor is another record's or reaches another
+/// instance, or when the isolate has no weak processing to find the record's
+/// wrapper dead (no record, or the caches' hooks not installed:
+/// v8_Isolate_SetPlatformWrapperHooks).
+///
+/// Nothing here allocates on either collected heap (a TracedNode block is
+/// malloc), so no collection runs between the record's reference and the
+/// anchor's link. The reference is made by assignment, whose store applies
+/// V8's marking barrier while a collection marks, and the anchor is traced in
+/// that collection's atomic pause, after this.
+extern "C" bool v8_WrapperCell_Attach(Isolate* isolate, Global<Object>* box, CraneWrapperCell* cell) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->node_anchors.Get() || !record->platform_wrappers_weak || !record->platform_wrapper_dropped) return false;
+    HandleScope scope(isolate);
+    Local<Object> object = box->Get(isolate);
+    Local<Object> wrappable = anchorHolderOf(object);
+    if (!wrappable->IsApiWrapper()) return false;
+    PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+    if (!anchor || anchor->cell() || anchor->instance() != cell->instance) return false;
+    TracedReference<Object>* traced = new (&cell->wrapper) TracedReference<Object>();
+    traced->Reset(isolate, object, TracedReference<Object>::IsDroppable{});
+    anchor->attach(cell);
+    return true;
+}
+
+/// The cache lets go of the wrapper `cell` holds, outside a collection: the
+/// record is about to be freed (its realm's end, a replaced or removed
+/// entry). The wrapper's anchor stops naming the record - it reaches the
+/// instance itself again when `keep_link` (the wrapper lives on uncached:
+/// WrapperCache.remove), nothing otherwise (severed: the instance goes) - and
+/// the reference is Reset, V8 freeing its TracedNode. Nothing for a record
+/// whose reference is empty already (a collection took the wrapper, and
+/// severed or swept its anchor). On `isolate`'s thread; it is entered for
+/// the call if it is not current (v8_NodeWrapper_End's rule).
+extern "C" void v8_WrapperCell_Detach(Isolate* isolate, CraneWrapperCell* cell, bool keep_link) {
+    if (cell->wrapper.IsEmpty()) return;
+    const bool enter = Isolate::TryGetCurrent() != isolate;
+    if (enter) isolate->Enter();
+    {
+        HandleScope scope(isolate);
+        Local<Object> wrappable = anchorHolderOf(cell->wrapper.Get(isolate));
+        if (wrappable->IsApiWrapper()) {
+            PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, wrappable, crane_tags::kPlatformObjectAnchorRange);
+            if (anchor && anchor->cell() == cell) {
+                if (keep_link) {
+                    anchor->link_ = reinterpret_cast<uintptr_t>(cell->instance);
+                } else {
+                    anchor->sever();
+                }
+            }
+        }
+    }
+    if (enter) isolate->Exit();
+    cell->wrapper.Reset();
+}
+
+/// The cache holds `cell`'s wrapper strongly from here (`strong`), or no more:
+/// a strong v8::Global beside the record's reference, kept in the isolate's
+/// record. The reference stays droppable: V8 offers ResetRoot only a wrapper
+/// nothing else reaches, and a strong Global reaches this one. Nothing for an
+/// empty reference or an isolate with no record. On the isolate's thread.
+extern "C" void v8_WrapperCell_SetStrong(Isolate* isolate, CraneWrapperCell* cell, bool strong) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    if (!strong) {
+        record->strong_wrappers.erase(cell);
+        return;
+    }
+    if (cell->wrapper.IsEmpty()) return;
+    const bool enter = Isolate::TryGetCurrent() != isolate;
+    if (enter) isolate->Enter();
+    {
+        HandleScope scope(isolate);
+        record->strong_wrappers[cell].Reset(isolate, cell->wrapper.Get(isolate));
+    }
+    if (enter) isolate->Exit();
+}
+
+/// The wrapper caches' two steps inside `isolate`'s collections
+/// (IsolateData::platform_wrappers_weak, platform_wrapper_dropped), installed
+/// once per isolate by its first cache that takes a wrapper; `data` is handed
+/// back to both. The anchors' registry - whose weak processing calls `weak` -
+/// must exist (v8_Isolate_SetNodeWrappers): false without it, or for an
+/// isolate with no record, and then no record is ever attached there.
+extern "C" bool v8_Isolate_SetPlatformWrapperHooks(Isolate* isolate, void* data, void (*weak)(void*),
+                                                   void (*dropped)(void*, CraneWrapperCell*)) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !record->node_anchors.Get()) return false;
+    record->platform_wrappers = data;
+    record->platform_wrappers_weak = weak;
+    record->platform_wrapper_dropped = dropped;
+    return true;
+}
+
+/// A dead wrapper's finalizer joins `isolate`'s queue (IsolateData::
+/// unjudged_finalizers) without a weak Global behind it: `finalize(user_data)`
+/// runs at the agent's next safe point, with every other queued finalizer and
+/// under the same rules (`runQueuedFinalizers`,
+/// `v8_Isolate_RunFreshFinalizers` - `stamp_of` is asked about it as about any
+/// record). Called from inside a collection - the caches' weak processing,
+/// ResetRoot: one malloc'd record, a list push and the agent's owed byte,
+/// nothing of V8's API. The record has no handle, so nothing cancels it but
+/// v8_Isolate_TakeQueuedFinalizers. False, and nothing queued, for an isolate
+/// with no record: its owner finalizes at its own end.
+extern "C" bool v8_Isolate_QueueFinalizer(Isolate* isolate, ZigWeakCallbackFn finalize, void* user_data) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !finalize) return false;
+    WeakCallbackData* data = new WeakCallbackData{nullptr, user_data, nullptr, isolate, finalize};
+    g_live_weak_callback_data.fetch_add(1, std::memory_order_relaxed);
+    queueFinalizer(isolate, data);
+    return true;
+}
+
+/// Every finalizer on `isolate`'s queue that is `finalize` and that `belongs`
+/// claims leaves the queue, uncalled, and `taken` is then called with each
+/// one's user data, oldest first: a realm's cache at its end runs - or drops -
+/// the finalizers of its own dead wrappers itself, before its records go.
+/// A record armed on a Global is forgotten as a drain forgets it (its owner
+/// disposes the handle from `taken`); a cancelled one is not looked at.
+/// `taken` may do any engine work: the queue is not being walked when it
+/// runs, and what a collection queues under it stays queued.
+extern "C" void v8_Isolate_TakeQueuedFinalizers(Isolate* isolate, ZigWeakCallbackFn finalize,
+                                                bool (*belongs)(void* user_data, void* context),
+                                                void (*taken)(void* user_data, void* context), void* context) {
+    IsolateData* record = isolateData(isolate);
+    if (!record || !finalize || !belongs || !taken) return;
+    std::vector<void*> claimed;
+    for (std::deque<WeakCallbackData*>* list : {&record->queued_finalizers, &record->unjudged_finalizers}) {
+        std::deque<WeakCallbackData*> rest;
+        for (WeakCallbackData* data : *list) {
+            if (data->finalize != finalize || !belongs(data->user_data, context)) {
+                rest.push_back(data);
+                continue;
+            }
+            claimed.push_back(data->user_data);
+            if (data->handle) {
+                auto& pending = pendingFinalizers();
+                auto it = pending.find(static_cast<const void*>(data->handle));
+                if (it != pending.end() && it->second == data) pending.erase(it);
+            }
+            freeWeakData(data);
+        }
+        list->swap(rest);
+    }
+    settleFinalizersOwed(record);
+    for (void* user_data : claimed) taken(user_data, context);
 }
 
 /// The instance `obj` reaches, or null (`instanceOfObject`: the binding's one
@@ -4848,6 +5310,7 @@ static void releaseNodeAnchors(IsolateData* record) {
     if (NodeWrapperRegistry* registry = record->node_anchors.Get()) registry->anchors.clear();
     // Dropped anchors not yet freed go with the heap's termination too.
     record->dropped_anchors.clear();
+    record->dropped_platform_anchors.clear();
     record->node_anchors.Clear();
 }
 
@@ -5566,6 +6029,9 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // What V8 was told of dropped wrappers' table entries is taken
             // back: the accounter ends holding nothing.
             takeBackTableEntries(record, isolate);
+            takeBackWrappedInstances(record, isolate);
+            // A wrapper cache that outlived its agent's realms left these.
+            record->strong_wrappers.clear();
             // Its anchors' registry, unrooted while the heap lives: the
             // heap's termination in Isolate::Dispose collects it and every
             // anchor (none holds a slot any more), and no Persistent of the
@@ -5579,6 +6045,15 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // before this (WrapperCache.deinit, the registries). Only the
             // list goes: the records are freed below, the cancelled ones with
             // the detached set and the rest with pendingFinalizers().
+            // A record with no handle (v8_Isolate_QueueFinalizer: a wrapper
+            // cache record's) is on neither of those: freed here. Its cache
+            // took it off the queue at its own end; one left is a cache's
+            // that outlived its agent's realms.
+            for (std::deque<WeakCallbackData*>* list : {&record->queued_finalizers, &record->unjudged_finalizers}) {
+                for (WeakCallbackData* data : *list) {
+                    if (!data->handle && data->finalize) freeWeakData(data);
+                }
+            }
             record->queued_finalizers.clear();
             record->unjudged_finalizers.clear();
             // No pass of V8's stores into the agent's queue from here on (the

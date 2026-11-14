@@ -10,7 +10,9 @@
 //! 157.0.8103.51). Blink's wrappable is the DOM object itself; Crane's instances are Zig objects with their own
 //! lifetime (reference counting, src/AGENTS.md "DOM lifetime"), so the wrappable is an anchor that names the
 //! instance - v8_wrapper.cpp's PlatformAnchor, 24 bytes of the agent's C++ heap, or for a holder of nodes the
-//! HolderAnchor that also traces what it holds (wr1's P6). A node's wrapper has had this shape since the wrapper
+//! HolderAnchor that also traces what it holds (wr1's P6) - and, once the realm's wrapper cache has taken the
+//! wrapper, the cache's record of it, through which the collector tells the cache that the wrapper died
+//! (wrapper_cache.zig, lane wrap1 b3). A node's wrapper has had this shape since the wrapper
 //! redesign's P4 (node_wrappers.zig: its NodeAnchor); a realm's global keeps internal field 0 beside its
 //! GlobalAnchor (realm_global.zig, lane v8up).
 //!
@@ -40,18 +42,19 @@ pub fn bind(isolate: *ffi.Isolate, wrapper: *ffi.Object, instance: *runtime.Inst
     if (instance.vtable.counted != null) return true;
     const holds_nodes = instance.vtable.trace_held_nodes != null;
     // A holder's anchor traces what it holds through its agent's walk (VTable.trace_held_nodes, the wrapper
-    // redesign's P6): the agent's registry exists before its first holder's wrapper does.
+    // redesign's P6): the agent's registry exists before its first holder's wrapper does. The instance and its
+    // slab generation, which the walk compares before it reads the instance, are the wrapper cache's record's
+    // once the cache has taken the wrapper (wrapper_cache.zig `Cell`).
     if (holds_nodes) node_wrappers.prepareHolderTracing(isolate);
-    const generation: u64 = if (holds_nodes) runtime.SlabAllocator.generationOf(instance) else 0;
-    return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, generation, holds_nodes);
+    return ffi.v8_PlatformObject_Bind(isolate, wrapper, instance, holds_nodes);
 }
 
-/// `wrapper` reaches no instance from here - Blink's V8DOMWrapper::ClearNativeInfo: its instance is going while
-/// script may still hold the wrapper (its realm's end), or the wrap that made it failed. One write on its
-/// anchor; the binding's next read through it answers null, which every member turns into WebIDL's "not a
-/// platform object that implements the interface" TypeError, and a holder's anchor traces nothing. Nothing for
-/// an object that was never bound (a node's wrapper, which its own anchor severs). The isolate is the current
-/// one.
+/// `wrapper` reaches no instance from here - Blink's V8DOMWrapper::ClearNativeInfo: the wrap that made it
+/// failed, or it is a constructor's receiver its realm's cache did not take. One write on its anchor; the
+/// binding's next read through it answers null, which every member turns into WebIDL's "not a platform object
+/// that implements the interface" TypeError. Nothing for an object that was never bound (a node's wrapper,
+/// which its own anchor severs), and nothing for a wrapper a cache holds: the cache severs that one itself
+/// when its instance goes (wrapper_cache.zig `letGo`). The isolate is the current one.
 pub fn sever(wrapper: *ffi.Object) void {
     ffi.v8_PlatformObject_Sever(wrapper);
 }
