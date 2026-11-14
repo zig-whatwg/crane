@@ -778,29 +778,40 @@ pub fn parseJasmineConsole(arena: Allocator, output: []const u8) ParseError!Page
     const text = try stripAnsi(arena, output);
     const summary = jasmineSummary(text) orelse return error.BadReport;
     var tests: std.ArrayList(Reported) = .empty;
-    // The failures block of the same report: the last "Failures:" before
-    // the summary.
+    // The failures block of the same report: after the last "Failures:"
+    // line before the summary. A console may indent a message's lines after
+    // its first (Crane's prints each continuation line indented by two
+    // spaces), so lines are read with their leading spaces trimmed: a
+    // failure is "N) <full name>", numbered from 1 in order; its message is
+    // the first non-empty line after it.
     const head = text[0..summary.end];
-    if (std.mem.lastIndexOf(u8, head, "\nFailures:\n")) |at| {
-        var it = std.mem.splitScalar(u8, head[at + "\nFailures:\n".len ..], '\n');
+    var block_start: ?usize = null;
+    {
+        var pos: usize = 0;
+        var it = std.mem.splitScalar(u8, head, '\n');
+        while (it.next()) |line| : (pos += line.len + 1) {
+            if (std.mem.eql(u8, std.mem.trim(u8, line, " \t\r"), "Failures:")) block_start = pos + line.len + 1;
+        }
+    }
+    if (block_start) |at| if (at <= head.len) {
+        var it = std.mem.splitScalar(u8, head[at..], '\n');
         var current: ?usize = null;
         var expected: u32 = 1;
         while (it.next()) |line| {
-            // "N) <full name>", numbered from 1 in order.
+            const t = std.mem.trim(u8, line, " \t\r");
             const num = std.fmt.allocPrint(arena, "{d}) ", .{expected}) catch return error.OutOfMemory;
-            if (std.mem.startsWith(u8, line, num)) {
-                const name = line[num.len..];
+            if (std.mem.startsWith(u8, t, num)) {
+                const name = t[num.len..];
                 try tests.append(arena, .{ .module = "", .name = name, .id = name, .status = .FAIL });
                 current = tests.items.len - 1;
                 expected += 1;
                 continue;
             }
-            if (current) |i| if (tests.items[i].message == null and std.mem.startsWith(u8, line, "   ")) {
-                const m = std.mem.trim(u8, line, " \t");
-                if (m.len > 0) tests.items[i].message = m;
+            if (current) |i| if (tests.items[i].message == null and t.len > 0) {
+                tests.items[i].message = t;
             };
         }
-    }
+    };
     for (tests.items) |*t| if (t.message == null) {
         t.message = "(no failed expectation shown)";
     };
@@ -841,6 +852,14 @@ test "Jasmine's console reporter: the failures by name with their message, the p
     try testing.expectEqual(@as(?u32, 1), r.reported_failed);
     try testing.expectEqual(@as(u32, 3), r.unnamed_passed);
     try testing.expectEqual(@as(u32, 1), r.unnamed_pending);
+    // As Crane's console prints a multi-line message: every line after the
+    // first indented by two spaces.
+    const indented = try std.mem.replaceOwned(u8, a, jasmine_output, "\n", "\n  ");
+    const ri = try parseJasmineConsole(a, indented);
+    try testing.expectEqual(@as(usize, 1), ri.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", ri.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", ri.tests[0].message.?);
+    try testing.expectEqual(@as(usize, 0), (try countProblems(a, .jasmine_console, ri)).len);
     // Singular and plural, no pending.
     const one = try parseJasmineConsole(a, "1 spec, 0 failures\n");
     try testing.expectEqual(@as(u32, 1), one.unnamed_passed);
