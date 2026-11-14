@@ -1918,3 +1918,246 @@ kind = user-ruling
 why = Generation 219 is the first on V8 15.7.112.43 (Chrome 157's; merge 58da4933037). V8 14 and later removed PropertyCallbackInfo::This(), so the cross-origin [[Set]] of a WindowProxy or Location cannot call an inherited setter on its receiver: two subtests fail, 11 -> 9, stable (reruns 3/3, verify 10/10 in lane v8up's windows). Chrome 157.0.8103.50 fails the same two (9/11); Firefox 160.0 and Safari 27.2 pass 11/11 (wpt.fyi 2026-11-11). Pinned by tests/wpt/crane/v8up-cross-origin-setter-inherited-receiver-deviation.html; no public V8 API gives the receiver back.
 date = 2026-11-11
 decision = the user, 2026-11-11 09:53 ET (14:53 UTC), by prompt: accept the 2 subtests as a recorded known deviation on V8 15.7
+
+# Generation 224 - THE WPT UPDATE to upstream 2358bd4835 (fork 4fccd96af -> f7d81dcad; lane wptup1,
+# reviewed with the integrator 2026-11-14). Every loss below is in a file whose test or a resource it loads
+# changed between the two fork commits (tools/wpt_progress.py --upstream-test-changes: 34 proposed, 0 to
+# review, 0 unexplained); the per-file reading and the browsers' counts (wpt.fyi 2358bd4835) are in each why.
+
+[websockets/Create-blocked-port.any.js]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream deleted the ?default, ?wss and ?wpt_flags=h2 variants (2 scopes x 2 x 84 subtests) and moved the file to `// META: pac=` - every connection to ws://bad-port-<port>.wpt goes through a PAC proxy. Its blocked-port subtests still pass, but for the wrong reason (bad-port-<port>.wpt does not resolve without the proxy), and "Basic check" now needs the proxy: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 3 (PAC), owner a networking/platform lane. C 82, F 84, S 83 of 84.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[fetch/api/request/request-bad-port.any.js]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the globals changed from window,worker (4 scopes, incl. serviceworker) to window,dedicatedworker,sharedworker (3 scopes): the -83 is the dropped service-worker scope; every blocked-port subtest still passes in every scope (for the wrong reason: bad-port.wpt resolves only through the new `// META: pac=` proxy). The new subtest "a port that is not bad should succeed through the proxy" needs PAC: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 3, owner a networking/platform lane.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-same-origin.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-unsafe-none.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-same-origin-to-same-origin.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-opener-policy/iframe-popup-same-origin-to-unsafe-none.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): html/cross-origin-opener-policy/resources/iframe-test.js now runs its subtests in sequence (promise_test, was a parallel async_test) and closes each popup in an async t.add_cleanup that waits for the popup's reply to `await send(close_token, 'closed'); close();`. Crane passes each variant's first subtest (window_open), but the popup never answers the cleanup's order ("Timeout while running cleanup"), so the variant ends ERROR and its other subtests are NOTRUN; the popup stays open until the file ends. Chrome 157, Firefox 160 and Safari 27.2 pass every variant (wpt.fyi 2358bd4835). A Crane gap the change exposes: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 1, owner lane rep1 (first item of its next batch). Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/dom/documents/dom-tree-accessors/document.getElementsByName/document.getElementsByName-newelements.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed 9 element names from the test (menu, details, datalist, keygen, ...); no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[IndexedDB/keypath.any.js]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the "array loop -> stringify becomes ['']" case was replaced by "a self-referential array exhausts the stack" (WebIDL sequence<DOMString> conversion; ECMA-262 Array.prototype.join has no cycle detection). Crane fails the new case, as all three browsers do (Chrome, Firefox, Safari 19/20 each): shared with all three, no Crane-only gap.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-masking/parsing/clip-path-invalid.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed 4 ellipse() forms that are no longer invalid; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[editing/run/forwarddelete.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): editing/data/forwarddelete.js gives 4 table-cell cases ("bar[]<br>" in a cell) a new expected innerHTML, which Crane does not produce: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the editing lane. Chunk 1001-2000: C 996, F 972, S 992 of 1000.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[sanitizer-api/sethtml-custom-element-reactions.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the expected reaction order reversed - the parsed elements are constructed and connected BEFORE the replaced children get disconnectedCallback. Crane fails the 4 reordered cases, as all three browsers do (Chrome, Firefox, Safari 4/8 each): shared with all three.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-ui/parsing/caret-color-computed.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed the two-value "auto <color>" forms (3 subtests); no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-ui/parsing/caret-color-valid.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed the two-value "auto <color>" forms (3 subtests); no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-values/attr-all-types.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed 3 cases; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[navigation-api/ordering-and-transition/navigate-204-205-download-then-same-document.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the expected event and promise order changed (where AbortSignal abort and navigateerror fall). No browser passes yet (Chrome, Firefox, Safari 0/3): the newer spec, which golden rule 2 says to implement: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner lane nav2. Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-variables/variable-first-letter.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed the "position" and "abspos" subtests; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-variables/variable-first-line.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed the "position" and "abspos" subtests; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/cssom/cssom-getPropertyValue-common-checks.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): two checks were rewritten: a shorthand whose initial longhands it cannot represent serializes as "" ("Legacy line clamp"); Crane gives "none". tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the style lane. F 11/11, C 10/11, S 8/11.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/cross-origin-embedder-policy/reporting-subresource-corp.https.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the test changed (upstream deflake 949615b58d); its two [shared worker] cases are now NOTRUN under a TIMEOUT (was ERROR; blocking before and after). All three browsers also TIMEOUT (Chrome 4, Firefox 2, Safari 6 of 26): shared with all three; Crane's COEP reporting work is lane rep1's.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/semantics/forms/the-select-element/customizable-select/select-mouse-behavior.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed the 2 "clicking the label" cases; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/semantics/forms/the-select-element/customizable-select/selectedcontent-mutations.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): new MutationObserver record expectations from whatwg/html#13201 (cloning into <selectedcontent> removes scripts and frames; clone only fully parsed options): tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the forms lane. C 5, S 5, F 0 of 8.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/semantics/scripting-1/the-script-element/module/type.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream fixed a test bug - unreached_func(...) is now CALLED (the old test never called it, so it passed whatever happened). That exposes a real Crane bug: Crane evaluates type="module " and type=" module" as module scripts, but HTML matches "module" exactly (ASCII case-insensitive, no whitespace stripping); Chrome and Safari 6/6. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose" item 2, owner the scripting lane.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[url/IdnaTestV2.any.js]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): url/resources/IdnaTestV2.json is newer Unicode data (20 cases replaced; 7 new ToASCII cases throw TypeError in Crane): Crane's UTS 46 tables are older. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the url lane. S 2669, C 2627, F 1910 of 2676.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-multicol/parsing/column-span-invalid.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed "auto" (now valid); no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[css/css-overflow/parsing/line-clamp-invalid.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed "3 ellipsis auto"; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[encoding/json-document-utf8.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): JSON documents are now "always decoded as UTF-8" (RFC 8259 section 11): a charset parameter is ignored, and a new APPLICATION/JSON case. Crane fails both new cases. Firefox ships it (F 5/5, C 4/5, S 1/5): golden rule 2, implement. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the encoding/fetch lane.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/semantics/forms/the-select-element/customizable-select-listbox/customizable-select-listbox-mouse-behavior.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): a new click sequence (and resources/testdriver.js changed): "one selected option after the third click" fails in Crane. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the forms lane. C 2, F 2, S 0 of 4.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[html/semantics/forms/the-select-element/customizable-select/selectedcontent-subtree-mutations.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): a changed expectation plus a new subtest (a moved <selectedcontent> is not updated by the microtask once its select is multiple). tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the forms lane. C 2, S 1, F 0 of 3.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[navigation-api/ordering-and-transition/navigate-cross-document-double.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the expected order dropped the "committed/finished rejected" steps. No browser passes yet (0/1 each): the newer spec, which golden rule 2 says to implement: tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner lane nav2. Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[sanitizer-api/sanitizer-boolean-defaults.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): upstream removed "data- with an empty suffix"; no new failure.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
+
+[sanitizer-api/sanitizer-default-config.html]
+generation = 224
+kind = upstream-test-change
+why = upstream WPT afe89a5df4 -> 2358bd4835 (the WPT update): the default configuration now lists 122 elements; Crane's has 121. No browser passes yet (0/1 each): the newer Sanitizer spec. tmp/plans/feature-queue.md "WPT update 2358bd4835: gaps the new tests expose", owner the sanitizer lane. Newly blocking.
+wpt.before = 4fccd96af1baf9f5c062cb86fc0036ba37aeed24
+wpt.after = f7d81dcadf2be04d096954af2b4b132211b7bc60
