@@ -25,8 +25,13 @@
 //! edit, every import arriving), and points into the tree only while it is
 //! current.
 //!
-//! Stated deviations: @container (it needs layout), @scope and
-//! @starting-style rules are skipped; a sheet whose @namespace declares the
+//! @starting-style's style rules are indexed with the rest, marked: they
+//! apply only to the starting style (CSS Transitions 2 3.3), never to an
+//! after-change style; its name-defining rules (@keyframes, @font-face,
+//! @layer, @property) behave as if they were outside it.
+//!
+//! Stated deviations: @container (it needs layout) and @scope rules are
+//! skipped; a sheet whose @namespace declares the
 //! HTML namespace as default matches only HTML elements, the approximation
 //! the HTML UA sheet needs (every rule of it is in that namespace), and a
 //! prefixed namespace makes its selectors invalid as before.
@@ -440,6 +445,9 @@ pub const RuleData = struct {
     /// The pseudo-element the rule styles: the one the subject compound
     /// names - for ::slotted() and ::part(), the one after them - if any.
     pseudo: ?[]const u8,
+    /// The rule is inside an @starting-style rule: it applies only to the
+    /// starting style (CSS Transitions 2 3.3).
+    starting: bool = false,
 };
 
 pub const Condition = struct {
@@ -496,6 +504,8 @@ pub const Contents = struct {
     /// The sheet's default namespace is HTML's: it matches HTML elements
     /// only (stated in the file comment).
     html_only: bool = false,
+    /// Some style rule is inside an @starting-style rule (RuleData.starting).
+    starting_rules: bool = false,
     buckets: Buckets,
     /// A sheet parsed on its own (`parse`: the UA sheet) owns its tree.
     owned_tree: ?std.ArrayList(*Rule) = null,
@@ -622,6 +632,8 @@ const Compiler = struct {
     contents: *Contents,
     position: u32 = 0,
     anonymous_layers: u32 = 0,
+    /// Inside an @starting-style rule.
+    starting: bool = false,
 
     /// Index a list of rules of the tree (CSS's ordering constraints were
     /// applied when the tree was built: an @import or @namespace here
@@ -660,8 +672,15 @@ const Compiler = struct {
                 const sub = try self.declareLayer(layer, l.name orelse "");
                 try self.ruleList(l.children.items, condition, sub);
             },
-            // The starting style is not compiled yet: no cascade reads it.
-            .starting_style => {},
+            // CSS Transitions 2 3.3: its style rules cascade "as any other
+            // grouped style rules without introducing any new ordering", for
+            // the starting style only; its name-defining rules as if outside.
+            .starting_style => |*group| {
+                const outer = self.starting;
+                self.starting = true;
+                defer self.starting = outer;
+                try self.ruleList(group.children.items, condition, layer);
+            },
             // CSS Font Loading 3 §4.2: @font-face is indexed in the same
             // conditional context, but contributes no selector or layer rank.
             .font_face => try self.contents.font_rules.append(self.contents.allocator, .{ .rule = rule, .condition = condition }),
@@ -735,7 +754,9 @@ const Compiler = struct {
                 .layer = layer,
                 .condition = condition,
                 .pseudo = styledPseudoElementOf(&complex.compound),
+                .starting = self.starting,
             });
+            if (self.starting) self.contents.starting_rules = true;
             try self.bucket(index, complex);
         }
     }
@@ -852,6 +873,32 @@ test "::slotted() and ::part() rules are filed apart, with the pseudo-element th
     try testing.expect(contents.rules.items[2].pseudo == null);
     try testing.expectEqualStrings("after", contents.rules.items[3].pseudo.?);
     try testing.expectEqualStrings("before", contents.rules.items[4].pseudo.?);
+}
+
+test "@starting-style: its style rules are indexed in order, marked; its name-defining rules as if outside" {
+    const contents = try Contents.parse(testing.allocator,
+        \\a { color: red }
+        \\@starting-style {
+        \\  b { color: red }
+        \\  @layer inner { c { color: red } }
+        \\  @keyframes k { from { color: red } }
+        \\}
+        \\d { color: red; @starting-style { color: blue } }
+    , .{});
+    defer contents.destroy();
+    try testing.expect(contents.starting_rules);
+    const starting = [_]bool{ false, true, true, false, true };
+    try testing.expectEqual(starting.len, contents.rules.items.len);
+    for (starting, contents.rules.items, 0..) |expected, rule, i| {
+        try testing.expectEqual(expected, rule.starting);
+        // One order of appearance for both: no new ordering.
+        try testing.expectEqual(@as(u32, @intCast(i)), rule.position);
+    }
+    try testing.expectEqualStrings("inner", contents.layers.items[0]);
+    try testing.expectEqual(@as(usize, 1), contents.keyframes_rules.items.len);
+    const plain = try Contents.parse(testing.allocator, "a { color: red }", .{});
+    defer plain.destroy();
+    try testing.expect(!plain.starting_rules);
 }
 
 test "layers: names declared in order, nested names dotted, statements first" {
