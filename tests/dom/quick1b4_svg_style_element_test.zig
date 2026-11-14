@@ -57,7 +57,9 @@ test "a connected SVG style element has a sheet, its owner the element; disconne
     _ = try interfaces.Node.call_appendChild(page.body, style);
     const record = dom.style.hooks.sheetOf(style) orelse return error.NoSheet;
     try testing.expect(record.owner_node == style);
-    try testing.expect((try interfaces.SVGStyleElement.get_sheet(style)) != null);
+    // (`sheet`'s CSSStyleSheet object is read in a page with an engine -
+    // tests/wpt/crane/quick1b4-svg-style.html: here no collector would free
+    // the object an engine-less read makes, and it keeps its record.)
     _ = try interfaces.Node.call_removeChild(page.body, style);
     try testing.expect(dom.style.hooks.sheetOf(style) == null);
     try testing.expect((try interfaces.SVGStyleElement.get_sheet(style)) == null);

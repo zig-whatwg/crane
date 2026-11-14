@@ -21,7 +21,7 @@
 //! Spec: https://html.spec.whatwg.org/multipage/semantics.html#the-link-element
 //! Spec: https://html.spec.whatwg.org/multipage/semantics.html#update-a-style-block
 //!
-//! lint-impls: hook for HTMLLinkElement, HTMLStyleElement
+//! lint-impls: hook for HTMLLinkElement, HTMLStyleElement, SVGStyleElement
 const process_start = @import("process_start.zig");
 const Hook = @import("hook.zig").Hook;
 
@@ -54,6 +54,15 @@ pub const ParserSteps = struct {
 
 var load_delay: Hook(?LoadDelay) = .init(null);
 var parser_steps: Hook(?ParserSteps) = .init(null);
+/// The SVG style element's created and popped steps (SVG 2 15.3: an SVG
+/// style element is processed as HTML's), installed by its own type.
+var svg_style_parser_steps: Hook(?SvgStyleParserSteps) = .init(null);
+
+/// What the SVG style element does when the parser creates and pops it.
+pub const SvgStyleParserSteps = struct {
+    created: *const fn (element: *runtime.Instance, start: ?Position) void,
+    popped: *const fn (element: *runtime.Instance) void,
+};
 
 /// Called by the elements that load style sheets. Idempotent.
 pub fn installLoadDelay(delay: LoadDelay) void {
@@ -67,6 +76,11 @@ pub fn installParserSteps(steps: ParserSteps) void {
         if (parser_steps.installing().*) |old| combined.link_created = old.link_created;
     }
     parser_steps.install(combined);
+}
+
+/// Called by the SVG style element. Idempotent.
+pub fn installSvgStyleParserSteps(steps: SvgStyleParserSteps) void {
+    svg_style_parser_steps.install(steps);
 }
 
 /// Called by the link element. Keeps the style element's parser hooks.
@@ -100,17 +114,21 @@ pub fn blocksScripts(document: *runtime.Instance) bool {
 }
 
 /// The HTML parser created `element`, a style or link element in the HTML
-/// namespace, and appended all token attributes before connection. `start`
-/// is the parser's position after its start tag (null: unknown).
+/// namespace or a style element in the SVG namespace, and appended all
+/// token attributes before connection. `start` is the parser's position
+/// after its start tag (null: unknown). Each type's steps leave alone an
+/// element that is not of their type.
 pub fn createdByParser(element: *runtime.Instance, start: ?Position) void {
+    if (svg_style_parser_steps.get()) |svg| svg.created(element, start);
     const steps = parser_steps.get() orelse return;
     steps.created(element, start);
     if (steps.link_created) |created| created(element);
 }
 
-/// The HTML parser popped `element`, a style element it created, off its
-/// stack of open elements.
+/// The HTML parser popped `element`, a style element it created (HTML's or
+/// SVG's), off its stack of open elements.
 pub fn poppedByParser(element: *runtime.Instance) void {
+    if (svg_style_parser_steps.get()) |svg| svg.popped(element);
     const steps = parser_steps.get() orelse return;
     steps.popped(element);
 }

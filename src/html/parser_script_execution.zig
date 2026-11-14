@@ -663,6 +663,12 @@ pub fn domAdapterOnChildrenFinished(tree_node: *TreeNode, context: ?*anyopaque) 
             }
         }
     }
+    // An SVG style element's style block updates now: "popped off the stack
+    // of open elements" for an element whose content is foreign, not text.
+    if (tree_node.namespace == .svg and tree_node.hasTagName("style")) {
+        if (adapter.getDomNode(tree_node)) |element| dom.style_sheet_owners.poppedByParser(element);
+        return;
+    }
     if (tree_node.namespace != .html) return;
     const local_name = tree_node.local_name orelse return;
     if (!dom.finish_parsing_children.hasSteps(local_name)) return;
@@ -1204,6 +1210,11 @@ pub const DomTreeAdapter = struct {
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
         if (is_html and (std.mem.eql(u8, local_name, "style") or std.mem.eql(u8, local_name, "link"))) dom.style_sheet_owners.createdByParser(element, styleStart(local_name, self.document));
+        // An SVG style element is processed as HTML's (SVG 2 15.3): its
+        // style block too waits until the parser removes it from the stack
+        // of open elements (domAdapterOnChildrenFinished), which only a
+        // parser that says so will tell it.
+        if (tree_node.namespace == .svg and self.notifies_children_finished and std.mem.eql(u8, local_name, "style")) dom.style_sheet_owners.createdByParser(element, styleStart(local_name, self.document));
 
         // Step 15: the tree builder found its parser conditions held; the
         // intended parent must share the form's tree, and a form-associated
