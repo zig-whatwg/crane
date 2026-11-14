@@ -6231,7 +6231,7 @@ fn deferNavigation(element: *runtime.Instance, internal: *InternalState, url: []
     internal.lazy_resume_initial_insertion = initial_insertion;
     internal.lazy_resume_referrer_policy = referrer_policy;
     // 3. "Start intersection-observing a lazy loading element for element."
-    if (!dom_module.lazy_load_observer.startObserving(document, element, &resumeLazyLoad)) {
+    if (!dom_module.lazy_load_observer.startObserving(document, element, &resumeFromObserver)) {
         clearLazyResumption(internal);
         return false;
     }
@@ -6283,6 +6283,64 @@ fn resumeLazyLoad(element: *runtime.Instance) void {
     // element no longer has: nothing to navigate.
     if (!hasContentNavigable(element)) return;
     navigateIframeOrFrame(element, url, srcdoc, referrer_policy, initial_insertion);
+}
+
+/// The lazy load intersection observer's callback for `element` (HTML
+/// 2.5.7, its steps 6-7, from dom.lazy_load_observer): its lazy load
+/// resumption steps - unless its content navigable is busy with a reload or
+/// a traversal of its own, or a navigation that is committing, when the
+/// steps wait for the next rendering opportunity's check.
+///
+/// Deviation, stated: HTML invokes the steps at once. Their navigation
+/// would then be ended by the reload's population, ignored during a
+/// traversal (navigate step 18), or ended by the commit of a navigation
+/// matured before it ("deactivate a document for a cross-document
+/// navigation" step 5.2), so whether a lazy frame loads would depend on
+/// whether Crane's frame clock or its traversal queue comes first - the
+/// spec gives the two no order. The browsers load it: after a
+/// location.reload() of its initial about:blank Chrome, Firefox and Safari
+/// pass iframe-loading-lazy-reload-location-reload.html, Firefox and Safari
+/// iframe-loading-lazy-reload-navigation-reload.html, and all three
+/// iframe-loading-lazy-nav-location-replace-set-src.html, where the frame
+/// first navigates elsewhere (wpt.fyi 2358bd4835). Waiting gives that
+/// outcome under any load: the reload or the navigation finishes, then the
+/// lazy navigation starts (lane ifr1: 8 and 4 of 30 runs lost it at
+/// twelve runners without the wait).
+fn resumeFromObserver(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    if (internal.lazy_resume_url != null and lazyResumptionMustWait(internal.integration)) {
+        const document = nodeDocumentOf(element) orelse return;
+        if (dom_module.lazy_load_observer.startObserving(document, element, &resumeFromObserver)) return;
+        // Out of memory: the steps run now rather than never.
+    }
+    resumeLazyLoad(element);
+}
+
+/// Whether `integration`'s navigable has a reload or a traversal pending
+/// or in flight, or a navigation whose finalize is queued.
+fn lazyResumptionMustWait(integration: *IFrameIntegration) bool {
+    const bc = integration.browsing_context orelse return false;
+    switch (integration.ongoing_navigation) {
+        .traversal => return true,
+        .id => |id| if (navigationById(integration.navigables, id)) |record| {
+            if (record.traversal_entry != 0) return true;
+        },
+        .none => {},
+    }
+    if (hasCommittingNavigation(integration)) return true;
+    return html_core.navigation.apply_history_step.reloadPendingFor(bc);
+}
+
+/// Whether a navigation of `integration` is committing: its finalize queued
+/// (lane nav2 F1's mature navigation).
+fn hasCommittingNavigation(integration: *IFrameIntegration) bool {
+    const list = integration.navigables orelse return false;
+    var it = list.navigationIterator();
+    while (it.next()) |kv| {
+        const record: *Navigation = @ptrCast(@alignCast(kv.value_ptr.*));
+        if (record.integration == integration and record.committing) return true;
+    }
+    return false;
 }
 
 /// Whether `integration`'s container is an iframe whose current navigation
