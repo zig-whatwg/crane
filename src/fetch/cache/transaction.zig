@@ -36,6 +36,7 @@ const StoredResponse = stored_response.StoredResponse;
 const HeaderView = @import("header_view.zig").HeaderView;
 const Directives = @import("cache_control.zig").Directives;
 const freshness = @import("freshness.zig");
+const http_fetch = @import("../algorithms/http_fetch.zig");
 
 pub const Transaction = struct {
     /// The request's Browser's cache. BORROWED: the network context it is on
@@ -44,6 +45,9 @@ pub const Transaction = struct {
     /// The key. BORROWED from the request, which outlives the transaction.
     partition: []const u8,
     url: []const u8,
+    /// The key's third part: the request's includeCredentials (steps
+    /// 8.3-8.4; http_cache.zig says why the cache keys on it).
+    credentialed: bool,
     method: Method,
     /// The cache mode after steps 8.16 and 25.
     mode: CacheMode,
@@ -96,6 +100,7 @@ pub const Transaction = struct {
             .cache = cache,
             .partition = partition,
             .url = http_cache.keyUrl(request.currentUrl()),
+            .credentialed = http_fetch.httpNetworkFetchUsesCookies(request),
             .method = method,
             .mode = effectiveMode(request),
             .request_time = now,
@@ -132,7 +137,7 @@ pub const Transaction = struct {
         if (transaction.mode == .reload) return .{ .network = .{ .transaction = transaction } };
 
         // 26.1: select a stored response, possibly needing validation.
-        const stored = cache.lookup(partition, transaction.url) orelse {
+        const stored = cache.lookup(partition, transaction.url, transaction.credentialed) orelse {
             if (transaction.mode == .only_if_cached) return .network_error;
             return .{ .network = .{ .transaction = transaction } };
         };
@@ -273,6 +278,7 @@ pub const Transaction = struct {
         const entry = try StoredResponse.create(cache.allocator, .{
             .partition = self.partition,
             .url = self.url,
+            .credentialed = self.credentialed,
             .status = response.status,
             .status_message = response.status_message,
             .headers = response.header_list.iterator(),

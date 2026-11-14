@@ -45,7 +45,7 @@ test "hc1 Browser: each Browser has an HTTP cache of its own, sized by its confi
     try testing.expectEqual(@as(usize, 50 * 1024 * 1024), cache_a.config.max_bytes);
     try testing.expectEqual(@as(usize, 4096), cache_b.maxEntryBytes());
     try store(cache_a, "https://top.test", "https://a.test/x");
-    try testing.expect(cache_b.lookup("https://top.test", "https://a.test/x") == null);
+    try testing.expect(cache_b.lookup("https://top.test", "https://a.test/x", true) == null);
     // A Browser with a cap of 0 has none.
     var debug_c: @import("root").poisoning.DebugAllocator(.{ .stack_trace_frames = 0 }) = .init;
     defer testing.expect(debug_c.deinit() == .ok) catch @panic("Browser C leaked");
@@ -70,12 +70,12 @@ test "hc1 Browser: Clear-Site-Data cache removes the exact origin's responses, i
     // of https://a.test (fetch.algorithms.clear_site_data).
     const clearer = network.site_data.?;
     clearer.clear(clearer.context, "https://a.test", .{ .cache = true });
-    try testing.expect(cache.lookup("https://top.test", "https://a.test/x") == null);
-    try testing.expect(cache.lookup("https://other.test", "https://a.test/y") == null);
-    cache.lookup("https://top.test", "http://a.test/x").?.release();
-    cache.lookup("https://top.test", "https://a.test:8443/x").?.release();
-    cache.lookup("https://top.test", "https://sub.a.test/x").?.release();
+    try testing.expect(cache.lookup("https://top.test", "https://a.test/x", true) == null);
+    try testing.expect(cache.lookup("https://other.test", "https://a.test/y", true) == null);
+    cache.lookup("https://top.test", "http://a.test/x", true).?.release();
+    cache.lookup("https://top.test", "https://a.test:8443/x", true).?.release();
+    cache.lookup("https://top.test", "https://sub.a.test/x", true).?.release();
     // Another type leaves the cache alone.
     clearer.clear(clearer.context, "http://a.test", .{ .storage = true });
-    cache.lookup("https://top.test", "http://a.test/x").?.release();
+    cache.lookup("https://top.test", "http://a.test/x", true).?.release();
 }
