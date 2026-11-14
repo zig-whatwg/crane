@@ -7512,11 +7512,29 @@ fn definitelyCloseTraversable(window: *runtime.Instance) bool {
     }
     // "Remove browsingContext": closed, and its descendants with it.
     bc.close();
-    // Its realm's script activity stops, as a removed frame's: detached, it
-    // lives on only while script reaches it. The record keeps the realm so
-    // that its Browser's end can end it if the collector has not.
-    if (made.context_cleanup_data) |data| engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .navigable_destroyed);
+    // "Destroy a top-level traversable" ends no realm: the active Window's
+    // realm lives on while script reaches it, its script activity stopped -
+    // detached (engine.WindowRealmEnd.navigable_destroyed). A traversable is
+    // destroyed by its owner: one its Browser owns (a popup) here, its realm
+    // kept by its record so that the Browser's end can end it if the
+    // collector has not; one its host owns - the host's page, the embedder's
+    // tab - by the host, at its own end (browser Context.deinit), which ends
+    // its realm. Its close here unloads and destroys its documents and
+    // leaves its realm to the host (stated: the embedder, not script, ends a
+    // tab).
+    if (ownedByBrowser(made)) {
+        if (made.context_cleanup_data) |data| engine.destroyWindowRealm(@ptrCast(@alignCast(data)), .navigable_destroyed);
+    }
     return true;
+}
+
+/// Whether the top-level traversable `record` is its Browser's - a popup,
+/// which window.open() or a link's or form's target made
+/// (dom.auxiliary_navigables.Popups) - rather than its host's: the host's
+/// page, whose realms the host makes and ends (dom.top_level_traversables,
+/// `host_realms`).
+fn ownedByBrowser(record: *const IFrameIntegration) bool {
+    return record.iframe_element == null and record.host_realms == null;
 }
 
 /// dom.auxiliary_navigables: a popup's navigable at its Browser's end - HTML
