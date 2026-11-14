@@ -441,11 +441,18 @@ const not_run_rows = [_]NotRunRow{
             return @intCast(s.file_entries.len);
         }
     }.f },
-    .{ .title = "Skipped by the project", .count = struct {
-        fn f(s: SuiteRuns, r: Run) u32 {
-            return if (s.suite.kind == .project) countKind(r, .project_skip) else 0;
-        }
-    }.f },
+    .{
+        .title = "Skipped by the project",
+        .count = struct {
+            fn f(s: SuiteRuns, r: Run) u32 {
+                if (s.suite.kind != .project) return 0;
+                // With the pending tests the framework counted without naming.
+                var n = countKind(r, .project_skip);
+                for (r.pages) |p| n += p.unnamed_pending orelse 0;
+                return n;
+            }
+        }.f,
+    },
     .{ .title = "Skipped by TodoMVC's app spec for the app", .count = struct {
         fn f(s: SuiteRuns, r: Run) u32 {
             return if (s.suite.kind == .todomvc_port) countKind(r, .project_skip) else 0;

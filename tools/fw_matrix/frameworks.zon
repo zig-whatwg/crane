@@ -57,7 +57,7 @@
                 .repository = "https://github.com/angular/angular",
                 .tag = "v22.2.6",
                 .runner = "web-test-runner and Jasmine, through Puppeteer in Chromium and Firefox",
-                .why = "Not run: they test two applications kept in the repository (adev/, the angular.dev site, and devtools/, the browser extension), not the framework; the framework's own 44 targets under packages/ run above.",
+                .why = "They test two applications kept in the repository (adev/, the angular.dev site, and devtools/, the browser extension), not the framework; the framework's own 44 targets under packages/ run above.",
             }},
         },
         .{
