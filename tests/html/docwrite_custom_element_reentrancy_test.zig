@@ -16,7 +16,10 @@ fn exercise(scenario: Scenario) !void {
     const document = page.document_instance orelse return error.TestUnexpectedResult;
     const before = dom.document_internals.getInternal(document) orelse return error.TestUnexpectedResult;
     try testing.expect(before.active_parser == null);
-    try testing.expectEqual(@TypeOf(before.ready_state)._interactive_, before.ready_state);
+    // The parser's end fired DOMContentLoaded and, nothing delaying it, the
+    // load as it stopped (Document's lifecycleFinishLoading: the user's
+    // ruling 2026-11-12, Blink's and WebKit's order).
+    try testing.expectEqual(@TypeOf(before.ready_state)._complete_, before.ready_state);
 
     try page.runScript(if (scenario == .write_marker) "globalThis.writeFromCallback = true" else "globalThis.writeFromCallback = false");
     try page.runScript(
