@@ -114,6 +114,7 @@ const Snapshot = struct {
     popups: usize,
     retired: usize,
     contexts: usize,
+    integrations: usize,
 
     fn take(browser: *browser_mod.Browser, counting: *Counting) !Snapshot {
         const navigables = try browser.scope.table(.navigables, html_core.Navigables);
@@ -122,14 +123,34 @@ const Snapshot = struct {
             .popups = popupCount(browser),
             .retired = navigables.retired.items.len,
             .contexts = navigables.contexts().len,
+            .integrations = navigables.integrations.items.len,
         };
     }
 };
 
 const n = 24;
-/// Live bytes a cycle may leave above the checkpoint: hash tables and caches
-/// that grow once. A record per navigable is far above it.
-const slack_bytes = 16 * 1024;
+/// Live bytes a cycle may leave above what the same number of realms leaves
+/// (the control below): hash tables and caches that grow once. A record per
+/// navigable is far above it.
+const slack_bytes = 8 * 1024;
+
+/// The control: one kept iframe navigated `n` times - `n` new realms, and no
+/// navigable made or destroyed. Each ended realm leaves its context manager
+/// entry until the agent ends (context_manager ManagerState.retired: about
+/// 800 bytes, queued as its own lifetime item), which a navigable cycle
+/// leaves too, one realm per navigable; the cycle is measured against it.
+const control_setup =
+    \\ globalThis.kept = document.createElement('iframe'); kept.srcdoc = '<p>0</p>'; document.body.append(kept);
+    \\ globalThis.navigations = 0;
+    \\ globalThis.navigate = function () { let left = 24; kept.onload = () => { if (--left === 0) { globalThis.done = true; return; } kept.srcdoc = '<p>' + (++navigations) + '</p>'; }; kept.srcdoc = '<p>' + (++navigations) + '</p>'; };
+;
+
+fn runRound(browser: *browser_mod.Browser, comptime script: []const u8) !void {
+    const page = browser.current_context orelse return error.NoPage;
+    try page.runScript("globalThis.done = false; " ++ script);
+    try until(browser, "globalThis.done === true");
+    try collect(browser);
+}
 
 fn checkpointCycle(comptime cycle: []const u8) !void {
     var counting: Counting = .{ .parent = testing.allocator };
@@ -140,24 +161,26 @@ fn checkpointCycle(comptime cycle: []const u8) !void {
     try page.loadHTML("<!doctype html><title>host</title><body>", .{ .base_url = "http://example.test/host" });
     try until(browser, "document.readyState === 'complete'");
     try page.runScript("globalThis.cycle = function () { " ++ cycle ++ " };");
+    try page.runScript(control_setup);
+    try until(browser, "kept.contentDocument !== null && kept.contentDocument.readyState === 'complete'");
 
-    // A first cycle fills the Browser's state arena and its tables.
-    try page.runScript("cycle();");
-    try until(browser, "globalThis.done === true");
-    try collect(browser);
+    // A first round of each fills the Browser's state arena and its tables.
+    try runRound(browser, "cycle();");
+    try runRound(browser, "navigate();");
     const checkpoint = try Snapshot.take(browser, &counting);
-
-    try page.runScript("globalThis.done = false; cycle();");
-    try until(browser, "globalThis.done === true");
-    try collect(browser);
+    try runRound(browser, "cycle();");
     const after = try Snapshot.take(browser, &counting);
+    try runRound(browser, "navigate();");
+    const control = try Snapshot.take(browser, &counting);
 
     const grown = after.live_bytes - checkpoint.live_bytes;
-    std.debug.print("{d} more navigables: live bytes {d} -> {d} ({d} per navigable), popups {d} -> {d}, retired {d} -> {d}, browsing contexts {d} -> {d}\n", .{ n, checkpoint.live_bytes, after.live_bytes, @divTrunc(grown, n), checkpoint.popups, after.popups, checkpoint.retired, after.retired, checkpoint.contexts, after.contexts });
+    const per_realm = control.live_bytes - after.live_bytes;
+    std.debug.print("{d} more navigables: live bytes {d} -> {d} ({d} per navigable; {d} realms alone: {d} per realm), popups {d} -> {d}, retired {d} -> {d}, browsing contexts {d} -> {d}, integrations {d} -> {d}\n", .{ n, checkpoint.live_bytes, after.live_bytes, @divTrunc(grown, n), n, @divTrunc(per_realm, n), checkpoint.popups, after.popups, checkpoint.retired, after.retired, checkpoint.contexts, after.contexts, checkpoint.integrations, after.integrations });
     try testing.expectEqual(checkpoint.popups, after.popups);
     try testing.expectEqual(checkpoint.retired, after.retired);
     try testing.expectEqual(checkpoint.contexts, after.contexts);
-    try testing.expect(grown <= slack_bytes);
+    try testing.expectEqual(checkpoint.integrations, after.integrations);
+    try testing.expect(grown - per_realm <= slack_bytes);
 }
 
 fn popupsCheckpoint() !void {
@@ -175,14 +198,15 @@ test "N popups opened and closed leave the Browser's popup list, retired context
 }
 
 fn framesCheckpoint() !void {
+    // One load listener for all of them (capture, on the document), so the
+    // elements carry no listener of their own: what is measured is the
+    // navigable, not per-element listener storage.
     try checkpointCycle(
-        \\ let loaded = 0;
-        \\ for (let i = 0; i < 24; i++) {
-        \\   const f = document.createElement('iframe');
-        \\   f.srcdoc = '<p>frame</p>';
-        \\   f.onload = () => { f.remove(); if (++loaded === 24) globalThis.done = true; };
-        \\   document.body.append(f);
+        \\ if (!globalThis.frameLoads) {
+        \\   globalThis.frameLoads = 0;
+        \\   document.addEventListener('load', e => { if (e.target.localName !== 'iframe' || e.target === globalThis.kept) return; e.target.remove(); if (++frameLoads % 24 === 0) globalThis.done = true; }, true);
         \\ }
+        \\ for (let i = 0; i < 24; i++) { const f = document.createElement('iframe'); f.srcdoc = '<p>frame</p>'; document.body.append(f); }
     );
 }
 
