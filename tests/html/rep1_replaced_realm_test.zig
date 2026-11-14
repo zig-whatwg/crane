@@ -12,6 +12,7 @@
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
+const engine = @import("engine");
 
 fn onFreshThread(comptime body: fn () anyerror!void) !void {
     const Run = struct {
@@ -83,4 +84,46 @@ fn hostPageReplacedTwice() !void {
 
 test "the host page's first realm, replaced twice, still runs and reads its own Window after the realm between is collected" {
     try onFreshThread(hostPageReplacedTwice);
+}
+
+/// The agent's native contexts (realms), live and detached, after the
+/// collector ran: what a chain of replaced realms would keep.
+fn realmCount(browser: *browser_mod.Browser) !usize {
+    if (engine.capabilities.heap_statistics == .unsupported) return error.SkipZigTest;
+    try collect(browser);
+    const stats = engine.heapStatistics(browser.agent orelse return error.NoAgent);
+    return stats.realm_count;
+}
+
+fn hostPageNavigatedOften() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const page = browser.current_context orelse return error.NoPage;
+    var url_buf: [64]u8 = undefined;
+    var title_buf: [64]u8 = undefined;
+    // A few loads first, so what a load leaves once (tables, caches) is in
+    // the baseline.
+    for (0..5) |i| {
+        const url = try std.fmt.bufPrint(&url_buf, "http://example.test/warm{d}", .{i});
+        try page.loadHTML("<!doctype html><title>warm</title>", .{ .base_url = url });
+    }
+    const baseline = try realmCount(browser);
+    // 50 more loads; nothing holds a replaced realm. Each replaced realm is
+    // hung under its successor (E1) and passes up when that one is collected
+    // (endCollectedRealm): none may stay alive under the page for its life.
+    for (0..50) |i| {
+        const url = try std.fmt.bufPrint(&url_buf, "http://example.test/p{d}", .{i});
+        const title = try std.fmt.bufPrint(&title_buf, "<!doctype html><title>p{d}</title>", .{i});
+        try page.loadHTML(title, .{ .base_url = url });
+    }
+    const after = try realmCount(browser);
+    if (after > baseline + 2) {
+        std.debug.print("realms after 50 loads: {d}, baseline {d}\n", .{ after, baseline });
+        return error.ReplacedRealmsKept;
+    }
+}
+
+test "a host page loaded 50 times with nothing holding its old realms keeps no chain of replaced realms" {
+    try onFreshThread(hostPageNavigatedOften);
 }
