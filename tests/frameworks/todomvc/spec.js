@@ -237,12 +237,37 @@ QUnit.config.reporters.tap = true;
   const visibleTodos = () => cy.get(selectors.todoItemsVisible);
   // :379-380
   const hasNoItems = () => cy.get(selectors.todoItems).should('have.length', 0);
-  // :382-389: the spy is Cypress's, set in cy.visit's onBeforeLoad, before
-  // the app's scripts run; an in-page harness has no such hook. Every app
-  // of the matrix is in noLocalStorageSpyCheck, so it is never reached.
-  const checkItemSaved = () => {
+  // :382-389 checkItemSaved, and its spy (:413-430). Cypress spies on the
+  // app window's Storage.prototype.setItem from cy.visit's onBeforeLoad,
+  // before the app's scripts run; an in-page harness has no such hook, so
+  // the port installs the same spy when the app has loaded (beforeEach,
+  // below) and counts the calls from there. A check reads the calls since
+  // the previous check (Cypress resets the spy after each), and every check
+  // follows an action of its test, after the load: what the app wrote while
+  // it started is never what a check looks for. It retries for Cypress's
+  // command timeout, as cy.wrap(spy).should('have.been.called') does.
+  let setItemCalls = 0;
+  const spyOnSetItem = () => {
+    setItemCalls = 0;
     if (noLocalStorageSpyCheck[framework]) return;
-    throw new Error(`checkItemSaved for ${framework}: the localStorage.setItem spy needs Cypress's onBeforeLoad (not ported)`);
+    const proto = cy.window().Storage.prototype;
+    const setItem = proto.setItem;
+    proto.setItem = function () {
+      setItemCalls += 1;
+      return setItem.apply(this, arguments);
+    };
+  };
+  const checkItemSaved = async () => {
+    if (noLocalStorageSpyCheck[framework]) return;
+    const deadline = performance.now() + 4000;
+    while (setItemCalls === 0) {
+      if (performance.now() > deadline) {
+        QUnit.config.current.assert.pushResult({ result: false, actual: 0, expected: 'at least 1', message: 'localStorage.setItem should have been called' });
+        throw new Driver.CommandError('localStorage.setItem should have been called');
+      }
+      await Driver.sleep(0);
+    }
+    setItemCalls = 0;
   };
 
   // Shadow-piercing lookup, spec.cy.js:487-495.
@@ -266,6 +291,7 @@ QUnit.config.reporters.tap = true;
     // the app counts as started at the spec's next step, its heading
     // visible and its input found.
     await cy.visit('/examples/' + getExampleFolder(framework));
+    spyOnSetItem();
     // :482
     await cy.contains('h1', /^todos$/i).should('be.visible');
     // :496-517
@@ -332,10 +358,10 @@ QUnit.config.reporters.tap = true;
   QUnit.module('New Todo', function () {
     it('New Todo', 'should allow me to add todo items', async function () {
       await cy.get(selectors.newTodo).type(`${TODO_ITEM_ONE}{enter}`);
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get(selectors.todoItems).eq(0).find('label').should('contain', TODO_ITEM_ONE);
       await cy.get(selectors.newTodo).type(`${TODO_ITEM_TWO}{enter}`);
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get(selectors.todoItems).eq(1).find('label').should('contain', TODO_ITEM_TWO);
       await checkNumberOfTodosInLocalStorage(2);
     });
@@ -374,7 +400,7 @@ QUnit.config.reporters.tap = true;
     hooks.beforeEach(async function () {
       (await createDefaultTodos()).as('todos');
       await checkNumberOfTodosInLocalStorage(3);
-      checkItemSaved();
+      await checkItemSaved();
     });
     hooks.afterEach(async function () {
       await checkNumberOfTodosInLocalStorage(3);
@@ -382,7 +408,7 @@ QUnit.config.reporters.tap = true;
 
     it('Mark all as completed', 'should allow me to mark all items as completed', async function () {
       await cy.get(selectors.toggleAll).check({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get('@todos').eq(0).should('have.class', 'completed');
       await cy.get('@todos').eq(1).should('have.class', 'completed');
       await cy.get('@todos').eq(2).should('have.class', 'completed');
@@ -391,9 +417,9 @@ QUnit.config.reporters.tap = true;
 
     it('Mark all as completed', 'should allow me to clear the complete state of all items', async function () {
       await cy.get(selectors.toggleAll).check({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get(selectors.toggleAll).uncheck({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get('@todos').eq(0).should('not.have.class', 'completed');
       await cy.get('@todos').eq(1).should('not.have.class', 'completed');
       await cy.get('@todos').eq(2).should('not.have.class', 'completed');
@@ -402,14 +428,14 @@ QUnit.config.reporters.tap = true;
 
     it('Mark all as completed', 'complete all checkbox should update state when items are completed / cleared', async function () {
       await cy.get(selectors.toggleAll).check({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get(selectors.toggleAll).should('be.checked');
       cy.get(selectors.todoItems).eq(0).as('firstTodo');
       await cy.get('@firstTodo').find('.toggle').uncheck({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await cy.get(selectors.toggleAll).should('not.be.checked');
       await cy.get('@firstTodo').find('.toggle').check({ force: true });
-      checkItemSaved();
+      await checkItemSaved();
       await checkNumberOfCompletedTodosInLocalStorage(3);
       await cy.get(selectors.toggleAll).should('be.checked');
     });

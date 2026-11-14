@@ -22,6 +22,11 @@
 #   port acts through DOM events at the element and checks only what is
 #   not geometry (visible by the rules above without opacity, as Cypress's
 #   ensure.ts does for actions; not disabled).
+# - Cypress's onBeforeLoad hooks (spec.cy.js:413-476) run in the app's
+#   window before its scripts; an in-page harness has none. The port counts
+#   an app as started when its page has loaded and its heading is visible,
+#   and installs the spec's localStorage.setItem spy (checkItemSaved) at that
+#   point: every check of it follows an action of its test, after the load.
 #
 # Tests TodoMVC's own spec skips for an app run as QUnit.skip, with the
 # spec's reason, and are reported as skipped by the app spec - not listed
