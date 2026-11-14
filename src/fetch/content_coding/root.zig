@@ -53,6 +53,13 @@ pub const Entry = struct {
 /// capability: kit/brotli's pinned codec).
 pub const brotli_supported = platform.capabilities.brotli != .unsupported;
 
+/// Whether gzip and deflate decode with zlib (the platform's zlib_inflate
+/// capability) - otherwise with Zig's std.compress.flate (flate.zig).
+pub const zlib_inflate_supported = flate.zlib_supported;
+
+/// The DEFLATE decoder gzip and deflate run (flate.zig).
+pub const Inflater = flate.Inflater;
+
 /// Every coding, in Chromium's and Firefox's `Accept-Encoding` order
 /// ("gzip, deflate, br, zstd").
 const every = [_]Entry{
@@ -408,10 +415,10 @@ const Stage = union(Coding) {
     br: brotli.Decoder,
     zstd: *zstd.Decoder,
 
-    fn create(allocator: Allocator, coding: Coding) Error!Stage {
+    fn create(allocator: Allocator, coding: Coding, options: Options) Error!Stage {
         return switch (coding) {
-            .gzip => .{ .gzip = try flate.Decoder.create(allocator, .gzip) },
-            .deflate => .{ .deflate = try flate.Decoder.create(allocator, .zlib) },
+            .gzip => .{ .gzip = try flate.Decoder.createWith(allocator, .gzip, options.inflater) },
+            .deflate => .{ .deflate = try flate.Decoder.createWith(allocator, .zlib, options.inflater) },
             .br => if (comptime brotli_supported) .{ .br = try brotli.Decoder.init(allocator) } else unreachable,
             .zstd => .{ .zstd = try zstd.Decoder.create(allocator) },
         };
@@ -434,6 +441,13 @@ const Stage = union(Coding) {
     }
 };
 
+/// How a chain decodes.
+pub const Options = struct {
+    /// gzip's and deflate's DEFLATE decoder: zlib's where the platform has
+    /// it (Fetch always takes this default; the other is for tests).
+    inflater: Inflater = .preferred,
+};
+
 /// The decoders for one response's codings, chained: the body's bytes go
 /// to the decoder of the coding applied last, its output to the one before
 /// it, and the first coding's output to the sink - Chromium's
@@ -448,6 +462,10 @@ pub const Decoder = struct {
     failed: bool = false,
 
     pub fn create(allocator: Allocator, codings: []const Coding) Error!*Decoder {
+        return createWith(allocator, codings, .{});
+    }
+
+    pub fn createWith(allocator: Allocator, codings: []const Coding, options: Options) Error!*Decoder {
         std.debug.assert(codings.len > 0 and codings.len <= max_codings);
         const self = try allocator.create(Decoder);
         errdefer allocator.destroy(self);
@@ -456,7 +474,7 @@ pub const Decoder = struct {
         var i = codings.len;
         while (i > 0) {
             i -= 1;
-            self.stages[self.len] = try Stage.create(allocator, codings[i]);
+            self.stages[self.len] = try Stage.create(allocator, codings[i], options);
             self.len += 1;
         }
         return self;

@@ -1,7 +1,17 @@
 //! The "gzip" (RFC 1952) and "deflate" (RFC 9110 8.4.1.2: RFC 1950's zlib
 //! around RFC 1951's DEFLATE) content codings, decoded as they arrive.
 //!
-//! DEFLATE itself is std.compress.flate's inflater, a pull decoder: it reads
+//! DEFLATE itself is zlib's inflate where the platform has it (the
+//! `zlib_inflate` capability, kit/inflate/zlib.zig), as Chromium's
+//! GzipSourceStream and Firefox's nsHTTPCompressConv run it: raw DEFLATE
+//! behind the container parsed here, fed each chunk as it comes, with no
+//! roll-back. Zig's std.compress.flate took 1.317x zlib's instructions on a
+//! 1 MB gzip body (perf pair fetch.loopback-gzip, chat.local, 2026-11-14).
+//!
+//! Without the capability - a -Dsystem-curl build, whose zlib is the system
+//! libcurl's and not Crane's to call - gzip and deflate still decode, with
+//! the same leniency, through std.compress.flate (`Inflater.zig`), driven
+//! as follows. std.compress.flate's inflater is a pull decoder: it reads
 //! from a std.Io.Reader and cannot stop in the middle of a symbol when its
 //! input runs out. It is driven as src/compression/root.zig drives it for
 //! Compression Streams: the input it sees is followed by a few zero bytes
@@ -41,11 +51,31 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const flate = std.compress.flate;
+const platform = @import("platform");
 const root = @import("root.zig");
 const Error = root.Error;
 const Sink = root.Sink;
 
 pub const Container = enum { gzip, zlib };
+
+/// Whether the platform decodes raw DEFLATE with zlib (`zlib_inflate`).
+pub const zlib_supported = platform.capabilities.zlib_inflate != .unsupported;
+
+/// Which DEFLATE decoder a Decoder runs.
+pub const Inflater = enum {
+    /// zlib's, through the platform (`zlib_inflate`).
+    zlib,
+    /// Zig's std.compress.flate, driven with roll-backs (this file's
+    /// comment).
+    zig,
+
+    /// zlib's where the platform has it.
+    pub const preferred: Inflater = if (zlib_supported) .zlib else .zig;
+};
+
+/// Output each zlib call may make (Chromium's GzipSourceStream writes into
+/// its 32 KiB read buffer the same way).
+const native_step = 32 * 1024;
 
 /// Output one call may make: it may write up to twice this (Zig's stored
 /// block after compressed output in the same call - src/compression/root.zig
@@ -68,6 +98,8 @@ const header_margin = 640;
 pub const Decoder = struct {
     allocator: Allocator,
     container: Container,
+    /// zlib's raw inflate (Inflater.zlib); null for Zig's.
+    native: ?*platform.InflateDecoder = null,
     /// Input not consumed yet; while sniffing, every byte since the
     /// stream's start (to replay as raw DEFLATE).
     pending: std.ArrayListUnmanaged(u8) = .empty,
@@ -97,24 +129,48 @@ pub const Decoder = struct {
     total_out: u64 = 0,
 
     pub fn create(allocator: Allocator, container: Container) Error!*Decoder {
+        return createWith(allocator, container, .preferred);
+    }
+
+    pub fn createWith(allocator: Allocator, container: Container, inflater: Inflater) Error!*Decoder {
         const self = try allocator.create(Decoder);
         errdefer allocator.destroy(self);
-        const window = try allocator.alloc(u8, window_len);
         self.* = .{
             .allocator = allocator,
             .container = container,
             .input = .fixed(&.{}),
             .inflater = undefined,
-            .window = window,
+            .window = &.{},
         };
-        self.inflater = .init(&self.input, .raw, &.{});
+        switch (inflater) {
+            .zlib => self.native = try createNative(allocator),
+            .zig => {
+                self.window = try allocator.alloc(u8, window_len);
+                self.inflater = .init(&self.input, .raw, &.{});
+            },
+        }
         return self;
     }
 
     pub fn destroy(self: *Decoder) void {
+        if (self.native) |native| destroyNative(native);
         self.pending.deinit(self.allocator);
         self.allocator.free(self.window);
         self.allocator.destroy(self);
+    }
+
+    fn createNative(allocator: Allocator) Error!*platform.InflateDecoder {
+        if (comptime !zlib_supported) unreachable;
+        return platform.createInflateDecoder(allocator) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            // A zlib that is not the one kit/inflate declares: no decoder.
+            error.InvalidData, error.NotSupported => error.InvalidData,
+        };
+    }
+
+    fn destroyNative(native: *platform.InflateDecoder) void {
+        if (comptime !zlib_supported) unreachable;
+        platform.destroyInflateDecoder(native);
     }
 
     pub fn push(self: *Decoder, bytes: []const u8, sink: Sink) Error!void {
@@ -124,7 +180,7 @@ pub const Decoder = struct {
         try self.pending.appendSlice(self.allocator, bytes);
         work: while (true) switch (self.phase) {
             .header => if (!try self.header()) break :work,
-            .deflate => if (!try self.deflate(sink)) break :work,
+            .deflate => if (!try (if (self.native != null) self.deflateNative(sink) else self.deflate(sink))) break :work,
             .trailer => if (!try self.trailerBytes()) break :work,
             .done => break :work,
         };
@@ -230,6 +286,64 @@ pub const Decoder = struct {
                 .done => return true,
             }
         }
+    }
+
+    /// DEFLATE blocks through zlib, as far as the input goes. False: more
+    /// input is needed. zlib keeps what it has read of a symbol, so every
+    /// byte it takes is gone from `pending`; it stops at the final block's
+    /// end with the bytes after it untaken (the trailer).
+    fn deflateNative(self: *Decoder, sink: Sink) Error!bool {
+        if (comptime !zlib_supported) unreachable;
+        const native = self.native.?;
+        while (true) {
+            var buffer: [native_step]u8 = undefined;
+            const progress = platform.inflateChunk(native, .from(self.unread()), &buffer) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidData, error.NotSupported => {
+                    if (self.sniffing) return self.replayNativeAsRaw();
+                    return error.InvalidData;
+                },
+            };
+            self.start += progress.consumed;
+            if (progress.produced > 0) {
+                // Output: the zlib header was a zlib header.
+                self.sniffing = false;
+                const produced = buffer[0..progress.produced];
+                if (self.container == .zlib) self.adler.update(produced);
+                try sink.write(sink.context, produced);
+            }
+            switch (progress.status) {
+                .need_output => continue,
+                .need_input => {
+                    // Chromium stops sniffing once enough has come without
+                    // a failure.
+                    if (self.sniffing and self.pending.items.len >= max_sniff_bytes) self.sniffing = false;
+                    return false;
+                },
+                .finished => {
+                    self.sniffing = false;
+                    self.trailer_left = switch (self.container) {
+                        .gzip => 8,
+                        .zlib => 4,
+                    };
+                    self.phase = .trailer;
+                    return true;
+                },
+            }
+        }
+    }
+
+    /// As `replayAsRaw`, for zlib's inflater: a new raw context fed the
+    /// stream from its first byte.
+    fn replayNativeAsRaw(self: *Decoder) Error!bool {
+        if (comptime !zlib_supported) unreachable;
+        self.sniffing = false;
+        destroyNative(self.native.?);
+        self.native = null;
+        self.native = try createNative(self.allocator);
+        self.start = 0;
+        self.adler = .{};
+        return true;
     }
 
     /// DEFLATE blocks, as far as the input goes. False: more input is
