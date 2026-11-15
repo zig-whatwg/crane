@@ -372,6 +372,9 @@ pub const Pointer = struct {
     /// Where this touch's last tap left the legacy mouse (Pointer Events
     /// 10.1): its next tap's mouse boundary events start there.
     legacy_mouse: ?Weak = null,
+    /// The option of a native list box this device last picked without
+    /// Shift: a Shift+click's range starts there (select_picker.mouseDown).
+    listbox_anchor: ?Weak = null,
 
     /// The orientation the events report: the reported pair, and the other
     /// pair converted from it (Pointer Events 3.1.5); with neither, the
@@ -718,7 +721,7 @@ pub fn pointerDown(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
     // events)").
     const down_target = capturedOr(pointer, pointer.currentTarget() orelse return);
     if (!fireMouseEvent(down_target, "mousedown", modifiers, @intCast(button), pointer.buttons, 1, null)) return;
-    mousedownDefaults(pointer, down_target, button);
+    mousedownDefaults(pointer, down_target, button, modifiers, pointer);
 }
 
 /// The element a mouse event of `pointer` goes to now: its capture target,
@@ -731,8 +734,9 @@ fn mouseTargetNow(pointer: ?*Pointer, target: *Instance) ?*Instance {
 }
 
 /// mousedown's default actions, once a trusted mousedown at `target` (from
-/// `pointer`, or a touch's fallback mousedown with none) was not canceled.
-fn mousedownDefaults(pointer: ?*Pointer, target: *Instance, button: u3) void {
+/// `pointer`, or a touch's fallback mousedown with none, from `device`, the
+/// input device it came from) was not canceled.
+fn mousedownDefaults(pointer: ?*Pointer, target: *Instance, button: u3, modifiers: Modifiers, device: *Pointer) void {
     // HTML 6.6.2: "When a user activates a click focusable focusable area,
     // the user agent must run the focusing steps on the focusable area with
     // focus trigger set to click"; pressing anything else moves the focus to
@@ -754,7 +758,16 @@ fn mousedownDefaults(pointer: ?*Pointer, target: *Instance, button: u3) void {
     // browsers split (select-events.optional.html, df642c4142: Chrome155
     // skips select focus; Safari27 focuses it). HTML decides the tie,
     // row61 Q19; the helper must not swallow this click-focus default.
-    if (mouseTargetNow(pointer, target)) |current| @import("forms/select_picker.zig").mouseDown(current, button);
+    if (mouseTargetNow(pointer, target)) |current| {
+        const platform = @import("platform").identity.navigator_platform.slice();
+        const picked = @import("forms/select_picker.zig").mouseDown(current, button, .{
+            .touch = device.pointer_type == .touch,
+            .toggle = isCommandModifier(platform, modifiers),
+            .range = modifiers.shift,
+            .anchor = if (device.listbox_anchor) |weak| weak.get() else null,
+        });
+        if (picked) |option| device.listbox_anchor = Weak.of(option);
+    }
 }
 
 /// An arrow key's selection change in an editing host (see
@@ -1321,7 +1334,7 @@ fn tap(point: *Pointer, modifiers: Modifiers) void {
     if (!isConnected(target)) return;
     // HTML 6.4.2: mousedown is activation-triggering.
     if (nodeDocument(target)) |document| user_activation.notifyActivation(document);
-    if (fireMouseEvent(target, "mousedown", modifiers, 0, 1, 1, null)) mousedownDefaults(null, target, 0);
+    if (fireMouseEvent(target, "mousedown", modifiers, 0, 1, 1, null)) mousedownDefaults(null, target, 0, modifiers, point);
     if (!isConnected(target)) return;
     if (fireMouseEvent(target, "mouseup", modifiers, 0, 0, 1, null)) {
         if (isConnected(target)) @import("forms/select_picker.zig").mouseUp(target, 0);

@@ -131,13 +131,91 @@ fn optionOfTarget(target: *Instance) ?*Instance {
     return null;
 }
 
+/// What a mousedown's input was, for a native list box's option picking
+/// (`mouseDown`).
+pub const PressInput = struct {
+    /// A touch tap's mousedown (Touch Events' mouse events after a tap).
+    touch: bool = false,
+    /// The platform's toggle modifier is held: Cmd on a Mac, else Ctrl.
+    toggle: bool = false,
+    /// Shift is held.
+    range: bool = false,
+    /// The option the input device last picked without Shift: a range's
+    /// other end.
+    anchor: ?*Instance = null,
+};
+
 /// Called only after an uncanceled trusted primary mousedown and its
 /// normal focus default action. Opening then moves focus into the picker.
-pub fn mouseDown(target: *Instance, button: u3) void {
-    if (button != 0 or optionOfTarget(target) != null) return;
-    const select = selectOfTarget(target) orelse return;
-    if (target != select and buttonSelectOfTarget(target) != select) return;
+/// In a native (appearance:auto) list box it picks the option pressed; the
+/// result is the option the press picked without Shift (the next range's
+/// anchor), if any.
+pub fn mouseDown(target: *Instance, button: u3, input: PressInput) ?*Instance {
+    if (button != 0) return null;
+    if (optionOfTarget(target)) |option| return nativeListboxPick(option, input);
+    const select = selectOfTarget(target) orelse return null;
+    if (target != select and buttonSelectOfTarget(target) != select) return null;
     if (baseOptions(select) and !isListbox(select)) toggle(select);
+    return null;
+}
+
+/// A press on `option` of a native (appearance:auto) list box. HTML 4.10.7
+/// leaves the interaction to the user agent ("the user agent should allow
+/// the user to pick the option elements"); all three browsers pick on the
+/// press: a plain click selects only the clicked option, the platform's
+/// toggle modifier (Ctrl, Cmd on a Mac) toggles it, Shift selects the range
+/// from the anchor (Blink ListBoxSelectType::UpdateSelectedState, WebKit
+/// RenderListBox / HTMLSelectElement::updateSelectedState, Gecko
+/// HTMLSelectEventListener::MouseDown); a single-select list box selects
+/// the option.
+///
+/// A touch tap toggles the option in a multiple list box: Chrome's
+/// ListBoxSelectType::HandleGestureEvent, which
+/// html/semantics/forms/the-select-element/select-listbox-touch.optional.html
+/// encodes (wpt.fyi 2358bd4835: Chrome 1/1, Firefox 0/1 - a tap selects only
+/// the option there - Safari 0/1). Golden rule 2: Safari ships no desktop
+/// touch input, so it does not count; Chrome and Firefox split, HTML leaves
+/// it to the user agent, and Chrome's is the behaviour WPT encodes (the
+/// integrator's ruling, 2026-11-14).
+///
+/// Stated deviation: the range's anchor is the last option this pointing
+/// device picked without Shift (`PressInput.anchor`); the engines keep it per
+/// select (Blink's active_selection_anchor_), so a keyboard pick or another
+/// device does not move it here.
+fn nativeListboxPick(option: *Instance, input: PressInput) ?*Instance {
+    const select = ownerSelect(option) orelse return null;
+    if (!isListbox(select) or baseAppearance(select)) return null;
+    if (associated.isDisabled(select) or options.isDisabled(option)) return null;
+    const multiple = associated.hasAttribute(select, "multiple");
+    if (!multiple) {
+        pick(select, option, false);
+        return option;
+    }
+    if (input.touch or input.toggle) {
+        pick(select, option, true);
+        return option;
+    }
+    var list: std.ArrayListUnmanaged(*Instance) = .empty;
+    defer list.deinit(select.ctx.allocator);
+    options.collect(select, select.ctx.allocator, &list) catch return null;
+    const at = std.mem.indexOfScalar(*Instance, list.items, option) orelse return null;
+    var first = at;
+    var last = at;
+    if (input.range) if (input.anchor) |anchor| if (std.mem.indexOfScalar(*Instance, list.items, anchor)) |from| {
+        first = @min(from, at);
+        last = @max(from, at);
+    };
+    var changed = false;
+    for (list.items, 0..) |item, i| {
+        const wanted = i >= first and i <= last and !options.isDisabled(item);
+        if ((interfaces.HTMLOptionElement.get_selected(item) catch wanted) != wanted) {
+            interfaces.HTMLOptionElement.set_selected(item, wanted) catch {};
+            changed = true;
+        }
+    }
+    // HTML 4.10.7: input and change only when the selectedness changed.
+    if (changed) sendSelectUpdateNotifications(select);
+    return if (input.range and input.anchor != null) input.anchor else option;
 }
 
 pub fn mouseUp(target: *Instance, button: u3) void {
