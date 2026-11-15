@@ -1832,8 +1832,17 @@ const QueuedSvgScript = struct {
     /// The script's muted errors.
     muted: bool,
     credentials_mode: fetch.internal.CredentialsMode = .same_origin,
+    /// The node document whose load event the queued run delays, with its
+    /// slab generation (embedded_content's delay holder): undelayed when the
+    /// task is done or dropped, skipped for a document that is gone.
+    delayed_document: ?*runtime.Instance = null,
+    delayed_document_generation: u64 = 0,
 
     fn destroy(self: *QueuedSvgScript) void {
+        if (self.delayed_document) |document| {
+            self.delayed_document = null;
+            if (runtime.SlabAllocator.generationOf(document) == self.delayed_document_generation) dom.document_lifecycle.undelayLoadEvent(document);
+        }
         const root = self.element_root;
         self.element_ref.release(self.element);
         if (self.source) |b| std.heap.c_allocator.free(b);
@@ -1862,6 +1871,20 @@ fn queueSvgScriptRun(element: *runtime.Instance, body: ?[]const u8, url: []const
     // element from being run or fired at.
     if (element.ctx.hasEngine()) task.element_root = engine.retainValue(element.ctx, .{ .instance = element }) catch null;
     task.element_ref.take(element, dom.instance_bridge.getNodeBase(element));
+    // The queued run delays its document's load event until it has run, as
+    // HTML's force-async script does: "prepare the script element" step 35.2
+    // appends it to the preparation-time document's "set of scripts that will
+    // execute as soon as possible", which "the end" step 7 waits on. With the
+    // load completed at the end of the parse when nothing delays it
+    // (Document's completeLoadUnlessDelayed), the run of an external SVG
+    // script an inline one inserted came after the load:
+    // execution-timing/135.html (passes in Chrome, Firefox and Safari) wants
+    // "external script #1" before onload.
+    if (getNodeDocument(element)) |document| {
+        task.delayed_document = document;
+        task.delayed_document_generation = runtime.SlabAllocator.generationOf(document);
+        dom.document_lifecycle.delayLoadEvent(document);
+    }
     loop.queueTask(.{ .callback = &runQueuedSvgScript, .context = task, .drop = &dropQueuedSvgScript });
 }
 
@@ -2837,9 +2860,17 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
     // one: the latter is classic even when language says something else.
     // WebKit ScriptElement::determineScriptType makes the same distinction.
     var language_type: ["text/javascript1.5".len]u8 = undefined;
+    // Step 8: the type string is the type attribute's value AS WRITTEN - not
+    // stripped. Only step 9 also tries the value stripped of ASCII
+    // whitespace, for a JavaScript MIME type; steps 10-12 match the string
+    // itself, so `type="module "` is no script at all (WPT
+    // html/semantics/scripting-1/the-script-element/module/type.html: Chrome
+    // and Safari 6/6 follow the spec; Firefox 3/6 runs it - golden rule 2,
+    // the spec and two browsers). The same holds for "importmap" and
+    // "speculationrules", and for an SVG script, which prepares through here.
     const type_string: []const u8 = if (type_attr) |value| blk: {
         if (value.len == 0) return .classic;
-        break :blk std.mem.trim(u8, value, " \t\n\r\x0c");
+        break :blk value;
     } else blk: {
         const language = getLanguageAttribute(element);
         if (language.len == 0) return .classic;
@@ -2851,9 +2882,14 @@ fn determineScriptType(element: *runtime.Instance) ScriptType {
         break :blk language_type[0 .. "text/".len + language.len];
     };
 
-    // Step 9: If type string is a JavaScript MIME type essence match -> classic
+    // Step 9: If the type string is a JavaScript MIME type essence match,
+    // or el has a type attribute whose value with leading and trailing
+    // ASCII whitespace stripped is one -> classic.
     if (isJavaScriptMimeType(type_string)) {
         return .classic;
+    }
+    if (type_attr) |value| {
+        if (isJavaScriptMimeType(std.mem.trim(u8, value, " \t\n\r\x0c"))) return .classic;
     }
 
     // Step 10: If type string is "module" (case-insensitive) -> module
@@ -4633,6 +4669,22 @@ pub const script_type_test_cases = if (@import("builtin").is_test) struct {
             .{ .type_value = " ", .language = "javascript", .expected = .null },
             .{ .type_value = "text/javascript\xc2\xa0", .language = null, .expected = .null },
             .{ .type_value = null, .language = repeatForTest("javascript", 20), .expected = .null },
+            // Steps 10-12 match the type string as written (step 8: the
+            // attribute's value); only step 9's JavaScript MIME type match
+            // also tries it stripped (WPT module/type.html; Chrome, Safari).
+            .{ .type_value = "module", .language = null, .expected = .module },
+            .{ .type_value = "MODULE", .language = null, .expected = .module },
+            .{ .type_value = " module", .language = null, .expected = .null },
+            .{ .type_value = "module ", .language = null, .expected = .null },
+            .{ .type_value = " module ", .language = null, .expected = .null },
+            .{ .type_value = "\tmodule\n", .language = null, .expected = .null },
+            .{ .type_value = "ImportMap", .language = null, .expected = .importmap },
+            .{ .type_value = "importmap ", .language = null, .expected = .null },
+            .{ .type_value = " importmap", .language = null, .expected = .null },
+            .{ .type_value = "SpeculationRules", .language = null, .expected = .speculationrules },
+            .{ .type_value = "speculationrules ", .language = null, .expected = .null },
+            .{ .type_value = " speculationrules", .language = null, .expected = .null },
+            .{ .type_value = " text/javascript ", .language = null, .expected = .classic },
         };
         for (cases) |case| {
             const element = try HTMLScriptElement.init(allocator, &context);

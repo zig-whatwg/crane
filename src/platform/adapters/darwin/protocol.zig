@@ -31,8 +31,12 @@ const platform_options = @import("platform_options");
 const posix = @import("kit_posix");
 const headless = @import("kit_headless");
 const brotli = @import("kit_brotli");
+const inflate = @import("kit_inflate");
 const memory_store = @import("kit_memory_store");
 const curl = @import("kit_curl");
+/// The bundled libcurl is in the link, and with it the zlib build.zig.zon
+/// pins (kit/curl/trust.zig `enabled`: the bundled libcurl and its mbedTLS).
+const bundled_zlib = curl.share.trust.enabled;
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
@@ -122,6 +126,10 @@ pub const protocol = struct {
     pub const capabilities: platform.Capabilities = blk: {
         var c = headless.capabilities;
         c.brotli = .native; // Pinned RFC 7932 codec; identical on every OS.
+        // zlib's inflate for Fetch's gzip and deflate (kit/inflate/zlib.zig):
+        // only where the bundled libcurl links the pinned zlib - not with
+        // -Dsystem-curl, whose zlib is the system libcurl's own.
+        c.deflate_decoding = if (bundled_zlib) .native else .unsupported;
         // Crane's stores persist under a profile directory today.
         c.persistent_storage = .native;
         // Fetch's scheme fetch "file" reads local files today.
@@ -155,6 +163,9 @@ pub const protocol = struct {
     pub const createBrotliEncoder = brotli.createBrotliEncoder;
     pub const compressBrotli = brotli.compressBrotli;
     pub const destroyBrotliEncoder = brotli.destroyBrotliEncoder;
+    pub const createDeflateDecoder = if (bundled_zlib) inflate.zlib_inflate.createDeflateDecoder else headless.createDeflateDecoder;
+    pub const decompressDeflate = if (bundled_zlib) inflate.zlib_inflate.decompressDeflate else headless.decompressDeflate;
+    pub const destroyDeflateDecoder = if (bundled_zlib) inflate.zlib_inflate.destroyDeflateDecoder else headless.destroyDeflateDecoder;
     pub const createBrowserPlatform = State.create;
     pub const destroyBrowserPlatform = State.destroy;
     pub const initializePlatform = posix.initializePlatform;

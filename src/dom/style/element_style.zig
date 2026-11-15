@@ -104,10 +104,24 @@ pub const SiblingCounts = struct {
     }
 };
 
+/// The one per-type presentational hint an element's style keeps, by kind:
+/// HTML §15's background hint (eight HTML table and body tags), HTML
+/// 15.3.4's font hint (the HTML font element), and SVG 2 §6.6's
+/// presentation attributes (SVG elements). The three sets of element types
+/// are disjoint, so one slot serves all three - a pointer on every styled
+/// element instead of three (lane quick1 b4). Each hint type starts with
+/// this header (`header`), and the slot points at it.
+pub const Hint = struct {
+    kind: Kind,
+
+    pub const Kind = enum(u8) { background, font, svg };
+};
+
 /// HTML §15's dynamic background hint. Allocated only for the eight
 /// eligible HTML tags with a nonempty background attribute. The strings
 /// and typed value have no DOM/realm back link.
 pub const BackgroundHint = struct {
+    header: Hint = .{ .kind = .background },
     allocator: Allocator,
     input: []u8,
     source: *css.style_values.ResourceSource,
@@ -155,9 +169,11 @@ pub const ElementStyle = struct {
     /// generation-checked identity is weak and is never read during teardown.
     computed_map: ?*ComputedMapLink = null,
     pseudo: std.ArrayList(PseudoCached) = .empty,
-    background_hint: ?*BackgroundHint = null,
-    /// HTML 15.3.4: an HTML font element's color/face/size hint (font_hints.zig).
-    font_hint: ?*@import("font_hints.zig").FontHint = null,
+    /// The element's presentational hint (`Hint`): a background hint
+    /// (resource_loading.backgroundHint), an HTML font element's
+    /// color/face/size hint (font_hints.zig) or an SVG element's
+    /// presentation attributes (svg_hints.zig).
+    hint: ?*Hint = null,
     /// CSS Transitions 1 section 3 and CSS Animations 1 section 2: the
     /// element's transitions and CSS animations (dom.animations), made at the
     /// first of either. One pointer for both, so ElementStyle does not grow.
@@ -183,8 +199,7 @@ pub const ElementStyle = struct {
         if (self.inline_block) |*block| block.deinit();
         if (self.sibling_counts) |counts| self.allocator.destroy(counts);
         if (self.computed_map) |link| self.allocator.destroy(link);
-        self.dropBackgroundHint();
-        self.dropFontHint();
+        self.dropHint();
         self.dropCache();
         self.pseudo.deinit(self.allocator);
         if (self.animations) |animations| animations.destroy(self.allocator);
@@ -209,14 +224,73 @@ pub const ElementStyle = struct {
         return true;
     }
 
+    /// The background hint, if the slot holds one.
+    pub fn backgroundHint(self: *const ElementStyle) ?*BackgroundHint {
+        const hint = self.hint orelse return null;
+        if (hint.kind != .background) return null;
+        return @alignCast(@fieldParentPtr("header", hint));
+    }
+
+    /// The font hint, if the slot holds one.
+    pub fn fontHint(self: *const ElementStyle) ?*@import("font_hints.zig").FontHint {
+        const hint = self.hint orelse return null;
+        if (hint.kind != .font) return null;
+        return @alignCast(@fieldParentPtr("header", hint));
+    }
+
+    /// The SVG presentation-attribute hint, if the slot holds one.
+    pub fn svgHint(self: *const ElementStyle) ?*@import("svg_hints.zig").SvgHint {
+        const hint = self.hint orelse return null;
+        if (hint.kind != .svg) return null;
+        return @alignCast(@fieldParentPtr("header", hint));
+    }
+
+    /// Keep `hint` in the slot, dropping the one of its kind it replaces.
+    /// One element carries hints of one kind only (`Hint`): a slot holding
+    /// another kind is a broken assumption, which fails here, loudly, in
+    /// every safe build, rather than freeing the other hint unseen.
+    pub fn setHint(self: *ElementStyle, hint: *Hint) void {
+        if (self.hint) |old| {
+            if (old.kind != hint.kind) @panic("ElementStyle.setHint: an element with presentational hints of two kinds");
+            destroyHint(old);
+        }
+        self.hint = hint;
+    }
+
     pub fn dropBackgroundHint(self: *ElementStyle) void {
-        if (self.background_hint) |hint| hint.destroy();
-        self.background_hint = null;
+        const hint = self.hint orelse return;
+        if (hint.kind != .background) return;
+        destroyHint(hint);
+        self.hint = null;
     }
 
     pub fn dropFontHint(self: *ElementStyle) void {
-        if (self.font_hint) |hint| hint.destroy();
-        self.font_hint = null;
+        const hint = self.hint orelse return;
+        if (hint.kind != .font) return;
+        destroyHint(hint);
+        self.hint = null;
+    }
+
+    pub fn dropSvgHint(self: *ElementStyle) void {
+        const hint = self.hint orelse return;
+        if (hint.kind != .svg) return;
+        destroyHint(hint);
+        self.hint = null;
+    }
+
+    /// Drop the slot's hint, whatever its kind.
+    pub fn dropHint(self: *ElementStyle) void {
+        const hint = self.hint orelse return;
+        destroyHint(hint);
+        self.hint = null;
+    }
+
+    fn destroyHint(hint: *Hint) void {
+        switch (hint.kind) {
+            .background => @as(*BackgroundHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
+            .font => @as(*@import("font_hints.zig").FontHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
+            .svg => @as(*@import("svg_hints.zig").SvgHint, @alignCast(@fieldParentPtr("header", hint))).destroy(),
+        }
     }
 
     /// Forget every cached style.
@@ -307,4 +381,12 @@ test "a cached style owns its base style, and a removed element's cache is no be
     state.markRemoved();
     try std.testing.expect(state.cached.?.beforeChange() == null);
     try std.testing.expect(state.pseudoCached("before").?.cached.beforeChange() == null);
+}
+
+test "the background hint's element types are not the font element (the hint slot holds one kind)" {
+    const resource_loading = @import("resource_loading.zig");
+    for ([_][]const u8{ "body", "table", "thead", "tbody", "tfoot", "tr", "td", "th" }) |name| {
+        try std.testing.expect(resource_loading.hasBackgroundHint(name));
+    }
+    try std.testing.expect(!resource_loading.hasBackgroundHint("font"));
 }

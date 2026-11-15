@@ -25,6 +25,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const log = std.log.scoped(.browsing_context);
 const infra = @import("infra");
 const cookiestore = @import("cookiestore");
 const clock = @import("clock");
@@ -105,8 +106,12 @@ pub const Navigables = struct {
     allocator: Allocator,
     /// Every browsing context not yet freed, for `ofWindow` and `byId`.
     live: std.ArrayListUnmanaged(*BrowsingContext) = .empty,
-    /// Contexts discarded by their container while a Window may still point
-    /// at them (`BrowsingContext.discard`); freed together by `freeRetired`.
+    /// The Browser-end net, which must stay empty: a context is freed when
+    /// its owner released it and no Window holds it
+    /// (`BrowsingContext.window_holds`), never kept here. It once held every
+    /// context a container discarded while a Window might still read it,
+    /// freed only at the Browser's end (`freeRetired`): one per removed
+    /// iframe for the Browser's whole life (lane rep1 b2).
     retired: std.ArrayListUnmanaged(*BrowsingContext) = .empty,
     /// The Browser's navigables that this engine made content for - an
     /// iframe's, a popup's, the host page's (`IFrameIntegration`, made and
@@ -203,15 +208,24 @@ pub const Navigables = struct {
         return false;
     }
 
-    /// Free every retired context of this Browser. Its teardown only, after
-    /// its last Window is gone - a retired context is exactly one a Window
-    /// may still read. Another Browser's retired contexts are its own.
+    /// The Browser's teardown, after its last Window is gone: the net for a
+    /// context whose owner released it and whose Window holds were never all
+    /// released - a missed release, reported (log.err, which fails a test)
+    /// and freed. Normally there is none: the last hold's release frees it.
+    /// Another Browser's contexts are its own.
     pub fn freeRetired(self: *Navigables) void {
-        // A retired context leaves `live` as it is freed: take the list first.
-        var retired = self.retired;
-        self.retired = .empty;
-        for (retired.items) |ctx| ctx.deinit();
-        retired.deinit(self.allocator);
+        var released: std.ArrayListUnmanaged(*BrowsingContext) = .empty;
+        defer released.deinit(self.allocator);
+        for (self.live.items) |ctx| {
+            if (ctx.owner_released) released.append(self.allocator, ctx) catch {};
+        }
+        for (self.retired.items) |ctx| {
+            if (!ctx.owner_released) released.append(self.allocator, ctx) catch {};
+        }
+        self.retired.clearAndFree(self.allocator);
+        if (released.items.len != 0) log.err("{d} browsing context(s) outlived their owner and every Window that held them: a Window hold was not released", .{released.items.len});
+        // A context leaves `live` as it is freed: the list was taken first.
+        for (released.items) |ctx| ctx.deinit();
     }
 
     /// The browsing context whose active window is `window`, if one is live.
@@ -458,8 +472,21 @@ pub const BrowsingContext = struct {
 
     /// The container discarded this context while a Window still pointed at
     /// it (script can hold `iframe.contentWindow` past `iframe.remove()`), so it
-    /// was retired rather than freed. See `discard` and `freeRetired`.
+    /// lives on for that Window only. See `discard` and `window_holds`.
     orphaned: bool = false,
+
+    /// The Windows that read this context and do not own it - each Window it
+    /// was shown in (Window's InternalState.browsing_context) that has not
+    /// ended: counted, the refcount shape of the DOM's (src/AGENTS.md "DOM
+    /// lifetime: reference counting"). A Window holds it from the moment it
+    /// shows it (`holdForWindow`) until its own end (`releaseFromWindow`).
+    window_holds: u32 = 0,
+
+    /// Its owner - an iframe's or a popup's navigable record
+    /// (IFrameIntegration), or the host page's traversable record - let it
+    /// go (`releaseByOwner`, `discard`). It is freed when this is set and no
+    /// Window holds it, whichever comes last.
+    owner_released: bool = false,
 
     /// The traversable navigable's session history, on a top-level context
     /// (see `jointHistory`). Owned.
@@ -623,23 +650,43 @@ pub const BrowsingContext = struct {
     /// navigable"): it leaves its parent, closes, and lets go of its children -
     /// a discarded navigable has none - so a Window that script still holds
     /// reads `closed` true and `length` 0. Returns whether the caller may free
-    /// it now. If a Window was ever active in it, it is retired instead:
-    /// freeing it here left `w.length` reading a freed child list (an @intCast
-    /// panic in Window.get_length), and no Window is told when its context
-    /// goes, so the only safe time to free it is when no Window is left
-    /// (`freeRetired`).
+    /// it now: when no Window holds it. Otherwise its owner has released it,
+    /// and the last Window's end frees it (`releaseFromWindow`): freeing it
+    /// here left `w.length` reading a freed child list (an @intCast panic in
+    /// Window.get_length), and keeping it until the Browser's end kept one
+    /// per removed iframe for the Browser's whole life.
     pub fn discard(self: *BrowsingContext) bool {
         self.container = null;
         self.removeFromParent();
         self.close();
         self.releaseChildren();
-        if (self.active_window == null) return true;
+        if (self.window_holds == 0) return true;
         self.orphaned = true;
-        // On its Browser's list, freed with the Browser's other retired
-        // contexts (`Navigables.freeRetired`). On OOM - or with the list
-        // already ended - leak rather than free under a reader.
-        if (self.navigables) |navigables| navigables.retired.append(navigables.allocator, self) catch {};
+        self.owner_released = true;
         return false;
+    }
+
+    /// A Window shows this context and reads it from now on, until its end.
+    pub fn holdForWindow(self: *BrowsingContext) void {
+        self.window_holds += 1;
+    }
+
+    /// A Window that held this context ended: the context is freed if its
+    /// owner released it and this was the last hold. Returns whether it was
+    /// freed - the caller reads nothing of it then.
+    pub fn releaseFromWindow(self: *BrowsingContext) bool {
+        std.debug.assert(self.window_holds > 0);
+        self.window_holds -= 1;
+        if (self.window_holds != 0 or !self.owner_released) return false;
+        self.deinit();
+        return true;
+    }
+
+    /// The owner lets go: freed now if no Window holds it, else discarded
+    /// (closed, out of the tree) and freed by the last Window's end.
+    pub fn releaseByOwner(self: *BrowsingContext) void {
+        if (self.window_holds == 0) return self.deinit();
+        _ = self.discard();
     }
 
     /// Deinitialize and free resources
@@ -929,7 +976,10 @@ pub const BrowsingContext = struct {
         self.target_name = "";
         if (self.navigables) |navigables| {
             for (navigables.contexts()) |other| {
-                if (other != self and other.opener == self) other.opener = null;
+                // Disowned, not only unlinked: Window's opener getter reads
+                // `disowned` before the opener Window it kept from open(),
+                // which would still answer the old Window.
+                if (other != self and other.opener == self) other.disown();
             }
         }
     }

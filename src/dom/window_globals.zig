@@ -34,11 +34,6 @@ pub const Implementation = struct {
     /// another owner keeps), its active window from here on, freeing the one
     /// Window.init made for it.
     adopt_browsing_context: *const fn (window: *runtime.Instance, browsing_context: *anyopaque) void,
-    /// The popups `from` opened (window.open's auxiliary navigables, which a
-    /// Window keeps) are `to`'s from here, and the realm their realms are
-    /// made under is `to`'s: a navigation gave the opener's navigable the new
-    /// Window `to` (lane newwin1, B7).
-    move_auxiliary_navigables: *const fn (from: *runtime.Instance, to: *runtime.Instance) void,
     /// Set `window`'s current event (DOM 2.3: "Each Window object has an
     /// associated current event") to `event`, returning the previous one -
     /// DOM's inner invoke, around each listener it calls in that Window's
@@ -85,12 +80,6 @@ pub fn releaseBrowsingContext(window: *runtime.Instance) ?*anyopaque {
 pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopaque) void {
     const impl = implementation.get() orelse return;
     impl.adopt_browsing_context(window, browsing_context);
-}
-
-/// See Implementation.move_auxiliary_navigables.
-pub fn moveAuxiliaryNavigables(from: *runtime.Instance, to: *runtime.Instance) void {
-    const impl = implementation.get() orelse return;
-    impl.move_auxiliary_navigables(from, to);
 }
 
 /// See Implementation.swap_current_event. With no Window installed nothing

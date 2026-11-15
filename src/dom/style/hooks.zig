@@ -4,7 +4,7 @@
 //! start, from its installHooks (docs/instances.md); none of them is named
 //! here (AGENTS.md "The impls boundary").
 //!
-//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, HTMLLinkElement, ProcessingInstruction, MediaQueryList, StyleSheet, CSSRule
+//! lint-impls: hook for Document, ShadowRoot, Element, HTMLStyleElement, SVGStyleElement, HTMLLinkElement, ProcessingInstruction, MediaQueryList, StyleSheet, CSSRule
 //! lint-impls: hook for FontFace, FontFaceSet, HTMLInputElement, HTMLTextAreaElement
 //! lint-impls: hook for CSSStyleValue, StylePropertyMapReadOnly
 
@@ -39,6 +39,8 @@ pub const Hooks = struct {
     textarea_style_state_created: ?*const fn (element: *runtime.Instance) void = null,
     /// A style element: the CSS style sheet associated with it, if any.
     style_sheet_of: ?*const fn (element: *runtime.Instance) ?*sheet.SheetRecord = null,
+    /// An SVG style element (SVG 2 15.3): likewise.
+    svg_style_sheet_of: ?*const fn (element: *runtime.Instance) ?*sheet.SheetRecord = null,
     /// A link element: likewise.
     link_sheet_of: ?*const fn (element: *runtime.Instance) ?*sheet.SheetRecord = null,
     /// A link element: its style sheet's resource arrived (HTML "process
@@ -123,10 +125,12 @@ pub fn controlStyleStateCreated(element: *runtime.Instance) void {
     if (hooks.read().textarea_style_state_created) |f| f(element);
 }
 
-/// The CSS style sheet `owner` - a style or a link element - is associated
+/// The CSS style sheet `owner` - a style element (HTML's or SVG's) or a link
+/// element - is associated
 /// with, if any.
 pub fn sheetOf(owner: *runtime.Instance) ?*sheet.SheetRecord {
     if (hooks.read().style_sheet_of) |f| if (f(owner)) |record| return record;
+    if (hooks.read().svg_style_sheet_of) |f| if (f(owner)) |record| return record;
     if (hooks.read().link_sheet_of) |f| if (f(owner)) |record| return record;
     if (hooks.read().pi_sheet_of) |f| if (f(owner)) |record| return record;
     return null;

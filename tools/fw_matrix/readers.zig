@@ -164,13 +164,19 @@ fn oneLine(arena: Allocator, js: []const u8) ![]const u8 {
 
 /// The console's input for one page: the wait, the read, `.exit`.
 pub fn consoleInput(arena: Allocator, reader: Reader, budget_ms: u64, stall_ms: u64) ![]const u8 {
+    // Jasmine's report is its console output: the console only keeps the
+    // page open for its budget, and the harness ends it once the report is
+    // printed (jasmineEnded).
+    if (reader == .jasmine_console) return std.fmt.allocPrint(arena, "await new Promise((resolve) => setTimeout(resolve, {d}))\n.exit\n", .{budget_ms});
     const wait_src = switch (reader) {
         .qunit => qunit_wait,
         .mocha => mocha_wait,
+        .jasmine_console => unreachable,
     };
     const read_src = switch (reader) {
         .qunit => qunit_read,
         .mocha => mocha_read,
+        .jasmine_console => unreachable,
     };
     const b = try std.fmt.allocPrint(arena, "{d}", .{budget_ms});
     const s = try std.fmt.allocPrint(arena, "{d}", .{stall_ms});
@@ -219,6 +225,10 @@ pub const PageResult = struct {
     errors: []const []const u8,
     resources: []const []const u8,
     user_agent: []const u8,
+    /// Tests the framework counted but did not name (Jasmine's console
+    /// reporter prints a dot per passed spec, a star per pending one).
+    unnamed_passed: u32 = 0,
+    unnamed_pending: u32 = 0,
 };
 
 pub const ParseError = error{ OutOfMemory, BadReport };
@@ -390,6 +400,7 @@ pub fn parse(arena: Allocator, reader: Reader, json: []const u8) ParseError!Page
     return switch (reader) {
         .qunit => parseQUnit(arena, json),
         .mocha => parseMocha(arena, json),
+        .jasmine_console => parseJasmineConsole(arena, json),
     };
 }
 
@@ -413,6 +424,9 @@ pub fn countProblems(arena: Allocator, reader: Reader, r: PageResult) ![]const [
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} tests completed; its list shows {d}", .{ n, all }));
             if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "QUnit's summary says {d} failed; its list shows {d}", .{ n, fail }));
         },
+        .jasmine_console => {
+            if (r.reported_failed) |n| if (n != fail) try out.append(arena, try std.fmt.allocPrint(arena, "Jasmine's summary says {d} failures; its report names {d}", .{ n, fail }));
+        },
         .mocha => {
             if (r.reported_total) |n| if (n != all) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha selects {d} tests; its report lists {d}", .{ n, all }));
             if (r.reported_passed) |n| if (n != pass) try out.append(arena, try std.fmt.allocPrint(arena, "Mocha's stats say {d} passes; its report lists {d}", .{ n, pass }));
@@ -429,8 +443,9 @@ test "the console input: three lines, the budget and stall filled in, no newline
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
-    for ([_]Reader{ .qunit, .mocha }) |reader| {
+    for ([_]Reader{ .qunit, .mocha, .jasmine_console }) |reader| {
         const input = try consoleInput(a, reader, 900000, 150000);
+        if (reader == .jasmine_console) continue;
         try testing.expectEqual(@as(usize, 3), std.mem.count(u8, input, "\n"));
         try testing.expect(std.mem.endsWith(u8, input, "\n.exit\n"));
         try testing.expect(std.mem.indexOf(u8, input, "__") == null);
@@ -519,4 +534,909 @@ test "Mocha: full titles from the suite path, pending as the project's skip, hoo
     try testing.expectEqual(@as(usize, 0), (try countProblems(a, .mocha, r)).len);
     const wrong = try std.mem.replaceOwned(u8, a, mocha_report, "\"passes\":2", "\"passes\":3");
     try testing.expectEqual(@as(usize, 1), (try countProblems(a, .mocha, try parseMocha(a, wrong))).len);
+}
+
+// ---------------------------------------------------------------------------
+// Chrome, for the comparison column: an in-page QUnit suite with QUnit's own
+// TAP reporter on (the TodoMVC port sets QUnit.config.reporters.tap) prints
+// its run on the console, and headless Chrome started with
+// `--enable-logging=stderr --log-level=0` writes each console message to its
+// stderr as `[...:INFO:CONSOLE:<n>] "<message>", source: <url> (<n>)`, a
+// message's own newlines kept (lesson workflow-headless-chromes-console-log-
+// carries-a-pages-tap.md). QUnit 2.24's TapReporter: "ok N <full name>",
+// "ok N <full name> # SKIP", "not ok N <full name> # TODO", "not ok N <full
+// name>" then a YAML block per failed assertion ("  message: ..."), and at
+// the end "1..T", "# pass P", "# skip S", "# todo D", "# fail F" - some
+// parts coloured with ANSI escapes. A full name is the module path and the
+// test's name joined by " > ".
+
+/// The console messages of a Chrome stderr log, in order, ANSI escapes
+/// removed (arena-owned).
+pub fn chromeConsoleMessages(arena: Allocator, log: []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    var current: ?std.ArrayList(u8) = null;
+    var it = std.mem.splitScalar(u8, log, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, "\r");
+        var text: []const u8 = line;
+        if (current == null) {
+            const tag = std.mem.indexOf(u8, line, ":CONSOLE") orelse continue;
+            const open = std.mem.indexOfPos(u8, line, tag, "] \"") orelse continue;
+            current = .empty;
+            text = line[open + 3 ..];
+        } else try current.?.append(arena, '\n');
+        if (std.mem.lastIndexOf(u8, text, "\", source: ")) |end| {
+            try current.?.appendSlice(arena, text[0..end]);
+            try out.append(arena, try stripAnsi(arena, current.?.items));
+            current = null;
+        } else try current.?.appendSlice(arena, text);
+    }
+    return out.items;
+}
+
+fn stripAnsi(arena: Allocator, s: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < s.len) {
+        if (s[i] == 0x1b and i + 1 < s.len and s[i + 1] == '[') {
+            var j = i + 2;
+            while (j < s.len and (std.ascii.isDigit(s[j]) or s[j] == ';')) j += 1;
+            i = if (j < s.len) j + 1 else j;
+            continue;
+        }
+        try out.append(arena, s[i]);
+        i += 1;
+    }
+    return out.items;
+}
+
+/// The run's last line has been printed: "# fail F" after the plan.
+pub fn tapEnded(arena: Allocator, log: []const u8) !bool {
+    var plan = false;
+    for (try chromeConsoleMessages(arena, log)) |m| {
+        if (std.mem.startsWith(u8, m, "1..")) plan = true;
+        if (plan and std.mem.startsWith(u8, m, "# fail ")) return true;
+    }
+    return false;
+}
+
+/// "Module > name": the module path before the last " > " (a nested
+/// module's name is its path joined by " > " in QUnit too), as QUnit's id
+/// "<module>: <name>".
+fn tapTest(arena: Allocator, full: []const u8, status: journal.Status, skip: bool) !Reported {
+    const cut = std.mem.lastIndexOf(u8, full, " > ");
+    const module = if (cut) |c| full[0..c] else "";
+    const name = if (cut) |c| full[c + 3 ..] else full;
+    return .{ .module = module, .name = name, .id = try std.fmt.allocPrint(arena, "{s}: {s}", .{ module, name }), .status = status, .project_skip = skip };
+}
+
+/// A page's result from QUnit's TAP in a Chrome stderr log.
+pub fn parseChromeTap(arena: Allocator, log: []const u8) ParseError!PageResult {
+    var tests: std.ArrayList(Reported) = .empty;
+    var defined: std.ArrayList([]const u8) = .empty;
+    var errors: std.ArrayList([]const u8) = .empty;
+    var total: ?u32 = null;
+    var failed: ?u32 = null;
+    // The test a following YAML block belongs to.
+    var last_fail: ?usize = null;
+    var global = false;
+    for (try chromeConsoleMessages(arena, log)) |m| {
+        if (std.mem.startsWith(u8, m, "ok ") or std.mem.startsWith(u8, m, "not ok ")) {
+            const ok = m[0] == 'o';
+            const prefix: []const u8 = if (ok) "ok " else "not ok ";
+            var rest = m[prefix.len..];
+            // The test's number.
+            while (rest.len > 0 and std.ascii.isDigit(rest[0])) rest = rest[1..];
+            rest = std.mem.trimStart(u8, rest, " ");
+            last_fail = null;
+            global = false;
+            if (!ok and std.mem.eql(u8, rest, "global failure")) {
+                global = true;
+                continue;
+            }
+            var status: journal.Status = if (ok) .PASS else .FAIL;
+            var skip = false;
+            if (std.mem.endsWith(u8, rest, " # SKIP")) {
+                rest = rest[0 .. rest.len - " # SKIP".len];
+                status = .NOTRUN;
+                skip = true;
+            } else if (std.mem.endsWith(u8, rest, " # TODO")) {
+                // A todo test failing as it is expected to: QUnit does not
+                // count it failed.
+                rest = rest[0 .. rest.len - " # TODO".len];
+                status = .PASS;
+            }
+            const t = try tapTest(arena, rest, status, skip);
+            try defined.append(arena, t.id);
+            try tests.append(arena, t);
+            if (status == .FAIL) last_fail = tests.items.len - 1;
+            continue;
+        }
+        if (std.mem.indexOf(u8, m, "  message: ")) |at| {
+            const value_end = std.mem.indexOfScalarPos(u8, m, at, '\n') orelse m.len;
+            const value = std.mem.trim(u8, m[at + "  message: ".len .. value_end], " \"");
+            if (global) {
+                if (errors.items.len < journal.max_errors) try errors.append(arena, value);
+            } else if (last_fail) |i| {
+                if (tests.items[i].message == null) tests.items[i].message = value;
+            }
+            continue;
+        }
+        if (std.mem.startsWith(u8, m, "1..")) total = std.fmt.parseInt(u32, m[3..], 10) catch null;
+        if (std.mem.startsWith(u8, m, "# fail ")) failed = std.fmt.parseInt(u32, std.mem.trim(u8, m["# fail ".len..], " "), 10) catch null;
+    }
+    for (tests.items) |*t| if (t.status == .FAIL and t.message == null) {
+        t.message = "(no failed assertion shown)";
+    };
+    return .{
+        .tests = tests.items,
+        .defined = defined.items,
+        .reported_total = total,
+        .reported_failed = failed,
+        .finished = total != null and failed != null,
+        .errors = errors.items,
+        .resources = &.{},
+        .user_agent = "",
+    };
+}
+
+const chrome_log =
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"TAP version 13\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"ok 1 When page is initially opened > should focus on the todo input field\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "some other line\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"not ok 2 \x1b[31mNew Todo > should allow me to add todo items\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"  ---\n  message: \"expected 2 items\"\n  severity: failed\n  actual  : 1\n  ...\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"ok 3 \x1b[33mPersistence > should persist its data\x1b[39m # SKIP\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"1..3\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# pass 1\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n" ++
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# \x1b[33mskip 1\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n";
+const chrome_log_end =
+    "[1:2:1114/130000.000:INFO:CONSOLE:23] \"# \x1b[31mfail 1\x1b[39m\", source: http://127.0.0.1:1/external/qunit/qunit.js (23)\n";
+
+test "Chrome's stderr: QUnit's TAP read back as QUnit's ids, a failure's first message, skips, the plan and the end" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    // Not ended until "# fail" follows the plan.
+    try testing.expect(!try tapEnded(a, chrome_log));
+    try testing.expect(try tapEnded(a, chrome_log ++ chrome_log_end));
+
+    const msgs = try chromeConsoleMessages(a, chrome_log);
+    try testing.expectEqual(@as(usize, 8), msgs.len);
+    // A message's own newlines are kept; the colour is gone.
+    try testing.expect(std.mem.indexOf(u8, msgs[3], "\n  severity: failed\n") != null);
+    try testing.expectEqualStrings("not ok 2 New Todo > should allow me to add todo items", msgs[2]);
+
+    const r = try parseChromeTap(a, chrome_log ++ chrome_log_end);
+    try testing.expectEqual(@as(usize, 3), r.tests.len);
+    try testing.expectEqualStrings("When page is initially opened: should focus on the todo input field", r.tests[0].id);
+    try testing.expectEqualStrings("When page is initially opened", r.tests[0].module);
+    try testing.expectEqual(journal.Status.FAIL, r.tests[1].status);
+    try testing.expectEqualStrings("expected 2 items", r.tests[1].message.?);
+    try testing.expect(r.tests[2].project_skip);
+    try testing.expectEqualStrings("Persistence: should persist its data", r.tests[2].id);
+    try testing.expect(r.finished);
+    try testing.expectEqual(@as(?u32, 3), r.reported_total);
+    try testing.expectEqual(@as(?u32, 1), r.reported_failed);
+    try testing.expectEqual(@as(usize, 3), r.defined.len);
+    try testing.expectEqual(@as(usize, 0), (try countProblems(a, .qunit, r)).len);
+    // Cut before its end: not finished.
+    try testing.expect(!(try parseChromeTap(a, chrome_log)).finished);
+}
+
+// ---------------------------------------------------------------------------
+// Jasmine as web-test-runner runs it in its manual mode (Angular's own
+// `<target>_debug` targets; rules_browsers wtr/wtr.config.mjs): with no
+// session the page is a debug page, and web-test-runner-jasmine 0.2.0 adds
+// its console reporter, which prints the whole run in one console.log at
+// the end - a character per spec ("." passed, "F" failed, "*" pending), then
+// "Failures:" with "N) <full name>" and each failed expectation's message
+// and stack indented by three spaces, then "N specs, M failures[, K
+// pending]" - coloured with ANSI escapes. Passed specs are counted, not
+// named: the project's own output names only failures.
+
+const JasmineSummary = struct { specs: u32, failures: u32, pending: u32, end: usize };
+
+/// The last "N spec(s), M failure(s)[, K pending]" in `text`.
+fn jasmineSummary(text: []const u8) ?JasmineSummary {
+    var pos: usize = text.len;
+    while (std.mem.lastIndexOf(u8, text[0..pos], " spec")) |at| : (pos = at) {
+        var start = at;
+        while (start > 0 and std.ascii.isDigit(text[start - 1])) start -= 1;
+        if (start == at) continue;
+        const specs = std.fmt.parseInt(u32, text[start..at], 10) catch continue;
+        var rest = text[at + " spec".len ..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        if (!std.mem.startsWith(u8, rest, ", ")) continue;
+        rest = rest[2..];
+        const failures = leadingNumber(rest) orelse continue;
+        var n: usize = 0;
+        while (n < rest.len and std.ascii.isDigit(rest[n])) n += 1;
+        rest = rest[n..];
+        if (!std.mem.startsWith(u8, rest, " failure")) continue;
+        rest = rest[" failure".len..];
+        if (std.mem.startsWith(u8, rest, "s")) rest = rest[1..];
+        var pending: u32 = 0;
+        if (std.mem.startsWith(u8, rest, ", ")) if (leadingNumber(rest[2..])) |p| {
+            pending = @intCast(p);
+        };
+        const end = (text.len - rest.len);
+        return .{ .specs = specs, .failures = @intCast(failures), .pending = pending, .end = end };
+    }
+    return null;
+}
+
+/// The run has ended: its summary is in the console's output.
+pub fn jasmineEnded(arena: Allocator, output: []const u8) !bool {
+    return jasmineSummary(try stripAnsi(arena, output)) != null;
+}
+
+/// A page's result from the Jasmine console reporter's output: the failed
+/// specs by name with their first message; the passed and pending ones as
+/// counts.
+pub fn parseJasmineConsole(arena: Allocator, output: []const u8) ParseError!PageResult {
+    const text = try stripAnsi(arena, output);
+    const summary = jasmineSummary(text) orelse return error.BadReport;
+    var tests: std.ArrayList(Reported) = .empty;
+    // The failures block of the same report: after the last "Failures:"
+    // line before the summary. A console may indent a message's lines after
+    // its first (Crane's prints each continuation line indented by two
+    // spaces), so lines are read with their leading spaces trimmed: a
+    // failure is "N) <full name>", numbered from 1 in order; its message is
+    // the first non-empty line after it.
+    const head = text[0..summary.end];
+    var block_start: ?usize = null;
+    {
+        var pos: usize = 0;
+        var it = std.mem.splitScalar(u8, head, '\n');
+        while (it.next()) |line| : (pos += line.len + 1) {
+            if (std.mem.eql(u8, std.mem.trim(u8, line, " \t\r"), "Failures:")) block_start = pos + line.len + 1;
+        }
+    }
+    if (block_start) |at| if (at <= head.len) {
+        var it = std.mem.splitScalar(u8, head[at..], '\n');
+        var current: ?usize = null;
+        var expected: u32 = 1;
+        while (it.next()) |line| {
+            const t = std.mem.trim(u8, line, " \t\r");
+            const num = std.fmt.allocPrint(arena, "{d}) ", .{expected}) catch return error.OutOfMemory;
+            if (std.mem.startsWith(u8, t, num)) {
+                const name = t[num.len..];
+                try tests.append(arena, .{ .module = "", .name = name, .id = name, .status = .FAIL });
+                current = tests.items.len - 1;
+                expected += 1;
+                continue;
+            }
+            if (current) |i| if (tests.items[i].message == null and t.len > 0) {
+                tests.items[i].message = t;
+            };
+        }
+    };
+    for (tests.items) |*t| if (t.message == null) {
+        t.message = "(no failed expectation shown)";
+    };
+    const passed = summary.specs -| summary.failures -| summary.pending;
+    return .{
+        .tests = tests.items,
+        .defined = &.{},
+        .reported_total = summary.specs,
+        .reported_failed = summary.failures,
+        .finished = true,
+        .errors = &.{},
+        .resources = &.{},
+        .user_agent = "",
+        .unnamed_passed = passed,
+        .unnamed_pending = summary.pending,
+    };
+}
+
+const jasmine_output =
+    "Jasmine randomize seed: 41\n" ++
+    "\x1b[32m.\x1b[39m\x1b[32m.\x1b[39m\x1b[31mF\x1b[39m\x1b[33m*\x1b[39m\x1b[32m.\x1b[39m\n\n" ++
+    "Failures:\n" ++
+    "1) HttpClient should send a request\n" ++
+    "\x1b[31m   Expected 1 to be 2.\n\x1b[39m   Error: Expected 1 to be 2.\n    at <Jasmine>\n\n" ++
+    "5 specs, 1 failure, 1 pending\n";
+
+test "Jasmine's console reporter: the failures by name with their message, the passes and pending as counts" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    try testing.expect(try jasmineEnded(a, jasmine_output));
+    try testing.expect(!try jasmineEnded(a, jasmine_output[0..60]));
+    const r = try parseJasmineConsole(a, jasmine_output);
+    try testing.expectEqual(@as(usize, 1), r.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", r.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", r.tests[0].message.?);
+    try testing.expectEqual(@as(?u32, 5), r.reported_total);
+    try testing.expectEqual(@as(?u32, 1), r.reported_failed);
+    try testing.expectEqual(@as(u32, 3), r.unnamed_passed);
+    try testing.expectEqual(@as(u32, 1), r.unnamed_pending);
+    // As Crane's console prints a multi-line message: every line after the
+    // first indented by two spaces.
+    const indented = try std.mem.replaceOwned(u8, a, jasmine_output, "\n", "\n  ");
+    const ri = try parseJasmineConsole(a, indented);
+    try testing.expectEqual(@as(usize, 1), ri.tests.len);
+    try testing.expectEqualStrings("HttpClient should send a request", ri.tests[0].id);
+    try testing.expectEqualStrings("Expected 1 to be 2.", ri.tests[0].message.?);
+    try testing.expectEqual(@as(usize, 0), (try countProblems(a, .jasmine_console, ri)).len);
+    // Singular and plural, no pending.
+    const one = try parseJasmineConsole(a, "1 spec, 0 failures\n");
+    try testing.expectEqual(@as(u32, 1), one.unnamed_passed);
+    try testing.expectEqual(@as(usize, 0), one.tests.len);
+    try testing.expectError(error.BadReport, parseJasmineConsole(a, "no summary here"));
+}
+
+// ============================================================================
+// A browser's run by the project's own runner, read from that runner's log
+// (`fw_matrix import`; the integrator, 2026-11-14: every name the report
+// shows comes from a run). Two runners:
+//
+//   jquery-test-runner (jtr, jQuery's CI: `jtr -b chrome --headless`): a dot
+//   per passed test; per run "Tests finished in <time> at <url> in <browser>
+//   (<id>)..." and "[F failed. ]T passed. S skipped." - reporter.js
+//   reportEnd prints QUnit's testCounts.total as "passed", so the passes are
+//   T - F - S; at the end "N test(s) failed." and the failures numbered from
+//   1, each "<i>. <module>: <name>", "Test failed on <browser> (<id>).", a
+//   blank line, then its assertions (run.js, reporter.js reportTest).
+//
+//   Bazel running web-test-runner (Angular's `bazel test <name>_chromium`):
+//   per target "<label>  PASSED|FAILED in <s>s" and, read from each target's
+//   test.log, "<label>\t<P> passed, <F> failed[, <S> skipped]" - counts
+//   only, no name.
+// ============================================================================
+
+/// One page (jtr: one test URL; Bazel: one target) of a runner's log.
+pub const LogPage = struct {
+    /// jtr: the URL it opened; Bazel: the target's label.
+    where: []const u8,
+    /// The runner's own word for the page's end, when it gives one apart
+    /// from the counts (Bazel: "PASSED", "FAILED").
+    runner_status: ?[]const u8 = null,
+    passed: u32,
+    failed: u32,
+    skipped: u32,
+    /// The failures it names, with their first assertion.
+    failures: []const Reported = &.{},
+    wall_ms: u64 = 0,
+};
+
+/// "25s 87ms", "1m 2s 3ms", "950ms" (jtr's lib/prettyMs.js) in milliseconds.
+fn prettyMsValue(s: []const u8) ?u64 {
+    var total: u64 = 0;
+    var any = false;
+    var it = std.mem.tokenizeScalar(u8, s, ' ');
+    while (it.next()) |part| {
+        var n: usize = 0;
+        while (n < part.len and std.ascii.isDigit(part[n])) n += 1;
+        if (n == 0) return null;
+        const v = std.fmt.parseInt(u64, part[0..n], 10) catch return null;
+        const unit = part[n..];
+        const ms: u64 = if (std.mem.eql(u8, unit, "ms")) 1 else if (std.mem.eql(u8, unit, "s")) 1000 else if (std.mem.eql(u8, unit, "m")) 60_000 else if (std.mem.eql(u8, unit, "h")) 3_600_000 else return null;
+        total += v * ms;
+        any = true;
+    }
+    return if (any) total else null;
+}
+
+/// "[F failed. ]T passed. S skipped." as failed, total, skipped.
+fn jtrCounts(line: []const u8) ?struct { failed: u32, total: u32, skipped: u32 } {
+    var rest = line;
+    var failed: u32 = 0;
+    if (std.mem.indexOf(u8, rest, " failed. ")) |at| {
+        failed = std.fmt.parseInt(u32, rest[0..at], 10) catch return null;
+        rest = rest[at + " failed. ".len ..];
+    }
+    const p = std.mem.indexOf(u8, rest, " passed. ") orelse return null;
+    const total = std.fmt.parseInt(u32, rest[0..p], 10) catch return null;
+    rest = rest[p + " passed. ".len ..];
+    if (!std.mem.endsWith(u8, rest, " skipped.")) return null;
+    const skipped = std.fmt.parseInt(u32, rest[0 .. rest.len - " skipped.".len], 10) catch return null;
+    if (failed + skipped > total) return null;
+    return .{ .failed = failed, .total = total, .skipped = skipped };
+}
+
+/// A failure's first assertion: the lines after "Test failed on ..." up to
+/// the first blank line after some text, stack lines ("    at ...") left out.
+fn jtrMessage(arena: Allocator, body: []const []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    for (body) |line| {
+        const t = std.mem.trimEnd(u8, line, " \r");
+        if (t.len == 0) {
+            if (out.items.len > 0) break;
+            continue;
+        }
+        if (std.mem.startsWith(u8, std.mem.trimStart(u8, t, " "), "at ")) continue;
+        if (out.items.len > 0) try out.append(arena, '\n');
+        try out.appendSlice(arena, t);
+    }
+    return if (out.items.len == 0) "(no failed assertion shown)" else out.items;
+}
+
+/// jquery-test-runner's log of one run: its page, its counts and its named
+/// failures. Several "Tests finished" runs in one log are added up, at the
+/// first one's URL. Refused: no summary, or a failure count its list does
+/// not match.
+pub fn parseJtrLog(arena: Allocator, log: []const u8) ParseError!LogPage {
+    const text = try stripAnsi(arena, log);
+    var lines: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.splitScalar(u8, text, '\n');
+    while (it.next()) |l| try lines.append(arena, std.mem.trimEnd(u8, l, "\r"));
+    var page: LogPage = .{ .where = "", .passed = 0, .failed = 0, .skipped = 0 };
+    var runs: u32 = 0;
+    var listed: ?usize = null;
+    for (lines.items, 0..) |line, i| {
+        if (std.mem.startsWith(u8, line, "Tests finished in ")) {
+            const at = std.mem.indexOf(u8, line, " at ") orelse return error.BadReport;
+            const in = std.mem.indexOfPos(u8, line, at, " in ") orelse return error.BadReport;
+            const ms = prettyMsValue(line["Tests finished in ".len..at]) orelse return error.BadReport;
+            var j = i + 1;
+            while (j < lines.items.len and lines.items[j].len == 0) j += 1;
+            if (j == lines.items.len) return error.BadReport;
+            const c = jtrCounts(lines.items[j]) orelse return error.BadReport;
+            if (runs == 0) page.where = line[at + " at ".len .. in];
+            runs += 1;
+            page.failed += c.failed;
+            page.skipped += c.skipped;
+            page.passed += c.total - c.failed - c.skipped;
+            page.wall_ms += ms;
+            continue;
+        }
+        if (runs > 0 and listed == null and std.mem.endsWith(u8, line, " failed.") and (std.mem.indexOf(u8, line, " tests failed.") != null or std.mem.indexOf(u8, line, " test failed.") != null)) listed = i + 1;
+    }
+    if (runs == 0) return error.BadReport;
+    var failures: std.ArrayList(Reported) = .empty;
+    if (listed) |start| {
+        // "<i>. <module>: <name>" followed by "Test failed on ...".
+        var starts: std.ArrayList(usize) = .empty;
+        var next: u32 = 1;
+        var i = start;
+        while (i + 1 < lines.items.len) : (i += 1) {
+            const prefix = try std.fmt.allocPrint(arena, "{d}. ", .{next});
+            if (std.mem.startsWith(u8, lines.items[i], prefix) and std.mem.startsWith(u8, lines.items[i + 1], "Test failed on ")) {
+                try starts.append(arena, i);
+                next += 1;
+            }
+        }
+        for (starts.items, 0..) |s, k| {
+            var end = if (k + 1 < starts.items.len) starts.items[k + 1] else lines.items.len;
+            // The run's end lines after the last failure.
+            if (k + 1 == starts.items.len) {
+                var e = s + 2;
+                while (e < end) : (e += 1) {
+                    const l = lines.items[e];
+                    if (std.mem.eql(u8, l, "Cleaning up...") or std.mem.startsWith(u8, l, "Leaving browsers") or std.mem.eql(u8, l, "All tests passed!")) {
+                        end = e;
+                        break;
+                    }
+                }
+            }
+            const head = lines.items[s];
+            const full = head[std.mem.indexOfScalar(u8, head, ' ').? + 1 ..];
+            const cut = std.mem.indexOf(u8, full, ": ");
+            try failures.append(arena, .{
+                .module = if (cut) |c| full[0..c] else "",
+                .name = if (cut) |c| full[c + 2 ..] else full,
+                .id = full,
+                .status = .FAIL,
+                .message = try jtrMessage(arena, lines.items[s + 2 .. end]),
+            });
+        }
+    }
+    if (failures.items.len != page.failed) return error.BadReport;
+    page.failures = failures.items;
+    return page;
+}
+
+/// Bazel's per-target lines for a web-test-runner suite: each target's word
+/// and its counts. Refused: a target with one and not the other, or none.
+pub fn parseWtrSummary(arena: Allocator, log: []const u8) ParseError![]const LogPage {
+    const text = try stripAnsi(arena, log);
+    var pages: std.ArrayList(LogPage) = .empty;
+    var statuses: std.ArrayList(struct { []const u8, []const u8, u64 }) = .empty;
+    var it = std.mem.splitScalar(u8, text, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trimEnd(u8, raw, " \r");
+        if (!std.mem.startsWith(u8, line, "//")) continue;
+        if (std.mem.indexOfScalar(u8, line, '\t')) |tab| {
+            // "<label>\t<P> passed, <F> failed[, <S> skipped]"
+            const label = line[0..tab];
+            var parts = std.mem.splitSequence(u8, line[tab + 1 ..], ", ");
+            var counts: [3]?u32 = .{ null, null, 0 };
+            while (parts.next()) |part| {
+                const sp = std.mem.indexOfScalar(u8, part, ' ') orelse return error.BadReport;
+                const n = std.fmt.parseInt(u32, part[0..sp], 10) catch return error.BadReport;
+                const word = part[sp + 1 ..];
+                if (std.mem.eql(u8, word, "passed")) counts[0] = n else if (std.mem.eql(u8, word, "failed")) counts[1] = n else if (std.mem.eql(u8, word, "skipped")) counts[2] = n else return error.BadReport;
+            }
+            for (pages.items) |p| if (std.mem.eql(u8, p.where, label)) return error.BadReport;
+            try pages.append(arena, .{ .where = label, .passed = counts[0] orelse return error.BadReport, .failed = counts[1] orelse return error.BadReport, .skipped = counts[2].? });
+            continue;
+        }
+        // "<label>   PASSED in 1.3s"
+        var words = std.mem.tokenizeScalar(u8, line, ' ');
+        const label = words.next() orelse continue;
+        const word = words.next() orelse continue;
+        if (!std.mem.eql(u8, word, "PASSED") and !std.mem.eql(u8, word, "FAILED")) continue;
+        var ms: u64 = 0;
+        if (words.next()) |in| if (std.mem.eql(u8, in, "in")) if (words.next()) |secs| {
+            if (std.mem.endsWith(u8, secs, "s")) {
+                const v = std.fmt.parseFloat(f64, secs[0 .. secs.len - 1]) catch return error.BadReport;
+                ms = @intFromFloat(@round(v * 1000));
+            }
+        };
+        try statuses.append(arena, .{ label, word, ms });
+    }
+    if (pages.items.len == 0 or pages.items.len != statuses.items.len) return error.BadReport;
+    for (pages.items) |*p| {
+        for (statuses.items) |s| {
+            if (std.mem.eql(u8, s[0], p.where)) {
+                p.runner_status = s[1];
+                p.wall_ms = s[2];
+                break;
+            }
+        } else return error.BadReport;
+    }
+    return pages.items;
+}
+
+const jtr_log =
+    "Server started on port 59941.\n" ++
+    "Driver created for chrome 157.0.8103.78\n" ++
+    ".......\n\n" ++
+    "core: jQuery.parseXML - error reporting\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    "reports error column\n    at Object.<anonymous> (http://localhost:59941/test/unit/core.js:1475:9)\nexpected: \"11\"\nactual: \"10\"\n110\n" ++
+    "......\n\n" ++
+    "Tests finished in 25s 87ms at http://localhost:59941/test/ in Chrome (headless) (bf208f3fb9)...\n" ++
+    "\x1b[31m2\x1b[39m failed. \x1b[32m1147\x1b[39m passed. \x1b[90m1\x1b[39m skipped.\n\n" ++
+    "2 tests failed.\n\n" ++
+    "1. core: jQuery.parseXML - error reporting\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    "reports error column\n    at Object.<anonymous> (http://localhost:59941/test/unit/core.js:1475:9)\nexpected: \"11\"\nactual: \"10\"\n110\n\n" ++
+    "2. selector: pseudo - :(dis|en)abled, optgroup and option\n" ++
+    "Test failed on Chrome (headless) (bf208f3fb9).\n\n" ++
+    ":disabled (#disabled-select-inherit :disabled)\n    at match (http://localhost:59941/test/data/testinit.js:57:9)\nexpected: [\"a\"]\nactual: [\"a\",\"b\"]\n\n" ++
+    ":enabled (#disabled-select-inherit :enabled)\nexpected: [\"c\"]\n" ++
+    "Cleaning up...\nStopped 1 browser.\nServer stopped.\nExited with signal: 1\n";
+
+test "jquery-test-runner's log: the URL, the counts (its 'passed' is QUnit's total), each failure by QUnit's id with its first assertion" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const p = try parseJtrLog(a, jtr_log);
+    try testing.expectEqualStrings("http://localhost:59941/test/", p.where);
+    try testing.expectEqual(@as(u32, 2), p.failed);
+    try testing.expectEqual(@as(u32, 1), p.skipped);
+    try testing.expectEqual(@as(u32, 1144), p.passed);
+    try testing.expectEqual(@as(u64, 25_087), p.wall_ms);
+    try testing.expectEqual(@as(usize, 2), p.failures.len);
+    try testing.expectEqualStrings("core: jQuery.parseXML - error reporting", p.failures[0].id);
+    try testing.expectEqualStrings("core", p.failures[0].module);
+    try testing.expectEqualStrings("jQuery.parseXML - error reporting", p.failures[0].name);
+    try testing.expectEqualStrings("reports error column\nexpected: \"11\"\nactual: \"10\"\n110", p.failures[0].message.?);
+    // The last failure ends at the runner's own end lines.
+    try testing.expectEqualStrings("selector: pseudo - :(dis|en)abled, optgroup and option", p.failures[1].id);
+    try testing.expectEqualStrings(":disabled (#disabled-select-inherit :disabled)\nexpected: [\"a\"]\nactual: [\"a\",\"b\"]", p.failures[1].message.?);
+    // A run that passed prints no failed count and no list.
+    const clean = try parseJtrLog(a, "Tests finished in 950ms at http://localhost:1/test/ in Chrome (headless) (x)...\n5 passed. 0 skipped.\n\nAll tests passed!\n");
+    try testing.expectEqual(@as(u32, 5), clean.passed);
+    try testing.expectEqual(@as(usize, 0), clean.failures.len);
+    // A list that does not match the count, and no summary, are refused.
+    try testing.expectError(error.BadReport, parseJtrLog(a, try std.mem.replaceOwned(u8, a, jtr_log, "\x1b[31m2\x1b[39m failed.", "3 failed.")));
+    try testing.expectError(error.BadReport, parseJtrLog(a, "Server started on port 1.\n"));
+}
+
+const wtr_log =
+    "crane-remote: job pid 68085 on chat2.local\n" ++
+    "INFO: Build completed, 1 test FAILED, 182 total actions\n" ++
+    "//packages/common/test:test_web_chromium                               PASSED in 8.3s\n" ++
+    "//packages/core/test/acceptance:acceptance_web_chromium                FAILED in 15.2s\n" ++
+    "//packages/zone.js/test:browser_test_chromium                          FAILED in 5.6s\n" ++
+    "Executed 3 out of 3 tests: 1 test passes and 2 fail locally.\n" ++
+    "//packages/common/test:test_web_chromium\t681 passed, 0 failed\n\n" ++
+    "//packages/core/test/acceptance:acceptance_web_chromium\t2777 passed, 1 failed, 4 skipped\n\n" ++
+    "//packages/zone.js/test:browser_test_chromium\t513 passed, 0 failed, 24 skipped\n";
+
+test "Bazel's web-test-runner lines: each target's word and counts, no names" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const pages = try parseWtrSummary(a, wtr_log);
+    try testing.expectEqual(@as(usize, 3), pages.len);
+    try testing.expectEqualStrings("//packages/common/test:test_web_chromium", pages[0].where);
+    try testing.expectEqualStrings("PASSED", pages[0].runner_status.?);
+    try testing.expectEqual(@as(u32, 681), pages[0].passed);
+    try testing.expectEqual(@as(u32, 0), pages[0].skipped);
+    try testing.expectEqual(@as(u64, 8_300), pages[0].wall_ms);
+    try testing.expectEqual(@as(u32, 1), pages[1].failed);
+    try testing.expectEqual(@as(u32, 4), pages[1].skipped);
+    try testing.expectEqual(@as(usize, 0), pages[1].failures.len);
+    try testing.expectEqualStrings("FAILED", pages[2].runner_status.?);
+    try testing.expectEqual(@as(u32, 0), pages[2].failed);
+    // A target with counts and no word, or the reverse, is refused.
+    try testing.expectError(error.BadReport, parseWtrSummary(a, wtr_log[0..std.mem.lastIndexOf(u8, wtr_log, "//packages/zone.js/test:browser_test_chromium\t").?]));
+    try testing.expectError(error.BadReport, parseWtrSummary(a, "nothing\n"));
+}
+
+// ============================================================================
+// Cypress's own results (`fw_matrix import --reader=cypress`): the object its
+// Module API's `cypress.run()` resolves with - how TodoMVC's own runner
+// (tests/cya.js) runs each app - written as JSON per app, optionally wrapped
+// as {"framework": <the --env framework value>, "result": <that object>}.
+// Per test: `title` [the spec's describe ("TodoMVC - <framework>"), its
+// context, its name], `state` passed / failed / pending (`this.skip()`: the
+// spec's known issues and skips) / skipped (Mocha ran it not at all: a hook
+// failed earlier in its suite), `displayError` for a failure. The run: its
+// browserName / browserVersion / cypressVersion / startedTestsAt; a run that
+// never started its spec has no tests and, wrapped, a `message`.
+// ============================================================================
+
+pub const CypressState = enum { passed, failed, pending, skipped };
+
+pub const CypressTest = struct {
+    /// The spec's context ("Routing").
+    module: []const u8,
+    name: []const u8,
+    state: CypressState,
+    /// A failure's error, its first line.
+    message: ?[]const u8 = null,
+};
+
+pub const CypressRun = struct {
+    /// The `--env framework=` value: the describe's "TodoMVC - <framework>",
+    /// else the wrapper's.
+    framework: []const u8,
+    browser: []const u8,
+    browser_version: []const u8,
+    cypress_version: []const u8,
+    /// YYYY-MM-DD of startedTestsAt.
+    date: []const u8,
+    tests: []const CypressTest,
+    wall_ms: u64,
+    /// Why the run has no tests (the wrapper's `message`, or Cypress's
+    /// run `error`).
+    run_error: ?[]const u8 = null,
+};
+
+const describe_prefix = "TodoMVC - ";
+
+pub fn parseCypressResults(arena: Allocator, text: []const u8) error{ BadReport, OutOfMemory }!CypressRun {
+    const root = std.json.parseFromSliceLeaky(std.json.Value, arena, text, .{}) catch return error.BadReport;
+    if (root != .object) return error.BadReport;
+    var wrapper_framework: ?[]const u8 = null;
+    var result = root;
+    if (root.object.get("result")) |r| {
+        result = r;
+        if (root.object.get("framework")) |f| if (f == .string) {
+            wrapper_framework = f.string;
+        };
+    }
+    if (result != .object) return error.BadReport;
+    const str = struct {
+        fn get(o: std.json.ObjectMap, k: []const u8) ?[]const u8 {
+            const v = o.get(k) orelse return null;
+            return if (v == .string) v.string else null;
+        }
+    }.get;
+    var tests: std.ArrayList(CypressTest) = .empty;
+    var framework: ?[]const u8 = null;
+    var run_error: ?[]const u8 = if (root.object.get("result") != null) str(result.object, "message") else null;
+    if (result.object.get("runs")) |runs| {
+        if (runs != .array) return error.BadReport;
+        for (runs.array.items) |run| {
+            if (run != .object) return error.BadReport;
+            if (str(run.object, "error")) |e| run_error = e;
+            const ts = run.object.get("tests") orelse continue;
+            if (ts == .null) continue;
+            if (ts != .array) return error.BadReport;
+            for (ts.array.items) |t| {
+                if (t != .object) return error.BadReport;
+                const title = t.object.get("title") orelse return error.BadReport;
+                if (title != .array or title.array.items.len != 3) return error.BadReport;
+                for (title.array.items) |part| if (part != .string) return error.BadReport;
+                const describe = title.array.items[0].string;
+                if (!std.mem.startsWith(u8, describe, describe_prefix)) return error.BadReport;
+                const fw = describe[describe_prefix.len..];
+                if (framework) |f| {
+                    if (!std.mem.eql(u8, f, fw)) return error.BadReport;
+                } else framework = fw;
+                const state = std.meta.stringToEnum(CypressState, str(t.object, "state") orelse return error.BadReport) orelse return error.BadReport;
+                var message: ?[]const u8 = null;
+                if (str(t.object, "displayError")) |e| {
+                    const line = std.mem.trim(u8, e[0 .. std.mem.indexOfScalar(u8, e, '\n') orelse e.len], " \r\t");
+                    message = line;
+                }
+                if (state == .failed and message == null) return error.BadReport;
+                try tests.append(arena, .{ .module = title.array.items[1].string, .name = title.array.items[2].string, .state = state, .message = message });
+            }
+        }
+    }
+    if (framework != null and wrapper_framework != null and !std.mem.eql(u8, framework.?, wrapper_framework.?)) return error.BadReport;
+    if (tests.items.len == 0 and run_error == null) return error.BadReport;
+    const started = str(result.object, "startedTestsAt") orelse "";
+    const wall: u64 = if (result.object.get("totalDuration")) |d| switch (d) {
+        .integer => |i| if (i >= 0) @intCast(i) else 0,
+        .float => |f| if (f >= 0) @intFromFloat(f) else 0,
+        else => 0,
+    } else 0;
+    const date = if (started.len >= 10 and journal.isDate(started[0..10])) started[0..10] else if (tests.items.len == 0) "" else return error.BadReport;
+    return .{
+        .framework = framework orelse wrapper_framework orelse return error.BadReport,
+        .browser = str(result.object, "browserName") orelse "",
+        .browser_version = str(result.object, "browserVersion") orelse "",
+        .cypress_version = str(result.object, "cypressVersion") orelse "",
+        .date = date,
+        .tests = tests.items,
+        .wall_ms = wall,
+        .run_error = run_error,
+    };
+}
+
+const cypress_results =
+    \\{"framework":"jquery/dist","started":"2026-11-14T21:45:00.000Z","result":{
+    \\ "browserName":"chrome-for-testing","browserVersion":"157.0.8103.78","cypressVersion":"15.14.2",
+    \\ "startedTestsAt":"2026-11-14T21:45:01.123Z","totalDuration":27012,"totalTests":4,
+    \\ "runs":[{"error":null,"tests":[
+    \\  {"attempts":[{"state":"passed"}],"displayError":null,"duration":138,"state":"passed","title":["TodoMVC - jquery/dist","When page is initially opened","should focus on the todo input field"]},
+    \\  {"attempts":[{"state":"failed"}],"displayError":"AssertionError: Timed out retrying after 4000ms: expected '<label>' to contain 'feed the cat'\n    at Context.eval (webpack://todomvc/./cypress/e2e/spec.cy.js:568:7)","duration":4100,"state":"failed","title":["TodoMVC - jquery/dist","New Todo","should allow me to add todo items"]},
+    \\  {"attempts":[{"state":"skipped"}],"displayError":null,"duration":0,"state":"skipped","title":["TodoMVC - jquery/dist","New Todo","should clear text input field when an item is added"]},
+    \\  {"attempts":[{"state":"pending"}],"displayError":null,"duration":5,"state":"pending","title":["TodoMVC - jquery/dist","Persistence","should persist its data"]}
+    \\ ]}]}}
+;
+
+test "Cypress's results: every test with its context, state and first error line; the framework from the spec's describe" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const r = try parseCypressResults(a, cypress_results);
+    try testing.expectEqualStrings("jquery/dist", r.framework);
+    try testing.expectEqualStrings("chrome-for-testing", r.browser);
+    try testing.expectEqualStrings("157.0.8103.78", r.browser_version);
+    try testing.expectEqualStrings("15.14.2", r.cypress_version);
+    try testing.expectEqualStrings("2026-11-14", r.date);
+    try testing.expectEqual(@as(u64, 27012), r.wall_ms);
+    try testing.expectEqual(@as(usize, 4), r.tests.len);
+    try testing.expectEqualStrings("When page is initially opened", r.tests[0].module);
+    try testing.expectEqualStrings("should focus on the todo input field", r.tests[0].name);
+    try testing.expectEqual(CypressState.passed, r.tests[0].state);
+    try testing.expectEqual(CypressState.failed, r.tests[1].state);
+    try testing.expectEqualStrings("AssertionError: Timed out retrying after 4000ms: expected '<label>' to contain 'feed the cat'", r.tests[1].message.?);
+    try testing.expectEqual(CypressState.skipped, r.tests[2].state);
+    try testing.expectEqual(CypressState.pending, r.tests[3].state);
+    // Unwrapped, the same object reads the same.
+    const inner = cypress_results[std.mem.indexOf(u8, cypress_results, "\"result\":").? + 9 .. cypress_results.len - 1];
+    try testing.expectEqual(@as(usize, 4), (try parseCypressResults(a, inner)).tests.len);
+    // A run that never started its spec: no tests, the wrapper's message.
+    const failed_run = try parseCypressResults(a, "{\"framework\":\"gwt\",\"result\":{\"failures\":1,\"message\":\"Could not find Cypress test run results\"}}");
+    try testing.expectEqualStrings("gwt", failed_run.framework);
+    try testing.expectEqual(@as(usize, 0), failed_run.tests.len);
+    try testing.expectEqualStrings("Could not find Cypress test run results", failed_run.run_error.?);
+    // Refused: a test of another framework than the wrapper's, a failure
+    // with no error, an unknown state, nothing at all.
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"framework\":\"jquery/dist\"", "\"framework\":\"jquery\"")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"displayError\":\"AssertionError", "\"displayError\":null,\"x\":\"")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"state\":\"pending\",", "\"state\":\"retried\",")));
+    try testing.expectError(error.BadReport, parseCypressResults(a, "{}"));
+}
+
+// ============================================================================
+// web-test-runner's own report of a run (htmx's `npm run test:chrome`:
+// `web-test-runner --browsers chromium --config test/web-test-runner.config.mjs
+// --playwright`, its defaultReporter with reportTestResults): per test file
+// its path ("test/tests/attributes/hx-action.js:"), then each Mocha suite as
+// "<title> [<Browser>]", indented one space per level, and under it each test
+// two spaces further in, marked "✓" passed, "-" skipped, anything else failed;
+// "🚧 Browser logs:" opens a block of the page's console output, which runs
+// to the next file or suite. ANSI colour codes are ignored.
+// ============================================================================
+
+pub const WtrState = enum { passed, failed, skipped };
+
+pub const WtrTest = struct {
+    file: []const u8,
+    /// The suite titles, joined by " > " (as Crane's Mocha reader names a
+    /// test's module).
+    module: []const u8,
+    name: []const u8,
+    /// Mocha's full title: the suite titles and the test's, joined by spaces.
+    id: []const u8,
+    state: WtrState,
+};
+
+fn isWord(s: []const u8) bool {
+    if (s.len == 0) return false;
+    for (s) |c| if (!std.ascii.isAlphabetic(c)) return false;
+    return true;
+}
+
+pub fn parseWtrTree(arena: Allocator, raw: []const u8) error{ BadReport, OutOfMemory }![]const WtrTest {
+    const text = try stripAnsi(arena, raw);
+    var out: std.ArrayList(WtrTest) = .empty;
+    var file: ?[]const u8 = null;
+    var suites: std.ArrayList([]const u8) = .empty;
+    var suite_indent: usize = 0;
+    var in_logs = false;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line_raw| {
+        const line = std.mem.trimEnd(u8, line_raw, " \r\t");
+        if (line.len == 0) continue;
+        // A test file's section.
+        if (line[0] != ' ' and std.mem.endsWith(u8, line, ".js:") and std.mem.indexOfScalar(u8, line, ' ') == null) {
+            file = line[0 .. line.len - 1];
+            suites.clearRetainingCapacity();
+            in_logs = false;
+            continue;
+        }
+        if (file == null) continue;
+        const indent = line.len - std.mem.trimStart(u8, line, " ").len;
+        const body = line[indent..];
+        // "🚧 Browser logs:", "🚧 404 network requests:": the page's own
+        // output, up to the next suite or file.
+        if (std.mem.startsWith(u8, body, "\u{1F6A7}")) {
+            in_logs = true;
+            continue;
+        }
+        // A suite: "<title> [Browser]", at most one level below the last.
+        if (indent >= 1 and indent <= suites.items.len + 1 and std.mem.endsWith(u8, body, "]")) {
+            if (std.mem.lastIndexOf(u8, body, " [")) |b| if (b > 0 and isWord(body[b + 2 .. body.len - 1])) {
+                const depth = indent;
+                suites.shrinkRetainingCapacity(depth - 1);
+                try suites.append(arena, body[0..b]);
+                suite_indent = indent;
+                in_logs = false;
+                continue;
+            };
+        }
+        if (in_logs or suites.items.len == 0 or indent != suite_indent + 2) continue;
+        // A test: its mark, a space, its title.
+        const sp = std.mem.indexOfScalar(u8, body, ' ') orelse continue;
+        const mark = body[0..sp];
+        const name = body[sp + 1 ..];
+        if (name.len == 0) continue;
+        const state: WtrState = if (std.mem.eql(u8, mark, "\u{2713}")) .passed else if (std.mem.eql(u8, mark, "-")) .skipped else if (mark.len <= 4 and !std.ascii.isAlphanumeric(mark[0])) .failed else continue;
+        const module = try std.mem.join(arena, " > ", suites.items);
+        const titles = try std.mem.join(arena, " ", suites.items);
+        try out.append(arena, .{ .file = file.?, .module = module, .name = name, .id = try std.fmt.allocPrint(arena, "{s} {s}", .{ titles, name }), .state = state });
+    }
+    if (out.items.len == 0) return error.BadReport;
+    return out.items;
+}
+
+const wtr_tree =
+    "Running 3 test files...\n\n" ++
+    "\x1b[2K\x1b[1A\x1b[2K\x1b[Gtest/tests/attributes/hx-action.js:\n\n" ++
+    " hx-action attribute \x1b[2m[Chromium]\x1b[0m\x1b[0m\x1b[0m\n" ++
+    "   \x1b[32m\u{2713}\x1b[89m\x1b[0m\x1b[0m hx-action alone defaults to GET\n" ++
+    "   - hx-action skipped one\n\n" ++
+    " \u{1F6A7} Browser logs:\n" ++
+    "      Form submission prevented: SubmitEvent { isTrusted: true } Error\n" ++
+    "    - test-styles.css\n\n" ++
+    " \u{1F6A7} 404 network requests:\n" ++
+    "   - avatar/alice\n\n" ++
+    "test/tests/unit/__initializeTriggers.js:\n\n" ++
+    " __initializeTriggers unit tests [Chromium]\n" ++
+    "   \u{2713} every trigger polls at interval\n" ++
+    "  intersect modifiers [Chromium]\n" ++
+    "    \u{2713} passes threshold modifier to IntersectionObserver\n" ++
+    "    \u{274C} passes root modifier to IntersectionObserver\n\n" ++
+    "Chromium: |\u{2588}\u{2588}| 3/3 test files | 3 passed, 1 failed, 1 skipped\n";
+
+test "web-test-runner's report: each test under its file and suites, its mark, Mocha's full title; console logs ignored" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const t = try parseWtrTree(a, wtr_tree);
+    try testing.expectEqual(@as(usize, 5), t.len);
+    try testing.expectEqualStrings("test/tests/attributes/hx-action.js", t[0].file);
+    try testing.expectEqualStrings("hx-action attribute", t[0].module);
+    try testing.expectEqualStrings("hx-action attribute hx-action alone defaults to GET", t[0].id);
+    try testing.expectEqual(WtrState.passed, t[0].state);
+    try testing.expectEqual(WtrState.skipped, t[1].state);
+    // The log block's "- test-styles.css" is no test.
+    try testing.expectEqualStrings("__initializeTriggers unit tests", t[2].module);
+    try testing.expectEqualStrings("__initializeTriggers unit tests > intersect modifiers", t[3].module);
+    try testing.expectEqualStrings("__initializeTriggers unit tests intersect modifiers passes threshold modifier to IntersectionObserver", t[3].id);
+    try testing.expectEqual(WtrState.failed, t[4].state);
+    try testing.expectError(error.BadReport, parseWtrTree(a, "nothing here\n"));
 }

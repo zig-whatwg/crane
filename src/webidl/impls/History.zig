@@ -269,6 +269,29 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // navigable's allowed to perform a navigation or history update returns
     // blocked, then return."
     if (!bc.allowedToNavigateOrUpdateHistory()) return;
+    // Not while the document is unloading - its beforeunload, pagehide or
+    // unload handlers running (its unload counter above 0). Stated deviation
+    // from HTML, whose go() checks no such thing - golden rule 2, no newer
+    // spec, Chrome and Safari: Blink's History::go returns while
+    // !LocalFrame::IsNavigationAllowed(), which FrameLoader::ShouldClose
+    // (beforeunload) and DispatchUnloadEventAndFillOldDocInfo (pagehide,
+    // unload) clear with a FrameNavigationDisabler; WebKit's
+    // NavigationScheduler::shouldScheduleNavigation refuses while a
+    // NavigationDisabler (FrameLoader::shouldClose's, around beforeunload) is
+    // alive. history/the-history-interface/traverse-during-beforeunload.html:
+    // a history.back() in the beforeunload of a navigation's leaving document
+    // goes nowhere (Chrome, Firefox and Safari pass). Before the load moved
+    // to the end of the parse, Crane passed it another way: its popup's first
+    // page had not completely loaded when the opener set its location, so
+    // that navigation replaced it ("Location-object navigate") and
+    // history.back() had no entry to go to. With the load completed as
+    // Chrome and Safari complete it, it needs their rule (lane nav2 batch
+    // 12's trace: the navigation pushed, and back() won).
+    if (internal.window) |window| {
+        if (interfaces.Window.get_document(window) catch null) |document| {
+            if (@import("dom").document_lifecycle.isUnloading(document)) return;
+        }
+    }
     const delta_val: i32 = if (delta.wasPassed()) delta.getValue() else 0;
     const top = bc.getTop();
     // Stated exceptions to the spec's queue for reloads (golden rule 2: the
@@ -296,15 +319,22 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         return;
     }
     // Delta traverse step 4 hands "apply the history step" this's associated
-    // Document's navigable as initiatorToCheck. Deviation, stated (golden
-    // rule 2, the browsers split): it is not checked here. Firefox 157 and
-    // Safari 27 let a sandboxed frame's history.back() and forward()
-    // traverse its parent's entries (iframe_sandbox_navigate_history_go_back
-    // and _go_forward: both fail with "assert_unreached: no pop state" at
-    // aligned wpt.fyi revision cc74d2669f); only Chrome 154 refuses. All
-    // three refuse the navigation API's traversals (sandboxing-back-parent,
-    // sandboxing-back-sibling: 1/1 each), which Navigation's traverseToKey
-    // checks.
+    // Document's navigable as initiatorToCheck (`initiatorOf`, below), whose
+    // step 3 refuses a traversal that would change a navigable the
+    // initiator is not allowed by sandboxing to navigate: a sandboxed
+    // frame's history.back() cannot move its ancestors' entries. The newer
+    // spec, golden rule 2 ("the spec was updated and one browser ships
+    // it"): whatwg/html PR #4787 (merged 2019-08-13, Chromium bug 705583,
+    // Intent to Ship on blink-dev) added the check; Chrome ships it
+    // (iframe_sandbox_navigate_history_go_back.html and _go_forward.html:
+    // Chrome 157 1/1 each, Firefox 161 and Safari 27.2 0/1, wpt.fyi
+    // 2358bd4835). No Mozilla or WebKit objection, WontFix bug or negative
+    // standards position was found; Gecko's interest is on whatwg/html
+    // issue #880 (lane ifr1, the integrator's ruling of 2026-11-14). It was
+    // left out before as a "browsers split" deviation that followed Firefox
+    // and Safari. All three already refuse the navigation API's traversals
+    // (sandboxing-back-parent, sandboxing-back-sibling), which
+    // traverseWindowToStep checks the same way.
     // Stated exceptions to the spec's queue (golden rule 2: Chrome 156 and
     // Firefox 158 agree in every variant; Safari 27 coalesces everywhere,
     // WebKit bug 313808, and is outvoted). "Traverse the history by a delta"
@@ -351,7 +381,11 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         .listed => |target| apply_history_step.changesDocument(top, history, target),
         .pushed => false,
     } else false;
-    apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{ .cross_document_delta = cross_document, .delta_navigable = bc.id });
+    apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{
+        .initiator = initiatorOf(internal.window, bc),
+        .cross_document_delta = cross_document,
+        .delta_navigable = bc.id,
+    });
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated by "apply

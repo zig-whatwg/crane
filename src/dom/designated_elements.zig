@@ -20,13 +20,16 @@
 //! PointerLockController and PictureInPictureController supplements) and
 //! adjusts it to the asking tree scope (Fullscreen::FullscreenElementForBindingFrom
 //! -> TreeScope::AdjustedElement); WebKit's TreeScope does the same
-//! (ancestorElementInThisScope). Crane's three elements are never set yet: no
-//! fullscreen, pointer lock or Picture-in-Picture request runs.
+//! (ancestorElementInThisScope). The fullscreen element is the document's
+//! topmost fullscreen-flagged top-layer element (Fullscreen 2; dom.top_layer,
+//! which html.fullscreen fills); the other two are never set yet: no pointer
+//! lock or Picture-in-Picture request runs.
 
 const runtime = @import("runtime");
 const NodeBase = @import("node_base.zig").NodeBase;
 const retarget = @import("retarget.zig");
 const document_internals = @import("document_internals.zig");
+const top_layer = @import("top_layer.zig");
 
 pub const Kind = enum { fullscreen, pointer_lock, picture_in_picture };
 
@@ -58,10 +61,14 @@ fn designated(this_node: *NodeBase, kind: Kind) ?*runtime.Instance {
     else
         this_node.documentBase() orelse return null;
     const document = retarget.instanceOf(document_node) orelse return null;
+    if (kind == .fullscreen) {
+        const state = (top_layer.ofDocument(document, false) catch null) orelse return null;
+        return state.fullscreenElement();
+    }
     const internal = document_internals.getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;
     return switch (kind) {
-        .fullscreen => rare.fullscreen_element,
+        .fullscreen => unreachable,
         .pointer_lock => rare.pointer_lock_element,
         .picture_in_picture => rare.picture_in_picture_element,
     };

@@ -230,6 +230,8 @@ pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
 /// A link or style element's style sheet load, with its critical
 /// subresources, and a link's preload.
 pub const style_sheet_loading = @import("style_sheet_loading.zig");
+/// A style element's "update a style block" (HTML's and SVG's).
+pub const style_block = @import("style_block.zig");
 // Media owner tasks, events and incremental resource fetching.
 pub const media_runtime = @import("media/runtime.zig");
 
@@ -329,5 +331,7 @@ test {
 }
 
 pub const popover = @import("popover.zig");
+/// The Fullscreen API: the fullscreen flag, the events, :fullscreen.
+pub const fullscreen = @import("fullscreen.zig");
 pub const dialog = @import("dialog.zig");
 pub const details = @import("details.zig");

@@ -8,8 +8,17 @@
 //! reaches it through the network context it carries.
 //!
 //! One stored response per key, the key being Fetch's network partition key
-//! (the partition: "the unique HTTP cache associated with key") and the URL
-//! without its fragment. GET only. Chrome 155, Firefox 158 and Safari 27 all
+//! (the partition: "the unique HTTP cache associated with key"), the URL
+//! without its fragment, and whether the request included credentials
+//! (HTTP-network-or-cache fetch's includeCredentials, steps 8.3-8.4): a
+//! response fetched with cookies never answers a request sent without them,
+//! nor the reverse. Fetch keys the partition only; Chromium splits on
+//! credentials (net::features::kSplitCacheByIncludeCredentials: HttpCache's
+//! "_cn" key prefix when the request does not allow credentials) and
+//! Firefox too (LOAD_ANONYMOUS: the "a," key prefix), Safari does not - the
+//! majority (golden rule 2; html/cross-origin-embedder-policy/
+//! credentialless/cache.window.js: C and F pass, S fails, wpt.fyi
+//! cc74d2669f). GET only. Chrome 155, Firefox 158 and Safari 27 all
 //! keep one response per URL: each fails fetch/http-cache/vary.any.html
 //! "HTTP cache doesn't invalidate existing Vary response" (wpt.fyi
 //! 23b0b89b1a), which needs two variants side by side - so a response that
@@ -80,6 +89,12 @@ pub const HttpCache = struct {
     const Key = struct {
         partition: []const u8,
         url: []const u8,
+        /// The request included credentials.
+        credentialed: bool,
+
+        fn of(entry: *const StoredResponse) Key {
+            return .{ .partition = entry.partition, .url = entry.url, .credentialed = entry.credentialed };
+        }
     };
 
     const KeyContext = struct {
@@ -88,10 +103,11 @@ pub const HttpCache = struct {
             std.hash.autoHash(&h, key.partition.len);
             h.update(key.partition);
             h.update(key.url);
+            std.hash.autoHash(&h, key.credentialed);
             return h.final();
         }
         pub fn eql(_: KeyContext, a: Key, b: Key) bool {
-            return std.mem.eql(u8, a.partition, b.partition) and std.mem.eql(u8, a.url, b.url);
+            return a.credentialed == b.credentialed and std.mem.eql(u8, a.partition, b.partition) and std.mem.eql(u8, a.url, b.url);
         }
     };
 
@@ -154,14 +170,15 @@ pub const HttpCache = struct {
         return self.bytes;
     }
 
-    /// The response stored for (`partition`, `url`) - the URL as `keyUrl`
-    /// gives it - with a reference the caller releases; null when there is
-    /// none. Marks it most recently used. Allocates nothing.
-    pub fn lookup(self: *HttpCache, partition: []const u8, url: []const u8) ?*StoredResponse {
+    /// The response stored for (`partition`, `url`, `credentialed`) - the
+    /// URL as `keyUrl` gives it, `credentialed` the request's
+    /// includeCredentials - with a reference the caller releases; null when
+    /// there is none. Marks it most recently used. Allocates nothing.
+    pub fn lookup(self: *HttpCache, partition: []const u8, url: []const u8, credentialed: bool) ?*StoredResponse {
         if (self.entryCount() == 0) return null;
         lock(self);
         defer unlock(self);
-        const node = self.map.get(.{ .partition = partition, .url = url }) orelse return null;
+        const node = self.map.get(.{ .partition = partition, .url = url, .credentialed = credentialed }) orelse return null;
         self.moveToFront(node);
         node.entry.retain();
         return node.entry;
@@ -197,7 +214,7 @@ pub const HttpCache = struct {
             self.allocator.destroy(node);
             return entry.release();
         }
-        const key: Key = .{ .partition = entry.partition, .url = entry.url };
+        const key = Key.of(entry);
         if (self.map.get(key)) |existing| {
             if (only_if) |old| if (existing.entry != old) {
                 self.allocator.destroy(node);
@@ -225,18 +242,22 @@ pub const HttpCache = struct {
         if (self.bytes > self.config.max_bytes) evicted = self.evictTo(self.config.max_bytes - self.config.max_bytes / 10);
     }
 
-    /// RFC 9111 4.4: remove what the partition stores for `url`.
+    /// RFC 9111 4.4: remove what the partition stores for `url` - "the
+    /// target URI", so the responses of credentialed and uncredentialed
+    /// requests both.
     pub fn invalidate(self: *HttpCache, partition: []const u8, url: []const u8) void {
         if (self.entryCount() == 0) return;
         var gone: ?*Node = null;
         {
             lock(self);
             defer unlock(self);
-            if (self.map.fetchRemove(.{ .partition = partition, .url = url })) |kv| {
-                self.guard.noteRemoval(&self.map);
-                self.unlink(kv.value);
-                kv.value.next = null;
-                gone = kv.value;
+            for ([_]bool{ true, false }) |credentialed| {
+                if (self.map.fetchRemove(.{ .partition = partition, .url = url, .credentialed = credentialed })) |kv| {
+                    self.guard.noteRemoval(&self.map);
+                    self.unlink(kv.value);
+                    kv.value.next = gone;
+                    gone = kv.value;
+                }
             }
         }
         freeNodes(self.allocator, gone);
@@ -255,7 +276,7 @@ pub const HttpCache = struct {
             while (node) |n| {
                 node = n.next;
                 if (!sameOrigin(n.entry.url, origin)) continue;
-                if (self.map.remove(.{ .partition = n.entry.partition, .url = n.entry.url })) self.guard.noteRemoval(&self.map);
+                if (self.map.remove(Key.of(n.entry))) self.guard.noteRemoval(&self.map);
                 self.unlink(n);
                 n.next = gone;
                 gone = n;
@@ -270,7 +291,7 @@ pub const HttpCache = struct {
         var gone: ?*Node = null;
         while (self.bytes > target) {
             const node = self.lru_tail orelse break;
-            if (self.map.remove(.{ .partition = node.entry.partition, .url = node.entry.url })) self.guard.noteRemoval(&self.map);
+            if (self.map.remove(Key.of(node.entry))) self.guard.noteRemoval(&self.map);
             self.unlink(node);
             node.next = gone;
             gone = node;
@@ -377,7 +398,7 @@ test "HttpCache: a long-lived cache at its byte cap keeps half its map's unused 
             .response_time = 1001,
         }));
         // A lookup that misses, as most of a runner's are.
-        try std.testing.expect(store.lookup("https://top.test", "https://cache.test/absent") == null);
+        try std.testing.expect(store.lookup("https://top.test", "https://cache.test/absent", true) == null);
         if (i % 100 == 99) {
             HttpCache.lock(store);
             defer HttpCache.unlock(store);

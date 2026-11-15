@@ -1,8 +1,8 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Fetch and bodies</title>
-<!-- Fetch from data: URLs and from the benchmark server on loopback (/__perf/bytes, /__perf/json),
-     bodies read whole and as a stream. -->
+<!-- Fetch from data: URLs and from the benchmark server on loopback (/__perf/bytes, /__perf/json,
+     /encoded/*.gz and *.br with their Content-Encoding), bodies read whole and as a stream. -->
 <script src="../harness.js"></script>
 <script>
 perf.add('fetch.data-url-text', {
@@ -31,5 +31,28 @@ perf.add('fetch.loopback-stream', {
     }
     this.sink = k;
   },
+});
+// The same 1 MiB of HTML-shaped text, gzip- and br-encoded (tests/perf/encoded/README.md),
+// read as a stream: each engine decodes the body as it arrives. A body that was not
+// decoded (its length is not the text's) fails the workload rather than timing it.
+const encodedTextLength = 1048583;
+async function readEncoded(url, n) {
+  let k = 0;
+  for (let i = 0; i < n; i++) {
+    const reader = (await fetch(url)).body.getReader();
+    let length = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; length += value.length; }
+    if (length !== encodedTextLength) throw new Error(`${url}: ${length} bytes, not ${encodedTextLength}`);
+    k += length;
+  }
+  return k;
+}
+perf.add('fetch.loopback-gzip', {
+  ops: 3,
+  async run(n) { this.sink = await readEncoded('/encoded/text-1m.html.gz', n); },
+});
+perf.add('fetch.loopback-br', {
+  ops: 3,
+  async run(n) { this.sink = await readEncoded('/encoded/text-1m.html.br', n); },
 });
 </script>

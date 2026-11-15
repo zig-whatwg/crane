@@ -1,6 +1,7 @@
 # Workflow: A leaks positive control must run the binary that allocates, and a missing summary is a failed control
 
 **Date**: 2026-10-29
+**Status** (2026-11-14, lane rep1 b1): on chat.local's macOS 27.2 the Python.app control fails too - "Process N is not debuggable. Due to security restrictions, leaks can only show or save contents of readonly memory of restricted processes" - and prints no summary. Use a C program built on the host (`malloc(12345)`, pointer dropped, `sleep(1)`), signed `codesign -s - -f --entitlements <get-task-allow plist>` as the runner is: "1 leak for 14336 total leaked bytes", detector exit 1. Note the singular: match `leaks? for`, not `leaks for`.
 **Lesson**: `leaks --atExit -- /usr/bin/python3 ...` and `leaks --atExit -- <Homebrew python3> ...` printed no leak summary at all for a deliberate `malloc`, so a script that greps the summary line printed nothing - and a missing line reads like a quiet pass.
 
 **Why**: `/usr/bin/python3` is a launcher that hands over to the Xcode or Command Line Tools Python, and `leaks` produced no report for it; the Homebrew `python3` run printed no summary line either (its full output was not kept, so why is unknown). Either way the "N leaks for M total leaked bytes" line the control is read from never appeared. A control is only evidence when it prints that line with the leak in it. The runner arms of the same check reported "0 leaks for 0 total leaked bytes", which is exactly what an unqualified detector also says.

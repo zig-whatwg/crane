@@ -18,13 +18,26 @@ const Memory = struct {
             self.failed = true;
             return null;
         };
-        const bytes = self.allocator.alignedAlloc(u8, .@"16", total) catch {
+        // rawAlloc, not alignedAlloc (the integrator's approval, 2026-11-14,
+        // for these C-callback shims only): in safe builds - ReleaseSafe is
+        // the production build - Allocator.alloc fills every block with
+        // `undefined` (std/mem/Allocator.zig:326) and Allocator.free fills
+        // it again (:475), a write over the decoder's whole ring buffer or
+        // window per response that the plain malloc Brotli gets from libcurl
+        // on main never makes. Brotli initialises what it reads, as it must
+        // with malloc. Measured: 125 of the tip's 2,695 busy samples were
+        // that fill under Memory.free (macOS sample, fetch.loopback-br's
+        // body, chat.local). The allocator still sees every block, and a
+        // leak check still counts it (the test in kit/inflate/zlib.zig).
+        // The length and alignment rawFree gets are these: the length is
+        // stored in the 16-byte header, the alignment is 16 on both sides.
+        const bytes = self.allocator.rawAlloc(total, .@"16", @returnAddress()) orelse {
             self.failed = true;
             return null;
         };
-        const header: *usize = @ptrCast(bytes.ptr);
+        const header: *usize = @ptrCast(@alignCast(bytes));
         header.* = total;
-        return bytes.ptr + 16;
+        return bytes + 16;
     }
 
     fn free(raw: ?*anyopaque, address: ?*anyopaque) callconv(.c) void {
@@ -32,7 +45,9 @@ const Memory = struct {
         const self: *Memory = @ptrCast(@alignCast(raw.?));
         const bytes: [*]align(16) u8 = @alignCast(@as([*]u8, @ptrCast(ptr)) - 16);
         const header: *const usize = @ptrCast(bytes);
-        self.allocator.free(bytes[0..header.*]);
+        // rawFree, with rawAlloc's exact length (from the header) and
+        // alignment (16): see `alloc`.
+        self.allocator.rawFree(bytes[0..header.*], .@"16", @returnAddress());
     }
 };
 

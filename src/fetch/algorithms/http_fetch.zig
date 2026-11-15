@@ -18,6 +18,8 @@ const internal_response = @import("../internal/response.zig");
 const origins = @import("../internal/origins.zig");
 const validation = @import("../internal/validation.zig");
 const referrer_policy = @import("referrer_policy");
+const content_coding = @import("../content_coding/root.zig");
+const csp_check = @import("csp_check.zig");
 const InternalResponse = internal_response.InternalResponse;
 const ResponseType = internal_response.ResponseType;
 const internal_request = @import("../internal/request.zig");
@@ -1128,6 +1130,17 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
     // 8.19. If httpRequest's header list contains `Range`, then append
     //       (`Accept-Encoding`, `identity`).
     if (list.contains("Range")) try addHeader(allocator, added, "Accept-Encoding", "identity");
+    // 8.20. "Modify httpRequest's header list per HTTP. Do not append a given
+    //       header if httpRequest's header list contains that header's
+    //       name": RFC 9110 12.5.3's Accept-Encoding, the content codings
+    //       HTTP-network fetch undoes - the content coding table's - "br"
+    //       and "zstd" only to a potentially trustworthy URL, as Chromium
+    //       (SetAcceptEncodingIfMissing: "cryptographic or localhost") and
+    //       Firefox (network.http.accept-encoding.secure) send them. A Range
+    //       request has 8.19's `identity` already.
+    if (!list.contains("Accept-Encoding") and !list.contains("Range")) {
+        try addHeader(allocator, added, "Accept-Encoding", content_coding.acceptEncoding(advertisesEveryCoding(request.currentUrl())));
+    }
     // 8.21. If includeCredentials is true, then:
     if (httpNetworkFetchUsesCookies(request)) {
         // 8.21.1. Append a request `Cookie` header for httpRequest.
@@ -1139,6 +1152,14 @@ fn httpRequestHeaders(allocator: Allocator, request: *InternalRequest, added: *s
         }
         // 8.21.2 follows in Start, using its authentication-fetch option.
     }
+}
+
+/// Whether a request to `url` is offered every content coding (see 8.20):
+/// its origin is potentially trustworthy (Secure Contexts 3.1: https, wss, a
+/// loopback address, localhost).
+fn advertisesEveryCoding(url: []const u8) bool {
+    const parts = csp_check.urlParts(url);
+    return referrer_policy.determine_referrer.isPotentiallyTrustworthyOrigin(parts.scheme, parts.host orelse "");
 }
 
 fn addHeader(allocator: Allocator, added: *std.ArrayListUnmanaged(NetworkRequest.Header), name: []const u8, value: []const u8) !void {
@@ -1319,7 +1340,7 @@ pub fn httpNetworkFetchFinish(
     // then). Stated deviation: a body with no bytes at all keeps the coding,
     // where the spec leaves the empty string - Crane cannot know at the
     // headers that none will come.
-    response.body_info.content_encoding = filteredContentCoding(&response.header_list);
+    response.body_info.content_encoding = content_coding.filteredCoding(content_coding.headerFields(response.header_list.entries.items));
 
     // HTTP-network-or-cache fetch step 13: "Set response's
     // request-includes-credentials to includeCredentials" (the cross-origin
@@ -1355,13 +1376,17 @@ pub fn httpNetworkFetchFinish(
             return HttpFetchError.OutOfMemory;
         };
         response.body = body;
-        // The response body info's encoded and decoded sizes: the network
-        // hands the body over decoded, so both are its length. (A streamed
-        // body's are not known here.)
-        response.body_info.encoded_size = body_bytes.len;
-        response.body_info.decoded_size = body_bytes.len;
         // (The body info's content encoding was set from the header list
         // above, step 18.1.1.1.7.)
+    }
+    // A body handed over whole: 18.1.1.1.8's encoded size is what arrived,
+    // as the network counted it before undoing the content codings
+    // (content_coding.zig), and 18.1.1.1.10's decoded size what it decoded
+    // to. (A streamed body's are counted as it arrives: AsyncFetch.)
+    if (network_response.body != null or network_response.encoded_body_size != null) {
+        const decoded: u64 = if (network_response.body) |b| b.len else 0;
+        response.body_info.encoded_size = network_response.encoded_body_size orelse decoded;
+        response.body_info.decoded_size = decoded;
     }
 
     // Step 4: Record timing information - the network's own measurements,
@@ -1383,35 +1408,6 @@ pub fn httpNetworkFetchFinish(
     params.timing_info.end_time = end_time;
 
     return response;
-}
-
-/// HTTP-network fetch's "filteredCoding" (its body steps 1.2-1.6) for a
-/// response's `headers`: "" without `Content-Encoding`, "multiple" for more
-/// than one coding, the coding lowercased when it is empty or one this user
-/// agent decodes (the network layer's), else "@unknown". Static.
-fn filteredContentCoding(headers: *const @import("../internal/header_list.zig").HeaderList) []const u8 {
-    var codings: usize = 0;
-    var first: []const u8 = "";
-    for (headers.entries.items) |header| {
-        if (!std.ascii.eqlIgnoreCase(header.name, "Content-Encoding")) continue;
-        var values = std.mem.splitScalar(u8, header.value, ',');
-        while (values.next()) |raw| {
-            if (codings == 0) first = std.mem.trim(u8, raw, " \t");
-            codings += 1;
-        }
-    }
-    if (codings == 0) return "";
-    if (codings > 1) return "multiple";
-    if (first.len == 0) return "";
-    // HTTP-network fetch 18.1.1.1.6 reports a registered content coding.
-    // "identity" is registered (reserved, RFC 9110 8.4.1), but browsers do
-    // not report it: Chrome reports "" (WPT resource-timing content-encoding,
-    // subtest 9), so Crane does the same.
-    const supported = [_][]const u8{ "gzip", "deflate", "br", "zstd" };
-    for (supported) |coding| {
-        if (std.ascii.eqlIgnoreCase(first, coding)) return coding;
-    }
-    return "@unknown";
 }
 
 /// Fetch "record connection timing info" for the connection that answered
@@ -2544,11 +2540,14 @@ test "HTTP-network-or-cache fetch step 8: User-Agent, a null body's Content-Leng
     try request.header_list.append("User-Agent", "mine");
     try request.header_list.append("If-None-Match", "x");
     try httpRequestHeaders(allocator, request, &added);
-    try std.testing.expectEqual(3, added.items.len);
+    try std.testing.expectEqual(4, added.items.len);
     try std.testing.expectEqualStrings("Connection", added.items[0].name);
     try std.testing.expectEqualStrings("keep-alive", added.items[0].value);
     try std.testing.expectEqualStrings("Pragma", added.items[1].name);
     try std.testing.expectEqualStrings("Cache-Control", added.items[2].name);
+    // 8.20: the content codings HTTP-network fetch undoes (no Range now).
+    try std.testing.expectEqualStrings("Accept-Encoding", added.items[3].name);
+    try std.testing.expectEqualStrings("gzip, deflate", added.items[3].value);
 }
 
 test "HTTP fetch step 4.5: the TAO check - basic tainting, `*`, the request's origin - else the timing allow failed flag" {

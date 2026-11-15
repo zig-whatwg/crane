@@ -63,10 +63,12 @@ pub const BodyInfo = struct {
 pub const StoredResponse = struct {
     refs: std.atomic.Value(u32) = .init(1),
     allocator: Allocator,
-    /// The cache key: the network partition key and the URL, fragment
-    /// removed (`keyUrl`).
+    /// The cache key: the network partition key, the URL, fragment removed
+    /// (`keyUrl`), and whether its request included credentials
+    /// (http_cache.zig says why).
     partition: []u8,
     url: []u8,
+    credentialed: bool,
     status: u16,
     status_message: []u8,
     /// RFC 9111 3.1: every field received, but Connection and the fields it
@@ -87,6 +89,9 @@ pub const StoredResponse = struct {
     pub const Init = struct {
         partition: []const u8,
         url: []const u8,
+        /// The storing request's includeCredentials (HTTP-network-or-cache
+        /// fetch steps 8.3-8.4).
+        credentialed: bool = true,
         status: u16,
         status_message: []const u8 = "",
         headers: []const Header,
@@ -122,6 +127,7 @@ pub const StoredResponse = struct {
             .allocator = allocator,
             .partition = partition,
             .url = url,
+            .credentialed = init.credentialed,
             .status = init.status,
             .status_message = status_message,
             .headers = headers,
@@ -240,6 +246,7 @@ pub const StoredResponse = struct {
             .allocator = allocator,
             .partition = partition,
             .url = url,
+            .credentialed = self.credentialed,
             .status = self.status,
             .status_message = status_message,
             .headers = headers,

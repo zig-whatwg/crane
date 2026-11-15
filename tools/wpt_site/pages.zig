@@ -1957,7 +1957,7 @@ fn writeTimeRow(w: W, label: []const u8, crane: ?f64, ref: ?f64) Error!void {
 
 /// The run's identity, in a sentence: the engine, its version and driver,
 /// the runner, when and where, and the WPT tree.
-fn writeRunIdentity(w: W, r: *const reference_mod.Reference) Error!void {
+fn writeRunIdentity(w: W, r: *const reference_mod.Reference, latest: Generation) Error!void {
     const run = r.run;
     try w.print("{s} <code>", .{r.label()});
     try html.text(w, run.browser_version);
@@ -2012,6 +2012,15 @@ fn writeRunIdentity(w: W, r: *const reference_mod.Reference) Error!void {
         }
         try w.writeAll(", ran the same files with the same runners.");
     };
+    // After a WPT update, until the reference is re-run, the two columns measured different
+    // upstream revisions (lane wptup1): say which, since a changed file compares different tests.
+    if (latest.wpt_upstream) |crane| if (latest.reference_wpt_upstream) |ref| if (!std.mem.eql(u8, crane, ref)) {
+        try w.writeAll(" Crane&rsquo;s column is on upstream WPT <code>");
+        try html.text(w, crane[0..@min(10, crane.len)]);
+        try w.writeAll("</code>, the reference&rsquo;s on <code>");
+        try html.text(w, ref[0..@min(10, ref.len)]);
+        try w.writeAll("</code>: a file that changed between the two revisions compares different tests.");
+    };
 }
 
 /// The index's comparison with the reference run: both engines' numbers on
@@ -2023,7 +2032,7 @@ fn writeVersus(w: W, site: *const Site) Error!void {
     const rt = site.both_ref;
     const name = r.label();
     try w.print("<section class=\"front\" id=\"versus\" aria-labelledby=\"versus-h\">\n<h2 id=\"versus-h\">Crane and {s}</h2>\n<div class=\"front-prose\">\n<p>", .{name});
-    try writeRunIdentity(w, r);
+    try writeRunIdentity(w, r, site.latest());
     try w.print(" Its results are a reference: they are read only from <code>wpt-results/reference/</code>, never counted as Crane&rsquo;s, and every number here says whose it is.</p>\n<p>", .{});
     try w.print("<a href=\"{s}.html#ahead-ref\">", .{r.engine});
     try html.plural(w, site.ahead_ref.len, "file", "files");
@@ -2294,7 +2303,7 @@ pub fn writeComparePage(w: W, site: *const Site) Error!void {
     try writeFigures(w, "Crane", Figures.ofTotals(tot));
     try writeRefFigures(w, site, site.root().ref_totals);
     try w.writeAll("<p class=\"compare-lede\">");
-    try writeRunIdentity(w, r);
+    try writeRunIdentity(w, r, site.latest());
     try w.writeAll(" Its results are a reference, never counted as Crane&rsquo;s. A file is listed where the two pass different numbers of its subtests; the same count can still hide different subtests, which each file&rsquo;s section on its directory&rsquo;s page shows for Crane.</p>\n</header>\n");
 
     try w.print("<section class=\"compare\" id=\"ahead-ref\" aria-labelledby=\"ahead-ref-h\">\n<h2 id=\"ahead-ref-h\">Where {s} passes subtests Crane does not</h2>\n<p>", .{name});

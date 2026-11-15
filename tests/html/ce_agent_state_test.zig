@@ -73,12 +73,16 @@ test "CE agent: realm teardown during invocation leaves no stale element access"
     _ = try state.enqueue(&counts, 1, 10, .{ .value = 2, .counts = &counts }, acquire);
     _ = try state.enqueue(&counts, 2, 20, .{ .value = 3, .counts = &counts }, acquire);
     state.end(&log, Log.invoke);
-    try testing.expectEqualSlices(u32, &.{ 1, 3 }, log.values[0..log.len]);
-    try testing.expectEqual(@as(usize, 1), counts.released);
-    state.invokeBackup(&log, Log.invoke);
+    // The new object's reaction joins the queue being invoked (the queue
+    // stays current while it runs: Blink, WebKit, Gecko) and runs from its
+    // own slot, after element 2's: the old slots at its reused address run
+    // nothing - [1, 4, 3] would be the stale access.
     try testing.expectEqualSlices(u32, &.{ 1, 3, 4 }, log.values[0..log.len]);
     try testing.expectEqual(counts.held, counts.released);
     try testing.expectEqual(@as(usize, 4), counts.dropped);
+    try testing.expect(!state.queues.processing_backup);
+    state.invokeBackup(&log, Log.invoke);
+    try testing.expectEqualSlices(u32, &.{ 1, 3, 4 }, log.values[0..log.len]);
 }
 
 test "CE agent: a cancelled backup microtask can later run safely" {

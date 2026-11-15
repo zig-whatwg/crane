@@ -9,9 +9,16 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/document-sequences.html#creating-a-new-auxiliary-browsing-context
 //!
-//! Window, which keeps the popups a page opened, installs the other half:
-//! choosing among them, or making a new one, for a hyperlink's or a form's
-//! target (`chooseTopLevel`).
+//! A popup belongs to its Browser, not to the window that opened it (HTML
+//! 7.3.1.2: top-level traversables are the user agent's; window.opener names
+//! the opener browsing context, a reference that goes when that context
+//! goes). So the Browser keeps every popup it has (`Popups`, a supplement of
+//! its BrowserScope) and closes them all at its end, before its page
+//! (`closeAll`); nothing about the opener's lifetime ends one (lane rep1 b2;
+//! Blink: a popup's frame is the main frame of its own Page).
+//!
+//! Window installs the other half: choosing among the popups, or making a
+//! new one, for a hyperlink's or a form's target (`chooseTopLevel`).
 //!
 //! lint-impls: hook for HTMLIFrameElement, Window
 
@@ -36,6 +43,15 @@ pub const Implementation = struct {
     /// HTML "definitely close" the top-level traversable whose active window
     /// is `window`: false when `window` is not a top-level traversable's.
     definitely_close: *const fn (window: *runtime.Instance) bool,
+    /// The end of a popup's navigable at its Browser's end - "destroy a
+    /// top-level traversable": its documents destroyed, its realm ended, its
+    /// integration (a `Created.integration`) deinit'd and destroyed.
+    destroy: *const fn (integration: *anyopaque) void,
+    /// A Window that held `browsing_context` (an `html_core.BrowsingContext`)
+    /// ended, and it still lives: if it is a closed popup's and no Window
+    /// holds it any more, the popup's record goes now - `forget` it, then
+    /// free it, which releases the context.
+    window_ended: *const fn (scope: *runtime.BrowserScope, browsing_context: *anyopaque) void,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -120,6 +136,83 @@ pub fn create(allocator: std.mem.Allocator, opener_browsing_context: *anyopaque,
 pub fn definitelyClose(window: *runtime.Instance) bool {
     const impl = implementation.get() orelse return false;
     return impl.definitely_close(window);
+}
+
+/// The popups of one Browser - the navigables `create` made, each a
+/// `Created.integration` - which the Browser owns from their making to its
+/// end (`closeAll`). A supplement of the Browser's scope (BrowserScope.of):
+/// state with an owner, the Browser.
+pub const Popups = struct {
+    allocator: std.mem.Allocator,
+    integrations: std.ArrayListUnmanaged(*anyopaque) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) Popups {
+        return .{ .allocator = allocator };
+    }
+
+    /// The scope's end, after the Browser's: `closeAll` ran, so nothing is
+    /// left to end - only the list's storage.
+    pub fn deinit(self: *Popups) void {
+        std.debug.assert(self.integrations.items.len == 0);
+        self.integrations.deinit(self.allocator);
+    }
+};
+
+/// The Browser of `scope` keeps the popup `integration` (a
+/// `Created.integration`) until its end. On failure (out of memory) the
+/// caller still owns it.
+pub fn keep(scope: *runtime.BrowserScope, integration: *anyopaque) error{OutOfMemory}!void {
+    const popups = try scope.of(Popups);
+    try popups.integrations.append(popups.allocator, integration);
+}
+
+/// The Browser of `scope` ends: each of its popups is destroyed (the
+/// implementation's `destroy`), the last made first - a popup and the popups
+/// it opened in any order, since no popup's end reaches another's. Called
+/// before the Browser's page and its agent end, so no realm is left for the
+/// agent's end.
+pub fn closeAll(scope: *runtime.BrowserScope) void {
+    const popups = scope.existing(Popups) orelse return;
+    const impl = implementation.get();
+    while (popups.integrations.pop()) |integration| {
+        if (impl) |i| i.destroy(integration);
+    }
+}
+
+/// The popups the Browser of `scope` keeps now, each a
+/// `Created.integration`. BORROWED until one is kept or forgotten.
+pub fn kept(scope: *runtime.BrowserScope) []const *anyopaque {
+    const popups = scope.existing(Popups) orelse return &.{};
+    return popups.integrations.items;
+}
+
+/// The Browser of `scope` stops keeping `integration`: true when it kept it,
+/// and the caller frees it. False when it never did, or `closeAll` already
+/// took it (it is being destroyed).
+pub fn forget(scope: *runtime.BrowserScope, integration: *anyopaque) bool {
+    const popups = scope.existing(Popups) orelse return false;
+    for (popups.integrations.items, 0..) |item, i| {
+        if (item != integration) continue;
+        _ = popups.integrations.swapRemove(i);
+        return true;
+    }
+    return false;
+}
+
+/// A Window that held `browsing_context` ended and the context lives on:
+/// the implementation frees a closed popup's record whose last Window this
+/// was (`Implementation.window_ended`). Window's end calls it.
+pub fn windowEnded(scope: *runtime.BrowserScope, browsing_context: *anyopaque) void {
+    const impl = implementation.get() orelse return;
+    impl.window_ended(scope, browsing_context);
+}
+
+/// How many popups the Browser of `scope` keeps: open ones, and closed ones
+/// a Window still shows (a closed popup's record goes with its last
+/// Window).
+pub fn count(scope: *runtime.BrowserScope) usize {
+    const popups = scope.existing(Popups) orelse return 0;
+    return popups.integrations.items.len;
 }
 
 test "without an installed implementation no navigable is made or closed" {

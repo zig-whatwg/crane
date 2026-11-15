@@ -915,6 +915,13 @@ pub const capabilities: platform.Capabilities = blk: {
 };
 
 // Compression's unsupported-format path. These remain exactly typed even when gated off.
+pub fn createDeflateDecoder(_: std.mem.Allocator) platform.CodecError!*platform.DeflateDecoder {
+    return error.NotSupported;
+}
+pub fn decompressDeflate(_: *platform.DeflateDecoder, _: Bytes, _: []u8) platform.CodecError!platform.CodecProgress {
+    return error.NotSupported;
+}
+pub fn destroyDeflateDecoder(_: *platform.DeflateDecoder) void {}
 pub fn createBrotliDecoder(_: std.mem.Allocator) platform.CodecError!*platform.BrotliDecoder {
     return error.NotSupported;
 }

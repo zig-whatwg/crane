@@ -924,7 +924,12 @@ const default_html_elements =
     \\th abbr colspan headers rowspan scope
 ;
 
+/// The MathML rows of HTML 8.6.5's table, in its order. MathML `a` (with
+/// href, hreflang and type) heads it in the HTML Standard of 16 October 2026
+/// (specs/whatwg/html.md); WPT sanitizer-api/sanitizer-default-config.html
+/// at 2358bd4835 expects it (Chrome, Firefox and Safari 0/1: they lag).
 const default_math_elements =
+    \\a href hreflang type
     \\math
     \\merror
     \\mfrac
