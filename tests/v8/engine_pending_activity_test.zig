@@ -127,7 +127,7 @@ fn wasFreed(made: Made) bool {
 
 fn isStrong(made: Made) bool {
     const entry = test_cache.?.cache.get(made.instance) orelse return false;
-    return entry.strong;
+    return entry.bits.strong;
 }
 
 fn isCached(made: Made) bool {
@@ -372,12 +372,10 @@ test "a teardown the collection deferred is not run for an instance wrapped agai
     try setup();
     probes[0] = .{};
     const made = try probeAt(0);
-    // The entry leaves the cache in the first pass; a wrap before the second
-    // pass makes a new wrapper, which owns the instance from then on.
-    const entry = test_cache.?.cache.get(made.instance).?;
-    _ = test_cache.?.cache.remove(made.instance);
-    entry.collected = true;
-    test_cache.?.linkPendingForTest(entry);
+    // The record leaves the cache when the collection takes its wrapper; a
+    // wrap before the agent's safe point makes a new wrapper, which owns the
+    // instance from then on.
+    try std.testing.expect(test_cache.?.collectForTest(made.instance));
     try wrap(made);
     test_cache.?.finalizePendingForTest();
     try std.testing.expect(!probes[0].ran);

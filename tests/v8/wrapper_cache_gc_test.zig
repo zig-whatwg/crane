@@ -125,15 +125,11 @@ fn destroyMockInstance(allocator: std.mem.Allocator, instance: *runtime.Instance
 /// Cleanup cache entries without calling V8 dispose (for mock objects)
 ///
 /// This is needed because mock V8 objects aren't real V8 Global handles,
-/// so calling v8.v8_Object_Dispose() on them will crash V8.
-/// We use fetchRemove to get entries and free CacheEntry allocations properly.
+/// so calling v8.v8_Object_Dispose() on them will crash V8: each record
+/// leaves the cache with no engine call (WrapperCache.forgetMockForTest).
 fn cleanupMockCacheEntries(cache: *WrapperCache, instances: []const *runtime.Instance, allocator: std.mem.Allocator) void {
-    for (instances) |instance| {
-        if (cache.cache.fetchRemove(instance)) |kv| {
-            // Free the CacheEntry (normally done in weak callback or remove())
-            allocator.destroy(kv.value);
-        }
-    }
+    _ = allocator;
+    for (instances) |instance| _ = cache.forgetMockForTest(instance);
 }
 
 // ============================================================================
@@ -217,14 +213,9 @@ test "WrapperCache - manual weak callback simulation" {
     _ = try cache.set(instance, wrapper, isolate);
     try testing.expectEqual(@as(usize, 1), cache.size());
 
-    // Simulate weak callback by manually removing from cache
-    // (In real V8, this happens automatically via weakCallback())
-    const removed = cache.cache.fetchRemove(instance);
-
-    // Free the CacheEntry (normally done in weak callback)
-    if (removed) |kv| {
-        testing.allocator.destroy(kv.value);
-    }
+    // Simulate the collection by manually removing the record from the cache
+    // (In real V8, the collector tells the cache its wrapper died)
+    try testing.expect(cache.forgetMockForTest(instance));
 
     // Verify entry removed
     try testing.expectEqual(@as(usize, 0), cache.size());
@@ -458,12 +449,9 @@ test "WrapperCache - integrity after removing specific entries" {
 
     try testing.expectEqual(@as(usize, 5), cache.size());
 
-    // Manually remove entry at index 2 (simulates weak callback for one element)
-    // Use fetchRemove to get the CacheEntry and free it properly
-    if (cache.cache.fetchRemove(instances[2])) |kv| {
-        // Free the CacheEntry (this is what was leaking before)
-        testing.allocator.destroy(kv.value);
-    }
+    // Manually remove entry at index 2 (simulates the collection of one
+    // element's wrapper): its record goes back to the cache's pool.
+    try testing.expect(cache.forgetMockForTest(instances[2]));
     destroyMockWrapper(testing.allocator, wrappers[2]);
 
     // Verify cache integrity
