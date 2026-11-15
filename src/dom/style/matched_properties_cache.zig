@@ -66,9 +66,9 @@
 //!    ClearViewportDependent, WebKit's invalidate and
 //!    clearEntriesAffectedByViewportUnits;
 //! 2. the least recently used beyond `limit` entries, down to `prune_target`
-//!    (Blink CleanMatchedPropertiesCache: kCacheLimit 500, kPruneCacheTarget
-//!    300);
-//! 3. a full key takes no more entries (WebKit maxEntriesPerHash = 4);
+//!    (the way Blink's CleanMatchedPropertiesCache trims its cache);
+//! 3. a full key takes no more entries (as WebKit's MatchedDeclarationsCache
+//!    caps entries per hash);
 //! 4. everything, with the Document's style engine (StyleEngine.deinit).
 //! The entries hold values, never a node, a realm or a live declaration block.
 //!
@@ -210,6 +210,11 @@ pub const MatchedPropertiesCache = struct {
     /// (`admits`), one tag per slot; held only while `second_sighting`.
     seen: ?*[seen_slots]u32 = null,
 
+    /// Tuning values, not spec facts: chosen to match the sizes the cited
+    /// engines publish for their own caches (Blink's
+    /// matched_properties_cache.cc for `limit` and `prune_target`, WebKit's
+    /// MatchedDeclarationsCache.cpp for `per_key`). TODO(perf): derive
+    /// them from Crane's own measurement.
     pub const per_key = 4;
     pub const limit = 500;
     pub const prune_target = 300;
@@ -432,9 +437,9 @@ pub const MatchedPropertiesCache = struct {
             gop.value_ptr.* = .{};
             break :made gop.value_ptr;
         };
-        // A full key keeps the entries it has (WebKit's
-        // MatchedDeclarationsCache::add appends only below
-        // maxEntriesPerHash). The key carries the parent's record and
+        // A full key keeps the entries it has (as WebKit's
+        // MatchedDeclarationsCache::add does once a hash holds its
+        // maximum). The key carries the parent's record and
         // inherited groups, so a key fills only with four parents that share
         // those and differ in what explicit inheritance or the adjustments
         // read (no grid page key filled: census b3); replacing the least
@@ -482,8 +487,8 @@ pub const MatchedPropertiesCache = struct {
         return .{ .holder = holder, .last_used = self.tick(), .hit = hit };
     }
 
-    /// Keep the `prune_target` most recently used entries (Blink's
-    /// CleanMatchedPropertiesCache once over kCacheLimit).
+    /// Keep the `prune_target` most recently used entries (as Blink's
+    /// CleanMatchedPropertiesCache does once over its limit).
     fn prune(self: *MatchedPropertiesCache) void {
         var stamps: std.ArrayList(u32) = .empty;
         defer stamps.deinit(self.allocator);
