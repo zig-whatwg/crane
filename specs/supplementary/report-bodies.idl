@@ -1,0 +1,63 @@
+// Crane supplementary IDL - not in webref.
+// Origin: lane rep2 (2026-11-14), the user's ruling of 2026-11-14 ("yes"):
+// Report and ReportBody are the Reporting spec's DICTIONARIES
+// (w3c/reporting#284, merged 2025-06-11; WebKit 326027@main, PR #79766,
+// merged 2026-11-07). It replaces specs/supplementary/reporting-interfaces.idl
+// (the 2026-11-05 ruling's interfaces).
+//
+// The pinned webref defines Report, ReportBody and the bodies of CSP,
+// Subresource Integrity, Permissions Policy, Deprecation, Intervention, Crash,
+// Scripting Policy and Connection Allowlists as dictionaries; codegen reads
+// them from specs/idl. The report types below have a body that no spec writes
+// as IDL, so each is a dictionary here, inheriting ReportBody as the specs'
+// bodies do. dom.reporting converts a report's body with its type's
+// dictionary (Reporting §4.3 step 3 leaves "how to polymorphically
+// initialize body?" open; WebKit converts each body with its own dictionary:
+// Source/WebCore/Modules/reporting/Report.idl, whose body member is a union
+// of the body dictionaries, and ReportingObserver.cpp
+// dictionaryForReportBody). Dictionaries have no interface object, so
+// nothing here is exposed to script.
+
+// HTML 7.1.4 "queue a cross-origin embedder policy inheritance violation":
+// a "coep" report of type "navigation" or "worker initialization" ("a new
+// object containing" type, blockedURL and disposition). WebKit's dictionary
+// and name (Report.idl).
+dictionary COEPInheritenceViolationReportBody : ReportBody {
+  DOMString type;
+  USVString blockedURL;
+  DOMString disposition;
+};
+
+// Fetch 3.7 "queue a cross-origin embedder policy CORP violation report": a
+// "coep" report of type "corp" ("a new object containing" type, blockedURL,
+// destination and disposition). WebKit's dictionary and name (Report.idl).
+dictionary CORPViolationReportBody : ReportBody {
+  DOMString type;
+  USVString blockedURL;
+  RequestDestination destination;
+  DOMString disposition;
+};
+
+// Reporting §7.1 Generate Test Report: a "test" report's body, "a single
+// string field" message. WebKit's dictionary and name (Report.idl).
+dictionary TestReportBody : ReportBody {
+  DOMString message;
+};
+
+// The "coop-access-violation" report Chromium queues on the accessing
+// document's ReportingObservers (dom.coop_reporting): the members of its
+// CoopAccessViolationReportBody
+// (third_party/blink/renderer/core/frame/coop_access_violation_report_body.idl
+// and LocationReportBody). Chromium alone makes this report (wpt.fyi at
+// 2358bd4835: html/cross-origin-opener-policy/reporting/access-reporting/
+// reporting-observer.html Chrome 4/4, Firefox 0/4, Safari 0/4).
+dictionary CoopAccessViolationReportBody : ReportBody {
+  DOMString? sourceFile;
+  unsigned long? lineNumber;
+  unsigned long? columnNumber;
+  DOMString type;
+  DOMString property;
+  DOMString openeeURL;
+  DOMString openerURL;
+  DOMString otherDocumentURL;
+};

@@ -1,0 +1,17 @@
+//! WebIDL dictionary: CORPViolationReportBody
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+const enums = @import("enums");
+const ReportBody = @import("ReportBody.zig").ReportBody;
+
+pub const CORPViolationReportBody = struct {
+    // Inherited from ReportBody
+    base: ReportBody,
+
+    type: ?runtime.DOMString = null,
+    blockedURL: ?runtime.USVString = null,
+    destination: ?enums.RequestDestination = null,
+    disposition: ?runtime.DOMString = null,
+};
