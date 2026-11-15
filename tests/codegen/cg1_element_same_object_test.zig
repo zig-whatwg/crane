@@ -224,7 +224,8 @@ test "Node's childNodes is cached in the node's rare data, through the node acce
     // The chain ends the edge before Node's teardown frees the block, and
     // walks no State cache (Node has none left).
     const chain = try function(node, "deinitChain");
-    const end = std.mem.indexOf(u8, chain, "@import(\"dom\").same_object_cache.endNode(instance, &.{ .{ .field = .child_nodes, .attribute = \"childNodes\" } });") orelse {
+    // (zig fmt writes a one-element list without the inner spaces.)
+    const end = std.mem.indexOf(u8, chain, "@import(\"dom\").same_object_cache.endNode(instance, &.{.{ .field = .child_nodes, .attribute = \"childNodes\" }});") orelse {
         std.debug.print("deinitChain:\n{s}\n", .{chain});
         return error.NoEndNode;
     };

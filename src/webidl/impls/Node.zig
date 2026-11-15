@@ -111,8 +111,10 @@ pub const InternalState = struct {
     // NodeBase: two pointers to one document, 8 bytes a node.
 
     // No childNodes list here (lane nm1): the interface's [SameObject] cache
-    // (the generated State's `cached_childNodes`) is the one copy; this
-    // state kept a second pointer to the same list. 8 bytes a node.
+    // is the one copy; this state kept a second pointer to the same list. 8
+    // bytes a node. And the cache is not in the generated State either
+    // (lane nm2): it is a field of the node's rare block
+    // (dom.element_rare_data's `child_nodes`), 8 more bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
@@ -707,15 +709,16 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// raw (the list holds the node, never the reverse: refcount design section
 /// 3), and lets it go: the next read makes a new list.
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
-    const state = node.getState(State);
-    if (state.own.cached_childNodes == list) state.own.cached_childNodes = null;
+    const internal = Registry.get(node) orelse return;
+    const rare = &internal.base.rare;
+    if (dom_module.element_rare_data.get(rare.*, .child_nodes) == list) dom_module.element_rare_data.clear(rare, .child_nodes);
 }
 
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes.
-/// [SameObject]: the generated interface caches what this makes
-/// (`cached_childNodes`, the one copy; `childNodesFreed` clears it) and calls
+/// [SameObject]: the generated interface caches what this makes (in the
+/// node's rare block, the one copy; `childNodesFreed` clears it) and calls
 /// here only while it holds none - so this makes the list and keeps nothing.
 pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;

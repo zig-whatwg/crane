@@ -184,6 +184,12 @@ pub const Field = enum(u5) {
     /// NodeBase's node name brand (`NodeBase.nodeName`), on the few nodes
     /// that have one. A block of its own. Written only by NodeBase.
     node_name,
+    /// Node's childNodes NodeList ([SameObject]; Blink's and WebKit's
+    /// NodeListsNodeData child node list): the generated getter's cache
+    /// (dom.same_object_cache's node accessors), owned by its wrapper.
+    /// Cleared when the list is freed before its node (dom.refcount's
+    /// childNodesFreed), so the next read makes a new one.
+    child_nodes,
 };
 
 /// A node's name brand: borrowed bytes (a literal), or bytes the node owns.
@@ -196,7 +202,7 @@ pub const NodeName = struct {
 pub fn Value(comptime field: Field) type {
     return switch (field) {
         .class_list, .style, .named_node_map, .shadow_root, .element_internals => *runtime.Instance,
-        .dataset, .children, .part, .attribute_style_map, .inline_style, .svg_class_name => *runtime.Instance,
+        .dataset, .children, .part, .attribute_style_map, .inline_style, .svg_class_name, .child_nodes => *runtime.Instance,
         .style_generation, .named_node_map_generation, .shadow_root_generation => u64,
         .attr_nodes => *element_data.AttrNodeList,
         .custom_element_definition => *custom_elements.Definition,
@@ -662,7 +668,7 @@ fn keptClear(holder: *Holder, comptime kept: Kept) void {
 /// block (`releaseElementFields`) for its NodeBase's (`destroy`).
 fn isNodeField(comptime field: Field) bool {
     return switch (field) {
-        .registered_observers, .node_name => true,
+        .registered_observers, .node_name, .child_nodes => true,
         else => false,
     };
 }
