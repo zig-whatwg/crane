@@ -7,6 +7,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const engine = @import("engine");
 const MemberHold = @import("node_holds.zig").MemberHold;
+const TaskHold = @import("node_holds.zig").TaskHold;
 const controls = @import("form_controls.zig");
 const KeptInstance = @import("custom_elements.zig").KeptInstance;
 const Hook = @import("hook.zig").Hook;
@@ -31,6 +32,19 @@ pub const Entry = struct {
     /// Modal membership is independent of a dialog's open attribute and of
     /// popover visibility (HTML 4.11.4 and 6.3.1).
     modal: bool = false,
+    /// Fullscreen 2: the element's fullscreen flag. An element has it only
+    /// while it is in the top layer ("fullscreen an element" adds it there,
+    /// "unfullscreen an element" removes it immediately), so the flag is kept
+    /// on its own entry: one with no popover or modal membership, which the
+    /// popover and dialog algorithms never read (they read `showing` and
+    /// `modal`). html.fullscreen owns the algorithms.
+    fullscreen: bool = false,
+    /// Fullscreen 2: an iframe's iframe fullscreen flag (requestFullscreen
+    /// step 13.3), on its fullscreen entry.
+    iframe_fullscreen: bool = false,
+    /// Fullscreen 2: the keyboard lock flag (requestFullscreen step 14), on
+    /// the element's fullscreen entry: "unfullscreen an element" unsets it.
+    keyboard_lock: bool = false,
 
     pub fn node(self: *const Entry) ?*runtime.Instance {
         return self.element.get();
@@ -72,6 +86,35 @@ pub const OpenDialog = struct {
     }
 };
 
+/// Fullscreen 2: one (type, element) tuple of a document's list of pending
+/// fullscreen events. The element is held and kept until "run the
+/// fullscreen steps" fires the event (html.fullscreen) or the document goes.
+/// This record's address stays fixed while its MemberHold is linked.
+pub const FullscreenEvent = struct {
+    pub const Type = enum {
+        fullscreenchange,
+        fullscreenerror,
+    };
+
+    id: usize,
+    type: Type,
+    element: MemberHold = .{},
+    slot_name: [64]u8 = undefined,
+    slot_len: usize = 0,
+
+    fn slot(self: *const FullscreenEvent) engine.TracedSlot {
+        return .{ .name = self.slot_name[0..self.slot_len] };
+    }
+};
+
+/// A pending fullscreen event taken out of the list (`takeFullscreenEvents`).
+/// Its hold keeps the element (empty when the element was already gone)
+/// until the caller releases it, exactly once.
+pub const TakenFullscreenEvent = struct {
+    type: FullscreenEvent.Type,
+    hold: TaskHold = .{},
+};
+
 pub const State = struct {
     allocator: std.mem.Allocator,
     owner: *runtime.Instance,
@@ -92,6 +135,9 @@ pub const State = struct {
     pointerdown_target: MemberHold = .{},
     hint_parent: MemberHold = .{},
     open_dialogs: std.ArrayListUnmanaged(*OpenDialog) = .empty,
+    /// Fullscreen 2: the document's list of pending fullscreen events, an
+    /// ordered set, in the order the tuples were appended.
+    fullscreen_events: std.ArrayListUnmanaged(*FullscreenEvent) = .empty,
     dialog_pointerdown_target: MemberHold = .{},
     /// A logically non-null removed target, unequal to every node, without
     /// retaining the detached subtree (Q47 addendum, 2026-10-29).
@@ -236,6 +282,108 @@ pub const State = struct {
         return self.open_dialogs.items[self.open_dialogs.items.len - 1].element.get();
     }
 
+    // === Fullscreen 2 (the algorithms are html.fullscreen's) ===
+
+    /// `node`'s entry while its fullscreen flag is set, or null.
+    pub fn fullscreenEntry(self: *State, node: *runtime.Instance) ?*Entry {
+        for (self.entries.items) |entry| {
+            if (entry.fullscreen and entry.node() == node) return entry;
+        }
+        return null;
+    }
+
+    /// "Fullscreen an element" steps 3-5: set `node`'s fullscreen flag,
+    /// "remove from the top layer immediately" given it, and "add to the top
+    /// layer" given it - its fullscreen entry, moved to the end.
+    pub fn addFullscreen(self: *State, node: *runtime.Instance) !*Entry {
+        if (self.fullscreenEntry(node)) |entry| self.remove(entry.id);
+        const entry = try self.pin(node);
+        entry.fullscreen = true;
+        return entry;
+    }
+
+    /// "Unfullscreen an element": unset its fullscreen, iframe fullscreen
+    /// and keyboard lock flags, and remove it from the top layer
+    /// immediately. Whether it had the flag.
+    pub fn removeFullscreen(self: *State, node: *runtime.Instance) bool {
+        const entry = self.fullscreenEntry(node) orelse return false;
+        self.remove(entry.id);
+        return true;
+    }
+
+    /// The document's fullscreen element: "the topmost element in the
+    /// document's top layer whose fullscreen flag is set, if any, and null
+    /// otherwise".
+    pub fn fullscreenElement(self: *const State) ?*runtime.Instance {
+        var i = self.entries.items.len;
+        while (i != 0) {
+            i -= 1;
+            const entry = self.entries.items[i];
+            if (entry.fullscreen) if (entry.node()) |node| return node;
+        }
+        return null;
+    }
+
+    /// How many elements in the top layer have their fullscreen flag set
+    /// (one: a "simple fullscreen document").
+    pub fn fullscreenCount(self: *const State) usize {
+        var count: usize = 0;
+        for (self.entries.items) |entry| {
+            if (entry.fullscreen and entry.node() != null) count += 1;
+        }
+        return count;
+    }
+
+    /// "Append (type, element) to the list of pending fullscreen events" -
+    /// an ordered set, so a tuple already in it is not added again.
+    pub fn appendFullscreenEvent(self: *State, event_type: FullscreenEvent.Type, element: *runtime.Instance) !void {
+        for (self.fullscreen_events.items) |event| {
+            if (event.type == event_type and event.element.get() == element) return;
+        }
+        var id: usize = 0;
+        while (true) : (id += 1) {
+            var used = false;
+            for (self.fullscreen_events.items) |event| if (event.id == id) {
+                used = true;
+                break;
+            };
+            if (!used) break;
+        }
+        const event = try self.allocator.create(FullscreenEvent);
+        errdefer self.allocator.destroy(event);
+        event.* = .{ .id = id, .type = event_type };
+        event.slot_len = (try std.fmt.bufPrint(&event.slot_name, "fullscreen_event:{d}", .{id})).len;
+        try self.fullscreen_events.append(self.allocator, event);
+        event.element.take(self.owner, element, event.slot());
+    }
+
+    /// "Run the fullscreen steps" steps 1-2: "Let pendingEvents be
+    /// document's list of pending fullscreen events" and "Empty" it. The
+    /// events come back in order, OWNED by `allocator`, each element held by
+    /// its TaskHold (taken before the list lets it go), which the caller
+    /// releases once it fired the event. Out of memory empties the list all
+    /// the same: those events are not fired.
+    pub fn takeFullscreenEvents(self: *State, allocator: std.mem.Allocator) error{OutOfMemory}![]TakenFullscreenEvent {
+        const taken = allocator.alloc(TakenFullscreenEvent, self.fullscreen_events.items.len) catch |err| {
+            self.dropFullscreenEvents();
+            return err;
+        };
+        for (self.fullscreen_events.items, taken) |event, *out| {
+            out.* = .{ .type = event.type };
+            if (event.element.get()) |element| out.hold.take(element);
+        }
+        self.dropFullscreenEvents();
+        return taken;
+    }
+
+    fn dropFullscreenEvents(self: *State) void {
+        for (self.fullscreen_events.items) |event| {
+            event.element.release(self.owner, event.slot());
+            self.allocator.destroy(event);
+        }
+        self.fullscreen_events.clearRetainingCapacity();
+    }
+
     pub fn setDialogPointerdownTarget(self: *State, dialog: ?*runtime.Instance) void {
         const slot: engine.TracedSlot = .{ .name = "open_dialog:pointerdown" };
         self.dialog_pointerdown_target_removed = false;
@@ -268,6 +416,7 @@ pub const State = struct {
             entry.previous_focus.trace(tracer);
         }
         for (self.open_dialogs.items) |dialog| dialog.element.trace(tracer);
+        for (self.fullscreen_events.items) |event| event.element.trace(tracer);
         self.pointerdown_target.trace(tracer);
         self.hint_parent.trace(tracer);
         self.dialog_pointerdown_target.trace(tracer);
@@ -280,6 +429,11 @@ pub const State = struct {
             self.allocator.destroy(entry);
         }
         self.open_dialogs.deinit(self.allocator);
+        for (self.fullscreen_events.items) |event| {
+            event.element.release(self.owner, event.slot());
+            self.allocator.destroy(event);
+        }
+        self.fullscreen_events.deinit(self.allocator);
         self.setPointerdownTarget(null);
         self.setHintParent(null);
         while (self.entries.items.len != 0) self.remove(self.entries.items[self.entries.items.len - 1].id);
@@ -304,6 +458,11 @@ pub const State = struct {
             self.allocator.destroy(entry);
         }
         self.open_dialogs.deinit(self.allocator);
+        for (self.fullscreen_events.items) |event| {
+            self.releaseOrphanHold(&event.element, event.slot(), owner_live);
+            self.allocator.destroy(event);
+        }
+        self.fullscreen_events.deinit(self.allocator);
         self.last_modal = null;
         self.releaseOrphanHold(&self.pointerdown_target, .{ .name = "top_layer:pointerdown" }, owner_live);
         self.releaseOrphanHold(&self.hint_parent, .{ .name = "top_layer:hint_parent" }, owner_live);

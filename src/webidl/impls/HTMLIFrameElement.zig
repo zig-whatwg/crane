@@ -94,6 +94,22 @@ pub const InternalState = struct {
     allow_fullscreen: bool = false,
     credentialless: bool = false,
 
+    /// HTML 2.5.7 "lazy load resumption steps": the rest of "process the
+    /// iframe attributes" from its step "navigate to the srcdoc resource"
+    /// (1.3) or "navigate" (2.7), with what those steps navigate with as it
+    /// was when the steps were set. The steps are set while
+    /// `lazy_resume_url` is non-null: the URL ("about:srcdoc" for srcdoc),
+    /// and `lazy_resume_srcdoc` the srcdoc markup. Owned.
+    lazy_resume_url: ?[]const u8 = null,
+    lazy_resume_srcdoc: ?[]const u8 = null,
+    lazy_resume_initial_insertion: bool = false,
+    /// Step 2.4's referrerPolicy, read when the steps were set (null: the
+    /// srcdoc steps, which read the attribute when they navigate).
+    lazy_resume_referrer_policy: ?fetch_mod.internal.ReferrerPolicy = null,
+    /// HTML 4.8.5 "current navigation was lazy loaded": an iframe whose
+    /// boolean is true does not potentially delay the load event.
+    current_navigation_was_lazy_loaded: bool = false,
+
     /// A new state, its integration from `arena` - its element's Browser's
     /// (runtime.arenaOf). The state's own block is the registry's
     /// (`States.create`, in initOwn).
@@ -741,29 +757,17 @@ fn inRealm(realm: runtime.Context, comptime steps: anytype, args: anytype) bool 
 /// out of memory was a panic (lane leaks4's iframe sweep); and the parse and
 /// the serialization read out of memory as "does not parse", which
 /// navigated to about:blank instead.
+///
+/// Step 2.1 encoding-parses: the query is percent-encoded with the node
+/// document's character encoding, not UTF-8 (dom.encoding_parse), so a
+/// windows-1252 page's `src="x.html?\u{DF}"` navigates to `x.html?%DF`, as
+/// Chrome, Firefox and Safari do (iframe-src-encoding.html: 1/1 each at
+/// wpt.fyi 2358bd4835). It parsed with the URL API, always UTF-8.
 fn resolveSrc(instance: *runtime.Instance, src: []const u8) error{OutOfMemory}![]const u8 {
     const allocator = instance.ctx.allocator;
     const blank = "about:blank";
     if (src.len == 0) return allocator.dupe(u8, blank);
-    const base = interfaces.Node.get_baseURI(instance) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return allocator.dupe(u8, src),
-    };
-    defer allocator.free(base);
-    const base_arg = if (base.len > 0)
-        webidl.Opt(runtime.USVString).passed(base)
-    else
-        webidl.Opt(runtime.USVString).notPassed();
-    const parsed = interfaces.URL.call_static_parse(instance, src, base_arg) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => null,
-    };
-    const url = parsed orelse return allocator.dupe(u8, blank);
-    defer runtime.Instance.deinit(url);
-    return interfaces.URL.get_href(url) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return allocator.dupe(u8, blank),
-    };
+    return (try dom_module.encoding_parse.encodingParseAndSerialize(instance, src)) orelse allocator.dupe(u8, blank);
 }
 
 /// Location URL update callback for iframes
@@ -1550,7 +1554,7 @@ fn documentOriginOf(document: *runtime.Instance, allocator: std.mem.Allocator) ?
 /// Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#navigate
 ///
 /// Steps not modelled, stated: source snapshot params and sandboxed
-/// navigation (1-7), WebDriver BiDi, and lazy loading (11). Step 21's navigate event has no form data entry list.
+/// navigation (1-7), and WebDriver BiDi. Step 21's navigate event has no form data entry list.
 pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: NavigateOptions) void {
     // The navigation's start: the moment navigate is entered, which the new
     // document's time origin becomes (performance_timeline's
@@ -1586,6 +1590,21 @@ pub fn navigate(integration: *IFrameIntegration, url: []const u8, options: Navig
     if (active) |doc| {
         if (document_lifecycle.isUnloading(doc)) return;
     }
+
+    // Steps 10-11: "Let container be navigable's container. If container is
+    // an iframe element and will lazy load element steps given container
+    // returns true, then stop intersection-observing a lazy loading element
+    // container and set container's lazy load resumption steps to null."
+    // Only a navigation: a traversal's or a reload's population comes here
+    // too (`traversal_entry`), but HTML's "apply the history step" never
+    // calls navigate - a location.reload() of the frame's initial
+    // about:blank leaves its lazy load alone
+    // (iframe-loading-lazy-reload-location-reload.html,
+    // -navigation-reload.html).
+    if (options.traversal_entry == 0) if (integration.iframe_element) |container_ptr| {
+        const container: *runtime.Instance = @ptrCast(@alignCast(container_ptr));
+        if (container.stateAs(State) != null and willLazyLoad(container)) cancelLazyLoad(container);
+    };
 
     // Step 12: "If navigable's allowed to perform a navigation or history
     // update returns blocked, then ... return." Not for the navigations the
@@ -5583,6 +5602,16 @@ fn iframesDelayLoadEvent(document: *runtime.Instance) bool {
     defer children.deinit(std.heap.page_allocator);
     for (children.items) |child| {
         const integration = integrationOfBrowsingContext(child.browsing_context) orelse continue;
+        // HTML 4.8.5: "An iframe element whose current navigation was lazy
+        // loaded boolean is false potentially delays the load event" - one
+        // whose boolean is true does not, whatever its navigation does.
+        // Safari follows it (iframe-loading-lazy-load-event.html 2/2);
+        // Chrome and Firefox delay the load once the frame starts loading
+        // (0/2 each, wpt.fyi 2358bd4835). Golden rule 2: the rule came with
+        // the spec update that added lazy iframes (whatwg/html PR #5579) and
+        // one browser ships it, so the newer spec (the integrator's ruling of
+        // 2026-11-14, lane ifr1).
+        if (lazyLoaded(integration)) continue;
         if (integration.delaying_load) return true;
         const active = activeDocumentOf(integration) orelse continue;
         if (!document_lifecycle.isReadyForPostLoadTasks(active) or document_lifecycle.delaysLoadEvent(active)) return true;
@@ -6109,18 +6138,25 @@ fn navigateFromLocation(ctx: ?*anyopaque, url: []const u8, request: html_core.wi
     return true;
 }
 
-/// HTML "process the iframe attributes" (§4.8.5).
-///
-/// Lazy loading (steps 1.1-1.2 and 2.5-2.6) is not modelled: every frame
-/// loads eagerly.
+/// HTML "process the iframe attributes" (§4.8.5), with its lazy loading
+/// steps (1.1-1.2 and 2.5-2.6; HTML 2.5.7, dom.lazy_load_observer).
 fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    // Step 1: "If element's srcdoc attribute is specified" - navigate to the
-    // srcdoc resource.
+    // Step 1: "If element's srcdoc attribute is specified":
     if (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("srcdoc")) catch null) |srcdoc| {
         const markup = internal.allocator.dupe(u8, srcdoc.asSlice()) catch return;
         defer internal.allocator.free(markup);
-        navigateIframeOrFrame(element, "about:srcdoc", markup, initial_insertion);
+        // 1.1 "Set element's current navigation was lazy loaded boolean to
+        // false."
+        internal.current_navigation_was_lazy_loaded = false;
+        // 1.2 "If the will lazy load element steps given element return
+        // true": set its lazy load resumption steps to the rest of this
+        // algorithm from "navigate to the srcdoc resource", set its current
+        // navigation was lazy loaded to true, start intersection-observing
+        // it, and return.
+        if (willLazyLoad(element) and deferNavigation(element, internal, "about:srcdoc", markup, null, initial_insertion)) return;
+        // 1.3 "Navigate to the srcdoc resource".
+        navigateIframeOrFrame(element, "about:srcdoc", markup, null, initial_insertion);
         return;
     }
     // Step 2.1: the shared attribute processing steps. Out of memory starts
@@ -6138,8 +6174,182 @@ fn processIframeAttributes(element: *runtime.Instance, initial_insertion: bool) 
         runIframeLoadEventSteps(element);
         return;
     }
-    // Step 2.7: navigate.
-    navigateIframeOrFrame(element, url, null, initial_insertion);
+    // 2.4 "Let referrerPolicy be the current state of element's
+    // referrerpolicy content attribute."
+    const referrer_policy = referrerPolicyOf(element);
+    // 2.5 "Set element's current navigation was lazy loaded boolean to
+    // false."
+    internal.current_navigation_was_lazy_loaded = false;
+    // 2.6 "If the will lazy load element steps given element return true":
+    // the rest from "navigate" becomes its lazy load resumption steps.
+    if (willLazyLoad(element) and deferNavigation(element, internal, url, null, referrer_policy, initial_insertion)) return;
+    // 2.7 "Navigate".
+    navigateIframeOrFrame(element, url, null, referrer_policy, initial_insertion);
+}
+
+/// The current state of `element`'s referrerpolicy content attribute.
+fn referrerPolicyOf(element: *runtime.Instance) fetch_mod.internal.ReferrerPolicy {
+    const attribute = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("referrerpolicy")) catch null;
+    return fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (attribute) |a| a.asSlice() else null);
+}
+
+// ----------------------------------------------------------------------------
+// Lazy loading (HTML 2.5.7)
+// ----------------------------------------------------------------------------
+
+/// HTML "will lazy load element steps" for an iframe.
+fn willLazyLoad(element: *runtime.Instance) bool {
+    // 1. "If scripting is disabled for element, then return false." - its
+    // node document's browsing context is null, or scripting is disabled.
+    const document = nodeDocumentOf(element) orelse return false;
+    if (!dom_module.document_scripts.scriptingEnabled(document)) return false;
+    // 2. "If element's lazy loading attribute is in the Lazy state, then
+    // return true." - "lazy", ASCII case-insensitive; missing and invalid
+    // are Eager. 3. "Return false."
+    const value = (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("loading")) catch null) orelse return false;
+    return std.ascii.eqlIgnoreCase(value.asSlice(), "lazy");
+}
+
+/// "Process the iframe attributes" steps 1.2.1-1.2.4 and 2.6.1-2.6.4: keep
+/// what the rest of the algorithm navigates with as `element`'s lazy load
+/// resumption steps, set its current navigation was lazy loaded boolean,
+/// and start intersection-observing it. False when it cannot be kept (out
+/// of memory): the caller navigates now instead - a frame that loads at
+/// once rather than never.
+fn deferNavigation(element: *runtime.Instance, internal: *InternalState, url: []const u8, srcdoc: ?[]const u8, referrer_policy: ?fetch_mod.internal.ReferrerPolicy, initial_insertion: bool) bool {
+    const document = nodeDocumentOf(element) orelse return false;
+    const owned_url = internal.allocator.dupe(u8, url) catch return false;
+    const owned_srcdoc: ?[]const u8 = if (srcdoc) |markup| internal.allocator.dupe(u8, markup) catch {
+        internal.allocator.free(owned_url);
+        return false;
+    } else null;
+    clearLazyResumption(internal);
+    // 1. "Set element's lazy load resumption steps to the rest of this
+    // algorithm starting with the step labeled navigate".
+    internal.lazy_resume_url = owned_url;
+    internal.lazy_resume_srcdoc = owned_srcdoc;
+    internal.lazy_resume_initial_insertion = initial_insertion;
+    internal.lazy_resume_referrer_policy = referrer_policy;
+    // 3. "Start intersection-observing a lazy loading element for element."
+    if (!dom_module.lazy_load_observer.startObserving(document, element, &resumeFromObserver)) {
+        clearLazyResumption(internal);
+        return false;
+    }
+    // 2. "Set element's current navigation was lazy loaded boolean to true."
+    internal.current_navigation_was_lazy_loaded = true;
+    return true;
+}
+
+/// Set `internal`'s lazy load resumption steps to null.
+fn clearLazyResumption(internal: *InternalState) void {
+    if (internal.lazy_resume_url) |url| internal.allocator.free(url);
+    if (internal.lazy_resume_srcdoc) |markup| internal.allocator.free(markup);
+    internal.lazy_resume_url = null;
+    internal.lazy_resume_srcdoc = null;
+    internal.lazy_resume_referrer_policy = null;
+}
+
+/// Navigate step 11: "stop intersection-observing a lazy loading element
+/// container and set container's lazy load resumption steps to null".
+fn cancelLazyLoad(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    if (nodeDocumentOf(element)) |document| dom_module.lazy_load_observer.stopObserving(document, element);
+    clearLazyResumption(internal);
+}
+
+/// `element`'s lazy load resumption steps, taken and invoked: the lazy load
+/// intersection observer's callback (its steps 7.1-7.2, run from
+/// dom.lazy_load_observer) and the loading attribute changed to Eager (its
+/// steps 1-4). Null steps do nothing. The navigation the steps make keeps
+/// current navigation was lazy loaded true: it does not delay the load
+/// event.
+fn resumeLazyLoad(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    // "Let resumptionSteps be the iframe element's lazy load resumption
+    // steps. If resumptionSteps is null, then return. Set the iframe's lazy
+    // load resumption steps to null. Invoke resumptionSteps."
+    const url = internal.lazy_resume_url orelse return;
+    const srcdoc = internal.lazy_resume_srcdoc;
+    const referrer_policy = internal.lazy_resume_referrer_policy;
+    const initial_insertion = internal.lazy_resume_initial_insertion;
+    internal.lazy_resume_url = null;
+    internal.lazy_resume_srcdoc = null;
+    internal.lazy_resume_referrer_policy = null;
+    defer {
+        internal.allocator.free(url);
+        if (srcdoc) |markup| internal.allocator.free(markup);
+    }
+    // The steps navigate the element's content navigable, which a removed
+    // element no longer has: nothing to navigate.
+    if (!hasContentNavigable(element)) return;
+    navigateIframeOrFrame(element, url, srcdoc, referrer_policy, initial_insertion);
+}
+
+/// The lazy load intersection observer's callback for `element` (HTML
+/// 2.5.7, its steps 6-7, from dom.lazy_load_observer): its lazy load
+/// resumption steps - unless its content navigable is busy with a reload or
+/// a traversal of its own, or a navigation that is committing, when the
+/// steps wait for the next rendering opportunity's check.
+///
+/// Deviation, stated: HTML invokes the steps at once. Their navigation
+/// would then be ended by the reload's population, ignored during a
+/// traversal (navigate step 18), or ended by the commit of a navigation
+/// matured before it ("deactivate a document for a cross-document
+/// navigation" step 5.2), so whether a lazy frame loads would depend on
+/// whether Crane's frame clock or its traversal queue comes first - the
+/// spec gives the two no order. The browsers load it: after a
+/// location.reload() of its initial about:blank Chrome, Firefox and Safari
+/// pass iframe-loading-lazy-reload-location-reload.html, Firefox and Safari
+/// iframe-loading-lazy-reload-navigation-reload.html, and all three
+/// iframe-loading-lazy-nav-location-replace-set-src.html, where the frame
+/// first navigates elsewhere (wpt.fyi 2358bd4835). Waiting gives that
+/// outcome under any load: the reload or the navigation finishes, then the
+/// lazy navigation starts (lane ifr1: 8 and 4 of 30 runs lost it at
+/// twelve runners without the wait).
+fn resumeFromObserver(element: *runtime.Instance) void {
+    const internal = getInternal(element) orelse return;
+    if (internal.lazy_resume_url != null and lazyResumptionMustWait(internal.integration)) {
+        const document = nodeDocumentOf(element) orelse return;
+        if (dom_module.lazy_load_observer.startObserving(document, element, &resumeFromObserver)) return;
+        // Out of memory: the steps run now rather than never.
+    }
+    resumeLazyLoad(element);
+}
+
+/// Whether `integration`'s navigable has a reload or a traversal pending
+/// or in flight, or a navigation whose finalize is queued.
+fn lazyResumptionMustWait(integration: *IFrameIntegration) bool {
+    const bc = integration.browsing_context orelse return false;
+    switch (integration.ongoing_navigation) {
+        .traversal => return true,
+        .id => |id| if (navigationById(integration.navigables, id)) |record| {
+            if (record.traversal_entry != 0) return true;
+        },
+        .none => {},
+    }
+    if (hasCommittingNavigation(integration)) return true;
+    return html_core.navigation.apply_history_step.reloadPendingFor(bc);
+}
+
+/// Whether a navigation of `integration` is committing: its finalize queued
+/// (lane nav2 F1's mature navigation).
+fn hasCommittingNavigation(integration: *IFrameIntegration) bool {
+    const list = integration.navigables orelse return false;
+    var it = list.navigationIterator();
+    while (it.next()) |kv| {
+        const record: *Navigation = @ptrCast(@alignCast(kv.value_ptr.*));
+        if (record.integration == integration and record.committing) return true;
+    }
+    return false;
+}
+
+/// Whether `integration`'s container is an iframe whose current navigation
+/// was lazy loaded (HTML 4.8.5): it does not potentially delay the load
+/// event.
+fn lazyLoaded(integration: *IFrameIntegration) bool {
+    const element: *runtime.Instance = @ptrCast(@alignCast(integration.iframe_element orelse return false));
+    const internal = getInternal(element) orelse return false;
+    return internal.current_navigation_was_lazy_loaded;
 }
 
 /// HTML "shared attribute processing steps for iframe and frame elements":
@@ -6204,10 +6414,12 @@ fn ancestorShows(element: *runtime.Instance, url: []const u8) bool {
     return false;
 }
 
-/// HTML "navigate an iframe or frame" (§4.8.5) for an iframe element.
-fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
+/// HTML "navigate an iframe or frame" (§4.8.5) for an iframe element, with
+/// "process the iframe attributes" step 2.4's referrerPolicy (null: the
+/// attribute's state now).
+fn navigateIframeOrFrame(element: *runtime.Instance, url: []const u8, srcdoc: ?[]const u8, referrer_policy: ?fetch_mod.internal.ReferrerPolicy, initial_insertion: bool) void {
     const internal = getInternal(element) orelse return;
-    navigateContainer(element, internal.integration, url, srcdoc, initial_insertion);
+    navigateContainer(element, internal.integration, url, srcdoc, referrer_policy, initial_insertion);
 }
 
 /// dom.navigables: HTML "process the frame attributes" (16.3.2) for the
@@ -6233,12 +6445,12 @@ fn processFrameAttributes(element: *runtime.Instance, integration: *IFrameIntegr
     }
     // Step 4: "Navigate an iframe or frame given element, url, the empty
     // string, null, and initialInsertion."
-    navigateContainer(element, integration, url, null, initial_insertion);
+    navigateContainer(element, integration, url, null, null, initial_insertion);
 }
 
 /// HTML "navigate an iframe or frame" (§4.8.5) for `element`, an iframe or
 /// frame element whose content navigable is `integration`.
-fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration, url: []const u8, srcdoc: ?[]const u8, initial_insertion: bool) void {
+fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration, url: []const u8, srcdoc: ?[]const u8, given_referrer_policy: ?fetch_mod.internal.ReferrerPolicy, initial_insertion: bool) void {
     // Step 1: "Let historyHandling be "auto"."
     var behavior: navigate_steps.HistoryBehavior = .auto;
     // Step 2: "If element's content navigable's active document is not
@@ -6253,10 +6465,9 @@ fn navigateContainer(element: *runtime.Instance, integration: *IFrameIntegration
     // absence would tell the container that the frame is still on that URL.
     const container_document = nodeDocumentOf(element);
     const load_for_fragment = crossOriginFragmentNavigation(integration, container_document, url, srcdoc != null);
-    // Step 3: "Let referrerPolicy be the current state of element's
-    // referrerpolicy content attribute."
-    const referrer_attr = interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("referrerpolicy")) catch null;
-    const referrer_policy = fetch_mod.internal.policy_container.referrerPolicyFromAttribute(if (referrer_attr) |a| a.asSlice() else null);
+    // The referrerPolicy "process the iframe attributes" step 2.4 read, or
+    // else the current state of element's referrerpolicy content attribute.
+    const referrer_policy = given_referrer_policy orelse referrerPolicyOf(element);
     // Step 4: navigate, using element's node document.
     navigate(integration, url, .{
         .source_document = container_document,
@@ -7941,6 +8152,19 @@ fn iframeAttributeChangeSteps(
         if (value) |v| internal.integration.setSandbox(v) else internal.integration.clearSandbox();
         return;
     }
+    // HTML 4.8.5: "When the loading attribute's state is changed to the
+    // Eager state": run the element's lazy load resumption steps, if any
+    // (`resumeLazyLoad`, steps 1-4). Missing and invalid are Eager. The
+    // observer lets the element go too; with null steps its callback would
+    // do nothing.
+    if (std.mem.eql(u8, local_name, "loading")) {
+        const eager = if (value) |v| !std.ascii.eqlIgnoreCase(v, "lazy") else true;
+        if (eager and internal.lazy_resume_url != null) {
+            if (nodeDocumentOf(element)) |document| dom_module.lazy_load_observer.stopObserving(document, element);
+            resumeLazyLoad(element);
+        }
+        return;
+    }
     const is_srcdoc = std.mem.eql(u8, local_name, "srcdoc");
     if (!is_srcdoc and !std.mem.eql(u8, local_name, "src")) return;
     if (!hasContentNavigable(element)) return;
@@ -8121,12 +8345,23 @@ pub fn get_permissionsPolicy(instance: *runtime.Instance) anyerror!*runtime.Inst
 // Operations (§4.8.5)
 // ============================================================================
 
-/// Operation: getSVGDocument
-/// Returns the nested SVG document if applicable.
+/// Operation: getSVGDocument (HTML 4.8.5, the GetSVGDocument steps):
+/// "1. Let document be this's content document. 2. If document is non-null
+/// and was created by the page load processing model for XML files section
+/// because the computed type of the resource in the navigate algorithm was
+/// image/svg+xml, then return document. 3. Return null."
+///
+/// The content document is `contentDocument`'s, origin-domain check
+/// included, so the two agree (cross-origin-to-whom.window.js). A document
+/// made for image/svg+xml has that content type, as embed's and object's
+/// check (html.embedded_content.svgDocument).
 pub fn call_getSVGDocument(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // TODO: Implement SVG document retrieval
-    return null;
+    // 1.
+    const document = (try get_contentDocument(instance)) orelse return null;
+    // 2-3.
+    var content_type = try interfaces.Document.get_contentType(document);
+    defer content_type.deinit(document.ctx.allocator);
+    return if (std.mem.eql(u8, content_type.asSlice(), "image/svg+xml")) document else null;
 }
 
 // ============================================================================

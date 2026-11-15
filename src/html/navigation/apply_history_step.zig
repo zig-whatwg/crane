@@ -1181,6 +1181,24 @@ pub fn cancelGoZeroReload(top: *BrowsingContext) bool {
     return cancelled;
 }
 
+/// Whether a reload of `navigable` ("apply the reload history step" for it)
+/// is queued on its traversable's session history traversal queue or
+/// running there: the reload its document's `location.reload()` or
+/// `navigation.reload()` asked for has not finished.
+pub fn reloadPendingFor(navigable: *BrowsingContext) bool {
+    const top = navigable.getTop();
+    const queue = top.traversal_queue orelse return false;
+    for (queue.items.items) |item| if (isReloadOf(item, navigable.id)) return true;
+    if (queue.running) |item| if (isReloadOf(item, navigable.id)) return true;
+    return false;
+}
+
+fn isReloadOf(item: *Item, navigable: u64) bool {
+    if (item.run != &ApplyItem.run) return false;
+    const apply: *ApplyItem = @fieldParentPtr("item", item);
+    return apply.kind == .reload and apply.reload_navigable == navigable;
+}
+
 fn isGoZeroReloadOf(item: *Item, navigable: u64) bool {
     if (item.run != &ApplyItem.run) return false;
     const apply: *ApplyItem = @fieldParentPtr("item", item);

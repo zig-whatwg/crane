@@ -608,6 +608,8 @@ pub const PseudoClassKind = union(enum) {
     Open,
     PopoverOpen,
     Modal,
+    /// Fullscreen 5.1 :fullscreen.
+    Fullscreen,
     /// A UA style sheet's `:-internal-list-box`: a select element rendered
     /// as a list box (HTML 15.5.16; Blink's :-internal-list-box, WebKit's
     /// :not(:-internal-uses-menulist)). Never parsed in author style.
@@ -1560,12 +1562,13 @@ pub const Parser = struct {
             .{ "-webkit-autofill", .Autofill },          .{ "user-valid", .UserValid },
             .{ "user-invalid", .UserInvalid },           .{ "open", .Open },
             .{ "popover-open", .PopoverOpen },           .{ "modal", .Modal },
-            .{ "playing", .Playing },                    .{ "paused", .Paused },
-            .{ "seeking", .Seeking },                    .{ "buffering", .Buffering },
-            .{ "stalled", .Stalled },                    .{ "muted", .Muted },
-            .{ "volume-locked", .VolumeLocked },         .{ "heading", .{ .Heading = 0b111111 } },
-            .{ "target", .Target },                      .{ "defined", .Defined },
-            .{ "host", .{ .Host = null } },              .{ "-internal-list-box", .InternalListBox },
+            .{ "fullscreen", .Fullscreen },              .{ "playing", .Playing },
+            .{ "paused", .Paused },                      .{ "seeking", .Seeking },
+            .{ "buffering", .Buffering },                .{ "stalled", .Stalled },
+            .{ "muted", .Muted },                        .{ "volume-locked", .VolumeLocked },
+            .{ "heading", .{ .Heading = 0b111111 } },    .{ "target", .Target },
+            .{ "defined", .Defined },                    .{ "host", .{ .Host = null } },
+            .{ "-internal-list-box", .InternalListBox },
         };
         for (table) |entry| {
             if (std.ascii.eqlIgnoreCase(name, entry[0])) return entry[1];
