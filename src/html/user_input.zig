@@ -1558,11 +1558,50 @@ fn isE(c: u8) bool {
     return c == 'e' or c == 'E';
 }
 
+// filterNumberText below is translated statement by statement from
+// Chromium's Blink NumberInputType::FilterBeforeTextInserted
+// (https://github.com/chromium/chromium, revision
+// a7b97d6a9a7f7f897c77e2a6218e4cdcb136a099,
+// third_party/blink/renderer/core/html/forms/number_input_type.cc), which its
+// BSD-3-Clause license allows; also listed in THIRD_PARTY_NOTICES.md. The
+// upstream copyright and license, exactly as upstream has them:
+//
+//  Copyright (C) 2010 Google Inc. All rights reserved.
+//  Copyright (C) 2011 Apple Inc. All rights reserved.
+//
+//  Redistribution and use in source and binary forms, with or without
+//  modification, are permitted provided that the following conditions are
+//  met:
+//
+//      * Redistributions of source code must retain the above copyright
+//  notice, this list of conditions and the following disclaimer.
+//      * Redistributions in binary form must reproduce the above
+//  copyright notice, this list of conditions and the following disclaimer
+//  in the documentation and/or other materials provided with the
+//  distribution.
+//      * Neither the name of Google Inc. nor the names of its
+//  contributors may be used to endorse or promote products derived from
+//  this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+//  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+//  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+//  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+//  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+//  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+//  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+//  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+//  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 /// Typing into a number input (HTML 4.10.5.1.12: "User agents must not
 /// allow the user to set the value to a non-empty string that is not a valid
 /// floating-point number"): the characters of `text` that may stand, given
 /// the editor text `current` and the selection the insertion replaces.
-/// Blink NumberInputType::FilterBeforeTextInserted, one character at a time;
+/// Translated from Blink number_input_type.cc
+/// NumberInputType::FilterBeforeTextInserted (BSD-3; notice above), one
+/// character at a time;
 /// WebKit NumberInputType::handleBeforeTextInsertedEvent applies the same
 /// rules (the-input-element/number-invalid-scientific-key-events.html: Chrome
 /// and Safari 4/4). Where WebKit refuses more (a sign in the middle without an

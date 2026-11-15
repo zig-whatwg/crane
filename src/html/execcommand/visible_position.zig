@@ -6,8 +6,13 @@
 //! position_units.cc, position_units_word.cc, selection_modifier.cc at
 //! chromium main 2026-11), which WebKit shares (VisiblePosition::next /
 //! previous, Position::upstream / downstream, Position::isCandidate,
-//! nextVisuallyDistinctCandidate in VisibleUnits.cpp / Editing.cpp). Only
-//! the design is taken; the code is Crane's. The DOM positions it walks are
+//! nextVisuallyDistinctCandidate in VisibleUnits.cpp / Editing.cpp). Most
+//! of the code is Crane's own, but the candidate and editing-boundary core
+//! (mostBackwardCaretPosition through previousPositionOf, under "Candidates"
+//! below) is translated statement by statement from Blink, which its BSD
+//! license allows; see the notice at the end of this header and
+//! THIRD_PARTY_NOTICES.md. Each translated function names the Blink file and
+//! function it follows. The DOM positions it walks are
 //! Blink's positions (an anchor node with an offset, or before / after it,
 //! or after its children), and its iterator visits them in Blink's order.
 //!
@@ -32,6 +37,41 @@
 //!   renderer can answer; both count as empty here.
 //! Bidi (visual left/right) needs the renderer's bidi levels: "left" and
 //! "right" move logically, as Blink does in an LTR block.
+//!
+//! Portions of this file are translated from Chromium's Blink editing code
+//! (https://github.com/chromium/chromium, revision
+//! a7b97d6a9a7f7f897c77e2a6218e4cdcb136a099:
+//! third_party/blink/renderer/core/editing/visible_units.cc,
+//! third_party/blink/renderer/core/editing/editing_utilities.cc and
+//! third_party/blink/renderer/core/editing/position_units.cc), under the
+//! following license (BSD-2-Clause). visible_units.cc and position_units.cc
+//! carry the first copyright line, editing_utilities.cc the second:
+//!
+//!  Copyright (C) 2004, 2005, 2006, 2007, 2008, 2009 Apple Inc. All rights
+//!  reserved.
+//!
+//!  Copyright (C) 2004, 2005, 2006, 2007 Apple Inc. All rights reserved.
+//!
+//!  Redistribution and use in source and binary forms, with or without
+//!  modification, are permitted provided that the following conditions
+//!  are met:
+//!  1. Redistributions of source code must retain the above copyright
+//!     notice, this list of conditions and the following disclaimer.
+//!  2. Redistributions in binary form must reproduce the above copyright
+//!     notice, this list of conditions and the following disclaimer in the
+//!     documentation and/or other materials provided with the distribution.
+//!
+//!  THIS SOFTWARE IS PROVIDED BY APPLE COMPUTER, INC. ``AS IS'' AND ANY
+//!  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+//!  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+//!  PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE COMPUTER, INC. OR
+//!  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+//!  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+//!  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+//!  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+//!  OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+//!  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//!  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
@@ -1117,6 +1157,7 @@ fn enclosingVisualBoundary(ctx: *Context, node: *Instance) ?*Instance {
     return null;
 }
 
+/// Translated from Blink visible_units.cc MostBackwardCaretPosition (BSD-2; see the file header).
 /// Blink's MostBackwardCaretPosition (in the DOM tree; no shadow
 /// adjustment).
 fn mostBackwardCaretPosition(ctx: *Context, position: Position, rule: Rule) Position {
@@ -1175,6 +1216,7 @@ fn mostBackwardCaretPosition(ctx: *Context, position: Position, rule: Rule) Posi
     return last_visible.deprecatedComputePosition();
 }
 
+/// Translated from Blink visible_units.cc MostForwardCaretPosition (BSD-2; see the file header).
 /// Blink's MostForwardCaretPosition (in the DOM tree).
 fn mostForwardCaretPosition(ctx: *Context, position: Position, rule: Rule) Position {
     const start_node = position.anchor orelse return .none;
@@ -1246,6 +1288,7 @@ fn inRenderedText(ctx: *Context, p: Position) bool {
     return offset == info.caretMinOffset() or info.isGraphemeBoundary(offset);
 }
 
+/// Translated from Blink visible_units.cc AtEditingBoundary (BSD-2; see the file header).
 /// AtEditingBoundary.
 fn atEditingBoundary(ctx: *Context, p: Position) bool {
     const next = mostForwardCaretPosition(ctx, p, .can_cross);
@@ -1255,6 +1298,7 @@ fn atEditingBoundary(ctx: *Context, p: Position) bool {
     return !next.isNull() and !isEditable(next.anchor.?) and !previous.isNull() and !isEditable(previous.anchor.?);
 }
 
+/// Translated from Blink visible_units.cc IsVisuallyEquivalentCandidateAlgorithm (BSD-2; see the file header).
 /// Blink's IsVisuallyEquivalentCandidate: whether a caret can be at `p`.
 fn isVisuallyEquivalentCandidate(ctx: *Context, p: Position) bool {
     const anchor = p.anchor orelse return false;
@@ -1285,6 +1329,7 @@ fn isVisuallyEquivalentCandidate(ctx: *Context, p: Position) bool {
     return isEditable(anchor) and atEditingBoundary(ctx, p);
 }
 
+/// Translated from Blink visible_units.cc CanonicalizeCandidate (BSD-2; see the file header).
 fn canonicalizeCandidate(ctx: *Context, candidate: Position) Position {
     if (candidate.isNull()) return .none;
     const upstream = mostBackwardCaretPosition(ctx, candidate, .cannot_cross);
@@ -1322,6 +1367,7 @@ fn enclosingBlockFlowElement(ctx: *Context, node: *Instance) ?*Instance {
     return null;
 }
 
+/// Translated from Blink visible_units.cc InSameBlock (BSD-2; see the file header).
 fn inSameBlock(ctx: *Context, original: ?*Instance, new: *Instance) bool {
     const node = original orelse return false;
     if (isDescendantOf(new, node)) return true;
@@ -1333,6 +1379,7 @@ fn inSameBlock(ctx: *Context, original: ?*Instance, new: *Instance) bool {
     return original_block == enclosingBlockFlowElement(ctx, new);
 }
 
+/// Translated from Blink visible_units.cc CanonicalPosition (BSD-2; see the file header).
 /// Blink's CanonicalPosition (CreateVisiblePosition's deep equivalent).
 fn canonicalPosition(ctx: *Context, position: Position) Position {
     if (position.isNull()) return .none;
@@ -1370,6 +1417,7 @@ fn canonicalPosition(ctx: *Context, position: Position) Position {
     return next;
 }
 
+/// Translated from Blink editing_utilities.cc NextVisuallyDistinctCandidateAlgorithm and PreviousVisuallyDistinctCandidateAlgorithm (BSD-2; see the file header).
 /// Next/PreviousVisuallyDistinctCandidate (editing_utilities.cc).
 fn visuallyDistinctCandidate(ctx: *Context, position: Position, rule: Rule, forward: bool) Position {
     if (position.isNull()) return .none;
@@ -1397,6 +1445,7 @@ fn visuallyDistinctCandidate(ctx: *Context, position: Position, rule: Rule, forw
     return .none;
 }
 
+/// Translated from Blink editing_utilities.cc FirstEditablePositionAfterPositionInRootAlgorithm (BSD-2; see the file header).
 /// FirstEditablePositionAfterPositionInRoot.
 fn firstEditablePositionAfterPositionInRoot(ctx: *Context, position: Position, highest_root: *Instance) Position {
     if (compare(position, Position.at(highest_root, 0)) == .before and isEditable(highest_root))
@@ -1423,6 +1472,7 @@ fn firstEditablePositionAfterPositionInRoot(ctx: *Context, position: Position, h
     return editable;
 }
 
+/// Translated from Blink editing_utilities.cc LastEditablePositionBeforePositionInRootAlgorithm (BSD-2; see the file header).
 /// LastEditablePositionBeforePositionInRoot.
 fn lastEditablePositionBeforePositionInRoot(ctx: *Context, position: Position, highest_root: *Instance) Position {
     const last = lastPositionInNode(highest_root);
@@ -1440,6 +1490,7 @@ fn lastEditablePositionBeforePositionInRoot(ctx: *Context, position: Position, h
     return editable;
 }
 
+/// Translated from Blink position_units.cc SkipToEndOfEditingBoundaryAlgorithm (BSD-2; see the file header).
 /// SkipToEndOfEditingBoundary (position_units.cc).
 fn skipToEndOfEditingBoundary(ctx: *Context, pos: Position, anchor: Position) Position {
     if (pos.isNull()) return pos;
@@ -1450,6 +1501,7 @@ fn skipToEndOfEditingBoundary(ctx: *Context, pos: Position, anchor: Position) Po
     return firstEditablePositionAfterPositionInRoot(ctx, pos, highest_root.?);
 }
 
+/// Translated from Blink position_units.cc SkipToStartOfEditingBoundaryAlgorithm (BSD-2; see the file header).
 /// SkipToStartOfEditingBoundary (position_units.cc).
 fn skipToStartOfEditingBoundary(ctx: *Context, pos: Position, anchor: Position) Position {
     if (pos.isNull()) return pos;
@@ -1461,6 +1513,7 @@ fn skipToStartOfEditingBoundary(ctx: *Context, pos: Position, anchor: Position) 
     return lastEditablePositionBeforePositionInRoot(ctx, pos, highest_root.?);
 }
 
+/// Translated from Blink visible_units.cc AdjustBackwardPositionToAvoidCrossingEditingBoundaries (BSD-2; see the file header).
 /// AdjustBackwardPositionToAvoidCrossingEditingBoundaries.
 fn adjustBackwardToAvoidCrossingEditingBoundaries(ctx: *Context, pos: Position, anchor: Position) Position {
     if (pos.isNull()) return pos;
@@ -1481,6 +1534,7 @@ fn adjustBackwardToAvoidCrossingEditingBoundaries(ctx: *Context, pos: Position, 
     return lastEditablePositionBeforePositionInRoot(ctx, pos, root);
 }
 
+/// Translated from Blink visible_units.cc AdjustForwardPositionToAvoidCrossingEditingBoundaries (BSD-2; see the file header).
 /// AdjustForwardPositionToAvoidCrossingEditingBoundaries.
 fn adjustForwardToAvoidCrossingEditingBoundaries(ctx: *Context, pos: Position, anchor: Position) Position {
     if (pos.isNull()) return pos;
@@ -1509,6 +1563,7 @@ fn adjustForwardToAvoidCrossingEditingBoundaries(ctx: *Context, pos: Position, a
     return firstEditablePositionAfterPositionInRoot(ctx, pos, highest_root.?);
 }
 
+/// Translated from Blink visible_units.cc NextPositionOfAlgorithm (BSD-2; see the file header).
 /// NextPositionOf(VisiblePosition, rule) (visible_units.cc): the next
 /// visually distinct candidate, kept in (or skipped past) the editable
 /// region by `rule`.
@@ -1521,6 +1576,7 @@ fn nextPositionOf(ctx: *Context, position: Position, rule: Rule) Position {
     });
 }
 
+/// Translated from Blink visible_units.cc PreviousPositionOfAlgorithm (BSD-2; see the file header).
 /// PreviousPositionOf(VisiblePosition, rule).
 fn previousPositionOf(ctx: *Context, position: Position, rule: Rule) Position {
     const prev_position = visuallyDistinctCandidate(ctx, position, rule, false);
