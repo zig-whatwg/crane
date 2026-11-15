@@ -168,6 +168,12 @@ pub const ScopeBoundary = struct {
     }
 };
 
+/// An @scope rule's parsed <scope-start> and <scope-end>.
+pub const ScopeBoundaries = struct {
+    start: ?ScopeBoundary = null,
+    end: ?ScopeBoundary = null,
+};
+
 pub const Data = union(Kind) {
     style: struct {
         selectors: selector.SelectorList,
@@ -186,8 +192,9 @@ pub const Data = union(Kind) {
     scope: struct {
         start: ?[]u8,
         end: ?[]u8,
-        start_selectors: ?ScopeBoundary = null,
-        end_selectors: ?ScopeBoundary = null,
+        /// The parsed boundaries, boxed: a rare payload does not enlarge
+        /// every rule (Q55); null when the rule has neither boundary.
+        parsed: ?*ScopeBoundaries = null,
         children: std.ArrayList(*Rule) = .empty,
     },
     import: Import,
@@ -271,8 +278,11 @@ pub const Rule = struct {
             },
             .scope => |*scope| {
                 // The parsed selectors borrow the text: they go first.
-                if (scope.start_selectors) |*boundary| boundary.deinit(a);
-                if (scope.end_selectors) |*boundary| boundary.deinit(a);
+                if (scope.parsed) |parsed| {
+                    if (parsed.start) |*boundary| boundary.deinit(a);
+                    if (parsed.end) |*boundary| boundary.deinit(a);
+                    a.destroy(parsed);
+                }
                 if (scope.start) |text| a.free(text);
                 if (scope.end) |text| a.free(text);
                 releaseChildren(a, &scope.children);
@@ -727,7 +737,7 @@ pub const ResolutionPlan = struct {
             // parent style rule's selectors): a new context resolves it
             // again, as it does a nested style rule's selector.
             .scope => |*scope| {
-                if (scope.start_selectors) |*boundary| if (boundary.resolved != null or selector.nesting.contains(&boundary.list)) {
+                if (scope.parsed) |parsed| if (parsed.start) |*boundary| if (boundary.resolved != null or selector.nesting.contains(&boundary.list)) {
                     const resolved = try resolveIfNeeded(self.allocator, &boundary.list, context, false);
                     errdefer freeResolved(self.allocator, resolved);
                     try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
@@ -757,7 +767,7 @@ pub const ResolutionPlan = struct {
                     self.allocator.destroy(entry.replacement.?);
                 },
                 .scope => |*scope| {
-                    const boundary = &scope.start_selectors.?;
+                    const boundary = &scope.parsed.?.start.?;
                     freeResolved(self.allocator, boundary.resolved);
                     boundary.resolved = entry.replacement;
                 },
@@ -824,12 +834,24 @@ fn buildScope(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Er
         try out.print(a, "to ({s})", .{b.text});
     }
     const prelude = try out.toOwnedSlice(a);
-    const rule = try make(a, prelude, .{ .scope = .{
+    var parsed_boundaries: ?*ScopeBoundaries = null;
+    if (start != null or end != null) {
+        const box = a.create(ScopeBoundaries) catch |err| {
+            a.free(prelude);
+            return err;
+        };
+        box.* = .{ .start = if (start) |b| b.boundary else null, .end = if (end) |b| b.boundary else null };
+        parsed_boundaries = box;
+    }
+    const rule = make(a, prelude, .{ .scope = .{
         .start = if (start) |b| b.text else null,
         .end = if (end) |b| b.text else null,
-        .start_selectors = if (start) |b| b.boundary else null,
-        .end_selectors = if (end) |b| b.boundary else null,
-    } });
+        .parsed = parsed_boundaries,
+    } }) catch |err| {
+        // The boundaries are still `start`'s and `end`'s, which the defer frees.
+        if (parsed_boundaries) |box| a.destroy(box);
+        return err;
+    };
     owns = false;
     errdefer rule.unref();
     try buildChildren(options, rule, parsed.children);

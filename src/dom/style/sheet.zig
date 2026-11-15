@@ -683,8 +683,8 @@ const Compiler = struct {
             .scope => |*s| {
                 const index: u32 = @intCast(self.contents.scopes.items.len);
                 try self.contents.scopes.append(self.contents.allocator, .{
-                    .start = if (s.start_selectors) |*b| b.matching() else null,
-                    .end = if (s.end_selectors) |*b| b.matching() else null,
+                    .start = if (s.parsed) |parsed| (if (parsed.start) |*b| b.matching() else null) else null,
+                    .end = if (s.parsed) |parsed| (if (parsed.end) |*b| b.matching() else null) else null,
                     .parent = self.scope,
                 });
                 const outer = self.scope;
