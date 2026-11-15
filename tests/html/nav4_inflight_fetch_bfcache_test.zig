@@ -207,7 +207,7 @@ fn expectIn(realm: runtime.Context, source: []const u8, expected: []const u8) !v
     try testing.expectEqualStrings(expected, answer);
 }
 
-test "a page left with a fetch in flight is kept, and its fetch rejects with a TypeError once it is shown again (Safari)" {
+test "a page left with a fetch in flight is kept, its fetch cancelled with a TypeError as the navigation started (Safari)" {
     const fixture = try Fixture.start();
     defer fixture.stop();
     const bc = try fixture.openPopup("/fetch.html");
@@ -216,10 +216,11 @@ test "a page left with a fetch in flight is kept, and its fetch rejects with a T
     try fixture.awaitRequests("/held.txt", 1);
 
     try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
-    // Kept: the fetch in flight did not make it unsalvageable.
+    // Kept: the fetch the navigation's start cancelled did not make it
+    // unsalvageable (Chrome and Safari keep such a page).
     try testing.expectEqual(@as(usize, 1), fixture.cached());
-    // Its answer arrives while the page is cached: the fetch was cancelled
-    // when the page was stored, so nothing reaches the page.
+    // Its answer arrives while the page is cached: the fetch was cancelled,
+    // so nothing reaches the page.
     fixture.server.release("/held.txt");
     try fixture.turn(100);
 
@@ -229,8 +230,7 @@ test "a page left with a fetch in flight is kept, and its fetch rejects with a T
     try testing.expectEqual(@as(u32, 1), fixture.server.count("/fetch.html"));
     try expectIn(realm_a, "loads", "1");
     try expectIn(realm_a, "log.join()", "pageshow:false,pagehide:true,pageshow:true");
-    // The cancelled fetch rejects once the page is shown again, as a network
-    // error does: a TypeError.
+    // The cancelled fetch rejected with a TypeError, as a network error does.
     const outcome = try fixture.awaitOutcome(realm_a);
     defer testing.allocator.free(outcome);
     try testing.expectEqualStrings("TypeError", outcome);
@@ -263,4 +263,44 @@ test "a page left with an XMLHttpRequest in flight is kept; nothing of it runs w
     defer testing.allocator.free(outcome);
     try testing.expectEqualStrings("error", outcome);
     try expectIn(realm_a, "events.slice(-3).join()", "readystatechange:4,error:4,loadend:4");
+}
+
+test "a navigation's start cancels the page's fetch, which rejects with a TypeError while the page is still shown (Firefox, Safari)" {
+    const fixture = try Fixture.start();
+    defer fixture.stop();
+    const bc = try fixture.openPopup("/fetch.html");
+    const realm_a = activeRealm(bc).?;
+    try expectIn(realm_a, "go(); 'started'", "started");
+    try fixture.awaitRequests("/held.txt", 1);
+    // A navigation away starts; its response is held, so it does not commit.
+    try expectIn(realm_a, "location.href = '/held-nav.html'; 'navigating'", "navigating");
+    // The fetch is cancelled as the navigation starts - a TypeError, as every
+    // browser rejects a cancelled fetch - while the page is still shown.
+    const outcome = try fixture.awaitOutcome(realm_a);
+    defer testing.allocator.free(outcome);
+    try testing.expectEqualStrings("TypeError", outcome);
+    try expectIn(realm_a, "location.pathname", "/fetch.html");
+
+    fixture.server.release("/held.txt");
+    fixture.server.release("/held-nav.html");
+    var turns: usize = 0;
+    while (turns < 500) : (turns += 1) {
+        if (try popupIs(bc, "/held-nav.html")) break;
+        try fixture.turn(10);
+    }
+}
+
+test "window.stop() cancels the page's fetch, which rejects with a TypeError (Chrome, Firefox, Safari)" {
+    const fixture = try Fixture.start();
+    defer fixture.stop();
+    const bc = try fixture.openPopup("/fetch.html");
+    const realm_a = activeRealm(bc).?;
+    try expectIn(realm_a, "go(); 'started'", "started");
+    try fixture.awaitRequests("/held.txt", 1);
+    try expectIn(realm_a, "stop(); 'stopped'", "stopped");
+    const outcome = try fixture.awaitOutcome(realm_a);
+    defer testing.allocator.free(outcome);
+    try testing.expectEqualStrings("TypeError", outcome);
+    fixture.server.release("/held.txt");
+    try fixture.turn(50);
 }
