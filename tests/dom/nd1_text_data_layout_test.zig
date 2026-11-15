@@ -77,7 +77,7 @@ test "CharacterData's data is 16 bytes: two u32 lengths in its state and one wor
     // Safe builds give a bare union a hidden tag (lesson
     // testing-a-std-safety-field-moves-size-pins-in-safe-builds): the word
     // must stay 8 bytes in every mode this test runs in.
-    try expectSize(dom.character_data.Data.Word, 8);
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(dom.character_data.Data.Word));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(dom.character_data.Data.Word));
 }
 
