@@ -723,6 +723,18 @@ pub const ResolutionPlan = struct {
                 errdefer resolved.deinit();
                 try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
             },
+            // An @scope's <scope-start> resolves & against its context (a
+            // parent style rule's selectors): a new context resolves it
+            // again, as it does a nested style rule's selector.
+            .scope => |*scope| {
+                if (scope.start_selectors) |*boundary| if (boundary.resolved != null or selector.nesting.contains(&boundary.list)) {
+                    const resolved = try resolveIfNeeded(self.allocator, &boundary.list, context, false);
+                    errdefer freeResolved(self.allocator, resolved);
+                    try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
+                };
+                const next = contextInside(rule, context);
+                for (scope.children.items) |child| try self.prepare(child, next, null);
+            },
             else => if (rule.children()) |children| {
                 const next = contextInside(rule, context);
                 for (children.items) |child| try self.prepare(child, next, null);
@@ -743,6 +755,11 @@ pub const ResolutionPlan = struct {
                     std.debug.assert(entry.replacement.?.shared_owner == null);
                     nested.selectors = entry.replacement.?.*;
                     self.allocator.destroy(entry.replacement.?);
+                },
+                .scope => |*scope| {
+                    const boundary = &scope.start_selectors.?;
+                    freeResolved(self.allocator, boundary.resolved);
+                    boundary.resolved = entry.replacement;
                 },
                 else => unreachable,
             }

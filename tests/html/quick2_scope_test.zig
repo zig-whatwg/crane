@@ -175,3 +175,63 @@ fn shadowHostIsTheImplicitRoot() !void {
 test "in a shadow tree the featureless host is the implicit scoping root, and :host can be a <scope-start>" {
     try helpers.onFreshThread(shadowHostIsTheImplicitRoot);
 }
+
+fn theRootCanBeALimit() !void {
+    const page = try openWith(
+        "@scope (.a) to (:scope) { * { z-index: 1; } } @scope (.b) to (.c&) { :scope { z-index: 2; } }",
+        "<div class=a id=a><div id=in-a></div></div><div class='b c' id=bc></div><div class=b id=b></div>",
+    );
+    defer page.close();
+    try expectScript(page, "[z('#a'), z('#in-a'), z('#bc'), z('#b')].join()", "auto,auto,auto,2");
+}
+
+test "a scoping root that matches <scope-end> itself scopes nothing (all three browsers)" {
+    try helpers.onFreshThread(theRootCanBeALimit);
+}
+
+fn nestedImplicitScopeNeedsTheOuterScope() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(
+        \\document.body.innerHTML = `<div class=a id=a><div><div><style>@scope (.a) { @scope { @scope (> .b) { :scope { z-index: 1; } } } }</style><div class=b id=b></div></div></div></div>`;
+        \\globalThis.z = (s) => getComputedStyle(document.querySelector(s)).zIndex;
+    );
+    try expectScript(page, "z('#b')", "1");
+    try expectScript(page, "a.classList.remove('a'); z('#b')", "auto");
+}
+
+test "an implicit @scope nested in another is constrained by the outer one's scopes" {
+    try helpers.onFreshThread(nestedImplicitScopeNeedsTheOuterScope);
+}
+
+fn parentSelectorTextReresolvesTheStart() !void {
+    const page = try openWith(
+        ".a { @scope (&) { :scope .x { z-index: 1; } } }",
+        "<div class=a><div class=x id=ax></div></div><div class=b><div class=x id=bx></div></div>",
+    );
+    defer page.close();
+    try expectScript(page, "[z('#ax'), z('#bx')].join()", "1,auto");
+    try expectScript(page, "document.querySelector('style').sheet.cssRules[0].selectorText = '.b'; [z('#ax'), z('#bx')].join()", "auto,1");
+}
+
+test "changing a style rule's selectorText resolves its @scope's <scope-start> again" {
+    try helpers.onFreshThread(parentSelectorTextReresolvesTheStart);
+}
+
+fn constructedSheetInAShadowRootScopesToItsHost() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try expectScript(page,
+        \\const host = document.body.appendChild(document.createElement('div'));
+        \\const root = host.attachShadow({ mode: 'open' });
+        \\root.innerHTML = '<div class=a></div>';
+        \\const sheet = new CSSStyleSheet();
+        \\sheet.replaceSync('@scope { :scope { z-index: 1; } :scope .a { z-index: 2; } }');
+        \\root.adoptedStyleSheets = [sheet];
+        \\[getComputedStyle(host).zIndex, getComputedStyle(root.querySelector('.a')).zIndex].join()
+    , "1,2");
+}
+
+test "a constructed sheet adopted by a shadow root: its implicit scope is the host" {
+    try helpers.onFreshThread(constructedSheetInAShadowRootScopesToItsHost);
+}

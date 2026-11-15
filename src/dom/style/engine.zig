@@ -1120,9 +1120,10 @@ const ScopeSpan = struct { start: u32, len: u32 };
 /// (Cascade 6 3.5.4) - "the parent element of the owner node of the
 /// stylesheet"; with none, the shadow host of a shadow tree, else the root of
 /// the node tree. An imported sheet's owner node is its root sheet's (Blink
-/// StyleScope::... reads the owner of the sheet chain's root). A sheet with
-/// no owner node (a constructed sheet) takes the tree `subject` is in.
-fn beginScopes(res: *Resolution, contents: *const Contents, active_sheet: ?*const ActiveSheet, subject: *NodeBase) Error!void {
+/// StyleScope's implicit root reads the owner of the sheet chain's root).
+/// A sheet with no owner node (a constructed sheet) takes the tree it applies
+/// to: the one `tree_node` is in.
+fn beginScopes(res: *Resolution, contents: *const Contents, active_sheet: ?*const ActiveSheet, tree_node: *NodeBase) Error!void {
     res.activations.clearRetainingCapacity();
     res.scope_spans.clearRetainingCapacity();
     try res.scope_spans.appendNTimes(res.allocator, null, contents.scopes.items.len);
@@ -1136,7 +1137,7 @@ fn beginScopes(res: *Resolution, contents: *const Contents, active_sheet: ?*cons
         res.implicit_root = treeScopeRoot(parent);
         return;
     }
-    var root = subject;
+    var root = tree_node;
     while (root.parent_node) |p| root = p;
     res.implicit_root = treeScopeRoot(root);
 }
@@ -2203,7 +2204,12 @@ fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, ho
     _ = quirks;
     const candidates = if (pseudo != null) contents.buckets.pseudo.items else contents.buckets.universal.items;
     const subject = selector_matching.StyleMatcher.hostSubject(host) orelse return;
-    if (contents.scopes.items.len != 0) try beginScopes(res, contents, active_sheet, subject.node);
+    // The sheet applies to the host's shadow tree: its implicit scope is
+    // found there (the host, featureless), not in the host's own tree.
+    if (contents.scopes.items.len != 0) {
+        const shadow = custom_elements.shadowRootOf(host) orelse return;
+        try beginScopes(res, contents, active_sheet, instance_bridge.getNodeBase(shadow) orelse return);
+    }
     for (candidates) |index| {
         const rule = &contents.rules.items[index];
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not

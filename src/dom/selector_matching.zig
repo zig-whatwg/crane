@@ -568,10 +568,10 @@ pub const StyleMatcher = struct {
     /// `subject` (through a shadow tree's featureless host) that matches
     /// `start` - with `:scope` and `&` in it meaning a root of `outer`, the
     /// enclosing @scope rule's scopes the root is in (3.5.5), or the top
-    /// level's with no `outer` - or, with no `start`, is `implicit`. The
-    /// subject is in the scope unless an element from it up to, not
-    /// including, the root matches `end` with that root as :scope (the
-    /// scoping limits are the root's descendants that match).
+    /// level's with no `outer` - or, with no `start`, is `implicit` (in an
+    /// outer scope, when there is one). The subject is in the scope unless
+    /// an element from it up to the root matches `end` with that root as
+    /// :scope.
     pub fn scopeActivations(
         self: *StyleMatcher,
         subject: ScopeRoot,
@@ -614,13 +614,27 @@ pub const StyleMatcher = struct {
                     if (self.matcher.matchesList(candidate, list)) break :blk true;
                 }
                 break :blk false;
-            } else if (implicit) |root| root.node == candidate.node else false;
+            } else if (implicit) |root| blk: {
+                if (root.node != candidate.node) break :blk false;
+                // An implicit scope inside another @scope is constrained by
+                // it too (3.5.5): its root must be in one of the outer scopes.
+                const outers = outer orelse break :blk true;
+                for (outers) |o| if (o.proximity >= distance) break :blk true;
+                break :blk false;
+            } else false;
             if (!is_root) continue;
             if (end) |limits| {
+                // The scoping limits: the root's descendants that match
+                // <scope-end> (3.5.4) - and the root itself, as all three
+                // browsers have it: `@scope (.a) to (:scope)` scopes nothing
+                // (scope-evaluation.html "Scope with no elements", Chrome
+                // 26/26, Firefox 26/26, Safari 24/26 at wpt.fyi 2358bd4835;
+                // scope-nesting.html `to (.b&)`, scope-hover.html
+                // `to (:scope:hover)` all pass in the three). Golden rule 2.
                 const saved = self.enterScope(.{ .node = candidate.node, .featureless = candidate.featureless });
                 defer self.leaveScope(saved);
-                const limited = for (chain.items[0..distance]) |below| {
-                    if (!below.featureless and self.matcher.matchesList(below, limits)) break true;
+                const limited = for (chain.items[0 .. distance + 1]) |below| {
+                    if (self.matcher.matchesList(below, limits)) break true;
                 } else false;
                 if (limited) continue;
             }
