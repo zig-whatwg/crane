@@ -331,5 +331,7 @@ test {
 }
 
 pub const popover = @import("popover.zig");
+/// The Fullscreen API: the fullscreen flag, the events, :fullscreen.
+pub const fullscreen = @import("fullscreen.zig");
 pub const dialog = @import("dialog.zig");
 pub const details = @import("details.zig");
