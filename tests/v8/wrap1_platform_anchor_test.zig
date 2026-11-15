@@ -844,3 +844,49 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
     std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
     return error.TestInconclusive;
 }
+
+test "a State's internal state blocks are read from its types, and counted only while they exist" {
+    // What the account of a wrapped instance adds for its impl's internal state (interface_bindings
+    // `stateBlocksOf`, `stateBlockBytes`): one block for each level of the State's inheritance chain that
+    // keeps that state in a block of its own, counted while the level's pointer is set. A level with an empty
+    // internal state names nothing. No impl is named: the State's types say it.
+    const bindings = @import("v8").interface_bindings;
+    const Big = struct { bytes: [200]u8 };
+    const Small = struct { word: u64 };
+    const Empty = struct {};
+    const Root = runtime.FlattenedState(null, &.{}, struct { a: u32 = 0, _internal: ?*Big = null });
+    const Mid = runtime.FlattenedState(Root, &.{}, struct { _internal: ?*Empty = null });
+    const Leaf = runtime.FlattenedState(Mid, &.{}, struct { b: u8 = 0, _internal: ?*Small = null });
+
+    const blocks = comptime bindings.stateBlocksOf(Leaf);
+    try testing.expectEqual(@as(usize, 2), blocks.len);
+    try testing.expectEqual(@as(usize, 1), comptime bindings.stateBlocksOf(Root).len);
+    try testing.expectEqual(@as(usize, 1), comptime bindings.stateBlocksOf(Mid).len);
+
+    var state = std.mem.zeroes(Leaf);
+    try testing.expectEqual(@as(usize, 0), bindings.stateBlockBytes(blocks, &state));
+    var small: Small = .{ .word = 1 };
+    state.own._internal = &small;
+    try testing.expectEqual(@as(usize, @sizeOf(Small)), bindings.stateBlockBytes(blocks, &state));
+    var big: Big = .{ .bytes = @splat(0) };
+    state.base.base.own._internal = &big;
+    try testing.expectEqual(@as(usize, @sizeOf(Small) + @sizeOf(Big)), bindings.stateBlockBytes(blocks, &state));
+    state.own._internal = null;
+    try testing.expectEqual(@as(usize, @sizeOf(Big)), bindings.stateBlockBytes(blocks, &state));
+
+    // The generated States: an Event's one block is its dispatch state, and an interface that inherits from
+    // Event names that block too.
+    const event_blocks = comptime bindings.stateBlocksOf(interfaces.Event.State);
+    try testing.expectEqual(@as(usize, 1), event_blocks.len);
+    try testing.expectEqual(@as(u32, @sizeOf(dom.event_dispatch.EventState)), event_blocks[0].bytes);
+    var inherited: usize = 0;
+    for (comptime bindings.stateBlocksOf(interfaces.CustomEvent.State)) |block| {
+        if (block.bytes == @sizeOf(dom.event_dispatch.EventState)) inherited += 1;
+    }
+    try testing.expectEqual(@as(usize, 1), inherited);
+    try testing.expectEqual(@as(usize, 1), bindings.wrapperFactsOf("Event").state_blocks.len);
+    try testing.expect(bindings.wrapperFactsOf("Event").born_changed);
+    // A name no interface has: an ordinary wrapper with no block.
+    try testing.expectEqual(@as(usize, 0), bindings.wrapperFactsOf("NoSuchInterface").state_blocks.len);
+    try testing.expect(!bindings.wrapperFactsOf("NoSuchInterface").born_changed);
+}

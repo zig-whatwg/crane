@@ -1448,38 +1448,117 @@ pub fn getOrCreateTemplateByName(
     return createTemplateOnDemandByName(interface_name, isolate);
 }
 
-/// The interfaces whose wrapper is not an unmodified API object from the
-/// moment it is made, by name: every interface whose instances are born with
-/// an own property (interface.instancesAreBornWithOwnProperties: a
-/// [LegacyUnforgeable] member of its own or inherited - Event and all that
-/// inherit from it, Location, ...) and every legacy platform object whose
-/// wrapper is a Proxy (template_registry.isLegacyPlatformObject). Built at
-/// compile time from each interface's metadata; nobody keeps it by hand.
-const born_changed_interfaces = blk: {
+/// One block of its own that a generated State names as an impl's internal
+/// state: where the State keeps the pointer to it, and its size.
+pub const StateBlock = struct {
+    /// Byte offset, in the State, of the level's `own._internal` pointer.
+    offset: u32,
+    /// The size of the block it points at.
+    bytes: u32,
+};
+
+/// The internal state blocks `State` - an interface's generated State - can
+/// name: one for each level of its inheritance chain that keeps its impl's
+/// internal state in a block of its own (runtime `InternalKind.pointer`: an
+/// Event's 1 KB of dispatch state is one). A level that keeps the state by
+/// value (a node's: it is inside the State block already), or has none,
+/// names nothing. Read from the State's own types, so no impl is named and
+/// nobody keeps a list. A hand-written State (no `internal_kind`) ends the
+/// walk: it names no block the adapter can know.
+pub fn stateBlocksOf(comptime State: type) []const StateBlock {
+    comptime {
+        var blocks: []const StateBlock = &.{};
+        var Level = State;
+        var offset: usize = 0;
+        while (@typeInfo(Level) == .@"struct" and @hasDecl(Level, "internal_kind")) {
+            if (Level.internal_kind == .pointer) {
+                const Own = @FieldType(Level, "own");
+                const Target = @typeInfo(@typeInfo(@FieldType(Own, "_internal")).optional.child).pointer.child;
+                // A block whose size its type does not say (an opaque) is
+                // not counted.
+                if (@typeInfo(Target) != .@"opaque" and @sizeOf(Target) != 0) {
+                    blocks = blocks ++ [_]StateBlock{.{
+                        .offset = offset + @offsetOf(Level, "own") + @offsetOf(Own, "_internal"),
+                        .bytes = @sizeOf(Target),
+                    }};
+                }
+            }
+            const Base = @FieldType(Level, "base");
+            if (Base == void) break;
+            offset += @offsetOf(Level, "base");
+            Level = Base;
+        }
+        const final = blocks[0..blocks.len].*;
+        return &final;
+    }
+}
+
+/// The bytes of the internal state blocks `state` names NOW: each of
+/// `blocks` whose pointer is set. `state` is the State `blocks` was read
+/// from (an instance's `state`).
+pub fn stateBlockBytes(blocks: []const StateBlock, state: *const anyopaque) usize {
+    const base: [*]const u8 = @ptrCast(state);
+    var total: usize = 0;
+    for (blocks) |block| {
+        const pointer: *const ?*anyopaque = @ptrCast(@alignCast(base + block.offset));
+        if (pointer.* != null) total += block.bytes;
+    }
+    return total;
+}
+
+/// What the wrapper cache needs to know of an interface when it takes a
+/// wrapper of it (wrapper_cache.zig `WrapperCache.setConstructed`), read once
+/// per wrap by the interface's name.
+pub const WrapperFacts = struct {
+    /// The wrapper is not an unmodified API object from the moment it is
+    /// made (`wrapperIsBornChanged`).
+    born_changed: bool = false,
+    /// The internal state blocks an instance's State can name
+    /// (`stateBlocksOf`).
+    state_blocks: []const StateBlock = &.{},
+};
+
+/// Every interface's WrapperFacts, by name. `born_changed`: every interface
+/// whose instances are born with an own property
+/// (interface.instancesAreBornWithOwnProperties: a [LegacyUnforgeable] member
+/// of its own or inherited - Event and all that inherit from it, Location,
+/// ...) and every legacy platform object whose wrapper is a Proxy
+/// (template_registry.isLegacyPlatformObject). Built at compile time from
+/// each interface's metadata and State; nobody keeps it by hand.
+const wrapper_facts = blk: {
     @setEvalBranchQuota(100_000_000);
     const template_registry = @import("template_registry.zig");
     const decl_names = @typeInfo(interfaces).@"struct".decl_names;
-    var entries: [decl_names.len]struct { []const u8 } = undefined;
+    var entries: [decl_names.len]struct { []const u8, WrapperFacts } = undefined;
     var count: usize = 0;
     for (decl_names) |decl_name| {
         const InterfaceType = @field(interfaces, decl_name);
         if (@typeInfo(InterfaceType) != .@"struct" or !@hasDecl(InterfaceType, "Meta")) continue;
         if (!@hasDecl(InterfaceType.Meta, "name")) continue;
         const name: []const u8 = InterfaceType.Meta.name;
-        if (interface_mod.instancesAreBornWithOwnProperties(InterfaceType) or template_registry.isLegacyPlatformObject(name)) {
-            entries[count] = .{name};
-            count += 1;
-        }
+        const facts: WrapperFacts = .{
+            .born_changed = interface_mod.instancesAreBornWithOwnProperties(InterfaceType) or template_registry.isLegacyPlatformObject(name),
+            .state_blocks = if (@hasDecl(InterfaceType, "State")) stateBlocksOf(InterfaceType.State) else &.{},
+        };
+        if (!facts.born_changed and facts.state_blocks.len == 0) continue;
+        entries[count] = .{ name, facts };
+        count += 1;
     }
     const final = entries[0..count].*;
-    break :blk std.StaticStringMap(void).initComptime(final);
+    break :blk std.StaticStringMap(WrapperFacts).initComptime(final);
 };
+
+/// The WrapperFacts of the interface named `interface_name`; the defaults -
+/// an ordinary wrapper, no block - for a name no interface has.
+pub fn wrapperFactsOf(interface_name: []const u8) WrapperFacts {
+    return wrapper_facts.get(interface_name) orelse .{};
+}
 
 /// Whether a wrapper of the interface named `interface_name` is, from the
 /// moment it is made, one V8 will not drop in a young-generation collection
 /// (wrapper_cache.zig `heldByWeakHandle`: the rule and its reasons).
 pub fn wrapperIsBornChanged(interface_name: []const u8) bool {
-    return born_changed_interfaces.has(interface_name);
+    return wrapperFactsOf(interface_name).born_changed;
 }
 
 /// Create a template on-demand by interface name.

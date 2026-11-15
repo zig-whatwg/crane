@@ -354,8 +354,16 @@ fn letGo(entry: *Cell, link: Link) void {
 ///   since the wrapper redesign.
 /// tests/v8/wrap1_platform_anchor_test.zig asks V8 itself, template by
 /// template, and pins this answer against it.
-fn heldByWeakHandle(instance: *const runtime.Instance) bool {
-    return @import("interface_bindings.zig").wrapperIsBornChanged(instance.vtable.name);
+fn heldByWeakHandle(facts: WrapperFacts) bool {
+    return facts.born_changed;
+}
+
+const WrapperFacts = @import("interface_bindings.zig").WrapperFacts;
+
+/// What the binding's tables say of `instance`'s interface, read ONCE per
+/// wrap (a lookup by name).
+fn wrapperFactsOf(instance: *const runtime.Instance) WrapperFacts {
+    return @import("interface_bindings.zig").wrapperFactsOf(instance.vtable.name);
 }
 
 /// True when the slab slot behind `entry.instance` no longer holds the
@@ -378,26 +386,38 @@ fn slotReissued(entry: *const Cell) bool {
 /// account of it adds the same number - the report made when its realm's
 /// cache takes its wrapper (`noteWrapped`), and the sum over surviving
 /// wrappers that lane dm1's design computes from an anchor's trace
-/// (tmp/plans/dom-memory-figure-design.md, section 5). Its slab slot, its
-/// generated State block (the size its vtable carries) and the cache's
-/// record of its wrapper: 112 bytes for an Event, 72 for a URLSearchParams.
-/// No per-interface table.
+/// (tmp/plans/dom-memory-figure-design.md, section 5). Four parts: its slab
+/// slot, its generated State block (the size its vtable carries), the cache's
+/// record of its wrapper, and - when its State names one now - each internal
+/// state block of its own that its impl keeps (interface_bindings
+/// `stateBlocksOf`, read from the generated State's types): about 1.2 KB for
+/// an Event, most of it its dispatch state. No per-interface table.
 ///
-/// It is a FLOOR. The impl's internal state is a block of the Browser's arena
-/// that neither the instance nor its vtable names (an Event's is 1,079 bytes
-/// of the 1.2 KB a kept Event holds), and what that state allocates beyond
-/// its block (a list, a body, a queue) is not known here either. Counting the
-/// arena's blocks belongs to the change that makes this the survivors' sum:
-/// it is made where the blocks are made, in src/runtime.
+/// The internal state block is the part that decides the collector's
+/// schedule. With the first three parts alone V8 was told 112 bytes of the
+/// 1.2 KB an Event holds, and 650,000 dropped Events ended at 99.1 MB on
+/// server1 against main's 87.5; a diagnosis build that told the block too
+/// ended at 51.5 (gc_bench, 2026-11-15,
+/// tmp/plans/wrap1-evidence/b3-meas6-*.out). In Blink the whole object is on
+/// the C++ heap, whose growth V8 counts.
+///
+/// It is still a FLOOR: what a state allocates beyond its block (a list's
+/// spilled storage, a body, a queue) is not known here. Counting those
+/// belongs to the change that makes this the survivors' sum.
 pub fn instanceHeldBytes(instance: *const runtime.Instance) usize {
-    return runtime.SlabAllocator.slot_bytes + instance.vtable.state_size + @sizeOf(Cell);
+    return heldBytes(instance, wrapperFactsOf(instance));
+}
+
+fn heldBytes(instance: *const runtime.Instance, facts: WrapperFacts) usize {
+    return runtime.SlabAllocator.slot_bytes + instance.vtable.state_size + @sizeOf(Cell) +
+        @import("interface_bindings.zig").stateBlockBytes(facts.state_blocks, instance.state);
 }
 
 /// `instance`'s realm's cache took its wrapper: what it holds is noted for
 /// the collector's schedule (v8_wrapper.cpp, "What the instances behind
 /// non-node wrappers hold" - the one call site of that account).
-fn noteWrapped(isolate: *v8.Isolate, instance: *const runtime.Instance) void {
-    v8.v8_Isolate_NoteWrappedInstance(isolate, instanceHeldBytes(instance));
+fn noteWrapped(isolate: *v8.Isolate, instance: *const runtime.Instance, facts: WrapperFacts) void {
+    v8.v8_Isolate_NoteWrappedInstance(isolate, heldBytes(instance, facts));
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -2144,7 +2164,8 @@ pub const WrapperCache = struct {
         // young collection (`heldByWeakHandle`), by a droppable traced
         // reference otherwise. Anything else (a realm's global) is held by
         // the caller's Global.
-        if (self.anchors and heldByWeakHandle(instance)) {
+        const facts = wrapperFactsOf(instance);
+        if (self.anchors and heldByWeakHandle(facts)) {
             if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
                 entry.bits.weak_handle = true;
                 entry.bits.boxed = false;
@@ -2180,7 +2201,7 @@ pub const WrapperCache = struct {
         // call: v8_wrapper.cpp, "What the instances behind non-node wrappers
         // hold") - in an agent's realm; a cache of no agent's isolate
         // reports nothing.
-        if (self.registered) noteWrapped(isolate, instance);
+        if (self.registered) noteWrapped(isolate, instance, facts);
 
         if (entry.bits.boxed) return wrapper;
         // The record's reference holds the wrapper from here; until here the
