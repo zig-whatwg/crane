@@ -87,6 +87,47 @@ fn isConnected(node: *Instance) bool {
     return interfaces.Node.get_isConnected(node) catch false;
 }
 
+/// `node`, while its node document is fully active; null once that document
+/// has gone. What `Pointer.currentTarget` says of the element under a
+/// pointer holds for everything else an input device remembers of a
+/// document - a touch contact's elements, a pointer capture target, where a
+/// tap left the legacy mouse: it is forgotten with the document, WITHOUT
+/// events. An element of a document that is not fully active is still
+/// connected (to that document), and may still be allocated after its realm
+/// was collected, where an event must never be made. The engines drop this
+/// state the same way:
+/// - Blink: PointerEventManager::Clear (core/input/pointer_event_manager.cc)
+///   empties the capture maps (pointer_capture_target_ and
+///   pending_pointer_capture_target_) and the elements under the pointers,
+///   and clears its touch event manager, mouse event manager and pointer
+///   event factory, dispatching nothing;
+/// - Gecko: dom/events/PointerEventHandler.cpp
+///   DispatchGotOrLostPointerCaptureEvent fires neither capture event when
+///   the target's document has no PresShell or it is being destroyed, and
+///   the pending and set capture targets of a destroyed pres context are
+///   cleared without events.
+/// (Read at each repository's main branch, 2026-11-15. WebKit's
+/// PointerCaptureController::processPendingPointerCapture has no such
+/// check in the function itself; who calls its reset() was not read.)
+/// tests/html/quick2_gone_document_test.zig.
+fn inFullyActiveDocument(node: *Instance) ?*Instance {
+    const document = nodeDocument(node) orelse return null;
+    return if (isFullyActive(document)) node else null;
+}
+
+/// The node `weak` names, while it is allocated and its document has not
+/// gone (`inFullyActiveDocument`).
+fn liveTarget(weak: ?Weak) ?*Instance {
+    const node = (weak orelse return null).get() orelse return null;
+    return inFullyActiveDocument(node);
+}
+
+/// Whether an event of an input sequence may still go to `node` after a
+/// listener ran: it is connected, and its document has not gone.
+fn isReachable(node: *Instance) bool {
+    return isConnected(node) and inFullyActiveDocument(node) != null;
+}
+
 /// The node's parent in the flat tree, near enough: its parent, or a shadow
 /// root's host.
 fn parentOf(node: *Instance) ?*Instance {
@@ -831,7 +872,7 @@ fn mousedownDefaults(pointer: ?*Pointer, target: *Instance, button: u3, modifier
             .touch = device.pointer_type == .touch,
             .toggle = isCommandModifier(platform, modifiers),
             .range = modifiers.shift,
-            .anchor = if (device.listbox_anchor) |weak| weak.get() else null,
+            .anchor = liveTarget(device.listbox_anchor),
         });
         if (picked) |option| device.listbox_anchor = Weak.of(option);
     }
@@ -952,14 +993,14 @@ pub fn pointerUp(pointer: *Pointer, button: u3, modifiers: Modifiers) void {
         _ = firePointerEventOnly(target, "pointermove", pointer, modifiers, @intCast(button), 0, null);
     }
     const up_target = if (captured) target else pointer.currentTarget() orelse return;
-    if (!suppressed and isConnected(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null)) {
+    if (!suppressed and isReachable(up_target) and fireMouseEvent(up_target, "mouseup", modifiers, @intCast(button), pointer.buttons, 1, null)) {
         if (mouseTargetNow(if (captured) null else pointer, up_target)) |current| @import("forms/select_picker.zig").mouseUp(current, button);
     }
     // 3.3.12.3 step 3: "If ... userEvent was dispatched while the
     // corresponding pointer was captured, then let target be the target of
     // userEvent", even though lostpointercapture has fired since.
     const click_target = if (captured) blk: {
-        if (!isConnected(target)) return;
+        if (!isReachable(target)) return;
         break :blk target;
     } else blk: {
         const pressed = down orelse return;
@@ -1010,10 +1051,12 @@ fn pointerEntry(pointer: *const Pointer, node: *Instance) ?*pointer_capture.Entr
 /// cleared.
 fn processPendingPointerCapture(pointer: *Pointer, node: *Instance, modifiers: Modifiers) void {
     const entry = pointerEntry(pointer, node) orelse return;
-    if (pointer_capture.get(entry.pending)) |pending| {
+    // A target that was freed, or whose document has gone, is no target:
+    // forgotten without events (`captureNode`).
+    if (captureNode(entry.pending)) |pending| {
         if (!isConnected(pending)) entry.pending = null;
-    }
-    if (pointer_capture.get(entry.override)) |override| {
+    } else entry.pending = null;
+    if (captureNode(entry.override)) |override| {
         if (isElement(override) and !isConnected(override)) {
             entry.override = if (nodeDocument(override)) |document| pointer_capture.refOf(document) else null;
         }
@@ -1022,8 +1065,8 @@ fn processPendingPointerCapture(pointer: *Pointer, node: *Instance, modifiers: M
     // set and is not equal to the pending pointer capture target override,
     // then fire a pointer event named lostpointercapture at the pointer
     // capture target override node."
-    if (pointer_capture.get(entry.override)) |override| {
-        if (pointer_capture.get(entry.pending) != override) {
+    if (captureNode(entry.override)) |override| {
+        if (captureNode(entry.pending) != override) {
             _ = firePointerEventOnly(override, "lostpointercapture", pointer, modifiers, -1, 0, null);
         }
     }
@@ -1032,15 +1075,15 @@ fn processPendingPointerCapture(pointer: *Pointer, node: *Instance, modifiers: M
     // removed (it never gets the capture: all three browsers,
     // pointerevent_lostpointercapture_remove_setcapture_node.html).
     const fresh = pointerEntry(pointer, node) orelse return;
-    if (pointer_capture.get(fresh.pending)) |pending| {
+    if (captureNode(fresh.pending)) |pending| {
         if (!isConnected(pending)) fresh.pending = null;
-    }
+    } else fresh.pending = null;
     // Step 2: "If the pending pointer capture target override for this
     // pointer is set and is not equal to the pointer capture target
     // override, then fire a pointer event named gotpointercapture at the
     // pending pointer capture target override."
-    if (pointer_capture.get(fresh.pending)) |pending| {
-        if (pointer_capture.get(fresh.override) != pending) {
+    if (captureNode(fresh.pending)) |pending| {
+        if (captureNode(fresh.override) != pending) {
             _ = firePointerEventOnly(pending, "gotpointercapture", pointer, modifiers, -1, 0, null);
         }
     }
@@ -1048,14 +1091,20 @@ fn processPendingPointerCapture(pointer: *Pointer, node: *Instance, modifiers: M
     // pointer capture target override, if set. Otherwise, clear the pointer
     // capture target override."
     const last = pointerEntry(pointer, node) orelse return;
-    last.override = if (pointer_capture.get(last.pending) != null) last.pending else null;
+    last.override = if (captureNode(last.pending) != null) last.pending else null;
+}
+
+/// The node a capture target `ref` names, while it is allocated and its
+/// document has not gone (`inFullyActiveDocument`).
+fn captureNode(ref: ?pointer_capture.Ref) ?*Instance {
+    return inFullyActiveDocument(pointer_capture.get(ref) orelse return null);
 }
 
 /// `pointer`'s capture target override, if it is set (and still names an
 /// object); `near` finds its traversable.
 fn capturedTarget(pointer: *const Pointer, near: *Instance) ?*Instance {
     const entry = pointerEntry(pointer, near) orelse return null;
-    return pointer_capture.get(entry.override);
+    return captureNode(entry.override);
 }
 
 /// `pointer`'s capture target override, else `target`.
@@ -1094,9 +1143,7 @@ fn implicitlyReleaseCapture(pointer: *Pointer, target: *Instance, modifiers: Mod
 /// session): it is no active pointer of the traversable it was acting on
 /// any more, and holds no capture there. No event fires.
 pub fn pointerGone(pointer: *Pointer) void {
-    const near = (if (pointer.touch_start) |weak| weak.get() else null) orelse
-        (if (pointer.touch_hit) |weak| weak.get() else null) orelse
-        (if (pointer.hit) |weak| weak.get() else null) orelse return;
+    const near = liveTarget(pointer.touch_start) orelse liveTarget(pointer.touch_hit) orelse liveTarget(pointer.hit) orelse return;
     const pointers = activePointersOf(near) orelse return;
     if (pointer.pointer_type == .mouse) {
         if (pointer_capture.find(pointers, pointer.pointer_id)) |entry| {
@@ -1185,10 +1232,13 @@ pub fn touchFrame(points: []const *Pointer, modifiers: Modifiers) void {
 }
 
 fn touchPressed(point: *Pointer, modifiers: Modifiers) void {
-    const hit = if (point.touch_hit) |weak| weak.get() else null;
-    const target = hit orelse return;
+    // Nothing of a document that has gone can be touched (as `pointerMove`
+    // says of the mouse).
+    const target = liveTarget(point.touch_hit) orelse return;
     if (!isConnected(target)) return;
     const pointers = activePointersOf(target) orelse return;
+    // A contact that went with its document is no active pointer.
+    pointer_capture.dropContactsOfGoneDocuments(pointers);
     // 3.1.2: primary when no other touch is in contact; a second contact
     // makes every contact of the gesture no tap.
     point.is_primary = pointer_capture.wouldBePrimary(pointers, point.pointer_id, .touch);
@@ -1213,11 +1263,17 @@ fn touchPressed(point: *Pointer, modifiers: Modifiers) void {
         i -= 1;
         _ = firePointerEventOnly(chain[i], "pointerenter", point, modifiers, -1, 0, null);
     }
+    // A listener of the boundary events ended the document (it removed or
+    // navigated its frame): the contact went with it
+    // (`inFullyActiveDocument`).
+    if (inFullyActiveDocument(target) == null) return;
     // 3.1.3 / 8.4: a direct manipulation device's pointerdown implicitly
     // captures the pointer to its target, "just before the invocation of
     // any pointerdown listeners" - so hasPointerCapture() is true in them,
     // and gotpointercapture fires before its next event.
-    if (isConnected(target)) entry.pending = pointer_capture.refOf(target);
+    if (isConnected(target)) if (pointerEntry(point, target)) |current| {
+        current.pending = pointer_capture.refOf(target);
+    };
     // 4.1.3.1: canceling pointerdown prevents the compatibility mouse
     // events; the click still comes (Blink's GestureManager drops a tap's
     // mouse events, not its click, after a canceled pointerdown).
@@ -1226,19 +1282,19 @@ fn touchPressed(point: *Pointer, modifiers: Modifiers) void {
 
 fn touchMoved(point: *Pointer, modifiers: Modifiers) void {
     if (!point.in_contact) return;
-    const start = if (point.touch_start) |weak| weak.get() else null;
-    const hit = (if (point.touch_hit) |weak| weak.get() else null) orelse start orelse return;
+    const start = liveTarget(point.touch_start);
+    const hit = liveTarget(point.touch_hit) orelse start orelse return;
     // Leaving the element it went down on makes it no tap.
     if (start == null or hit != start.?) point.not_a_tap = true;
     const target = pointerEventTarget(point, hit, modifiers, true);
-    if (!isConnected(target)) return;
+    if (!isReachable(target)) return;
     _ = firePointerEventOnly(target, "pointermove", point, modifiers, -1, 0, null);
 }
 
 fn touchLifted(point: *Pointer, modifiers: Modifiers, cancelled: bool) void {
     if (!point.in_contact) return;
-    const start = if (point.touch_start) |weak| weak.get() else null;
-    const hit = (if (point.touch_hit) |weak| weak.get() else null) orelse start orelse {
+    const start = liveTarget(point.touch_start);
+    const hit = liveTarget(point.touch_hit) orelse start orelse {
         point.in_contact = false;
         point.buttons = 0;
         return;
@@ -1263,7 +1319,7 @@ fn touchLifted(point: *Pointer, modifiers: Modifiers, cancelled: bool) void {
     // 8.5: the implicit release right after pointerup or pointercancel.
     implicitlyReleaseCapture(point, target, modifiers);
     // A touch does not hover: it leaves as it lifts.
-    if (isConnected(target)) {
+    if (isReachable(target)) {
         _ = firePointerEventOnly(target, "pointerout", point, modifiers, -1, 0, null);
         var chain: [64]*Instance = undefined;
         const len = ancestors(target, &chain);
@@ -1279,7 +1335,7 @@ fn fireTouchEvents(points: []const *Pointer, change: TouchChange, comptime event
     var done_count: usize = 0;
     for (points) |point| {
         if (point.touch_change != change) continue;
-        const target = (if (point.touch_start) |weak| weak.get() else null) orelse continue;
+        const target = liveTarget(point.touch_start) orelse continue;
         if (std.mem.indexOfScalar(*Instance, done[0..done_count], target) != null) continue;
         if (done_count < done.len) {
             done[done_count] = target;
@@ -1293,7 +1349,7 @@ fn fireTouchEvents(points: []const *Pointer, change: TouchChange, comptime event
             // click.
             for (points) |other| {
                 if (other.touch_change != change) continue;
-                const other_target = (if (other.touch_start) |weak| weak.get() else null) orelse continue;
+                const other_target = liveTarget(other.touch_start) orelse continue;
                 if (other_target == target) other.not_a_tap = true;
             }
         }
@@ -1321,7 +1377,7 @@ fn fireTouchEvent(target: *Instance, comptime event_type: []const u8, points: []
         made.deinit(allocator);
     }
     for (points) |point| {
-        const start = (if (point.touch_start) |weak| weak.get() else null) orelse continue;
+        const start = liveTarget(point.touch_start) orelse continue;
         const lifted = point.touch_change == .released or point.touch_change == .cancelled;
         const in_list = point.in_contact or point.touch_change == change;
         if (!in_list) continue;
@@ -1389,24 +1445,24 @@ fn makeTouch(point: *const Pointer, start: *Instance) ?*Instance {
 /// click (a PointerEvent of the touch, Pointer Events 3.3.12) at the target
 /// its captured pointerup had.
 fn tap(point: *Pointer, modifiers: Modifiers) void {
-    const target = (if (point.touch_start) |weak| weak.get() else null) orelse return;
+    const target = liveTarget(point.touch_start) orelse return;
     if (!isConnected(target)) return;
     if (point.compatibility_suppressed) {
         if (!isInDisabledFormControl(target)) _ = firePointerEventOnly(target, "click", point, modifiers, 0, 1, null);
         return;
     }
     legacyMouseMoveTo(point, target, modifiers);
-    if (!isConnected(target)) return;
+    if (!isReachable(target)) return;
     _ = fireMouseEvent(target, "mousemove", modifiers, 0, 0, 0, null);
-    if (!isConnected(target)) return;
+    if (!isReachable(target)) return;
     // HTML 6.4.2: mousedown is activation-triggering.
     if (nodeDocument(target)) |document| user_activation.notifyActivation(document);
     if (fireMouseEvent(target, "mousedown", modifiers, 0, 1, 1, null)) mousedownDefaults(null, target, 0, modifiers, point);
-    if (!isConnected(target)) return;
+    if (!isReachable(target)) return;
     if (fireMouseEvent(target, "mouseup", modifiers, 0, 0, 1, null)) {
-        if (isConnected(target)) @import("forms/select_picker.zig").mouseUp(target, 0);
+        if (isReachable(target)) @import("forms/select_picker.zig").mouseUp(target, 0);
     }
-    if (!isConnected(target) or isInDisabledFormControl(target)) return;
+    if (!isReachable(target) or isInDisabledFormControl(target)) return;
     _ = firePointerEventOnly(target, "click", point, modifiers, 0, 1, null);
 }
 
@@ -1416,7 +1472,9 @@ fn tap(point: *Pointer, modifiers: Modifiers) void {
 /// mouseleave at the old element, mouseover and mouseenter at the new, enter
 /// and leave stopping at their deepest common ancestor.
 fn legacyMouseMoveTo(point: *Pointer, target: *Instance, modifiers: Modifiers) void {
-    const previous = if (point.legacy_mouse) |weak| weak.get() else null;
+    // The element of a document that has gone is forgotten: the mouse
+    // enters `target` from nowhere (`Pointer.currentTarget`).
+    const previous = liveTarget(point.legacy_mouse);
     point.legacy_mouse = Weak.of(target);
     if (previous == target) return;
     var old_chain: [64]*Instance = undefined;
@@ -1431,7 +1489,7 @@ fn legacyMouseMoveTo(point: *Pointer, target: *Instance, modifiers: Modifiers) v
         _ = fireMouseEvent(old_chain[0], "mouseout", modifiers, 0, 0, 0, target);
         for (old_chain[0 .. old_len - common]) |element| _ = fireMouseEvent(element, "mouseleave", modifiers, 0, 0, 0, target);
     }
-    if (!isConnected(target)) return;
+    if (!isReachable(target)) return;
     const related = if (old_len != 0) old_chain[0] else null;
     _ = fireMouseEvent(target, "mouseover", modifiers, 0, 0, 0, related);
     var i = new_len - common;

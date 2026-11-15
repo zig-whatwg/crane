@@ -22,6 +22,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const html_core = @import("html_core");
+const document_activity = @import("document_activity.zig");
 
 pub const ActivePointers = @FieldType(html_core.BrowsingContext, "active_pointers");
 pub const Entry = ActivePointers.Entry;
@@ -86,6 +87,32 @@ pub fn deactivate(pointers: *ActivePointers, id: i32) void {
         pointers.items[i] = pointers.items[pointers.count - 1];
         pointers.count -= 1;
         return;
+    }
+}
+
+/// Drop every touch contact of `pointers` whose active document is no
+/// longer fully active (`document_activity`): the document it was touching
+/// has gone - its frame was removed or navigated away - so the contact's
+/// events have nowhere to go, and the input layer, which finds this state
+/// through a document, cannot reach it to say the contact lifted
+/// (html.user_input `inFullyActiveDocument` says what the engines do). Run
+/// as a touch contact is placed, before it is asked whether it is primary.
+/// The mouse and a pen are devices, active with or without a document, and
+/// stay.
+pub fn dropContactsOfGoneDocuments(pointers: *ActivePointers) void {
+    var i: usize = 0;
+    while (i < pointers.count) {
+        const entry = pointers.items[i];
+        const gone = entry.kind == @backingInt(Kind.touch) and if (entry.active_document) |ref|
+            !document_activity.fullyActive(ref.node, ref.generation)
+        else
+            false;
+        if (!gone) {
+            i += 1;
+            continue;
+        }
+        pointers.items[i] = pointers.items[pointers.count - 1];
+        pointers.count -= 1;
     }
 }
 
