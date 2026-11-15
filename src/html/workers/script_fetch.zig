@@ -474,7 +474,9 @@ pub fn workerScriptRequest(
 }
 
 /// Fetch an HTTP(S) worker script using the fetch module, blocking until it
-/// has arrived. A Worker's script is fetched without blocking (`ScriptLoad`).
+/// has arrived. A dedicated Worker's script is fetched on the worker's own
+/// thread instead (html.worker_host ThreadHost.fetchScript), with
+/// `workerScriptRequest` and `scriptFromResponse`.
 ///
 /// HTML Standard §10.2.5 "Run a worker" step 9:
 /// Creates an internal request with destination=worker and executes fetch.
@@ -605,148 +607,6 @@ pub fn scriptFromResponse(
 pub fn fetchesFromNetwork(url: []const u8) bool {
     return std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://");
 }
-
-/// HTML "run a worker" step 12's fetch of a worker's top-level script - a
-/// classic worker script, or a module worker script graph's root - started
-/// without blocking, as the spec's in-parallel steps have it: the request
-/// goes to the owner's agent's fetches (fetch.algorithms.AsyncFetch), and
-/// its outcome reaches the client from the owner's event loop's network
-/// step, never before `start` returns. WebKit's Worker::create starts
-/// WorkerScriptLoader::loadAsynchronously and returns
-/// (Source/WebCore/workers/Worker.cpp); Blink's DedicatedWorker::Start
-/// starts its WorkerClassicScriptLoader - or the module graph's fetch - and
-/// returns (third_party/blink/renderer/core/workers/dedicated_worker.cc).
-///
-/// The load is the fetch's client. It lives until the fetch is entirely
-/// over (`finished`) or ended (`gone`, `cancel`), so the fetch never calls
-/// into freed memory; the client it serves may go as soon as `done` has
-/// run.
-pub const ScriptLoad = struct {
-    allocator: Allocator,
-    /// The request's URL. OWNED.
-    url: []u8,
-    worker_type: WorkerType,
-    /// ResponseChecks.origin. OWNED.
-    origin: ?[]u8,
-    /// While the fetch runs: null once it has ended.
-    fetch: ?*fetch.algorithms.AsyncFetch = null,
-    /// `done` has run: the client heard its outcome and owes nothing more.
-    delivered: bool = false,
-    client: Client,
-
-    /// Who started the load, and hears how it ends - exactly once, through
-    /// `done` or `gone`, unless it cancels it first.
-    pub const Client = struct {
-        context: *anyopaque,
-        /// The script, or why there is none (OWNED by the client). From the
-        /// event loop's network step.
-        done: *const fn (context: *anyopaque, result: WorkerScriptError!FetchedScript) void,
-        /// Whether the client is still there - its realm has not ended.
-        alive: *const fn (context: *anyopaque) bool,
-        /// The fetch was ended because `alive` said no: `done` will not run.
-        gone: *const fn (context: *anyopaque) void,
-    };
-
-    /// Start fetching the HTTP(S) URL `url`. The request is made now, from
-    /// `options` (BORROWED for the call: the request copies what it keeps),
-    /// and goes to `fetches` - the outside settings' agent's; null (no agent)
-    /// is a network error, returned. The client hears nothing before the
-    /// next turn of the event loop.
-    pub fn start(
-        allocator: Allocator,
-        url: []const u8,
-        options: WorkerScriptFetchOptions,
-        fetches: ?*fetch.algorithms.AgentFetches,
-        client: Client,
-    ) WorkerScriptError!*ScriptLoad {
-        const request = try workerScriptRequest(allocator, url, options);
-        // The request is AsyncFetch.start's on every path from there.
-        var request_owned = true;
-        defer if (request_owned) request.deinit();
-        const self = allocator.create(ScriptLoad) catch return WorkerScriptError.OutOfMemory;
-        errdefer allocator.destroy(self);
-        const owned_url = allocator.dupe(u8, url) catch return WorkerScriptError.OutOfMemory;
-        errdefer allocator.free(owned_url);
-        const origin: ?[]u8 = if (options.origin) |o| allocator.dupe(u8, o) catch return WorkerScriptError.OutOfMemory else null;
-        errdefer if (origin) |o| allocator.free(o);
-        self.* = .{
-            .allocator = allocator,
-            .url = owned_url,
-            .worker_type = options.worker_type,
-            .origin = origin,
-            .client = client,
-        };
-        request_owned = false;
-        self.fetch = fetch.algorithms.AsyncFetch.start(allocator, request, .{}, fetches, .{
-            .context = self,
-            .done = fetchDone,
-            .alive = fetchAlive,
-            .gone = fetchGone,
-            .finished = fetchFinished,
-        }) catch |err| return switch (err) {
-            fetch.FetchError.OutOfMemory => WorkerScriptError.OutOfMemory,
-            fetch.FetchError.NetworkError, fetch.FetchError.AbortError => WorkerScriptError.NetworkError,
-        };
-        return self;
-    }
-
-    /// End the load before its outcome: the fetch is terminated - its
-    /// transfer cancelled - and the client hears nothing more. The load is
-    /// gone. Only before `done` or `gone` has run.
-    pub fn cancel(self: *ScriptLoad) void {
-        std.debug.assert(!self.delivered);
-        if (self.fetch) |f| f.terminate();
-        self.fetch = null;
-        self.destroy();
-    }
-
-    fn destroy(self: *ScriptLoad) void {
-        const allocator = self.allocator;
-        allocator.free(self.url);
-        if (self.origin) |o| allocator.free(o);
-        allocator.destroy(self);
-    }
-
-    fn fetchAlive(context: *anyopaque) bool {
-        const self: *ScriptLoad = @ptrCast(@alignCast(context));
-        // Once the client has its outcome, the fetch only has to end.
-        if (self.delivered) return true;
-        return self.client.alive(self.client.context);
-    }
-
-    /// The client's realm ended with the fetch in flight, and the fetch has
-    /// been terminated.
-    fn fetchGone(context: *anyopaque) void {
-        const self: *ScriptLoad = @ptrCast(@alignCast(context));
-        self.fetch = null;
-        const client = self.client;
-        const delivered = self.delivered;
-        self.destroy();
-        if (!delivered) client.gone(client.context);
-    }
-
-    /// The fetch has its response, its whole body with it (collected).
-    fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.algorithms.FetchResult) void {
-        const self: *ScriptLoad = @ptrCast(@alignCast(context));
-        self.delivered = true;
-        const result: WorkerScriptError!FetchedScript = if (outcome) |fetched| blk: {
-            var owned = fetched;
-            defer owned.deinit();
-            break :blk scriptFromResponse(self.allocator, self.url, .{ .worker_type = self.worker_type, .origin = self.origin }, owned.response);
-        } else |err| switch (err) {
-            fetch.FetchError.OutOfMemory => WorkerScriptError.OutOfMemory,
-            fetch.FetchError.NetworkError, fetch.FetchError.AbortError => WorkerScriptError.NetworkError,
-        };
-        self.client.done(self.client.context, result);
-    }
-
-    /// The fetch is entirely over, after `done`: the load's last word.
-    fn fetchFinished(context: *anyopaque) void {
-        const self: *ScriptLoad = @ptrCast(@alignCast(context));
-        self.fetch = null;
-        self.destroy();
-    }
-};
 
 /// Check if two URLs have the same origin
 fn isSameOrigin(origin: []const u8, url: []const u8) bool {

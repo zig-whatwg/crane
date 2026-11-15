@@ -27,19 +27,6 @@ pub const WorkerRegistry = struct {
     links: std.ArrayListUnmanaged(*WorkerLink) = .empty,
     /// The Browser is ending: no worker starts any more.
     closed: bool = false,
-    /// Workers whose script is still on its way (the Worker constructor's
-    /// pending start): each until its start completes or is cancelled. Only
-    /// its owner's thread adds, removes or cancels its own.
-    pending: std.ArrayListUnmanaged(Pending) = .empty,
-
-    /// A Worker's start waiting for its script, on its owner realm's thread:
-    /// `cancel(context)` ends it - its fetch terminated, its Worker's pending
-    /// activity released while the realm's wrapper cache still counts it.
-    pub const Pending = struct {
-        owner_realm: *const anyopaque,
-        context: *anyopaque,
-        cancel: *const fn (context: *anyopaque) void,
-    };
 
     pub fn init(allocator: Allocator) WorkerRegistry {
         return .{ .allocator = allocator };
@@ -53,46 +40,6 @@ pub const WorkerRegistry = struct {
             link.release();
         }
         self.links.deinit(self.allocator);
-        // Every realm ended before the scope, and cancelled its own.
-        std.debug.assert(self.pending.items.len == 0);
-        self.pending.deinit(self.allocator);
-    }
-
-    /// A Worker's start now waits for its script (`Pending`).
-    pub fn addPending(self: *WorkerRegistry, entry: Pending) Allocator.Error!void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        try self.pending.append(self.allocator, entry);
-    }
-
-    /// The start whose context is `context` no longer waits: it completed,
-    /// failed or was cancelled. Nothing when it is not here.
-    pub fn removePending(self: *WorkerRegistry, context: *anyopaque) void {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.pending.items, 0..) |entry, i| {
-            if (entry.context != context) continue;
-            _ = self.pending.swapRemove(i);
-            return;
-        }
-    }
-
-    /// The realm `owner_realm` ends (`terminateOwnedByRealm`'s caller, its
-    /// unloading cleanup step): every start of its Workers still waiting for
-    /// its script is cancelled - the worker never runs, as "terminate a
-    /// worker" leaves one whose script has not run. Each is taken from the
-    /// list first, then cancelled outside the lock.
-    pub fn cancelPendingOf(self: *WorkerRegistry, owner_realm: *const anyopaque) void {
-        while (self.takePendingOf(owner_realm)) |entry| entry.cancel(entry.context);
-    }
-
-    fn takePendingOf(self: *WorkerRegistry, owner_realm: *const anyopaque) ?Pending {
-        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
-        defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.pending.items, 0..) |entry, i| {
-            if (entry.owner_realm == owner_realm) return self.pending.swapRemove(i);
-        }
-        return null;
     }
 
     /// The registry of the Browser `realm` belongs to; null for a realm with
@@ -134,8 +81,7 @@ pub const WorkerRegistry = struct {
         if (found) link.release();
     }
 
-    /// Whether a registered worker owned by `realm` has not ended, or one's
-    /// script is still on its way (`pending`): the
+    /// Whether a registered worker owned by `realm` has not ended: the
     /// back/forward cache keeps no page with one (a stated phase B limit -
     /// Chrome freezes a cached page's dedicated workers). A snapshot: a
     /// worker may start or end as soon as the lock drops; the cache decides
@@ -144,10 +90,6 @@ pub const WorkerRegistry = struct {
     pub fn ownsAny(self: *WorkerRegistry, realm: *const anyopaque) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        // A worker whose script is still on its way will run.
-        for (self.pending.items) |entry| {
-            if (entry.owner_realm == realm) return true;
-        }
         for (self.links.items) |link| {
             if (link.owner_realm != realm) continue;
             if (link.state.load(.acquire) != .ended) return true;

@@ -87,19 +87,12 @@ pub const InternalState = struct {
     /// The worker's end has reached this object: its pending activity ends
     /// once what the worker posted has been delivered.
     ended: bool = false,
-    /// "Run a worker" while the worker's script is on its way: what its
-    /// start needs once the script arrives (`PendingStart`). Null before the
-    /// constructor made it and once the start completed, failed or was
-    /// cancelled.
-    pending: ?*PendingStart = null,
+    /// The worker's failure to start reached this object, and its `error`
+    /// waits in a task of this loop (`startFailed`): the pending activity
+    /// lasts until it has fired.
+    error_queued: bool = false,
 
     pub fn deinit(self: *InternalState) void {
-        // A start still waiting for its script ends with it: its fetch is
-        // cancelled, and it hears nothing more.
-        if (self.pending) |pending| {
-            self.pending = null;
-            pending.cancel();
-        }
         // The owner lets go: a worker still running is terminated (it is no
         // longer actively needed), and the link and the port go.
         if (self.link) |link| {
@@ -138,10 +131,6 @@ fn blocksBfcache(realm: runtime.Context) ?dom.bfcache.Blocked {
 /// worker). Their ends reach `realm`'s loop, or are dropped with it.
 fn endWorkersOf(realm: runtime.Context) void {
     const registry = html.WorkerRegistry.existingOf(realm) orelse return;
-    // A worker whose script is still on its way never runs: its fetch is
-    // cancelled, and its Worker's pending activity ends now, while the
-    // realm's wrapper cache still counts it (`PendingStart.cancelForRealmEnd`).
-    registry.cancelPendingOf(realm);
     registry.terminateOwnedByRealm(realm);
 }
 
@@ -361,32 +350,28 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
     // is taken from the same clock) - the worker global scope's time origin.
     const creation_time_ns: i64 = @intCast(@import("hr_time").MonotonicClock.unsafeCurrentTime());
 
-    // 9. "Run a worker" in parallel: the constructor returns, and the
-    // worker's script arrives later (`PendingStart`). The fetch is started
-    // here without waiting for it - WebKit's Worker::create starts
-    // WorkerScriptLoader::loadAsynchronously and returns (Source/WebCore/
-    // workers/Worker.cpp), Blink's DedicatedWorker::Start starts its script
-    // loader and returns - so the page's tasks run while the script loads,
-    // and what its arrival does (the embedder policy check and its COEP
-    // report, the thread's start, or `error`) happens after this task.
-    const pending = try PendingStart.create(ctx.allocator, instance, .{
-        .worker_type = worker_type,
-        .credentials = credentials,
-        .name = name,
-        .creation_time_ns = creation_time_ns,
-    });
-    internal.pending = pending;
-    // Its realm's end cancels it (`endWorkersOf`).
-    try pending.register();
-    // The implicit port goes to the worker's thread with the start.
-    pending.inside_end = inside_end;
-    inside_end = null;
+    // 9. "Run a worker" in parallel: the worker's thread starts now and the
+    // constructor returns; its script is fetched by that thread
+    // (html.worker_host ThreadHost.fetchScript), never by this one, so
+    // nothing here waits for it - and nothing its arrival does (the owner's
+    // embedder policy check and its COEP report, or `error`) happens inside
+    // this task. A data: URL, or a blob: URL whose blob URL entry is
+    // captured now, as the URL parser captures it when the constructor
+    // parses the URL (Blink resolves a blob: worker URL in
+    // DedicatedWorker::Start, WebKit keeps it with URLKeepingBlobAlive), is
+    // answered here with no network, and the thread starts with it in hand.
     // "Run a worker" step 7: the worker's environment exists before its
     // script is fetched - here, as its reserved client, which Handle Fetch
     // may make controlled and the worker's realm adopts (Service Workers
-    // 2.5.2). The pending start holds it until the worker's thread takes it.
-    pending.reserved_client = dom.service_worker_clients.reserve(ctx, .dedicated_worker, worker_url);
-    const fetch_options: workers.script_fetch.WorkerScriptFetchOptions = .{
+    // 2.5.2). Released unless the worker's thread takes it.
+    var reserved_client = dom.service_worker_clients.reserve(ctx, .dedicated_worker, worker_url);
+    defer dom.service_worker_clients.release(reserved_client);
+    const owner_worker: worker_host.OwnerWorker = .{
+        .instance = instance,
+        .generation = runtime.SlabAllocator.generationOf(instance),
+        .steps = &owner_steps,
+    };
+    var fetch_options: workers.script_fetch.WorkerScriptFetchOptions = .{
         .worker_type = worker_type,
         // HTML classic-worker fetch step 1 always uses same-origin. The
         // worklet/module-worker graph's steps 1-2 use the credentials
@@ -412,313 +397,82 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         .policy_container = worker_host.creatorPolicyContainer(ctx),
         // Its violations are reported to the outside settings' global.
         .csp_violation_reporter = dom.csp_violations.reporterForRealm(ctx),
-        .reserved_client = pending.reserved_client,
-        .service_worker = dom.service_worker_clients.routeOfReserved(pending.reserved_client),
+        .reserved_client = reserved_client,
+        .service_worker = dom.service_worker_clients.routeOfReserved(reserved_client),
     };
+    var start: worker_host.WorkerStart = .{
+        .source = "",
+        .script_url = worker_url,
+        .worker_type = worker_type,
+        .module_fetch_options = .{
+            .credentials = credentials,
+            .static_referrer_policy = if (worker_host.creatorPolicyContainer(ctx)) |policy| policy.referrer_policy else .empty,
+        },
+        .name = name,
+        .policy_container = null,
+        // The worker shares its creator's cookie jar - the user agent's.
+        .cookie_jar = creatorCookieJar(ctx),
+        .owner_realm = ctx,
+        .owner_worker = owner_worker,
+        .inside_end = inside_end,
+        .time_origin_ns = creation_time_ns,
+        .service_worker_client = reserved_client,
+    };
+    defer if (start.policy_container) |*container| container.deinit();
+    // What the worker's thread did not take goes with the constructor.
+    defer if (start.request) |request| request.deinit();
+    defer if (start.csp_relay) |relay| relay.destroy();
+    var fetched: ?workers.FetchedScript = null;
+    defer if (fetched) |*script| script.deinit();
     if (workers.script_fetch.fetchesFromNetwork(worker_url)) {
-        // An HTTP(S) script: the request is made now, from the outside
-        // settings, and its outcome reaches `PendingStart.loadDone` from this
-        // realm's event loop's network step.
-        pending.load = workers.script_fetch.ScriptLoad.start(ctx.allocator, worker_url, fetch_options, dom.agent_fetches.of(ctx), pending.loadClient()) catch |err| {
-            pending.deliverLater(err);
+        // The request is made now, from the outside settings; the worker's
+        // thread fetches it, and the violations it finds come back here
+        // through a relay to this realm's global.
+        const sink = ctx.task_sink orelse {
+            queueStartFailure(instance);
+            return instance;
+        };
+        start.csp_relay = try worker_host.CspRelay.create(ctx.allocator, sink, owner_worker);
+        fetch_options.csp_violation_reporter = start.csp_relay.?.reporter();
+        start.request = workers.script_fetch.workerScriptRequest(ctx.allocator, worker_url, fetch_options) catch |err| {
+            log.debug("the worker's script request could not be made: {}", .{err});
+            queueStartFailure(instance);
             return instance;
         };
     } else {
-        // A data: URL, or a blob: URL whose blob URL entry is captured now,
-        // as the URL parser captures it when the constructor parses the URL
-        // ("set url's blob URL entry"; Blink resolves a blob: worker URL in
-        // DedicatedWorker::Start, WebKit keeps its blob with
-        // URLKeepingBlobAlive): revoked right after the constructor, it
-        // still runs. Answered with no network, its outcome is delivered
-        // from a task of this realm, as a fetched one is.
-        pending.deliverLater(workers.fetchWorkerScript(ctx.allocator, worker_url, fetch_options));
-    }
-    return instance;
-}
-
-/// HTML "run a worker" from its script's arrival on, for the Worker whose
-/// constructor started it: what the constructor handed over, owned until
-/// the start completes (`finish`) or is cancelled (`cancel`) - by
-/// terminate(), by the Worker's teardown, or by the end of its realm with
-/// the fetch in flight (`loadGone`) - exactly once. The Worker's
-/// InternalState holds it, so it never outlives the Worker; its fetch's
-/// callbacks find it alive until it ends.
-const PendingStart = struct {
-    allocator: std.mem.Allocator,
-    worker: *runtime.Instance,
-    generation: u64,
-    worker_type: WorkerType,
-    credentials: RequestCredentials,
-    /// options["name"]. OWNED.
-    name: []u8,
-    creation_time_ns: i64,
-    /// The implicit port's end, until the worker's thread takes it.
-    inside_end: ?*End = null,
-    /// The worker's reserved client, until the worker's thread takes it.
-    reserved_client: ?*anyopaque = null,
-    /// The script's fetch, while it runs.
-    load: ?*workers.script_fetch.ScriptLoad = null,
-    /// The task that delivers an outcome known without the network
-    /// (`deliverLater`), while it is queued.
-    later: ?*LaterOutcome = null,
-    /// The Browser's worker registry, which lists this start while it waits
-    /// (`register`), so that its realm's end cancels it.
-    registry: ?*html.WorkerRegistry = null,
-
-    const Init = struct {
-        worker_type: WorkerType,
-        credentials: RequestCredentials,
-        name: []const u8,
-        creation_time_ns: i64,
-    };
-
-    fn create(allocator: std.mem.Allocator, worker: *runtime.Instance, init_values: Init) !*PendingStart {
-        const self = try allocator.create(PendingStart);
-        errdefer allocator.destroy(self);
-        self.* = .{
-            .allocator = allocator,
-            .worker = worker,
-            .generation = runtime.SlabAllocator.generationOf(worker),
-            .worker_type = init_values.worker_type,
-            .credentials = init_values.credentials,
-            .name = try allocator.dupe(u8, init_values.name),
-            .creation_time_ns = init_values.creation_time_ns,
-        };
-        return self;
-    }
-
-    /// List this start in its Browser's worker registry until it ends. A
-    /// realm with no registry (a unit test's bare realm) has no end to wait
-    /// for.
-    fn register(self: *PendingStart) !void {
-        const registry = html.WorkerRegistry.of(self.worker.ctx) orelse return;
-        try registry.addPending(.{ .owner_realm = self.worker.ctx, .context = self, .cancel = cancelForRealmEnd });
-        self.registry = registry;
-    }
-
-    /// Free what the start still holds: a port or client the worker's
-    /// thread did not take.
-    fn destroy(self: *PendingStart) void {
-        if (self.registry) |registry| registry.removePending(self);
-        if (self.inside_end) |end| end.discard();
-        dom.service_worker_clients.release(self.reserved_client);
-        self.allocator.free(self.name);
-        self.allocator.destroy(self);
-    }
-
-    /// The start ends before its script arrived: its fetch is terminated, a
-    /// queued outcome finds nothing, and nothing is fired at the Worker.
-    fn cancel(self: *PendingStart) void {
-        if (self.load) |load| load.cancel();
-        self.load = null;
-        if (self.later) |later| later.pending = null;
-        self.later = null;
-        self.destroy();
-    }
-
-    /// The Worker's realm ends (its unloading cleanup step, through the
-    /// registry): the start is taken from its Worker and cancelled, and the
-    /// Worker's pending activity ends while the realm's wrapper cache still
-    /// counts it - as a ReportingObserver's keep ends there (dom.reporting.
-    /// endRegistrations; Blink keeps nothing of a destroyed ExecutionContext).
-    fn cancelForRealmEnd(context: *anyopaque) void {
-        const self: *PendingStart = @ptrCast(@alignCast(context));
-        if (self.takeFromWorker()) releasePendingActivity(self.worker);
-        self.cancel();
-    }
-
-    /// The Worker's start, taken from it: null once terminate() or its
-    /// teardown ended it.
-    fn takeFromWorker(self: *PendingStart) bool {
-        const internal = getInternal(self.worker) orelse return false;
-        if (internal.pending != self) return false;
-        internal.pending = null;
-        return true;
-    }
-
-    fn loadClient(self: *PendingStart) workers.script_fetch.ScriptLoad.Client {
-        return .{ .context = self, .done = loadDone, .alive = loadAlive, .gone = loadGone };
-    }
-
-    /// The Worker's realm has not ended.
-    fn loadAlive(context: *anyopaque) bool {
-        const self: *PendingStart = @ptrCast(@alignCast(context));
-        return self.worker.ctx.engine_ctx != null;
-    }
-
-    /// The Worker's realm ended with the script in flight, and its fetch has
-    /// been terminated - a realm whose end did not cancel the start first
-    /// (`cancelForRealmEnd`). The worker never runs and nothing is fired.
-    /// The Worker's pending activity went with its realm: the realm's detach
-    /// made the keep an edge from its global, which the collector takes with
-    /// it, so it is forgotten, not released (releasing a keep that is gone
-    /// is the error lane coi2 fixed for ReportingObserver).
-    fn loadGone(context: *anyopaque) void {
-        const self: *PendingStart = @ptrCast(@alignCast(context));
-        self.load = null;
-        if (self.takeFromWorker()) forgetPendingActivity(self.worker);
-        self.destroy();
-    }
-
-    /// The script has arrived, or there is none (from the realm's event
-    /// loop's network step).
-    fn loadDone(context: *anyopaque, result: workers.WorkerScriptError!workers.FetchedScript) void {
-        const self: *PendingStart = @ptrCast(@alignCast(context));
-        self.load = null;
-        self.finish(result);
-    }
-
-    /// Deliver `result`, known without the network or a failure to start
-    /// the fetch, from a task of the Worker's realm - as a fetched script's
-    /// outcome comes after the constructor returns. A realm with no event
-    /// loop (a unit test's bare realm) delivers nothing, and the Worker's
-    /// pending activity ends.
-    fn deliverLater(self: *PendingStart, result: workers.WorkerScriptError!workers.FetchedScript) void {
-        const ctx = self.worker.ctx;
-        const loop = ctx.getOptionalEventLoop() orelse return self.abandon(result, .release);
-        const task = self.allocator.create(LaterOutcome) catch return self.abandon(result, .release);
-        task.* = .{ .allocator = self.allocator, .pending = self, .result = result };
-        self.later = task;
-        loop.queueTask(.{ .callback = LaterOutcome.run, .context = task, .drop = LaterOutcome.drop });
-    }
-
-    /// No task can deliver `result`: the start ends with no event, and the
-    /// Worker's pending activity with it - released while its realm lives,
-    /// forgotten once the realm has ended (`loadGone`).
-    fn abandon(self: *PendingStart, result: workers.WorkerScriptError!workers.FetchedScript, hold: enum { release, forget }) void {
-        LaterOutcome.freeResult(result);
-        if (self.takeFromWorker()) switch (hold) {
-            .release => releasePendingActivity(self.worker),
-            .forget => forgetPendingActivity(self.worker),
-        };
-        self.destroy();
-    }
-
-    /// "Run a worker" onComplete, on the Worker's realm: no script - a
-    /// network error, a status that is not ok, a MIME type that is not
-    /// JavaScript - fires `error` at the worker from a task, and nothing
-    /// runs (onComplete 1); otherwise the worker's policy container, the
-    /// owner's embedder policy check (its COEP report goes to the owner's
-    /// observers through Reporting's plain "generate and queue a report"),
-    /// and the worker's thread.
-    fn finish(self: *PendingStart, result: workers.WorkerScriptError!workers.FetchedScript) void {
-        defer self.destroy();
-        var fetched = result catch |err| {
+        fetched = workers.fetchWorkerScript(ctx.allocator, worker_url, fetch_options) catch |err| {
+            // onComplete 1: script is null - a network error, a status that
+            // is not ok, a MIME type that is not JavaScript - so `error` is
+            // fired at the worker, once, and nothing runs.
             log.debug("worker script fetch failed: {}", .{err});
-            if (self.takeFromWorker()) queueStartFailure(self.worker);
-            return;
+            queueStartFailure(instance);
+            return instance;
         };
-        defer fetched.deinit();
-        if (!self.takeFromWorker()) return;
-        var steps: FinishSteps = .{ .pending = self, .fetched = &fetched };
-        engine.runInRealm(self.worker.ctx, FinishSteps.run, &steps) catch {
-            if (!steps.ran) queueStartFailure(self.worker);
-        };
-    }
-};
-
-/// `PendingStart.finish`'s steps once a script has arrived, run with the
-/// Worker's realm as the current realm, as the constructor's were.
-const FinishSteps = struct {
-    pending: *PendingStart,
-    fetched: *workers.FetchedScript,
-    ran: bool = false,
-
-    fn run(data: ?*anyopaque) void {
-        const self: *FinishSteps = @ptrCast(@alignCast(data.?));
-        self.ran = true;
-        self.startWorker();
-    }
-
-    fn startWorker(self: *FinishSteps) void {
-        const pending = self.pending;
-        const instance = pending.worker;
-        const ctx = instance.ctx;
-        const internal = getInternal(instance) orelse return;
-        const fetched = self.fetched;
-        // Capture only enum values before workerPolicyContainer takes the
-        // response's container. No creating-thread settings cross the
-        // thread.
-        const module_fetch_options: workers.ModuleFetchOptions = .{
-            .credentials = pending.credentials,
-            .response_referrer_policy = if (fetched.policy_container) |policy| policy.referrer_policy else .empty,
-            .static_referrer_policy = if (worker_host.creatorPolicyContainer(ctx)) |policy| policy.referrer_policy else .empty,
-        };
-        // "Initialize a worker global scope's policy container", from the
-        // response - or this realm's global's, for a data: or blob: script.
-        // It fails closed: a clone of this realm's container that cannot be
-        // made fails the start (`error` at the worker), and the worker never
-        // runs without the policies it inherits.
-        const policy_container = worker_host.workerPolicyContainer(ctx.allocator, fetched, ctx) catch |err| {
+        start.source = fetched.?.source;
+        start.script_url = fetched.?.final_url;
+        start.module_fetch_options.response_referrer_policy = if (fetched.?.policy_container) |policy| policy.referrer_policy else .empty;
+        // "Initialize a worker global scope's policy container" - this
+        // realm's global's, for a data: or blob: script. It fails closed: a
+        // clone of this realm's container that cannot be made fails the
+        // start (`error` at the worker), and the worker never runs without
+        // the policies it inherits.
+        start.policy_container = worker_host.workerPolicyContainer(ctx.allocator, &fetched.?, ctx) catch |err| {
             log.debug("the worker's policy container could not be made: {}", .{err});
             queueStartFailure(instance);
-            return;
+            return instance;
         };
-        var start: worker_host.WorkerStart = .{
-            .source = fetched.source,
-            .script_url = fetched.final_url,
-            .worker_type = pending.worker_type,
-            .module_fetch_options = module_fetch_options,
-            .name = pending.name,
-            .policy_container = policy_container,
-            // The worker shares its creator's cookie jar - the user agent's.
-            .cookie_jar = creatorCookieJar(ctx),
-            .owner_realm = ctx,
-            .owner_worker = .{
-                .instance = instance,
-                .generation = pending.generation,
-                .steps = &owner_steps,
-            },
-            .inside_end = pending.inside_end,
-            .time_origin_ns = pending.creation_time_ns,
-            .service_worker_client = pending.reserved_client,
-        };
-        defer if (start.policy_container) |*container| container.deinit();
-        internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
-            log.debug("the worker's thread did not start: {}", .{err});
-            queueStartFailure(instance);
-            return;
-        };
-        // The thread took the implicit port, and the reserved client.
-        pending.inside_end = start.inside_end;
-        pending.reserved_client = start.service_worker_client;
     }
-};
-
-/// The task that delivers a `PendingStart`'s outcome known without the
-/// network. Its start may end first (terminate(), the Worker's teardown):
-/// then it finds no start, and frees the outcome.
-const LaterOutcome = struct {
-    allocator: std.mem.Allocator,
-    pending: ?*PendingStart,
-    result: workers.WorkerScriptError!workers.FetchedScript,
-
-    fn run(data: ?*anyopaque) void {
-        const self: *LaterOutcome = @ptrCast(@alignCast(data.?));
-        defer self.allocator.destroy(self);
-        const pending = self.pending orelse return freeResult(self.result);
-        pending.later = null;
-        pending.finish(self.result);
-    }
-
-    /// The loop ended with the task queued - its realm's end, which
-    /// cancelled the start first unless it had no registry: the start ends
-    /// with no event.
-    fn drop(data: ?*anyopaque) void {
-        const self: *LaterOutcome = @ptrCast(@alignCast(data.?));
-        defer self.allocator.destroy(self);
-        const pending = self.pending orelse return freeResult(self.result);
-        pending.later = null;
-        pending.abandon(self.result, .forget);
-    }
-
-    fn freeResult(result: workers.WorkerScriptError!workers.FetchedScript) void {
-        if (result) |fetched| {
-            var owned = fetched;
-            owned.deinit();
-        } else |_| {}
-    }
-};
+    internal.link = worker_host.startDedicatedWorker(ctx.allocator, &start) catch |err| {
+        log.debug("the worker's thread did not start: {}", .{err});
+        queueStartFailure(instance);
+        return instance;
+    };
+    // The thread took the implicit port, the reserved client and the
+    // request with its relay.
+    inside_end = start.inside_end;
+    reserved_client = start.service_worker_client;
+    return instance;
+}
 
 // Event handler IDL attributes (HTML § 8.1.8.1): their values live in
 // EventTarget's event handler map, where firing `message` or `error` at this
@@ -739,13 +493,6 @@ pub fn call_terminate(instance: *runtime.Instance) anyerror!void {
     const internal = getInternal(instance) orelse return;
     if (internal.terminated) return;
     internal.terminated = true;
-    // A start still waiting for its script ends here: its fetch is
-    // cancelled, no thread starts and nothing is fired at the worker
-    // ("terminate a worker" on a worker whose script has not run).
-    if (internal.pending) |pending| {
-        internal.pending = null;
-        pending.cancel();
-    }
     if (internal.link) |link| {
         _ = link.terminate();
     } else {
@@ -937,11 +684,53 @@ const ErrorFire = struct {
 /// manipulation task source given worker's relevant global object to fire
 /// an event named error at worker" - a plain Event, not cancelable. (A
 /// worker terminated first hears nothing.)
+///
+/// From the worker's thread it arrives as a task of this loop, and fires
+/// from a task of its own queued here - behind the securitypolicyviolation
+/// task a CSP violation of the worker's script request queued, which came
+/// first through the same loop (worker_host.CspRelay): securitypolicyviolation
+/// before `error`, as when the script was fetched on this thread.
 fn startFailed(worker: *runtime.Instance) void {
+    const internal = getInternal(worker) orelse return;
+    if (internal.terminated) return;
+    const loop = worker.ctx.getOptionalEventLoop() orelse return fireStartFailure(worker);
+    const task = internal.allocator.create(ErrorEventTask) catch return fireStartFailure(worker);
+    task.* = .{ .worker = worker, .generation = runtime.SlabAllocator.generationOf(worker), .allocator = internal.allocator };
+    internal.error_queued = true;
+    loop.queueTask(.{ .callback = ErrorEventTask.run, .context = task, .drop = ErrorEventTask.drop });
+}
+
+/// Fire the start failure's `error` at the worker now (a plain Event, not
+/// cancelable), unless it was terminated.
+fn fireStartFailure(worker: *runtime.Instance) void {
     const internal = getInternal(worker) orelse return;
     if (internal.terminated) return;
     engine.runTaskInRealm(worker.ctx, fireErrorEventSteps, worker) catch {};
 }
+
+/// `startFailed`'s queued `error`: fired unless the Worker has gone or was
+/// terminated since.
+const ErrorEventTask = struct {
+    worker: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *ErrorEventTask = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
+        const internal = getInternal(self.worker) orelse return;
+        internal.error_queued = false;
+        fireStartFailure(self.worker);
+        // The worker's end may have come meanwhile: nothing is pending now.
+        releaseWhenIdle(self.worker);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *ErrorEventTask = @ptrCast(@alignCast(data.?));
+        self.allocator.destroy(self);
+    }
+};
 
 fn fireErrorEventSteps(data: ?*anyopaque) void {
     const worker: *runtime.Instance = @ptrCast(@alignCast(data orelse return));
@@ -971,7 +760,7 @@ fn workerEnded(worker: *runtime.Instance) void {
 /// collected under the dispatch.
 fn releaseWhenIdle(worker: *runtime.Instance) void {
     const internal = getInternal(worker) orelse return;
-    if (!internal.ended) return;
+    if (!internal.ended or internal.error_queued) return;
     if (!internal.terminated) {
         if (internal.outside) |end| {
             const state = end.state();
@@ -1008,7 +797,7 @@ const StartFailure = struct {
         const self: *StartFailure = @ptrCast(@alignCast(data.?));
         defer self.allocator.destroy(self);
         if (runtime.SlabAllocator.generationOf(self.instance) != self.generation) return;
-        startFailed(self.instance);
+        fireStartFailure(self.instance);
         releasePendingActivity(self.instance);
     }
 
@@ -1024,13 +813,6 @@ fn keepPendingActivity(instance: *runtime.Instance) void {
     if (internal.kept_alive) return;
     internal.kept_alive = true;
     engine.keepPlatformObjectAlive(instance);
-}
-
-/// The hold went with the Worker's realm (its detach): stop counting it,
-/// with nothing to release (idempotent).
-fn forgetPendingActivity(instance: *runtime.Instance) void {
-    const internal = getInternal(instance) orelse return;
-    internal.kept_alive = false;
 }
 
 /// End it, if it is held (idempotent).
