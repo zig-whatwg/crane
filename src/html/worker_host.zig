@@ -3329,10 +3329,11 @@ pub const ErrorReport = struct {
 };
 
 /// "Run a worker", as its worker object's side hands it over: a dedicated
-/// worker's Worker constructor (step 9: "run this step in parallel"), or the
-/// shared worker manager's steps. The script is fetched first - the Worker
-/// constructor must, before it returns: a blob URL revoked right after
-/// `new Worker(url)` still runs - so the thread starts with it in hand.
+/// worker's start once its script has arrived (the Worker constructor starts
+/// the fetch without waiting - step 9, "run this step in parallel" - and
+/// captures a blob: URL's entry as it parses the URL, so a blob URL revoked
+/// right after `new Worker(url)` still runs), or the shared worker manager's
+/// steps. The script is fetched first, so the thread starts with it in hand.
 pub const WorkerStart = struct {
     /// The classic script's source, or a module graph's root's. BORROWED
     /// (copied).
