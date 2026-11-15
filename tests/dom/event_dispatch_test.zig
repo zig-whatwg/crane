@@ -211,16 +211,23 @@ test "Event's IDL getters read the dispatch state the dispatcher writes" {
     const state = dom.event_dispatch.of(event).?;
     try std.testing.expect(state.initialized_flag);
     try std.testing.expectEqual(@as(?*runtime.Instance, null), state.target);
-    try std.testing.expectEqual(interfaces.Event.get_NONE(), state.phase);
+    try std.testing.expectEqual(interfaces.Event.get_NONE(), @as(u16, state.phase));
     try std.testing.expect(!state.is_trusted);
 
     // What dispatch writes there, the IDL attributes report: during dispatch
     // (the dispatch flag set), the target "invoke" sets and the current target
-    // it sets with its slab generation (EventState.setCurrentTarget).
+    // it sets, with its slab generation, on the dispatch's own path
+    // (DispatchPath.setCurrentTarget), which the event points at meanwhile.
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Event.get_currentTarget(event));
+    var path: dom.event_dispatch.DispatchPath = undefined;
+    path.init(allocator);
+    defer path.deinit();
+    state.path = &path;
     state.dispatch_flag = true;
     state.target = other;
-    state.setCurrentTarget(other);
-    state.phase = interfaces.Event.get_AT_TARGET();
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Event.get_currentTarget(event));
+    path.setCurrentTarget(other);
+    state.phase = dom.event_dispatch.Phase.at_target;
     state.is_trusted = true;
     try std.testing.expectEqual(@as(?*runtime.Instance, other), try interfaces.Event.get_target(event));
     try std.testing.expectEqual(@as(?*runtime.Instance, other), try interfaces.Event.get_srcElement(event));
@@ -233,4 +240,67 @@ test "Event's IDL getters read the dispatch state the dispatcher writes" {
     try std.testing.expect(state.stop_propagation_flag and state.stop_immediate_propagation_flag);
     state.target = null;
     state.dispatch_flag = false;
+    // Dispatch step 9 ends the event's view of the path, and with it its
+    // currentTarget (step 8).
+    state.clearPath();
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), try interfaces.Event.get_currentTarget(event));
+}
+
+test "an event keeps a relatedTarget through a record of its own, and has none when the record cannot be made" {
+    const allocator = std.testing.allocator;
+
+    interfaces.process_hooks.startHooksForTest();
+    runtime.initializeRuntime(allocator);
+    defer runtime.deinitializeRuntime();
+
+    var ctx_data = try runtime.createNullContext(allocator);
+    defer ctx_data.deinit();
+    const ctx: runtime.Context = &ctx_data;
+
+    const event = try newEvent(ctx, "x");
+    defer interfaces.Event.deinit(event);
+    const related = try newEvent(ctx, "related");
+    defer interfaces.Event.deinit(related);
+    const other = try newEvent(ctx, "other");
+    defer interfaces.Event.deinit(other);
+    const state = dom.event_dispatch.of(event).?;
+
+    // An event with no relatedTarget keeps no record (lane ev1: 56 bytes
+    // that every Event carried).
+    try std.testing.expect(state.related_keep == null);
+    state.setRelatedTarget(event, null);
+    try std.testing.expect(state.related_keep == null and state.relatedTarget() == null);
+
+    // The record cannot be allocated: the event has NO relatedTarget -
+    // never one it would read without its keep.
+    state.related_target = related;
+    state.keepRelatedTargetWith(event, std.testing.failing_allocator);
+    try std.testing.expect(state.related_target == null);
+    try std.testing.expect(state.relatedTarget() == null);
+    try std.testing.expect(state.related_keep == null);
+
+    // Kept: the record names it, with its slab generation and realm.
+    state.setRelatedTarget(event, related);
+    const keep = state.related_keep.?;
+    try std.testing.expectEqual(related, keep.kept.instance);
+    try std.testing.expectEqual(runtime.SlabAllocator.generationOf(related), keep.kept.generation);
+    try std.testing.expectEqual(@as(?*runtime.Instance, related), state.relatedTarget());
+
+    // Dispatch writes the relatedTarget raw, item by item, and keeps the
+    // one it ends with: the same record, renamed.
+    state.related_target = other;
+    state.keepRelatedTarget(event);
+    try std.testing.expectEqual(keep, state.related_keep.?);
+    try std.testing.expectEqual(other, keep.kept.instance);
+    try std.testing.expectEqual(@as(?*runtime.Instance, other), state.relatedTarget());
+
+    // Cleared (dispatch step 11's clearTargets, or initMouseEvent with
+    // null): the record goes with it.
+    state.setRelatedTarget(event, null);
+    try std.testing.expect(state.related_keep == null and state.relatedTarget() == null);
+
+    // And an event freed while it keeps one frees the record (the test
+    // allocator would report it).
+    state.setRelatedTarget(event, related);
+    try std.testing.expect(state.related_keep != null);
 }

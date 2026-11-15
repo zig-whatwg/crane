@@ -363,7 +363,11 @@ pub const NodeWrapperSlot = impl.NodeWrapperSlot;
 /// copied. V8: the cppgc visitor of the collection's atomic pause and the
 /// agent's per-collection visited set; WebKit: `JSC::AbstractSlotVisitor`.
 /// An engine with `capabilities.wrapper_tracing == .unsupported` never calls
-/// the hook, so it never makes one.
+/// the hook, so it never makes one. Where
+/// `capabilities.external_memory_at_collection` is native the adapter also
+/// passes one to runtime.lifetime's `dyingWith` hook, at the end of the same
+/// collection's marking: only `traceVisitOnce` may be called with that one
+/// (nothing is marked any more).
 pub const Tracer = impl.Tracer;
 
 /// WebIDL "a new promise": the promise and what resolves or rejects it. OWNED
@@ -597,7 +601,9 @@ pub const AgentOptions = struct {
     /// when that memory grows too (V8: Isolate::
     /// AdjustAmountOfExternalAllocatedMemory, as Blink reported its DOM
     /// before its unified heap). The agent's end takes back what it
-    /// reported. Null, the default: the engine sees only its own heap.
+    /// reported. Where `external_memory_at_collection`, the engine is told
+    /// the figure less what its collection made dead, before it computes its
+    /// next threshold. Null, the default: the engine sees only its own heap.
     external_memory: ?*runtime.gc.ExternalMemory = null,
 };
 
@@ -1089,6 +1095,27 @@ pub const Capabilities = struct {
     /// JSReportExtraMemoryCost is not public API; QuickJS counts only its
     /// own allocations).
     external_memory: Support,
+    /// AgentOptions.external_memory, told in time for the engine's next
+    /// threshold (lane dm1's design, tmp/plans/dom-memory-figure-design.md
+    /// 3.2 B and 3.8): an engine sets the threshold of its next collection
+    /// from what it believes is alive when a collection ends, and what that
+    /// collection made dead of the host's memory is still counted in the
+    /// figure then - its trees are released and freed after the collection.
+    /// Native: the adapter asks runtime.lifetime's dying hook (`dyingWith`)
+    /// in its full collection, at the first point where the dead wrappers
+    /// are known, and takes the answer off its engine's count before the
+    /// engine computes its next threshold (V8: one
+    /// ExternalMemoryAccounter::Decrease at the end of marking, which starts
+    /// no collection). Emulated: the engine sums what the wrappers it
+    /// visits keep, and the dead are what it did not visit (JavaScriptCore:
+    /// a full collection zeroes its extra-memory sum and
+    /// SlotVisitor::reportExtraMemoryVisited adds per visited wrapper).
+    /// Unsupported: the engine hears of a death at the agent's next safe
+    /// point, when the dead wrapper's reference is released and the counts
+    /// decide its tree dead (dom.refcount_teardown.settle) - after the
+    /// threshold was computed with the dead in it. Meaningless without
+    /// `external_memory`.
+    external_memory_at_collection: Support,
     /// Node wrapper reachability (tmp/redesign/wrapper-redesign-design.md
     /// 3.2-3.3): a wrapper of a node is kept while any wrapper of its
     /// host-including tree is, or of a node whose node document's tree it
@@ -2788,11 +2815,14 @@ pub inline fn traceNodeWrapper(tracer: *Tracer, slot: *const NodeWrapperSlot) vo
     impl.traceNodeWrapper(tracer, slot);
 }
 
-/// Inside runtime.lifetime's `traceTree` hook only: true the first time
-/// `key` (a tree's root) is offered in this collection's marking, false
-/// after - the walk's dedupe, so a tree is walked once per collection however
-/// many of its wrappers the collector reaches. The set is the engine's and
-/// lives for the marking's length. WebKit: `addOpaqueRoot` /
+/// Inside runtime.lifetime's `traceTree` hook - and its `dyingWith` hook,
+/// at the end of the same collection's marking, with the same set: a root
+/// the walk kept answers false there, and each tree of the dead is taken
+/// once - only: true the first time `key` (a tree's root) is offered in
+/// this collection's marking, false after - the walk's dedupe, so a tree is
+/// walked once per collection however many of its wrappers the collector
+/// reaches. The set is the engine's and lives for the marking's length,
+/// the dying hook's call included. WebKit: `addOpaqueRoot` /
 /// `containsOpaqueRoot`. An engine with no wrapper tracing answers true.
 pub inline fn traceVisitOnce(tracer: *Tracer, key: *const anyopaque) bool {
     return impl.traceVisitOnce(tracer, key);

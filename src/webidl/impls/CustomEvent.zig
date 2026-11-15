@@ -15,7 +15,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const performance_timeline = @import("dom").performance_timeline;
-const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
+const event_construction = @import("dom").event_construction;
 const CustomEvent = interfaces.CustomEvent;
 const Event = interfaces.Event;
 /// CustomEvent is an Event: its ancestor's state is reached through Event's
@@ -26,12 +26,12 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for CustomEvent implementation. Its detail is not here:
-/// the event's wrapper keeps it (`detail_slot`).
-pub const InternalState = struct {
-    /// The event was made by its constructor (or createEvent).
-    initialized: bool = true,
-};
+/// CustomEvent keeps no state of its own: its detail is the event's
+/// wrapper's (`detail_slot`), and everything else is Event's. With no field
+/// the generated State keeps no pointer for it (runtime.FlattenedState's
+/// `empty` kind) and no block is made: until lane ev1 a CustomEvent paid an
+/// 8-byte pointer and a 16-byte block of its own for one flag nothing read.
+pub const InternalState = struct {};
 
 /// Where the event keeps its detail attribute's value: an edge from its
 /// wrapper (engine.traceValue), never a root. The value the constructor
@@ -49,13 +49,6 @@ fn setDetail(event: *runtime.Instance, value: runtime.JSValue) void {
     engine.traceValue(event, value, detail_slot);
 }
 
-/// Get internal state from instance using shared accessor
-const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
-
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Accessor.get(instance);
-}
-
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -69,20 +62,10 @@ pub fn init(
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
-    // CustomEvent's detail is typically a JS value that doesn't need Zig cleanup
-
-    // Release CustomEvent's OWN internal block. The parent's deinit releases the
-    // Event-level one, which on a CustomEvent instance is a different allocation -
-    // so delegating alone left this one held for the life of the process.
-    const state = instance.getState(State);
-    if (state.own._internal) |internal| {
-        // An event freed before script saw it (its constructor failed) lets
-        // the detail waiting for its wrapper go; a collected one's went with
-        // the wrapper.
-        engine.forgetTracedChild(instance, detail_slot);
-        runtime.arenaOf(instance).destroy(InternalState, internal);
-        state.own._internal = null;
-    }
+    // An event freed before script saw it (its constructor failed) lets
+    // the detail waiting for its wrapper go; a collected one's went with
+    // the wrapper.
+    if (instance.stateAs(State) != null) engine.forgetTracedChild(instance, detail_slot);
 
     // Call parent Event deinit to clean up base class resources (including state.base.own.type)
     interfaces.Event.deinit(instance);
@@ -102,10 +85,6 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     // Get state
     const state = instance.getState(State);
 
-    // Create internal state for CustomEvent
-    const internal = try runtime.arenaOf(instance).create(InternalState);
-    internal.* = InternalState{};
-    state.own._internal = internal;
     // CustomEventInit's `any detail = null`: the dictionary member's default.
     const detail_value = if (eventInitDict.was_passed and eventInitDict.value.detail != null)
         eventInitDict.value.detail.?
@@ -113,7 +92,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
         runtime.JSValue.jsNull;
     setDetail(instance, detail_value);
 
-    state.base.own.type = try @"type".clone(ctx.allocator);
+    state.base.own.type = try event_construction.ownedType(ctx.allocator, @"type");
 
     const base_init = if (eventInitDict.wasPassed()) eventInitDict.value.base else dictionaries.EventInit{};
     state.base.own.bubbles = base_init.bubbles orelse false;
@@ -139,7 +118,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
 /// Returns the value it was initialized with.
 pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // The event keeps its detail; the binding gets a hold of its own.
-    _ = getInternal(instance) orelse return runtime.JSValue.jsNull;
+    _ = instance.stateAs(State) orelse return runtime.JSValue.jsNull;
     const detail = engine.tracedValue(instance, detail_slot) orelse return runtime.JSValue.jsNull;
     return detail.take();
 }
@@ -153,7 +132,7 @@ pub fn get_detail(instance: *runtime.Instance) anyerror!runtime.JSValue {
 /// 3. Set this's detail attribute to detail.
 pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubbles: webidl.Opt(bool), cancelable: webidl.Opt(bool), detail: webidl.Opt(runtime.JSValue)) anyerror!void {
     // Step 1: If this's dispatch flag is set, then return.
-    if (@import("dom").event_construction.dispatchFlag(instance)) return;
+    if (event_construction.dispatchFlag(instance)) return;
 
     // Step 2: Initialize this with type, bubbles, and cancelable - Event's
     // own initEvent steps (their step 1 is this one, and holds).
@@ -161,6 +140,6 @@ pub fn call_initCustomEvent(instance: *runtime.Instance, @"type": runtime.DOMStr
 
     // Step 3: Set this's detail attribute to detail (`optional any detail =
     // null`).
-    _ = getInternal(instance) orelse return;
+    _ = instance.stateAs(State) orelse return;
     setDetail(instance, if (detail.was_passed) detail.value else runtime.JSValue.jsNull);
 }

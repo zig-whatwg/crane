@@ -122,6 +122,13 @@ pub const capabilities: engine.Capabilities = .{
     // that is reached and collects when it is overshot by a large margin
     // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
+    // The figure is told in time for V8's next limits: at the end of a
+    // full collection's marking (the node anchors' weak processing) the
+    // owner of the counts says which trees die with the wrappers found
+    // dead, and one ExternalMemoryAccounter::Decrease takes them off V8's
+    // count before Heap::RecomputeLimits (external_memory.zig endOfMarking,
+    // node_wrappers.zig markedCallback).
+    .external_memory_at_collection = .native,
     // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
     // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
     // HolderAnchor::Trace and the anchors' registry in cppgc's atomic pause:

@@ -7,6 +7,9 @@
 //! Every way a dispatch ends lets them go: a throwing listener, a nested
 //! dispatch, stopImmediatePropagation, a path node removed mid-dispatch, and
 //! an allocation failure while the path is built.
+//! Since lane ev1's second batch the path itself is the dispatch's
+//! (dom.event_dispatch.DispatchPath, a local of EventTarget's dispatch), not
+//! the event's: an uncollected event keeps no item at all.
 //! SHADOW MODE: counts read through dom.refcount.count - the wrapper's (1;
 //! it adopted the node's born reference, lane refcount7) + the holders'.
 const h = @import("refcount_holders_helpers.zig");
@@ -24,6 +27,10 @@ test "a path item carries no chained hold, only chainless counted references" {
     try testing.expect(!@hasField(dom.event_dispatch.PathItem, "related_hold"));
     try testing.expect(@FieldType(dom.event_dispatch.PathItem, "invocation_ref") == dom.node_holds.CountedRef);
     try testing.expect(@sizeOf(dom.node_holds.CountedRef) == 16);
+    // Nor a list of its own: its touch targets are a run of the path's.
+    try testing.expect(!@hasField(dom.event_dispatch.PathItem, "touch_target_list"));
+    // And the event keeps no item: its path is the dispatch's.
+    try testing.expect(@FieldType(dom.event_dispatch.EventState, "path") == ?*dom.event_dispatch.DispatchPath);
 }
 
 /// Reads its nodes' counts each time the page calls `probe()`.
@@ -135,31 +142,39 @@ test "every way a dispatch ends lets the path's holds go" {
     try onFreshThread(exitsLetTheHoldsGo);
 }
 
+/// How many times `holdAndClear` puts each node on its path: enough that the
+/// path outgrows a dispatch's inline items and takes storage from the
+/// allocator, which can refuse.
+const rounds = dom.event_dispatch.DispatchPath.inline_capacity / 3 + 2;
+
 /// One build-and-release of a path over `nodes` with `allocator` serving
-/// the state, as dispatch does: the path is appended (where the allocator
-/// can refuse), `holdPath` takes the references, `clearPath` lets them go.
+/// it, as dispatch does: the path is appended (where the allocator can
+/// refuse), `hold` takes the references, `releaseHolds` lets them go.
 fn holdAndClear(allocator: std.mem.Allocator, instances: []const *runtime.Instance, nodes: []const *dom.NodeBase, related: *runtime.Instance) !void {
-    var state = dom.event_dispatch.EventState.init(allocator);
-    defer state.deinit();
-    for (instances, nodes) |instance, node| {
-        try state.path.append(.{
-            .invocation_target = instance,
-            .invocation_target_in_shadow_tree = false,
-            .shadow_adjusted_target = null,
-            .related_target = related,
-            .touch_target_list = @import("infra").List(*runtime.Instance).init(allocator),
-            .root_of_closed_tree = false,
-            .slot_in_closed_tree = false,
-            .target = instances[0],
-            .invocation_node = node,
-        });
+    var path: dom.event_dispatch.DispatchPath = undefined;
+    path.init(allocator);
+    defer path.deinit();
+    for (0..rounds) |_| {
+        for (instances, nodes) |instance, node| {
+            try path.append(.{
+                .invocation_target = instance,
+                .related_target = related,
+                .target = instances[0],
+                .invocation_node = node,
+                .has_shadow_adjusted_target = false,
+                .invocation_target_in_shadow_tree = false,
+                .root_of_closed_tree = false,
+                .slot_in_closed_tree = false,
+            });
+        }
     }
+    try testing.expect(path.heap.len != 0);
     // The path is built (every append above succeeded): its references are
-    // taken - no allocation - and `clearPath` lets them go.
-    state.holdPath();
-    for (nodes) |node| try expectCount(2, node, "held by the path");
-    state.clearPath();
-    for (nodes) |node| try expectCount(1, node, "after clearPath");
+    // taken - no allocation - and `releaseHolds` lets them go.
+    path.hold();
+    for (nodes) |node| try expectCount(1 + rounds, node, "held by the path");
+    path.releaseHolds();
+    for (nodes) |node| try expectCount(1, node, "after the path let go");
 }
 
 fn allocationFailureLeavesNothing() !void {
