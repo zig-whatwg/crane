@@ -122,6 +122,9 @@ pub const capabilities: engine.Capabilities = .{
     // that is reached and collects when it is overshot by a large margin
     // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
+    // Not yet: the pass at the end of a full collection's marking lands with
+    // the adapter's own commit (external_memory.zig endOfMarking).
+    .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
     // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
     // HolderAnchor::Trace and the anchors' registry in cppgc's atomic pause:
