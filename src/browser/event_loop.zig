@@ -543,14 +543,32 @@ pub const EventLoop = struct {
         // for the next turn).
         if (self.runPosted()) did_work = true;
 
-        // Step 4: wait for a timer or I/O, and run the timer callbacks -
-        // each a task, followed by a microtask checkpoint (HTML 8.1.7.3).
+        // Step 4: wait for a timer, a post or I/O, and run the timer
+        // callbacks - each a task, followed by a microtask checkpoint (HTML
+        // 8.1.7.3). The wait is this loop's task sink's (TaskSink.waitForWork,
+        // as a worker's loop waits): a post from another thread - a
+        // worker's message, a port's, a service worker's answer - ends it at
+        // once, where the timer backend's plain sleep ran out its slice
+        // first, and a worker's reply waited up to a millisecond for its task
+        // (perf_bench workers.start-stop, lane rep2). It is bounded as that
+        // sleep was: the next timer's deadline, the caller's bound, and a
+        // millisecond (native_timer.zig max_block_ms) - the fetches in
+        // flight, which signal nothing, are moved on each turn.
         if (self.timer_manager) |mgr| {
-            const poll_start = self.nowNs();
-            if (mgr.pollBlockingEach(wait_time, .{ .context = self, .run = checkpointAfterTimer })) did_work = true;
-            // The wait is at most a millisecond slice (native_timer.zig);
-            // the rest is timer callbacks.
-            self.noteWork(poll_start + std.time.ns_per_ms, self.nowNs());
+            const after_each: TimerManager.AfterEach = .{ .context = self, .run = checkpointAfterTimer };
+            // Anything already due fires now, rather than after a wait.
+            var start = self.nowNs();
+            if (mgr.pollEach(after_each)) {
+                did_work = true;
+            } else if (wait_time > 0) {
+                const next = mgr.getNextTimerDeadline() orelse wait_time;
+                const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
+                if (wait_ms > 0) self.sink.waitForWork(wait_ms * std.time.ns_per_ms);
+                // The wait is no work; the callbacks after it are.
+                start = self.nowNs();
+            }
+            if (mgr.pollEach(after_each)) did_work = true;
+            self.noteWork(start, self.nowNs());
         }
 
         // Step 5: the microtasks the timer callbacks queued.
