@@ -25,7 +25,7 @@ pub const ImplError = error{
     InvalidState,
 };
 
-/// Event's internal state - its flags, path, targets, phase and isTrusted -
+/// Event's internal state - its flags, targets, phase and isTrusted -
 /// is `dom.event_dispatch.EventState`: its type lives there so that the
 /// dispatcher (EventTarget) works on its fields directly; the state itself is
 /// this impl's, created with the event and freed with it.
@@ -451,8 +451,10 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     // Step 1: Let composedPath be an empty list
     var composed_path = infra.List(*runtime.Instance).init(internal.allocator);
 
-    // Step 2: Let path be this's path
-    const path = internal.path.toSlice();
+    // Step 2: Let path be this's path - the dispatch's while the event is
+    // dispatched, and the empty list at every other time
+    // (dom.event_dispatch, "THE PATH IS THE DISPATCH'S").
+    const path = internal.pathItems();
 
     // Step 3: If path is empty, then return composedPath (empty array)
     if (path.len == 0) {

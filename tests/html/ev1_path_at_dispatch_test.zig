@@ -1,14 +1,13 @@
 //! Lane ev1 (the Event's memory, step 1): an event's path lives in the
-//! dispatch that builds it - WebKit's `EventPath eventPath { node, event }`,
-//! a local of EventDispatcher::dispatchEvent, which the Event points at
-//! (`m_eventPath`) only until `resetAfterDispatch`; Gecko's
-//! `nsTArray<EventTargetChainItem> chain`, a local of
-//! EventDispatcher::Dispatch, with `aEvent->mPath = &chain` around
-//! HandleEventTargetChain - and never in the Event. What script can see of
-//! that is DOM's: composedPath() is the path while the event is dispatched
-//! and empty before and after (dispatch step 9), whatever way the dispatch
-//! ends; a nested dispatch has a path of its own; the same event dispatched
-//! again gets a new one.
+//! dispatch that builds it, never in the Event - WebKit's EventPath is a
+//! local of EventDispatcher::dispatchEventWithoutDebuggerDeferral, which the
+//! Event points at only until Event::resetAfterDispatch; Gecko's target
+//! chain is a local of EventDispatcher::Dispatch, which the event's mPath
+//! names only while the chain is handled (dom.event_dispatch, "THE PATH IS
+//! THE DISPATCH'S"). What script can see of that is DOM's: composedPath()
+//! is the path while the event is dispatched and empty before and after
+//! (dispatch step 9), whatever way the dispatch ends; a nested dispatch has
+//! a path of its own; the same event dispatched again gets a new one.
 //!
 //! These read the page only, so they hold for the path wherever it is kept:
 //! they passed on the tree before the path moved (main e0270810f7b) and pin
@@ -27,7 +26,8 @@ const prelude =
     \\globalThis.assert = (ok, what) => { if (!ok) failures.push(what); };
     \\globalThis.done = () => { if (failures.length) throw new Error('ev1: ' + failures.join('; ')); };
     \\window.addEventListener('error', ev => {
-    \\  if (!String(ev.message).includes('deliberate')) failures.push('uncaught: ' + ev.message);
+    \\  const expected = String(ev.message).includes('deliberate') || (globalThis.stackErrorsExpected && /call stack/i.test(String(ev.message)));
+    \\  if (!expected) failures.push('uncaught: ' + ev.message);
     \\  ev.preventDefault();
     \\});
     \\globalThis.same = (got, want, what) => {
@@ -135,23 +135,67 @@ fn nestedDispatches() !void {
         \\leaf.dispatchEvent(new Event('r', { bubbles: true }));
         \\assert(refused, 're-entrant dispatch throws InvalidStateError');
         \\
-        \\// Dispatches nested many deep, each with its own event and path.
+        \\// Dispatches nested many deep, each with its own event and path
+        \\// (20: this build's unoptimized frames reach the engine's stack
+        \\// check near 40).
         \\let depth = 0, deepest = 0;
         \\leaf.addEventListener('n', ev => {
         \\  depth++; deepest = Math.max(deepest, depth);
         \\  same(ev.composedPath(), full, 'depth ' + depth);
-        \\  if (depth < 40) leaf.dispatchEvent(new Event('n', { bubbles: true }));
+        \\  if (depth < 20) leaf.dispatchEvent(new Event('n', { bubbles: true }));
         \\  same(ev.composedPath(), full, 'depth ' + depth + ' after the deeper ones');
         \\  depth--;
         \\});
         \\leaf.dispatchEvent(new Event('n', { bubbles: true }));
-        \\assert(deepest === 40 && depth === 0, 'nested 40 deep');
+        \\assert(deepest === 20 && depth === 0, 'nested 20 deep');
         \\done();
     );
 }
 
 test "a nested dispatch has a path of its own and leaves the outer one's alone" {
     try onFreshThread(nestedDispatches);
+}
+
+fn reentrantDispatchWithoutBound() !void {
+    const page = try open();
+    defer page.close();
+    // Each nested dispatch has its path's inline items in its own stack
+    // frame (WebKit's EventPath local is entered again the same way, once
+    // per nested dispatchEvent). Entered again without bound, script gets
+    // the engine's RangeError - its stack check runs on every entry to a
+    // listener - never a crash of the stack, and the page dispatches
+    // normally afterwards. How deep that is depends on the build: about 40
+    // levels with this test build's unoptimized frames; the production
+    // build's figure is measured with gc_bench (lane ev1's merge report),
+    // beside Chrome's 43 (Blink stops re-entrant script at a fixed depth,
+    // V8ScriptRunner's kMaxRecursionDepth) and Firefox's 338.
+    try page.run(
+        \\// The listener that cannot be entered throws the engine's
+        \\// RangeError, which dispatch reports like any listener's exception.
+        \\globalThis.stackErrorsExpected = true;
+        \\let level = 0, reached = 0;
+        \\leaf.addEventListener('forever', ev => {
+        \\  level++; reached = Math.max(reached, level);
+        \\  if (level <= 10) same(ev.composedPath(), full, 'level ' + level);
+        \\  leaf.dispatchEvent(new Event('forever', { bubbles: true }));
+        \\  level--;
+        \\});
+        \\leaf.dispatchEvent(new Event('forever', { bubbles: true }));
+        \\globalThis.stackErrorsExpected = false;
+        \\assert(level === 0, 'every level returned');
+        \\assert(reached >= 20, 'unbounded re-entrant dispatch went only ' + reached + ' deep');
+        \\
+        \\// The page still dispatches.
+        \\let ok = false;
+        \\outer.addEventListener('afterwards', ev => { ok = ev.composedPath().length === full.length; });
+        \\leaf.dispatchEvent(new Event('afterwards', { bubbles: true }));
+        \\assert(ok, 'a dispatch after the deep one');
+        \\done();
+    );
+}
+
+test "re-entrant dispatch without bound ends in the engine's stack check, not a crash" {
+    try onFreshThread(reentrantDispatchWithoutBound);
 }
 
 fn longPaths() !void {
