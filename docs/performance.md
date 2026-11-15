@@ -362,10 +362,13 @@ workloads. A row whose runs read in two memory levels - two tight groups of laun
 apart, each of two runs or more (on macOS the system allocator gives freed pages back in steps, so
 `dom.event-ctor` and the rows after it read 143.5 MB in some launches and 162.5 MB in the others
 with the same bytes allocated) - keeps the median of all runs as its figure, shows both levels
-with their counts beside it ("two levels: 143.5 MB x3 / 162.5 MB x7"), and is compared between two
-Crane builds level against level: low with low and high with high, their geometric mean judged
-against the band, and a side with one level set against the nearer level of the other. Crane
-against a browser stays the medians' ratio. Before the tip's rows are set beside the browsers' last ones, the base must be within
+with their counts beside it ("two levels: 143.5 MB x3 / 162.5 MB x7"), and is compared level
+against level where one Crane build is checked against another - the tip against its base here,
+and a drift control against the round it repeats: low with low and high with high, their
+geometric mean judged against the band, and a side with one level set against the level of the
+other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
+a row: read it with care, a side that truly moved by the whole gap looks the same). Every published ratio - Crane against a browser,
+ReleaseFast against ReleaseSafe, a round against the first - stays the medians'. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 

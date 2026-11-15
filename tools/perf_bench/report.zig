@@ -51,8 +51,10 @@
 //! launches, as macOS's allocator makes of a workload that frees about one
 //! reclaim ring's worth) keeps the median of all its runs as its figure and
 //! shows both levels with their counts beside it; two Crane builds are
-//! compared on such a row level against level (`steadyRatio`, `peakRatio`),
-//! so a median that changed level reads no change.
+//! compared on such a row level against level (`steadyRatio`, `peakRatio`)
+//! where one is checked against the other - a tip against its base, a drift
+//! control against the round it repeats - so a median that changed level
+//! reads no change. Every published ratio stays the medians'.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -485,7 +487,9 @@ pub fn compare(arena: Allocator, m: *const Model, round: u32, subject: EngineNam
         v.version = b.version;
         const c = m.rowsFor(round, subject, w) orelse continue;
         if (c.timeFigure()) |ct| if (b.timeFigure()) |bt| if (bt > 0) try t.append(arena, ct / bt);
-        if (steadyRatio(c, b)) |r| try mem.append(arena, r.ratio);
+        // The published figures' ratio, also between two Crane builds
+        // (ReleaseFast, the progress since the first round): never by level.
+        if (ratioOf(c.memoryFigure(), b.memoryFigure())) |r| try mem.append(arena, r);
     }
     v.time_ratio = stats.geometricMean(t.items);
     v.time_n = t.items.len;
@@ -790,7 +794,9 @@ pub fn compareRounds(arena: Allocator, m: *const Model, round: u32, subject: Eng
         if (c.kind == .gc_bench) continue;
         v.version = b.version;
         if (c.timeFigure()) |ct| if (b.timeFigure()) |bt| if (bt > 0) try t.append(arena, ct / bt);
-        if (steadyRatio(c, b)) |r| try mem.append(arena, r.ratio);
+        // The published figures' ratio, also between two Crane builds
+        // (ReleaseFast, the progress since the first round): never by level.
+        if (ratioOf(c.memoryFigure(), b.memoryFigure())) |r| try mem.append(arena, r);
     }
     v.time_ratio = stats.geometricMean(t.items);
     v.time_n = t.items.len;
@@ -951,8 +957,9 @@ pub const LevelRatio = struct {
     /// the level ratios there are.
     ratio: f64,
     /// The subject's low level over the other's, and the high ones. A side
-    /// with one level stands for whichever level of the other side it is
-    /// nearer to, and the other level has no ratio. Both null: no levels.
+    /// with one level stands for the level of the other side it is at
+    /// (within `level_gap`), and the other level has no ratio. Both null:
+    /// no levels, or a one-level side at neither level of the other.
     low: ?f64 = null,
     high: ?f64 = null,
 
@@ -962,9 +969,14 @@ pub const LevelRatio = struct {
 };
 
 /// `subject`'s steady memory over `other`'s; null where either has no
-/// memory figure. Level against level only between two Crane builds: a
-/// browser's figure, and Crane's beside it, is the median of all runs, as
-/// published.
+/// memory figure. Level against level only between two Crane builds, and
+/// only where the question is "did this build move against that one":
+/// a tip against its base in one window (`baseTip`) and a control against
+/// the round it repeats (`driftBetween`). Every published comparison -
+/// Crane against a browser, ReleaseFast against ReleaseSafe, a round
+/// against the first (`compare`, `compareRounds`) - stays the ratio of the
+/// published figures, the medians of all runs: across builds that differ
+/// by design a side's one level has no "same level" on the other side.
 pub fn steadyRatio(subject: *const Cell, other: *const Cell) ?LevelRatio {
     const both_crane = subject.engine.isCrane() and other.engine.isCrane();
     return levelRatio(subject.memoryFigure(), if (both_crane) subject.levels else null, other.memoryFigure(), if (both_crane) other.levels else null);
@@ -979,12 +991,14 @@ pub fn peakRatio(subject: *const Cell, other: *const Cell) ?LevelRatio {
 /// A figure `s` with its levels over a figure `o` with its own.
 ///
 /// A side with one level is set against the nearer level of the other side
-/// (in ratio). That reads a row whose launches all landed in one level
-/// against the same level of the other side - and it cannot tell that case
-/// from a side that truly moved by the whole gap between the levels: the
-/// counts beside each figure say which side had which launches, and a cost
-/// pair's memory bar is read with the allocator's ring off (AGENTS.md, "The
-/// 3% memory bar reads what Crane holds").
+/// (in ratio) when it is within `level_gap` of it: its launches all landed
+/// in that level. Further from both levels it is no level of the other
+/// side's, and the ratio is the figures' (a tip 8% over its base's low
+/// level is not 10% under the high one). What this cannot tell apart is a
+/// side that truly moved by the whole gap between the levels: the counts
+/// beside each figure say which side had which launches, and a cost pair's
+/// memory bar is read with the allocator's ring off (AGENTS.md, "The 3%
+/// memory bar reads what Crane holds").
 fn levelRatio(s: ?f64, s_levels: ?Levels, o: ?f64, o_levels: ?Levels) ?LevelRatio {
     const plain = ratioOf(s, o) orelse return null;
     const f = struct {
@@ -1000,11 +1014,13 @@ fn levelRatio(s: ?f64, s_levels: ?Levels, o: ?f64, o_levels: ?Levels) ?LevelRati
         }
         const at_low = nearerLow(sl, o.?);
         const r = f(if (at_low) sl.low else sl.high) / o.?;
+        if (@abs(r - 1.0) > level_gap) return .{ .ratio = plain };
         return .{ .ratio = r, .low = if (at_low) r else null, .high = if (at_low) null else r };
     }
     if (o_levels) |ol| {
         const at_low = nearerLow(ol, s.?);
         const r = s.? / f(if (at_low) ol.low else ol.high);
+        if (@abs(r - 1.0) > level_gap) return .{ .ratio = plain };
         return .{ .ratio = r, .low = if (at_low) r else null, .high = if (at_low) null else r };
     }
     return .{ .ratio = plain };
@@ -1774,7 +1790,7 @@ fn writeDrift(w: W, arena: Allocator, m: *const Model) !void {
             try writeTimeCell(w, b);
             try writeRatio(w, if (b) |x| x.timeFigure() else null, c.timeFigure());
             try writeMemoryCell(w, b);
-            try writeMeasureRatio(w, b, c, .steady);
+            try writeRatio(w, if (b) |x| x.memoryFigure() else null, c.memoryFigure());
         }
         try w.writeAll("</tr>\n");
     }
@@ -1830,6 +1846,44 @@ fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !voi
         try w.writeAll("</tr>\n");
     }
     try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// perf_bench's stderr line for a row of `baseTip` in which the runs of
+/// exactly one side read in two levels for `measure` (steady or peak
+/// memory): both sides' levels and counts, and what the one-level side was
+/// compared with. Null for every other row. Such a row is the one the
+/// comparison cannot settle by itself (`levelRatio`): a one-level side at
+/// the other's high level in every run is launch luck or a real change of
+/// the whole gap, and whoever reads the summary must see the counts.
+pub fn oneSidedLine(arena: Allocator, row: BaseTipRow, measure: Measure) !?[]const u8 {
+    if (measure == .time) return null;
+    const steady = measure == .steady;
+    const base_levels = if (steady) row.base.levels else row.base.peak_levels;
+    const tip_levels = if (steady) row.tip.levels else row.tip.peak_levels;
+    const base_figure = if (steady) row.base.memoryFigure() else row.base.peakFigure();
+    const tip_figure = if (steady) row.tip.memoryFigure() else row.tip.peakFigure();
+    const ratio = if (steady) row.steady_levels else row.peak_levels;
+    if ((base_levels == null) == (tip_levels == null)) return null;
+    const r = ratio orelse return null;
+    var out: Io.Writer.Allocating = .init(arena);
+    const w = &out.writer;
+    try w.print("one-sided {s} ({s}): base ", .{ row.workload, @tagName(measure) });
+    try writeSideText(w, base_levels, base_figure, row.base.ok);
+    try w.writeAll(", tip ");
+    try writeSideText(w, tip_levels, tip_figure, row.tip.ok);
+    if (r.low != null) {
+        try w.print(", at the low level {d:.3}", .{r.ratio});
+    } else if (r.high != null) {
+        try w.print(", at the high level {d:.3}", .{r.ratio});
+    } else try w.print(", at neither level: the medians' ratio {d:.3}", .{r.ratio});
+    return out.written();
+}
+
+/// One side of `oneSidedLine`: "137.9 MB x5 / 154.4 MB x2", or "138.0 MB x7".
+fn writeSideText(w: W, levels: ?Levels, figure: ?f64, runs: u32) !void {
+    const mb = 1024.0 * 1024.0;
+    if (levels) |l| return w.print("{d:.1} MB x{d} / {d:.1} MB x{d}", .{ @as(f64, @floatFromInt(l.low)) / mb, l.low_runs, @as(f64, @floatFromInt(l.high)) / mb, l.high_runs });
+    try w.print("{d:.1} MB x{d}", .{ (figure orelse 0) / mb, runs });
 }
 
 /// A Crane-only window's comparison (`baseTip`), where the round has a
@@ -2039,7 +2093,7 @@ fn writeRatio(w: W, crane: ?f64, other: ?f64) !void {
     try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) });
 }
 
-const Measure = enum { time, steady, peak };
+pub const Measure = enum { time, steady, peak };
 
 fn figureOf(c: *const Cell, measure: Measure) ?f64 {
     return switch (measure) {
@@ -2107,7 +2161,7 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             if (with_fast) {
                 const fc = m.current(round, .crane_fast, wl);
                 try writeMeasureCell(w, fc, measure);
-                try writeMeasureRatio(w, fc, c, measure);
+                try writeRatio(w, if (fc) |x| figureOf(x, measure) else null, cf);
             }
             for (browsers) |b| {
                 const bc = m.rowsFor(round, b, wl);
@@ -2158,7 +2212,7 @@ fn writeCraneHistory(w: W, arena: Allocator, m: *const Model) !void {
                 try writeMeasureCell(w, cell, measure);
                 try values.append(arena, if (cell) |x| figureOf(x, measure) else null);
             }
-            try writeMeasureRatio(w, c, f, measure);
+            try writeRatio(w, figureOf(c, measure), if (f) |x| figureOf(x, measure) else null);
             try w.writeAll("<td>");
             try chart.sparkline(w, try std.fmt.allocPrint(arena, "{s} {s} over the rounds", .{ wl, if (measure == .time) "time" else "memory" }), values.items);
             try w.writeAll("</td>");
@@ -3282,6 +3336,10 @@ test "a tip and its base are compared level against level, so a median that flip
         try records.append(a, try timed(a, 1, .crane_base, "base", "dom.d", @intCast(i), 20, 100 * mib));
         try records.append(a, try timed(a, 1, .crane, "tip", "dom.d", @intCast(i), 20, 120 * mib));
     }
+    // dom.e: the base in two levels (100 and 120 MB, its median the low
+    // one), the tip in one, at neither (108 MB in every launch).
+    try records.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.e", 4, 100 * mib, 3, 120 * mib));
+    for (0..7) |i| try records.append(a, try timed(a, 1, .crane, "tip", "dom.e", @intCast(i), 20, 108 * mib));
     const m = try build(a, records.items);
     const base_a = m.current(1, .crane_base, "dom.a").?;
     const tip_a = m.current(1, .crane, "dom.a").?;
@@ -3289,7 +3347,7 @@ test "a tip and its base are compared level against level, so a median that flip
     try testing.expect(tip_a.memoryFigure().? / base_a.memoryFigure().? < 0.89);
 
     const bt = (try baseTip(a, &m, 1)).?;
-    try testing.expectEqual(@as(usize, 4), bt.rows.len);
+    try testing.expectEqual(@as(usize, 5), bt.rows.len);
     // dom.a: no change at either level.
     try testing.expectApproxEqAbs(@as(f64, 1.0), bt.rows[0].steady.?, 2e-4);
     try testing.expectApproxEqAbs(@as(f64, 1.0), bt.rows[0].peak.?, 2e-4);
@@ -3315,7 +3373,13 @@ test "a tip and its base are compared level against level, so a median that flip
     try testing.expect(bt.rows[3].outside);
     try testing.expectEqual(@as(usize, 1), bt.outside.len);
     try testing.expectEqualStrings("dom.d", bt.outside[0]);
-    try testing.expectApproxEqAbs(std.math.pow(f64, 1.06 * 1.2, 0.25), bt.memory_ratio.?, 1e-3);
+    // dom.e: 8% over the base's low level is not 10% under its high one:
+    // at neither level, the figures' ratio (the base's median is a low launch).
+    const neither = steadyRatio(m.current(1, .crane, "dom.e").?, m.current(1, .crane_base, "dom.e").?).?;
+    try testing.expect(!neither.leveled());
+    try testing.expectApproxEqAbs(108.0 * mib / m.current(1, .crane_base, "dom.e").?.memoryFigure().?, neither.ratio, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 1.08), bt.rows[4].steady.?, 1e-3);
+    try testing.expectApproxEqAbs(std.math.pow(f64, 1.06 * 1.2 * 1.08, 0.2), bt.memory_ratio.?, 1e-3);
 
     // The page: the row is not "moved", its ratio is the levels', and it says so.
     const page = (try render(a, &m, .{})).index_html;
@@ -3330,6 +3394,23 @@ test "a tip and its base are compared level against level, so a median that flip
     try testing.expect(std.mem.indexOf(u8, row, ">88%<") == null);
     try testing.expect(std.mem.indexOf(u8, section, "1 workload outside") != null);
 
+    // perf_bench's stderr summary names each row with two levels on one
+    // side only, with both sides' counts: dom.b and dom.e, steady and peak.
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[0], .steady));
+    try testing.expectEqualStrings("one-sided dom.b (steady): base 143.5 MB x4 / 162.5 MB x3, tip 162.5 MB x7, at the high level 1.000", (try oneSidedLine(a, bt.rows[1], .steady)).?);
+    try testing.expectEqualStrings("one-sided dom.b (peak): base 143.5 MB x4 / 162.5 MB x3, tip 162.5 MB x7, at the high level 1.000", (try oneSidedLine(a, bt.rows[1], .peak)).?);
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[2], .steady));
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[3], .steady));
+    try testing.expectEqualStrings("one-sided dom.e (steady): base 100.0 MB x4 / 120.0 MB x3, tip 108.0 MB x7, at neither level: the medians' ratio 1.079", (try oneSidedLine(a, bt.rows[4], .steady)).?);
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[1], .time));
+    // ... and the other way round: the tip in two levels, the base in one.
+    var flipped: std.ArrayList(journal.Record) = .empty;
+    try flipped.appendSlice(a, try twoLevels(a, 1, .crane, "tip", "dom.b", 5, low, 2, high));
+    try flipped.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.b", 7, low, 0, high));
+    const fm = try build(a, flipped.items);
+    const fbt = (try baseTip(a, &fm, 1)).?;
+    try testing.expectEqualStrings("one-sided dom.b (steady): base 143.5 MB x7, tip 143.5 MB x5 / 162.5 MB x2, at the low level 1.000", (try oneSidedLine(a, fbt.rows[0], .steady)).?);
+
     // Two rounds of one build: the drift control reads no drift where the
     // median flipped between the rounds.
     const earlier = try build(a, try twoLevels(a, 0, .crane, "base", "dom.a", 5, low, 2, high));
@@ -3338,4 +3419,15 @@ test "a tip and its base are compared level against level, so a median that flip
     try testing.expectApproxEqAbs(@as(f64, 1.0), d.memory_ratio.?, 2e-4);
     try testing.expectEqual(@as(usize, 0), d.outside);
     try testing.expect(d.within);
+
+    // A published ratio is the published figures': Crane's progress since
+    // its first round stays the medians' ratio, flipped level and all.
+    var rounds: std.ArrayList(journal.Record) = .empty;
+    try rounds.appendSlice(a, try twoLevels(a, 0, .crane, "r0", "dom.a", 5, low, 2, high));
+    try rounds.appendSlice(a, try twoLevels(a, 1, .crane, "r1", "dom.a", 3, low, 4, high));
+    const mr = try build(a, rounds.items);
+    const since = try compareRounds(a, &mr, 1, .crane, 0, .crane);
+    try testing.expectEqual(@as(usize, 1), since.memory_n);
+    try testing.expectApproxEqAbs(mr.current(1, .crane, "dom.a").?.memoryFigure().? / mr.current(0, .crane, "dom.a").?.memoryFigure().?, since.memory_ratio.?, 1e-12);
+    try testing.expect(since.memory_ratio.? > 1.12);
 }
