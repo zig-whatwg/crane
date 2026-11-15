@@ -7,8 +7,11 @@
 //! Every real timer (NativeTimerManager) has the owned form; a timer without it now gets no task, as a
 //! realm with no timer gets none.
 //!
-//! Here the remote window's realm has a timer with the plain form only. The page changes its storage three
-//! times; nothing may be armed on that timer.
+//! Since the storage event is a task of the remote window's event loop (tl1_storage_event_task_order_test.zig)
+//! the timer is used only for a realm with no event loop.
+//!
+//! Here the remote window's realm has no event loop and a timer with the plain form only. The page changes
+//! its storage three times; nothing may be armed on that timer.
 
 const std = @import("std");
 const testing = std.testing;
@@ -34,6 +37,10 @@ fn exercise() !void {
         const saved = frame_realm.timer;
         frame_realm.timer = timer.plainOnly();
         defer frame_realm.timer = saved;
+        // No event loop: the task falls back to the realm's timer.
+        const saved_loop = frame_realm.event_loop;
+        frame_realm.event_loop = null;
+        defer frame_realm.event_loop = saved_loop;
         try page.run(
             \\localStorage.setItem('closeAll', 'true');
             \\localStorage.removeItem('closeAll');
