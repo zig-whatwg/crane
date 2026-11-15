@@ -473,7 +473,10 @@ pub fn workerScriptRequest(
     return internal_request;
 }
 
-/// Fetch an HTTP(S) worker script using the fetch module.
+/// Fetch an HTTP(S) worker script using the fetch module, blocking until it
+/// has arrived. A dedicated Worker's script is fetched on the worker's own
+/// thread instead (html.worker_host ThreadHost.fetchScript), with
+/// `workerScriptRequest` and `scriptFromResponse`.
 ///
 /// HTML Standard §10.2.5 "Run a worker" step 9:
 /// Creates an internal request with destination=worker and executes fetch.
@@ -498,7 +501,30 @@ fn fetchHttpWorkerScript(
 
     const response = fetch_result.response;
     defer response.deinit();
+    return scriptFromResponse(allocator, url, .{ .worker_type = options.worker_type, .origin = options.origin }, response);
+}
 
+/// What a worker script's response is checked against (`scriptFromResponse`).
+pub const ResponseChecks = struct {
+    worker_type: WorkerType = .classic,
+    /// The origin a same-origin script is compared with (importScripts()'s
+    /// worker URL); null: same origin. BORROWED.
+    origin: ?[]const u8 = null,
+};
+
+/// HTML "fetch a classic worker script" processResponseConsumeBody - and,
+/// for a module worker's root, "fetch a single module script"'s checks - on
+/// the response a worker script's request got: no script for a network error
+/// or a status that is not ok, nor (HTTP(S)) for a MIME type that is not
+/// JavaScript; otherwise the script, its response URL and the policy
+/// container its headers make. `url` is the request's URL (the response's
+/// when it names none). BORROWED: `response`, which the caller frees.
+pub fn scriptFromResponse(
+    allocator: Allocator,
+    url: []const u8,
+    checks: ResponseChecks,
+    response: *fetch.internal.InternalResponse,
+) WorkerScriptError!FetchedScript {
     // Step 4: Check for network error
     if (response.response_type == .@"error") {
         return WorkerScriptError.NetworkError;
@@ -514,7 +540,7 @@ fn fetchHttpWorkerScript(
         return WorkerScriptError.OutOfMemory;
     } orelse "text/javascript";
     defer if (content_type.ptr != "text/javascript".ptr) allocator.free(content_type);
-    if (!isValidWorkerScriptType(content_type, options.worker_type)) {
+    if (!isValidWorkerScriptType(content_type, checks.worker_type)) {
         return WorkerScriptError.ParseError;
     }
 
@@ -528,7 +554,7 @@ fn fetchHttpWorkerScript(
     const final_url = response.url() orelse url;
 
     // Step 9: Determine same-origin status
-    const same_origin = if (options.origin) |org|
+    const same_origin = if (checks.origin) |org|
         isSameOrigin(org, final_url)
     else
         true;
@@ -573,6 +599,13 @@ fn fetchHttpWorkerScript(
         .environment_secure = fetch.mixed_content.isAPrioriAuthenticated(allocator, final_url) catch false,
     }) catch return WorkerScriptError.OutOfMemory;
     return script;
+}
+
+/// Whether a worker's script at `url` is fetched over the network - an
+/// HTTP(S) URL - rather than answered at once, as a data: URL and a blob:
+/// URL's entry are (`fetchWorkerScript`), with nothing to wait for.
+pub fn fetchesFromNetwork(url: []const u8) bool {
+    return std.mem.startsWith(u8, url, "http://") or std.mem.startsWith(u8, url, "https://");
 }
 
 /// Check if two URLs have the same origin

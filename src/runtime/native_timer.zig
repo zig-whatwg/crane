@@ -527,7 +527,7 @@ pub const NativeTimerManager = struct {
     ///
     /// So the wait is sliced. The caller re-drives us in its own loop, so the total
     /// wait is still honoured; it just becomes interruptible.
-    const max_block_ms: u64 = 1;
+    pub const max_block_ms: u64 = 1;
 
     /// Wait (briefly) for a timer to come due, then fire what is due.
     pub fn pollBlocking(self: *Self, timeout_ms: u64) bool {
