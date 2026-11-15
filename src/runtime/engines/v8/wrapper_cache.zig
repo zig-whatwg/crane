@@ -855,6 +855,12 @@ fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     // The engine is done with it - its reference is empty and its record is
     // off the queue - so the later finalizeEntry tears it down as the cache's
     // end does for a record still waiting.
+    //
+    // The realm is collected and has not ended (lane tl1): the record stays
+    // collected and counted (`WrapperCache.pending`), off the agent's queue
+    // and on no hold, and the realm's end tears it down
+    // (`WrapperCache.realm_collected`, `finalizePending`).
+    if (entry.cache().realm_collected) return;
     if (entry.cache().teardownHolds()) |holds| {
         if (holds.count != 0 and holds.wait(entry)) return;
     }
@@ -1194,6 +1200,31 @@ pub const WrapperCache = struct {
     /// the cache owns, empty once collected. Every wrapper that would be held strongly is
     /// kept by an edge from it instead (`syncEntry`).
     detached_holder: ?*v8.Value = null,
+
+    /// The collector took this cache's realm - a detached realm nothing of
+    /// script reached any more (protocol_realms.realmCollected) - and the
+    /// realm's end, a task that queues, has not run yet. Until it has, the
+    /// realm's Window and its tree are still allocated, and native code can
+    /// still reach them through a weak reference (an address and a slab
+    /// generation: the embedder's pointer was over one of its elements). The
+    /// Window names the objects it made by plain pointers - its Performance,
+    /// its Navigator, its Storage objects, each kept alive by a traced edge
+    /// from the global object - and the same collection took their wrappers.
+    /// So their teardown waits for the realm's end (`finalizeCollected`),
+    /// which frees them after the Window, in its own order, as it does for
+    /// a realm that ends without having been collected. Freed at the safe
+    /// point instead, the Window named freed objects for that while: an
+    /// event made in the realm read its Performance for its timestamp - a
+    /// segmentation fault in 3 of 96 WPT runner processes
+    /// (tests/html/tl1_collected_realm_window_test.zig). Blink has no such
+    /// state: a window's Performance is traced from the window, so it lives
+    /// exactly as long as the window does - LocalDOMWindow::Trace
+    /// (core/frame/local_dom_window.cc) traces its supplements
+    /// (Supplementable<LocalDOMWindow>::Trace), and the supplement that
+    /// holds the Performance traces it (core/timing/global_performance.cc,
+    /// GlobalPerformanceImpl::Trace: `visitor->Trace(performance_)`; read at
+    /// chromium main, 2026-11-15).
+    realm_collected: bool = false,
 
     /// The pool the records are issued from (`allocCell`): its chunks, newest
     /// first, and the records free to issue. A chunk is the cache's
