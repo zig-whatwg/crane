@@ -329,16 +329,19 @@ like any other (V8: `wrapper_cache.finalizeEntry`; lane pageretention1).
   as Chromium's empty CoopAccessMonitor list does); the host only queues
   reports [window_access_reporting]. It is entered only for
   the calls that run in it (it is made while the parent's script runs), and
-  ends before its parent does if it has not already. A parentless realm is
-  the agent's entered realm for its life. A realm whose WindowProxy went on
+  ends before its parent does if it has not already. A parentless realm that
+  is not `auxiliary` - the host's page - is the agent's entered realm for its
+  life. A realm whose WindowProxy went on
   to a later one (`window_proxy_of`) is severed from its Window at its end:
   a function of it that script still holds finds no Window, not a freed one.
   That realm - a frame's, or a parentless top-level page's - is detached by
   `destroyWindowRealm(.global_detached)` and ends once collected or with the
   realm that took its proxy; a parentless one hands its context and isolate
-  entries to that realm. `WindowRealmOptions.auxiliary` marks window.open's
-  realm: a realm built around its parent's proxy adopts it, so a popup
-  outlives its opener's navigation (frames are never adopted).
+  entries to that realm. `WindowRealmOptions.auxiliary` marks a popup's
+  realm: a top-level realm with no parent edge - `parent` names its creator,
+  read during creation for its window operations, and it is made and left as
+  a frame's is. A realm's end never ends an auxiliary realm: a popup's realm
+  ends only when its own navigable is destroyed or its Browser ends.
 - **Browser:** `WindowRealmOptions.browser_scope` is the realm's Browser
   (runtime.BrowserScope); the engine records it as the realm's
   `ContextData.browser_scope` before `create_global_object`, so the Window

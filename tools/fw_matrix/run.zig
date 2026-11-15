@@ -2,12 +2,16 @@
 //! from the framework's own report, one journal record per test and per
 //! page (tmp/plans/framework-matrix-plan.md, section 2.1).
 //!
-//! Per suite: a static server over its fetched tree (server.zig), then per
+//! Per suite: a static server over its fetched tree (server.zig) - or the
+//! project's own test server where the manifest names one (external.zig:
+//! jQuery's jtr serve under the pinned Node) - then per
 //! page a FRESH console - `repl <url> --timeout=<ms>` - given three lines of
 //! input: the reader's wait, its read and `.exit` (readers.zig). The console
 //! IS the browser (tools/repl.zig): the page is opened the way a user opens
-//! it and read the way a user reads it in DevTools; nothing is injected and
-//! no upstream file is edited. The exclusion list becomes the framework's
+//! it and read the way a user reads it in DevTools; the harness injects
+//! nothing and edits no upstream file (jQuery's own server adds its runner's
+//! listeners.js to test/'s page, as it does for every browser; without a
+//! reportId in the URL that script returns at once). The exclusion list becomes the framework's
 //! own URL filter (exclusions.zig), so excluded tests never run, and each is
 //! journaled as NOTRUN with its kind and reason. At most `parallel` consoles
 //! at once (perf_bench's shape: a process per page, its own process group,
@@ -32,6 +36,7 @@ const exclusions = @import("exclusions.zig");
 const readers = @import("readers.zig");
 const journal = @import("journal.zig");
 const server_mod = @import("server.zig");
+const external = @import("external.zig");
 const fetch = @import("fetch.zig");
 
 pub const Config = struct {
@@ -50,6 +55,12 @@ pub const Config = struct {
     no_exclusions: bool = false,
     parallel: u32 = 2,
     stop_file: ?[]const u8 = null,
+    /// The environment a project's own server starts from (the tool's).
+    environ: ?*const std.process.Environ.Map = null,
+    /// The comparison run: `console` is this browser's executable (headless
+    /// Chrome), named so in every record; the page's result is QUnit's TAP
+    /// on its console, read from its stderr (readers.parseChromeTap).
+    browser: ?[]const u8 = null,
 };
 
 pub const Totals = struct {
@@ -60,13 +71,29 @@ pub const Totals = struct {
     stopped: bool = false,
 };
 
+/// What a page needs to start its own server: the fetched Bazel, its
+/// environment, and the tree it runs in.
+const PerPage = struct {
+    server: manifest.ExternalServer,
+    bazel: [2][]const u8,
+    environ: *const std.process.Environ.Map,
+    tree_abs: []const u8,
+};
+
 const Shared = struct {
     gpa: Allocator,
     io: Io,
     config: *const Config,
     suite: manifest.Suite,
     entries: []const exclusions.Entry,
+    /// The page URLs' host and port.
+    host: []const u8,
     port: u16,
+    /// The project's own server, when it serves the pages.
+    server: ?journal.ServerInfo,
+    /// A server per page (the project's own Bazel target for each page):
+    /// started by the page itself.
+    per_page: ?PerPage = null,
     journal_file: Io.File,
     mutex: Io.Mutex = .init,
     next: std.atomic.Value(usize) = .init(0),
@@ -146,9 +173,61 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         try pages.append(arena, p);
     }
 
-    const server = try server_mod.Server.start(gpa, io, .{ .root = tree, .overlays = try serverOverlays(arena, suite) });
-    defer server.stop();
-    std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served from {s} on 127.0.0.1:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, tree, server.port() });
+    // The pages' server: the project's own when the manifest names one (its
+    // Node and node_modules checked as fetched first), else the harness's
+    // static server over the tree.
+    var host: []const u8 = "127.0.0.1";
+    var port: u16 = 0;
+    var server_info: ?journal.ServerInfo = null;
+    var static: ?*server_mod.Server = null;
+    defer if (static) |s| s.stop();
+    var project_server: ?*external.External = null;
+    defer if (project_server) |s| {
+        s.stop();
+        std.debug.print("fw_matrix: {s}: its server stopped\n", .{suite.id});
+    };
+    var per_page: ?PerPage = null;
+    if (suite.server) |s| if (manifest.serverPerPage(s)) {
+        // Each page starts the project's own target that serves it (Angular:
+        // `bazel run <target>_debug`, web-test-runner's manual mode).
+        const bz = suite.bazel.?; // manifest.validate: "{bazel}" needs a Bazel
+        const frameworks_abs = try Io.Dir.cwd().realPathFileAlloc(io, config.frameworks_dir, arena);
+        const bazelisk = try fetch.fetchBazelisk(gpa, arena, io, frameworks_abs, bz);
+        const env = try arena.create(std.process.Environ.Map);
+        env.* = try fetch.bazelEnviron(arena, config.environ, frameworks_abs, bz);
+        const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, tree, arena);
+        const lock = Io.Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(arena, "{s}/MODULE.bazel.lock", .{tree_abs}), arena, .limited(64 << 20)) catch "";
+        per_page = .{ .server = s, .bazel = try fetch.bazelArgv(arena, bazelisk, frameworks_abs), .environ = env, .tree_abs = tree_abs };
+        host = s.host;
+        server_info = .{ .name = s.name, .bazel = bz.version, .bazel_lock_sha256 = try arena.dupe(u8, &fetch.sha256Hex(lock)) };
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), each served by its own target ({s}, Bazel {s}) from {s}\n", .{ suite.id, suite.title, suite.version, pages.items.len, s.name, bz.version, tree });
+    };
+    if (per_page != null) {} else if (suite.server) |s| {
+        const node = suite.node.?; // manifest.validate: a server needs Node
+        const node_dir = try fetch.nodeDirChecked(arena, io, config.frameworks_dir, node);
+        const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, tree, arena);
+        const node_modules = try fetch.checkNodeModules(gpa, io, tree_abs);
+        const npm_cache = try std.fmt.allocPrint(arena, "{s}/downloads/npm-cache", .{try Io.Dir.cwd().realPathFileAlloc(io, config.frameworks_dir, arena)});
+        const env = try arena.create(std.process.Environ.Map);
+        env.* = try fetch.nodeEnviron(arena, config.environ, try std.fmt.allocPrint(arena, "{s}/bin", .{node_dir}), npm_cache);
+        project_server = try external.External.start(gpa, io, .{
+            .argv = s.argv,
+            .cwd = tree_abs,
+            .environ = env,
+            .ready_path = s.ready_path,
+            .ready_ms = @as(u64, s.ready_s) * 1000,
+            .log_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-server.log", .{ config.out_dir, suite.id }),
+            .pid_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-server.pid", .{ config.out_dir, suite.id }),
+        });
+        host = s.host;
+        port = project_server.?.port();
+        server_info = .{ .name = s.name, .node = node.version, .node_modules_sha256 = try arena.dupe(u8, &node_modules) };
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served by the project's own server ({s}, Node {s}, pid {d}) from {s} at {s}:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, s.name, node.version, project_server.?.pid, tree, host, port });
+    } else {
+        static = try server_mod.Server.start(gpa, io, .{ .root = tree, .overlays = try serverOverlays(arena, suite) });
+        port = static.?.port();
+        std.debug.print("fw_matrix: {s} ({s} {s}): {d} page(s), served from {s} on 127.0.0.1:{d}\n", .{ suite.id, suite.title, suite.version, pages.items.len, tree, port });
+    }
 
     var shared: Shared = .{
         .gpa = gpa,
@@ -156,7 +235,10 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
         .config = config,
         .suite = suite,
         .entries = entries,
-        .port = server.port(),
+        .host = host,
+        .port = port,
+        .server = server_info,
+        .per_page = per_page,
         .journal_file = journal_file,
         .pages = pages.items,
         .totals = totals,
@@ -166,6 +248,21 @@ fn runSuite(gpa: Allocator, io: Io, config: *const Config, suite: manifest.Suite
     const n = @min(n_workers, threads.len);
     for (threads[0..n]) |*t| t.* = try std.Thread.spawn(.{}, worker, .{&shared});
     for (threads[0..n]) |t| t.join();
+}
+
+/// A per-page server's command: "{bazel}" becomes the fetched Bazel (two
+/// arguments: bazelisk and its output root), "{target}" the page's target;
+/// "{port}" is left for the server's start.
+pub fn pageServerArgv(arena: Allocator, argv: []const []const u8, bazel: [2][]const u8, target: []const u8) ![]const []const u8 {
+    var out: std.ArrayList([]const u8) = .empty;
+    for (argv) |arg| {
+        if (std.mem.eql(u8, arg, manifest.bazel_placeholder)) {
+            try out.appendSlice(arena, &bazel);
+            continue;
+        }
+        try out.append(arena, try std.mem.replaceOwned(u8, arena, arg, manifest.target_placeholder, target));
+    }
+    return out.items;
 }
 
 /// The suite's overlays as the server takes them (directories relative to
@@ -189,7 +286,7 @@ fn checkFileEntries(arena: Allocator, io: Io, tree: []const u8, suite: manifest.
             continue;
         };
         for (suite.pages) |p| {
-            const page_file = p.path[0 .. std.mem.indexOfScalar(u8, p.path, '?') orelse p.path.len];
+            const page_file = try manifest.pageFile(arena, p.path);
             const html = try Io.Dir.cwd().readFileAlloc(io, try std.fmt.allocPrint(arena, "{s}/{s}", .{ tree, page_file }), arena, .limited(16 << 20));
             const base = std.fs.path.basename(e.id);
             if (std.mem.indexOf(u8, html, base) != null) {
@@ -224,47 +321,42 @@ const ConsoleEnd = struct {
     killed: bool,
     /// Ended because the stop file appeared: the page is not recorded.
     stopped: bool = false,
+    /// A browser ended by the harness once its page's run had ended: the
+    /// normal end of a browser that never exits by itself.
+    at_end: bool = false,
+    /// Ended because the output it is read from stopped growing for the
+    /// page's stall time before its report appeared.
+    stalled: bool = false,
     wall_ms: u64,
 
     fn text(e: ConsoleEnd, arena: Allocator) ![]const u8 {
         if (e.term) |t| {
             const s = try std.fmt.allocPrint(arena, "{f}", .{t});
+            if (e.at_end) return std.fmt.allocPrint(arena, "{s} (ended by the harness after the page's run ended)", .{s});
             return if (e.killed) std.fmt.allocPrint(arena, "{s} (ended by the harness at its deadline)", .{s}) else s;
         }
         return "unknown";
     }
 
     fn clean(e: ConsoleEnd) bool {
+        if (e.at_end) return true;
         const t = e.term orelse return false;
         return !e.killed and t == .exited and t.exited == 0;
     }
 };
 
-const Waiter = struct {
-    child: std.process.Child,
-    io: Io,
-    term: ?std.process.Child.Term = null,
-    done: std.atomic.Value(bool) = .init(false),
+const Waiter = external.Waiter;
+const signalGroup = external.signalGroup;
 
-    fn wait(self: *Waiter) void {
-        self.term = self.child.wait(self.io) catch null;
-        self.done.store(true, .release);
-    }
-
-    fn waitFor(self: *Waiter, ms: u64) void {
-        var waited: u64 = 0;
-        while (!self.done.load(.acquire) and waited < ms) : (waited += 50) Io.sleep(self.io, .fromMilliseconds(50), .awake) catch {};
-    }
-};
-
-fn signalGroup(pid: i32, sig: std.posix.SIG) void {
-    std.posix.kill(-pid, sig) catch {};
-    std.posix.kill(pid, sig) catch {};
-}
+/// When the harness ends a console whose page's report is its console
+/// output: a browser that never exits by itself, once its stderr holds the
+/// end of QUnit's TAP; Crane's console on a Jasmine page, once its stdout
+/// holds Jasmine's summary.
+const Until = enum { exit, tap_on_stderr, jasmine_on_stdout };
 
 /// One console: `argv`, `input` on its stdin (then closed), its output to
-/// the two files; ended by the harness at `deadline_ms`.
-fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8) !ConsoleEnd {
+/// the two files; ended by the harness at `deadline_ms`, or as `until` says.
+fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []const u8, err_path: []const u8, deadline_ms: u64, stop_file: ?[]const u8, until: Until, stall_ms: u64) !ConsoleEnd {
     const out_file = try Io.Dir.cwd().createFile(io, out_path, .{});
     defer out_file.close(io);
     const err_file = try Io.Dir.cwd().createFile(io, err_path, .{});
@@ -288,12 +380,39 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     // ends the console within a second.
     var waited: u64 = 0;
     var stopped = false;
+    var at_end = false;
+    var stalled = false;
+    var last_len: usize = 0;
+    var grew_at: u64 = 0;
     while (!w.done.load(.acquire) and waited < deadline_ms) : (waited += 1000) {
         w.waitFor(@min(1000, deadline_ms - waited));
         if (stop_file) |f| if (Io.Dir.cwd().access(io, f, .{})) {
             stopped = true;
             break;
         } else |_| {};
+        if (until != .exit) {
+            var arena_state: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+            defer arena_state.deinit();
+            const a = arena_state.allocator();
+            const text = Io.Dir.cwd().readFileAlloc(io, if (until == .tap_on_stderr) err_path else out_path, a, .limited(1 << 30)) catch "";
+            const ended = switch (until) {
+                .exit => unreachable,
+                .tap_on_stderr => readers.tapEnded(a, text) catch false,
+                .jasmine_on_stdout => readers.jasmineEnded(a, text) catch false,
+            };
+            if (ended) {
+                at_end = true;
+                break;
+            }
+            // Nothing new for the stall time: the run is not progressing.
+            if (text.len != last_len) {
+                last_len = text.len;
+                grew_at = waited;
+            } else if (waited - grew_at >= stall_ms) {
+                stalled = true;
+                break;
+            }
+        }
     }
     var killed = false;
     if (!w.done.load(.acquire)) {
@@ -307,7 +426,7 @@ fn runConsole(io: Io, argv: []const []const u8, input: []const u8, out_path: []c
     }
     thread.join();
     const wall: u64 = @intCast(@max(0, t0.durationTo(Io.Timestamp.now(io, .awake)).toMilliseconds()));
-    return .{ .term = w.term, .killed = killed, .stopped = stopped, .wall_ms = wall };
+    return .{ .term = w.term, .killed = killed and !at_end, .stopped = stopped, .at_end = at_end, .stalled = stalled, .wall_ms = wall };
 }
 
 /// The tests `defined` that belong to a page: a QUnit module page's module
@@ -320,6 +439,21 @@ fn definedForPage(arena: Allocator, defined: []const []const u8, module: ?[]cons
         if (std.ascii.eqlIgnoreCase(dm, m)) try out.append(arena, d);
     }
     return out.items;
+}
+
+/// The first line of a console's output that begins "Error: " or another
+/// "<Name>Error: " (an error the page's framework logged), trimmed.
+fn firstErrorLine(output: []const u8) ?[]const u8 {
+    var it = std.mem.splitScalar(u8, output, '\n');
+    while (it.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        const colon = std.mem.indexOf(u8, line, "Error: ") orelse continue;
+        const name = line[0 .. colon + "Error".len];
+        var ok = true;
+        for (name) |c| ok = ok and std.ascii.isAlphanumeric(c);
+        if (ok) return line[0..@min(line.len, 300)];
+    }
+    return null;
 }
 
 /// The lines of the console's output that report an uncaught exception or
@@ -350,9 +484,33 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     // skip_kinds for the filter (none in a diagnosis run).
     const all_kinds = [_]exclusions.Kind{ .rendering, .needs_server, .needs_node_build, .node_runner_only };
     const page_entries = try exclusions.forPage(arena, shared.entries, page.module, &all_kinds);
-    const applied = if (config.no_exclusions) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
+    // A page that takes no filter (web-test-runner's, Angular) runs every
+    // test; its listed tests are classified after the run instead.
+    const after_run = suite.reader == .jasmine_console;
+    const classified = if (after_run and !config.no_exclusions) page_entries else &[_]exclusions.Entry{};
+    const applied = if (config.no_exclusions or after_run) &[_]exclusions.Entry{} else try exclusions.forPage(arena, shared.entries, page.module, suite.skip_kinds);
     const query = try exclusions.filterQuery(arena, suite.reader, applied);
-    const url = try std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}", .{ shared.port, try exclusions.withQuery(arena, page.path, query) });
+    // A page served by its own target: the project's server for it, started
+    // now and stopped when the page ends.
+    var port = shared.port;
+    var page_server: ?*external.External = null;
+    defer if (page_server) |srv| srv.stop();
+    var server_info = shared.server;
+    if (shared.per_page) |pp| {
+        const target = page.target.?; // manifest.validate
+        page_server = try external.External.start(gpa, io, .{
+            .argv = try pageServerArgv(arena, pp.server.argv, pp.bazel, target),
+            .cwd = pp.tree_abs,
+            .environ = pp.environ,
+            .ready_path = pp.server.ready_path,
+            .ready_ms = @as(u64, pp.server.ready_s) * 1000,
+            .log_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}-server.log", .{ config.out_dir, suite.id, page.id }),
+            .pid_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}-server.pid", .{ config.out_dir, suite.id, page.id }),
+        });
+        port = page_server.?.port();
+        if (server_info) |*si| si.target = target;
+    }
+    const url = try std.fmt.allocPrint(arena, "http://{s}:{d}/{s}", .{ shared.host, port, try exclusions.withQuery(arena, page.path, query) });
 
     const budget_ms: u64 = @as(u64, suite.page_budget_s) * 1000;
     const stall_ms: u64 = @as(u64, suite.page_stall_s) * 1000;
@@ -360,7 +518,20 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     const timeout_arg = try std.fmt.allocPrint(arena, "--timeout={d}", .{budget_ms + 60_000});
     const out_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.out", .{ config.out_dir, suite.id, page.id });
     const err_path = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.err", .{ config.out_dir, suite.id, page.id });
-    const end = try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file);
+    // A browser for the comparison column: headless, a profile of its own
+    // deleted after, its console on stderr (lesson workflow-headless-chromes-
+    // console-log-carries-a-pages-tap.md); the page's run read from there.
+    const profile = try std.fmt.allocPrint(arena, "{s}/console/{s}-{s}.profile", .{ config.out_dir, suite.id, page.id });
+    defer if (config.browser != null) Io.Dir.cwd().deleteTree(io, profile) catch {};
+    const browser_argv = [_][]const u8{
+        config.console,                                                   "--headless=new",             "--no-first-run",          "--no-default-browser-check",
+        "--disable-background-networking",                                "--disable-component-update", "--enable-logging=stderr", "--log-level=0",
+        try std.fmt.allocPrint(arena, "--user-data-dir={s}", .{profile}), url,
+    };
+    const end = if (config.browser != null)
+        try runConsole(io, &browser_argv, "", out_path, err_path, budget_ms, config.stop_file, .tap_on_stderr, stall_ms)
+    else
+        try runConsole(io, &.{ config.console, url, timeout_arg }, input, out_path, err_path, budget_ms + 120_000, config.stop_file, if (suite.reader == .jasmine_console) .jasmine_on_stdout else .exit, stall_ms);
     if (end.stopped) {
         shared.mutex.lockUncancelable(io);
         defer shared.mutex.unlock(io);
@@ -370,8 +541,14 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
     }
 
     const output = Io.Dir.cwd().readFileAlloc(io, out_path, arena, .limited(2 << 30)) catch "";
-    const result_json = readers.findResult(output);
-    const result: ?readers.PageResult = if (result_json) |j| readers.parse(arena, suite.reader, j) catch null else null;
+    const result_json = if (config.browser != null or suite.reader == .jasmine_console) null else readers.findResult(output);
+    const result: ?readers.PageResult = if (suite.reader == .jasmine_console and config.browser == null)
+        readers.parseJasmineConsole(arena, output) catch null
+    else if (config.browser != null) blk: {
+        const log = Io.Dir.cwd().readFileAlloc(io, err_path, arena, .limited(2 << 30)) catch "";
+        const r = readers.parseChromeTap(arena, log) catch break :blk null;
+        break :blk if (r.tests.len == 0 and r.reported_total == null) null else r;
+    } else if (result_json) |j| readers.parse(arena, suite.reader, j) catch null else null;
 
     var problems: std.ArrayList([]const u8) = .empty;
     var console_errors: std.ArrayList([]const u8) = .empty;
@@ -391,6 +568,7 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .name = "",
         .id = "",
         .status = .PASS,
+        .browser = config.browser,
     };
     var status: journal.PageStatus = .OK;
     var missing_count: u32 = 0;
@@ -398,7 +576,8 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         for (r.errors) |e| if (console_errors.items.len < journal.max_errors) try console_errors.append(arena, e);
         // The exclusion list against what the page defines: a rename
         // upstream fails the run instead of excluding nothing.
-        const missing = try exclusions.missing(arena, page_entries, r.defined);
+        // (A page that names only its failures defines nothing to check.)
+        const missing = if (after_run) &[_]exclusions.Entry{} else try exclusions.missing(arena, page_entries, r.defined);
         for (missing) |e| {
             try problems.append(arena, try std.fmt.allocPrint(arena, "excluded test not defined by the page (renamed or removed upstream?): [{s}] (list line {d})", .{ e.id, e.line }));
         }
@@ -417,6 +596,15 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
             rec.assertions_total = t.assertions_total;
             rec.message = t.message;
             rec.duration_ms = t.duration_ms;
+            // A listed test that ran and failed on a page that takes no
+            // filter: classified after the run, with the list's reason, and
+            // its failure kept.
+            if (t.status == .FAIL) for (classified) |e| if (std.mem.eql(u8, e.id, t.id)) {
+                rec.status = .NOTRUN;
+                rec.not_run = e.kind.notRun();
+                rec.reason = try std.fmt.allocPrint(arena, "ran and failed; classified after the run, as its page takes no filter: {s}", .{e.why});
+                break;
+            };
             try records.append(arena, rec);
             const gop = try reported.getOrPut(arena, t.id);
             gop.value_ptr.* = if (gop.found_existing) gop.value_ptr.* + 1 else 1;
@@ -475,8 +663,13 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         }
         if (status == .TIMEOUT) try problems.append(arena, try std.fmt.allocPrint(arena, "the framework's run did not end within the page's budget ({d} s) or stalled ({d} s without progress); {d} due test(s) unreported", .{ suite.page_budget_s, suite.page_stall_s, unreported }));
     } else {
-        status = if (!end.clean()) .CRASH else .ERROR;
-        try problems.append(arena, if (result_json == null) "the console printed no report" else "the report could not be parsed");
+        status = if (end.stalled) .TIMEOUT else if (!end.clean()) .CRASH else .ERROR;
+        try problems.append(arena, if (config.browser != null) "the browser's console carried no TAP report" else if (result_json == null) "the console printed no report" else "the report could not be parsed");
+        if (end.stalled) try problems.append(arena, try std.fmt.allocPrint(arena, "its output stopped growing for {d} s", .{suite.page_stall_s}));
+        // What the page printed that stopped its framework: Jasmine's
+        // runner logs the error that aborted the run (web-test-runner-
+        // jasmine: console.log(error)).
+        if (suite.reader == .jasmine_console) if (firstErrorLine(output)) |line| try problems.append(arena, line);
     }
     try uncaughtLines(arena, output, &console_errors);
 
@@ -513,11 +706,18 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
         .console_errors = console_errors.items,
         .loaded = loaded.items,
         .message = if (problems.items.len > 0) try std.mem.join(arena, "; ", problems.items) else null,
+        .server = server_info,
+        .browser = config.browser,
+        .unnamed_passed = if (result) |r| (if (r.unnamed_passed > 0) r.unnamed_passed else null) else null,
+        .unnamed_pending = if (result) |r| (if (r.unnamed_pending > 0) r.unnamed_pending else null) else null,
     };
 
     var buf: Io.Writer.Allocating = .init(arena);
     for (records.items) |rec| try journal.writeTest(&buf.writer, rec);
     try journal.writePage(&buf.writer, page_record);
+    // The tests the framework counted without naming, in the run's totals.
+    counts.pass += page_record.unnamed_passed orelse 0;
+    counts.project_skip += page_record.unnamed_pending orelse 0;
 
     shared.mutex.lockUncancelable(io);
     defer shared.mutex.unlock(io);
@@ -533,6 +733,15 @@ fn runPage(shared: *Shared, page: manifest.Page) !void {
 }
 
 const testing = std.testing;
+
+test "a page's own server: the fetched Bazel and the page's target in the project's command; the port left to the start" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const argv = try pageServerArgv(arena_state.allocator(), &.{ "{bazel}", "run", "{target}", "--", "--port", "{port}" }, .{ "/f/bazelisk-1.30.0-darwin-arm64/bazelisk", "--output_user_root=/f/bazel-root" }, "//packages/common/http/test:test_web_debug");
+    const want = [_][]const u8{ "/f/bazelisk-1.30.0-darwin-arm64/bazelisk", "--output_user_root=/f/bazel-root", "run", "//packages/common/http/test:test_web_debug", "--", "--port", "{port}" };
+    try testing.expectEqual(want.len, argv.len);
+    for (want, argv) |w, a| try testing.expectEqualStrings(w, a);
+}
 
 test "definedForPage: a module page's tests, compared lower-cased" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
@@ -561,13 +770,13 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const err = try std.fmt.allocPrint(testing.allocator, "{s}/c.err", .{dir});
     defer testing.allocator.free(err);
 
-    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null);
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", "cat; echo bye >&2" }, "CRANE-FW-RESULT {}\n", out, err, 10_000, null, .exit, 60_000);
     try testing.expect(e.clean());
     const got = try tmp.dir.readFileAlloc(testing.io, "c.out", testing.allocator, .limited(100));
     defer testing.allocator.free(got);
     try testing.expectEqualStrings("{}", readers.findResult(got).?);
 
-    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null);
+    const hung = try runConsole(testing.io, &.{ "/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done" }, "", out, err, 300, null, .exit, 60_000);
     try testing.expect(hung.killed);
     try testing.expect(!hung.clean());
 
@@ -575,7 +784,38 @@ test "a console run: input on stdin, output to its file, its end; a deadline end
     const stop = try std.fmt.allocPrint(testing.allocator, "{s}/STOP", .{dir});
     defer testing.allocator.free(stop);
     try tmp.dir.writeFile(testing.io, .{ .sub_path = "STOP", .data = "" });
-    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop);
+    const stopped = try runConsole(testing.io, &.{ "/bin/sleep", "30" }, "", out, err, 60_000, stop, .exit, 60_000);
     try testing.expect(stopped.stopped);
     try testing.expect(stopped.wall_ms < 20_000);
+}
+
+test "a browser that never exits: ended once its stderr holds the end of QUnit's TAP, a clean end" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dir = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(dir);
+    const out = try std.fmt.allocPrint(testing.allocator, "{s}/b.out", .{dir});
+    defer testing.allocator.free(out);
+    const err = try std.fmt.allocPrint(testing.allocator, "{s}/b.err", .{dir});
+    defer testing.allocator.free(err);
+    // Prints the TAP end, then keeps running as Chrome does.
+    const script = "printf '[1:INFO:CONSOLE:1] \"1..1\", source: x (1)\\n[1:INFO:CONSOLE:1] \"# fail 0\", source: x (1)\\n' >&2; while :; do sleep 0.1; done";
+    const e = try runConsole(testing.io, &.{ "/bin/sh", "-c", script }, "", out, err, 30_000, null, .tap_on_stderr, 60_000);
+    try testing.expect(e.at_end);
+    try testing.expect(e.clean());
+    try testing.expect(e.wall_ms < 15_000);
+    // Without the end it runs to its deadline, and that is not clean.
+    const cut = try runConsole(testing.io, &.{ "/bin/sh", "-c", "while :; do sleep 0.1; done" }, "", out, err, 1500, null, .tap_on_stderr, 60_000);
+    try testing.expect(!cut.at_end and !cut.clean());
+    // Output that stops growing ends it at the stall time, before its
+    // deadline.
+    const quiet = try runConsole(testing.io, &.{ "/bin/sh", "-c", "echo started >&2; while :; do sleep 0.1; done" }, "", out, err, 30_000, null, .tap_on_stderr, 2000);
+    try testing.expect(quiet.stalled and !quiet.clean());
+    try testing.expect(quiet.wall_ms < 15_000);
+}
+
+test "firstErrorLine: the first error a page's framework logged" {
+    try testing.expectEqualStrings("Error: describe with no children (describe() or it()): Notification API", firstErrorLine("> DEPRECATION: x\n  WARNING: skipping\n  Error: describe with no children (describe() or it()): Notification API\n    at SuiteBuilder").?);
+    try testing.expectEqualStrings("TypeError: x is not a function", firstErrorLine("  TypeError: x is not a function").?);
+    try testing.expectEqual(@as(?[]const u8, null), firstErrorLine("an Error: inside text\nno errors"));
 }

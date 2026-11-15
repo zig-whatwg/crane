@@ -550,6 +550,12 @@ fn readsVolatileState(kind: PseudoClassKind, data: ElementData) bool {
         .Open => html and (std.mem.eql(u8, local, "dialog") or std.mem.eql(u8, local, "select") or std.mem.eql(u8, local, "input")),
         .PopoverOpen => data.findAttribute(null, "popover") != null,
         .Modal => html and std.mem.eql(u8, local, "dialog"),
+        // :fullscreen changes with the top layer, whose revision moves the
+        // style engine's generation (StyleEngine.observeTopLayer): every
+        // cached style is recomputed then, so no element's is volatile -
+        // and the universal UA rule `*|*:not(:root):fullscreen` would make
+        // every element's so.
+        .Fullscreen => false,
         .Playing, .Paused, .Seeking, .Buffering, .Stalled, .Muted, .VolumeLocked => html and (std.mem.eql(u8, local, "audio") or std.mem.eql(u8, local, "video")),
         // dir=auto on a text control reads its value.
         .Dir => html and (std.mem.eql(u8, local, "input") or std.mem.eql(u8, local, "textarea")),
@@ -1176,6 +1182,7 @@ const Matcher = struct {
             .Open => html_pseudo_classes.matches(element, .open),
             .PopoverOpen => html_pseudo_classes.matches(element, .popover_open),
             .Modal => html_pseudo_classes.matches(element, .modal),
+            .Fullscreen => html_pseudo_classes.matches(element, .fullscreen),
             .Playing => html_pseudo_classes.matches(element, .playing),
             .Paused => html_pseudo_classes.matches(element, .paused),
             .Seeking => html_pseudo_classes.matches(element, .seeking),

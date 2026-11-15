@@ -845,6 +845,7 @@ const submission_algorithms: @import("dom").form_submission.Implementation = .{
     .past_names_owner_change = &ownerChanged,
     .cancel_planned_navigations = &cancelPlannedNavigationsOf,
     .cancel_planned_navigations_to = &cancelPlannedNavigationsTo,
+    .has_planned_navigation_to = &hasPlannedNavigationTo,
 };
 
 /// dom.form_submission: HTML "stop loading" the navigable whose active
@@ -886,6 +887,27 @@ fn cancelPlannedNavigationsTo(scope: *runtime.Instance, navigable: u64) void {
             if (internal.planned_navigation == pending.token) internal.planned_navigation = 0;
         }
     }
+}
+
+/// dom.form_submission: whether a planned navigation aimed at the navigable
+/// `navigable`, of any form of `scope`'s Browser, still waits for its task
+/// (Implementation.has_planned_navigation_to). A plan whose target was not
+/// resolved at submission - targetNavigableId leaves a popup's name, "_blank"
+/// and a name nothing has at 0: the window open steps find or make that
+/// navigable when the task runs - may be aimed at any of them, so it counts
+/// for every navigable: the load it holds back stays HTML's queued task.
+/// (replace-before-load/form-submit-popup.html: the opener's submission
+/// targets the popup by name while the popup parses; WebKit waits on the
+/// popup frame's NavigationScheduler, Gecko's onload is posted.)
+fn hasPlannedNavigationTo(scope: *runtime.Instance, navigable: u64) bool {
+    if (navigable == 0) return false;
+    var registered = Registry.iterator(runtime.BrowserScope.ofInstance(scope)) orelse return false;
+    while (registered.next()) |entry| {
+        for (entry.internal.pending_navigations.items) |pending| {
+            if (pending.navigable == navigable or pending.navigable == 0) return true;
+        }
+    }
+    return false;
 }
 
 fn submitFromHook(form: *runtime.Instance, submitter: *runtime.Instance, user_involvement: @import("dom").form_submission.UserInvolvement) anyerror!void {

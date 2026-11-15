@@ -349,6 +349,42 @@ const AccessBody = struct {
     otherDocumentURL: ?[]const u8 = null,
 };
 
+/// The body of the "coop-access-violation" report a ReportingObserver
+/// receives: the members of Chromium's CoopAccessViolationReportBody
+/// (specs/supplementary/report-bodies.idl), as its BuildJSONValue writes
+/// them - the source location always (LocationReportBody::BuildJSONValue:
+/// null when unknown), the type and property, and the one window URL the
+/// report names (openerURL, openeeURL or otherDocumentURL), never the other
+/// two. dom.reporting converts it with that dictionary, so a member this
+/// leaves out does not exist (html/cross-origin-opener-policy/reporting/
+/// access-reporting/reporting-observer.html reads the other two URLs as
+/// undefined).
+const ObservedAccessBody = struct {
+    sourceFile: ?[]const u8 = null,
+    lineNumber: ?u32 = null,
+    columnNumber: ?u32 = null,
+    type: []const u8,
+    property: []const u8,
+    window_url: struct { name: []const u8, value: []const u8 },
+
+    pub fn jsonStringify(self: ObservedAccessBody, writer: anytype) !void {
+        try writer.beginObject();
+        try writer.objectField("sourceFile");
+        try writer.write(self.sourceFile);
+        try writer.objectField("lineNumber");
+        try writer.write(self.lineNumber);
+        try writer.objectField("columnNumber");
+        try writer.write(self.columnNumber);
+        try writer.objectField("type");
+        try writer.write(self.type);
+        try writer.objectField("property");
+        try writer.write(self.property);
+        try writer.objectField(self.window_url.name);
+        try writer.write(self.window_url.value);
+        try writer.endObject();
+    }
+};
+
 /// The window URL a report names: the other side's URL, sanitized, when the
 /// two documents are same origin (CreateReporterParams'
 /// reported_window_url); "" otherwise. OWNED.
@@ -419,18 +455,21 @@ fn reportAccessFromCoopPage(accessing: *const AccessSide, accessed: *const Acces
     // ReportingContext::QueueReport(Report(kCoopAccessViolation, the
     // accessing main frame's document URL, CoopAccessViolationReportBody(
     // location, report_type, property, reported_window_url))).
-    var observed: AccessBody = .{ .type = report_type, .property = property };
+    var observed: ObservedAccessBody = .{
+        .type = report_type,
+        .property = property,
+        .window_url = .{ .name = switch (relation) {
+            .accessed_is_opener => "openerURL",
+            .accessed_is_openee => "openeeURL",
+            .other => "otherDocumentURL",
+        }, .value = reported_url },
+    };
     if (source) |s| {
         observed.sourceFile = s.url;
         observed.lineNumber = s.line;
         observed.columnNumber = s.column;
     }
-    switch (relation) {
-        .accessed_is_opener => observed.openerURL = reported_url,
-        .accessed_is_openee => observed.openeeURL = reported_url,
-        .other => observed.otherDocumentURL = reported_url,
-    }
-    const body_json = try std.json.Stringify.valueAlloc(allocator, observed, .{ .emit_null_optional_fields = false });
+    const body_json = try std.json.Stringify.valueAlloc(allocator, observed, .{});
     defer allocator.free(body_json);
     // No endpoint: Chromium sends this report to the observers only (the
     // "coop" report above is its network form).
@@ -496,4 +535,28 @@ fn documentReferrerOf(bc: *BrowsingContext, allocator: std.mem.Allocator) error{
     // The getter's copy is the document's realm allocator's; the side's
     // strings are its window's - the same realm.
     return @constCast(referrer);
+}
+
+test "an observer's access report body writes the source location always and only the window URL it names" {
+    const allocator = std.testing.allocator;
+    const unknown: ObservedAccessBody = .{
+        .type = "access-from-coop-page-to-openee",
+        .property = "postMessage",
+        .window_url = .{ .name = "openeeURL", .value = "https://example.test/openee" },
+    };
+    const without_location = try std.json.Stringify.valueAlloc(allocator, unknown, .{});
+    defer allocator.free(without_location);
+    try std.testing.expectEqualStrings(
+        \\{"sourceFile":null,"lineNumber":null,"columnNumber":null,"type":"access-from-coop-page-to-openee","property":"postMessage","openeeURL":"https://example.test/openee"}
+    , without_location);
+    var known = unknown;
+    known.sourceFile = "https://example.test/try-access.js";
+    known.lineNumber = 3;
+    known.columnNumber = 7;
+    known.window_url = .{ .name = "openerURL", .value = "" };
+    const with_location = try std.json.Stringify.valueAlloc(allocator, known, .{});
+    defer allocator.free(with_location);
+    try std.testing.expectEqualStrings(
+        \\{"sourceFile":"https://example.test/try-access.js","lineNumber":3,"columnNumber":7,"type":"access-from-coop-page-to-openee","property":"postMessage","openerURL":""}
+    , with_location);
 }

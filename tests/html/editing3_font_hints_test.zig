@@ -75,11 +75,14 @@ fn hintFollowsTheAttribute() !void {
     const removed = try page.evaluate("getComputedStyle(f).color");
     defer std.testing.allocator.free(removed);
     try std.testing.expectEqualStrings("rgb(0, 0, 0)", removed);
-    // Only an HTML font element: an SVG-namespace "font" gets no hint.
+    // Only an HTML font element gets the FONT hint. An SVG-namespace "font"
+    // is an SVG element, whose color attribute is an SVG 2 §6.6
+    // presentation attribute (any element in the SVG namespace): red, as
+    // Chrome 157 and Firefox 159 compute it (lane quick1 b4's probe).
     try page.run("const other = document.createElementNS('http://www.w3.org/2000/svg', 'font'); other.setAttribute('color', 'red'); document.body.appendChild(other);");
     const svg = try page.evaluate("getComputedStyle(document.body.lastChild).color");
     defer std.testing.allocator.free(svg);
-    try std.testing.expectEqualStrings("rgb(0, 0, 0)", svg);
+    try std.testing.expectEqualStrings("rgb(255, 0, 0)", svg);
 }
 
 test "the font hint follows its attributes" {

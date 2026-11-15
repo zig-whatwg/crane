@@ -205,10 +205,18 @@ pub const Feature = enum {
             .local_fonts,
             => .self_origin,
 
+            // Fullscreen 7: "Its default allowlist is 'self'" - a
+            // cross-origin frame has it only through allow or
+            // allowfullscreen (document-fullscreen-enabled-cross-origin.sub.html
+            // cross-origin-default: false in Chrome, Firefox and Safari, wpt.fyi
+            // 2358bd4835). It was listed with the * features, which made every
+            // cross-origin frame's fullscreenEnabled true once the getter read
+            // the policy (lane ifr1).
+            .fullscreen => .self_origin,
+
             // Features that default to * (most permissive)
             .autoplay,
             .deferred_fetch_minimal,
-            .fullscreen,
             .picture_in_picture,
             .document_domain,
             .encrypted_media,
@@ -330,7 +338,21 @@ pub const Allowlist = struct {
         if (self.self_origin) |self_record| {
             if (origins.sameOriginDomain(originView(self_record), origin)) return true;
         } else if (self.allow_self and origins.sameOriginDomain(document_origin, origin)) return true;
-        if (self.src_origin) |src| if (origins.sameOriginDomain(originView(src), origin)) return true;
+        if (self.src_origin) |src| {
+            if (origins.sameOriginDomain(originView(src), origin)) return true;
+            // An opaque 'src' (a data: URL, a sandboxed frame's declared
+            // origin) matches an opaque origin. Golden rule 2, no newer spec,
+            // the browsers differ from the text, majority: Chrome and Safari
+            // let a data: frame with allow="fullscreen" use fullscreen once
+            // it loads (iframe-allow.html: 1/1 each at wpt.fyi 2358bd4835;
+            // Blink's Allowlist matches_opaque_src, set when the declared
+            // origin is opaque); Firefox follows the text - the declared and
+            // the document's opaque origins are two origins - and fails it at
+            // "after reload" (0/1). (Lane ifr1.) An origin with no record
+            // - a bare "null" serialization - names no opaque origin and
+            // matches nothing.
+            if (src.isOpaque()) if (origin.record) |record| if (record.isOpaque()) return true;
+        }
         if (std.mem.eql(u8, origin.serialized, "null")) return false;
         // 5. Exact origin entries compare their canonical tuples. Attribute
         // URLs and exact header origins use this path (Q33-Q35).
@@ -925,9 +947,29 @@ test "PermissionsPolicy - default allowlists" {
     try std.testing.expect(policy.isFeatureAllowed(.geolocation, "https://example.com"));
     try std.testing.expect(!policy.isFeatureAllowed(.geolocation, "https://other.com"));
 
-    // Fullscreen defaults to *
+    // Fullscreen defaults to 'self' (Fullscreen 7)
     try std.testing.expect(policy.isFeatureAllowed(.fullscreen, "https://example.com"));
-    try std.testing.expect(policy.isFeatureAllowed(.fullscreen, "https://other.com"));
+    try std.testing.expect(!policy.isFeatureAllowed(.fullscreen, "https://other.com"));
+
+    // Sync XHR defaults to *
+    try std.testing.expect(policy.isFeatureAllowed(.sync_xhr, "https://other.com"));
+}
+
+test "Allowlist - an opaque 'src' matches an opaque origin, never a tuple one" {
+    const allocator = std.testing.allocator;
+    const container = try origins.OriginRecord.create(allocator, "https://parent.example");
+    defer container.release();
+    const declared = try origins.OriginRecord.create(allocator, "null");
+    defer declared.release();
+    const document = try origins.OriginRecord.create(allocator, "null");
+    defer document.release();
+    var policy = try PermissionsPolicy.fromAllowAttributeOrigins(allocator, "fullscreen", container, declared);
+    defer policy.deinit();
+    const allowlist = policy.declared_policy.getPtr(.fullscreen).?;
+    // A data: frame's document: another opaque origin than the declared one.
+    try std.testing.expect(allowlist.matches(.{ .serialized = "null", .record = document }, originView(container)));
+    try std.testing.expect(!allowlist.matches(.{ .serialized = "https://other.example" }, originView(container)));
+    try std.testing.expect(!allowlist.matches(originView(container), originView(container)));
 }
 
 test "PermissionsPolicy - fromHeader" {

@@ -20,6 +20,10 @@ const Log = struct {
     dropped: *usize,
     nest_on: ?u32 = null,
     backup_on: ?u32 = null,
+    /// Enqueue on element 3 while this payload runs, with no scope of its own
+    /// (an upgrade enqueueing its connectedCallback); records the schedule.
+    enqueue_on: ?u32 = null,
+    enqueue_scheduled: ?bool = null,
 
     fn record(self: *Log, _: u32, payload: *Payload) void {
         self.values[self.len] = payload.value;
@@ -34,6 +38,10 @@ const Log = struct {
             self.state.end(self, record);
             self.values[self.len] = 40;
             self.len += 1;
+        }
+        if (self.enqueue_on == payload.value) {
+            self.enqueue_on = null;
+            self.enqueue_scheduled = self.state.enqueue(3, .{ .value = 60, .dropped = self.dropped }) catch unreachable;
         }
         if (self.backup_on == payload.value) {
             self.backup_on = null;
@@ -83,6 +91,29 @@ test "CE queues: per-element FIFO survives nested invocation of the same element
     state.end(&log, Log.record);
     try testing.expectEqualSlices(u32, &.{ 1, 20, 10, 30, 40 }, log.values[0..log.len]);
     try testing.expectEqual(@as(usize, 4), dropped);
+}
+
+test "CE queues: a reaction enqueued while the outermost queue is invoked joins that queue, never the backup queue" {
+    // Blink CustomElementReactionStack::PopInvokingReactions, WebKit
+    // ~CustomElementReactionStack and Gecko PopAndInvokeElementQueue all
+    // invoke the element queue while it is still the current one and pop it
+    // after: an upgrade's connectedCallback enqueued during the invocation
+    // runs before the scope returns and leaves nothing on the backup queue.
+    var state = State.init(testing.allocator);
+    defer state.deinit();
+    var dropped: usize = 0;
+    var log = Log{ .state = &state, .dropped = &dropped, .enqueue_on = 1 };
+    state.begin();
+    try testing.expect(!try state.enqueue(1, .{ .value = 1, .dropped = &dropped }));
+    state.end(&log, Log.record);
+    try testing.expectEqualSlices(u32, &.{ 1, 60 }, log.values[0..log.len]);
+    try testing.expectEqual(@as(?bool, false), log.enqueue_scheduled);
+    try testing.expect(!state.processing_backup);
+    try testing.expectEqual(@as(usize, 2), dropped);
+    // A later scope-less reaction starts a backup queue of its own.
+    try testing.expect(try state.enqueue(2, .{ .value = 2, .dropped = &dropped }));
+    state.invokeBackup(&log, Log.record);
+    try testing.expectEqualSlices(u32, &.{ 1, 60, 2 }, log.values[0..log.len]);
 }
 
 test "CE queues: backup schedules once and waits for explicit microtask invocation" {

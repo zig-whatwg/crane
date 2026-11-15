@@ -21,6 +21,7 @@
 //! - @media, @supports, @layer blocks: their child rules, and @media's
 //!   media query list, @supports' condition (decided once, when parsed:
 //!   CSS Conditional 3 6.1);
+//! - @starting-style: its child rules (CSS Transitions 2 3.3);
 //! - @layer statements: their names; @namespace: its prefix and URL;
 //! - @font-face and @page: their descriptors' block.
 //!
@@ -28,8 +29,7 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! @counter-style, @starting-style and other unmodeled at-rules remain
-//! absent. Container and scope rules retain their CSSOM but their children
+//! other unmodeled at-rules remain absent. Container and scope rules retain their CSSOM but their children
 //! are inert until the corresponding query/scoping evaluator is available.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-rules
@@ -81,6 +81,7 @@ pub const Kind = enum {
     supports,
     layer_block,
     layer_statement,
+    starting_style,
     namespace,
     font_face,
     font_feature_values,
@@ -109,7 +110,7 @@ pub const Kind = enum {
             .keyframe => 8,
             .namespace => 10,
             .supports => 12,
-            .layer_block, .layer_statement, .font_palette_values => 0,
+            .layer_block, .layer_statement, .font_palette_values, .starting_style => 0,
             .position_try, .property, .nested_declarations, .container, .scope => 0,
         };
     }
@@ -117,7 +118,7 @@ pub const Kind = enum {
     /// Whether the kind's rules have child CSS rules.
     pub fn isGroup(self: Kind) bool {
         return switch (self) {
-            .style, .media, .supports, .layer_block, .container, .scope, .page => true,
+            .style, .media, .supports, .layer_block, .starting_style, .container, .scope, .page => true,
             else => false,
         };
     }
@@ -176,6 +177,9 @@ pub const Data = union(Kind) {
     layer_statement: struct {
         names: [][]u8,
     },
+    /// CSS Transitions 2 3.3: a grouping rule whose style rules apply only
+    /// to the starting style.
+    starting_style: struct { children: std.ArrayList(*Rule) = .empty },
     namespace: struct {
         prefix: []u8,
         uri: []u8,
@@ -295,6 +299,7 @@ pub const Rule = struct {
                 if (l.name) |n| a.free(n);
                 releaseChildren(a, &l.children);
             },
+            .starting_style => |*s| releaseChildren(a, &s.children),
         }
         a.free(self.prelude);
         a.destroy(self);
@@ -309,6 +314,7 @@ pub const Rule = struct {
             .media => |*m| &m.children,
             .supports => |*s| &s.children,
             .layer_block => |*l| &l.children,
+            .starting_style => |*s| &s.children,
             .keyframes => |*k| &k.children,
             .page => |*p| &p.children,
             else => null,
@@ -467,6 +473,13 @@ pub const Rule = struct {
                 }
                 try out.appendSlice(allocator, " {");
                 try serializeChildren(allocator, out, l.children.items);
+            },
+            // CSSOM serialize a CSS rule, for a grouping rule: "@starting-style",
+            // then the block as @media's (Chrome, Firefox and Safari:
+            // css/css-transitions/parsing/starting-style-parsing.html).
+            .starting_style => |*s| {
+                try out.appendSlice(allocator, "@starting-style {");
+                try serializeChildren(allocator, out, s.children.items);
             },
             .layer_statement => |l| {
                 try out.appendSlice(allocator, "@layer ");
@@ -969,6 +982,17 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         try buildChildren(options, rule, parsed.children);
         return rule;
     }
+    // CSS Transitions 2 3.3: "@starting-style { <rule-list> }" - a block and
+    // no prelude; a style rule's nested one holds declarations too (CSS
+    // Nesting 1 3.2), which buildChildren reads as nested declarations.
+    if (std.mem.eql(u8, name, "starting-style")) {
+        if (!parsed.has_block) return null;
+        if (std.mem.trim(u8, parsed.prelude, " \t\n\r\x0c").len != 0) return null;
+        const rule = try make(a, try a.dupe(u8, ""), .{ .starting_style = .{} });
+        errdefer rule.unref();
+        try buildChildren(options, rule, parsed.children);
+        return rule;
+    }
     if (std.mem.eql(u8, name, "media")) {
         const rule = blk: {
             var list = try MediaQueryList.parse(a, parsed.prelude);
@@ -1196,7 +1220,7 @@ fn buildChildren(options: BuildOptions, parent: *Rule, items: []const css.rules.
 /// contain style rules; a layer STATEMENT has no such body.
 pub fn allowedNestedKind(kind: Kind) bool {
     return switch (kind) {
-        .style, .nested_declarations, .media, .supports, .container, .layer_block, .scope => true,
+        .style, .nested_declarations, .media, .supports, .container, .layer_block, .scope, .starting_style => true,
         else => false,
     };
 }
@@ -1545,6 +1569,36 @@ test "serialize a CSS rule" {
     };
     try testing.expectEqual(expected.len, rules.items.len);
     for (expected, rules.items) |e, r| {
+        const text = try r.serialize(testing.allocator);
+        defer testing.allocator.free(text);
+        try testing.expectEqualStrings(e, text);
+    }
+}
+
+test "@starting-style is a grouping rule with a block and no prelude, also nested" {
+    var rules: std.ArrayList(*Rule) = .empty;
+    defer freeForTest(&rules);
+    try parseForTest(
+        \\@starting-style {}
+        \\@starting-style { a { color: red } @layer l { b { color: blue } } }
+        \\@starting-style div { c { color: red } }
+        \\@starting-style;
+        \\h1 { color: green; @starting-style { color: red } }
+    , &rules);
+    try testing.expectEqual(@as(usize, 3), rules.items.len);
+    try testing.expectEqual(Kind.starting_style, rules.items[0].kind());
+    try testing.expectEqual(Kind.starting_style, rules.items[1].kind());
+    try testing.expectEqual(@as(u16, 0), rules.items[1].kind().typeConstant());
+    try testing.expectEqual(@as(usize, 2), rules.items[1].children().?.items.len);
+    const nested = rules.items[2].children().?.items;
+    try testing.expectEqual(@as(usize, 1), nested.len);
+    try testing.expectEqual(Kind.starting_style, nested[0].kind());
+    try testing.expectEqual(Kind.nested_declarations, nested[0].children().?.items[0].kind());
+    const expected = [_][]const u8{
+        "@starting-style {\n}",
+        "@starting-style {\n  a { color: red; }\n  @layer l {\n  b { color: blue; }\n}\n}",
+    };
+    for (expected, rules.items[0..2]) |e, r| {
         const text = try r.serialize(testing.allocator);
         defer testing.allocator.free(text);
         try testing.expectEqualStrings(e, text);

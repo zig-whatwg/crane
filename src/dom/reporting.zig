@@ -7,6 +7,7 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const fetch = @import("fetch");
 const engine = @import("engine");
@@ -373,166 +374,228 @@ const ObserverTask = struct {
     }
 };
 
-/// The single native-report -> script conversion point: a Report platform
-/// object of `realm` for each record (the user's ruling of 2026-11-05: the
-/// browsers' Report and ReportBody interfaces, specs/supplementary/
-/// reporting-interfaces.idl), as a new Array. A Report holds its record; its
-/// body is made from the record when script first reads it (`makeBody`).
+/// The single native-report -> script conversion point. For each record,
+/// Reporting §4.3 step 3 "Create a new Report r with type initialized to
+/// report's type, url initialized to report's url, and body initialized to
+/// report's body", and WebIDL 3.2.18 converts r - a dictionary since
+/// w3c/reporting#284 (the user's ruling of 2026-11-14; WebKit 326027@main) -
+/// to a new ordinary object of `realm`; the reports go in a new Array
+/// (3.2.27, sequence<Report>). Every call makes new objects: takeRecords()
+/// returns "a copy of this's report queue" (§4.1) and the callback "a copy of
+/// observer's report queue" (§4.4 step 1.2), each converted when it is
+/// returned or passed.
 fn reportsToScript(realm: runtime.Context, records: []const *Record) !engine.Owned {
-    const values = try realm.allocator.alloc(runtime.JSValue, records.len);
-    defer realm.allocator.free(values);
-    const generations = try realm.allocator.alloc(u64, records.len);
-    defer realm.allocator.free(generations);
-    var made: usize = 0;
-    // A report the Array did not take - one made before a failure - goes;
-    // one it wrapped is its wrapper's.
-    defer for (values[0..made], generations[0..made]) |value, generation| value.instance.releaseIfUnwrapped(generation);
-    for (records, values, generations) |record, *value, *generation| {
-        const report = try interfaces.Report.initWith(realm.allocator, realm, .{ .record = record });
-        value.* = .{ .instance = report };
-        generation.* = runtime.SlabAllocator.generationOf(report);
-        made += 1;
+    var made: Made = .{ .arena = .init(realm.allocator) };
+    defer made.deinit();
+    const values = try made.arena.allocator().alloc(runtime.JSValue, records.len);
+    for (records, values) |record, *value| {
+        const body = try bodyToScript(realm, record, &made);
+        value.* = try dictionaryToScript(dictionaries.Report, realm, ReportMembers{ .record = record, .body = body }, &made);
     }
     return engine.createSequenceOfValues(realm, values);
 }
 
-/// A report's body as the interface its type names, made in `realm` from
-/// `record` (which it retains); null for a report type with no body
-/// interface. The interfaces are the engines' (specs/supplementary/
-/// reporting-interfaces.idl): "coep" reports take WebKit's two
-/// (CORPViolationReportBody for "corp", COEPInheritenceViolationReportBody
-/// for "navigation" and "worker initialization"; Source/WebCore/loader/
-/// CrossOriginEmbedderPolicy.cpp), "coop-access-violation" Chromium's
-/// CoopAccessViolationReportBody.
-pub fn makeBody(realm: runtime.Context, record: *Record) !?*runtime.Instance {
-    const args = .{ .record = record };
-    const allocator = realm.allocator;
-    const kind = record.type;
-    if (std.mem.eql(u8, kind, "csp-violation")) return try interfaces.CSPViolationReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "integrity-violation")) return try interfaces.IntegrityViolationReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "permissions-policy-violation")) return try interfaces.PermissionsPolicyViolationReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "deprecation")) return try interfaces.DeprecationReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "intervention")) return try interfaces.InterventionReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "crash")) return try interfaces.CrashReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "coop-access-violation")) return try interfaces.CoopAccessViolationReportBody.initWith(allocator, realm, args);
-    if (std.mem.eql(u8, kind, "coep")) {
-        var fields = try BodyFields.parse(allocator, record.body_json);
-        defer fields.deinit();
-        const coep_type = fields.string("type") orelse "";
-        if (std.mem.eql(u8, coep_type, "corp")) return try interfaces.CORPViolationReportBody.initWith(allocator, realm, args);
-        return try interfaces.COEPInheritenceViolationReportBody.initWith(allocator, realm, args);
+/// What one conversion made that the object or Array it goes into has not
+/// taken yet: the objects (each released once `reportsToScript` returns -
+/// its parent holds it by then) and the parsed bodies, whose strings the
+/// members borrow until their objects are made.
+const Made = struct {
+    arena: std.heap.ArenaAllocator,
+    objects: std.ArrayListUnmanaged(engine.Owned) = .empty,
+
+    /// Keep `object` until the conversion ends; its value, borrowed.
+    fn keep(self: *Made, object: engine.Owned) !runtime.JSValue {
+        self.objects.append(self.arena.allocator(), object) catch |err| {
+            object.release();
+            return err;
+        };
+        return object.borrow();
     }
-    return null;
+
+    fn deinit(self: *Made) void {
+        for (self.objects.items) |object| object.release();
+        self.arena.deinit();
+    }
+};
+
+/// The members of a Report dictionary (`dictionaries.Report`) that §4.3
+/// step 3 initializes: all three, so each exists (a body of null too).
+const ReportMembers = struct {
+    record: *const Record,
+    body: runtime.JSValue,
+
+    fn member(self: ReportMembers, realm: runtime.Context, comptime name: []const u8, made: *Made) !?runtime.JSValue {
+        _ = realm;
+        _ = made;
+        if (comptime std.mem.eql(u8, name, "type")) return runtime.JSValue.fromStringRef(self.record.type);
+        if (comptime std.mem.eql(u8, name, "url")) return runtime.JSValue.fromStringRef(self.record.url);
+        if (comptime std.mem.eql(u8, name, "body")) return self.body;
+        @compileError("Reporting §4.3 step 3 initializes no Report member " ++ name);
+    }
+};
+
+/// The members of a report body: its record's body, an object each
+/// reporting spec initializes with the members it names ("Let body be a new
+/// CSPViolationReportBody, initialized as follows", CSP §5.5 step 5.1;
+/// Permissions Policy §9.13 step 1 names five of its seven) and that
+/// dom.reporting keeps as JSON (`Record.body_json`, also the upload's body,
+/// §2.4). A member exists - WebIDL 3.2.18 step 3.1.2 - when the body has it,
+/// null included. Each value is the IDL value its generator wrote, of the
+/// member's type, so it converts as its JSON kind: a string to a String, a
+/// number to a Number, a boolean to a Boolean, null to null, an array (a
+/// sequence) to an Array, an object (an `object` member) to an object.
+const BodyMembers = struct {
+    object: std.json.ObjectMap,
+
+    fn member(self: BodyMembers, realm: runtime.Context, comptime name: []const u8, made: *Made) !?runtime.JSValue {
+        const value = self.object.get(name) orelse return null;
+        return try jsonToScript(realm, value, made);
+    }
+};
+
+/// A body value as an ECMAScript value of `realm` (`BodyMembers`).
+fn jsonToScript(realm: runtime.Context, value: std.json.Value, made: *Made) !runtime.JSValue {
+    switch (value) {
+        .null => return .null,
+        .bool => |b| return .{ .boolean = b },
+        .integer => |i| return .{ .number = @floatFromInt(i) },
+        .float => |f| return .{ .number = f },
+        .number_string => |s| return .{ .number = std.fmt.parseFloat(f64, s) catch std.math.nan(f64) },
+        .string => |s| return runtime.JSValue.fromStringRef(s),
+        .array => |items| {
+            const values = try made.arena.allocator().alloc(runtime.JSValue, items.items.len);
+            for (items.items, values) |item, *out| out.* = try jsonToScript(realm, item, made);
+            return made.keep(try engine.createSequenceOfValues(realm, values));
+        },
+        .object => |object| {
+            const members = try made.arena.allocator().alloc(engine.DictionaryMember, object.count());
+            var entries = object.iterator();
+            var count: usize = 0;
+            while (entries.next()) |entry| : (count += 1) {
+                members[count] = .{ .name = entry.key_ptr.*, .value = try jsonToScript(realm, entry.value_ptr.*, made) };
+            }
+            return made.keep(try engine.createDictionaryObject(realm, members));
+        },
+    }
 }
 
-/// A report body's members, read from its record's native JSON
-/// (`Record.body_json`) by the body interfaces' getters: each body
-/// interface's impl keeps one with the record it was made from. Strings are
-/// borrowed from the parse, which lives as long as this does.
-pub const BodyFields = struct {
-    parsed: std.json.Parsed(std.json.Value),
-
-    pub fn parse(allocator: std.mem.Allocator, json: []const u8) !BodyFields {
-        return .{ .parsed = try std.json.parseFromSlice(std.json.Value, allocator, json, .{}) };
-    }
-
-    pub fn deinit(self: *BodyFields) void {
-        self.parsed.deinit();
-    }
-
-    fn get(self: *const BodyFields, name: []const u8) ?std.json.Value {
-        const object = switch (self.parsed.value) {
-            .object => |object| object,
-            else => return null,
-        };
-        return object.get(name);
-    }
-
-    /// Member `name` as a string; null when it is absent, null or not one.
-    pub fn string(self: *const BodyFields, name: []const u8) ?[]const u8 {
-        return switch (self.get(name) orelse return null) {
-            .string => |value| value,
-            else => null,
-        };
-    }
-
-    /// Member `name` as a non-negative integer; null when it is absent,
-    /// null or not one.
-    pub fn unsigned(self: *const BodyFields, name: []const u8) ?u32 {
-        return switch (self.get(name) orelse return null) {
-            .integer => |value| std.math.cast(u32, value),
-            else => null,
-        };
-    }
-
-    /// Member `name` as an integer; null when it is absent, null or not one.
-    pub fn signed(self: *const BodyFields, name: []const u8) ?i32 {
-        return switch (self.get(name) orelse return null) {
-            .integer => |value| std.math.cast(i32, value),
-            else => null,
-        };
-    }
-
-    /// Member `name` as a value of WebIDL enumeration `E` (codegen's enum,
-    /// its variants in `idl_values` order); E's first value when the member
-    /// is absent or names none of them.
-    pub fn enumeration(self: *const BodyFields, comptime E: type, name: []const u8) E {
-        const value = self.string(name) orelse return @fromBackingInt(@intCast(0));
-        for (E.idl_values, 0..) |idl, i| {
-            if (std.mem.eql(u8, idl, value)) return @fromBackingInt(@intCast(i));
-        }
-        return @fromBackingInt(@intCast(0));
-    }
-
-    /// Member `name` as a boolean; false when it is absent or not one.
-    pub fn boolean(self: *const BodyFields, name: []const u8) bool {
-        return switch (self.get(name) orelse return false) {
-            .bool => |value| value,
-            else => false,
-        };
-    }
+/// The body dictionary of each report type visible to ReportingObservers
+/// that names one dictionary: the specs' (pinned webref) and Crane's
+/// specs/supplementary/report-bodies.idl. "coep" has two (`bodyToScript`).
+const body_dictionaries = .{
+    // CSP §5.5 step 5.1.
+    .{ "csp-violation", dictionaries.CSPViolationReportBody },
+    // Subresource Integrity, Integrity-Policy reporting.
+    .{ "integrity-violation", dictionaries.IntegrityViolationReportBody },
+    // Permissions Policy §9.13-9.14.
+    .{ "permissions-policy-violation", dictionaries.PermissionsPolicyViolationReportBody },
+    // Deprecation Reporting §2, Intervention Reporting §2, Crash Reporting.
+    .{ "deprecation", dictionaries.DeprecationReportBody },
+    .{ "intervention", dictionaries.InterventionReportBody },
+    .{ "crash", dictionaries.CrashReportBody },
+    // Reporting §7.1 (WebKit's TestReportBody).
+    .{ "test", dictionaries.TestReportBody },
+    // Chromium's access report (dom.coop_reporting).
+    .{ "coop-access-violation", dictionaries.CoopAccessViolationReportBody },
 };
 
-/// What every body interface's impl keeps: the record it was made from
-/// (retained) and its body's members. The impls alias `initOwn`, `deinitOwn`
-/// and `InternalState` from `BodyImpl`; shared here, outside the impls, as
-/// the impls boundary asks of a helper several types use.
-pub const BodyInternal = struct {
-    allocator: std.mem.Allocator,
-    record: *Record,
-    fields: BodyFields,
-};
-
-/// The construction and teardown every body interface shares, for the
-/// generated `State` of its interface.
-pub fn BodyImpl(comptime InterfaceState: type) type {
-    return struct {
-        pub const construction_args = .{"record"};
-
-        pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
-            const record: *Record = args.record;
-            const internal = try allocator.create(BodyInternal);
-            errdefer allocator.destroy(internal);
-            internal.* = .{ .allocator = allocator, .record = record, .fields = try BodyFields.parse(allocator, record.body_json) };
-            record.retain();
-            instance.getState(StateType).own._internal = internal;
-        }
-
-        pub fn deinitOwn(instance: *runtime.Instance) void {
-            const state = instance.getState(InterfaceState);
-            const internal = state.own._internal orelse return;
-            state.own._internal = null;
-            internal.fields.deinit();
-            internal.record.release();
-            internal.allocator.destroy(internal);
-        }
-
-        /// The body's members; InvalidStateError for an instance torn down.
-        pub fn fields(instance: *runtime.Instance) !*const BodyFields {
-            const state = instance.stateAs(InterfaceState) orelse return error.InvalidStateError;
-            return &(state.own._internal orelse return error.InvalidStateError).fields;
-        }
+/// Report.body: the record's body converted with its report type's
+/// dictionary. Reporting §4.3 step 3 initializes it to "report's body" and
+/// asks "how to polymorphically initialize body?"; the declared type,
+/// ReportBody, has no member. WebKit, the engine that ships the
+/// dictionaries, converts each body with its own dictionary
+/// (Source/WebCore/Modules/reporting/Report.idl: body is a union of the body
+/// dictionaries; ReportingObserver.cpp dictionaryForReportBody), and so does
+/// this. A "coep" body is HTML's inheritance violation body
+/// (COEPInheritenceViolationReportBody: "navigation", "worker
+/// initialization") or Fetch's CORP violation body (CORPViolationReportBody:
+/// "corp"), by its type member, as WebKit picks by the body it made. A type
+/// with no body dictionary converts as ReportBody: an object with no member.
+/// A body is null or an object (§2.1.3).
+fn bodyToScript(realm: runtime.Context, record: *const Record, made: *Made) !runtime.JSValue {
+    const parsed = try std.json.parseFromSliceLeaky(std.json.Value, made.arena.allocator(), record.body_json, .{});
+    const object = switch (parsed) {
+        .object => |object| object,
+        else => return .null,
     };
+    const source: BodyMembers = .{ .object = object };
+    inline for (body_dictionaries) |entry| {
+        if (std.mem.eql(u8, record.type, entry[0])) return dictionaryToScript(entry[1], realm, source, made);
+    }
+    if (std.mem.eql(u8, record.type, "coep")) {
+        const coep_type: []const u8 = if (object.get("type")) |value| switch (value) {
+            .string => |s| s,
+            else => "",
+        } else "";
+        if (std.mem.eql(u8, coep_type, "corp")) return dictionaryToScript(dictionaries.CORPViolationReportBody, realm, source, made);
+        return dictionaryToScript(dictionaries.COEPInheritenceViolationReportBody, realm, source, made);
+    }
+    return dictionaryToScript(dictionaries.ReportBody, realm, source, made);
+}
+
+/// WebIDL 3.2.18, an IDL dictionary value to an ECMAScript value: a new
+/// ordinary object of `realm` (step 1) with the members of dictionary `D` -
+/// codegen's struct of it - its inherited dictionaries' first, each
+/// dictionary's in lexicographical order (step 2), each defined only when
+/// it exists (step 3.1.2: `source.member` answers its value, or null when it
+/// does not exist).
+fn dictionaryToScript(comptime D: type, realm: runtime.Context, source: anytype, made: *Made) !runtime.JSValue {
+    const names = comptime memberNames(D);
+    var members: [names.len]engine.DictionaryMember = undefined;
+    var count: usize = 0;
+    inline for (names) |name| {
+        if (try source.member(realm, name, made)) |value| {
+            members[count] = .{ .name = name, .value = value };
+            count += 1;
+        }
+    }
+    return made.keep(try engine.createDictionaryObject(realm, members[0..count]));
+}
+
+/// Whether field `name` of codegen's dictionary struct `D` holds the
+/// inherited dictionary: codegen names it `base` and types it with the
+/// inherited dictionary's struct (a member called `base` is an optional).
+fn isInheritedDictionary(comptime D: type, comptime name: []const u8) bool {
+    return std.mem.eql(u8, name, "base") and @typeInfo(@FieldType(D, name)) == .@"struct";
+}
+
+fn memberCount(comptime D: type) usize {
+    comptime {
+        var count: usize = 0;
+        for (std.meta.fieldNames(D)) |name| {
+            count += if (isInheritedDictionary(D, name)) memberCount(@FieldType(D, name)) else 1;
+        }
+        return count;
+    }
+}
+
+/// Dictionary `D`'s members in WebIDL 3.2.18 step 2's order: from the least
+/// derived dictionary to `D`, each one's members in lexicographical order.
+fn memberNames(comptime D: type) [memberCount(D)][]const u8 {
+    comptime {
+        @setEvalBranchQuota(20_000);
+        var names: [memberCount(D)][]const u8 = undefined;
+        var count: usize = 0;
+        for (std.meta.fieldNames(D)) |name| {
+            if (!isInheritedDictionary(D, name)) continue;
+            for (memberNames(@FieldType(D, name))) |inherited| {
+                names[count] = inherited;
+                count += 1;
+            }
+        }
+        const own = count;
+        for (std.meta.fieldNames(D)) |name| {
+            if (isInheritedDictionary(D, name)) continue;
+            names[count] = name;
+            count += 1;
+        }
+        std.sort.insertion([]const u8, names[own..], {}, struct {
+            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.lessThan(u8, a, b);
+            }
+        }.lessThan);
+        return names;
+    }
 }
 
 /// Reporting §2.1 "serialize a list of reports to JSON", steps 1-4.

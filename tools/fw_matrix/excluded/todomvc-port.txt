@@ -1,7 +1,7 @@
-# Crane's port of TodoMVC's app spec (tests/frameworks/todomvc/), run on the
-# prebuilt React, Vue, Svelte and Angular apps of tastejs/todomvc at
-# ff43b02e59df: the tests it does not run, each with its reason
-# (tools/fw_matrix/exclusions.zig documents the format).
+# Crane's port of TodoMVC's app spec (tests/frameworks/todomvc/), run on
+# every app todomvc.com lists, each the build committed in tastejs/todomvc at
+# ff43b02e59df (frameworks.zon `todomvc`): the tests it does not run, each
+# with its reason (tools/fw_matrix/exclusions.zig documents the format).
 #
 # No test is excluded. What the port does not run is part of a test, and is
 # said here so a reader finds it beside the lists of the other suites:
@@ -22,10 +22,22 @@
 #   port acts through DOM events at the element and checks only what is
 #   not geometry (visible by the rules above without opacity, as Cypress's
 #   ensure.ts does for actions; not disabled).
+# - Cypress's onBeforeLoad hooks (spec.cy.js:413-476) run in the app's
+#   window before its scripts; an in-page harness has none. The port counts
+#   an app as started when its page has loaded and its heading is visible,
+#   and installs the spec's localStorage.setItem spy (checkItemSaved) at that
+#   point: every check of it follows an action of its test, after the load.
+#
+# What the port does run is Cypress 15.14.2's own rules between the spec's
+# lines, each checked against TodoMVC's real Cypress run in Chrome (lane fw1
+# b8): the project's cypress.config.js (includeShadowDom: every query runs in
+# each shadow root and then the document), a command's result never
+# requeried (an alias of one fails once its elements leave the page), Sinon
+# 8's spy (no reset(): the spec's invoke('reset') fails as in Cypress), and
+# Mocha's rule for a failed hook (the rest of its suite does not run).
 #
 # Tests TodoMVC's own spec skips for an app run as QUnit.skip, with the
 # spec's reason, and are reported as skipped by the app spec - not listed
 # here: 'should persist its data' for apps that keep nothing in
-# localStorage (spec.cy.js noLocalStorageCheck: all four), and the app's
-# entries of tests/knownIssues.js (Angular: 'should respect the back
-# button').
+# localStorage (spec.cy.js noLocalStorageCheck), and the app's entries of
+# tests/knownIssues.js.

@@ -1,12 +1,14 @@
-//! Implementation for CSSStartingStyleRule interface
+//! Implementation for CSSStartingStyleRule interface (CSS Transitions 2
+//! 3.3.1): an @starting-style rule, a CSSGroupingRule with no members of its
+//! own. Its child rules (cssRules, insertRule, deleteRule) are the grouping
+//! rule's, read from the rule it is a view of; the generated construction
+//! chain makes its CSSGroupingRule and CSSRule parts.
+//!
+//! Spec: https://drafts.csswg.org/css-transitions-2/#the-cssstartingstylerule-interface
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
 const CSSStartingStyleRule = interfaces.CSSStartingStyleRule;
 
 pub const State = CSSStartingStyleRule.State;
@@ -15,26 +17,4 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
 pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
-}
-
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
-}

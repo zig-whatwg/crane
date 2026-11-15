@@ -12,7 +12,10 @@
 //! network path every time.
 //!
 //! Routes:
-//!   GET  /<path>                a file under the root
+//!   GET  /<path>                a file under the root; a `.gz` or `.br` file
+//!                               as it is stored, with Content-Encoding gzip
+//!                               or br (tests/perf/encoded/: bodies each engine
+//!                               decodes)
 //!   GET  /__perf/bytes?n=N      N bytes of text (loopback fetch, streams)
 //!   GET  /__perf/json?n=N       a JSON array of N records
 //!   POST /__perf/mark           a page's mark: the body goes to the sink,
@@ -202,11 +205,19 @@ pub const Server = struct {
         defer self.gpa.free(file_path);
         const bytes = self.root.readFileAlloc(self.io, file_path, self.gpa, .limited(64 * 1024 * 1024)) catch return respondStatus(request, .not_found);
         defer self.gpa.free(bytes);
-        const ct = contentType(file_path);
-        var hs: [isolation.len + 1]std.http.Header = undefined;
+        // A precompressed file: its type is the name's without the coding's
+        // extension, and the coding is sent for the engine to undo.
+        const coding = contentEncoding(file_path);
+        const typed_path = if (coding != null) file_path[0 .. file_path.len - std.fs.path.extension(file_path).len] else file_path;
+        var hs: [isolation.len + 2]std.http.Header = undefined;
         @memcpy(hs[0..isolation.len], &isolation);
-        hs[isolation.len] = .{ .name = "content-type", .value = ct };
-        return request.respond(bytes, .{ .extra_headers = &hs });
+        hs[isolation.len] = .{ .name = "content-type", .value = contentType(typed_path) };
+        var count: usize = isolation.len + 1;
+        if (coding) |c| {
+            hs[count] = .{ .name = "content-encoding", .value = c };
+            count += 1;
+        }
+        return request.respond(bytes, .{ .extra_headers = hs[0..count] });
     }
 
     fn respondStatus(request: *std.http.Server.Request, status: std.http.Status) !void {
@@ -239,6 +250,15 @@ pub fn contentType(path: []const u8) []const u8 {
     };
     for (types) |t| if (std.ascii.eqlIgnoreCase(ext, t[0])) return t[1];
     return "application/octet-stream";
+}
+
+/// The content coding a file is stored in, from its last extension: `.gz`
+/// gzip, `.br` br (RFC 9110 8.4.1), or none.
+pub fn contentEncoding(path: []const u8) ?[]const u8 {
+    const ext = std.fs.path.extension(path);
+    if (std.ascii.eqlIgnoreCase(ext, ".gz")) return "gzip";
+    if (std.ascii.eqlIgnoreCase(ext, ".br")) return "br";
+    return null;
 }
 
 /// The decimal value of `key` in a query string.
@@ -291,6 +311,9 @@ test "content types and query integers" {
     try testing.expectEqualStrings("text/html; charset=utf-8", contentType("x/y.html"));
     try testing.expectEqualStrings("text/javascript; charset=utf-8", contentType("harness.js"));
     try testing.expectEqualStrings("application/octet-stream", contentType("x.bin"));
+    try testing.expectEqualStrings("gzip", contentEncoding("encoded/text-1m.html.gz").?);
+    try testing.expectEqualStrings("br", contentEncoding("encoded/text-1m.html.br").?);
+    try testing.expectEqual(@as(?[]const u8, null), contentEncoding("encoded/text-1m.html"));
     try testing.expectEqual(@as(?u64, 1024), queryInt("a=1&n=1024", "n"));
     try testing.expectEqual(@as(?u64, null), queryInt("n=x", "n"));
     try testing.expectEqual(@as(?u64, null), queryInt("", "n"));
@@ -378,6 +401,26 @@ test "the server: a file, isolation headers, loopback bytes, a mark, a 404" {
     const missing = try fetchRaw(testing.allocator, server.port(), "GET /../secret HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
     defer testing.allocator.free(missing);
     try testing.expect(std.mem.startsWith(u8, missing, "HTTP/1.1 404 Not Found\r\n"));
+}
+
+test "a .gz or .br file is sent as stored, with its coding and its own type" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "t.html.br", .data = "\x0b\x02\x80hi\x03" });
+    try tmp.dir.writeFile(testing.io, .{ .sub_path = "t.html.gz", .data = "gz bytes" });
+    const root = try tmp.dir.realPathFileAlloc(testing.io, ".", testing.allocator);
+    defer testing.allocator.free(root);
+    const server = try Server.start(testing.allocator, testing.io, .{ .root = root });
+    defer server.stop();
+    const br = try fetchRaw(testing.allocator, server.port(), "GET /t.html.br HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+    defer testing.allocator.free(br);
+    try testing.expect(std.mem.indexOf(u8, br, "content-encoding: br\r\n") != null);
+    try testing.expect(std.mem.indexOf(u8, br, "content-type: text/html; charset=utf-8\r\n") != null);
+    try testing.expect(std.mem.endsWith(u8, br, "\x0b\x02\x80hi\x03"));
+    const gz = try fetchRaw(testing.allocator, server.port(), "GET /t.html.gz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+    defer testing.allocator.free(gz);
+    try testing.expect(std.mem.indexOf(u8, gz, "content-encoding: gzip\r\n") != null);
+    try testing.expect(std.mem.endsWith(u8, gz, "gz bytes"));
 }
 
 test "keep-alive: two requests on one connection" {

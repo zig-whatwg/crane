@@ -346,10 +346,11 @@ pub const InternalState = struct {
     hidden: bool,
 
     // === Fullscreen state ===
-    fullscreen_enabled: bool,
-    // The fullscreen, pointer lock and picture-in-picture elements are rare
-    // data (`rare`): none is ever set yet (Crane has no display mode, no
-    // pointer to lock, no video to present).
+    // The fullscreen element is the topmost fullscreen-flagged element of
+    // the top layer (`interaction_state.top_layer`, html.fullscreen);
+    // fullscreenEnabled reads the permissions policy. The pointer lock and
+    // picture-in-picture elements are rare data (`rare`): neither is ever
+    // set yet (Crane has no pointer to lock, no video to present).
 
     // === Active element (focus) ===
     active_element: ?*runtime.Instance,
@@ -587,10 +588,6 @@ pub const InternalState = struct {
             .design_mode = runtime.DOMString.initInterned("off"),
             .visibility_state = ._visible_,
             .hidden = false,
-            // Fullscreen
-            // Per Fullscreen spec, fullscreenEnabled returns true only if fullscreen is supported
-            // and the document's fullscreen flag is set. For a new Document, default to false.
-            .fullscreen_enabled = false,
             // Active element (focus)
             .active_element = null,
             // Event handlers

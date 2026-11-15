@@ -8,6 +8,7 @@
 //!       the manifest and every exclusion list, read strictly; each list
 //!       entry belongs to a page (zig build test runs it)
 //!   fw_matrix fetch --frameworks-dir=<dir> [--suite=<id>[,<id>...]]
+//!       (`--suite=todomvc`: every TodoMVC app, here and in `run`)
 //!       every pinned file downloaded and checked by sha256 into <dir>
 //!       (~/crane-frameworks on the run host), the trees made
 //!   fw_matrix run --frameworks-dir=<dir> --console=<repl> --crane-commit=<sha>
@@ -16,18 +17,47 @@
 //!                 [--stop-file=<f>]
 //!       each suite's pages in a fresh console per page; <out>/journal.jsonl
 //!       (crane-fw/1) and <out>/console/<suite>-<page>.{out,err}
+//!   fw_matrix run --browser=<name> --console=<headless Chrome> ...
+//!       the comparison column: the same pages in headless Chrome, read from
+//!       QUnit's TAP on its console (an in-page QUnit suite with TAP on: the
+//!       TodoMVC port); every record names the browser
 //!   fw_matrix summary <journal.jsonl> ...
 //!       per suite: pages, tests run / passed / failed / errored / excluded
 //!       as rendering / not run; every failure with its first assertion
 //!   fw_matrix report --journals=<dir> --out=<dir> [--assets=<url>]
-//!       the matrix page and a page per framework, from every journal.jsonl
+//!       the one page (<dir>/index.html) and its social card (card.png),
+//!       from every journal.jsonl
 //!       one or two levels below <dir> (report.zig); --assets is where the
 //!       WPT site's site.css is, relative to <out> (default "../")
+//!   fw_matrix import --reader=jtr|wtr-summary --suite=<id> --log=<file>
+//!                 --label=<l> --browser=<name> --browser-sha256=<hex>
+//!                 --runner=<text> --date=<YYYY-MM-DD> --out=<dir> [--page=<id>]
+//!       a browser's run by the project's own runner, read from that
+//!       runner's log into <out>/journal.jsonl (crane-fw/1), every record
+//!       naming the browser and the log: jquery-test-runner's console log
+//!       (one page, --page names it), or Bazel's web-test-runner lines (a
+//!       page per target, matched to the suite's pages by their targets)
+//!   fw_matrix import --reader=wtr-tree --suite=<id> --log=<file> --page=<id>
+//!                 --label=<l> --browser=<name> --browser-sha256=<hex>
+//!                 --runner=<text> --date=<YYYY-MM-DD> --out=<dir>
+//!       a project's own web-test-runner run (htmx's), per test from its
+//!       report, with the suite's exclusion list applied
+//!   fw_matrix import --reader=cypress --log=<dir> --label=<l> --browser=<name>
+//!                 --browser-sha256=<hex> --runner=<text> --out=<dir>
+//!       TodoMVC's own Cypress run in a browser: every results file in
+//!       <dir> (cypress.run()'s resolved object per app, as tests/cya.js
+//!       runs each app) into <out>/journal.jsonl, each app's suite found by
+//!       the `--env framework=` value its spec's describe names
 //!   fw_matrix serve --frameworks-dir=<dir> --suite=<id> [--port=<n>]
-//!       a suite's tree alone, for a person to open in a browser
+//!       a suite's tree alone, for a person to open in a browser (the
+//!       project's own server when the manifest names one)
 //!
-//! A tool: std only, on the host (tools/AGENTS.md "Tools are Zig"); no
-//! Node, no Python, nothing of Crane's engine.
+//! A tool: std only, on the host (tools/AGENTS.md "Tools are Zig"); nothing
+//! of Crane's engine. Node runs only where a suite's manifest entry names it
+//! (the user, 2026-11-11 17:43 ET: "we can run node for the purposes of these
+//! tests"): `fetch` installs the project's own dependencies with it and runs
+//! its own build scripts, and `run` and `serve` start the project's own test
+//! server under it. Crane itself is never driven from Node.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -39,12 +69,13 @@ pub const manifest = @import("manifest.zig");
 pub const readers = @import("readers.zig");
 pub const generated = @import("generated.zig");
 pub const server = @import("server.zig");
+pub const external = @import("external.zig");
 pub const fetch = @import("fetch.zig");
 pub const run = @import("run.zig");
 pub const report = @import("report.zig");
 
 const usage =
-    \\usage: fw_matrix check|fetch|run|summary|report|serve [options]
+    \\usage: fw_matrix check|fetch|run|summary|report|import|serve [options]
     \\       (tools/fw_matrix/main.zig lists every option)
     \\
 ;
@@ -119,7 +150,14 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "fetch")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const dir = args.need("frameworks-dir");
-        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| try fetch.fetchSuite(gpa, io, dir, s);
+        // Every app's pin is checked before the fetch fails on one, so one
+        // fetch names every app whose build is not the pinned one.
+        var mismatched: usize = 0;
+        for (try selectSuites(arena, m, try args.list(arena, "suite"))) |s| fetch.fetchSuite(gpa, io, dir, s, init.environ_map) catch |err| switch (err) {
+            error.AppMismatch, error.AppMissing => mismatched += 1,
+            else => return err,
+        };
+        if (mismatched > 0) fail("{d} TodoMVC app(s) are not the pinned build (each named above)", .{mismatched});
     } else if (std.mem.eql(u8, cmd, "run")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const excluded_dir = args.get("excluded-dir") orelse default_excluded;
@@ -136,7 +174,8 @@ pub fn main(init: std.process.Init) !void {
             .excluded_dir = excluded_dir,
             .console = console,
             .console_sha256 = try arena.dupe(u8, &console_sha),
-            .crane_commit = args.need("crane-commit"),
+            // A browser's run for the comparison column has no Crane commit.
+            .crane_commit = if (args.get("browser") != null) "none" else args.need("crane-commit"),
             .label = args.need("label"),
             .generation = generation,
             .out_dir = args.need("out"),
@@ -144,6 +183,8 @@ pub fn main(init: std.process.Init) !void {
             .no_exclusions = args.has("no-exclusions"),
             .parallel = parallel,
             .stop_file = args.get("stop-file"),
+            .environ = init.environ_map,
+            .browser = args.get("browser"),
         });
         const c = totals.counts;
         std.debug.print("fw_matrix: run done{s}: {d} pages ({d} OK); {d} ran: {d} pass, {d} fail; {d} errored; {d} rendering; {d} not run; {d} skipped by the project\n", .{
@@ -157,11 +198,115 @@ pub fn main(init: std.process.Init) !void {
     } else if (std.mem.eql(u8, cmd, "report")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         try writeReport(arena, io, m, args.get("excluded-dir") orelse default_excluded, args.need("journals"), args.need("out"), .{ .assets = args.get("assets") orelse "../" });
+    } else if (std.mem.eql(u8, cmd, "import") and std.mem.eql(u8, args.get("reader") orelse "", "cypress")) {
+        // TodoMVC's own Cypress run: every results file of --log (a directory).
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        const dir_path = args.need("log");
+        var dir = Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| fail("{s}: {t}", .{ dir_path, err });
+        defer dir.close(io);
+        var names: std.ArrayList([]const u8) = .empty;
+        var it = dir.iterate();
+        while (try it.next(io)) |e| if (e.kind == .file and std.mem.endsWith(u8, e.name, ".json")) try names.append(arena, try arena.dupe(u8, e.name));
+        std.mem.sort([]const u8, names.items, {}, struct {
+            fn lt(_: void, x: []const u8, y: []const u8) bool {
+                return std.mem.order(u8, x, y) == .lt;
+            }
+        }.lt);
+        var logs: std.ArrayList(CypressLog) = .empty;
+        for (names.items) |name| {
+            const path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ dir_path, name });
+            const text = dir.readFileAlloc(io, name, arena, .limited(64 << 20)) catch |err| fail("{s}: {t}", .{ path, err });
+            const run_r = readers.parseCypressResults(arena, text) catch fail("{s}: not Cypress results this reader knows", .{path});
+            const sha = fetch.sha256Hex(text);
+            try logs.append(arena, .{ .path = path, .sha256 = try arena.dupe(u8, &sha), .run = run_r });
+        }
+        if (logs.items.len == 0) fail("{s}: no results files (*.json)", .{dir_path});
+        const text = importCypress(arena, m, .{
+            .label = args.need("label"),
+            .browser = args.need("browser"),
+            .browser_sha256 = args.need("browser-sha256"),
+            .runner = args.need("runner"),
+        }, logs.items) catch |err| fail("import: {t}", .{err});
+        const out_dir = args.need("out");
+        try Io.Dir.cwd().createDirPath(io, out_dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
+        std.debug.print("fw_matrix: import: {d} Cypress results file(s) from {s} into {s}/journal.jsonl\n", .{ logs.items.len, dir_path, out_dir });
+    } else if (std.mem.eql(u8, cmd, "import") and std.mem.eql(u8, args.get("reader") orelse "", "wtr-tree")) {
+        // A project's own web-test-runner run, per test, the suite's
+        // exclusion list applied so the columns count the same tests.
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
+        const log_path = args.need("log");
+        const log = Io.Dir.cwd().readFileAlloc(io, log_path, arena, .limited(256 << 20)) catch |err| fail("{s}: {t}", .{ log_path, err });
+        const tests = readers.parseWtrTree(arena, log) catch fail("{s}: no web-test-runner report this reader knows", .{log_path});
+        const list_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.get("excluded-dir") orelse default_excluded, s.excluded });
+        const list = Io.Dir.cwd().readFileAlloc(io, list_path, arena, .limited(16 << 20)) catch |err| fail("{s}: {t}", .{ list_path, err });
+        var pf: exclusions.ParseFailure = .{};
+        const entries = exclusions.parse(arena, list, &pf) catch |err| fail("{s}:{d}: {t}", .{ list_path, pf.line, err });
+        const log_sha = fetch.sha256Hex(log);
+        const text = importWtrTree(arena, s, .{
+            .label = args.need("label"),
+            .browser = args.need("browser"),
+            .browser_sha256 = args.need("browser-sha256"),
+            .runner = args.need("runner"),
+            .log = log_path,
+            .log_sha256 = &log_sha,
+            .date = args.need("date"),
+            .page = args.need("page"),
+        }, tests, entries) catch |err| fail("import: {t}", .{err});
+        const out_dir = args.need("out");
+        try Io.Dir.cwd().createDirPath(io, out_dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
+        std.debug.print("fw_matrix: import: {d} test(s) of {s} from {s} into {s}/journal.jsonl\n", .{ tests.len, s.id, log_path, out_dir });
+    } else if (std.mem.eql(u8, cmd, "import")) {
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
+        const log_path = args.need("log");
+        const log = Io.Dir.cwd().readFileAlloc(io, log_path, arena, .limited(256 << 20)) catch |err| fail("{s}: {t}", .{ log_path, err });
+        const reader = args.need("reader");
+        const one_page = try arena.alloc(readers.LogPage, 1);
+        const pages: []const readers.LogPage = if (std.mem.eql(u8, reader, "jtr")) blk: {
+            one_page[0] = readers.parseJtrLog(arena, log) catch fail("{s}: not a jquery-test-runner log this reader knows", .{log_path});
+            break :blk one_page;
+        } else if (std.mem.eql(u8, reader, "wtr-summary"))
+            readers.parseWtrSummary(arena, log) catch fail("{s}: no Bazel web-test-runner lines this reader knows", .{log_path})
+        else
+            fail("--reader={s}: jtr, wtr-summary, wtr-tree or cypress", .{reader});
+        const log_sha = fetch.sha256Hex(log);
+        const text = importRecords(arena, s, .{
+            .label = args.need("label"),
+            .browser = args.need("browser"),
+            .browser_sha256 = args.need("browser-sha256"),
+            .runner = args.need("runner"),
+            .log = log_path,
+            .log_sha256 = &log_sha,
+            .date = args.need("date"),
+            .page = args.get("page"),
+        }, pages) catch |err| fail("import: {t}", .{err});
+        const out_dir = args.need("out");
+        try Io.Dir.cwd().createDirPath(io, out_dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
+        std.debug.print("fw_matrix: import: {d} page(s) of {s} from {s} into {s}/journal.jsonl\n", .{ pages.len, s.id, log_path, out_dir });
     } else if (std.mem.eql(u8, cmd, "serve")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
         const root = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.need("frameworks-dir"), try manifest.treeName(arena, s) });
         const port: u16 = if (args.get("port")) |p| std.fmt.parseInt(u16, p, 10) catch fail("--port={s}", .{p}) else 8000;
+        if (s.server) |es| if (manifest.serverPerPage(es)) {
+            fail("serve: each page of {s} starts its own server (its Bazel target); run one page with `fw_matrix run --suite={s} --pages=<id>`", .{ s.id, s.id });
+        };
+        if (s.server) |es| {
+            // The project's own server, as a run starts it.
+            const node_dir = try fetch.nodeDirChecked(arena, io, args.need("frameworks-dir"), s.node.?);
+            const tree_abs = try Io.Dir.cwd().realPathFileAlloc(io, root, arena);
+            const env = try arena.create(std.process.Environ.Map);
+            env.* = try fetch.nodeEnviron(arena, init.environ_map, try std.fmt.allocPrint(arena, "{s}/bin", .{node_dir}), try std.fmt.allocPrint(arena, "{s}/downloads/npm-cache", .{try Io.Dir.cwd().realPathFileAlloc(io, args.need("frameworks-dir"), arena)}));
+            const log = try std.fmt.allocPrint(arena, "{s}-serve.log", .{tree_abs});
+            const srv = try external.External.start(gpa, io, .{ .argv = es.argv, .cwd = tree_abs, .environ = env, .ready_path = es.ready_path, .ready_ms = @as(u64, es.ready_s) * 1000, .port = port, .log_path = log });
+            defer srv.stop();
+            std.debug.print("fw_matrix: {s} ({s}, pid {d}) serving {s} on http://{s}:{d}/ (its output: {s}; Ctrl+C ends)\n", .{ es.name, s.id, srv.pid, root, es.host, srv.port(), log });
+            while (true) Io.sleep(io, .fromSeconds(3600), .awake) catch {};
+        }
         const srv = try server.Server.start(gpa, io, .{ .root = root, .port = port, .overlays = try run.serverOverlays(arena, s) });
         defer srv.stop();
         std.debug.print("fw_matrix: serving {s} on http://127.0.0.1:{d}/ (Ctrl+C ends)\n", .{ root, srv.port() });
@@ -182,10 +327,17 @@ fn loadManifest(gpa: Allocator, arena: Allocator, io: Io, path: []const u8) !man
     };
 }
 
+/// The suites `--suite` names; "todomvc" names every TodoMVC app.
 fn selectSuites(arena: Allocator, m: manifest.Manifest, only: ?[]const []const u8) ![]const manifest.Suite {
     const ids = only orelse return m.suites;
     var out: std.ArrayList(manifest.Suite) = .empty;
-    for (ids) |id| try out.append(arena, manifest.find(m, id) orelse fail("no suite {s} in the manifest", .{id}));
+    for (ids) |id| {
+        if (std.mem.eql(u8, id, "todomvc")) {
+            for (m.suites) |s| if (s.kind == .todomvc_port) try out.append(arena, s);
+            continue;
+        }
+        try out.append(arena, manifest.find(m, id) orelse fail("no suite {s} in the manifest", .{id}));
+    }
     return out.items;
 }
 
@@ -309,34 +461,407 @@ fn writeReport(arena: Allocator, io: Io, m: manifest.Manifest, excluded_dir: []c
     }
     const suites = try report.collect(arena, m, journals.items, files.items);
     try Io.Dir.cwd().createDirPath(io, out_dir);
-    var index: Io.Writer.Allocating = .init(arena);
-    try report.writeIndex(&index.writer, suites, o);
-    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = index.written() });
-    var written: usize = 1;
-    for (suites, 0..) |s, i| {
-        var seen = false;
-        for (suites[0..i]) |o2| if (std.mem.eql(u8, o2.suite.framework, s.suite.framework)) {
-            seen = true;
-        };
-        if (seen) continue;
-        const dir = try std.fmt.allocPrint(arena, "{s}/{s}", .{ out_dir, s.suite.framework });
-        try Io.Dir.cwd().createDirPath(io, dir);
-        var page: Io.Writer.Allocating = .init(arena);
-        try report.writeSuites(&page.writer, s.suite.framework, suites, o);
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{dir}), .data = page.written() });
-        written += 1;
+    // One page and its card (the user, 2026-11-14 4:24 PM ET: sections that
+    // expand, no pages of their own).
+    const out = try report.render(arena, m, suites, o);
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/index.html", .{out_dir}), .data = out.index_html });
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/card.png", .{out_dir}), .data = out.card_png });
+    std.debug.print("fw_matrix: report: {d} journal(s); {s}/index.html and {s}/card.png written\n", .{ journals.items.len, out_dir, out_dir });
+}
+
+pub const ImportOptions = struct {
+    label: []const u8,
+    browser: []const u8,
+    browser_sha256: []const u8,
+    runner: []const u8,
+    log: []const u8,
+    log_sha256: []const u8,
+    date: []const u8,
+    /// The page id a one-page log is recorded as; null: each log page is
+    /// matched to the suite's page by its Bazel target.
+    page: ?[]const u8 = null,
+};
+
+pub const ImportError = error{ OutOfMemory, WriteFailed, UnknownTarget, BadPage, BadSha256, BadDate };
+
+/// The suite's page a Bazel target of the browser's run is: rules_browsers'
+/// wtr_test(name = X) makes X_debug (the manual-mode page Crane opens, the
+/// page's `target`) and X_chromium (the run in its Chromium).
+fn pageForTarget(s: manifest.Suite, label: []const u8) ?[]const u8 {
+    const suffix = "_chromium";
+    if (!std.mem.endsWith(u8, label, suffix)) return null;
+    const base = label[0 .. label.len - suffix.len];
+    for (s.pages) |p| if (p.target) |t| {
+        if (std.mem.endsWith(u8, t, "_debug") and std.mem.eql(u8, t[0 .. t.len - "_debug".len], base)) return p.id;
+    };
+    return null;
+}
+
+/// A browser's run, read from its runner's log, as journal lines: a page
+/// record per log page (its counts, the failures it does not name as
+/// unnamed), a test record per failure it names.
+pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, pages: []const readers.LogPage) ImportError![]const u8 {
+    if (!journal.isSha256(o.browser_sha256) or !journal.isSha256(o.log_sha256)) return error.BadSha256;
+    if (!journal.isDate(o.date)) return error.BadDate;
+    if (o.page != null and pages.len != 1) return error.BadPage;
+    var out: Io.Writer.Allocating = .init(arena);
+    const imported: journal.Imported = .{ .runner = o.runner, .log = o.log, .log_sha256 = o.log_sha256, .date = o.date };
+    for (pages) |lp| {
+        const page_id = o.page orelse pageForTarget(s, lp.where) orelse return error.UnknownTarget;
+        const named: u32 = @intCast(lp.failures.len);
+        for (lp.failures) |f| try journal.writeTest(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .module = f.module,
+            .name = f.name,
+            .id = f.id,
+            .status = .FAIL,
+            .message = f.message,
+            .browser = o.browser,
+        });
+        // A target its runner failed with no failing test: its errors were
+        // outside any test (zone.js's browser_test in Chrome).
+        const failed_outside = lp.runner_status != null and std.mem.eql(u8, lp.runner_status.?, "FAILED") and lp.failed == 0;
+        try journal.writePage(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .url = lp.where,
+            .status = if (failed_outside) .ERROR else .OK,
+            .message = if (failed_outside) try std.fmt.allocPrint(arena, "the runner reported the page FAILED with no failing test ({d} passed, 0 failed, {d} skipped)", .{ lp.passed, lp.skipped }) else null,
+            .wall_ms = lp.wall_ms,
+            .reported_total = lp.passed + lp.failed,
+            .reported_failed = lp.failed,
+            .ran = named,
+            .records = named,
+            .unnamed_passed = lp.passed,
+            .unnamed_failed = if (lp.failed > named) lp.failed - named else null,
+            .unnamed_pending = if (lp.skipped > 0) lp.skipped else null,
+            .exit = if (lp.runner_status) |w| try std.fmt.allocPrint(arena, "the runner's word for the page: {s}", .{w}) else "read from the runner's log",
+            .browser = o.browser,
+            .imported = imported,
+        });
     }
-    std.debug.print("fw_matrix: report: {d} journal(s), {d} page(s) written to {s}\n", .{ journals.items.len, written, out_dir });
+    return out.written();
+}
+
+/// A project's own web-test-runner run (readers.parseWtrTree) as journal
+/// lines for one page of `s`: every test a record - passed PASS, failed
+/// FAIL, skipped NOTRUN as the project's skip - except that a test the
+/// suite's exclusion list names is NOTRUN with that entry's kind, and a
+/// file the list names (a file Crane's page does not load) is left out,
+/// so the browser's column counts the tests Crane's does.
+pub fn importWtrTree(arena: Allocator, s: manifest.Suite, o: ImportOptions, tests: []const readers.WtrTest, entries: []const exclusions.Entry) ImportError![]const u8 {
+    if (!journal.isSha256(o.browser_sha256) or !journal.isSha256(o.log_sha256)) return error.BadSha256;
+    if (!journal.isDate(o.date)) return error.BadDate;
+    const page_id = o.page orelse return error.BadPage;
+    var out: Io.Writer.Allocating = .init(arena);
+    var ran: u32 = 0;
+    var failed: u32 = 0;
+    var records: u32 = 0;
+    for (tests) |t| {
+        const left_out = for (entries) |e| {
+            if (e.file and std.mem.eql(u8, e.id, t.file)) break true;
+        } else false;
+        if (left_out) continue;
+        const excluded: ?exclusions.Entry = for (entries) |e| {
+            if (!e.file and std.mem.eql(u8, e.id, t.id)) break e;
+        } else null;
+        const status: journal.Status = if (excluded != null or t.state == .skipped) .NOTRUN else if (t.state == .passed) .PASS else .FAIL;
+        if (status != .NOTRUN) ran += 1;
+        if (status == .FAIL) failed += 1;
+        records += 1;
+        try journal.writeTest(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .module = t.module,
+            .name = t.name,
+            .id = t.id,
+            .status = status,
+            .not_run = if (excluded) |e| e.kind.notRun() else if (t.state == .skipped) .project_skip else null,
+            .reason = if (excluded) |e| e.why else null,
+            .message = if (status == .FAIL) "failed in the runner's report" else null,
+            .browser = o.browser,
+        });
+    }
+    try journal.writePage(&out.writer, .{
+        .label = o.label,
+        .crane_commit = "none",
+        .console_sha256 = o.browser_sha256,
+        .framework = s.framework,
+        .version = s.version,
+        .suite = s.id,
+        .suite_kind = s.kind,
+        .source_sha256 = s.source.sha256,
+        .page = page_id,
+        .url = o.log,
+        .status = .OK,
+        .wall_ms = 0,
+        .reported_total = ran,
+        .reported_failed = failed,
+        .ran = ran,
+        .records = records,
+        .exit = "read from the runner's own report",
+        .browser = o.browser,
+        .imported = .{ .runner = o.runner, .log = o.log, .log_sha256 = o.log_sha256, .date = o.date },
+    });
+    return out.written();
+}
+
+test "import a web-test-runner run: per test, the suite's exclusions applied, its node-runner-only files left out" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('c');
+    const suite: manifest.Suite = .{ .id = "htmx-mocha", .framework = "htmx", .title = "htmx", .version = "4.0.1", .kind = .project, .repository = "https://github.com/bigskysoftware/htmx", .tag = "v4.0.1", .commit = "c", .licence = "BSD-0", .runner = "Mocha", .reader = .mocha, .source = .{ .url = "https://x", .sha256 = &sha }, .pages = &.{.{ .id = "test", .path = "test/test.html" }}, .excluded = "x.txt" };
+    const tests = [_]readers.WtrTest{
+        .{ .file = "test/tests/attributes/hx-action.js", .module = "hx-action attribute", .name = "defaults to GET", .id = "hx-action attribute defaults to GET", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-swap.js", .module = "hx-swap", .name = "scrolls the window", .id = "hx-swap scrolls the window", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-swap.js", .module = "hx-swap", .name = "a skipped one", .id = "hx-swap a skipped one", .state = .skipped },
+        .{ .file = "test/tests/attributes/hx-query.js", .module = "hx-query", .name = "only in its runner", .id = "hx-query only in its runner", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-action.js", .module = "hx-action attribute", .name = "fails", .id = "hx-action attribute fails", .state = .failed },
+    };
+    const entries = [_]exclusions.Entry{
+        .{ .id = "test/tests/attributes/hx-query.js", .file = true, .kind = .node_runner_only, .why = "only its Node runner loads it", .line = 1 },
+        .{ .id = "hx-swap scrolls the window", .kind = .rendering, .why = "asserts window.scrollY", .line = 5 },
+    };
+    const o: ImportOptions = .{ .label = "chrome-htmx", .browser = "Chrome for Testing 157.0.8103.78", .browser_sha256 = &sha, .runner = "web-test-runner", .log = "tmp/wtr.log", .log_sha256 = &sha, .date = "2026-11-14", .page = "test" };
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, try importWtrTree(a, suite, o, &tests, &entries), &failure);
+    try std.testing.expectEqual(@as(usize, 4), j.tests.len);
+    try std.testing.expectEqual(journal.Status.PASS, j.tests[0].status);
+    try std.testing.expectEqual(journal.NotRun.rendering, j.tests[1].not_run.?);
+    try std.testing.expectEqual(journal.NotRun.project_skip, j.tests[2].not_run.?);
+    try std.testing.expectEqual(journal.Status.FAIL, j.tests[3].status);
+    try std.testing.expectEqual(@as(u32, 2), j.pages[0].ran);
+    try std.testing.expectEqualStrings("test", j.pages[0].page);
+    try std.testing.expectEqualStrings("web-test-runner", j.pages[0].imported.?.runner);
+}
+
+pub const CypressOptions = struct {
+    label: []const u8,
+    /// "Chrome for Testing 157.0.8103.78": the name every record carries,
+    /// the same as the port's Chrome run.
+    browser: []const u8,
+    browser_sha256: []const u8,
+    runner: []const u8,
+};
+
+pub const CypressLog = struct {
+    /// The results file as kept, and its sha256.
+    path: []const u8,
+    sha256: []const u8,
+    run: readers.CypressRun,
+};
+
+/// The TodoMVC app suite Cypress ran as `--env framework=<value>`: the app
+/// whose `cypress_framework`, else id, is the value.
+fn todoMvcSuiteFor(m: manifest.Manifest, value: []const u8) ?manifest.Suite {
+    for (m.suites) |s| if (s.app) |app| {
+        if (std.mem.eql(u8, app.cypress_framework orelse app.id, value)) return s;
+    };
+    return null;
+}
+
+pub const CypressImportError = ImportError || error{UnknownFramework};
+
+/// TodoMVC's own Cypress run in a browser (one results file per app), as
+/// journal lines: every test a record - passed PASS, failed FAIL with its
+/// error's first line, pending (the spec's own skip) NOTRUN as the
+/// project's skip, and skipped FAIL: Mocha ran it not at all because a
+/// hook failed earlier in its suite, so it did not pass, and the app's
+/// tests stay the spec's tests in every column - then the app's page
+/// record.
+pub fn importCypress(arena: Allocator, m: manifest.Manifest, o: CypressOptions, logs: []const CypressLog) CypressImportError![]const u8 {
+    if (!journal.isSha256(o.browser_sha256)) return error.BadSha256;
+    var out: Io.Writer.Allocating = .init(arena);
+    for (logs) |log| {
+        if (!journal.isSha256(log.sha256)) return error.BadSha256;
+        const r = log.run;
+        const s = todoMvcSuiteFor(m, r.framework) orelse return error.UnknownFramework;
+        if (r.tests.len > 0 and !journal.isDate(r.date)) return error.BadDate;
+        const page_id = s.pages[0].id;
+        var failed: u32 = 0;
+        var ran: u32 = 0;
+        for (r.tests) |t| {
+            const status: journal.Status = switch (t.state) {
+                .passed => .PASS,
+                .failed, .skipped => .FAIL,
+                .pending => .NOTRUN,
+            };
+            if (status == .FAIL) failed += 1;
+            if (status != .NOTRUN) ran += 1;
+            try journal.writeTest(&out.writer, .{
+                .label = o.label,
+                .crane_commit = "none",
+                .console_sha256 = o.browser_sha256,
+                .framework = s.framework,
+                .version = s.version,
+                .suite = s.id,
+                .suite_kind = s.kind,
+                .source_sha256 = s.source.sha256,
+                .page = page_id,
+                .module = t.module,
+                .name = t.name,
+                .id = try std.fmt.allocPrint(arena, "{s}: {s}", .{ t.module, t.name }),
+                .status = status,
+                .not_run = if (status == .NOTRUN) .project_skip else null,
+                .message = if (t.state == .skipped) "Cypress did not run it: a hook failed earlier in its suite, and Mocha skips the suite's remaining tests" else t.message,
+                .browser = o.browser,
+            });
+        }
+        try journal.writePage(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .url = try std.fmt.allocPrint(arena, "cypress run --env framework={s}", .{r.framework}),
+            .status = if (r.tests.len == 0) .ERROR else .OK,
+            .message = if (r.tests.len == 0) r.run_error else null,
+            .wall_ms = r.wall_ms,
+            .reported_total = @intCast(r.tests.len),
+            .reported_failed = failed,
+            .ran = ran,
+            .records = @intCast(r.tests.len),
+            .exit = "read from Cypress's own results (the Module API's cypress.run)",
+            .browser = o.browser,
+            .imported = .{ .runner = o.runner, .log = log.path, .log_sha256 = log.sha256, .date = if (r.date.len > 0) r.date else "1970-01-01" },
+        });
+    }
+    return out.written();
+}
+
+test "import Cypress: every test of each app a record, the app found by Cypress's framework value, Mocha's skips not passed" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('b');
+    const apps = [_]manifest.App{
+        .{ .id = "react", .title = "React", .folder = "react/dist", .sha256 = &sha },
+        .{ .id = "jquery", .title = "jQuery", .folder = "jquery/dist", .cypress_framework = "jquery/dist", .sha256 = &sha },
+    };
+    const t: manifest.TodoMvc = .{ .repository = "https://github.com/tastejs/todomvc", .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a", .licence = "MIT", .runner = "QUnit 2.24.2", .reader = .qunit, .source = .{ .url = "https://x", .sha256 = &sha }, .page = "crane/todomvc/index.html", .excluded = "todomvc-port.txt", .apps = &apps };
+    const m: manifest.Manifest = .{ .suites = try manifest.expandTodoMvc(a, &.{}, t), .todomvc = t };
+    const o: CypressOptions = .{ .label = "fw1-cy", .browser = "Chrome for Testing 157.0.8103.78", .browser_sha256 = &sha, .runner = "Cypress 15.14.2" };
+    const tests = [_]readers.CypressTest{
+        .{ .module = "No Todos", .name = "starts with nothing", .state = .passed },
+        .{ .module = "New Todo", .name = "should trim text input", .state = .failed, .message = "AssertionError: expected" },
+        .{ .module = "New Todo", .name = "should clear text input field when an item is added", .state = .skipped },
+        .{ .module = "Persistence", .name = "should persist its data", .state = .pending },
+    };
+    const logs = [_]CypressLog{.{ .path = "tmp/cy/jquery_dist.json", .sha256 = &sha, .run = .{ .framework = "jquery/dist", .browser = "chrome-for-testing", .browser_version = "157.0.8103.78", .cypress_version = "15.14.2", .date = "2026-11-14", .tests = &tests, .wall_ms = 9000 } }};
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, try importCypress(a, m, o, &logs), &failure);
+    try std.testing.expectEqual(@as(usize, 4), j.tests.len);
+    for (j.tests) |r| try std.testing.expectEqualStrings("jquery-todomvc", r.suite);
+    try std.testing.expectEqual(journal.Status.PASS, j.tests[0].status);
+    try std.testing.expectEqualStrings("No Todos: starts with nothing", j.tests[0].id);
+    try std.testing.expectEqual(journal.Status.FAIL, j.tests[1].status);
+    try std.testing.expectEqualStrings("AssertionError: expected", j.tests[1].message.?);
+    try std.testing.expectEqual(journal.Status.FAIL, j.tests[2].status);
+    try std.testing.expect(std.mem.indexOf(u8, j.tests[2].message.?, "a hook failed") != null);
+    try std.testing.expectEqual(journal.Status.NOTRUN, j.tests[3].status);
+    try std.testing.expectEqual(journal.NotRun.project_skip, j.tests[3].not_run.?);
+    try std.testing.expectEqual(@as(usize, 1), j.pages.len);
+    try std.testing.expectEqual(@as(u32, 3), j.pages[0].ran);
+    try std.testing.expectEqualStrings("Chrome for Testing 157.0.8103.78", j.pages[0].browser.?);
+    try std.testing.expectEqualStrings("tmp/cy/jquery_dist.json", j.pages[0].imported.?.log);
+    // The app is found by the value Cypress took, never by a near name.
+    var by_id = logs;
+    by_id[0].run.framework = "jquery";
+    try std.testing.expectError(error.UnknownFramework, importCypress(a, m, o, &by_id));
+    // A run that never started its spec: the app's page errored, no tests.
+    var crashed = logs;
+    crashed[0].run.tests = &.{};
+    crashed[0].run.run_error = "Could not find Cypress test run results";
+    const jc = try journal.parseJournal(a, try importCypress(a, m, o, &crashed), &failure);
+    try std.testing.expectEqual(journal.PageStatus.ERROR, jc.pages[0].status);
+    try std.testing.expectEqualStrings("Could not find Cypress test run results", jc.pages[0].message.?);
+}
+
+test "import: a runner's log as a browser's journal - named failures as test records, the rest as counts, pages by target" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('a');
+    const suite: manifest.Suite = .{ .id = "angular-jasmine", .framework = "angular", .title = "Angular", .version = "22.2.6", .kind = .project, .repository = "https://github.com/angular/angular", .tag = "v22.2.6", .commit = "c", .licence = "MIT", .runner = "Jasmine", .reader = .jasmine_console, .source = .{ .url = "https://x", .sha256 = &sha }, .pages = &.{
+        .{ .id = "core-test-acceptance-acceptance", .path = "?a", .target = "//packages/core/test/acceptance:acceptance_web_debug" },
+        .{ .id = "zone-test-browser", .path = "?b", .target = "//packages/zone.js/test:browser_test_debug" },
+    }, .excluded = "x.txt" };
+    const o: ImportOptions = .{ .label = "chrome-ng", .browser = "Chrome for Testing headless shell 159.0.8154.2", .browser_sha256 = &sha, .runner = "bazel test <target>_chromium", .log = "tmp/ng.log", .log_sha256 = &sha, .date = "2026-11-14" };
+    const pages = [_]readers.LogPage{
+        .{ .where = "//packages/core/test/acceptance:acceptance_web_chromium", .runner_status = "FAILED", .passed = 2777, .failed = 1, .skipped = 4, .wall_ms = 15_200 },
+        .{ .where = "//packages/zone.js/test:browser_test_chromium", .runner_status = "FAILED", .passed = 513, .failed = 0, .skipped = 24 },
+    };
+    const text = try importRecords(a, suite, o, &pages);
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, text, &failure);
+    try std.testing.expectEqual(@as(usize, 0), j.tests.len);
+    try std.testing.expectEqual(@as(usize, 2), j.pages.len);
+    const p0 = j.pages[0];
+    try std.testing.expectEqualStrings("core-test-acceptance-acceptance", p0.page);
+    try std.testing.expectEqual(journal.PageStatus.OK, p0.status);
+    try std.testing.expectEqual(@as(?u32, 2777), p0.unnamed_passed);
+    try std.testing.expectEqual(@as(?u32, 1), p0.unnamed_failed);
+    try std.testing.expectEqual(@as(?u32, 4), p0.unnamed_pending);
+    try std.testing.expectEqualStrings("Chrome for Testing headless shell 159.0.8154.2", p0.browser.?);
+    try std.testing.expectEqualStrings("2026-11-14", p0.imported.?.date);
+    try std.testing.expectEqualStrings("none", p0.crane_commit);
+    // Failed by its runner with no failing test: an error outside the tests.
+    try std.testing.expectEqual(journal.PageStatus.ERROR, j.pages[1].status);
+    try std.testing.expectEqualStrings("zone-test-browser", j.pages[1].page);
+
+    // jtr: one page, named failures as test records.
+    var one = o;
+    one.page = "test";
+    const failures = [_]readers.Reported{.{ .module = "core", .name = "parseXML", .id = "core: parseXML", .status = .FAIL, .message = "expected 11" }};
+    const jt = try journal.parseJournal(a, try importRecords(a, suite, one, &.{.{ .where = "http://localhost:1/test/", .passed = 1144, .failed = 1, .skipped = 0, .failures = &failures }}), &failure);
+    try std.testing.expectEqual(@as(usize, 1), jt.tests.len);
+    try std.testing.expectEqualStrings("core: parseXML", jt.tests[0].id);
+    try std.testing.expectEqualStrings("expected 11", jt.tests[0].message.?);
+    try std.testing.expectEqual(@as(?u32, null), jt.pages[0].unnamed_failed);
+    // A target the suite has no page for, a bad hash or date: refused.
+    try std.testing.expectError(error.UnknownTarget, importRecords(a, suite, o, &.{.{ .where = "//x:y_chromium", .passed = 1, .failed = 0, .skipped = 0 }}));
+    var bad = o;
+    bad.date = "Nov 14";
+    try std.testing.expectError(error.BadDate, importRecords(a, suite, bad, &pages));
 }
 
 test {
     _ = report;
+    _ = @import("card.zig");
     _ = journal;
     _ = exclusions;
     _ = manifest;
     _ = readers;
     _ = generated;
     _ = server;
+    _ = external;
     _ = fetch;
     _ = run;
 }

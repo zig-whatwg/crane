@@ -49,6 +49,7 @@ const module_script = @import("module_script.zig");
 // The request a script fetch builds, populated from its client.
 const script_request = @import("script_request.zig");
 const fetch_mod = @import("fetch");
+const csp_mod = @import("csp");
 
 // Unhandled promise rejections: HostPromiseRejectionTracker and "notify about
 // rejected promises", for the worker's global as for a window's.
@@ -2774,50 +2775,6 @@ fn workerCrossOriginIsolated(start: *const WorkerStart) bool {
     return agent_clusters.crossOriginIsolatedCapability(null, start.owner_realm);
 }
 
-/// HTML "check a global object's embedder policy" for the dedicated worker
-/// `start` starts, read on its owner's thread: false - the response is a
-/// network error, and `error` is fired at the Worker - when the owner's
-/// embedder policy value is compatible with cross-origin isolation and the
-/// worker's is not (steps 5-7), with the inheritance violations of steps 4
-/// and 6 reported to the owner. Shared workers pass (step 1).
-fn dedicatedWorkerEmbedderPolicyAllows(start: *const WorkerStart) bool {
-    if (start.shared != null) return true;
-    const owner = creatorPolicyContainer(start.owner_realm) orelse return true;
-    const owner_policy = owner.embedderPolicy();
-    if (!owner_policy.value.compatibleWithCrossOriginIsolation() and !owner_policy.report_only_value.compatibleWithCrossOriginIsolation()) return true;
-    const compatible = if (start.policy_container) |*c| c.embedderPolicy().value.compatibleWithCrossOriginIsolation() else false;
-    // 4. The report-only value's violation.
-    if (owner_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
-        queueWorkerInheritanceViolation(start, owner_policy.report_only_reporting_endpoint, true);
-    }
-    // 5-7.
-    if (!owner_policy.value.compatibleWithCrossOriginIsolation() or compatible) return true;
-    queueWorkerInheritanceViolation(start, owner_policy.reporting_endpoint, false);
-    return false;
-}
-
-/// HTML "queue a cross-origin embedder policy inheritance violation" with
-/// type "worker initialization" for the worker `start` starts, on its
-/// owner's settings object: Reporting's "generate and queue a report" of
-/// the "coep" type for `endpoint`. A report that cannot be made is dropped.
-fn queueWorkerInheritanceViolation(start: *const WorkerStart, endpoint: []const u8, report_only: bool) void {
-    const global = @import("dom").global_settings.liveGlobalOf(start.owner_realm) orelse return;
-    const allocator = global.ctx.allocator;
-    // Step 1: Fetch's "serializing a response URL for reporting" - not CSP
-    // §5.4's strip rule, which is CSP's own - so no credentials, no fragment,
-    // and a data: or blob: URL whole. The script URL is the worker's
-    // request's URL list[0].
-    const blocked_url = @import("dom").coep_reporting.serializeResponseUrlForReporting(allocator, &.{start.script_url}) catch return;
-    defer allocator.free(blocked_url);
-    const body = std.json.Stringify.valueAlloc(allocator, .{
-        .type = "worker initialization",
-        .blockedURL = blocked_url,
-        .disposition = if (report_only) "reporting" else "enforce",
-    }, .{}) catch return;
-    defer allocator.free(body);
-    @import("dom").reporting.generate(global, "coep", endpoint, global.ctx.documentUrl() orelse "", body) catch {};
-}
-
 /// A worker creator's mixed-content answer, read only on its own thread.
 /// A nested data worker captures its owner's already-inherited restriction.
 fn ownerProhibitsMixedSecurityContexts(realm: runtime.Context) error{OutOfMemory}!bool {
@@ -3237,6 +3194,182 @@ pub const OwnerWorker = struct {
     }
 };
 
+/// `ThreadHost.fetchScript`'s fetch client, on the worker's thread: the
+/// fetch's outcome, and whether the fetch is over (its last word heard).
+const ScriptFetchOutcome = struct {
+    result: ?(fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) = null,
+    delivered: bool = false,
+    over: bool = false,
+
+    fn client(self: *ScriptFetchOutcome) fetch_mod.algorithms.AsyncFetch.Client {
+        return .{ .context = self, .done = done, .alive = alive, .gone = gone, .finished = finished };
+    }
+    fn done(context: *anyopaque, result: fetch_mod.algorithms.FetchError!fetch_mod.algorithms.FetchResult) void {
+        const self: *ScriptFetchOutcome = @ptrCast(@alignCast(context));
+        self.result = result;
+        self.delivered = true;
+    }
+    /// The loop that drives the fetch ends it itself when the worker is
+    /// terminated (`ThreadHost.fetchScript`).
+    fn alive(_: *anyopaque) bool {
+        return true;
+    }
+    fn gone(context: *anyopaque) void {
+        const self: *ScriptFetchOutcome = @ptrCast(@alignCast(context));
+        self.over = true;
+    }
+    fn finished(context: *anyopaque) void {
+        const self: *ScriptFetchOutcome = @ptrCast(@alignCast(context));
+        self.over = true;
+    }
+};
+
+/// A dedicated worker's "worker initialization" violation, made on its
+/// thread, generated on its owner's (`ThreadHost.postInheritanceViolation`).
+/// Its strings are owned (the worker's allocator, which is thread-safe).
+const InheritanceViolation = struct {
+    allocator: Allocator,
+    owner: OwnerWorker,
+    endpoint: []u8,
+    body: []u8,
+
+    /// Takes `body`; copies `endpoint`.
+    fn create(allocator: Allocator, owner: OwnerWorker, endpoint: []const u8, body: []u8) Allocator.Error!*InheritanceViolation {
+        const owned_endpoint = try allocator.dupe(u8, endpoint);
+        errdefer allocator.free(owned_endpoint);
+        const self = try allocator.create(InheritanceViolation);
+        self.* = .{ .allocator = allocator, .owner = owner, .endpoint = owned_endpoint, .body = body };
+        return self;
+    }
+
+    /// On the owner's thread: Reporting's "generate and queue a report" for
+    /// the Worker's realm's global, while the Worker is the object it was.
+    fn run(data: ?*anyopaque) void {
+        const self: *InheritanceViolation = @ptrCast(@alignCast(data.?));
+        defer self.destroy();
+        const worker = self.owner.live() orelse return;
+        const global = @import("dom").global_settings.liveGlobalOf(worker.ctx) orelse return;
+        @import("dom").reporting.generate(global, "coep", self.endpoint, global.ctx.documentUrl() orelse "", self.body) catch {};
+    }
+
+    /// Never run: its owner's loop has ended. Any thread.
+    fn drop(data: ?*anyopaque) void {
+        destroy(@ptrCast(@alignCast(data.?)));
+    }
+
+    fn destroy(self: *InheritanceViolation) void {
+        self.allocator.free(self.endpoint);
+        self.allocator.free(self.body);
+        self.allocator.destroy(self);
+    }
+};
+
+/// The CSP violation reporter of a dedicated worker's script request, which
+/// the worker's own thread fetches (`ThreadHost.fetchScript`): each violation
+/// main fetch finds - step 7, and again at every redirect - is copied there
+/// and posted to the worker object's loop, where the owner's global's
+/// reporter (dom.csp_violations) reports it, as it would a request of its
+/// own thread. Made on the owner's thread with the request, freed with the
+/// worker's start once the fetch that reports through it is over.
+pub const CspRelay = struct {
+    allocator: Allocator,
+    sink: *runtime.TaskSink,
+    owner: OwnerWorker,
+
+    pub fn create(allocator: Allocator, sink: *runtime.TaskSink, owner: OwnerWorker) Allocator.Error!*CspRelay {
+        const self = try allocator.create(CspRelay);
+        self.* = .{ .allocator = allocator, .sink = sink, .owner = owner };
+        return self;
+    }
+
+    pub fn destroy(self: *CspRelay) void {
+        self.allocator.destroy(self);
+    }
+
+    pub fn reporter(self: *CspRelay) fetch_mod.internal.CspViolationReporter {
+        return .{ .context = self, .report = relay };
+    }
+
+    /// On the fetching thread.
+    fn relay(context: *anyopaque, violation: *const fetch_mod.internal.CspViolation) void {
+        const self: *CspRelay = @ptrCast(@alignCast(context));
+        const copy = RelayedViolation.create(self.allocator, self.owner, violation) catch return;
+        // A closed sink - the owner's loop has ended - drops it.
+        _ = self.sink.post(.{ .run = RelayedViolation.run, .drop = RelayedViolation.drop, .data = copy });
+    }
+};
+
+/// A copy of a CSP violation, from the fetching thread to the owner's: the
+/// violated policy (csp.parsing.copyPolicy) and the violation's strings, all
+/// owned. A request's violation has no element.
+const RelayedViolation = struct {
+    allocator: Allocator,
+    owner: OwnerWorker,
+    policy: csp_mod.types.Policy,
+    effective_directive: []u8,
+    resource: csp_mod.violation_events.Resource,
+    sample: []u8,
+    location: ?csp_mod.violation_events.SourceLocation,
+
+    fn create(allocator: Allocator, owner: OwnerWorker, violation: *const fetch_mod.internal.CspViolation) !*RelayedViolation {
+        var policy = try csp_mod.parsing.copyPolicy(allocator, violation.policy);
+        errdefer policy.deinit();
+        const directive = try allocator.dupe(u8, violation.effective_directive);
+        errdefer allocator.free(directive);
+        const resource: csp_mod.violation_events.Resource = switch (violation.resource) {
+            .url => |url| .{ .url = try allocator.dupe(u8, url) },
+            else => violation.resource,
+        };
+        errdefer if (resource == .url) allocator.free(resource.url);
+        const sample = try allocator.dupe(u8, violation.sample);
+        errdefer allocator.free(sample);
+        const location: ?csp_mod.violation_events.SourceLocation = if (violation.location) |l| .{ .url = try allocator.dupe(u8, l.url), .line = l.line, .column = l.column } else null;
+        errdefer if (location) |l| allocator.free(l.url);
+        const self = try allocator.create(RelayedViolation);
+        self.* = .{
+            .allocator = allocator,
+            .owner = owner,
+            .policy = policy,
+            .effective_directive = directive,
+            .resource = resource,
+            .sample = sample,
+            .location = location,
+        };
+        return self;
+    }
+
+    /// On the owner's thread: its global's reporter reports it, while the
+    /// Worker is the object it was.
+    fn run(data: ?*anyopaque) void {
+        const self: *RelayedViolation = @ptrCast(@alignCast(data.?));
+        defer self.destroy();
+        const worker = self.owner.live() orelse return;
+        const reporter = @import("dom").csp_violations.reporterForRealm(worker.ctx) orelse return;
+        reporter.reportViolation(&.{
+            .policy = &self.policy,
+            .effective_directive = self.effective_directive,
+            .resource = self.resource,
+            .sample = self.sample,
+            .location = self.location,
+        });
+    }
+
+    /// Never run: its owner's loop has ended. Any thread.
+    fn drop(data: ?*anyopaque) void {
+        destroy(@ptrCast(@alignCast(data.?)));
+    }
+
+    fn destroy(self: *RelayedViolation) void {
+        const allocator = self.allocator;
+        self.policy.deinit();
+        allocator.free(self.effective_directive);
+        if (self.resource == .url) allocator.free(self.resource.url);
+        allocator.free(self.sample);
+        if (self.location) |l| allocator.free(l.url);
+        allocator.destroy(self);
+    }
+};
+
 /// What a worker's tasks do at its worker object, on the object's thread -
 /// the Worker or SharedWorker impl's steps (its state is its own).
 pub const OwnerSteps = struct {
@@ -3330,9 +3463,11 @@ pub const ErrorReport = struct {
 
 /// "Run a worker", as its worker object's side hands it over: a dedicated
 /// worker's Worker constructor (step 9: "run this step in parallel"), or the
-/// shared worker manager's steps. The script is fetched first - the Worker
-/// constructor must, before it returns: a blob URL revoked right after
-/// `new Worker(url)` still runs - so the thread starts with it in hand.
+/// shared worker manager's steps. A dedicated worker's script fetched over
+/// the network is fetched by the worker's own thread (`request`); a data: or
+/// blob: one - its blob URL entry captured as the constructor parsed the
+/// URL, so a blob URL revoked right after `new Worker(url)` still runs - and
+/// a shared worker's come with the start, in hand.
 pub const WorkerStart = struct {
     /// The classic script's source, or a module graph's root's. BORROWED
     /// (copied).
@@ -3366,6 +3501,15 @@ pub const WorkerStart = struct {
     /// The worker's reserved client (dom.service_worker_clients), which its
     /// realm adopts as it becomes a service worker client. Taken on success.
     service_worker_client: ?*anyopaque = null,
+    /// A dedicated worker whose script is fetched over the network: the
+    /// request its own thread fetches ("run a worker" step 12; `source` is
+    /// empty and `script_url` the request's URL until the response names
+    /// the global's). Made on the owner's thread from the outside settings;
+    /// its CSP violations go through `csp_relay`. Taken on success.
+    request: ?*fetch_mod.internal.InternalRequest = null,
+    /// The CSP reporter `request` reports through (`CspRelay`). Taken on
+    /// success.
+    csp_relay: ?*CspRelay = null,
 };
 
 /// Start a dedicated worker on a thread of its own: a link shared with the
@@ -3376,10 +3520,10 @@ pub const WorkerStart = struct {
 /// and `start.inside_end` are taken (null); on failure the caller still
 /// holds them, and nothing runs.
 pub fn startDedicatedWorker(allocator: Allocator, start: *WorkerStart) !*WorkerLink {
-    // "Run a worker" onComplete step 6: a worker its owner's embedder policy
-    // refuses is a network error - it never runs, and `error` is fired at
-    // the Worker (the caller's start failure).
-    if (!dedicatedWorkerEmbedderPolicyAllows(start)) return error.EmbedderPolicy;
+    // "Run a worker" runs in parallel: the thread starts now, fetches its
+    // script if it has none (`ThreadHost.fetchScript`), and checks the
+    // owner's embedder policy itself (`ThreadHost.embedderPolicyAllows`) -
+    // its report reaches the owner's observers after this task.
     // The owner's loop's inbox: where the worker's messages, errors and end
     // go. A realm with none (no event loop made it) runs no worker.
     const owner_sink = start.owner_realm.task_sink orelse return error.NoEventLoop;
@@ -3401,6 +3545,8 @@ pub fn startDedicatedWorker(allocator: Allocator, start: *WorkerStart) !*WorkerL
     start.policy_container = null;
     start.inside_end = null;
     start.service_worker_client = null;
+    start.request = null;
+    start.csp_relay = null;
     return link;
 }
 
@@ -3499,6 +3645,23 @@ const ThreadHost = struct {
         has_cross_site_ancestor: bool = false,
         /// The worker's reserved client, until its realm adopts it.
         service_worker_client: ?*anyopaque,
+        /// A dedicated worker's script request, until `fetchScript` hands it
+        /// to its fetch (WorkerStart.request).
+        request: ?*fetch_mod.internal.InternalRequest = null,
+        /// The request's CSP reporter: freed with the start, after the
+        /// fetch that reports through it is over.
+        csp_relay: ?*CspRelay = null,
+        /// The script request's URL once the response has named the
+        /// global's (`script_url`): the inheritance violation's blocked URL
+        /// is the request's URL list[0]. OWNED.
+        request_url: ?[]u8 = null,
+        /// A dedicated worker's owner's embedder policy, copied on the
+        /// owner's thread: what "check a global object's embedder policy"
+        /// compares the worker's with (`embedderPolicyAllows`). OWNED.
+        owner_embedder_policy: fetch_mod.internal.EmbedderPolicy = .{},
+        /// Whether the owner upgrades insecure requests, read on its thread:
+        /// a fetched script's container inherits it (UIR 3.3).
+        owner_upgrades_insecure_requests: bool = false,
     };
 
     fn create(allocator: Allocator, start: *const WorkerStart) !*ThreadHost {
@@ -3521,6 +3684,13 @@ const ThreadHost = struct {
         // the worker takes - a shared worker's too (`creatorStoragePartition`).
         const storage_partition = try creatorStoragePartition(allocator, start.owner_realm, start.script_url);
         errdefer if (storage_partition.top_level_site) |site| allocator.free(site);
+        // On the owner's thread: what a dedicated worker's own thread checks
+        // its embedder policy against, and the owner's insecure-requests
+        // policy a fetched script's container inherits.
+        const owner_container = if (start.shared == null) creatorPolicyContainer(start.owner_realm) else null;
+        var owner_embedder_policy: fetch_mod.internal.EmbedderPolicy = if (owner_container) |owner| try owner.embedderPolicy().clone(allocator) else .{};
+        errdefer owner_embedder_policy.deinit(allocator);
+        const owner_upgrades_insecure_requests = if (owner_container) |owner| owner.upgradesInsecureRequests() else false;
         const self = try allocator.create(ThreadHost);
         self.* = .{
             .allocator = allocator,
@@ -3557,6 +3727,10 @@ const ThreadHost = struct {
                 .origin_nonce = storage_partition.origin_nonce,
                 .has_cross_site_ancestor = storage_partition.has_cross_site_ancestor,
                 .service_worker_client = start.service_worker_client,
+                .request = start.request,
+                .csp_relay = start.csp_relay,
+                .owner_embedder_policy = owner_embedder_policy,
+                .owner_upgrades_insecure_requests = owner_upgrades_insecure_requests,
             },
         };
         return self;
@@ -3569,6 +3743,8 @@ const ThreadHost = struct {
         self.start.inside_end = null;
         self.start.shared = null;
         self.start.service_worker_client = null;
+        self.start.request = null;
+        self.start.csp_relay = null;
         self.freeStart();
         self.allocator.destroy(self);
     }
@@ -3591,6 +3767,15 @@ const ThreadHost = struct {
         self.start.storage_top_level_site = null;
         @import("dom").service_worker_clients.release(self.start.service_worker_client);
         self.start.service_worker_client = null;
+        // A request its fetch never took (the thread ended before it).
+        if (self.start.request) |request| request.deinit();
+        self.start.request = null;
+        // After the fetch that reported through it is over.
+        if (self.start.csp_relay) |relay| relay.destroy();
+        self.start.csp_relay = null;
+        if (self.start.request_url) |url| self.allocator.free(url);
+        self.start.request_url = null;
+        self.start.owner_embedder_policy.deinit(self.allocator);
     }
 
     /// The worker's realm is a service worker client: it takes the reserved
@@ -3630,6 +3815,20 @@ const ThreadHost = struct {
         worker_host.inside_end = self.start.inside_end;
         self.start.inside_end = null;
         if (!runs) return false;
+
+        // 12. A script fetched over the network is fetched here, on the
+        // worker's own thread (a data: or blob: one came with the start).
+        if (self.start.request) |request| {
+            self.start.request = null;
+            if (!self.fetchScript(worker_host, thread, request)) return false;
+        }
+        // onComplete 6, a dedicated worker: "check a global object's
+        // embedder policy" - a refusal is a network error, `error` at the
+        // Worker, and nothing runs.
+        if (self.start.shared == null and !self.embedderPolicyAllows(worker_host, thread.link)) {
+            self.reportStartFailure(thread.link);
+            return false;
+        }
 
         // 5-9. The realm, whose global object is a new
         // DedicatedWorkerGlobalScope - or SharedWorkerGlobalScope, when
@@ -3684,6 +3883,177 @@ const ThreadHost = struct {
         // constructor: see Worker.zig.)
         if (worker_host.inside_end) |end| end.enable();
         return true;
+    }
+
+    /// The longest the script's fetch waits on its sockets before it looks
+    /// at the link again: how long a terminated worker's thread can take to
+    /// leave a fetch whose server does not answer, and so how long a join
+    /// can wait for it.
+    const fetch_slice_ms: u32 = 5;
+
+    /// "Run a worker" step 12 for a script fetched over the network, on the
+    /// worker's own thread: `request` (taken) goes to this agent's own
+    /// fetches, which this thread drives until the response has arrived -
+    /// waiting on the sockets, not in timer slices, so a worker starts as
+    /// soon as its script is in - while the owner's thread runs on
+    /// (in parallel, as "run a worker" is: workers/Worker-creation-happens-
+    /// in-parallel.https.html busy-waits its main thread for the worker).
+    /// Every slice it looks at the link: terminate(), the Worker's teardown,
+    /// its realm's end and the Browser's end all move the worker to closing
+    /// (WorkerLink.terminate), and the fetch is then terminated - its
+    /// transfer cancelled - within a slice, with nothing fired at the
+    /// Worker; no join waits on the network. Blink's DedicatedWorker::
+    /// Terminate and ContextDestroyed cancel the WorkerClassicScriptLoader
+    /// the same way (its threadable loader's Cancel); Gecko's WorkerPrivate
+    /// cancels WorkerScriptLoader's main-script channel (NS_BINDING_ABORTED)
+    /// and ends its sync loop when the worker is Canceling.
+    ///
+    /// What this thread reaches for the fetch, and why that is safe here:
+    /// the cookie jar is the Browser's, locked (Fetch's cookie steps use
+    /// cookiestore's locking entry points); the network context is the
+    /// Browser's, "reached from every thread of the Browser" - its options
+    /// fixed before any request, its connection share locked by curl, its
+    /// HTTP cache "locked by itself" (fetch/network/network_context.zig);
+    /// the NetworkScheduler is this agent's own, used on this thread only;
+    /// a service worker's route starts Handle Fetch on the fetching thread
+    /// and copies what crosses to the service worker's
+    /// (fetch/internal/service_worker_fetch.zig Route). Each is what a
+    /// worker's own fetch() already reaches from here.
+    ///
+    /// On the script: its URL is the global's from here, the response's
+    /// policy container its own (with the owner's secure-context and
+    /// insecure-requests rules), and its referrer policy the module graph's.
+    /// No script - a network error, a bad status or MIME type - posts the
+    /// start's failure. False when the worker does not run.
+    fn fetchScript(self: *ThreadHost, worker_host: *WorkerHost, thread: *WorkerThread, request: *fetch_mod.internal.InternalRequest) bool {
+        const allocator = self.allocator;
+        const fetches = &worker_host.agent_host.fetches;
+        var outcome: ScriptFetchOutcome = .{};
+        const in_flight = fetch_mod.algorithms.AsyncFetch.start(allocator, request, .{}, fetches, outcome.client()) catch {
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        while (true) {
+            const progressed = fetches.pump();
+            if (outcome.over) break;
+            if (!outcome.delivered and !thread.link.runsTasks()) {
+                // Terminated mid-fetch: the fetch ends here, and the client
+                // hears nothing more.
+                in_flight.terminate();
+                return false;
+            }
+            // A turn that moved the fetch - a transfer that ended, a step
+            // of its job that follows - goes straight to the next one.
+            if (progressed) continue;
+            if (fetches.scheduler.jobs.items.len > 0) {
+                fetches.scheduler.waitForSockets(fetch_slice_ms);
+            } else {
+                // Nothing on the sockets - a service worker's answer is
+                // awaited, which each pump asks for.
+                @import("platform").sleepThread(std.time.ns_per_ms);
+            }
+        }
+        var fetched_result = (outcome.result orelse {
+            self.reportStartFailure(thread.link);
+            return false;
+        }) catch {
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        defer fetched_result.deinit();
+        var script = workers.script_fetch.scriptFromResponse(allocator, self.start.script_url, .{ .worker_type = self.start.worker_type }, fetched_result.response) catch |err| {
+            log.debug("worker script: {}", .{err});
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        defer script.deinit();
+        self.adoptScript(worker_host, &script) catch {
+            self.reportStartFailure(thread.link);
+            return false;
+        };
+        return true;
+    }
+
+    /// The fetched script becomes the start's: its source, its response URL
+    /// as the global's (the request's kept for the violation report), and
+    /// HTML "initialize a worker global scope's policy container" step 2 -
+    /// the response's container, a new embedder policy for an owner that is
+    /// not a secure context (HTML 8.1.3.5 step 1.2) and the owner's
+    /// insecure-requests policy (UIR 3.3), as workerPolicyContainer does on
+    /// the owner's thread for a script fetched there.
+    fn adoptScript(self: *ThreadHost, worker_host: *WorkerHost, script: *workers.FetchedScript) error{OutOfMemory}!void {
+        const allocator = self.allocator;
+        const source = try allocator.dupe(u8, script.source);
+        errdefer allocator.free(source);
+        const final_url = try allocator.dupe(u8, script.final_url);
+        errdefer allocator.free(final_url);
+        const host_url = try allocator.dupe(u8, script.final_url);
+        allocator.free(self.start.source);
+        self.start.source = source;
+        self.start.request_url = self.start.script_url;
+        self.start.script_url = final_url;
+        allocator.free(worker_host.script_url);
+        worker_host.script_url = host_url;
+        if (script.takePolicyContainer()) |container| {
+            var result = container;
+            if (!self.start.owner_is_secure_context) {
+                // A new policy: setting it allocates nothing, and cannot fail.
+                result.setEmbedderPolicy(.{}) catch unreachable;
+            }
+            if (self.start.owner_upgrades_insecure_requests) result.inherited_upgrade_insecure_requests = true;
+            self.start.module_fetch_options.response_referrer_policy = result.referrer_policy;
+            worker_host.module_fetch_options = self.start.module_fetch_options;
+            worker_host.setPolicyContainer(result);
+        }
+    }
+
+    /// HTML "check a global object's embedder policy" for a dedicated
+    /// worker, on its own thread once its script is in: false - the response
+    /// is a network error, and `error` is fired at the Worker - when the
+    /// owner's embedder policy value is compatible with cross-origin
+    /// isolation and the worker's is not (steps 5-7), with the inheritance
+    /// violations of steps 4 and 6 queued on the owner's settings
+    /// (`postInheritanceViolation`).
+    fn embedderPolicyAllows(self: *ThreadHost, worker_host: *WorkerHost, link: *WorkerLink) bool {
+        const owner_policy = &self.start.owner_embedder_policy;
+        if (!owner_policy.value.compatibleWithCrossOriginIsolation() and !owner_policy.report_only_value.compatibleWithCrossOriginIsolation()) return true;
+        const compatible = worker_host.policy_container.embedderPolicy().value.compatibleWithCrossOriginIsolation();
+        // 4. The report-only value's violation.
+        if (owner_policy.report_only_value.compatibleWithCrossOriginIsolation() and !compatible) {
+            self.postInheritanceViolation(link, owner_policy.report_only_reporting_endpoint, true);
+        }
+        // 5-7.
+        if (!owner_policy.value.compatibleWithCrossOriginIsolation() or compatible) return true;
+        self.postInheritanceViolation(link, owner_policy.reporting_endpoint, false);
+        return false;
+    }
+
+    /// HTML "queue a cross-origin embedder policy inheritance violation"
+    /// with type "worker initialization", on the owner's settings object:
+    /// the body is made here and posted to the worker object's loop, where
+    /// Reporting's "generate and queue a report" of the "coep" type runs for
+    /// the owner's global (`InheritanceViolation`). A report that cannot be
+    /// made is dropped.
+    fn postInheritanceViolation(self: *ThreadHost, link: *WorkerLink, endpoint: []const u8, report_only: bool) void {
+        const allocator = self.allocator;
+        // Step 1: Fetch's "serializing a response URL for reporting" - not
+        // CSP §5.4's strip rule, which is CSP's own - so no credentials, no
+        // fragment, and a data: or blob: URL whole. The script URL is the
+        // worker's request's URL list[0].
+        const blocked_url = @import("dom").coep_reporting.serializeResponseUrlForReporting(allocator, &.{self.start.request_url orelse self.start.script_url}) catch return;
+        defer allocator.free(blocked_url);
+        const body = std.json.Stringify.valueAlloc(allocator, .{
+            .type = "worker initialization",
+            .blockedURL = blocked_url,
+            .disposition = if (report_only) "reporting" else "enforce",
+        }, .{}) catch return;
+        errdefer allocator.free(body);
+        const task = InheritanceViolation.create(allocator, self.start.owner_worker, endpoint, body) catch {
+            allocator.free(body);
+            return;
+        };
+        // A closed sink - the owner's loop has ended - drops it.
+        _ = link.owner_sink.post(.{ .run = InheritanceViolation.run, .drop = InheritanceViolation.drop, .data = task });
     }
 
     /// Post "run a worker" onComplete 1.1 to the worker object's loop.

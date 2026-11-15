@@ -35,15 +35,15 @@ test "hc1 cache: a stored response is found by its partition and URL, and only b
     defer store.close();
     store.publish(try entry(allocator, "http://top.test", "http://a.test/x", "hello"));
 
-    const found = store.lookup("http://top.test", "http://a.test/x") orelse return error.TestUnexpectedResult;
+    const found = store.lookup("http://top.test", "http://a.test/x", true) orelse return error.TestUnexpectedResult;
     defer found.release();
     try std.testing.expectEqualStrings("hello", found.body.bytes);
     try std.testing.expectEqual(@as(u16, 200), found.status);
     // Another partition is another cache (Fetch 2.8): a missing key is not
     // a shared one (docs/lessons/architecture-a-missing-partition-key-...).
-    try std.testing.expect(store.lookup("http://other.test", "http://a.test/x") == null);
-    try std.testing.expect(store.lookup("", "http://a.test/x") == null);
-    try std.testing.expect(store.lookup("http://top.test", "http://a.test/y") == null);
+    try std.testing.expect(store.lookup("http://other.test", "http://a.test/x", true) == null);
+    try std.testing.expect(store.lookup("", "http://a.test/x", true) == null);
+    try std.testing.expect(store.lookup("http://top.test", "http://a.test/y", true) == null);
     try std.testing.expectEqual(@as(usize, 1), store.entryCount());
 }
 
@@ -57,12 +57,12 @@ test "hc1 cache: a new response for the key replaces the old, which its reader k
     const store = try HttpCache.create(allocator, .{});
     defer store.close();
     store.publish(try entry(allocator, "p", "http://a.test/x", "old"));
-    const held = store.lookup("p", "http://a.test/x").?;
+    const held = store.lookup("p", "http://a.test/x", true).?;
     store.publish(try entry(allocator, "p", "http://a.test/x", "new"));
     // The reader's copy is intact after the replacement.
     try std.testing.expectEqualStrings("old", held.body.bytes);
     held.release();
-    const now = store.lookup("p", "http://a.test/x").?;
+    const now = store.lookup("p", "http://a.test/x", true).?;
     defer now.release();
     try std.testing.expectEqualStrings("new", now.body.bytes);
     try std.testing.expectEqual(@as(usize, 1), store.entryCount());
@@ -73,11 +73,11 @@ test "hc1 cache: freshening swaps in the updated response only if the old one is
     const store = try HttpCache.create(allocator, .{});
     defer store.close();
     store.publish(try entry(allocator, "p", "http://a.test/x", "v1"));
-    const stale = store.lookup("p", "http://a.test/x").?;
+    const stale = store.lookup("p", "http://a.test/x", true).?;
     defer stale.release();
     const updated = try stale.freshened(allocator, &.{.{ .name = "Cache-Control", .value = "max-age=600" }}, 2000, 2001);
     store.replace(stale, updated);
-    const after = store.lookup("p", "http://a.test/x").?;
+    const after = store.lookup("p", "http://a.test/x", true).?;
     defer after.release();
     try std.testing.expect(after == updated);
     // The body is shared, not copied.
@@ -88,7 +88,7 @@ test "hc1 cache: freshening swaps in the updated response only if the old one is
     store.publish(try entry(allocator, "p", "http://a.test/x", "v2"));
     const late = try stale.freshened(allocator, &.{}, 3000, 3001);
     store.replace(stale, late);
-    const kept = store.lookup("p", "http://a.test/x").?;
+    const kept = store.lookup("p", "http://a.test/x", true).?;
     defer kept.release();
     try std.testing.expectEqualStrings("v2", kept.body.bytes);
 }
@@ -105,17 +105,17 @@ test "hc1 cache: least recently used responses go first, down to 90% of the cap"
     for (urls) |url| store.publish(try entry(allocator, "p", url, &@as([100:0]u8, @splat('x'))));
     try std.testing.expectEqual(@as(usize, 4), store.entryCount());
     // Use /0: /1 is now the least recently used.
-    store.lookup("p", urls[0]).?.release();
+    store.lookup("p", urls[0], true).?.release();
     store.publish(try entry(allocator, "p", "http://a.test/4", &@as([100:0]u8, @splat('x'))));
     // Over the cap: evicted from the cold end until at most 90% of it is
     // used - /1 alone here (5 entries -> 4, under 4.05).
     const max = size * 4 + size / 2;
     try std.testing.expect(store.byteCount() <= max - max / 10);
-    try std.testing.expect(store.lookup("p", urls[1]) == null);
-    store.lookup("p", urls[2]).?.release();
-    store.lookup("p", urls[3]).?.release();
-    store.lookup("p", urls[0]).?.release();
-    store.lookup("p", "http://a.test/4").?.release();
+    try std.testing.expect(store.lookup("p", urls[1], true) == null);
+    store.lookup("p", urls[2], true).?.release();
+    store.lookup("p", urls[3], true).?.release();
+    store.lookup("p", urls[0], true).?.release();
+    store.lookup("p", "http://a.test/4", true).?.release();
 }
 
 test "hc1 cache: a response bigger than the entry cap is not stored; the default cap is an eighth" {
@@ -124,7 +124,7 @@ test "hc1 cache: a response bigger than the entry cap is not stored; the default
     defer store.close();
     try std.testing.expectEqual(@as(usize, 1000), store.maxEntryBytes());
     store.publish(try entry(allocator, "p", "http://a.test/big", &@as([1200:0]u8, @splat('y'))));
-    try std.testing.expect(store.lookup("p", "http://a.test/big") == null);
+    try std.testing.expect(store.lookup("p", "http://a.test/big", true) == null);
     try std.testing.expectEqual(@as(usize, 0), store.byteCount());
     const defaults = try HttpCache.create(allocator, .{});
     defer defaults.close();
@@ -139,8 +139,8 @@ test "hc1 cache: invalidation removes the target URI in its partition only" {
     store.publish(try entry(allocator, "p", "http://a.test/x", "1"));
     store.publish(try entry(allocator, "q", "http://a.test/x", "2"));
     store.invalidate("p", "http://a.test/x");
-    try std.testing.expect(store.lookup("p", "http://a.test/x") == null);
-    store.lookup("q", "http://a.test/x").?.release();
+    try std.testing.expect(store.lookup("p", "http://a.test/x", true) == null);
+    store.lookup("q", "http://a.test/x", true).?.release();
 }
 
 test "hc1 cache: clearing an origin removes its responses in every partition" {
@@ -152,10 +152,10 @@ test "hc1 cache: clearing an origin removes its responses in every partition" {
     store.publish(try entry(allocator, "p", "https://a.test:8443/x", "3"));
     store.publish(try entry(allocator, "p", "https://b.test/x", "4"));
     store.clearOrigin("https://a.test");
-    try std.testing.expect(store.lookup("p", "https://a.test/x") == null);
-    try std.testing.expect(store.lookup("q", "https://a.test:443/y?z") == null);
-    store.lookup("p", "https://a.test:8443/x").?.release();
-    store.lookup("p", "https://b.test/x").?.release();
+    try std.testing.expect(store.lookup("p", "https://a.test/x", true) == null);
+    try std.testing.expect(store.lookup("q", "https://a.test:443/y?z", true) == null);
+    store.lookup("p", "https://a.test:8443/x", true).?.release();
+    store.lookup("p", "https://b.test/x", true).?.release();
 }
 
 test "hc1 cache: a writer's reference outlives the owner's close, and its publish is dropped" {
@@ -293,7 +293,7 @@ test "hc1 cache: one cache shared by two threads stays consistent" {
                 const url = std.fmt.bufPrint(&buf, "http://a.test/{d}", .{i % 97}) catch unreachable;
                 const e = entry(a, "p", url, &@as([200]u8, @splat(tag))) catch continue;
                 s.publish(e);
-                if (s.lookup("p", url)) |found| {
+                if (s.lookup("p", url, true)) |found| {
                     std.debug.assert(found.body.bytes.len == 200);
                     found.release();
                 }

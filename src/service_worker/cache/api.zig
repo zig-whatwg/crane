@@ -10,10 +10,14 @@
 //! (whose reactions run as microtasks); the ones that wait - a body to be
 //! read, a fetch - settle it from a promise reaction.
 //!
+//! matchAll()'s step 5.4 - an "opaque" response that Fetch's cross-origin
+//! resource policy check blocks rejects the promise with a TypeError, after
+//! the check's COEP CORP violation reports - runs for match(), matchAll()
+//! and CacheStorage's match(), which run matchAll()'s steps (`corpBlocks`).
+//!
 //! Stated deviations:
-//! - matchAll()'s step 5.4 (an opaque response that the cross-origin
-//!   resource policy check blocks rejects) is not run: Crane has no
-//!   cross-origin resource policy check yet (Fetch's is not run either).
+//! - Handle Fetch's cache source (`routerMatch`) does not run its step
+//!   13.3.3.7.4.6 check yet.
 //!
 //! An opaque or opaque-redirect response is kept as the spec keeps the
 //! filtered response: with its internal response (InternalResponse
@@ -514,12 +518,96 @@ fn findEntries(scope: *Scope, cache: u64, request: ?RequestInfo, options: store_
     return scope.storage.query(scope.browser, allocator, cache, store_mod.Query.of(&stored), options) catch |err| return storeError(err);
 }
 
+/// match(request, options) (5.4.1) step 2.1 runs matchAll()'s steps, so
+/// step 5.4's check covers every matching response, not only the first one
+/// match() resolves with: a blocked one rejects (error.TypeError).
 fn firstMatch(scope: *Scope, cache: u64, request: RequestInfo, options: store_mod.QueryOptions) !?*runtime.Instance {
     const allocator = scope.realm.allocator;
     const entries = try findEntries(scope, cache, request, options);
     defer records.freeEntries(allocator, entries);
+    if (try corpBlocks(scope.realm, entries)) return error.TypeError;
     if (entries.len == 0) return null;
     return try responseObject(scope.realm, &entries[0].response);
+}
+
+/// Service Workers 5.4.2 matchAll() step 5.4, for `response`: "If
+/// response's type is "opaque" and cross-origin resource policy check with
+/// promise's relevant settings object's origin, promise's relevant settings
+/// object, "", and response's internal response returns blocked" - `origin`
+/// being that settings object's origin (serialized) and `embedder_policy`
+/// its policy container's. A record keeps an opaque response's internal
+/// response (records.StoredResponse.hidesHeaders): its headers, URL list
+/// and request-includes-credentials are the check's. Any other type -
+/// opaque-redirect included - is not checked. The reports the check asks
+/// for (Fetch's steps 4 and 6) are the caller's: `corpBlocks`.
+pub fn corpCheckOf(allocator: Allocator, origin: []const u8, embedder_policy: *const fetch.internal.EmbedderPolicy, response: *const records.StoredResponse) error{OutOfMemory}!fetch.internal.cross_origin_policies.CorpCheck {
+    if (response.response_type != records.StoredResponse.opaque_types[0]) return .{ .result = .allowed };
+    // "Getting `Cross-Origin-Resource-Policy` from response's header list":
+    // the combined value, as Fetch's internal check reads it.
+    const corp = try response.header(allocator, "Cross-Origin-Resource-Policy");
+    defer if (corp) |value| allocator.free(value);
+    return fetch.internal.cross_origin_policies.corpCheck(allocator, origin, embedder_policy, .{
+        // The response's URL: the last URL of its URL list.
+        .url = if (response.url_list.len > 0) response.url_list[response.url_list.len - 1] else "",
+        .corp = corp,
+        .request_includes_credentials = response.request_includes_credentials,
+    }, false);
+}
+
+/// The URL a CORP violation report of `response` names before Fetch's
+/// "serialize a response URL for reporting" strips it: its URL list[0], the
+/// URL its fetch started at (dom.coep_reporting serializes it). BORROWED.
+pub fn reportedUrlOf(response: *const records.StoredResponse) []const u8 {
+    return if (response.url_list.len > 0) response.url_list[0] else "";
+}
+
+/// matchAll() step 5.4 over `entries`, in order, for `realm`'s global - the
+/// promise's relevant settings object: true when one of them is blocked,
+/// and the caller rejects with a TypeError ("and abort these steps": the
+/// responses after it are not checked). Each check's reports go to the
+/// settings object's Reporting queue first: Fetch "queue a cross-origin
+/// embedder policy CORP violation report" with the destination "" - a
+/// "reporting" one when the report-only value's check blocks (step 4), an
+/// "enforce" one when the embedder policy's value blocks (step 6).
+/// Chromium does the same in CacheStorageDispatcherHost
+/// (ResponseBlockedByCrossOriginResourcePolicy: an opaque response checked
+/// with the client's origin and COEP, its reporter's
+/// QueueCorpViolationReport, kErrorCrossOriginResourcePolicy -> TypeError);
+/// cache-storage-reporting-document.https.html: Chrome 2/2 at wpt.fyi
+/// cc74d2669f (Firefox and Safari make no COEP report here).
+fn corpBlocks(realm: runtime.Context, entries: []const records.Entry) !bool {
+    // Nothing to check without an opaque response: the common case reads
+    // no settings.
+    for (entries) |*entry| {
+        if (entry.response.response_type == records.StoredResponse.opaque_types[0]) break;
+    } else return false;
+    const global = globalOf(realm) orelse return false;
+    const settings = dom.global_settings.of(global) orelse return false;
+    const allocator = realm.allocator;
+    const origin = try settings.origin(global);
+    defer allocator.free(origin);
+    const no_policy: fetch.internal.EmbedderPolicy = .{};
+    const container = if (settings.policy_container) |container_of| container_of(global) else null;
+    const embedder_policy = if (container) |c| c.embedderPolicy() else &no_policy;
+    const reporter = dom.coep_reporting.reporterFor(global);
+    for (entries) |*entry| {
+        const check = try corpCheckOf(allocator, origin, embedder_policy, &entry.response);
+        const blocked_url = reportedUrlOf(&entry.response);
+        if (check.report_only_blocks) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = .empty,
+            .report_only = true,
+            .endpoint = embedder_policy.report_only_reporting_endpoint,
+        });
+        if (check.enforced_by_embedder_policy) reporter.report(reporter.context, &.{
+            .blocked_url = blocked_url,
+            .destination = .empty,
+            .report_only = false,
+            .endpoint = embedder_policy.reporting_endpoint,
+        });
+        if (check.result == .blocked) return true;
+    }
+    return false;
 }
 
 fn matchIn(scope: *Scope, cache: u64, request: RequestInfo, options: store_mod.QueryOptions) !runtime.JSValue {
@@ -544,6 +632,8 @@ pub fn matchAll(cache_object: *runtime.Instance, handle: CacheHandle, request: ?
     const allocator = realm.allocator;
     const entries = try findEntries(&scope, handle.cache, request, queryOptionsOf(options));
     defer records.freeEntries(allocator, entries);
+    // 5.4. A blocked opaque response rejects with a TypeError.
+    if (try corpBlocks(realm, entries)) return error.TypeError;
     const values = try allocator.alloc(runtime.JSValue, entries.len);
     defer allocator.free(values);
     for (entries, values) |*entry, *value| value.* = runtime.JSValue.fromInstance(try responseObject(realm, &entry.response));

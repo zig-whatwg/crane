@@ -264,14 +264,9 @@ pub fn closeRequestSteps(document: *Instance) bool {
 /// `document`, before any event is fired: whether the request ends there.
 /// "If document's fullscreen element is not null: fully exit fullscreen
 /// given document's node navigable's top-level traversable's active
-/// document, and return." Crane makes no element fullscreen
-/// (Document.fullscreen_element is never set: there is no display mode to
-/// enter), so there is nothing to exit; a fullscreen element, should one
-/// ever be set, ends the request as the step says, and exiting it is the
-/// fullscreen owner's TODO (no "fully exit fullscreen" algorithm exists).
+/// document, and return." (html.fullscreen)
 pub fn closeRequestEndsInFullscreen(document: *Instance) bool {
-    const element = interfaces.Document.get_fullscreenElement(document) catch return false;
-    return element != null;
+    return @import("fullscreen.zig").closeRequestEndsInFullscreen(document);
 }
 
 /// A close request with no event (a back gesture, an assistive technology's

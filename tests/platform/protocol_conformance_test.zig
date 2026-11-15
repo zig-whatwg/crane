@@ -79,8 +79,9 @@ test "conformance: the bound platform matches every operation" {
     // releaseAddressSpace); 230 since lane tls1 added a thread's alternate
     // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
-    // encodeImage).
-    try testing.expectEqual(@as(usize, 232), count);
+    // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
+    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder).
+    try testing.expectEqual(@as(usize, 235), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

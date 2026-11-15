@@ -2461,6 +2461,7 @@ const platform_capability_names = [_][]const u8{
     "image_encoding",
     "font_decoding",
     "brotli",
+    "deflate_decoding",
     "persistent_storage",
     "file_urls",
     "system_trust_store",
@@ -4379,7 +4380,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "darwin", .platform = .darwin, .without = &.{} },
             .{ .name = "linux", .platform = .linux, .without = &.{} },
             .{ .name = "testing_without_camera_clipboard", .platform = .testing, .without = &.{ "camera", "clipboard" } },
-            .{ .name = "testing_without_brotli", .platform = .testing, .without = &.{"brotli"} },
+            .{ .name = "testing_without_brotli_and_deflate_decoding", .platform = .testing, .without = &.{ "brotli", "deflate_decoding" } },
             .{ .name = "testing_without_image_decoding", .platform = .testing, .without = &.{"image_decoding"} },
             .{ .name = "testing_without_image_encoding", .platform = .testing, .without = &.{"image_encoding"} },
             .{ .name = "testing_without_font_decoding", .platform = .testing, .without = &.{"font_decoding"} },
@@ -5706,17 +5707,22 @@ pub fn build(b: *std.Build) void {
     // FRAMEWORKS: the JS framework compatibility matrix's harness (tools/fw_matrix/)
     // ========================================================================
     // tools/fw_matrix fetches the frameworks' pinned suites by checksum,
-    // serves each suite's tree on 127.0.0.1, opens its pages in Crane's
-    // console (`repl <url>`, a fresh one per page), reads the framework's own
-    // report and writes the journal (tmp/plans/framework-matrix-plan.md). A
-    // tool: std only, on the host; no Node.
+    // serves each suite's tree on 127.0.0.1, or starts the project's own test
+    // server under the pinned Node when the manifest names one (jQuery's jtr
+    // serve; the user, 2026-11-11: Node only for the framework tests), opens
+    // its pages in Crane's console (`repl <url>`, a fresh one per page), reads
+    // the framework's own report and writes the journal
+    // (tmp/plans/framework-matrix-plan.md). A tool: std only, on the host.
     const fw_matrix_module = b.createModule(.{
         .root_source_file = b.path("tools/fw_matrix/main.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
-        // The report's HTML helpers are the WPT site's (escaping, numbers).
+        // The report's HTML helpers are the WPT site's (escaping, numbers),
+        // and its social card the WPT site's digit atlas and PNG codec, as
+        // /performance/'s is.
         .imports = &.{
             .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "site_card", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/card.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
         },
     });
     const fw_matrix_exe = b.addExecutable(.{ .name = "fw_matrix", .root_module = fw_matrix_module });
@@ -5729,6 +5735,7 @@ pub fn build(b: *std.Build) void {
     addTestVerify(b, launch, fw_matrix_tests, "tools-fw_matrix", "tools/fw_matrix", &.{
         "main.zig",      "journal.zig", "exclusions.zig", "manifest.zig", "readers.zig",
         "generated.zig", "server.zig",  "fetch.zig",      "run.zig",      "report.zig",
+        "external.zig",  "card.zig",
     });
     // The manifest and the exclusion lists, read strictly: every entry with
     // its reason, each belonging to a page.

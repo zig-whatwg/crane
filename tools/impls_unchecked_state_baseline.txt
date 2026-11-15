@@ -108,7 +108,6 @@ src/webidl/impls/HTMLSelectElement.zig setPickerOpen 1
 src/webidl/impls/HTMLSelectElement.zig setSelectedcontentInterest 1
 src/webidl/impls/HTMLSelectElement.zig setUserValidity 1
 src/webidl/impls/HTMLSelectElement.zig userValidity 1
-src/webidl/impls/HTMLSelectedContentElement.zig recalculate 1
 src/webidl/impls/HTMLSourceElement.zig attributeChanged 1
 src/webidl/impls/HTMLSourceElement.zig sourceURL 1
 src/webidl/impls/HTMLTrackElement.zig data 1

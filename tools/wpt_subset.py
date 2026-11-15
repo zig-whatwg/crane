@@ -136,6 +136,25 @@ INCLUDE = [
     ('css/css-text/parsing/', 'text property syntax and computed values, not shaping'),
     ('css/css-transforms/parsing/', 'transform property syntax and computed values'),
     ('css/css-transitions/parsing/', 'transition property syntax and computed values'),
+    # CSS Transitions 2 @starting-style (the integrator, 2026-11-14, lane sel1
+    # batch 1, with the feature): all three browsers ship it (wpt.fyi 2358bd4835:
+    # Chrome 157, Firefox 160 and Safari 27.2 pass these files, Safari 0/2 on the
+    # revert-layer one and 1/6 on after-change-style-inherited). Not
+    # starting-style-size-container.html (its @starting-style sits in a size
+    # @container query: the container's laid-out width, geometry) and not
+    # starting-style-first-letter-crash.html (a crashtest, no subtests). The rest
+    # of css/css-transitions/ is queued as a worklist expansion of the animation
+    # area.
+    ('css/css-transitions/starting-style-adjustment.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-cascade.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-name-defining-rules.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-revert-layer-cascade.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-basic.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-none.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/starting-style-rule-pseudo-elements.html', 'CSS Transitions 2 @starting-style; all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/idlharness-2.html', 'CSS Transitions 2 @starting-style (CSSStartingStyleRule, CSSTransition IDL); all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-transitions/after-change-style-inherited.html', 'CSS Transitions 2 @starting-style (it stays out of the after-change style); all three browsers ship it; added by lane sel1 with the feature'),
+    ('css/css-cascade/scope-starting-style.html', 'CSS Transitions 2 @starting-style inside @scope; all three browsers ship it; added by lane sel1 with the feature'),
     ('css/css-typed-om/the-stylepropertymap/computed/', 'typed computed style values, not box geometry'),
     ('css/css-ui/parsing/', 'UI property syntax and computed values, not native widgets'),
     ('css/css-view-transitions/parsing/', 'view transition property syntax and computed values, not screenshots'),
@@ -440,8 +459,6 @@ INCLUDE = [
     ('css/css-ui/appearance-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/appearance-serialization.html', 'ui value or rule serialization; no rendered boxes'),
     ('css/css-ui/caret-shape-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
-    ('css/css-ui/input-security-computed.html', 'ui computed style and inheritance; no rendered box assertions'),
-    ('css/css-ui/input-security-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/webkit-appearance-parsing.html', 'ui syntax and value parsing outside the parsing directory'),
     ('css/css-ui/webkit-appearance-serialization.html', 'ui value or rule serialization; no rendered boxes'),
     ('css/css-values/attr-parse-url.html', 'values syntax and value parsing outside the parsing directory'),
@@ -523,6 +540,11 @@ INCLUDE = [
     ('html/semantics/the-button-element/', 'button'),
     ('html/semantics/links/',              'a, href'),
     ('html/semantics/embedded-content/the-iframe-element/', 'iframe, full spec minus rendering'),
+    # Lane ifr1 b1 (the integrator, 2026-11-14): Fullscreen is a WHATWG Living
+    # Standard all three browsers ship; Crane keeps its state functional (the
+    # fullscreen flag, the fullscreen element, its events, :fullscreen), nothing
+    # drawn. Geometry, screen-size and reftest-only files are excluded below.
+    ('fullscreen/', 'Fullscreen API: requestFullscreen/exitFullscreen, the fullscreen element and events, :fullscreen; geometry exceptions below'),
 
     # --- iframe needs real browsing contexts; navigation needs the rest. ----
     ('html/browsers/windows/',           'nested browsing contexts, contentWindow'),
@@ -797,9 +819,10 @@ EXCLUDE = [
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/nested-containers.html', 'keyboard focus target depends on nested visual layout order'),
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/partial-reordering.html', 'keyboard focus target depends on visual layout order'),
     ('html/interaction/focus/focusgroup/tentative/reading-flow-navigation/simple-mixed.html', 'keyboard focus target depends on visual flex layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/grid-', 'keyboard focus target depends on grid visual layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/flex-', 'keyboard focus target depends on flex visual layout order'),
-    ('shadow-dom/focus-navigation/reading-flow/tentative/carousel-grid-order.html', 'keyboard focus target depends on grid/carousel visual layout order'),
+    # Upstream moved these out of tentative/ (WPT 2358bd4835, the 2026-11-14 update): the same files.
+    ('shadow-dom/focus-navigation/reading-flow/grid-', 'keyboard focus target depends on grid visual layout order'),
+    ('shadow-dom/focus-navigation/reading-flow/flex-', 'keyboard focus target depends on flex visual layout order'),
+    ('shadow-dom/focus-navigation/reading-flow/carousel-grid-order.html', 'keyboard focus target depends on grid/carousel visual layout order'),
     ('shadow-dom/focus-navigation/tentative/focus-navigation-scroller-', 'focus target depends on a scrollable box'),
     ('shadow-dom/focus-navigation/tentative/focus-scroller-layout-update.html', 'focus target changes when layout creates a scrollable box'),
     ('shadow-dom/focus/focus-scroll-under-delegatesFocus.html', 'waits for and asserts scrolling caused by focus'),
@@ -825,6 +848,11 @@ EXCLUDE = [
     ('html/semantics/interactive-elements/the-dialog-element/modal-dialog-ancestor-is-inert.html', 'asserts pointer targets at measured getBoundingClientRect centers'),
     ('html/semantics/interactive-elements/the-dialog-element/modal-dialog-blocks-mouse-events.html', 'asserts pointer targets at measured getBoundingClientRect centers'),
     ('html/semantics/interactive-elements/the-dialog-element/popover-dialog-does-not-block-mouse-events.html', 'targets viewport pointer clicks using measured offset coordinates'),
+
+    ('fullscreen/api/element-request-fullscreen-screen-size.https.html', 'asserts screen and window sizes during fullscreen'),
+    ('fullscreen/api/fullscreen-reordering.html', 'asserts the topmost element through elementFromPoint hit-testing'),
+    ('fullscreen/rendering/fullscreen-root-block-scroll.html', 'asserts the fullscreen root\'s scrollTop over laid-out overflow'),
+    ('fullscreen/rendering/fullscreen-root-block-size.html', 'asserts the fullscreen root\'s laid-out block size'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),
@@ -884,6 +912,14 @@ EXCLUDE = [
     # selectedcontent for multiple selects.
     ('html/semantics/forms/the-select-element/customizable-select-multiple-popup/selectedcontent-multiple-restore.optional.html',
      'selectedcontent for select multiple, unspecified'),
+    # Two .optional customizable-select files (WPT's .optional: behaviour the spec allows but does not
+    # require) that lane sel1 batch 1 did not implement: the picker's event sequence and its dialog-mode
+    # focus. The user, 2026-11-14 6:00 PM ET ("1 skip"): not part of the 0.1 gate. Re-include when the
+    # customizable select's picker work takes them up.
+    ('html/semantics/forms/the-select-element/customizable-select/select-events.optional.html',
+     'optional picker event sequence, not in the 0.1 gate (the user, 2026-11-14)'),
+    ('html/semantics/forms/the-select-element/customizable-select/select-dialog-mode-focus.optional.html',
+     'optional picker dialog-mode focus, not in the 0.1 gate (the user, 2026-11-14)'),
     # Needs Gecko's test preference dom.serviceWorkers.testUpdateOverOneDay
     # ("treat all registrations as older than 24 hours", the file's opening
     # comment); there is no WebDriver or testdriver way to set it, and Chrome,
@@ -1287,16 +1323,57 @@ EXCLUDE = [
      'size as a width/height shorthand (CSS Sizing 4): Chrome 9/10 only through its @page size descriptor, Firefox 0/10, Safari 0/10'),
     ('css/css-text/parsing/text-align-all-valid.html',
      'text-align-all: 0/7 in all three'),
-    ('css/css-ui/input-security-computed.html',
-     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
-    ('css/css-ui/input-security-parsing.html',
-     'input-security was removed from CSS UI 4 and its tests from WPT (wpt a1180baf86, 2026-09-30); no browser ships it'),
     ('css/css-values/ident-function-computed.html',
      'ident() (CSS Values 5): 0/14 in all three'),
     ('css/css-writing-modes/text-combine-upright-parsing-digits-001.html',
      'text-combine-upright: digits <integer>: 0/10 in all three'),
     ('css/css-writing-modes/text-combine-upright-parsing-digits-002.html',
      'text-combine-upright: digits <integer>: 0/12 in all three'),
+    # The WPT update to 2358bd4835 (lane wptup1, 2026-11-14; the integrator's rulings under the
+    # scope line, 04:5x UTC). Evidence: wpt.fyi aligned stable runs at 2358bd4835 - Chrome
+    # 157.0.8103.78 (4786307730243584), Firefox 160.0 (4877168468033536), Safari 27.2
+    # (6479119966273536).
+    # Not ratified: upstream moved these out of .tentative names into their own directories.
+    # None tests only Ed25519/X25519 (those are in Web Cryptography and stay, by their own paths).
+    ('WebCryptoAPI/modern-algos/',
+     'not ratified: WICG Modern Algorithms draft; re-check when it enters the Web Cryptography spec'),
+    ('WebCryptoAPI/secure-curves/',
+     'not ratified: WICG Secure Curves draft (X448/Ed448); re-check when it enters the Web Cryptography spec'),
+    # Focus order from layout (the reading-flow geometry entries above); its siblings
+    # normal.html and source-order-{valid,invalid}.html need no layout and stay.
+    ('shadow-dom/focus-navigation/reading-flow/simplified-layout.html',
+     'keyboard focus target depends on visual layout order: 0/1 in all three'),
+    # MathML Core 3.6 (w3c/mathml-core#307, #330, #335) gives <a> the referrerpolicy content
+    # attribute but no referrerPolicy IDL attribute (MathMLAnchorElement has href, target and
+    # HyperlinkElementUtils only), so the getter/setter has no spec text. The navigation tests
+    # (referrer-policy/gen/**/mathml-a-tag.http.html) stay.
+    ('mathml/relations/html5-tree/a-referrerpolicy-getter-setter.html',
+     'MathMLAnchorElement.referrerPolicy is in no spec IDL: 0/1 in all three'),
+    # Tentative in fact: no spec change behind it (HTML "close the dialog" moves focus only to a
+    # previously focused element; with none, the focus fixup at the next rendering update resets
+    # it, not close() itself). Chromium-only behaviour, crbug.com/41284677 (2026-10-25); no
+    # whatwg/html PR or issue. 0/1 in all three.
+    ('html/semantics/interactive-elements/the-dialog-element/dialog-close-focus-no-previous.html',
+     'tentative in fact: expects body focused at close() with no previously focused element; no spec change (crbug 41284677 only)'),
+    # CSS features no browser ships (the cssprop1 rule above); their -invalid siblings stay.
+    ('css/css-sizing/parsing/max-size-shorthand.html',
+     'max-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/max-size-valid.html',
+     'max-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-shorthand.html',
+     'min-size shorthand (CSS Sizing 4): 0/15 in all three (run 2358bd4835)'),
+    ('css/css-sizing/parsing/min-size-valid.html',
+     'min-size shorthand (CSS Sizing 4): 0/14 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-computed.html',
+     'text-autospace-size: 0/5 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/text-autospace-size-valid.html',
+     'text-autospace-size: 0/4 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-shorthand-longhands.html',
+     'the white-space shorthand setting white-space-trim with its other longhands: 0/19 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-computed.html',
+     'white-space-trim: 0/7 in all three (run 2358bd4835)'),
+    ('css/css-text/parsing/white-space-trim-valid.html',
+     'white-space-trim: 0/11 in all three (run 2358bd4835)'),
     # Harness infrastructure, not tests.
     ('/support/',                      'support files'),
     ('/resources/',                    'harness resources'),

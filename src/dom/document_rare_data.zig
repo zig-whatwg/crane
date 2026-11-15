@@ -73,12 +73,11 @@ pub const DocumentRareData = struct {
     pointed_element: ?same_object.Link = null,
     activated_element: ?same_object.Link = null,
 
-    /// The fullscreen element (Fullscreen API), the pointer lock element
-    /// (Pointer Lock 2.0) and the picture-in-picture element (Picture-in-
-    /// Picture): Blink keeps each in a supplement of its own, made on first
-    /// use (Fullscreen, PointerLockController, PictureInPictureController).
-    /// None is ever set yet.
-    fullscreen_element: ?*runtime.Instance = null,
+    /// The pointer lock element (Pointer Lock 2.0) and the
+    /// picture-in-picture element (Picture-in-Picture): Blink keeps each in
+    /// a supplement of its own, made on first use (PointerLockController,
+    /// PictureInPictureController). Neither is ever set yet. (The fullscreen
+    /// element is the top layer's: dom.top_layer, html.fullscreen.)
     pointer_lock_element: ?*runtime.Instance = null,
     picture_in_picture_element: ?*runtime.Instance = null,
 
@@ -93,6 +92,11 @@ pub const DocumentRareData = struct {
     /// "reset the form owner" undoes them (html/form_associated.zig). Raw
     /// links, generation-checked: they keep nothing alive.
     parser_form_associations: std.ArrayListUnmanaged(ParserFormAssociation) = .empty,
+
+    /// HTML 2.5.7: the document's lazy load intersection observer - its
+    /// targets, weak links (dom.lazy_load_observer). Empty for a document
+    /// with no lazy element.
+    lazy_load_targets: @import("lazy_load_observer.zig").Targets = .empty,
 
     fn init(allocator: std.mem.Allocator) DocumentRareData {
         return .{
@@ -135,6 +139,7 @@ pub const DocumentRareData = struct {
         if (self.frozen_base_url) |url| allocator.free(url);
         if (self.pragma_language) |language| allocator.free(language);
         self.parser_form_associations.deinit(allocator);
+        self.lazy_load_targets.deinit(allocator);
         if (self.counted_in) |memory| memory.sub(@sizeOf(DocumentRareData));
         allocator.destroy(self);
     }

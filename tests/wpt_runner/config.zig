@@ -148,6 +148,7 @@ pub const in_scope_categories: []const TestCategory = &.{
     .{ .name = "xhr", .description = "XMLHttpRequest Standard" },
     .{ .name = "dom", .description = "DOM Standard" },
     .{ .name = "html", .description = "HTML Standard (non-rendering)" },
+    .{ .name = "fullscreen", .description = "Fullscreen API" },
     .{ .name = "cookiestore", .description = "Cookie Store API" },
     .{ .name = "webidl", .description = "WebIDL bindings" },
     // The three below were in the 0.1 worklist (tools/wpt_subset.py) but not

@@ -676,6 +676,14 @@ fn updateTheRendering(frames: *Frames) void {
     // time. 21. Paint timing. 23. Top layer removals. (22, updating the
     // user interface, is the host's.)
     runOwnerStep(frames, &token, documents.items, .view_transitions, frame);
+    // 19: the lazy load intersection observer's part (HTML 2.5.7,
+    // dom.lazy_load_observer, an owner outside the impls); it runs no
+    // script - its callbacks are tasks.
+    for (documents.items) |document| {
+        if (dispatchState(frames, &token) == null) break;
+        if (!document.current()) continue;
+        dom_mod.lazy_load_observer.updateObservations(document.document);
+    }
     runOwnerStep(frames, &token, documents.items, .intersection_observations, frame);
     runOwnerStep(frames, &token, documents.items, .rendering_time, frame);
     runOwnerStep(frames, &token, documents.items, .paint_timing, frame);
