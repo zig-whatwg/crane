@@ -74,6 +74,14 @@ fn windowOf(document: *Instance) ?*Instance {
     return interfaces.Document.get_defaultView(document) catch null;
 }
 
+/// Whether `document` is fully active (HTML 7.3.3: the active document of
+/// its navigable, its container document fully active too). False once it
+/// was unloaded, destroyed, its frame removed or navigated away, or its
+/// realm has ended - however long script keeps its nodes.
+fn isFullyActive(document: *Instance) bool {
+    return dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document));
+}
+
 fn isConnected(node: *Instance) bool {
     return interfaces.Node.get_isConnected(node) catch false;
 }
@@ -244,8 +252,60 @@ pub const Pointer = struct {
     /// removed it: then the pointer is over whatever is left of the document
     /// it was over - its body, as a hit test at the same point would find
     /// with the element gone.
+    ///
+    /// A pointer is over nothing of a document that is no longer fully
+    /// active - its frame was removed or navigated away, or it was unloaded:
+    /// what the pointer designated there is forgotten WITHOUT events, and
+    /// the next move enters its target from nowhere. No specification text
+    /// covers a document that has gone (Pointer Events 4 section 11.3 only
+    /// has "if the target is removed from the DOM during the mouse events
+    /// sequence, the remaining events of the sequence MUST NOT be fired on
+    /// that element"; its "active document" of a pointer is a glossary
+    /// term), so this is golden rule 2, and the three engines agree - the
+    /// element under the mouse is a frame's state, dropped without events
+    /// when the frame's document goes:
+    /// - Blink: third_party/blink/renderer/core/input/event_handler.cc
+    ///   EventHandler::Clear calls mouse_event_manager_->Clear()
+    ///   (mouse_event_manager.cc: element_under_mouse_ = nullptr,
+    ///   mouse_press_node_ = nullptr, no event), from
+    ///   core/frame/local_frame.cc LocalFrame::DidAttachDocument - each time
+    ///   the frame gets a new document;
+    /// - WebKit: Source/WebCore/page/EventHandler.cpp EventHandler::clear
+    ///   (clearElementUnderMouse(); m_lastElementUnderMouse = nullptr), from
+    ///   Source/WebCore/loader/FrameLoader.cpp FrameLoader::clear - the old
+    ///   document's end when a new one is committed;
+    /// - Gecko: layout/base/PresShell.cpp PresShell::Destroy calls
+    ///   dom/events/EventStateManager.cpp
+    ///   EventStateManager::NotifyDestroyPresContext (ResetHoverState();
+    ///   mMouseEnterLeaveHelper = nullptr; mPointersEnterLeaveHelper.Clear()),
+    ///   which dispatches nothing.
+    /// (Read at each repository's main branch, 2026-11-14.)
+    /// Before lane tl1 the boundary events were fired at the old element,
+    /// its body and its html element for as long as the old tree was
+    /// allocated - which is until its realm's end, a task the collector
+    /// queues (the weak references here are an address and a generation).
+    /// Between the collection and that task the events were made in a realm
+    /// with no engine behind it: nothing could free them - 12 leaked
+    /// allocations at a WPT runner child's exit - and their timestamp step
+    /// read the old Window's Performance object, which the collector had
+    /// freed - a segmentation fault (replace-before-load/
+    /// location-setter-user-click.html, whose every click navigates the
+    /// frame its button is in: 39 leaking and 3 crashed of 96 bug-finding
+    /// runner processes on main 9a0207b5b4;
+    /// tests/html/tl1_pointer_after_realm_collected_test.zig,
+    /// tl1_pointer_leaves_dead_document_test.zig).
+    /// dom.document_activity reads a document of a realm with no engine as
+    /// gone, so nothing of that realm is read here.
     pub fn currentTarget(self: *Pointer) ?*Instance {
         const document = if (self.hit_document) |d| d.get() else null;
+        if (document) |d| if (!isFullyActive(d)) {
+            // HTML 4.16.3 :hover: a document the pointer left designates
+            // nothing (as pointerMove says of a document it moves out of).
+            dom.pointer_states.set(d, .hovered, null);
+            self.hit = null;
+            self.hit_document = null;
+            return null;
+        };
         if (self.hit) |weak| {
             if (weak.get()) |element| {
                 if (isConnected(element) and document != null and nodeDocument(element) == document.?) return element;
@@ -442,6 +502,13 @@ fn ancestors(node: *Instance, out: []*Instance) usize {
 /// boundary events when the element under it changes - out and leave at the
 /// old one, over and enter at the new - then pointermove and mousemove.
 pub fn pointerMove(pointer: *Pointer, target: *Instance, modifiers: Modifiers) void {
+    // A pointer cannot be moved onto an element of a document that is not
+    // fully active: nothing of it is shown, so no hit test finds it
+    // (`Pointer.currentTarget` says what the engines do). WebDriver refuses
+    // such an origin before any action ("get a known element": a stale
+    // element reference when its node document is not the active document);
+    // an embedder that passes one all the same moves nothing.
+    if (nodeDocument(target)) |document| if (!isFullyActive(document)) return;
     const previous = pointer.currentTarget();
     if (previous != target) {
         var old_chain: [64]*Instance = undefined;
