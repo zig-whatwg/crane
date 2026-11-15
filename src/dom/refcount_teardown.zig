@@ -325,16 +325,19 @@ pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) 
 }
 
 /// The agent's books of the trees its collections predicted dead
-/// (dom.dying_trees), in a run that asked for the counts' diagnostics
-/// (CRANE_REFCOUNT_CHECK: the bug-finding WPT run) and predicted any: one
-/// line a sweep's log is summed from - how often the marks' rule called a
-/// tree dead that lived (the integrator's ruling 2 on lane dm1's design:
-/// that count decides whether the rule must be made exact). Not a
-/// violation: the line never begins with the counts' "refcount: ".
+/// (dom.dying_trees), one line a sweep's log is summed from: how often the
+/// marks' rule called a tree dead that lived (the integrator's ruling 2 on
+/// lane dm1's design: that count decides whether the rule must be made
+/// exact). Logged when a tree was mispredicted - Debug builds count them, so
+/// the bug-finding WPT run prints a line for each agent that had one - and,
+/// for the totals of an agent that had none, when a run asked for the
+/// counts' diagnostics (CRANE_REFCOUNT_CHECK). Never in a unit test, where a
+/// test reads the books itself. Not a violation: the line never begins with
+/// the counts' "refcount: ".
 fn reportPredictions(queue: *const DeferredTeardown) void {
-    if (@import("builtin").is_test or !@import("refcount.zig").diagnosticsOn()) return;
+    if (@import("builtin").is_test) return;
     const books = &queue.books;
-    if (books.predicted == 0) return;
+    if (books.mispredicted == 0 and !(books.predicted != 0 and @import("refcount.zig").diagnosticsOn())) return;
     log.warn("dying trees: {d} tree(s) predicted dead at a collection's end of marking ({d} B), {d} of them alive at their release; {d} B put back into the figure", .{ books.predicted, books.predicted_bytes, books.mispredicted, books.put_back_bytes });
 }
 
