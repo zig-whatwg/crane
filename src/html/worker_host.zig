@@ -1341,8 +1341,10 @@ pub const WorkerHost = struct {
         // run for the worker's realm as Blink runs them for every execution
         // context that ends (the File API's: the blob URL entries the worker
         // made leave the store - "This needs a similar hook when a worker is
-        // unloaded").
-        @import("dom").unloading_cleanup.run(realm);
+        // unloaded"). Those for workers only: a document-only step - the
+        // Fullscreen one - reads the window agent's state, and this is the
+        // worker's thread (lane crash1).
+        @import("dom").unloading_cleanup.runWorkerEnd(realm);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
         // its wrapper cache and every Instance in it, the global scope last -
