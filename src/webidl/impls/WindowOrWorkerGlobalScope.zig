@@ -895,6 +895,28 @@ const FetchCall = struct {
         upload.cancel(e);
     }
 
+    /// Navigate step 24.3's "abort a document": the document's fetch() calls
+    /// are cancelled as for any live abort (marked here, failed with a
+    /// TypeError by `abortDocument`) - Firefox (nsDocShell::InternalLoad's
+    /// StopInternal(STOP_NETWORK)) and Safari (FrameLoader::
+    /// continueLoadAfterNavigationPolicy's stopAllLoaders, which stops the
+    /// current document's loader) cancel them when the navigation starts;
+    /// Chrome does not. But a fetch() so cancelled does not make the document
+    /// unsalvageable ("fetch", "abort a document" step 2): this reports no
+    /// request marked. Chrome keeps such a page in the back/forward cache (its
+    /// fetch goes on) and Safari keeps it (its cancelled loads do not block
+    /// the cache); Firefox does not (wpt.fyi stable at 2358bd4835,
+    /// back-forward-cache/eligibility/inflight-fetch-*.html). Golden rule 2,
+    /// mechanism by mechanism - cancelled at the navigation's start (Firefox,
+    /// Safari), the page kept (Chrome, Safari), a TypeError (all three) - is
+    /// Safari's behaviour; the integrator's ruling, 2026-11-14 8:53 PM ET.
+    /// Stated deviation from HTML "abort a document" step 2 for fetch() only:
+    /// the other fetch owners still make the document unsalvageable.
+    fn prepareNavigationDocumentAbort(document: *runtime.Instance) bool {
+        _ = prepareDocumentAbort(document);
+        return false;
+    }
+
     /// Mark all fetch() calls before XHR/script-owner abort callbacks run.
     fn prepareDocumentAbort(document: *runtime.Instance) bool {
         var marked = false;
@@ -934,9 +956,27 @@ const FetchCall = struct {
         self.cancelForDocument(true);
     }
 
-    /// Live abort settles the promise/body with AbortError. Destruction
-    /// discards both silently. Detach signal callbacks and network state
-    /// before invoking stream cancellation, as Blink Loader::Abort does.
+    /// A live document's abort (window.stop(), document.open(), a
+    /// navigation's start) fails the fetch as a network error: p rejects
+    /// with a TypeError, and a body still arriving errors with one.
+    /// Destruction discards both silently. Detach signal callbacks and
+    /// network state before invoking stream cancellation.
+    ///
+    /// A TypeError, never an "AbortError" DOMException: the fetch was not
+    /// aborted through its signal (Fetch's "abort the fetch() call") but
+    /// cancelled with its document, and every browser rejects such a fetch
+    /// with a TypeError - a three-browser probe (lane nav4, 2026-11-14,
+    /// tmp/nav4/fetch-abort-probe-results.jsonl; Chrome 157, Firefox 159,
+    /// Safari 27.0): window.stop() with the fetch pending, TypeError in all
+    /// three ("Failed to fetch", "NetworkError when attempting to fetch
+    /// resource.", "Load failed"); location.href then document.open(),
+    /// TypeError in all three; a navigation's start, TypeError in Firefox and
+    /// Safari (Chrome does not cancel then); a body still arriving at
+    /// window.stop() or document.open(), TypeError in Chrome and Safari
+    /// (Firefox lets the body finish). A keepalive fetch at window.stop()
+    /// splits three ways (Chrome rejects with a TypeError, Firefox lets it
+    /// finish, Safari leaves it pending); Crane cancels it, as Chrome, with
+    /// the same TypeError.
     fn cancelForDocument(self: *Self, observable: bool) void {
         if (self.document_aborted) return;
         self.canceling += 1;
@@ -951,7 +991,7 @@ const FetchCall = struct {
         if (self.liveSignal()) |signal| abort_algorithms.remove(signal, self);
         self.signal = null;
         const reason: ?engine.Owned = if (observable)
-            engine.createDOMException(self.ctx, "AbortError", "The operation was aborted.") catch null
+            engine.createSimpleException(self.ctx, .TypeError, "Failed to fetch") catch null
         else
             null;
         defer if (reason) |r| r.release();
@@ -976,14 +1016,10 @@ const FetchCall = struct {
         }
         if (self.in_flight) |f| {
             self.in_flight = null;
-            // "Abort a fetch() call" step 5: an already exposed response
-            // body receives the same error through its pipe, owning a hold
-            // of it until the body's source goes.
-            const held = if (reason) |r| fetch_body.AbortReason.create(self.ctx, r.value) else null;
-            f.terminateWith(if (held) |h|
-                .{ .kind = .aborted, .reason = h, .release_reason = fetch_body.AbortReason.release }
-            else
-                .{ .kind = .aborted });
+            // An already exposed response body fails as the network failing
+            // would (a TypeError on read); a destroyed document's body is
+            // only ended.
+            f.terminateWith(.{ .kind = if (observable) .network else .aborted });
             self.fetch_holds = false;
         }
         self.releaseKeepalive();
@@ -1000,6 +1036,7 @@ pub fn installHooks() void {
         .discard = &FetchCall.abortIn,
         .prepare_abort = &FetchCall.prepareDocumentAbort,
         .abort = &FetchCall.abortDocument,
+        .prepare_navigation_document_abort = &FetchCall.prepareNavigationDocumentAbort,
     });
     // A page the back/forward cache keeps: its fetches in flight end as
     // network failures (Safari's behaviour; FetchCall.storeInCache).
