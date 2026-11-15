@@ -41,6 +41,7 @@ const testing = std.testing;
 const runtime = @import("runtime");
 const protocol = @import("engine");
 const interfaces = @import("interfaces");
+const dom = @import("dom");
 const ffi = @import("v8").ffi;
 
 const WindowHost = struct {
@@ -807,15 +808,17 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
         try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_reported"));
 
         // What V8 is told per object of three shapes (the merge report quotes these). The figure is ONE
-        // function of the instance (wrapper_cache.instanceHeldBytes: its slab slot, its generated State block
-        // and the cache's record), so what a loop adds is that function's answer for one of its objects, a
-        // thousand times - and nothing a call site computes. It is a floor: an impl's internal state is a
-        // block of the Browser's arena the instance does not name, and an Event's is most of what it holds.
+        // function of the instance (wrapper_cache.instanceHeldBytes: its slab slot, its generated State block,
+        // the cache's record, and the internal state block its State names), so what a loop adds is that
+        // function's answer for one of its objects, a thousand times - and nothing a call site computes.
+        // An Event's internal state - its dispatch state, dom.event_dispatch.EventState - is most of what it
+        // holds, so V8 is told at least that: told 112 B of an Event's 1.2 KB, V8 let 650,000 dropped Events
+        // end 13% over main on server1 (gc_bench, 2026-11-15; wrapper_cache.zig `instanceHeldBytes`).
         const instanceHeldBytes = @import("v8").wrapper_cache_mod.instanceHeldBytes;
-        const shapes = [_]struct { name: []const u8, make: []const u8 }{
-            .{ .name = "an Event", .make = "new Event('x')" },
-            .{ .name = "a URLSearchParams", .make = "new URLSearchParams('a=b')" },
-            .{ .name = "a div's attributes collection (the NamedNodeMap alone: a div is counted by the host)", .make = "doc2.createElement('div').attributes" },
+        const shapes = [_]struct { name: []const u8, make: []const u8, at_least: usize }{
+            .{ .name = "an Event", .make = "new Event('x')", .at_least = 64 + @sizeOf(dom.event_dispatch.EventState) },
+            .{ .name = "a URLSearchParams", .make = "new URLSearchParams('a=b')", .at_least = 64 },
+            .{ .name = "a div's attributes collection (the NamedNodeMap alone: a div is counted by the host)", .make = "doc2.createElement('div').attributes", .at_least = 64 },
         };
         try page.run("globalThis.doc2 = new Document(); 0");
         for (shapes) |shape| {
@@ -831,8 +834,9 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
             try page.run("globalThis.keep = null; 0");
             if (page.fullCollections() != before_full) continue;
             std.debug.print("V8 is told {d} B for {s}\n", .{ held, shape.name });
+            // At least the slab slot, the cache's record and the shape's internal state; no more than a page.
+            try testing.expect(held >= @as(i64, @intCast(shape.at_least)) and held <= 4096);
             // Each of the thousand, and no other wrapper's worth beyond a page (the loop's own first wraps).
-            try testing.expect(held >= 64 and held <= 4096);
             try testing.expect(told >= 1000 * held and told < 1000 * held + 4096);
         }
         return;
