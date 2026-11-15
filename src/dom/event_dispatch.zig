@@ -157,7 +157,8 @@ pub const TouchTargetList = struct {
         return list.items;
     }
 
-    /// Append `target`. `allocator` is the event state's, every time.
+    /// Append `target`. `allocator` is the event's Browser's
+    /// (`runtime.allocatorOf(event)`), every time: `deinit` frees with it.
     pub fn append(self: *TouchTargetList, allocator: std.mem.Allocator, target: *runtime.Instance) error{OutOfMemory}!void {
         const list = try self.ensure(allocator);
         try list.append(allocator, target);
@@ -226,6 +227,16 @@ pub const DispatchPath = struct {
     /// How many touch targets the event has: the length of every item's
     /// touch target list.
     touch_count: u32,
+    /// The event's currentTarget attribute value ("invoke" step 7), or null
+    /// before the first listener's item. It is the dispatch's to keep, not
+    /// the Event's: outside dispatch it is null (dispatch step 8), so an
+    /// event with no path has none. With its slab generation when set:
+    /// script reads it through `EventState.currentTargetForScript`, so a
+    /// current target whose slot was given back and reissued - another
+    /// realm's Window, after that realm's end - reads null, never the
+    /// newcomer (lane winslot1, kinds 5-7).
+    current_target: ?*runtime.Instance,
+    current_target_generation: u64,
     inline_items: [inline_capacity]PathItem,
 
     /// An empty path. Field by field: an assignment of the whole struct
@@ -236,6 +247,14 @@ pub const DispatchPath = struct {
         self.heap = &.{};
         self.touch_targets = .empty;
         self.touch_count = 0;
+        self.current_target = null;
+        self.current_target_generation = 0;
+    }
+
+    /// Set the event's currentTarget attribute value ("invoke" step 7).
+    pub fn setCurrentTarget(self: *DispatchPath, target: *runtime.Instance) void {
+        self.current_target = target;
+        self.current_target_generation = runtime.SlabAllocator.generationOf(target);
     }
 
     /// Let the path's references go and free what it allocated. The event
@@ -311,10 +330,10 @@ pub const DispatchPath = struct {
 
 /// Event's eventPhase values (DOM 2.2).
 pub const Phase = struct {
-    pub const none: u16 = 0;
-    pub const capturing: u16 = 1;
-    pub const at_target: u16 = 2;
-    pub const bubbling: u16 = 3;
+    pub const none: u8 = 0;
+    pub const capturing: u8 = 1;
+    pub const at_target: u8 = 2;
+    pub const bubbling: u8 = 3;
 };
 
 /// The member an event keeps its target in (engine.traceChild): the target
@@ -335,13 +354,32 @@ pub const target_slot: engine.TracedSlot = .{ .name = "target" };
 /// related_target_, FocusEvent's); WebKit: RefPtr<EventTarget>.
 pub const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
 
+/// What keeps the relatedTarget an event holds safe to read: its place in
+/// the event's state until lane ev1, 56 bytes that were zero in every event
+/// without a relatedTarget - a block of its own since, made for the mouse,
+/// focus and drag events that are given one. Blink and WebKit keep the
+/// related target on MouseEvent and FocusEvent, never on Event
+/// (MouseEvent::related_target_; MouseRelatedEvent's and FocusEvent's
+/// m_relatedTarget); Gecko keeps one on every WidgetEvent (mRelatedTarget).
+pub const RelatedKeep = struct {
+    /// The related target `related_target_slot`'s edge holds, with its slab
+    /// generation and realm: the teardown net - a realm's teardown frees
+    /// its Instances whatever points at them, and the getter then reads
+    /// null, never a freed object.
+    kept: KeptInstance,
+    /// One counted reference on it (refcount step 5g): WebKit's MouseEvent
+    /// and FocusEvent hold `RefPtr<EventTarget> m_relatedTarget`. Taken
+    /// whether or not script has wrapped the event; a related target that
+    /// is not a node is not counted (decision D3). SHADOW MODE: the edge
+    /// keeps it until refcount step 9b; this decides nothing yet.
+    hold: node_holds.RefHold = .{},
+};
+
 /// An Event's internal state (DOM 2.2): every flag, the targets, the phase
 /// and isTrusted, and - while the event is dispatched - where its path is.
 /// Owned by the event (Event's impl creates and frees it); the dispatcher
 /// writes it through `of()`.
 pub const EventState = struct {
-    allocator: std.mem.Allocator,
-
     // DOM 2.2 - the event's flags, initially unset.
     stop_propagation_flag: bool = false,
     stop_immediate_propagation_flag: bool = false,
@@ -365,19 +403,17 @@ pub const EventState = struct {
     /// which keeps it; dispatch writes it per path item ("invoke" step 4)
     /// and keeps the value it ends with (`endDispatch`).
     related_target: ?*runtime.Instance = null,
-    /// The currentTarget attribute's value, initially null. Set with
-    /// `setCurrentTarget`.
-    current_target: ?*runtime.Instance = null,
-    /// The slab generations of `target` - when the event last kept it
-    /// (`keepTarget`) - and of `current_target` when set: script reads each
-    /// through them (`targetForScript`, `currentTargetForScript`), so a
-    /// target whose slot was given back and reissued - another realm's
-    /// Window, after that realm's end - reads null, never the newcomer (lane
-    /// winslot1, kinds 5-7).
+    /// The slab generation of `target` when the event last kept it
+    /// (`keepTarget`): script reads the target through it
+    /// (`targetForScript`), so a target whose slot was given back and
+    /// reissued - another realm's Window, after that realm's end - reads
+    /// null, never the newcomer (lane winslot1, kinds 5-7). The
+    /// currentTarget attribute's value and its generation are the
+    /// dispatch's (`DispatchPath.current_target`): null outside dispatch.
     target_generation: u64 = 0,
-    current_target_generation: u64 = 0,
-    /// The eventPhase attribute's value, initially NONE.
-    phase: u16 = Phase.none,
+    /// The eventPhase attribute's value, initially NONE (`Phase`). One byte:
+    /// with the six flags and isTrusted it fills one word.
+    phase: u8 = Phase.none,
     /// The isTrusted attribute's value, initially false.
     is_trusted: bool = false,
 
@@ -387,36 +423,41 @@ pub const EventState = struct {
     /// The target `target_slot`'s edge holds, or null for none (`keepTarget`).
     traced_target: ?*runtime.Instance = null,
 
-    /// The related target `related_target_slot`'s edge holds, or null for
-    /// none (`keepRelatedTarget`), with its slab generation and realm: the
-    /// teardown net - a realm's teardown frees its Instances whatever points
-    /// at them, and the getter then reads null, never a freed object.
-    kept_related_target: ?KeptInstance = null,
+    /// What keeps the relatedTarget the event holds (`RelatedKeep`), or
+    /// null for an event that keeps none - every event but a mouse, focus
+    /// or drag event that was given one. Made by `keepRelatedTarget`, freed
+    /// when the event stops keeping one and at its teardown.
+    related_keep: ?*RelatedKeep = null,
 
-    /// One counted reference on the target the event keeps and one on its
-    /// relatedTarget (refcount step 5g): WebKit's Event holds
-    /// `RefPtr<EventTarget> m_target` (Source/WebCore/dom/Event.h), its
-    /// MouseEvent and FocusEvent `RefPtr<EventTarget> m_relatedTarget`.
-    /// Taken whether or not script has wrapped the event (`keepTarget`,
-    /// `keepRelatedTarget`); a target that is not a node is not counted
-    /// (decision D3). SHADOW MODE: the edges keep them until refcount step
-    /// 9b; these decide nothing yet.
+    /// One counted reference on the target the event keeps (refcount step
+    /// 5g): WebKit's Event holds `RefPtr<EventTarget> m_target`
+    /// (Source/WebCore/dom/Event.h). Taken whether or not script has
+    /// wrapped the event (`keepTarget`); a target that is not a node is not
+    /// counted (decision D3). SHADOW MODE: the edge keeps it until refcount
+    /// step 9b; this decides nothing yet. The relatedTarget's is in its
+    /// `RelatedKeep`.
     target_hold: node_holds.RefHold = .{},
-    related_hold: node_holds.RefHold = .{},
 
-    pub fn init(allocator: std.mem.Allocator) EventState {
-        return .{
-            .allocator = allocator,
-        };
+    /// A new event's state. The allocator is not kept (lane ev1 step 2:
+    /// 16 bytes in every Event): the one thing the state allocates, a
+    /// TouchEvent's touch target list, takes the event's Browser's
+    /// allocator (`runtime.allocatorOf(event)`) at each use, as a node's
+    /// state does (lane perf2 batch 5). The parameter stays until the
+    /// fourteen impls that reach here through webidl.utils' initEventBase
+    /// stop passing one.
+    pub fn init(_: std.mem.Allocator) EventState {
+        return .{};
     }
 
-    /// Release what the state owns: the touch target list. `event`'s edge
-    /// to its target is the event's teardown to end (`forgetTarget`). The
-    /// path is never the state's to free; an event that goes while it is
-    /// dispatched only stops pointing at it, its references let go.
-    pub fn deinit(self: *EventState) void {
+    /// Release what the state owns: the touch target list, allocated with
+    /// `allocator` - the event's Browser's (`runtime.allocatorOf(event)`).
+    /// `event`'s edge to its target is the event's teardown to end
+    /// (`forgetTarget`). The path is never the state's to free; an event
+    /// that goes while it is dispatched only stops pointing at it, its
+    /// references let go.
+    pub fn deinit(self: *EventState, allocator: std.mem.Allocator) void {
         self.clearPath();
-        self.touch_target_list.deinit(self.allocator);
+        self.touch_target_list.deinit(allocator);
     }
 
     /// Set `event`'s target (and so its srcElement) to `target`, and keep it
@@ -466,17 +507,20 @@ pub const EventState = struct {
         return target;
     }
 
-    /// Set the currentTarget attribute's value ("invoke" step 7).
-    pub fn setCurrentTarget(self: *EventState, target: ?*runtime.Instance) void {
-        self.current_target = target;
-        self.current_target_generation = if (target) |t| runtime.SlabAllocator.generationOf(t) else 0;
+    /// The currentTarget attribute's value as dispatch last set it - the
+    /// dispatch's (`DispatchPath.setCurrentTarget`) - and null for an event
+    /// that is not being dispatched (dispatch step 8).
+    pub fn currentTarget(self: *const EventState) ?*runtime.Instance {
+        const path = self.path orelse return null;
+        return path.current_target;
     }
 
-    /// The currentTarget attribute's value, while its slot is still that
-    /// object's.
+    /// The currentTarget attribute's value as script reads it: the
+    /// dispatch's, while its slot is still that object's.
     pub fn currentTargetForScript(self: *const EventState) ?*runtime.Instance {
-        const target = self.current_target orelse return null;
-        if (runtime.SlabAllocator.generationOf(target) != self.current_target_generation) return null;
+        const path = self.path orelse return null;
+        const target = path.current_target orelse return null;
+        if (runtime.SlabAllocator.generationOf(target) != path.current_target_generation) return null;
         return target;
     }
 
@@ -501,8 +545,8 @@ pub const EventState = struct {
     /// Mid-dispatch it is the current path item's, which the path holds.
     pub fn relatedTarget(self: *const EventState) ?*runtime.Instance {
         const related = self.related_target orelse return null;
-        if (self.kept_related_target) |kept| {
-            if (kept.instance == related) return kept.get();
+        if (self.related_keep) |keep| {
+            if (keep.kept.instance == related) return keep.kept.get();
         }
         return related;
     }
@@ -514,25 +558,51 @@ pub const EventState = struct {
     /// wrapper is made): the constructors set it before the binding wraps
     /// the event, and the events that carry one - focus, mouse and drag
     /// events - are few, so nothing wraps a node per fired event.
+    ///
+    /// The keep's record is allocated the first time the event keeps one
+    /// (`RelatedKeep`, from the event's Browser's allocator). An event that
+    /// cannot allocate it has NO relatedTarget from then on - the pointer is
+    /// set to null - never one it reads without the keep: an unkept
+    /// relatedTarget is a pointer to a node the collector, or its realm's
+    /// end, may free under the event.
     pub fn keepRelatedTarget(self: *EventState, event: *runtime.Instance) void {
-        self.related_hold.set(self.related_target);
-        const related = self.related_target;
-        const kept: ?*runtime.Instance = if (self.kept_related_target) |k| k.instance else null;
-        if (related == kept) return;
-        if (related) |r| {
-            self.kept_related_target = KeptInstance.of(r);
-            engine.traceChild(event, r, related_target_slot);
-        } else {
-            self.kept_related_target = null;
-            engine.forgetTracedChild(event, related_target_slot);
-        }
+        self.keepRelatedTargetWith(event, runtime.allocatorOf(event));
     }
 
-    /// End `event`'s edge to its relatedTarget, at the event's teardown.
+    /// `keepRelatedTarget` with the allocator a new record comes from,
+    /// which is always the event's Browser's (a record is freed with that
+    /// one, whatever is passed here): a parameter so that a test can make
+    /// the allocation fail.
+    pub fn keepRelatedTargetWith(self: *EventState, event: *runtime.Instance, allocator: std.mem.Allocator) void {
+        const related = self.related_target orelse {
+            // The event keeps none now: its record, hold and edge go.
+            return self.forgetRelatedTarget(event);
+        };
+        if (self.related_keep) |keep| {
+            keep.hold.set(related);
+            if (keep.kept.instance == related) return;
+            keep.kept = KeptInstance.of(related);
+            engine.traceChild(event, related, related_target_slot);
+            return;
+        }
+        const keep = allocator.create(RelatedKeep) catch {
+            self.related_target = null;
+            return;
+        };
+        keep.* = .{ .kept = KeptInstance.of(related) };
+        keep.hold.set(related);
+        self.related_keep = keep;
+        engine.traceChild(event, related, related_target_slot);
+    }
+
+    /// End `event`'s edge to its relatedTarget and free the keep's record,
+    /// at the event's teardown.
     pub fn forgetRelatedTarget(self: *EventState, event: *runtime.Instance) void {
-        if (self.kept_related_target != null) engine.forgetTracedChild(event, related_target_slot);
-        self.kept_related_target = null;
-        self.related_hold.release();
+        const keep = self.related_keep orelse return;
+        self.related_keep = null;
+        engine.forgetTracedChild(event, related_target_slot);
+        keep.hold.release();
+        runtime.allocatorOf(event).destroy(keep);
     }
 
     /// DOM 2.2 "set the canceled flag" given the event, whose cancelable
@@ -580,8 +650,9 @@ pub const EventState = struct {
     /// the path held - a node removed during dispatch - is taken on while its
     /// tree still counts it, never after its total passed through zero.
     pub fn finishDispatch(self: *EventState, event: *runtime.Instance, clear_targets: bool) void {
+        // Step 8, currentTarget null, is `clearPath`'s below: the current
+        // target is the dispatch's.
         self.phase = Phase.none;
-        self.current_target = null;
         self.dispatch_flag = false;
         self.stop_propagation_flag = false;
         self.stop_immediate_propagation_flag = false;
@@ -664,9 +735,9 @@ test "invoke step 9.2 maps the four unprefixed types, exactly, and nothing else"
 
 test "an event's state starts with every flag unset, no targets and phase NONE" {
     var state = EventState.init(std.testing.allocator);
-    defer state.deinit();
+    defer state.deinit(std.testing.allocator);
     try std.testing.expect(!state.initialized_flag and !state.dispatch_flag and !state.canceled_flag);
-    try std.testing.expect(state.target == null and state.current_target == null and state.related_target == null);
+    try std.testing.expect(state.target == null and state.currentTarget() == null and state.related_target == null);
     try std.testing.expectEqual(Phase.none, state.phase);
     try std.testing.expect(!state.is_trusted);
     try std.testing.expect(state.path == null);
@@ -715,7 +786,7 @@ test "a dispatch path keeps its first items inline, grows past them, and keeps e
 
     // An event points at the path only until dispatch step 9.
     var state = EventState.init(std.testing.allocator);
-    defer state.deinit();
+    defer state.deinit(std.testing.allocator);
     state.path = &path;
     try std.testing.expectEqual(targets.len, state.pathItems().len);
     state.clearPath();
@@ -749,7 +820,7 @@ test "an event's touch target list is one pointer, empty until a target is appen
 
 test "set the canceled flag honours cancelable and the in passive listener flag" {
     var state = EventState.init(std.testing.allocator);
-    defer state.deinit();
+    defer state.deinit(std.testing.allocator);
     state.setCanceledFlag(false);
     try std.testing.expect(!state.canceled_flag);
     state.in_passive_listener_flag = true;

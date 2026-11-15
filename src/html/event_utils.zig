@@ -248,13 +248,12 @@ fn dispatchEvent(
 
     // Set event's target
     state.setTarget(event, target);
-    state.current_target = target;
 
     // Set dispatch flag
     state.dispatch_flag = true;
 
     // Set event phase to AT_TARGET
-    state.phase = interfaces.Event.get_AT_TARGET();
+    state.phase = event_dispatch.Phase.at_target;
 
     // TODO: Full event dispatch with event path propagation
     // For now, we're just invoking event listeners on the target directly

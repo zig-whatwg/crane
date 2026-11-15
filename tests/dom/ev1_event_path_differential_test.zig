@@ -394,7 +394,7 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
     // Raw, as dispatch reads it: the edge is not what is under test.
     state.related_target = d.related;
     defer state.related_target = null;
-    for (d.touch) |touch_target| try state.touch_target_list.append(state.allocator, touch_target);
+    for (d.touch) |touch_target| try state.touch_target_list.append(runtime.allocatorOf(event), touch_target);
 
     // The dispatch's path, as EventTarget's dispatch declares it.
     var dispatch_path: dom.event_dispatch.DispatchPath = undefined;

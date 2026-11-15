@@ -1195,7 +1195,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     // dom.mutation's `insert`).
     @setRuntimeSafety(false);
     var path: dom_module.event_dispatch.DispatchPath = undefined;
-    path.init(state.allocator);
+    path.init(runtime.allocatorOf(event));
     defer path.deinit();
     // Whatever way the dispatch left, the event does not point at this
     // frame once it is gone.
@@ -1265,9 +1265,9 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
         i -= 1;
         // Steps 6.13.1-6.13.2.
         state.phase = if (path[i].has_shadow_adjusted_target)
-            interfaces.Event.get_AT_TARGET()
+            event_dispatch.Phase.at_target
         else
-            interfaces.Event.get_CAPTURING_PHASE();
+            event_dispatch.Phase.capturing;
         // Step 6.13.3.
         invoke(dispatch_path, &path[i], event, state, .capturing, did_throw, type_key);
     }
@@ -1277,12 +1277,12 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
         if (item.has_shadow_adjusted_target) {
             // Step 6.14.1 - a target is AT_TARGET in both passes, which is
             // how its capturing listeners run before its bubbling ones.
-            state.phase = interfaces.Event.get_AT_TARGET();
+            state.phase = event_dispatch.Phase.at_target;
         } else {
             // Step 6.14.2.1
             if (!bubbles) continue;
             // Step 6.14.2.2
-            state.phase = interfaces.Event.get_BUBBLING_PHASE();
+            state.phase = event_dispatch.Phase.bubbling;
         }
         // Step 6.14.3
         invoke(dispatch_path, item, event, state, .bubbling, did_throw, type_key);
@@ -1316,7 +1316,7 @@ fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target
 ///
 /// `item` is BORROWED from the event's path, `path`, which outlives the call.
 /// `event_type` is the event's type, looked up once per dispatch.
-fn invoke(path: *const dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
+fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
     // Steps 1-3: event's target is the shadow-adjusted target of the last
     // item at or before this one whose shadow-adjusted target is non-null -
     // recorded on the item when the path was built. Written raw: the path
@@ -1330,15 +1330,16 @@ fn invoke(path: *const dom_module.event_dispatch.DispatchPath, item: *const dom_
     // list." Both are empty for every event but a TouchEvent's.
     const touch_targets = path.touchTargetsOf(item);
     if (touch_targets.len > 0 or state.touch_target_list.toSlice().len > 0) {
-        state.touch_target_list.assign(state.allocator, touch_targets) catch {};
+        state.touch_target_list.assign(runtime.allocatorOf(event), touch_targets) catch {};
     }
 
     // Step 6: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
     if (state.stop_propagation_flag) return;
 
-    // Step 7
-    state.setCurrentTarget(item.invocation_target);
+    // Step 7: the currentTarget attribute's value is the dispatch's to
+    // keep (null outside dispatch), with its slab generation.
+    path.setCurrentTarget(item.invocation_target);
 
     // Steps 8-10. Step 8, "let listeners be a clone of event's
     // currentTarget attribute value's event listener list", is innerInvoke's
