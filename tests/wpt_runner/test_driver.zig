@@ -1414,7 +1414,7 @@ fn parseActions(command: *Command, realm: runtime.Context, value: JSValue) ?Fail
                     defer allocator.free(name);
                     pointer_type = std.meta.stringToEnum(user_input.PointerType, name) orelse return invalid("pointerType is not mouse, pen or touch");
                 }
-            } else if (!parameters.value.isUndefined()) return invalid("parameters is not an object");
+            } else if (engine.typeOf(realm, parameters.value) != .undefined) return invalid("parameters is not an object");
             // "Get or create an input source": a source this session has
             // with the same id must have the same subtype.
             if (pointer_type == .mouse) {
@@ -1503,7 +1503,10 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
             action.duration = numberProperty(realm, object, "duration");
             const origin = engine.getProperty(realm, object, "origin") catch return error.Invalid;
             defer origin.release();
-            if (origin.value.isUndefined()) {
+            // An absent origin is "viewport" (WebDriver "process a pointer
+            // move action" step 6); an Owned value is a handle, so the
+            // engine says whether it is undefined.
+            if (engine.typeOf(realm, origin.value) == .undefined) {
                 action.origin = .viewport;
             } else if (engine.typeOf(realm, origin.value) == .string) {
                 const name = engine.convertToDOMString(realm, origin.borrow(), allocator) catch return error.Invalid;
@@ -1532,8 +1535,12 @@ fn pointerProperties(realm: runtime.Context, object: JSValue) error{Invalid}!Poi
         fn number(r: runtime.Context, o: JSValue, name: []const u8, range: Range) error{Invalid}!?f64 {
             const value = engine.getProperty(r, o, name) catch return error.Invalid;
             defer value.release();
-            if (value.value.isUndefined()) return null;
-            if (engine.typeOf(r, value.value) != .number) return error.Invalid;
+            // An Owned value is a handle: only the engine says it is undefined.
+            switch (engine.typeOf(r, value.value)) {
+                .undefined => return null,
+                .number => {},
+                else => return error.Invalid,
+            }
             const n = engine.convertToUnrestrictedDouble(r, value.borrow()) catch return error.Invalid;
             if (!(n >= range.min and n <= range.max)) return error.Invalid;
             if (range.integer and @floor(n) != n) return error.Invalid;
