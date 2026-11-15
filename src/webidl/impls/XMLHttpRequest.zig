@@ -1271,9 +1271,8 @@ fn prepareDocumentAbort(document: *runtime.Instance) bool {
 /// XHR DispatchOrStoreEvent refuses a superseded owner global. These engines
 /// differ in transport timing; they distinguish explicit stop/open from
 /// actual replacement. Existing requests and an earlier stop's queued event
-/// stay independent of provisional navigation. fetch() is left the same way
-/// (WindowOrWorkerGlobalScope FetchCall.prepareNavigationDocumentAbort); the
-/// other document fetch owners abort normally at 24.3. The explicit call path also leaves reentrant
+/// stay independent of provisional navigation. Other document fetch owners
+/// abort normally at 24.3. The explicit call path also leaves reentrant
 /// stop/document.open observable without mutable navigation state.
 /// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/dom/document.cc
 /// https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/core/xmlhttprequest/xml_http_request.cc

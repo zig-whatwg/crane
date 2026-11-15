@@ -814,59 +814,21 @@ const FetchCall = struct {
         }
     }
 
-    /// Navigate step 24.3's "abort a document" leaves fetch() calls in
-    /// flight, as it leaves XMLHttpRequest's (XMLHttpRequest.zig
-    /// prepareNavigationDocumentAbort): marks none.
-    ///
-    /// Stated deviation from HTML navigate step 24.3 and "abort a document"
-    /// step 2, by golden rule 2. Chrome and Safari do not cancel a document's
-    /// fetches when a navigation away from it starts: Blink's
-    /// FrameLoader::StartNavigation aborts the document's parser only
-    /// (Document::Abort: CancelParsing), and WebKit's
-    /// FrameLoader::loadWithDocumentLoader stops no loader of the current
-    /// document before its policy check - the old document's loads stop at
-    /// the commit (commitProvisionalLoad: BackForwardCache::addIfCacheable,
-    /// whose stopForBackForwardCache stops them for a page it keeps, then
-    /// transitionToCommitted's stopLoadingSubresources). A fetch therefore
-    /// settles normally while a navigation that has not committed is in
-    /// flight, and a page left with a fetch in flight is not made
-    /// unsalvageable by it - Chrome and Safari keep such a page
-    /// (back-forward-cache/eligibility/inflight-fetch-*.html, wpt.fyi stable
-    /// at 2358bd4835: Chrome 157 keeps it, Safari 27.2 keeps it, Firefox 160
-    /// does not). What becomes of the fetch then is `storeInCache`'s. A page
-    /// that is not kept ends its fetches silently when it is destroyed
-    /// (`abortIn`). window.stop() and document.open() still abort them
-    /// (`prepareDocumentAbort`), observably.
-    fn prepareNavigationDocumentAbort(_: *runtime.Instance) bool {
-        return false;
-    }
-
     /// dom.bfcache store step, for the realm of a document the back/forward
     /// cache keeps (unload step 18): each fetch() call of that document still
-    /// in flight is cancelled as a network failure, and p - or, once p was
+    /// in flight - one its pagehide or unload listeners started, after the
+    /// navigation's "abort a document" (navigate step 24.3) cancelled the
+    /// others - is cancelled as a network failure, and p - or, once p was
     /// resolved, the response's body - fails with a TypeError when the page is
-    /// shown again. A keepalive fetch goes on: it is meant to outlive its
-    /// document (Fetch "terminated" step 1).
-    ///
-    /// Golden rule 2, the browsers differing three ways (wpt.fyi stable at
-    /// 2358bd4835, back-forward-cache/eligibility/inflight-fetch-1, -2,
-    /// -cors, -redirects): Chrome 157 keeps the page and lets the fetch finish
-    /// while it is cached (all PASS but -redirects, whose redirect while
-    /// cached evicts it: PRECONDITION_FAILED); Safari 27.2 keeps the page and
-    /// cancels the fetch, which rejects with "TypeError: Load failed" (FAIL,
-    /// but PASS where the test expects the fetch to fail: "CORS failed when in
-    /// BFCache", "Cross-origin redirect ... w/ CSP failing"); Firefox 160 does
-    /// not keep it (HTML: "abort a document" cancels the fetch and makes the
-    /// document unsalvageable, "fetch" - PRECONDITION_FAILED). Mechanism by
-    /// mechanism - the page is kept (Chrome, Safari), the fetch does not
-    /// survive (Safari, Firefox) - the majorities are Safari's behaviour, so
-    /// Crane does what Safari does: WebKit's BackForwardCache::addIfCacheable
-    /// stops the page's loads as it caches it (FrameLoader
-    /// stopForBackForwardCache -> DocumentLoader::stopLoading), and a fetch so
-    /// cancelled fails as a network error. Its settling is a fetch task of the
-    /// page's Window (`queueSettle`), so it waits with the page and runs once
-    /// it is shown again; a body still arriving fails through its pipe, whose
-    /// stream hears it in a task of that Window too (fetch_body.PipeStream).
+    /// shown again. Nothing of it reaches the page while it is cached. A
+    /// keepalive fetch goes on: it is meant to outlive its document (Fetch
+    /// "terminated" step 1). WebKit cancels a page's loads as it caches it
+    /// (BackForwardCache::addIfCacheable -> FrameLoader::stopForBackForwardCache
+    /// -> DocumentLoader::stopLoading), and a fetch so cancelled fails with
+    /// "TypeError: Load failed". Its settling is a fetch task of the page's
+    /// Window (`queueSettle`), so it waits with the page; a body still
+    /// arriving fails through its pipe, whose stream hears it in a task of
+    /// that Window too (fetch_body.PipeStream).
     fn storeInCache(realm: runtime.Context) void {
         // Backwards: a cancel can free its call, which swapRemove replaces
         // with one already visited.
@@ -1038,7 +1000,6 @@ pub fn installHooks() void {
         .discard = &FetchCall.abortIn,
         .prepare_abort = &FetchCall.prepareDocumentAbort,
         .abort = &FetchCall.abortDocument,
-        .prepare_navigation_document_abort = &FetchCall.prepareNavigationDocumentAbort,
     });
     // A page the back/forward cache keeps: its fetches in flight end as
     // network failures (Safari's behaviour; FetchCall.storeInCache).

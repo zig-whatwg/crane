@@ -1,19 +1,20 @@
 //! A fetch() in flight when its page is left (lane nav4): what golden rule 2
 //! gives where the three browsers differ (wpt.fyi stable at 2358bd4835,
-//! back-forward-cache/eligibility/inflight-fetch-*.html):
+//! back-forward-cache/eligibility/inflight-fetch-*.html), mechanism by
+//! mechanism:
 //!
-//! - Chrome 157 keeps the page and lets the fetch finish while it is cached;
-//! - Safari 27.2 keeps the page and cancels the fetch, which rejects with a
-//!   TypeError ("Load failed") once the page is shown again;
-//! - Firefox 160 does not keep it (HTML "abort a document" makes it
-//!   unsalvageable, "fetch").
+//! - the navigation's start cancels the page's fetches (HTML navigate step
+//!   24.3, "abort a document"): Firefox (nsDocShell::InternalLoad's
+//!   StopInternal(STOP_NETWORK)) and Safari (FrameLoader::
+//!   continueLoadAfterNavigationPolicy's stopAllLoaders, which stops the
+//!   current document's loader) do; Chrome does not;
+//! - the page is kept anyway: Chrome (its fetch goes on) and Safari (its
+//!   cancelled loads do not block the cache) keep it; Firefox does not (HTML:
+//!   "fetch" makes the document unsalvageable).
 //!
-//! Mechanism by mechanism, the majorities - the page is kept (Chrome,
-//! Safari), its fetch is cancelled (Safari, Firefox) - are Safari's
-//! behaviour, and neither Chrome nor Safari cancels a document's fetches when
-//! a navigation away from it starts (Blink's Document::Abort cancels the
-//! parser only; WebKit's FrameLoader stops the old document's loads at the
-//! commit - BackForwardCache::addIfCacheable, then transitionToCommitted).
+//! Together that is Safari's behaviour. An XMLHttpRequest is left in flight by
+//! the navigation's start (XMLHttpRequest.zig prepareNavigationDocumentAbort)
+//! and ends when its page is stored.
 //!
 //! Pages come from a loopback HTTP server (module1_http_server.zig) through
 //! the Browser's proxy, so their URLs are HTTP and their responses 200 - what
@@ -233,32 +234,6 @@ test "a page left with a fetch in flight is kept, and its fetch rejects with a T
     const outcome = try fixture.awaitOutcome(realm_a);
     defer testing.allocator.free(outcome);
     try testing.expectEqualStrings("TypeError", outcome);
-}
-
-test "a navigation away that has not committed leaves the page's fetch in flight: it settles while the page is still shown (Chrome, Safari)" {
-    const fixture = try Fixture.start();
-    defer fixture.stop();
-    const bc = try fixture.openPopup("/fetch.html");
-    const realm_a = activeRealm(bc).?;
-    try expectIn(realm_a, "go(); 'started'", "started");
-    try fixture.awaitRequests("/held.txt", 1);
-
-    // A navigation away starts; its response is held, so it does not commit.
-    try expectIn(realm_a, "location.href = '/held-nav.html'; 'navigating'", "navigating");
-    try fixture.awaitRequests("/held-nav.html", 1);
-    // The page is still shown, and its fetch was not aborted: answered now,
-    // it resolves.
-    fixture.server.release("/held.txt");
-    const outcome = try fixture.awaitOutcome(realm_a);
-    defer testing.allocator.free(outcome);
-    try testing.expectEqualStrings("ok:held-body", outcome);
-
-    fixture.server.release("/held-nav.html");
-    var turns: usize = 0;
-    while (turns < 500) : (turns += 1) {
-        if (try popupIs(bc, "/held-nav.html")) break;
-        try fixture.turn(10);
-    }
 }
 
 test "a page left with an XMLHttpRequest in flight is kept; nothing of it runs while cached, and it fails as a network error once shown again (Safari)" {
