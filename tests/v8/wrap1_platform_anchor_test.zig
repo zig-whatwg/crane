@@ -578,6 +578,31 @@ test "a young collection takes every dead wrapper the cache knows of: unchanged,
     return error.TestInconclusive;
 }
 
+test "the cache's pool of records gives its memory back once a burst of wrappers is collected" {
+    // The cache issues its 32-byte records from chunks of its own (wrapper_cache.zig `Chunk`). A page that holds
+    // many wrappers at once - 20,000 streams with their readers waiting for a collection - grows the pool; once
+    // they are collected the pool must shrink again, as the cache's 88-byte entries did when each was its own
+    // allocation: a chunk nothing uses pins its page of the process's heap for the realm's life. One chunk may
+    // stay, so that a wrapper made and dropped at a chunk's edge does not allocate each time.
+    const page = try Page.open();
+    defer page.close();
+    try page.run("for (let i = 0; i < 64; i++) void new URLSearchParams('a=b'); 0");
+    page.fullGC();
+    const before = try page.counter("wrapper_cache_pool_bytes");
+    const n = 6000;
+    var source: [160]u8 = undefined;
+    try page.run(try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < {d}; i++) keep.push(new URLSearchParams('a=b')); 0", .{n}));
+    const grown = try page.counter("wrapper_cache_pool_bytes");
+    try page.run("globalThis.keep = null; 0");
+    page.fullGC();
+    page.fullGC();
+    const after = try page.counter("wrapper_cache_pool_bytes");
+    std.debug.print("the pool: {d} B before, {d} B with {d} kept wrappers, {d} B after their collection\n", .{ before, grown, n, after });
+    try testing.expect(grown >= before + n * 32);
+    // Back to where it was, within the one spare chunk and the chunks the realm's own few wrappers sit in.
+    try testing.expect(after <= before + 4 * 1024);
+}
+
 test "a young collection takes the dead wrappers of objects script only made and dropped, shape by shape" {
     // The make-and-drop loops of the perf suite (tests/perf/workloads/streams.html, timers.html, events.html)
     // make objects script never changes and drop them. Whatever the binding itself does to their wrappers - a

@@ -743,6 +743,15 @@ pub fn livePendingCount() usize {
     return total;
 }
 
+/// The bytes of the record pools of the current agent's caches (diagnostics:
+/// `wrapper_cache_pool_bytes`): every chunk a cache holds, in use or not.
+pub fn livePoolBytes() usize {
+    const caches = currentCaches() orelse return 0;
+    var total: usize = 0;
+    for (caches.items) |cache| total += cache.chunk_count * Chunk.bytes;
+    return total;
+}
+
 /// The edges every live cache of the current agent holds for owners script
 /// has not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
 pub fn liveDeferredEdgeCount() usize {
@@ -1231,6 +1240,8 @@ pub const WrapperCache = struct {
     /// allocator's and goes at the cache's end.
     chunks: ?*Chunk = null,
     free_cells: ?*Cell = null,
+    /// How many chunks the pool holds.
+    chunk_count: usize = 0,
 
     /// Records whose wrapper a collection took and whose finalizer has not
     /// run (`died` -> `finalizeCollected`): each is out of the map, flagged
@@ -1376,6 +1387,7 @@ pub const WrapperCache = struct {
             chunk.cache = self;
             chunk.next = self.chunks;
             self.chunks = chunk;
+            self.chunk_count += 1;
             // Threaded last to first, so the pool issues a chunk's records in
             // address order.
             var index: usize = Chunk.count;
@@ -1423,6 +1435,7 @@ pub const WrapperCache = struct {
             const memory: [*]align(Chunk.bytes) u8 = @ptrCast(@alignCast(chunk));
             self.allocator.free(memory[0..Chunk.bytes]);
         }
+        self.chunk_count = 0;
         self.free_cells = null;
     }
 

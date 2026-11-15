@@ -1196,6 +1196,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "wrapped_instance_bytes_noted", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), false)) },
         .{ .name = "wrapped_instance_bytes_reported", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), true)) },
         .{ .name = "wrapper_cache_pending", .value = @intCast(@import("wrapper_cache.zig").livePendingCount()) },
+        .{ .name = "wrapper_cache_pool_bytes", .value = @intCast(@import("wrapper_cache.zig").livePoolBytes()) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
         .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
         .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },
