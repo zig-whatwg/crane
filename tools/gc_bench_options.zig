@@ -166,6 +166,33 @@ pub const benches = [_]Bench{
         .every = 10_000,
         .gc = .forced,
     },
+    // The two rows where MUCH DIES in a full collection (lane dm1's design,
+    // tmp/plans/dom-memory-figure-design.md 3.5 and 6, batch B's gate; the
+    // integrator's ruling 1): the trees a full collection finds dead are
+    // walked inside its pause, where their bytes leave the figure the engine
+    // is told (dom.dying_trees), so the pause grows with what one collection
+    // kills. `pause` and `wide` hold a tree ALIVE and kill one element a
+    // collection; these kill whole trees, on the engine's own schedule.
+    .{
+        .name = "clone-drop",
+        .what = "a clone of a detached tree of 841 nodes made and dropped per cycle, never a forced collection: " ++
+            "the full-collection pause when the dead trees of one collection are walked inside it",
+        .body = "void (globalThis.cloneSource ??= (() => { const r = document.createElement('div'); " ++
+            "r.innerHTML = '<ul><li><a href=x>one</a> two</li></ul>'.repeat(168); return r; })()).cloneNode(true);",
+        .cycles = 3_000,
+        .every = 100,
+        .gc = .never,
+    },
+    .{
+        .name = "parse-drop",
+        .what = "a tree of 101 nodes parsed, its child list read (a holder of its root that dies with it) and dropped " ++
+            "per cycle, never a forced collection: the full-collection pause when many small dead trees are walked inside it",
+        .body = "{ const e = document.createElement('div'); e.innerHTML = (globalThis.parseDropHtml ??= '<p>some text</p>'.repeat(50)); " ++
+            "void e.childNodes.length; }",
+        .cycles = 26_000,
+        .every = 2_000,
+        .gc = .never,
+    },
 };
 
 /// The measurement named `name`, if there is one.
@@ -304,6 +331,29 @@ test "an unknown --bench= name, or --bench= beside --body=, is refused" {
     try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=nope" }));
     try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=" }));
     try std.testing.expectError(error.BenchAndBody, benchOf(&.{ "gc_bench", "--bench=wide", "--body=void 0;" }));
+}
+
+test "the two much-dies pause rows are named, never force a collection, and build the trees their reports say" {
+    inline for (.{ "clone-drop", "parse-drop" }) |name| {
+        const bench = benchNamed(name) orelse return error.TestBenchMissing;
+        try std.testing.expectEqualStrings(name, bench.name);
+        try std.testing.expect(bench.body.len > 0 and bench.what.len > 0);
+        try std.testing.expect(bench.cycles > 0 and bench.every > 0 and bench.every <= bench.cycles);
+        // The engine's own schedule decides when the dead are found.
+        try std.testing.expectEqual(Bench.Gc.never, bench.gc);
+        try std.testing.expectError(error.GcRefused, bench.collects(true));
+        try std.testing.expectEqualStrings(bench.body, cycleBody(&.{ "gc_bench", "--bench=" ++ name }));
+    }
+    // clone-drop: a div over 168 lists of ul > li > (a > "one"), " two" -
+    // 1 + 168 * 5 = 841 nodes a clone.
+    const clone = benchNamed("clone-drop").?;
+    try std.testing.expect(std.mem.indexOf(u8, clone.body, "'<ul><li><a href=x>one</a> two</li></ul>'.repeat(168)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, clone.body, ".cloneNode(true)") != null);
+    // parse-drop: a div over 50 paragraphs of one text - 1 + 50 * 2 = 101
+    // nodes a cycle - and its childNodes read.
+    const parse = benchNamed("parse-drop").?;
+    try std.testing.expect(std.mem.indexOf(u8, parse.body, "'<p>some text</p>'.repeat(50)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, parse.body, ".childNodes") != null);
 }
 
 test "each measurement says whether it collects: wrapper-churn-nogc never, the kept-object ones always" {

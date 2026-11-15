@@ -1,0 +1,16 @@
+# Architecture: A full collection's marks prove nothing about a wrapper an earlier young collection dropped - hand the end-of-marking pass only what THIS marking found dead
+
+**Date**: 2026-11-15
+**Lesson**: A list of "dead wrappers waiting for their release" holds two kinds of entry: the ones this full collection's marking found dead, and the ones an earlier young collection dropped and no safe point has released yet. Only the first kind carries the proof "nothing the collector kept reaches this tree"; a pass that reasons from that proof must be handed the first kind alone.
+
+**Why**: Crane's walk keeps every wrapper of a tree as soon as a full collection reaches one wrapper, keep or kept holder of it (dom.wrapper_tracing). So a wrapper that a FULL collection finds dead proves its tree is unreachable, and lane dm2's batch B uses that proof to take the tree out of the DOM memory figure inside the collection (dom.dying_trees). A YOUNG collection proves nothing of the kind: V8's scavenger drops any unmodified wrapper script does not reach (v8_wrapper.cpp NodeWrapperRootsHandler), whatever else holds its tree - a second wrapper, or a live holder such as a NodeList. Its release record sits in the same list (node_wrappers.zig `Registry.released`) until the agent's next safe point drains it, and a full collection can start before that drain: an allocation's scavenge followed at once by a mark-compact, or a native walk holding the agent's teardowns (engine.deferTeardowns).
+
+**What Happened**: The first draft kept one index, `offered`: "entries a pass has already seen", and offered everything after it - lane dm1's prototype did the same with `dm1_seen`. Reading the walk for the lone-root case showed the hole before any code ran. A detached root that is its tree's only held node is not entered in the collection's visited set: the walk only marks its wrapper (walkTree's `isLone` branch). If a scavenge had already emptied that node's slot, a live holder's trace marks nothing and leaves no trace in the set, so the pass would find "root not kept, wrapper dead" and predict the tree dead while a live NodeList still names it. The error is in the safe direction (the figure too low until the release) but it is a misprediction the design did not count on, and it would have looked like noise in the Debug counter.
+
+**Fix**:
+1. Stamp the list's length when marking reaches the object that owns the list. On V8 the anchors' registry is traced in every full collection's atomic pause, before its weak processing appends anything (`traceKeeps` sets `Registry.marking_from`).
+2. At the end of the weak processing offer `released[marking_from..]` and clear the stamp. No stamp (the registry was not traced) offers nothing.
+3. Leave the earlier entries to the path that needs no proof: their release, where the counts decide (batch A, dom.refcount_teardown.settle).
+4. No index survives between collections, so the drain needs no bookkeeping for it.
+
+**Takeaway**: **Before a pass reasons from "the collector found this dead", ask which collector and when. A record made by a young collection, or by an earlier cycle, is only a pending release; the marks of the collection in progress cover the records it made itself, so mark the list where that collection starts writing to it.**

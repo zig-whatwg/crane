@@ -6967,6 +6967,19 @@ void v8_ExternalMemoryAccounter_Update(ExternalMemoryAccounter* accounter, Isola
     runQueuedFinalizersInTask(isolate);
 }
 
+/// ExternalMemoryAccounter::Decrease alone, for the end of a full
+/// collection's marking (external_memory.zig `endOfMarking`: what the
+/// collection made dead of the host's figure leaves V8's count before V8
+/// computes its next limits). Legal inside the collection: Decrease takes
+/// V8's no-collection scope and Heap::UpdateExternalMemory returns once it
+/// has lowered the total and the low mark when the change is not positive
+/// (15.7.112.43 src/api/api.cc:12680-12692, src/heap/heap.cc:6987-7001) -
+/// V8's own collector threads call it for ArrayBuffer backing stores. So no
+/// CollectingScope, and no safe point after it: nothing can have collected.
+void v8_ExternalMemoryAccounter_Decrease(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t bytes) {
+    if (bytes) accounter->Decrease(isolate, static_cast<size_t>(bytes));
+}
+
 void v8_ExternalMemoryAccounter_Delete(ExternalMemoryAccounter* accounter, Isolate* isolate, uint64_t reported) {
     accounter->Decrease(isolate, static_cast<size_t>(reported));
     delete accounter;

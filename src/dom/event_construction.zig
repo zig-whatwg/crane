@@ -17,6 +17,7 @@
 const std = @import("std");
 const Hook = @import("hook.zig").Hook;
 const runtime = @import("runtime");
+const event_listener_list = @import("event_listener_list.zig");
 
 /// EventInit's members.
 pub const EventInit = struct {
@@ -50,6 +51,25 @@ pub fn uiEventInitFrom(dictionary: anytype) UIEventInit {
         .detail = dictionary.detail orelse 0,
         .which = dictionary.which orelse 0,
     };
+}
+
+/// The value an event keeps for its type attribute, given the string its
+/// constructor or initEvent() received (BORROWED: the argument conversion
+/// frees it when the call returns). A type the engine lists - every type a
+/// specification names (dom.event_listener_list's table) - is kept as the
+/// table's own string: no copy and no allocation, as a listener keeps a
+/// listed type (dom.event_listener_list.EventType), and as Blink and WebKit
+/// keep an event's type as an atom shared by every event of that type
+/// (Event's type_ and m_type). Any other type is copied. OWNED either way:
+/// `DOMString.deinit` frees the copy and leaves a listed type alone.
+pub fn ownedType(allocator: std.mem.Allocator, event_type: runtime.DOMString) error{OutOfMemory}!runtime.DOMString {
+    const bytes = event_type.asSlice();
+    if (event_listener_list.Key.of(bytes).static_bits != 0) {
+        // A listed type's EventType is its id: nothing is allocated.
+        const listed = try event_listener_list.EventType.init(allocator, bytes);
+        return runtime.DOMString.initInterned(listed.slice());
+    }
+    return event_type.clone(allocator);
 }
 
 /// What the Event impl supplies.
@@ -128,6 +148,39 @@ pub fn forceCanceledFlag(event: *runtime.Instance) void {
 pub fn initializeUIEvent(event: *runtime.Instance, init: UIEventInit) void {
     const steps = ui_event_steps.get() orelse return;
     steps.initialize(event, init);
+}
+
+test "an event keeps a listed type as the table's string and copies any other" {
+    const allocator = std.testing.allocator;
+    // The argument is the binding's: gone when the call returns.
+    const given = try allocator.dupe(u8, "click");
+    var listed = try ownedType(allocator, runtime.DOMString.initInterned(given));
+    allocator.free(given);
+    defer listed.deinit(allocator);
+    try std.testing.expect(listed == .interned);
+    try std.testing.expectEqualStrings("click", listed.asSlice());
+    // A listed type allocates nothing: an allocator that cannot allocate serves it.
+    var other = try ownedType(std.testing.failing_allocator, runtime.DOMString.initInterned("DOMContentLoaded"));
+    defer other.deinit(std.testing.failing_allocator);
+    try std.testing.expectEqualStrings("DOMContentLoaded", other.asSlice());
+
+    // A type no specification names is the event's own copy.
+    const custom_given = try allocator.dupe(u8, "ev1-custom-type");
+    var custom = try ownedType(allocator, runtime.DOMString.initInterned(custom_given));
+    allocator.free(custom_given);
+    defer custom.deinit(allocator);
+    try std.testing.expect(custom == .owned);
+    try std.testing.expectEqualStrings("ev1-custom-type", custom.asSlice());
+    try std.testing.expectError(error.OutOfMemory, ownedType(std.testing.failing_allocator, runtime.DOMString.initInterned("ev1-custom-type")));
+
+    // Matching is exact: another case of a listed type is not that type.
+    var upper = try ownedType(allocator, runtime.DOMString.initInterned("Click"));
+    defer upper.deinit(allocator);
+    try std.testing.expect(upper == .owned);
+    // The empty string is the empty DOMString.
+    var empty = try ownedType(allocator, runtime.DOMString.initEmpty());
+    defer empty.deinit(allocator);
+    try std.testing.expectEqualStrings("", empty.asSlice());
 }
 
 test "without installed steps, event construction reports NotSupported and does nothing else" {

@@ -172,11 +172,9 @@ fn isolateOfInstance(instance: *runtime.Instance) ?*ffi.Isolate {
 /// object, and the instance with the slab generation it had at the
 /// collection - a forced teardown can free the node in between, and is then
 /// recognised the way the wrapper cache's `releaseCounted` recognises one.
-const Released = struct {
-    target: *anyopaque,
-    instance: *runtime.Instance,
-    generation: u64,
-};
+/// (runtime.lifetime.DeadWrapper: the record the owner of the counts is
+/// handed at the end of a full collection's marking, `markedCallback`.)
+const Released = runtime.lifetime.DeadWrapper;
 
 /// The capacity `Registry.released` keeps after a drain empties it: P2 kept
 /// its high-water mark (24 B times the most wrappers one collection found)
@@ -209,6 +207,14 @@ pub const Registry = struct {
     /// Wrappers whose anchor holds their slot now.
     live: usize = 0,
     released: std.ArrayListUnmanaged(Released) = .empty,
+    /// Inside a full collection's atomic pause, from its marking (the
+    /// anchors' registry's Trace, `traceKeeps`) to the end of its weak
+    /// processing (`markedCallback`): how long `released` was when marking
+    /// reached the registry. The entries from there on are the wrappers
+    /// THIS collection's marking found dead; the ones before it were
+    /// recorded by an earlier young collection (or an earlier full one)
+    /// and wait for a drain. Null outside that window.
+    marking_from: ?usize = null,
     keeps: address_map.AddressHashMapUnmanaged(*runtime.Instance, Keep) = .empty,
     /// Bounds `keeps`' tombstones: every keep ends with a removal.
     keeps_guard: tombstones.TombstoneGuard = .{},
@@ -275,6 +281,9 @@ pub const Registry = struct {
         while (self.released.pop()) |released| releaseOne(self, released);
         self.net_last = null;
         self.shrinkReleased();
+        // Every recorded reference is released: what a collection's end of
+        // marking predicted dead has been queued by now, or lived.
+        @import("external_memory.zig").releasesDone(self.isolate);
     }
 
     /// The net declined `root` because its realm is alive: that realm's end
@@ -328,6 +337,7 @@ pub const Registry = struct {
         ffi.v8_NodeWrappers_EndAll(self.isolate, self, &endedCallback);
         while (self.released.pop()) |released| releaseOne(self, released);
         self.net_last = null;
+        @import("external_memory.zig").releasesDone(self.isolate);
         if (self.live != 0) log.err("{d} node wrapper(s) still live after the agent's end", .{self.live});
     }
 
@@ -909,6 +919,9 @@ pub fn prepareHolderTracing(isolate: *ffi.Isolate) void {
 /// is held by an edge from its realm's global object (`holdKept`).
 fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    // Marking reached the registry: what its weak processing records from
+    // here on died in this collection (`Registry.marking_from`).
+    registry.marking_from = registry.released.items.len;
     if (registry.ended) return;
     var tracer: Tracer = .{ .visitor = visitor orelse return, .registry = registry };
     var entries = registry.keeps.iterator();
@@ -929,8 +942,26 @@ fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void
 /// processing, every major GC): the walk's sets of this collection go,
 /// their capacity kept (a quarter used or less above 4,096 entries gives the
 /// rest back).
+///
+/// [external_memory_at_collection] First, while the walk's set still says
+/// which trees this collection kept: the wrappers its marking found dead -
+/// recorded since marking reached the registry (`Registry.marking_from`),
+/// their references not released yet - are offered to the owner of the
+/// counts, and V8 is told the figure less the trees that die with them,
+/// before it computes its next limits (external_memory.zig `endOfMarking`).
+/// A wrapper an earlier young collection dropped is not offered: this
+/// collection's marks say nothing about its tree, and its release decides.
+/// The tracer carries the set alone - nothing is marked any more, and the
+/// owner calls only traceVisitOnce with it.
 fn markedCallback(raw_registry: ?*anyopaque) callconv(.c) void {
     const registry: *Registry = @ptrCast(@alignCast(raw_registry orelse return));
+    const recorded = registry.released.items;
+    const from = @min(registry.marking_from orelse recorded.len, recorded.len);
+    registry.marking_from = null;
+    if (!registry.ended) {
+        var tracer: Tracer = .{ .visitor = undefined, .registry = registry };
+        @import("external_memory.zig").endOfMarking(registry.isolate, recorded[from..], &tracer);
+    }
     endSet(&registry.visited);
     registry.last_visited = 0;
     endSet(&registry.traced);

@@ -1103,6 +1103,10 @@ pub extern fn v8_ExternalMemoryAccounter_New() ?*ExternalMemoryAccounter;
 /// marking, or collect, before it returns (V8 15.7 Heap::UpdateExternalMemory);
 /// a fall never does. On the isolate's thread, with it entered.
 pub extern fn v8_ExternalMemoryAccounter_Update(accounter: *ExternalMemoryAccounter, isolate: *Isolate, change_in_bytes: i64) void;
+/// ExternalMemoryAccounter::Decrease of `bytes` and nothing else: it starts
+/// no collection and runs no finalizer, so it may be called inside a
+/// collection's pause (external_memory.zig `endOfMarking`).
+pub extern fn v8_ExternalMemoryAccounter_Decrease(accounter: *ExternalMemoryAccounter, isolate: *Isolate, bytes: u64) void;
 /// ExternalMemoryAccounter::Decrease of `reported` (what the accounter still
 /// reports), then the accounter freed. On the isolate's thread, entered.
 pub extern fn v8_ExternalMemoryAccounter_Delete(accounter: *ExternalMemoryAccounter, isolate: *Isolate, reported: u64) void;
