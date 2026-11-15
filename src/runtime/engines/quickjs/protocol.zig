@@ -60,6 +60,7 @@ pub const capabilities: engine.Capabilities = .{
     // own REPL's), not wired: no engine is linked yet.
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign's P5): QuickJS wraps no node yet (its gc_mark would call the hook, design 3.3).
     .wrapper_tracing = .unsupported,
 };

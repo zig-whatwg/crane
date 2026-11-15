@@ -99,6 +99,53 @@ pub fn reportIfMovedOn(isolate: *ffi.Isolate) void {
     reportIfMoved(storage);
 }
 
+/// [external_memory_at_collection]: the end of a full collection's marking,
+/// in its atomic pause (node_wrappers.zig `markedCallback`), the node
+/// wrappers found dead in it recorded in `dead` and none of their references
+/// released yet. V8 computes its next limits when this collection ends, from
+/// what it then believes is alive (15.7.112.43 src/heap/heap.cc:2595 takes
+/// the sizes, :1604 RecomputeLimits), and the trees those wrappers were the
+/// last to keep are in the figure until the agent's next safe point releases
+/// them: a limit computed with them ratchets (lane dm1's design,
+/// tmp/plans/dom-memory-figure-design.md 2.1: 105.7 MB after the parser
+/// page's first collection, 47 MB alive). So the owner of the counts is
+/// asked which trees die with these wrappers (runtime.lifetime.dyingWith:
+/// their bytes leave the figure there), and V8 is told the figure as it
+/// stands now - with ONE decrease, which starts no collection
+/// (v8_ExternalMemoryAccounter_Decrease). That also tells it of the trees
+/// the counts decided dead since the last report. Growth since the last
+/// report is not told here: an increase may collect, and waits for the
+/// next safe point as always.
+///
+/// Blink's nodes are on V8's C++ heap, whose marked bytes are the size V8
+/// reads there; JavaScriptCore sums what each visited wrapper keeps
+/// (engine.capabilities.external_memory_at_collection has both). `tracer`
+/// carries this collection's visited set for the owner's dedupe; nothing is
+/// marked through it.
+pub fn endOfMarking(isolate: *ffi.Isolate, dead: []const runtime.lifetime.DeadWrapper, tracer: *@import("node_wrappers.zig").Tracer) void {
+    const storage = isolate_templates.getTemplateStorage(isolate) orelse return;
+    const memory = storage.external_memory orelse return;
+    _ = runtime.lifetime.dyingWith(memory, dead, tracer);
+    const live = memory.live;
+    if (storage.external_reported <= live) return;
+    const accounter: *ffi.ExternalMemoryAccounter = @ptrCast(storage.external_accounter orelse return);
+    const fell = storage.external_reported - live;
+    storage.external_reported = live;
+    memory.markReported(live);
+    ffi.v8_ExternalMemoryAccounter_Decrease(accounter, isolate, fell);
+}
+
+/// The references of every node wrapper the agent's collections found dead
+/// are released (node_wrappers.zig: the drain emptied its list): what a
+/// collection's end of marking predicted dead and no tree's queueing took
+/// is back in the figure (ExternalMemory.settlePredictions), and V8 hears
+/// of it at the next report.
+pub fn releasesDone(isolate: *ffi.Isolate) void {
+    const storage = isolate_templates.getTemplateStorage(isolate) orelse return;
+    const memory = storage.external_memory orelse return;
+    _ = memory.settlePredictions();
+}
+
 /// What V8 was last told of `isolate`'s figure (tests).
 pub fn reportedOn(isolate: *ffi.Isolate) usize {
     const storage = isolate_templates.getTemplateStorage(isolate) orelse return 0;

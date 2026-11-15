@@ -63,6 +63,7 @@ const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
 const refcount_teardown = @import("refcount_teardown.zig");
 const wrapper_tracing = @import("wrapper_tracing.zig");
+const dying_trees = @import("dying_trees.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -594,6 +595,10 @@ pub fn install(owned: Hooks) void {
         // The wrapper redesign's P5: the walk the engine's collector runs
         // from a reachable or kept node (dom.wrapper_tracing).
         .trace_tree = wrapper_tracing.traceTree,
+        // Lane dm2, batch B: which trees die with the wrappers a full
+        // collection found dead, asked at the end of its marking
+        // (dom.dying_trees).
+        .dying_with = dying_trees.dyingWith,
     });
 }
 
