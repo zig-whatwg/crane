@@ -27,6 +27,12 @@
 //! focus.zig, user_activation.zig): the remote end decides which input a
 //! command is, the user agent what that input does.
 //!
+//! Pointer input sources (WebDriver 15.2.3): every mouse source moves the one
+//! mouse; each pen or touch source is a pointer of its own (`PointerSource`,
+//! its pointerId from "get a pointer id"). A tick's touch actions are one
+//! touch frame (user_input.touchFrame), as a platform reports all of a touch
+//! screen's contacts in one event.
+//!
 //! This runner has no layout. By the user's 2026-10-27 ruling, a viewport
 //! pointerMove targets the document root at every coordinate. Real hosts
 //! hit-test through their layout backend. Element-origin moves retain their
@@ -96,13 +102,31 @@ const KeySource = struct {
     }
 };
 
+/// A pen or touch pointer input source (WebDriver 15.2.3): its id, and the
+/// pointer it drives - its subtype (pointer_type), its pointerId and the
+/// device's state. Self-contained, for the move of these commands into
+/// src/webdriver (lane wptcfg batch 2: the runner as an in-process WebDriver
+/// client) to lift as it is.
+pub const PointerSource = struct {
+    id: []u8,
+    pointer: user_input.Pointer,
+
+    fn destroy(self: *PointerSource, allocator: std.mem.Allocator) void {
+        user_input.pointerGone(&self.pointer);
+        allocator.free(self.id);
+        allocator.destroy(self);
+    }
+};
+
 pub const TestDriver = struct {
     allocator: std.mem.Allocator,
     builtins: [std.enums.values(Native).len]runtime.BuiltinFunction,
     commands: std.ArrayListUnmanaged(*Command) = .empty,
     /// WebDriver's input state for the test's session: every mouse source
-    /// moves the one mouse (a page has one), each key source keeps its keys.
+    /// moves the one mouse (a page has one), each pen and touch source drives
+    /// a pointer of its own, each key source keeps its keys.
     mouse: user_input.Pointer = .{},
+    pointer_sources: std.ArrayListUnmanaged(*PointerSource) = .empty,
     keyboard: user_input.Keyboard = .{},
     key_sources: std.ArrayListUnmanaged(KeySource) = .empty,
 
@@ -119,6 +143,7 @@ pub const TestDriver = struct {
         self.endTest();
         self.commands.deinit(self.allocator);
         self.key_sources.deinit(self.allocator);
+        self.pointer_sources.deinit(self.allocator);
         self.allocator.destroy(self);
     }
 
@@ -143,8 +168,43 @@ pub const TestDriver = struct {
         self.commands.clearRetainingCapacity();
         for (self.key_sources.items) |*source| source.deinit(self.allocator);
         self.key_sources.clearRetainingCapacity();
+        for (self.pointer_sources.items) |source| source.destroy(self.allocator);
+        self.pointer_sources.clearRetainingCapacity();
+        user_input.pointerGone(&self.mouse);
         self.mouse = .{};
         self.keyboard = .{};
+    }
+
+    /// The pen or touch source `id`, made with the next free pointerId when
+    /// it is new (WebDriver "get a pointer id": the smallest id >= 2 no
+    /// source has; 0 and 1 are the mouse's). Null: out of memory.
+    fn pointerSource(self: *TestDriver, id: []const u8, kind: user_input.PointerType) ?*PointerSource {
+        for (self.pointer_sources.items) |source| if (std.mem.eql(u8, source.id, id)) return source;
+        var pointer_id: i32 = 2;
+        while (true) : (pointer_id += 1) {
+            const taken = for (self.pointer_sources.items) |source| {
+                if (source.pointer.pointer_id == pointer_id) break true;
+            } else false;
+            if (!taken) break;
+        }
+        const source = self.allocator.create(PointerSource) catch return null;
+        source.* = .{
+            .id = self.allocator.dupe(u8, id) catch {
+                self.allocator.destroy(source);
+                return null;
+            },
+            .pointer = .{ .pointer_id = pointer_id, .pointer_type = kind },
+        };
+        self.pointer_sources.append(self.allocator, source) catch {
+            source.destroy(self.allocator);
+            return null;
+        };
+        return source;
+    }
+
+    fn existingPointerSource(self: *TestDriver, id: []const u8) ?*PointerSource {
+        for (self.pointer_sources.items) |source| if (std.mem.eql(u8, source.id, id)) return source;
+        return null;
     }
 
     /// The automation's permission reset before a test: every override a
@@ -213,7 +273,22 @@ pub const TestDriver = struct {
 // ============================================================================
 
 const SourceType = enum { none, key, pointer };
-const Subtype = enum { pause, key_down, key_up, pointer_down, pointer_up, pointer_move };
+const Subtype = enum { pause, key_down, key_up, pointer_down, pointer_up, pointer_move, pointer_cancel };
+
+/// A pointer action's properties (WebDriver 15.5 "process a pointer up or
+/// pointer down action" steps 4-30, "process a pointer move action"): null
+/// where the action has none.
+const PointerProperties = struct {
+    width: ?f64 = null,
+    height: ?f64 = null,
+    pressure: ?f64 = null,
+    tangential_pressure: ?f64 = null,
+    tilt_x: ?i32 = null,
+    tilt_y: ?i32 = null,
+    twist: ?i32 = null,
+    altitude_angle: ?f64 = null,
+    azimuth_angle: ?f64 = null,
+};
 
 const Origin = union(enum) {
     viewport,
@@ -233,6 +308,9 @@ const Action = struct {
     x: f64 = 0,
     y: f64 = 0,
     duration: ?f64 = null,
+    /// A pointer action's source's subtype ("pointerType").
+    pointer_type: user_input.PointerType = .mouse,
+    properties: PointerProperties = .{},
 
     fn deinit(self: *Action, allocator: std.mem.Allocator) void {
         allocator.free(self.source_id);
@@ -638,10 +716,55 @@ const Command = struct {
     // ------------------------------------------------------------------------
 
     fn dispatchTick(self: *Command, tick: *Tick) ?Failure {
+        var touched = false;
         for (tick.actions.items) |*action| {
+            if (action.source_type == .pointer and action.pointer_type == .touch) {
+                if (self.touchAction(action)) |failure| return failure;
+                touched = true;
+                continue;
+            }
             if (self.dispatchAction(action)) |failure| return failure;
         }
+        // The tick's touch actions happen at one moment: one touch frame,
+        // every touch source's contact in it, as a touch screen reports them
+        // (one platform touch event; WebDriver dispatches a tick's actions
+        // together).
+        if (touched) self.deliverTouchFrame();
         return null;
+    }
+
+    /// The pointer a pointer action of a mouse or pen source drives.
+    fn actionPointer(self: *Command, action: *const Action) ?*user_input.Pointer {
+        if (action.pointer_type == .mouse) return &self.driver.mouse;
+        const source = self.driver.existingPointerSource(action.source_id) orelse return null;
+        return &source.pointer;
+    }
+
+    /// The element a pointerMove action's origin and offset put the pointer
+    /// over, or null to stay where it is (a pointer origin with no offset).
+    fn moveTarget(self: *Command, action: *const Action) union(enum) { target: *Instance, stay, failure: Failure } {
+        switch (action.origin) {
+            .element => |weak| {
+                // "Get a WebElement origin": a stale one is an error.
+                const element = knownElement(weak) orelse return .{ .failure = staleElement() };
+                // The element at the origin's in-view centre plus the
+                // offset: the origin itself, or an image map's area.
+                return .{ .target = user_input.hitTest(element, action.x, action.y) };
+            },
+            .pointer => {
+                if (action.x != 0 or action.y != 0) return .{ .failure = unsupportedMove() };
+                return .stay;
+            },
+            .viewport => {
+                // User ruling, 2026-10-27: the WPT runner's explicit
+                // no-layout hit test is documentElement at ANY point.
+                // Reuse the action context and ordinary pointer path.
+                const document = self.keyDocument() orelse return .{ .failure = noSuchWindow() };
+                const root = (interfaces.Document.get_documentElement(document) catch return .{ .failure = outOfMemory() }) orelse
+                    return .{ .failure = .{ .code = "no such element", .message = "the document has no root element" } };
+                return .{ .target = root };
+            },
+        }
     }
 
     fn dispatchAction(self: *Command, action: *Action) ?Failure {
@@ -649,42 +772,85 @@ const Command = struct {
         switch (action.subtype) {
             .pause => return null,
             .pointer_move => {
-                switch (action.origin) {
-                    .element => |weak| {
-                        // "Get a WebElement origin": a stale one is an error.
-                        const element = knownElement(weak) orelse return staleElement();
-                        // The element at the origin's in-view centre plus
-                        // the offset: the origin itself, or an image map's
-                        // area.
-                        const target = user_input.hitTest(element, action.x, action.y);
-                        user_input.pointerMove(&driver.mouse, target, driver.globalModifiers());
-                    },
-                    .pointer => {
-                        if (action.x != 0 or action.y != 0) return unsupportedMove();
-                    },
-                    .viewport => {
-                        // User ruling, 2026-10-27: the WPT runner's explicit
-                        // no-layout hit test is documentElement at ANY point.
-                        // Reuse the action context and ordinary pointer path.
-                        const document = self.keyDocument() orelse return noSuchWindow();
-                        const root = (interfaces.Document.get_documentElement(document) catch return outOfMemory()) orelse
-                            return .{ .code = "no such element", .message = "the document has no root element" };
-                        user_input.pointerMove(&driver.mouse, root, driver.globalModifiers());
-                    },
+                const pointer = self.actionPointer(action) orelse return outOfMemory();
+                if (action.pointer_type != .mouse) applyProperties(pointer, action.properties);
+                switch (self.moveTarget(action)) {
+                    .target => |target| user_input.pointerMove(pointer, target, driver.globalModifiers()),
+                    .stay => {},
+                    .failure => |failure| return failure,
                 }
                 return null;
             },
             .pointer_down => {
-                if (driver.mouse.currentTarget() == null) return unsupportedMove();
-                user_input.pointerDown(&driver.mouse, action.button, driver.globalModifiers());
+                const pointer = self.actionPointer(action) orelse return outOfMemory();
+                if (pointer.currentTarget() == null) return unsupportedMove();
+                if (action.pointer_type != .mouse) applyProperties(pointer, action.properties);
+                user_input.pointerDown(pointer, action.button, driver.globalModifiers());
                 return null;
             },
             .pointer_up => {
-                user_input.pointerUp(&driver.mouse, action.button, driver.globalModifiers());
+                const pointer = self.actionPointer(action) orelse return outOfMemory();
+                user_input.pointerUp(pointer, action.button, driver.globalModifiers());
                 return null;
             },
+            // A mouse or a hovering pen has no contact to cancel: the
+            // pointerCancel of a source that is not touch changes nothing
+            // here (WebDriver leaves "cancelling any action of the pointer"
+            // to the implementation).
+            .pointer_cancel => return null,
             .key_down, .key_up => return self.dispatchKeyAction(action),
         }
+    }
+
+    /// A touch source's action in this tick: its contact's change in the
+    /// tick's touch frame (`deliverTouchFrame`), and the element under it.
+    fn touchAction(self: *Command, action: *Action) ?Failure {
+        const source = self.driver.existingPointerSource(action.source_id) orelse return outOfMemory();
+        const pointer = &source.pointer;
+        switch (action.subtype) {
+            .pause, .key_down, .key_up => {},
+            .pointer_move => {
+                applyProperties(pointer, action.properties);
+                switch (self.moveTarget(action)) {
+                    .target => |target| pointer.touch_hit = Weak.of(target),
+                    .stay => {},
+                    .failure => |failure| return failure,
+                }
+                // A touch out of contact has no hover: moving it only says
+                // where it will touch.
+                if (pointer.in_contact) pointer.touch_change = .moved;
+            },
+            .pointer_down => {
+                // "If the source's pressed property contains button": a
+                // touch already in contact.
+                if (pointer.in_contact) return null;
+                const hit = if (pointer.touch_hit) |weak| weak.get() else null;
+                if (hit == null) return unsupportedMove();
+                applyProperties(pointer, action.properties);
+                pointer.touch_change = .pressed;
+            },
+            .pointer_up => {
+                if (!pointer.in_contact) return null;
+                pointer.touch_change = .released;
+            },
+            .pointer_cancel => {
+                if (!pointer.in_contact) return null;
+                pointer.touch_change = .cancelled;
+            },
+        }
+        return null;
+    }
+
+    /// Deliver the tick's touch frame: every touch source's contact.
+    fn deliverTouchFrame(self: *Command) void {
+        var points: [user_input_touch_points]*user_input.Pointer = undefined;
+        var count: usize = 0;
+        for (self.driver.pointer_sources.items) |source| {
+            if (source.pointer.pointer_type != .touch or count == points.len) continue;
+            points[count] = &source.pointer;
+            count += 1;
+        }
+        user_input.touchFrame(points[0..count], self.driver.globalModifiers());
     }
 
     /// WebDriver "dispatch a keyDown action" / "dispatch a keyUp action".
@@ -892,6 +1058,25 @@ fn serializedCookie(realm: runtime.Context, cookie: *const cookiestore.Cookie) e
     }) };
     n += 1;
     return engine.createDictionaryObject(realm, members[0..n]);
+}
+
+/// The touch sources one touch frame carries (a touch screen's contacts).
+const user_input_touch_points = 16;
+
+/// A pen's or touch's pointer properties from the action that moves or
+/// presses it (WebDriver 15.6 "dispatch a pointerDown action" steps 7-15,
+/// "dispatch a pointerMove action"): each the action's, or "the default
+/// value specified for hardware that doesn't support that property".
+fn applyProperties(pointer: *user_input.Pointer, properties: PointerProperties) void {
+    pointer.width = properties.width orelse 1;
+    pointer.height = properties.height orelse 1;
+    pointer.pressure = if (properties.pressure) |p| @floatCast(p) else null;
+    pointer.tangential_pressure = if (properties.tangential_pressure) |p| @floatCast(p) else 0;
+    pointer.tilt_x = properties.tilt_x;
+    pointer.tilt_y = properties.tilt_y;
+    pointer.twist = properties.twist orelse 0;
+    pointer.altitude_angle = properties.altitude_angle;
+    pointer.azimuth_angle = properties.azimuth_angle;
 }
 
 const dom_visibility = @import("dom").visibility_state;
@@ -1218,15 +1403,25 @@ fn parseActions(command: *Command, realm: runtime.Context, value: JSValue) ?Fail
         const is_wheel = std.mem.eql(u8, source_type_name, "wheel");
         const id = stringProperty(realm, source.value, "id", allocator) orelse return invalid("an input source has no id");
         defer allocator.free(id);
-        if (source_type == .pointer) {
-            // "parameters": only a mouse, which is all a page's pointer is here.
+        var pointer_type: user_input.PointerType = .mouse;
+        if (source_type == .pointer and !is_wheel) {
+            // "Process pointer parameters": "pointerType" is mouse (the
+            // default), pen or touch.
             const parameters = engine.getProperty(realm, source.value, "parameters") catch return invalid("bad parameters");
             defer parameters.release();
             if (engine.typeOf(realm, parameters.value) == .object) {
-                if (stringProperty(realm, parameters.borrow(), "pointerType", allocator)) |pointer_type| {
-                    defer allocator.free(pointer_type);
-                    if (!std.mem.eql(u8, pointer_type, "mouse")) return .{ .code = "unsupported operation", .message = "only a mouse pointer is supported" };
+                if (stringProperty(realm, parameters.borrow(), "pointerType", allocator)) |name| {
+                    defer allocator.free(name);
+                    pointer_type = std.meta.stringToEnum(user_input.PointerType, name) orelse return invalid("pointerType is not mouse, pen or touch");
                 }
+            } else if (!parameters.value.isUndefined()) return invalid("parameters is not an object");
+            // "Get or create an input source": a source this session has
+            // with the same id must have the same subtype.
+            if (pointer_type == .mouse) {
+                if (command.driver.existingPointerSource(id) != null) return invalid("an input source changed its pointerType");
+            } else {
+                const pointer_source = command.driver.pointerSource(id, pointer_type) orelse return outOfMemory();
+                if (pointer_source.pointer.pointer_type != pointer_type) return invalid("an input source changed its pointerType");
             }
         }
         const actions_value = engine.getProperty(realm, source.value, "actions") catch return invalid("an input source has no actions");
@@ -1243,9 +1438,10 @@ fn parseActions(command: *Command, realm: runtime.Context, value: JSValue) ?Fail
             }
             var action = parseAction(realm, item.value, source_type, is_wheel, id, allocator) catch |err| switch (err) {
                 error.Invalid => return invalid("an action is not well formed"),
-                error.Unsupported => return .{ .code = "unsupported operation", .message = "wheel and pointerCancel actions are not supported" },
+                error.Unsupported => return .{ .code = "unsupported operation", .message = "wheel actions are not supported" },
                 error.OutOfMemory => return outOfMemory(),
             };
+            action.pointer_type = pointer_type;
             command.ticks.items[index].actions.append(allocator, action) catch {
                 action.deinit(allocator);
                 return outOfMemory();
@@ -1260,20 +1456,21 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
     defer allocator.free(subtype_name);
     const Name = struct { []const u8, Subtype };
     const names = [_]Name{
-        .{ "pause", .pause },              .{ "keyDown", .key_down },     .{ "keyUp", .key_up },
-        .{ "pointerDown", .pointer_down }, .{ "pointerUp", .pointer_up }, .{ "pointerMove", .pointer_move },
+        .{ "pause", .pause },                  .{ "keyDown", .key_down },     .{ "keyUp", .key_up },
+        .{ "pointerDown", .pointer_down },     .{ "pointerUp", .pointer_up }, .{ "pointerMove", .pointer_move },
+        .{ "pointerCancel", .pointer_cancel },
     };
     const subtype: Subtype = for (names) |n| {
         if (std.mem.eql(u8, subtype_name, n[0])) break n[1];
     } else {
-        if (std.mem.eql(u8, subtype_name, "scroll") or std.mem.eql(u8, subtype_name, "pointerCancel")) return error.Unsupported;
+        if (std.mem.eql(u8, subtype_name, "scroll")) return error.Unsupported;
         return error.Invalid;
     };
     // Each subtype belongs to its source type.
     const allowed = switch (subtype) {
         .pause => true,
         .key_down, .key_up => source_type == .key,
-        .pointer_down, .pointer_up, .pointer_move => source_type == .pointer and !is_wheel,
+        .pointer_down, .pointer_up, .pointer_move, .pointer_cancel => source_type == .pointer and !is_wheel,
     };
     if (!allowed) return error.Invalid;
     var action: Action = .{
@@ -1292,12 +1489,15 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
             }
             action.value = value;
         },
+        .pointer_cancel => {},
         .pointer_down, .pointer_up => {
             const button = numberProperty(realm, object, "button") orelse 0;
             if (button < 0 or button > 4 or @floor(button) != button) return error.Invalid;
             action.button = @intFromFloat(button);
+            action.properties = try pointerProperties(realm, object);
         },
         .pointer_move => {
+            action.properties = try pointerProperties(realm, object);
             action.x = numberProperty(realm, object, "x") orelse 0;
             action.y = numberProperty(realm, object, "y") orelse 0;
             action.duration = numberProperty(realm, object, "duration");
@@ -1321,6 +1521,41 @@ fn parseAction(realm: runtime.Context, object: JSValue, source_type: SourceType,
         },
     }
     return action;
+}
+
+/// WebDriver 15.5 "process a pointer up or pointer down action" steps 4-30
+/// (and "process a pointer move action"'s): each property absent, or a
+/// number in its range - an integer for the tilts and twist.
+fn pointerProperties(realm: runtime.Context, object: JSValue) error{Invalid}!PointerProperties {
+    const Range = struct { min: f64, max: f64, integer: bool = false };
+    const Get = struct {
+        fn number(r: runtime.Context, o: JSValue, name: []const u8, range: Range) error{Invalid}!?f64 {
+            const value = engine.getProperty(r, o, name) catch return error.Invalid;
+            defer value.release();
+            if (value.value.isUndefined()) return null;
+            if (engine.typeOf(r, value.value) != .number) return error.Invalid;
+            const n = engine.convertToUnrestrictedDouble(r, value.borrow()) catch return error.Invalid;
+            if (!(n >= range.min and n <= range.max)) return error.Invalid;
+            if (range.integer and @floor(n) != n) return error.Invalid;
+            return n;
+        }
+    };
+    const pi = std.math.pi;
+    const inf = std.math.inf(f64);
+    const tilt_x = try Get.number(realm, object, "tiltX", .{ .min = -90, .max = 90, .integer = true });
+    const tilt_y = try Get.number(realm, object, "tiltY", .{ .min = -90, .max = 90, .integer = true });
+    const twist = try Get.number(realm, object, "twist", .{ .min = 0, .max = 359, .integer = true });
+    return .{
+        .width = try Get.number(realm, object, "width", .{ .min = 0, .max = inf }),
+        .height = try Get.number(realm, object, "height", .{ .min = 0, .max = inf }),
+        .pressure = try Get.number(realm, object, "pressure", .{ .min = 0, .max = 1 }),
+        .tangential_pressure = try Get.number(realm, object, "tangentialPressure", .{ .min = -1, .max = 1 }),
+        .tilt_x = if (tilt_x) |t| @intFromFloat(t) else null,
+        .tilt_y = if (tilt_y) |t| @intFromFloat(t) else null,
+        .twist = if (twist) |t| @intFromFloat(t) else null,
+        .altitude_angle = try Get.number(realm, object, "altitudeAngle", .{ .min = 0, .max = pi / 2.0 }),
+        .azimuth_angle = try Get.number(realm, object, "azimuthAngle", .{ .min = 0, .max = 2 * pi }),
+    };
 }
 
 // ============================================================================
