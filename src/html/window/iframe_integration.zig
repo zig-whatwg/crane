@@ -1334,6 +1334,9 @@ pub const IFrameIntegration = struct {
             // "Otherwise, proceed onward" - the resource is handed off to
             // external software. The navigable keeps its current document.
             .multipart, .external => return IFrameError.ExternalHandoff,
+            // A PDF, with the user agent's PDF viewer supported: the inline
+            // PDF viewer document, of a new opaque origin.
+            .pdf_viewer => return self.commitPdfViewerDocument(final_url),
             else => {},
         }
 
@@ -1377,16 +1380,63 @@ pub const IFrameIntegration = struct {
             .text => try self.commitTextDocument(body, response.content_type, computed),
             .media => try self.commitMediaDocument(final_url, document_type.mediaHostElement(computed), computed),
             .xml => try self.commitXmlDocument(body, .{ .content_type = response.content_type, .type = computed }),
-            .multipart, .external => unreachable,
+            .multipart, .external, .pdf_viewer => unreachable,
         }
         // Nothing of the commit follows the parse: script ran in it, and its
         // load listeners may have destroyed this navigable (markCommitted).
     }
 
+    /// HTML 7.5.7 "create a document to display a user agent page or PDF
+    /// viewer inline", for a PDF the navigation fetched (the user agent's PDF
+    /// viewer supported is true; whatwg/html#6947): "1. Let origin be a new
+    /// opaque origin." [...] "5. Let document be the result of creating and
+    /// initializing a Document object given "html", "text/html", and
+    /// navigationParams. 6. Either associate document with a custom
+    /// rendering that is not rendered using the normal Document rendering
+    /// rules, or mutate document until it represents the content the user
+    /// agent wants to render. 7. Act as if the user agent had stopped parsing
+    /// document." Its opaque origin keeps every other document out of it:
+    /// a same-origin parent's contentWindow.document throws "SecurityError"
+    /// (plugin-document.historical.html: Firefox 160 passes; Chrome 157 and
+    /// Safari 27.2 still give their PDF viewer documents the response's
+    /// origin - the newer spec, which Firefox ships, golden rule 2).
+    ///
+    /// Step 6's content: a full-size embed of type application/pdf - the shape
+    /// of Blink's and WebKit's PDF documents (an embed filling the viewport),
+    /// the surface a renderer draws the PDF on. It has no src, so nothing is
+    /// fetched again, and today's embed element displays no plugin. Crane never
+    /// parses the PDF's bytes; drawing it is the renderer's (platform
+    /// protocol 6.9). The navigationParams of step 4 - this origin, a new
+    /// policy container, an empty final sandboxing flag set - are the
+    /// navigation code's (HTMLIFrameElement's commit, `responseIsPdfViewer`).
+    fn commitPdfViewerDocument(self: *IFrameIntegration, url: []const u8) IFrameError!void {
+        if (self.window_proxy) |*proxy| proxy.setDocumentOrigin(Origin.createOpaque());
+        self.updateLocationUrl(url);
+        try self.markCommitted(url, "text/html");
+        _ = try self.commitHtmlDocument(pdf_viewer_markup, null, .{});
+    }
+
+    const pdf_viewer_markup = "<!DOCTYPE html><html><head></head><body style=\"margin: 0\">" ++
+        "<embed type=\"application/pdf\" width=\"100%\" height=\"100%\" style=\"position: absolute; left: 0; top: 0\"></body></html>";
+
+    /// Whether committing `response` makes the inline PDF viewer document
+    /// (`commitPdfViewerDocument`): a PDF, with the user agent's PDF viewer
+    /// supported, that makes a document at all (not a 204 or 205, not an
+    /// attachment: `responseMakesDocument`).
+    pub fn responseIsPdfViewer(self: *IFrameIntegration, response: *const navigation_fetch.NavigationFetchResult) bool {
+        if (response.is_network_error) return false;
+        const content_type = response.content_type orelse return false;
+        const computed = document_type.essence(self.allocator, content_type) catch return false;
+        defer self.allocator.free(computed);
+        if (document_type.classify(computed) != .pdf_viewer) return false;
+        return self.responseMakesDocument(response);
+    }
+
     /// The origin of the document committing `response` - the fetch of `url`
-    /// - would make: opaque for a network error, else the final URL's.
+    /// - would make: opaque for a network error and for the inline PDF viewer
+    /// document, else the final URL's.
     pub fn responseOrigin(self: *IFrameIntegration, url: []const u8, response: *const navigation_fetch.NavigationFetchResult) Origin {
-        if (response.is_network_error) return Origin.createOpaque();
+        if (response.is_network_error or self.responseIsPdfViewer(response)) return Origin.createOpaque();
         const final_url = if (response.final_url.len > 0) response.final_url else url;
         return self.parseOriginFromURL(final_url);
     }

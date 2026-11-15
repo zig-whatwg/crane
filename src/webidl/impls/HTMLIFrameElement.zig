@@ -3131,7 +3131,9 @@ fn runCommit(context: ?*anyopaque) void {
             };
         }
     }
-    record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
+    // The inline PDF viewer document's navigationParams have "an empty set"
+    // too (HTML 7.5.7 step 4).
+    record.final_sandboxing_flags = if (response.is_network_error or integration.responseIsPdfViewer(response)) .empty else record.target_sandboxing_flags.unionWith(
         if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
     );
     // Step 21.12.2 for a top-level traversable's last response: whether its
@@ -3518,6 +3520,9 @@ fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url
 fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) !fetch_mod.internal.PolicyContainer {
     const allocator = integration.allocator;
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
+    // The inline PDF viewer document's policy container is "a new policy
+    // container" (HTML 7.5.7 step 4): the PDF response's headers make none.
+    if (integration.responseIsPdfViewer(response)) return PolicyContainer.init(allocator);
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
     // 1. "If historyPolicyContainer is not null": assert that responseURL
     // requires storing the policy container in history, and return a clone
@@ -4815,6 +4820,9 @@ fn navigationParamsOriginRecord(
 ) ?*OriginRecord {
     const allocator = integration.allocator;
     if (response.is_network_error) return OriginRecord.create(allocator, "null") catch null;
+    // The inline PDF viewer document: "Let origin be a new opaque origin"
+    // (HTML 7.5.7 step 1).
+    if (integration.responseIsPdfViewer(response)) return OriginRecord.create(allocator, "null") catch null;
     // "Determining the origin" step 1, given navigationParams's final
     // sandboxing flag set - the target's sandboxing flags united with the
     // policy container's CSP-derived ones (CSP 4.3 "sandbox"): "If

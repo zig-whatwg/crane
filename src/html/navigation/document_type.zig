@@ -15,7 +15,8 @@
 //! > - "multipart/x-mixed-replace" -> loading a multipart/x-mixed-replace document
 //! > - a supported image, video, or audio type -> loading a media document
 //! > - "application/pdf" / "text/pdf" -> inline content with no DOM, if the
-//! >   user agent's PDF viewer supported is true
+//! >   user agent's PDF viewer supported is true (Crane's: its platform's
+//! >   pdf_viewer capability, html_core.navigator.pdf_viewer)
 //! >
 //! > Otherwise, proceed onward.
 //!
@@ -33,6 +34,7 @@
 //! the `mimesniff` module.
 
 const std = @import("std");
+const pdf_viewer = @import("../navigator/pdf_viewer.zig");
 
 /// The kind of Document a response's computed MIME type calls for.
 pub const DocumentClass = enum {
@@ -49,6 +51,12 @@ pub const DocumentClass = enum {
     media,
     /// "loading a multipart/x-mixed-replace document".
     multipart,
+    /// "application/pdf" / "text/pdf" with the user agent's PDF viewer
+    /// supported true: "create a document to display a user agent page or PDF
+    /// viewer inline" (HTML 7.5.7) - a document of a new opaque origin that
+    /// shows the PDF; Crane never parses the PDF, and drawing it is the
+    /// renderer's.
+    pdf_viewer,
     /// None of the above: the spec's "otherwise, proceed onward", which ends in
     /// handing the resource off to external software (a download). No Document
     /// is produced and the navigation does not commit.
@@ -174,7 +182,20 @@ fn hasType(mime_essence: []const u8, comptime prefix: []const u8) bool {
 /// mimesniff's type-prefix test rather than a decoder allowlist; narrowing it
 /// to a hand-written list of formats would only turn types nobody thought of
 /// into failed navigations.
+/// What the classification depends on besides the type.
+pub const Options = struct {
+    /// The user agent's PDF viewer supported (html_core.navigator.pdf_viewer).
+    pdf_viewer_supported: bool,
+};
+
+/// The branch table for `mime_essence`, with the user agent's PDF viewer
+/// supported as its platform has it.
 pub fn classify(mime_essence: []const u8) DocumentClass {
+    return classifyWith(mime_essence, .{ .pdf_viewer_supported = pdf_viewer.supported() });
+}
+
+/// The branch table for `mime_essence` (see `classify`).
+pub fn classifyWith(mime_essence: []const u8, options: Options) DocumentClass {
     // The order below is the spec's order, and it matters: image/svg+xml is
     // both an XML MIME type and an image type, and must be an XML document.
     if (isHtml(mime_essence)) return .html;
@@ -189,9 +210,12 @@ pub fn classify(mime_essence: []const u8) DocumentClass {
     if (hasType(mime_essence, "video")) return .media;
     if (hasType(mime_essence, "audio")) return .media;
 
-    // "application/pdf" and "text/pdf" would be inline content with no DOM if
-    // the user agent's PDF viewer supported were true. Crane has no PDF viewer,
-    // so they fall through with everything else.
+    // "application/pdf" / "text/pdf": "If the user agent's PDF viewer
+    // supported is true, return the result of creating a document for inline
+    // content that doesn't have a DOM [...]. Otherwise, proceed onward."
+    if (std.mem.eql(u8, mime_essence, "application/pdf") or std.mem.eql(u8, mime_essence, "text/pdf")) {
+        if (options.pdf_viewer_supported) return .pdf_viewer;
+    }
     return .external;
 }
 
@@ -325,9 +349,20 @@ test "classify routes image, video and audio to a media document" {
     try std.testing.expectEqual(DocumentClass.media, classify("audio/mpeg"));
 }
 
+test "a PDF is the inline PDF viewer's when PDF viewer supported is true, else external software's" {
+    try std.testing.expectEqual(DocumentClass.pdf_viewer, classifyWith("application/pdf", .{ .pdf_viewer_supported = true }));
+    try std.testing.expectEqual(DocumentClass.pdf_viewer, classifyWith("text/pdf", .{ .pdf_viewer_supported = true }));
+    try std.testing.expectEqual(DocumentClass.external, classifyWith("application/pdf", .{ .pdf_viewer_supported = false }));
+    try std.testing.expectEqual(DocumentClass.external, classifyWith("text/pdf", .{ .pdf_viewer_supported = false }));
+    // Nothing else changes with it.
+    try std.testing.expectEqual(DocumentClass.html, classifyWith("text/html", .{ .pdf_viewer_supported = false }));
+    try std.testing.expectEqual(DocumentClass.external, classifyWith("application/x-pdf", .{ .pdf_viewer_supported = true }));
+    // The default platforms support it (their pdf_viewer capability).
+    try std.testing.expectEqual(DocumentClass.pdf_viewer, classify("application/pdf"));
+}
+
 test "classify leaves everything else to external software" {
     try std.testing.expectEqual(DocumentClass.external, classify("application/octet-stream"));
-    try std.testing.expectEqual(DocumentClass.external, classify("application/pdf"));
     try std.testing.expectEqual(DocumentClass.external, classify("application/zip"));
     // An empty or absent Content-Type is the caller's problem, not a document
     // class: callers substitute a computed type before classifying.
