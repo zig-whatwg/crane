@@ -32,6 +32,10 @@
 //!   NodeBase in NodeBase, 8 bytes each), and its generation moved into
 //!   NodeBase beside it (tests/dom/nm1_node_document_word_test.zig). An exact
 //!   144-byte arena block: 48 bytes less than the 192-byte block of 184.
+//! - 136 after lane nm2's step b: a node has ONE rare word, NodeBase's, which
+//!   holds the sparse block (dom.element_rare_data); Element's state kept a
+//!   second (8). Still a 144-byte arena block (tests/dom/
+//!   nm2_one_rare_block_test.zig).
 //!
 //! A Text's and a Comment's block: 160 after the wrapper redesign's P6 (their
 //! history is in tests/dom/nd1_text_data_layout_test.zig); 136 after lane
@@ -83,10 +87,10 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 /// a State - Node's childNodes (NodeRareData is not a sparse block yet) and a
 /// DocumentFragment's children.
 const pins = [_]Pin{
-    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 144, .generated = 16 },
-    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 144, .generated = 16 },
-    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 144, .generated = 16 },
-    .{ .name = "Element", .State = interfaces.Element.State, .block = 144, .generated = 16 },
+    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 136, .generated = 16 },
+    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 136, .generated = 16 },
+    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 136, .generated = 16 },
+    .{ .name = "Element", .State = interfaces.Element.State, .block = 136, .generated = 16 },
     .{ .name = "Text", .State = interfaces.Text.State, .block = 128, .generated = 16 },
     .{ .name = "Comment", .State = interfaces.Comment.State, .block = 128, .generated = 16 },
     .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 128, .generated = 16 },
@@ -100,8 +104,9 @@ const part_pins = .{
     .{ "NodeBase", dom.NodeBase, 88 },
     // The NodeBase, and nothing else.
     .{ "Node's embedded state", Embedded(interfaces.Node.State), 88 },
-    // The name 8, the attributes 8, the style 8, the rare word 8.
-    .{ "Element's embedded state", Embedded(interfaces.Element.State), 32 },
+    // The name 8, the attributes 8, the style 8 (the rare word is the
+    // NodeBase's since lane nm2).
+    .{ "Element's embedded state", Embedded(interfaces.Element.State), 24 },
 };
 
 test "the parts of a node's block: NodeBase, and each level's embedded state" {
