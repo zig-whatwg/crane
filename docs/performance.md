@@ -362,7 +362,8 @@ workloads. A row whose runs read in two memory levels - two tight groups of laun
 apart, each of two runs or more (on macOS the system allocator gives freed pages back in steps, so
 `dom.event-ctor` and the rows after it read 143.5 MB in some launches and 162.5 MB in the others
 with the same bytes allocated) - keeps the median of all runs as its figure, shows both levels
-with their counts beside it ("two levels: 143.5 MB x3 / 162.5 MB x7"), and is compared level
+with their counts beside it on a Crane build's rows ("two levels: 143.5 MB x3 / 162.5 MB x7"; a
+browser's row gets no such note), and is compared level
 against level where one Crane build is checked against another - the tip against its base here,
 and a drift control against the round it repeats: low with low and high with high, their
 geometric mean judged against the band, and a side with one level set against the level of the

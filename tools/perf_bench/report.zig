@@ -2036,7 +2036,7 @@ fn writeMemoryCell(w: W, c: ?*const Cell) !void {
             try w.writeAll(" a page</span>");
         }
     }
-    try writeLevels(w, cell.levels);
+    try writeLevels(w, cell, cell.levels);
     try w.writeAll("</td>");
 }
 
@@ -2045,14 +2045,20 @@ fn writeMemoryCell(w: W, c: ?*const Cell) !void {
 /// figure itself stays the median of all the runs. The note says what the
 /// runs read, never why: the allocator's ring is the measured cause on the
 /// attributes page's rows only, and another row's two levels are a finding.
-fn writeLevels(w: W, levels: ?Levels) !void {
+///
+/// On a Crane build's rows only, in every table (the user, 2026-11-15): a
+/// browser's runs read in two tight groups too (16 of Chrome's rows, 6 of
+/// Safari's and 1 of Firefox's in the journals up to round 8), but no
+/// comparison uses a browser's levels and nobody here has measured why.
+fn writeLevels(w: W, cell: *const Cell, levels: ?Levels) !void {
+    if (!cell.engine.isCrane()) return;
     const l = levels orelse return;
     const mb = struct {
         fn f(x: u64) f64 {
             return @as(f64, @floatFromInt(x)) / (1024.0 * 1024.0);
         }
     }.f;
-    try w.print("<br><span class=\"quiet\" title=\"the runs read in two levels: the figure is the median of all of them, and each level is the median of its runs\">two levels: {d:.1} MB &times;{d} / {d:.1} MB &times;{d}</span>", .{ mb(l.low), l.low_runs, mb(l.high), l.high_runs });
+    try w.print("<br><span class=\"quiet\" title=\"the figure is the median of all the runs; each level is the median of the runs that read it\">two levels: {d:.1} MB &times;{d} / {d:.1} MB &times;{d}</span>", .{ mb(l.low), l.low_runs, mb(l.high), l.high_runs });
 }
 
 /// `subject` over `other` for `measure`, as a percentage: for two Crane
@@ -2113,7 +2119,7 @@ fn writeMeasureCell(w: W, c: ?*const Cell, measure: Measure) !void {
             const v = cell.peakFigure() orelse return w.writeAll("<td class=\"n\">&ndash;</td>");
             try w.writeAll("<td class=\"n\">");
             try writeBytes(w, v);
-            try writeLevels(w, cell.peak_levels);
+            try writeLevels(w, cell, cell.peak_levels);
             try w.writeAll("</td>");
         },
     }
@@ -3311,6 +3317,34 @@ test "a two-level row: the published figure stays the median of all runs, with b
     const i = std.mem.indexOf(u8, page, "<code>dom.getter-loop</code>").?;
     const row = page[i .. i + std.mem.indexOf(u8, page[i..], "</tr>").?];
     try testing.expect(std.mem.indexOf(u8, row, "two levels") == null);
+}
+
+test "the two-level note is on Crane's rows only, never on a browser's" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var records: std.ArrayList(journal.Record) = .empty;
+    // Every Crane build, and two browsers, each with two tight groups of runs.
+    try records.appendSlice(a, try twoLevels(a, 0, .crane, "abc", "dom.a", 3, 143 * mib + mib / 2, 7, 162 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .crane_fast, "abc", "dom.a", 3, 133 * mib + mib / 2, 4, 152 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .crane_base, "old", "dom.a", 4, 123 * mib + mib / 2, 3, 142 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .chrome, "157", "dom.a", 4, 328 * mib + mib / 2, 3, 547 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .safari, "26", "dom.a", 3, 105 * mib + mib / 2, 4, 144 * mib + mib / 2));
+    const m = try build(a, records.items);
+    // The browsers' runs do read in two levels; the page does not say so.
+    try testing.expect(m.current(0, .chrome, "dom.a").?.levels != null);
+    try testing.expect(m.current(0, .safari, "dom.a").?.peak_levels != null);
+    const page = (try render(a, &m, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 143.5 MB &times;3 / 162.5 MB &times;7") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 133.5 MB &times;3 / 152.5 MB &times;4") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 123.5 MB &times;4 / 142.5 MB &times;3") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 328.5 MB") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 105.5 MB") == null);
+    // Every note on the page is one of the three Crane builds'.
+    const all = std.mem.count(u8, page, "two levels:");
+    const cranes = std.mem.count(u8, page, "two levels: 143.5 MB") + std.mem.count(u8, page, "two levels: 133.5 MB") + std.mem.count(u8, page, "two levels: 123.5 MB");
+    try testing.expect(all > 0);
+    try testing.expectEqual(all, cranes);
 }
 
 test "a tip and its base are compared level against level, so a median that flips reads no change" {
