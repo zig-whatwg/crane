@@ -17,6 +17,9 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .dir_ltr => return forms.directionality(element) == .ltr,
         .dir_rtl => return forms.directionality(element) == .rtl,
         .hover => return userActionMatches(element, &.{.hovered}),
+        // Fullscreen 5.1: any element - an SVG svg or a MathML math can be
+        // fullscreen.
+        .fullscreen => return @import("fullscreen.zig").matchesFullscreenPseudoClass(element),
         .active => return userActionMatches(element, &.{ .pointed, .activated }),
         // A MathML a with an href is the source of a hyperlink (MathML Core
         // 3.6 gives it the HTML a element's href semantics), so it matches
@@ -58,7 +61,7 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .modal => dom.dialog.isModal(element),
         .playing, .paused, .seeking, .buffering, .stalled, .muted, .volume_locked => mediaMatches(element, which),
         .heading => |levels| heading(element, levels),
-        .dir_ltr, .dir_rtl, .hover, .active => unreachable,
+        .dir_ltr, .dir_rtl, .hover, .active, .fullscreen => unreachable,
     };
 }
 

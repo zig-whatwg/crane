@@ -1,0 +1,51 @@
+/* Fullscreen 5.2 "User-agent level style sheet defaults", copied from
+   https://fullscreen.spec.whatwg.org/#user-agent-level-style-sheet-defaults
+   (specs/whatwg/fullscreen.md, lane ifr1, 2026-11-14). Copyright (c) WHATWG,
+   CC BY 4.0.
+
+   A sheet of its own, matched only while the document has a fullscreen
+   element (dom.style.engine: StyleEngine.observeFullscreen), as Blink adds it
+   only once an element goes fullscreen
+   (CSSDefaultStyleSheets::EnsureDefaultStyleSheetForFullscreen) and WebKit
+   on demand too (UserAgentStyle's fullscreen sheet): in html.css its
+   universal :not(:root):fullscreen rule cost every element's resolution up to
+   4.8% more instructions (style1's flush bench, lane ifr1's cost window). It
+   enters the user-agent origin after html.css and before html-quirks.css,
+   where html.css's last block had it, so its ties resolve as before.
+
+   Crane draws nothing; the computed values are what getComputedStyle reads of
+   a fullscreen element (fullscreen/rendering/fullscreen-ua-stylesheet.html).
+   Changed, stated: the spec's *|* is written as the three namespaces an
+   element can be fullscreen in - requestFullscreen step 5 admits HTML
+   elements, an SVG svg and a MathML math, and every container is HTML - the
+   same elements, each selector namespace-constrained as every user-agent
+   selector is (ua_sheet.zig's test). */
+@namespace "http://www.w3.org/1999/xhtml";
+@namespace svg "http://www.w3.org/2000/svg";
+@namespace math "http://www.w3.org/1998/Math/MathML";
+
+:not(:root):fullscreen, svg|svg:not(:root):fullscreen, math|math:not(:root):fullscreen {
+ position:fixed !important;
+ inset:0 !important;
+ margin:0 !important;
+ box-sizing:border-box !important;
+ min-width:0 !important;
+ max-width:none !important;
+ min-height:0 !important;
+ max-height:none !important;
+ width:100% !important;
+ height:100% !important;
+ transform:none !important;
+
+ /* intentionally not !important */
+ object-fit:contain;
+}
+
+iframe:fullscreen {
+ border:none !important;
+ padding:0 !important;
+}
+
+:not(:root):fullscreen::backdrop, svg|svg:not(:root):fullscreen::backdrop, math|math:not(:root):fullscreen::backdrop {
+ background:black;
+}
