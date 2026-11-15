@@ -16024,7 +16024,9 @@ class HostObjectDeserializerDelegate final : public ValueDeserializer::Delegate 
 /// @param transfer_list - Array of ArrayBuffer Global handles to transfer
 /// @param transfer_count - Number of ArrayBuffers to transfer
 /// @param out_size - OUTPUT: Size of serialized data
-/// @param out_arraybuffer_data - OUTPUT: Array of ArrayBufferTransferData (caller provides)
+/// @param out_arraybuffer_data - OUTPUT: Array of ArrayBufferTransferData (caller provides,
+///                   transfer_count entries): the copies, the caller's on success;
+///                   all null after a failure (the copies freed here)
 /// @param error_code - OUTPUT: 0=success, 1=DataCloneError, 2=other error
 /// @param delegate - null for V8's defaults (a plain Error for anything
 ///                   uncloneable, reported as code 2); a DataCloneErrorDelegate
@@ -16041,6 +16043,12 @@ static uint8_t* serializeWithTransfer(
 ) {
     if (error_code) *error_code = 0;
     if (out_size) *out_size = 0;
+    // The caller's out list holds nothing until the serialization succeeds:
+    // after a failure every entry is null, so no caller can free a copy twice
+    // or keep one (lane mem1 b1).
+    if (out_arraybuffer_data) {
+        for (size_t i = 0; i < transfer_count; i++) out_arraybuffer_data[i] = {nullptr, 0};
+    }
 
     if (!value || value->IsEmpty()) {
         if (error_code) *error_code = 2;
@@ -16062,7 +16070,23 @@ static uint8_t* serializeWithTransfer(
     // Step 1: Collect and validate ArrayBuffers, copy their data
     std::set<void*> seen_buffers;
     std::vector<Local<ArrayBuffer>> array_buffers_to_transfer;
-    std::vector<std::pair<void*, size_t>> copied_data;  // Data copied before detach
+    // The transferred buffers' bytes (step 5.4.1), copied before anything is
+    // detached. This list owns the copies until the serialization succeeds and
+    // hands them to the caller's out list (v8_Free_ArrayBufferTransferData
+    // frees them there); every other return frees them here. Three early
+    // returns of the walk below - a buffer listed twice, an empty handle, a
+    // value that is not an ArrayBuffer - once returned without freeing the
+    // copies already made: structuredClone(b, { transfer: [b, b] }) leaked
+    // b's bytes (leaks --atExit, crane/worker.basic.html; lane mem1 b1).
+    struct TransferCopies {
+        std::vector<std::pair<void*, size_t>> items;
+        bool handed_out = false;
+        ~TransferCopies() {
+            if (handed_out) return;
+            for (auto& d : items) free(d.first);
+        }
+    } copied_data;
+    copied_data.items.reserve(transfer_count);
     // Step 5.4.1-5.4.2: each buffer's data holder type - "ResizableArrayBuffer"
     // with its [[ArrayBufferMaxByteLength]], or "ArrayBuffer".
     std::vector<TransferredBufferShape> shapes;
@@ -16095,9 +16119,6 @@ static uint8_t* serializeWithTransfer(
 
         // Check if already detached
         if (ab->WasDetached()) {
-            for (auto& d : copied_data) {
-                if (d.first) free(d.first);
-            }
             if (error_code) *error_code = 1;  // DataCloneError
             return nullptr;
         }
@@ -16109,9 +16130,6 @@ static uint8_t* serializeWithTransfer(
         // failed transfer leaves every buffer of the list attached. Code 3:
         // the TypeError is pending.
         if (!ab->IsDetachable()) {
-            for (auto& d : copied_data) {
-                if (d.first) free(d.first);
-            }
             isolate->ThrowException(Exception::TypeError(
                 String::NewFromUtf8Literal(isolate, "An ArrayBuffer in the transfer list cannot be detached")));
             if (error_code) *error_code = 3;
@@ -16124,10 +16142,6 @@ static uint8_t* serializeWithTransfer(
         if (byte_length > 0 && data_ptr) {
             data_copy = malloc(byte_length);
             if (!data_copy) {
-                // Clean up previous allocations
-                for (auto& d : copied_data) {
-                    if (d.first) free(d.first);
-                }
                 if (error_code) *error_code = 2;  // Out of memory
                 return nullptr;
             }
@@ -16135,16 +16149,10 @@ static uint8_t* serializeWithTransfer(
         }
 
         array_buffers_to_transfer.push_back(ab);
-        copied_data.push_back({data_copy, byte_length});
+        copied_data.items.push_back({data_copy, byte_length});
         const bool resizable = ab->IsResizableByUserJavaScript();
         shapes.push_back({resizable, resizable ? static_cast<uint64_t>(ab->MaxByteLength()) : 0});
         any_resizable = any_resizable || resizable;
-
-        // Fill out the output arraybuffer data
-        if (out_arraybuffer_data) {
-            out_arraybuffer_data[i].data = data_copy;
-            out_arraybuffer_data[i].size = byte_length;
-        }
     }
 
     // Step 2: Serialize the value using V8's ValueSerializer
@@ -16159,10 +16167,6 @@ static uint8_t* serializeWithTransfer(
 
     Maybe<bool> write_result = serializer.WriteValue(ctx, val);
     if (write_result.IsNothing() || !write_result.FromJust()) {
-        // Serialization failed - clean up copied data
-        for (auto& d : copied_data) {
-            if (d.first) free(d.first);
-        }
         // WriteValue fails only by throwing: the delegate's DataCloneError, or
         // whatever script threw from a getter or a proxy trap mid-walk. With the
         // delegate that exception is the right one to surface, and code 3 tells
@@ -16186,9 +16190,7 @@ static uint8_t* serializeWithTransfer(
     }
 
     if (data == nullptr || size == 0) {
-        for (auto& d : copied_data) {
-            if (d.first) free(d.first);
-        }
+        free(data);
         if (error_code) *error_code = 2;
         return nullptr;
     }
@@ -16197,6 +16199,15 @@ static uint8_t* serializeWithTransfer(
     // This makes buffer.byteLength === 0 in JavaScript
     for (auto& ab : array_buffers_to_transfer) {
         ab->Detach(Local<Value>());
+    }
+
+    // The copies are the caller's now. With no out list to receive them they
+    // are nobody's, and the list frees them.
+    if (out_arraybuffer_data) {
+        for (size_t i = 0; i < copied_data.items.size(); i++) {
+            out_arraybuffer_data[i] = {copied_data.items[i].first, copied_data.items[i].second};
+        }
+        copied_data.handed_out = true;
     }
 
     *out_size = size;

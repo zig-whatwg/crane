@@ -1299,7 +1299,10 @@ pub const ArrayBufferTransferData = extern struct {
 ///   transfer_list: Array of ArrayBuffer Value* to transfer
 ///   transfer_count: Number of ArrayBuffers to transfer
 ///   out_size: OUTPUT - Size of serialized data
-///   out_arraybuffer_data: OUTPUT - Array of ArrayBufferTransferData (caller provides, filled with copied data)
+///   out_arraybuffer_data: OUTPUT - Array of ArrayBufferTransferData (caller provides, transfer_count
+///     entries): on success each transferred buffer's copied bytes, OWNED by the caller
+///     (v8_Free_ArrayBufferTransferData); after a failure every entry is null - the copies are
+///     freed inside, and there is nothing to free
 ///   error_code: OUTPUT - 0=success, 1=DataCloneError, 2=other error, 3=a
 ///     TypeError is pending (a buffer that cannot be detached - nothing was
 ///     detached)
