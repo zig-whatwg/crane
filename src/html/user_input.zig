@@ -947,8 +947,14 @@ fn processPendingPointerCapture(pointer: *Pointer, node: *Instance, modifiers: M
             _ = firePointerEventOnly(override, "lostpointercapture", pointer, modifiers, -1, 0, null);
         }
     }
-    // A listener may have changed the state: read it again.
+    // A listener may have changed the state: read it again - and 8.5's
+    // rule again, for a pending target a lostpointercapture listener
+    // removed (it never gets the capture: all three browsers,
+    // pointerevent_lostpointercapture_remove_setcapture_node.html).
     const fresh = pointerEntry(pointer, node) orelse return;
+    if (pointer_capture.get(fresh.pending)) |pending| {
+        if (!isConnected(pending)) fresh.pending = null;
+    }
     // Step 2: "If the pending pointer capture target override for this
     // pointer is set and is not equal to the pointer capture target
     // override, then fire a pointer event named gotpointercapture at the
