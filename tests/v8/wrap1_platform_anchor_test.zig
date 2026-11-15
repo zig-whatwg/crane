@@ -578,6 +578,55 @@ test "a young collection takes every dead wrapper the cache knows of: unchanged,
     return error.TestInconclusive;
 }
 
+test "a young collection takes the dead wrappers of objects script only made and dropped, shape by shape" {
+    // The make-and-drop loops of the perf suite (tests/perf/workloads/streams.html, timers.html, events.html)
+    // make objects script never changes and drop them. Whatever the binding itself does to their wrappers - a
+    // traced child, a [SameObject] value, a private property the streams code keeps - the cache must hold each by
+    // a handle a young collection processes (wrapper_cache.zig `heldByWeakHandle`), or they wait for a full
+    // collection: promoted, with what their instances hold. Each shape alone, so a failure names it. (A pin: it
+    // passed when it was written, lane wrap1 b3 - the streams rows' cost had another cause.)
+    const page = try Page.open();
+    defer page.close();
+    const n = 500;
+    const shapes = [_]struct { name: []const u8, make: []const u8 }{
+        .{ .name = "a ReadableStream", .make = "void new ReadableStream({ start(c) { c.close(); } })" },
+        .{ .name = "a ReadableStream with its reader", .make = "void new ReadableStream({ start(c) { c.close(); } }).getReader()" },
+        .{ .name = "a TransformStream", .make = "void new TransformStream()" },
+        .{ .name = "a WritableStream", .make = "void new WritableStream()" },
+        .{ .name = "a MessageChannel", .make = "void new MessageChannel()" },
+        .{ .name = "a CustomEvent", .make = "void new CustomEvent('x', { detail: 1 })" },
+        .{ .name = "an AbortController", .make = "void new AbortController()" },
+        .{ .name = "a Headers", .make = "void new Headers({ a: 'b' })" },
+        .{ .name = "a Response", .make = "void new Response('x')" },
+        .{ .name = "a TextDecoderStream", .make = "void new TextDecoderStream()" },
+    };
+    var waiting_shapes: usize = 0;
+    for (shapes) |shape| {
+        var source: [240]u8 = undefined;
+        // Once before the reading: whatever the shape makes once per realm.
+        page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < 8; i++) {s}; 0", .{shape.make})) catch {
+            std.debug.print("{s}: not made in this realm, skipped\n", .{shape.name});
+            continue;
+        };
+        var attempt: usize = 0;
+        while (attempt < 4) : (attempt += 1) {
+            page.fullGC();
+            const entries_before = try page.counter("wrapper_cache_entries");
+            const full_before = page.fullCollections();
+            try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {s}; 0", .{ n, shape.make }));
+            const entries_made = try page.counter("wrapper_cache_entries");
+            try page.minorGC(4);
+            if (page.fullCollections() != full_before) continue;
+            const entries_young = try page.counter("wrapper_cache_entries");
+            std.debug.print("{s}: {d} wrappers cached for {d} made; {d} still cached after young collections\n", .{ shape.name, entries_made - entries_before, n, entries_young - entries_before });
+            if (entries_young > entries_before + 8) waiting_shapes += 1;
+            break;
+        }
+        page.fullGC();
+    }
+    try testing.expectEqual(@as(usize, 0), waiting_shapes);
+}
+
 test "the cache's rule for a weak handle is V8's own answer, template by template: an instance V8 would not drop is born changed" {
     // The rule (wrapper_cache.zig `heldByWeakHandle`): a wrapper V8 would not treat as an unmodified API object
     // is held by a weak handle. For "from birth" the cache answers from the interface's metadata
