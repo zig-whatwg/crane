@@ -843,6 +843,14 @@ fn isKey(key: Key, comptime name: []const u8) bool {
 /// in: keydown, keypress for a key that produces a character (or Enter),
 /// and the default action.
 pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
+    // A document that is not fully active is in no top-level traversable
+    // (HTML 7.3.1: a document's node navigable is the navigable whose active
+    // document it is, or null), so no key is routed for it: nothing
+    // happens. An embedder that still names one - the WPT runner holds its
+    // key document weakly across a navigation - pressed the key in whatever
+    // was left of that document's realm (`Pointer.currentTarget` says what
+    // that read; tests/html/tl1_key_to_dead_document_test.zig).
+    if (!isFullyActive(document)) return;
     const target = keyTarget(document) orelse return;
     // HTML 6.10.1: on desktop platforms Esc is a close request, "the key
     // being pressed down" - targeted at the document the key goes to. Its
@@ -895,6 +903,8 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
 
 /// Release `key`: keyup, then Space's keyboard activation.
 pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
+    // As keyDown: no key is routed for a document that is not fully active.
+    if (!isFullyActive(document)) return;
     const target = keyTarget(document) orelse return;
     const armed = if (keyboard.space_armed) |weak| weak.get() else null;
     if (isKey(key, " ")) keyboard.space_armed = null;
