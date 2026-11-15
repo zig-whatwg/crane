@@ -3373,8 +3373,11 @@ fn queueDefinitelyClose(window: *runtime.Instance) void {
     // task - lane httpcache1's one intermittent allocation (lane leaks6;
     // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
     if (timer.setTimeoutOwned(0, CloseTask.run, task, CloseTask.drop) != 0) return;
-    // A timer that cannot promise the drop: the plain one, as before.
-    if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
+    // Not armed - the timer cannot promise the drop, or it failed: nothing
+    // holds the task, and the close is not queued. It was armed on the plain
+    // form here, which is the leak above again for such a timer (lane tl1:
+    // no heap data on a plain timer).
+    task.allocator.destroy(task);
 }
 
 /// Operation: getDigitalGoodsService
