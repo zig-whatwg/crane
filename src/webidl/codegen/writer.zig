@@ -2353,7 +2353,9 @@ pub fn writeToJSONStruct(
 ) !void {
     // An interface with no attribute gets an empty struct too: its toJSON
     // delegate returns it, and WebIDL's default toJSON steps then give an
-    // object with no member (ReportBody).
+    // object with no member (`interface X { [Default] object toJSON(); };`;
+    // Crane's ReportBody interface was one until lane rep2 made it the
+    // Reporting spec's dictionary).
     try writer.writeAll("    // ========================================\n");
     try writer.writeAll("    // ToJSON Struct ([Default] toJSON result)\n");
     try writer.writeAll("    // ========================================\n\n");
