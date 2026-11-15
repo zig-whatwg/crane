@@ -359,7 +359,7 @@ pub const related_target_slot: engine.TracedSlot = .{ .name = "relatedTarget" };
 /// without a relatedTarget - a block of its own since, made for the mouse,
 /// focus and drag events that are given one. Blink and WebKit keep the
 /// related target on MouseEvent and FocusEvent, never on Event
-/// (MouseEvent::related_target_; MouseRelatedEvent's and FocusEvent's
+/// (MouseEvent::related_target_; WebKit's MouseEvent's and FocusEvent's
 /// m_relatedTarget); Gecko keeps one on every WidgetEvent (mRelatedTarget).
 pub const RelatedKeep = struct {
     /// The related target `related_target_slot`'s edge holds, with its slab
