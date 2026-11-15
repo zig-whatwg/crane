@@ -131,6 +131,25 @@ test "-Dplatform-without=camera: camera is unsupported" {
     try testing.expectEqual(platform.Support.unsupported, platform.capabilities.camera);
 }
 
+test "pdf_viewer is native on the default platforms, unless -Dplatform-without names it" {
+    // HTML's "PDF viewer supported" (the user, 2026-11-14): on in darwin,
+    // linux and testing, as in Chrome, Firefox and Safari; an embedder without
+    // a viewer compiles it out.
+    const asked = comptime for (platform_options.platform_without) |name| {
+        if (std.mem.eql(u8, name, "pdf_viewer")) break true;
+    } else false;
+    const expected: platform.Support = if (asked) .unsupported else .native;
+    try testing.expectEqual(expected, platform.capabilities.pdf_viewer);
+    // -Dplatform-without=pdf_viewer turns exactly it off.
+    const without = comptime blk: {
+        var all_native: platform.Capabilities = undefined;
+        for (@typeInfo(platform.Capabilities).@"struct".field_names) |field_name| @field(all_native, field_name) = .native;
+        break :blk platform.withoutCapabilities(all_native, &.{"pdf_viewer"});
+    };
+    try testing.expectEqual(platform.Support.unsupported, without.pdf_viewer);
+    try testing.expectEqual(platform.Support.native, without.media_decoding);
+}
+
 test "the platform's declarations: name, identity, browser options" {
     try testing.expect(platform.name.len > 0);
     try testing.expect(platform.identity.native_line_ending.len > 0);

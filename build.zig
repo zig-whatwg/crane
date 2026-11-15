@@ -2476,6 +2476,7 @@ const platform_capability_names = [_][]const u8{
     "file_picker",
     "windows",
     "media_decoding",
+    "pdf_viewer",
     "webcodecs",
     "media_capabilities",
     "encrypted_media",

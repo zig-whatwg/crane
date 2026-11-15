@@ -1,85 +1,113 @@
-//! Implementation for Plugin interface
+//! HTML 8.9.1.6 "PDF viewing support": Plugin - one of a Window's five PDF
+//! viewer plugin objects (made and kept by its navigator.plugins,
+//! PluginArray.zig). "Each Plugin object has a name, which is set when the
+//! object is created": the index of its name in the PDF viewer plugin names.
+//!
+//! Spec: https://html.spec.whatwg.org/multipage/system-state.html#pdf-viewing-support
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const Plugin = interfaces.Plugin;
+const pdf_viewer = @import("html_core").navigator.pdf_viewer;
 
-pub const State = Plugin.State;
+pub const State = interfaces.Plugin.State;
 
 pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// Its name, as an index into `pdf_viewer.plugin_names`.
+pub const InternalState = struct {
+    name_index: u8,
+};
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+/// PluginArray makes each with its name's index.
+pub const construction_args = .{"pdf_plugin_index"};
+
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = allocator;
+    _ = StateType;
+    const index: u8 = if (@hasField(@TypeOf(args), "pdf_plugin_index")) args.pdf_plugin_index else 0;
+    std.debug.assert(index < pdf_viewer.plugin_names.len);
+    const internal = try runtime.arenaOf(instance).create(InternalState);
+    internal.* = .{ .name_index = index };
+    instance.getState(State).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    runtime.arenaOf(instance).destroy(InternalState, internal);
 }
 
-/// Getter for name
+/// "The Plugin interface's name getter steps are to return this's name."
 pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.stateAs(State) orelse return runtime.DOMString.initEmpty();
+    const internal = state.own._internal orelse return runtime.DOMString.initEmpty();
+    return runtime.DOMString.initInterned(pdf_viewer.plugin_names[internal.name_index]);
 }
 
-/// Getter for description
+/// "... description getter steps are to return "Portable Document Format"."
 pub fn get_description(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned(pdf_viewer.description);
 }
 
-/// Getter for filename
+/// "... filename getter steps are to return "internal-pdf-viewer"."
 pub fn get_filename(instance: *runtime.Instance) anyerror!runtime.DOMString {
     _ = instance;
-    return error.NotImplemented;
+    return runtime.DOMString.initInterned(pdf_viewer.filename);
 }
 
-/// Getter for length
+/// "The Plugin interface's length getter steps are to return this's relevant
+/// global object's PDF viewer mime type objects's size."
 pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
     _ = instance;
-    return error.NotImplemented;
+    return @intCast(pdf_viewer.mimeTypesWhen(pdf_viewer.supported()).len);
 }
 
-/// Operation: item
+/// item(index): "1. Let mimeTypes be this's relevant global object's PDF
+/// viewer mime type objects. 2. If index < mimeTypes's size, then return
+/// mimeTypes[index]. 3. Return null." - the objects navigator.mimeTypes
+/// holds. Also the indexed getter.
 pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
-    _ = instance;
-    _ = index;
-    return null;
+    if (index >= pdf_viewer.mimeTypesWhen(pdf_viewer.supported()).len) return null;
+    const mime_types = try relevantMimeTypeArray(instance);
+    return interfaces.MimeTypeArray.call_item(mime_types, index);
 }
 
-/// Operation: namedItem
+/// namedItem(name): "1. For each MimeType mimeType of this's relevant global
+/// object's PDF viewer mime type objects: if mimeType's type is name, then
+/// return mimeType. 2. Return null." Also the named getter.
 pub fn call_namedItem(instance: *runtime.Instance, name: runtime.DOMString) anyerror!?*runtime.Instance {
-    _ = instance;
-    _ = name;
-    return null;
+    if (pdf_viewer.mimeTypeIndex(pdf_viewer.supported(), name.asSlice()) == null) return null;
+    const mime_types = try relevantMimeTypeArray(instance);
+    return interfaces.MimeTypeArray.call_namedItem(mime_types, name);
 }
 
-/// Get supported property names for named property enumeration
+/// "The Plugin interface supports named properties. If the user agent's PDF
+/// viewer supported is true, then they are the PDF viewer mime types.
+/// Otherwise, they are the empty list."
 pub fn getSupportedPropertyNames(instance: *runtime.Instance, allocator: std.mem.Allocator) ![]runtime.DOMString {
     _ = instance;
-    _ = allocator;
-    return &[_]runtime.DOMString{};
+    const names = pdf_viewer.mimeTypesWhen(pdf_viewer.supported());
+    const out = try allocator.alloc(runtime.DOMString, names.len);
+    for (out, names) |*slot, name| slot.* = runtime.DOMString.initInterned(name);
+    return out;
+}
+
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    _ = instance;
+    return pdf_viewer.mimeTypeIndex(pdf_viewer.supported(), name.asSlice()) != null;
+}
+
+/// The MimeTypeArray that holds this's relevant global object's PDF viewer
+/// mime type objects: its Window's navigator.mimeTypes ([SameObject]).
+fn relevantMimeTypeArray(instance: *runtime.Instance) !*runtime.Instance {
+    const record = instance.ctx.getRealm() orelse return error.InvalidStateError;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return error.InvalidStateError));
+    if (window.stateAs(interfaces.Window.State) == null) return error.InvalidStateError;
+    const navigator = try interfaces.Window.get_navigator(window);
+    return interfaces.Navigator.get_mimeTypes(navigator);
 }

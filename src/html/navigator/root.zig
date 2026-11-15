@@ -20,6 +20,9 @@ pub const NavigatorConcurrentHardware = @import("navigator_concurrent_hardware.z
 pub const NavigatorContentUtils = @import("navigator_content_utils.zig").NavigatorContentUtils;
 pub const NavigatorCookies = @import("navigator_cookies.zig").NavigatorCookies;
 pub const NavigatorPlugins = @import("navigator_plugins.zig").NavigatorPlugins;
+/// HTML "PDF viewing support": PDF viewer supported, and the fixed plugin
+/// and mime type lists (the NavigatorPlugins family's impls read it).
+pub const pdf_viewer = @import("pdf_viewer.zig");
 
 // Hardware API backends
 pub const geolocation = @import("geolocation/root.zig");

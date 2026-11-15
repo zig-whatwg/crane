@@ -337,6 +337,15 @@ pub const Capabilities = struct {
     windows: Support,
     /// canPlayType answers "".
     media_decoding: Support,
+    /// HTML's "PDF viewer supported" (8.9.1.6) is false: navigator
+    /// .pdfViewerEnabled is false, navigator.plugins and navigator.mimeTypes
+    /// are empty, and a PDF a navigation fetches is handed off to external
+    /// software (a download; "load a document" step 2). Supported, a PDF in a
+    /// navigable is "a document to display a user agent page or PDF viewer
+    /// inline" (HTML 7.5.7): Crane makes that document - an opaque origin, a
+    /// full-size embed - and never parses the PDF's bytes; drawing it is the
+    /// renderer's, as all drawing is (6.9).
+    pdf_viewer: Support,
     /// Every image is broken: HTML "update the image data" finds the image
     /// cannot be decoded and fires error.
     image_decoding: Support,
