@@ -17,10 +17,11 @@
 //! Document's returned the stored element without retargeting it, so an element
 //! inside a shadow tree would have leaked out of document.fullscreenElement.
 //!
-//! The document's three elements are never set by Crane yet (no fullscreen,
-//! pointer lock or Picture-in-Picture), so the test sets them in the document's
-//! own state - dom.document_internals, the document's dom-level state - as the
-//! request algorithms will.
+//! The pointer lock and Picture-in-Picture elements are never set by Crane
+//! yet, so the test sets them in the document's own state -
+//! dom.document_internals, the document's dom-level state - as the request
+//! algorithms will; the fullscreen element it sets in the document's top
+//! layer, where html.fullscreen keeps it (lane ifr1).
 
 const std = @import("std");
 const dom = @import("dom");
@@ -95,9 +96,18 @@ const Fixture = struct {
 
 const Kind = enum { fullscreen, pointer_lock, picture_in_picture };
 
-fn setDesignated(rare: *dom.document_rare_data.DocumentRareData, kind: Kind, element: ?*runtime.Instance) void {
+/// The document's `kind` element made `element` (null: none). The
+/// fullscreen element is the topmost fullscreen-flagged entry of the
+/// document's top layer (Fullscreen 2; html.fullscreen sets the flags), so
+/// a fullscreen element is set there - one at a time here.
+fn setDesignated(f: *Fixture, kind: Kind, element: ?*runtime.Instance) !void {
+    const rare = try f.rare();
     switch (kind) {
-        .fullscreen => rare.fullscreen_element = element,
+        .fullscreen => {
+            const state = (try dom.top_layer.ofDocument(f.document.?, true)).?;
+            while (state.fullscreenElement()) |current| _ = state.removeFullscreen(current);
+            if (element) |e| _ = try state.addFullscreen(e);
+        },
         .pointer_lock => rare.pointer_lock_element = element,
         .picture_in_picture => rare.picture_in_picture_element = element,
     }
@@ -133,9 +143,8 @@ fn retargetedForEachScope(kind: Kind) !void {
     const root2 = try f.attach(host2);
     _ = try Fixture.element(f.document.?, root2, "canvas");
 
-    const rare = try f.rare();
-    setDesignated(rare, kind, canvas1);
-    defer setDesignated(rare, kind, null);
+    try setDesignated(&f, kind, canvas1);
+    defer setDesignated(&f, kind, null) catch {};
 
     try testing.expectEqual(@as(?*runtime.Instance, host1), try documentGetter(kind, f.document.?));
     try testing.expectEqual(@as(?*runtime.Instance, canvas1), try shadowGetter(kind, root1));
@@ -143,13 +152,13 @@ fn retargetedForEachScope(kind: Kind) !void {
 
     // An element in the document's own tree reads as itself from the
     // document and as null from a shadow root (a different tree).
-    setDesignated(rare, kind, host2);
+    try setDesignated(&f, kind, host2);
     try testing.expectEqual(@as(?*runtime.Instance, host2), try documentGetter(kind, f.document.?));
     try testing.expectEqual(@as(?*runtime.Instance, null), try shadowGetter(kind, root1));
     try testing.expectEqual(@as(?*runtime.Instance, null), try shadowGetter(kind, root2));
 
     // None designated: null everywhere.
-    setDesignated(rare, kind, null);
+    try setDesignated(&f, kind, null);
     try testing.expectEqual(@as(?*runtime.Instance, null), try documentGetter(kind, f.document.?));
     try testing.expectEqual(@as(?*runtime.Instance, null), try shadowGetter(kind, root1));
 }
@@ -177,9 +186,8 @@ fn disconnectedHostReadsNull(kind: Kind) !void {
     const root = try f.attach(host);
     const inner = try Fixture.element(f.document.?, root, "video");
 
-    const rare = try f.rare();
-    setDesignated(rare, kind, inner);
-    defer setDesignated(rare, kind, null);
+    try setDesignated(&f, kind, inner);
+    defer setDesignated(&f, kind, null) catch {};
     try testing.expectEqual(@as(?*runtime.Instance, inner), try shadowGetter(kind, root));
 
     _ = try interfaces.Node.call_removeChild(f.container, host);

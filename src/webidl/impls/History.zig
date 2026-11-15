@@ -319,15 +319,22 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         return;
     }
     // Delta traverse step 4 hands "apply the history step" this's associated
-    // Document's navigable as initiatorToCheck. Deviation, stated (golden
-    // rule 2, the browsers split): it is not checked here. Firefox 157 and
-    // Safari 27 let a sandboxed frame's history.back() and forward()
-    // traverse its parent's entries (iframe_sandbox_navigate_history_go_back
-    // and _go_forward: both fail with "assert_unreached: no pop state" at
-    // aligned wpt.fyi revision cc74d2669f); only Chrome 154 refuses. All
-    // three refuse the navigation API's traversals (sandboxing-back-parent,
-    // sandboxing-back-sibling: 1/1 each), which Navigation's traverseToKey
-    // checks.
+    // Document's navigable as initiatorToCheck (`initiatorOf`, below), whose
+    // step 3 refuses a traversal that would change a navigable the
+    // initiator is not allowed by sandboxing to navigate: a sandboxed
+    // frame's history.back() cannot move its ancestors' entries. The newer
+    // spec, golden rule 2 ("the spec was updated and one browser ships
+    // it"): whatwg/html PR #4787 (merged 2019-08-13, Chromium bug 705583,
+    // Intent to Ship on blink-dev) added the check; Chrome ships it
+    // (iframe_sandbox_navigate_history_go_back.html and _go_forward.html:
+    // Chrome 157 1/1 each, Firefox 161 and Safari 27.2 0/1, wpt.fyi
+    // 2358bd4835). No Mozilla or WebKit objection, WontFix bug or negative
+    // standards position was found; Gecko's interest is on whatwg/html
+    // issue #880 (lane ifr1, the integrator's ruling of 2026-11-14). It was
+    // left out before as a "browsers split" deviation that followed Firefox
+    // and Safari. All three already refuse the navigation API's traversals
+    // (sandboxing-back-parent, sandboxing-back-sibling), which
+    // traverseWindowToStep checks the same way.
     // Stated exceptions to the spec's queue (golden rule 2: Chrome 156 and
     // Firefox 158 agree in every variant; Safari 27 coalesces everywhere,
     // WebKit bug 313808, and is outvoted). "Traverse the history by a delta"
@@ -374,7 +381,11 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
         .listed => |target| apply_history_step.changesDocument(top, history, target),
         .pushed => false,
     } else false;
-    apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{ .cross_document_delta = cross_document, .delta_navigable = bc.id });
+    apply_history_step.traverse(top, internal.allocator, .{ .delta = delta_val }, .{
+        .initiator = initiatorOf(internal.window, bc),
+        .cross_document_delta = cross_document,
+        .delta_navigable = bc.id,
+    });
 }
 
 /// HTML "reload" `bc`'s navigable: its current entry, repopulated by "apply

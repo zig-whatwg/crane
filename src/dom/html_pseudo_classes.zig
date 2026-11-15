@@ -27,6 +27,8 @@ pub const Kind = union(enum) {
     open,
     popover_open,
     modal,
+    /// Fullscreen 5.1 :fullscreen (html.fullscreen), for any element.
+    fullscreen,
     playing,
     paused,
     seeking,
