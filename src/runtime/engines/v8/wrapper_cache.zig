@@ -396,9 +396,9 @@ fn slotReissued(entry: *const Cell) bool {
 /// The internal state block is the part that decides the collector's
 /// schedule. With the first three parts alone V8 was told 112 bytes of the
 /// 1.2 KB an Event holds, and 650,000 dropped Events ended at 99.1 MB on
-/// server1 against main's 87.5; a diagnosis build that told the block too
-/// ended at 51.5 (gc_bench, 2026-11-15,
-/// tmp/plans/wrap1-evidence/b3-meas6-*.out). In Blink the whole object is on
+/// server1 against main's 87.5; told the block too they end at 55.2 there and
+/// at 31.1 against 87.2 on chat.local (gc_bench, 2026-11-15,
+/// tmp/plans/wrap1-evidence/b3-meas8-*.out). In Blink the whole object is on
 /// the C++ heap, whose growth V8 counts.
 ///
 /// It is still a FLOOR: what a state allocates beyond its block (a list's

@@ -4727,11 +4727,13 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // internal state block is what makes the figure honest for an Event: its
 // dispatch state is about 1.1 KB of the 1.2 KB it holds. Told only the other
 // three parts (112 bytes), V8 let 650,000 dropped Events end at 99.1 MB on
-// server1 against main's 87.5; a diagnosis build that told the block too
-// ended at 51.5, and at 27.8 against 87.3 on chat.local (gc_bench,
-// 2026-11-15, tmp/plans/wrap1-evidence/b3-meas6-*.out) - with 46 to 65 small
-// full collections where main runs 1 full and 15 young ones, the largest
-// pause 1.6 ms against 1.2. NOT COUNTED - so the figure is still a floor: the
+// server1 against main's 87.5; told the block too they end at 55.2 there
+// and at 31.1 against 87.2 on chat.local (gc_bench, 2026-11-15, three runs,
+// tmp/plans/wrap1-evidence/b3-meas8-*.out) - with 48 to 65 small full
+// collections where main runs 1 full and 15 young ones, the largest pause
+// 4.9 ms against 3.6 on server1. The account off, or for traced wrappers
+// only, ended higher than the 112-byte account (101 to 106 MB,
+// b3-meas6-*.out). NOT COUNTED - so the figure is still a floor: the
 // cache's map slot (about 22 bytes), and whatever the state allocates beyond
 // its block - a URLSearchParams' or Headers' list once it spills, a
 // Response's body and URL list, a stream's queue. The survivors' sum that
