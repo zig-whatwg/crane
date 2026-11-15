@@ -838,3 +838,21 @@ chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
 firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 revisit         = when https://github.com/web-platform-tests/wpt/issues/65240 is resolved
+
+# needs-renderer (the user, 2026-11-14 9:15 PM ET, "yes"; lane ifr1 batch 1): lazy iframes far down / across a
+# scroller. Every other lazy-loading behaviour passes (load event, lazy -> eager, srcdoc, javascript:, base URL,
+# adoption). Production run: ifr1's FULL A/B, server1, 2026-11-14.
+[html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-in-scroller-far.html]
+kind      = needs-renderer
+why       = the frame sits 10000vh (or far to the side) inside a 100 px scroller; only layout says it does not intersect the viewport, and with no renderer Crane's lazy-load check treats every frame as being rendered (intersecting), so the lazy frame loads
+assertion = assert_unreached: Lazy-loading iframe far from viewport should not load. Reached unreachable code
+
+[html/semantics/embedded-content/the-iframe-element/cross-site/iframe-loading-lazy-in-scroller-far-cross-site.sub.html]
+kind      = needs-renderer
+why       = the frame sits 10000vh (or far to the side) inside a 100 px scroller; only layout says it does not intersect the viewport, and with no renderer Crane's lazy-load check treats every frame as being rendered (intersecting), so the lazy frame loads (cross-site frame)
+assertion = assert_unreached: Lazy-loading iframe far from viewport should not load. Reached unreachable code
+
+[html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-in-scroller-horizontal-far.html]
+kind      = needs-renderer
+why       = the frame sits 10000vh (or far to the side) inside a 100 px scroller; only layout says it does not intersect the viewport, and with no renderer Crane's lazy-load check treats every frame as being rendered (intersecting), so the lazy frame loads (horizontal scroller); the frame's load then calls iframe_onload, which the test never defines (it defines img_onload), so the harness reports an ERROR - reached only because the frame loads; with layout the frame would not load and the file passes
+assertion = harness ERROR: ReferenceError: iframe_onload is not defined (its one subtest passes)
