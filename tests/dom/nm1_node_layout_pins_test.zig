@@ -39,8 +39,10 @@ const dom = @import("dom");
 
 const NodeBase = dom.NodeBase;
 
-/// Where NodeBase sits in every node's State block.
-const pinned_node_base_offset: usize = 24;
+/// Where NodeBase sits in every node's State block: after EventTarget's
+/// level (16). It was 24 until lane nm2's step a took Node's childNodes
+/// cache, the one generated field between them, out of the State.
+const pinned_node_base_offset: usize = 16;
 
 fn isNodeState(comptime S: type) bool {
     comptime {

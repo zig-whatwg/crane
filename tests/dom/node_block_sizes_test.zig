@@ -36,11 +36,15 @@
 //!   holds the sparse block (dom.element_rare_data); Element's state kept a
 //!   second (8). Still a 144-byte arena block (tests/dom/
 //!   nm2_one_rare_block_test.zig).
+//! - 128 after lane nm2's step a: Node's childNodes [SameObject] cache left
+//!   the generated State for the node's rare block (8). An exact 128-byte
+//!   arena block: 16 bytes less than the 144-byte block of 144 and of 136.
 //!
 //! A Text's and a Comment's block: 160 after the wrapper redesign's P6 (their
 //! history is in tests/dom/nd1_text_data_layout_test.zig); 136 after lane
 //! nm1's steps 1-4 (Node's 24 bytes above; a Text has no element flags); 128
-//! after its step 5.
+//! after its step 5; 120 after lane nm2's step a (childNodes, above), still a
+//! 128-byte arena block.
 //!
 //! NodeBase, and Node's and Element's embedded states, are pinned here too
 //! since lane nm1: perf2b5_node_layout_test.zig, perf2b6_node_layout_test.zig,
@@ -84,15 +88,16 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 
 /// Whole block, and the generated part (less every level's InternalState):
 /// the root's live word (4, padded to 8) and the [SameObject] caches still in
-/// a State - Node's childNodes and a DocumentFragment's children.
+/// a State - a DocumentFragment's children (Node's childNodes left in lane
+/// nm2: the generated part of a div and of a Text is the live word alone).
 const pins = [_]Pin{
-    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 136, .generated = 16 },
-    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 136, .generated = 16 },
-    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 136, .generated = 16 },
-    .{ .name = "Element", .State = interfaces.Element.State, .block = 136, .generated = 16 },
-    .{ .name = "Text", .State = interfaces.Text.State, .block = 128, .generated = 16 },
-    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 128, .generated = 16 },
-    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 128, .generated = 16 },
+    .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 128, .generated = 8 },
+    .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 128, .generated = 8 },
+    .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 128, .generated = 8 },
+    .{ .name = "Element", .State = interfaces.Element.State, .block = 128, .generated = 8 },
+    .{ .name = "Text", .State = interfaces.Text.State, .block = 120, .generated = 8 },
+    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 120, .generated = 8 },
+    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 120, .generated = 8 },
 };
 
 /// The parts every node's block is made of.

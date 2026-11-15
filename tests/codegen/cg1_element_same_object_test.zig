@@ -21,6 +21,9 @@
 //!   the getter calls the impl (or is the mixin module's, by alias).
 //! - Everything else keeps its `cached_<name>`: a non-element (Document's
 //!   children), and a leaf element's own attribute (an anchor's relList).
+//! - Node's childNodes (lane nm2) is in the NODE's rare block - the same
+//!   block, whose word is the node's NodeBase's - through
+//!   `dom.same_object_cache.node*`.
 //! - The destruction chain ends the edges of the level's rare-block caches
 //!   before the impl's teardown, as it ends the State's.
 const std = @import("std");
@@ -191,8 +194,48 @@ test "a non-element and a leaf element's own attribute keep their State cache" {
     // An anchor's relList is its own interface's: few elements carry it.
     try testing.expect(contains(try stateFields(anchor), "cached_relList"));
     try testing.expect(contains(try function(anchor, "get_relList"), "state.own.cached_relList = value;"));
-    // Node's childNodes stays (NodeRareData is lane wr1's this batch).
-    try testing.expect(contains(try stateFields(node), "cached_childNodes"));
+    // Node's childNodes left the State too (lane nm2): the test below.
+    try testing.expect(!contains(try stateFields(node), "cached_childNodes"));
+}
+
+test "Node's childNodes is cached in the node's rare data, through the node accessors, and its edge ended by Node's chain" {
+    var out = try Generated.init();
+    defer out.deinit();
+    const node = try out.file("Node");
+    defer testing.allocator.free(node);
+
+    // Lane nm2: every node's State carried 8 bytes for the list. The getter
+    // reads and keeps it in the node's sparse rare block - any node's, so
+    // through the node accessors (the holder is its NodeBase's word), never
+    // through Element's hook.
+    const body = try function(node, "get_childNodes");
+    const hit = std.mem.indexOf(u8, body, "@import(\"dom\").same_object_cache.nodeGet(instance, .child_nodes)") orelse {
+        std.debug.print("get_childNodes:\n{s}\n", .{body});
+        return error.NoRareRead;
+    };
+    const reserve = std.mem.indexOf(u8, body, "try @import(\"dom\").same_object_cache.nodeReserve(instance, .child_nodes);") orelse return error.NoReserve;
+    const make = std.mem.indexOf(u8, body, "try NodeImpl.get_childNodes(instance)") orelse return error.NoImplCall;
+    const keep = std.mem.indexOf(u8, body, "@import(\"dom\").same_object_cache.nodeMade(instance, .child_nodes, value, \"childNodes\");") orelse return error.NoKeep;
+    try testing.expect(hit < reserve and reserve < make and make < keep);
+    try testing.expect(!contains(body, "state.own"));
+    try testing.expect(!contains(body, "element"));
+    try testing.expect(!contains(try stateFields(node), "cached_"));
+
+    // The chain ends the edge before Node's teardown frees the block, and
+    // walks no State cache (Node has none left).
+    const chain = try function(node, "deinitChain");
+    const end = std.mem.indexOf(u8, chain, "@import(\"dom\").same_object_cache.endNode(instance, &.{ .{ .field = .child_nodes, .attribute = \"childNodes\" } });") orelse {
+        std.debug.print("deinitChain:\n{s}\n", .{chain});
+        return error.NoEndNode;
+    };
+    try testing.expect(end < std.mem.indexOf(u8, chain, "NodeImpl.deinit(instance)").?);
+    try testing.expect(!contains(chain, "same_object_cache.end(State, instance)"));
+    try testing.expect(!contains(chain, "endElement"));
+
+    // Element's own chain is unchanged: its caches through the element's hook.
+    const element = try out.file("Element");
+    defer testing.allocator.free(element);
+    try testing.expect(!contains(try function(element, "deinitChain"), "endNode"));
 }
 
 test "the destruction chain ends a level's rare-block edges before the impl's teardown, and the State's only where it has one" {

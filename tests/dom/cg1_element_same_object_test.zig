@@ -62,8 +62,9 @@ test "Element's, HTMLElement's, SVGElement's and MathMLElement's States cache no
     }
 }
 
-test "what stays in a State: Node's childNodes (lane wr1 holds NodeRareData), a non-element's and a leaf element's own caches" {
-    try testing.expect(@hasField(@FieldType(interfaces.Node.State, "own"), "cached_childNodes"));
+test "what stays in a State: a non-element's and a leaf element's own caches (Node's childNodes left it in lane nm2)" {
+    try testing.expect(!@hasField(@FieldType(interfaces.Node.State, "own"), "cached_childNodes"));
+    try testing.expectEqual(@as(usize, 0), @sizeOf(@FieldType(interfaces.Node.State, "own")));
     try testing.expect(@hasField(@FieldType(interfaces.Document.State, "own"), "cached_children"));
     try testing.expect(@hasField(@FieldType(interfaces.HTMLAnchorElement.State, "own"), "cached_relList"));
 }

@@ -134,10 +134,13 @@ test "no embedded or empty level keeps an `_internal` pointer; a separate block'
 // A div's generated part (72 bytes after this batch) is pinned in ONE place since lane cg1:
 // tests/dom/node_block_sizes_test.zig.
 
-test "a text node's State spends 16 bytes on pointers and the live word, in an exact-size block" {
+test "a text node's State spends 8 bytes on the live word, in an exact-size block" {
     const S = interfaces.Text.State;
-    // 40 at main: 4 `_internal` pointers + cached_childNodes.
-    if (@sizeOf(S) - embeddedBytes(S) != 16) {
+    // 40 at main: 4 `_internal` pointers + cached_childNodes; 16 after this
+    // batch (the live word and the cache); 8 since lane nm2 moved the
+    // childNodes cache to the node's rare block (the whole block's size is
+    // pinned in node_block_sizes_test.zig).
+    if (@sizeOf(S) - embeddedBytes(S) != 8) {
         printLayout(S);
         std.debug.print("Text.State: {d} bytes, {d} embedded\n", .{ @sizeOf(S), embeddedBytes(S) });
         return error.SizePinMoved;
