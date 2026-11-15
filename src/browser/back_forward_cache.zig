@@ -146,9 +146,23 @@ pub const BackForwardCache = struct {
         const loop = self.loop orelse return false;
         if (self.size == 0) return false;
         self.entries.ensureUnusedCapacity(self.allocator, 1) catch return false;
-        // Its tasks wait in a group of their own; its timers stop.
+        // Its tasks wait in a group of their own; its timers stop. So do each
+        // of its frames' (phase C): a frame's document stays its navigable's
+        // active one, so only the cache knows it is not shown.
         loop.suspendDocument(page.document, page.document_generation, page.window, page.window_generation) catch return false;
+        for (page.frames, 0..) |frame, index| {
+            loop.suspendDocument(frame.document, frame.document_generation, frame.window, frame.window_generation) catch {
+                // Not kept after all: the groups made so far go with their
+                // tasks, as the page's destruction would drop them.
+                loop.discardDocument(page.document, page.document_generation);
+                for (page.frames[0..index]) |made| loop.discardDocument(made.document, made.document_generation);
+                return false;
+            };
+        }
         dom.window_documents.suspendTimers(page.realm);
+        for (page.frames) |frame| {
+            if (frame.realm.hasEngine()) dom.window_documents.suspendTimers(frame.realm);
+        }
         self.entries.appendAssumeCapacity(.{ .page = page, .stored_at_ms = platform.monotonicMillis() });
         // Oldest first: the ones beyond the size go.
         var over = self.keptCount() -| self.size;
@@ -187,8 +201,14 @@ pub const BackForwardCache = struct {
     /// A restored page's tasks run again - first, at the loop's next drain -
     /// and its timers wait what they had left (HTML "reactivate" step 2).
     pub fn resumePage(self: *BackForwardCache, page: *const KeptPage) void {
-        if (self.loop) |loop| loop.resumeDocument(page.document, page.document_generation);
+        if (self.loop) |loop| {
+            loop.resumeDocument(page.document, page.document_generation);
+            for (page.frames) |frame| loop.resumeDocument(frame.document, frame.document_generation);
+        }
         dom.window_documents.resumeTimers(page.realm);
+        for (page.frames) |frame| {
+            if (frame.realm.hasEngine()) dom.window_documents.resumeTimers(frame.realm);
+        }
     }
 
     /// Whether `object` (a Window or a Document) is a page this cache holds.
@@ -255,8 +275,12 @@ pub const BackForwardCache = struct {
     }
 
     fn runEviction(self: *BackForwardCache, page: KeptPage) void {
-        // "Destroy a document" step 5: its tasks are removed without running.
-        if (self.loop) |loop| loop.discardDocument(page.document, page.document_generation);
+        // "Destroy a document" step 5: its tasks are removed without running -
+        // its frames' too.
+        if (self.loop) |loop| {
+            loop.discardDocument(page.document, page.document_generation);
+            for (page.frames) |frame| loop.discardDocument(frame.document, frame.document_generation);
+        }
         page.steps.evict(&page);
     }
 

@@ -425,8 +425,8 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
 /// context); one whose window is no navigable's active window any more, or
 /// whose navigable has closed. Removing a frame discards its navigable and
 /// every one inside it (BrowsingContext.discard closes them all), so the
-/// container documents need no walk yet (phase C of the back/forward cache,
-/// which keeps frames of a cached page alive, adds it).
+/// container documents need no walk; a frame of a page the back/forward cache
+/// keeps (phase C) is inactive, which the cache answers first.
 ///
 /// Inactive: a live, undestroyed document whose navigable is open but shows
 /// another document - a document the back/forward cache keeps (phase B), or
@@ -445,6 +445,12 @@ fn renderBlockingTime(document: *runtime.Instance) f64 {
 /// or sandboxed frame was dropped that way (the lesson "A frame's load event
 /// has exactly one owner": engine code must not use script's getters).
 fn documentActivity(object: *runtime.Instance) @import("dom").document_activity.Activity {
+    // A frame of a page the back/forward cache keeps (phase C): its navigable
+    // still shows it - only its page is not shown - so the navigable's record
+    // below would call it fully active (the document) or gone (the Window,
+    // whose container document is no navigable's any more). Inactive: its
+    // tasks wait with the page. (No page is cached: the cache answers at once.)
+    if (@import("dom").bfcache.holds(object)) return .inactive;
     if (object.stateAs(interfaces.Window.State) != null) {
         const navigable = @import("dom").browser_state.browsingContextOf(object) orelse return cachedOrGone(object);
         if (navigable.is_closed) return .gone;
