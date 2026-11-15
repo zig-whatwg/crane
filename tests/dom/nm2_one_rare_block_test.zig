@@ -142,12 +142,14 @@ test "an element's teardown part lets its fields go and leaves the node's: the b
     try testing.expect(rare_data.hasElementFields(node.rare));
 
     // What Element's `end` runs once its fields' owners let go of them.
+    // Each of its fields reads as never set; their bits stay (a cleared
+    // field keeps its bit), so the block neither moves nor shrinks.
+    const block = node.rare.block;
     rare_data.releaseElementFields(ctx, &node.rare);
-    try testing.expect(!rare_data.hasElementFields(node.rare));
+    try testing.expect(node.rare.block == block);
     try testing.expect(rare_data.getBytes(node.rare, .nonce) == null);
     try testing.expect(rare_data.get(node.rare, .slottable) == null);
     // The node-level field is untouched, in the same block.
-    try testing.expect(node.rare.block != null);
     try testing.expectEqualStrings("SCRIPT", node.nodeName());
     try testing.expect(node.hasOwnedNodeName());
 }
