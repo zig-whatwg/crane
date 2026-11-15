@@ -17,7 +17,7 @@
 //! list against the window agent's thread (dom.browser_state
 //! checkWindowAgentThread), so a worker's end that reaches the list fails
 //! here on every run - the panic names the read - while the page changes
-//! its frames as TAO-match did.
+//! its frames as TAO-match did, or opens and closes popups.
 
 const std = @import("std");
 const testing = std.testing;
@@ -89,4 +89,62 @@ fn round() !void {
 
 test "a dedicated worker's end, while its page adds and removes frames, reads none of the Browser's browsing contexts" {
     for (0..3) |_| try round();
+}
+
+/// Workers start and end one after another while the page opens and closes
+/// popups and changes its frames: a closed popup's browsing context is
+/// discarded and freed on the window agent's thread too (main's report,
+/// 12:34 AM ET: rep2's verify x10 crashed once in the same walk on
+/// html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html,
+/// a popup closing meanwhile).
+fn popupRound() !void {
+    const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigateWithOptions(page_url, .window, .{ .skip_load = true });
+    const page = browser.current_context orelse return error.NoPage;
+    try page.loadHTML("<!doctype html><body>", .{ .base_url = page_url });
+    const set_up = try browser.evaluateScript(
+        \\globalThis.started = 0;
+        \\globalThis.ended = 0;
+        \\globalThis.failed = 0;
+        \\globalThis.popups = [];
+        \\for (let i = 0; i < 2; i++) document.body.appendChild(document.createElement('iframe'));
+        \\globalThis.churn = () => {
+        \\  const popup = window.open('about:blank', '_blank');
+        \\  if (popup) popups.push(popup);
+        \\  while (popups.length > 2) popups.shift().close();
+        \\  document.body.appendChild(document.createElement('iframe'));
+        \\  document.body.firstElementChild.remove();
+        \\};
+        \\globalThis.spawn = () => {
+        \\  const worker = new Worker(URL.createObjectURL(new Blob(["postMessage('up')"], { type: 'text/javascript' })));
+        \\  started++;
+        \\  worker.onmessage = () => { worker.terminate(); ended++; };
+        \\  worker.onerror = () => { failed++; };
+        \\};
+        \\true
+    );
+    set_up.release();
+    // Twelve workers, each started while the last ends.
+    for (0..12) |_| {
+        const spawned = try browser.evaluateScript("spawn(); true");
+        spawned.release();
+        try waitWhileChurning(browser, "ended === started || failed > 0");
+    }
+    try testing.expect(try truthy(browser, "failed === 0 && ended === 12"));
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    const registry = html.WorkerRegistry.existingOf(realm) orelse return error.NoWorkerRegistry;
+    for (0..2000) |_| {
+        if (registry.count() == 0) break;
+        const churned = try browser.evaluateScript("churn(); true");
+        churned.release();
+        _ = try browser.runEventLoopBlocking(2);
+    } else return error.WorkerDidNotEnd;
+    const closed = try browser.evaluateScript("for (const popup of popups) popup.close(); true");
+    closed.release();
+    _ = try browser.runEventLoopBlocking(20);
+}
+
+test "workers that start and end while the page opens and closes popups read none of the Browser's browsing contexts" {
+    for (0..2) |_| try popupRound();
 }
