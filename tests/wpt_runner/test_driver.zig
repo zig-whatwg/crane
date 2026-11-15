@@ -1323,7 +1323,9 @@ const PermissionParameters = struct {
     fn nameOf(self: *PermissionParameters, object: JSValue) engine.Error!permissions.PermissionName {
         const value = try engine.getProperty(self.realm, object, "name");
         defer value.release();
-        if (value.borrow().isUndefined()) return error.TypeError;
+        // An Owned value is a handle: engine.typeOf says whether it is
+        // undefined (isUndefined() is false for every handle).
+        if (engine.typeOf(self.realm, value.borrow()) == .undefined) return error.TypeError;
         const name = try engine.convertToDOMString(self.realm, value.borrow(), self.realm.allocator);
         defer self.realm.allocator.free(name);
         return permissions.query.supportedName(name) orelse error.TypeError;
@@ -1366,7 +1368,7 @@ fn invalid(message: []const u8) Failure {
 fn stringProperty(realm: runtime.Context, object: JSValue, name: []const u8, allocator: std.mem.Allocator) ?[]u8 {
     const value = engine.getProperty(realm, object, name) catch return null;
     defer value.release();
-    if (value.value.isUndefined()) return null;
+    // An absent property is undefined, which is no string either.
     if (engine.typeOf(realm, value.value) != .string) return null;
     return engine.convertToDOMString(realm, value.borrow(), allocator) catch null;
 }
