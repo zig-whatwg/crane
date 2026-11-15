@@ -845,6 +845,103 @@ test "a handle borrowed from the cache reads empty once a collection took its wr
     }
 }
 
+/// True since lane wrap1's batch 3 (the escalated agent's review of the weak-handle records): the test below holds
+/// the fixed value. Before, the anchor of a wrapper held by a weak handle still named the cache's record after a
+/// collection that took the wrapper and kept the anchor.
+const an_anchor_that_outlives_its_wrapper_names_no_record = true;
+
+/// A full collection with the stack scanned, from a frame of its own that keeps `word` in memory: the caller's
+/// local holds an anchor's address, and the scan must find it there.
+noinline fn collectScanningStack(isolate: *ffi.Isolate, word: *volatile usize) void {
+    ffi.v8_test_Isolate_CollectScanningStack(isolate);
+    std.mem.doNotOptimizeAway(word.*);
+}
+
+test "an anchor a scan of the stack keeps past its wrapper's death names no record of the cache" {
+    // V8 scans the native stack conservatively when a collection runs under script: a word that happens to hold a
+    // C++-heap object's address keeps that object for the collection, and its Trace runs. For a wrapper the cache
+    // holds by a TRACED reference that is consistent: the anchor's Trace keeps the wrapper, so anchor, wrapper and
+    // record live or die together. A wrapper held by a WEAK HANDLE (an Event: born with an own property) is not
+    // kept by its anchor - nothing traces a weak v8::Global - so the wrapper dies, its record's finalizer frees
+    // the record at the agent's safe point, and the anchor lives on. If it still named the record, its Trace in
+    // the next collection would read memory the cache has freed (the record's chunk goes back to the allocator
+    // with its last record) or issued to another wrapper. Blink has no such pair: a wrapper's ScriptWrappable is
+    // the object itself and holds nothing that is freed apart from it.
+    const WrapperCache = @import("v8").WrapperCache;
+    const page = try Page.open();
+    defer page.close();
+    const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+    page.fullGC();
+
+    const Kind = enum { traced, weak_handle };
+    for ([_]Kind{ .traced, .weak_handle }) |kind| {
+        const got = try page.evalOwned(switch (kind) {
+            .traced => "globalThis.h = new URLSearchParams('a=b'); h",
+            .weak_handle => "globalThis.h = new Event('x'); h",
+        });
+        const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
+        const handle = cache.get(instance) orelse return error.NotCached;
+        const entered = page.enter();
+        defer page.leave(entered);
+        const watch = ffi.v8_test_PlatformAnchorWatch_New(page.isolate(), handle) orelse return error.NoAnchor;
+        defer ffi.v8_test_PlatformAnchorWatch_Delete(watch);
+        // The cache took the wrapper: its anchor names the cache's record.
+        try testing.expectEqual(@as(c_int, 2), ffi.v8_test_PlatformAnchorWatch_Names(watch));
+        got.release();
+        try page.run("globalThis.h = null; 0");
+        const pending_before = cache.pendingFinalizerCount();
+
+        // Script holds the wrapper no more; this frame holds its anchor's address through a collection that
+        // scans the stack.
+        var in_frame: usize = ffi.v8_test_PlatformAnchorWatch_Address(watch);
+        try testing.expect(in_frame != 0);
+        collectScanningStack(page.isolate(), &in_frame);
+        const names = ffi.v8_test_PlatformAnchorWatch_Names(watch);
+        if (names == -1) {
+            std.debug.print("the scan of the stack did not keep the anchor ({s}): nothing was read\n", .{@tagName(kind)});
+            return error.TestInconclusive;
+        }
+        switch (kind) {
+            .traced => {
+                // The anchor kept its wrapper: the cache still holds it, and the anchor still names its record.
+                try testing.expect(cache.get(instance) != null);
+                try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
+                try testing.expectEqual(@as(c_int, 2), names);
+            },
+            .weak_handle => {
+                // The wrapper died under the anchor: the record waits for its finalizer, and the anchor - which
+                // outlives it - names nothing from here.
+                try testing.expect(cache.get(instance) == null);
+                try testing.expectEqual(pending_before + 1, cache.pendingFinalizerCount());
+                if (an_anchor_that_outlives_its_wrapper_names_no_record) {
+                    try testing.expectEqual(@as(c_int, 0), names);
+                } else {
+                    try testing.expectEqual(@as(c_int, 2), names);
+                }
+                // The agent's safe point frees the Event and the record.
+                while (ffi.v8_Platform_PumpMessageLoop(page.isolate())) {}
+                _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
+                try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
+                // The anchor is traced again, with its record gone.
+                if (an_anchor_that_outlives_its_wrapper_names_no_record) {
+                    collectScanningStack(page.isolate(), &in_frame);
+                    try testing.expectEqual(@as(c_int, 0), ffi.v8_test_PlatformAnchorWatch_Names(watch));
+                }
+            },
+        }
+
+        // Out of the frame, the next collection takes the anchor (and the traced wrapper with it).
+        in_frame = 0;
+        std.mem.doNotOptimizeAway(&in_frame);
+        ffi.v8_test_Isolate_CollectWithoutDrain(page.isolate());
+        try testing.expectEqual(@as(c_int, -1), ffi.v8_test_PlatformAnchorWatch_Names(watch));
+        while (ffi.v8_Platform_PumpMessageLoop(page.isolate())) {}
+        _ = ffi.v8_Isolate_RunQueuedFinalizers(page.isolate());
+        try testing.expect(cache.get(instance) == null);
+        try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
+    }
+}
+
 test "what the instances behind non-node wrappers hold is noted for the collector, reported at a safe point, and forgotten as a full collection begins" {
     // A wrapper is 16 B of V8's heap and keeps an instance V8 cannot see; V8 schedules collections by what it
     // sees. The adapter notes each wrapped non-node instance's slab slot, state block and cache record, tells

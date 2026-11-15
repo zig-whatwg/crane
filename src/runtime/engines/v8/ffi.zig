@@ -3078,6 +3078,23 @@ pub extern fn v8_test_FullGCEpilogueProbe_Delete(probe: *FullGCEpilogueProbe) vo
 /// point at its end (what it collected waits for the agent's next one).
 pub extern fn v8_test_Isolate_CollectWithoutDrain(isolate: *Isolate) void;
 
+/// tests/v8: a full collection WITH the conservative scan of the stack (a
+/// frame's word that holds an anchor's address keeps the anchor) and no safe
+/// point at its end.
+pub extern fn v8_test_Isolate_CollectScanningStack(isolate: *Isolate) void;
+
+/// tests/v8/wrap1_platform_anchor_test.zig: a weak look at the platform
+/// anchor of the wrapper `handle` holds (a wrapper cache's borrowed handle);
+/// null for an object with none. OWNED: v8_test_PlatformAnchorWatch_Delete.
+pub const PlatformAnchorWatch = opaque {};
+pub extern fn v8_test_PlatformAnchorWatch_New(isolate: *Isolate, handle: *Object) ?*PlatformAnchorWatch;
+/// The anchor's address, or 0 once a collection took it.
+pub extern fn v8_test_PlatformAnchorWatch_Address(watch: *PlatformAnchorWatch) usize;
+/// -1: a collection took the anchor; 0: it names nothing (severed); 1: an
+/// instance; 2: a wrapper cache's record.
+pub extern fn v8_test_PlatformAnchorWatch_Names(watch: *PlatformAnchorWatch) c_int;
+pub extern fn v8_test_PlatformAnchorWatch_Delete(watch: *PlatformAnchorWatch) void;
+
 /// tests/v8: the node wrappers V8 dropped in `isolate`'s young-generation
 /// collections so far (the EmbedderRootsHandler's ResetRoot, design 4.11).
 pub extern fn v8_test_NodeWrappers_Dropped(isolate: *Isolate) u64;

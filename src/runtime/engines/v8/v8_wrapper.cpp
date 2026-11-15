@@ -5580,6 +5580,62 @@ extern "C" void v8_test_Isolate_CollectWithoutDrain(Isolate* isolate) {
     isolate->LowMemoryNotification();
 }
 
+/// A full collection of `isolate` (entered by the caller) WITH the
+/// conservative scan of the stack a collection makes when it runs under
+/// script - a word of a frame that holds an anchor's address keeps that
+/// anchor through it (cppgc::testing::OverrideEmbedderStackStateScope) - and
+/// no safe point at its end, as v8_test_Isolate_CollectWithoutDrain.
+extern "C" void v8_test_Isolate_CollectScanningStack(Isolate* isolate) {
+    CollectingScope collecting(isolate);
+    CppHeap* heap = isolate->GetCppHeap();
+    if (!heap) {
+        isolate->LowMemoryNotification();
+        return;
+    }
+    cppgc::testing::OverrideEmbedderStackStateScope stack_scan(heap->GetHeapHandle(),
+                                                               cppgc::EmbedderStackState::kMayContainHeapPointers);
+    isolate->LowMemoryNotification();
+}
+
+/// tests/v8/wrap1_platform_anchor_test.zig: a weak look at one platform
+/// anchor. It keeps nothing alive and reads null once a collection took the
+/// anchor.
+struct CranePlatformAnchorWatch {
+    cppgc::WeakPersistent<PlatformAnchor> anchor;
+};
+
+/// A watch on the platform anchor of the wrapper `handle` holds - a wrapper
+/// cache's borrowed handle, or any Global of the wrapper; null for an empty
+/// handle or an object with no platform anchor. OWNED by the caller
+/// (v8_test_PlatformAnchorWatch_Delete). On the isolate's thread, entered.
+extern "C" CranePlatformAnchorWatch* v8_test_PlatformAnchorWatch_New(Isolate* isolate, Global<Object>* handle) {
+    if (!handle || handle->IsEmpty()) return nullptr;
+    HandleScope scope(isolate);
+    PlatformAnchor* anchor = platformAnchorOf(isolate, handle->Get(isolate));
+    if (!anchor) return nullptr;
+    return new CranePlatformAnchorWatch{cppgc::WeakPersistent<PlatformAnchor>(anchor)};
+}
+
+/// The watched anchor's address - for a test that keeps it in a frame across
+/// a collection - or 0 once a collection took the anchor.
+extern "C" uintptr_t v8_test_PlatformAnchorWatch_Address(CranePlatformAnchorWatch* watch) {
+    return reinterpret_cast<uintptr_t>(watch->anchor.Get());
+}
+
+/// What the watched anchor names now: -1 a collection took the anchor; 0
+/// nothing (severed); 1 an instance (no cache holds its wrapper); 2 a
+/// wrapper cache's record.
+extern "C" int v8_test_PlatformAnchorWatch_Names(CranePlatformAnchorWatch* watch) {
+    PlatformAnchor* anchor = watch->anchor.Get();
+    if (!anchor) return -1;
+    if (anchor->cell()) return 2;
+    return anchor->link_ ? 1 : 0;
+}
+
+extern "C" void v8_test_PlatformAnchorWatch_Delete(CranePlatformAnchorWatch* watch) {
+    delete watch;
+}
+
 /// The node wrappers V8 has dropped in `isolate`'s young-generation
 /// collections so far (NodeWrapperRootsHandler::ResetRoot).
 /// The bytes V8 holds now as external memory for the pointer-table entries
