@@ -75,6 +75,14 @@ fn windowOf(document: *Instance) ?*Instance {
     return interfaces.Document.get_defaultView(document) catch null;
 }
 
+/// Whether `document` is fully active (HTML 7.3.3: the active document of
+/// its navigable, its container document fully active too). False once it
+/// was unloaded, destroyed, its frame removed or navigated away, or its
+/// realm has ended - however long script keeps its nodes.
+fn isFullyActive(document: *Instance) bool {
+    return dom.document_activity.fullyActive(document, runtime.SlabAllocator.generationOf(document));
+}
+
 fn isConnected(node: *Instance) bool {
     return interfaces.Node.get_isConnected(node) catch false;
 }
@@ -399,8 +407,60 @@ pub const Pointer = struct {
     /// removed it: then the pointer is over whatever is left of the document
     /// it was over - its body, as a hit test at the same point would find
     /// with the element gone.
+    ///
+    /// A pointer is over nothing of a document that is no longer fully
+    /// active - its frame was removed or navigated away, or it was unloaded:
+    /// what the pointer designated there is forgotten WITHOUT events, and
+    /// the next move enters its target from nowhere. No specification text
+    /// covers a document that has gone (Pointer Events 4 section 11.3 only
+    /// has "if the target is removed from the DOM during the mouse events
+    /// sequence, the remaining events of the sequence MUST NOT be fired on
+    /// that element"; its "active document" of a pointer is a glossary
+    /// term), so this is golden rule 2, and the three engines agree - the
+    /// element under the mouse is a frame's state, dropped without events
+    /// when the frame's document goes:
+    /// - Blink: third_party/blink/renderer/core/input/event_handler.cc
+    ///   EventHandler::Clear calls mouse_event_manager_->Clear()
+    ///   (mouse_event_manager.cc: element_under_mouse_ = nullptr,
+    ///   mouse_press_node_ = nullptr, no event), from
+    ///   core/frame/local_frame.cc LocalFrame::DidAttachDocument - each time
+    ///   the frame gets a new document;
+    /// - WebKit: Source/WebCore/page/EventHandler.cpp EventHandler::clear
+    ///   (clearElementUnderMouse(); m_lastElementUnderMouse = nullptr), from
+    ///   Source/WebCore/loader/FrameLoader.cpp FrameLoader::clear - the old
+    ///   document's end when a new one is committed;
+    /// - Gecko: layout/base/PresShell.cpp PresShell::Destroy calls
+    ///   dom/events/EventStateManager.cpp
+    ///   EventStateManager::NotifyDestroyPresContext (ResetHoverState();
+    ///   mMouseEnterLeaveHelper = nullptr; mPointersEnterLeaveHelper.Clear()),
+    ///   which dispatches nothing.
+    /// (Read at each repository's main branch, 2026-11-14.)
+    /// Before lane tl1 the boundary events were fired at the old element,
+    /// its body and its html element for as long as the old tree was
+    /// allocated - which is until its realm's end, a task the collector
+    /// queues (the weak references here are an address and a generation).
+    /// Between the collection and that task the events were made in a realm
+    /// with no engine behind it: nothing could free them - 12 leaked
+    /// allocations at a WPT runner child's exit - and their timestamp step
+    /// read the old Window's Performance object, which the collector had
+    /// freed - a segmentation fault (replace-before-load/
+    /// location-setter-user-click.html, whose every click navigates the
+    /// frame its button is in: 39 leaking and 3 crashed of 96 bug-finding
+    /// runner processes on main 9a0207b5b4;
+    /// tests/html/tl1_pointer_after_realm_collected_test.zig,
+    /// tl1_pointer_leaves_dead_document_test.zig).
+    /// dom.document_activity reads a document of a realm with no engine as
+    /// gone, so nothing of that realm is read here.
     pub fn currentTarget(self: *Pointer) ?*Instance {
         const document = if (self.hit_document) |d| d.get() else null;
+        if (document) |d| if (!isFullyActive(d)) {
+            // HTML 4.16.3 :hover: a document the pointer left designates
+            // nothing (as pointerMove says of a document it moves out of).
+            dom.pointer_states.set(d, .hovered, null);
+            self.hit = null;
+            self.hit_document = null;
+            return null;
+        };
         if (self.hit) |weak| {
             if (weak.get()) |element| {
                 if (isConnected(element) and document != null and nodeDocument(element) == document.?) return element;
@@ -598,6 +658,13 @@ fn ancestors(node: *Instance, out: []*Instance) usize {
 /// old one, over and enter at the new - then pointermove and mousemove; all
 /// at the pointer's capture target instead while it is captured.
 pub fn pointerMove(pointer: *Pointer, hit: *Instance, modifiers: Modifiers) void {
+    // A pointer cannot be moved onto an element of a document that is not
+    // fully active: nothing of it is shown, so no hit test finds it
+    // (`Pointer.currentTarget` says what the engines do). WebDriver refuses
+    // such an origin before any action ("get a known element": a stale
+    // element reference when its node document is not the active document);
+    // an embedder that passes one all the same moves nothing.
+    if (nodeDocument(hit)) |document| if (!isFullyActive(document)) return;
     // Pointer Events 3.1.3: process pending pointer capture; the event's
     // target is the pointer capture target override, if set.
     const target = pointerEventTarget(pointer, hit, modifiers, true);
@@ -1455,6 +1522,14 @@ fn isKey(key: Key, comptime name: []const u8) bool {
 /// in: keydown, keypress for a key that produces a character (or Enter),
 /// and the default action.
 pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
+    // A document that is not fully active is in no top-level traversable
+    // (HTML 7.3.1: a document's node navigable is the navigable whose active
+    // document it is, or null), so no key is routed for it: nothing
+    // happens. An embedder that still names one - the WPT runner holds its
+    // key document weakly across a navigation - pressed the key in whatever
+    // was left of that document's realm (`Pointer.currentTarget` says what
+    // that read; tests/html/tl1_key_to_dead_document_test.zig).
+    if (!isFullyActive(document)) return;
     const target = keyTarget(document) orelse return;
     // HTML 6.10.1: on desktop platforms Esc is a close request, "the key
     // being pressed down" - targeted at the document the key goes to. Its
@@ -1507,6 +1582,8 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
 
 /// Release `key`: keyup, then Space's keyboard activation.
 pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modifiers) void {
+    // As keyDown: no key is routed for a document that is not fully active.
+    if (!isFullyActive(document)) return;
     const target = keyTarget(document) orelse return;
     const armed = if (keyboard.space_armed) |weak| weak.get() else null;
     if (isKey(key, " ")) keyboard.space_armed = null;
@@ -2160,11 +2237,50 @@ fn isE(c: u8) bool {
     return c == 'e' or c == 'E';
 }
 
+// filterNumberText below is translated statement by statement from
+// Chromium's Blink NumberInputType::FilterBeforeTextInserted
+// (https://github.com/chromium/chromium, revision
+// a7b97d6a9a7f7f897c77e2a6218e4cdcb136a099,
+// third_party/blink/renderer/core/html/forms/number_input_type.cc), which its
+// BSD-3-Clause license allows; also listed in THIRD_PARTY_NOTICES.md. The
+// upstream copyright and license, exactly as upstream has them:
+//
+//  Copyright (C) 2010 Google Inc. All rights reserved.
+//  Copyright (C) 2011 Apple Inc. All rights reserved.
+//
+//  Redistribution and use in source and binary forms, with or without
+//  modification, are permitted provided that the following conditions are
+//  met:
+//
+//      * Redistributions of source code must retain the above copyright
+//  notice, this list of conditions and the following disclaimer.
+//      * Redistributions in binary form must reproduce the above
+//  copyright notice, this list of conditions and the following disclaimer
+//  in the documentation and/or other materials provided with the
+//  distribution.
+//      * Neither the name of Google Inc. nor the names of its
+//  contributors may be used to endorse or promote products derived from
+//  this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+//  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+//  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+//  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+//  OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+//  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+//  DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+//  THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+//  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 /// Typing into a number input (HTML 4.10.5.1.12: "User agents must not
 /// allow the user to set the value to a non-empty string that is not a valid
 /// floating-point number"): the characters of `text` that may stand, given
 /// the editor text `current` and the selection the insertion replaces.
-/// Blink NumberInputType::FilterBeforeTextInserted, one character at a time;
+/// Translated from Blink number_input_type.cc
+/// NumberInputType::FilterBeforeTextInserted (BSD-3; notice above), one
+/// character at a time;
 /// WebKit NumberInputType::handleBeforeTextInsertedEvent applies the same
 /// rules (the-input-element/number-invalid-scientific-key-events.html: Chrome
 /// and Safari 4/4). Where WebKit refuses more (a sign in the middle without an

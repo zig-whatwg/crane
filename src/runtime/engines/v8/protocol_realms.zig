@@ -876,7 +876,14 @@ fn realmCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
     const record: *Detached = @ptrCast(@alignCast(data orelse return));
     // Every liveness test reads "ended" from here.
     record.realm.engine_ctx = null;
+    record.realm.engine_gone = true;
     if (record.realm.realm) |r| r.engine_realm = null;
+    // And its wrapper cache keeps what the collector took with the realm
+    // until the realm's end (WrapperCache.realm_collected says why).
+    if (record.realm.getV8WrapperCacheStorage()) |storage| {
+        const cache: *WrapperCache = @ptrCast(@alignCast(storage));
+        cache.realm_collected = true;
+    }
     if (record.ended) return;
     // Its page's event loop. With none, the page's end ends it.
     const loop = record.realm.getOptionalEventLoop() orelse return;

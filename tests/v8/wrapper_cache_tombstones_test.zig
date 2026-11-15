@@ -261,10 +261,10 @@ test "wrappers put and taken out, round after round, at addresses never used bef
 }
 
 test "an entry read from the cache before an insert rehashes it is the entry the cache answers for its instance after" {
-    // A rehash moves the map's slots, never the entries: each CacheEntry is
-    // its own allocation, and the map holds pointers to them. So a
-    // `*CacheEntry` read before - by finalizeEntry, wrappedAgain, or any
-    // `get` - still answers for its instance after an insert rehashed.
+    // A rehash moves the map's slots, never the entries: each record is the
+    // cache's pool's, and the map holds pointers to them. So a record read
+    // before - by finalizeEntry, wrappedAgain, or any `get` - still answers
+    // for its instance after an insert rehashed.
     const page = try Page.open(null);
     defer page.close();
     const cache = page.cache();

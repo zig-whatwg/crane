@@ -24,6 +24,7 @@ const builtin = @import("builtin");
 const Instance = @import("instance.zig").Instance;
 const Hook = @import("process").Hook;
 const engine = @import("engine");
+const gc = @import("gc_integration.zig");
 
 /// What a counted type's VTable points at. One table for every counted type:
 /// the runtime dispatches through it, and the owner the hooks name decides.
@@ -68,6 +69,30 @@ pub const Hooks = struct {
     /// pause: read-only, no allocation, no other engine operation
     /// (dom.wrapper_tracing).
     trace_tree: ?*const fn (target: *anyopaque, tracer: *engine.Tracer) void = null,
+    /// The engine's full collection found the wrappers of `dead` dead, at
+    /// the end of its marking: decide which of the host's trees die with
+    /// them, take what those trees hold out of `memory`'s figure
+    /// (gc.ExternalMemory.predictDead) and answer the bytes taken
+    /// (`dyingWith`; dom.dying_trees). Runs INSIDE the collection's atomic
+    /// pause, after marking and before any wrapper's reference is released:
+    /// read-only on the counted objects, no allocation on the engine's
+    /// heaps, and no engine operation but engine.traceVisitOnce - with
+    /// `tracer`, whose set is the one the walk (`trace_tree`) filled in this
+    /// collection.
+    dying_with: ?*const fn (memory: *gc.ExternalMemory, dead: []const DeadWrapper, tracer: *engine.Tracer) usize = null,
+};
+
+/// A wrapper the engine's collector found dead, whose counted reference the
+/// adapter still holds for its release at the agent's next safe point: the
+/// counted object (what `wrapperAcquired` answered: a node's NodeBase), its
+/// instance, and the slab generation the instance had when the collector
+/// found the wrapper dead - a forced teardown can free the object before the
+/// release, and is recognised by it. What an adapter records per dead
+/// wrapper, and what `dyingWith` hands the owner of the counts.
+pub const DeadWrapper = struct {
+    target: *anyopaque,
+    instance: *Instance,
+    generation: u64,
 };
 
 // process-wide: dom.refcount's two functions, installed once while the process starts (refcount.install, from Document's and Node's installHooks) and the same for every Browser and thread; read-only after
@@ -94,6 +119,7 @@ fn merged(current: Hooks, owned: Hooks) ?Hooks {
     if (owned.slot_of) |f| next.slot_of = f;
     if (owned.target_of_slot) |f| next.target_of_slot = f;
     if (owned.trace_tree) |f| next.trace_tree = f;
+    if (owned.dying_with) |f| next.dying_with = f;
     return if (std.meta.eql(next, current)) null else next;
 }
 
@@ -186,6 +212,24 @@ pub fn traceTree(target: *anyopaque, tracer: *engine.Tracer) bool {
     const trace_tree = hooks.read().trace_tree orelse return false;
     trace_tree(target, tracer);
     return true;
+}
+
+/// The end of a full collection's marking (`Hooks.dying_with`;
+/// engine.capabilities.external_memory_at_collection, lane dm1's design,
+/// tmp/plans/dom-memory-figure-design.md 3.2 B): the collector found the
+/// wrappers of `dead` dead in THIS collection's marking - never one an
+/// earlier, young collection dropped, whose tree this collection's marks
+/// prove nothing about - and their references are still to be released. The
+/// owner of the counts decides which trees die with them and takes their
+/// bytes out of `memory`'s figure; the answer is what it took, which the
+/// adapter takes off its engine's count before the engine computes its next
+/// threshold. 0, and nothing decided, when no owner installed the hook: the
+/// engine then hears of each death at the agent's next safe point, as an
+/// engine without the capability does. Inside the collection's atomic
+/// pause, on the agent's thread.
+pub fn dyingWith(memory: *gc.ExternalMemory, dead: []const DeadWrapper, tracer: *engine.Tracer) usize {
+    const dying_with = hooks.read().dying_with orelse return 0;
+    return dying_with(memory, dead, tracer);
 }
 
 /// Whether the walk is installed (`Hooks.trace_tree`): always, outside a

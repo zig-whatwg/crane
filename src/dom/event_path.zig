@@ -3,6 +3,9 @@
 //! retargeted relatedTarget and touch targets and its three shadow-tree
 //! booleans - and find the activation target and clearTargets on the way.
 //! EventTarget's dispatch runs the rest (the invoke passes and steps 7-13).
+//! The path is built into the dispatch's own `DispatchPath`
+//! (dom.event_dispatch, "THE PATH IS THE DISPATCH'S"), which the event
+//! points at from here until dispatch step 9.
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-event-dispatch
 //!
@@ -46,12 +49,11 @@
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const infra = @import("infra");
 
 const NodeBase = @import("node_base.zig").NodeBase;
 const event_dispatch = @import("event_dispatch.zig");
 const EventState = event_dispatch.EventState;
-const PathItem = event_dispatch.PathItem;
+const DispatchPath = event_dispatch.DispatchPath;
 const retarget = @import("retarget.zig");
 const slot_helpers = @import("slot_helpers.zig");
 const activation = @import("activation.zig");
@@ -109,13 +111,18 @@ const Parent = struct {
 /// The walk's state between steps.
 const Walk = struct {
     state: *EventState,
+    /// The dispatch's path, which the steps append to.
+    path: *DispatchPath,
     input: Input,
     /// The relatedTarget the event had when dispatch began.
     event_related: ?*runtime.Instance,
     /// Dispatch's `relatedTarget`, retargeted against the current parent.
     related: ?*runtime.Instance,
-    /// Dispatch's `touchTargets`, retargeted against the current parent.
-    touch_targets: infra.List(*runtime.Instance),
+    /// Dispatch's `touchTargets`, retargeted against the current parent:
+    /// a run of the path's `touch_targets` (`PathItem.touch_start`), which
+    /// every item appended until the next retargeting shares. Empty for
+    /// every event but a TouchEvent.
+    touch_start: u32 = 0,
     /// Dispatch's `target`.
     target: *runtime.Instance,
     /// (b) moves less (c) moves since `target` was last set.
@@ -130,19 +137,17 @@ const Walk = struct {
     last_target_index: usize = 0,
     result: Result = .{},
 
-    fn allocator(self: *const Walk) std.mem.Allocator {
-        return self.state.allocator;
-    }
-
     /// "Append to an event path" with event, invocationTarget,
     /// shadowAdjustedTarget, relatedTarget, touchTargets and
     /// slotInClosedTree. invocation-target-in-shadow-tree is known here for
     /// an item deeper than the depth-0 tree, and filled in for the depth-0
     /// tree's items once its root is reached (`resolveScope`).
-    fn append(self: *Walk, invocation_target: *runtime.Instance, node: ?*NodeBase, shadow_adjusted: ?*runtime.Instance, slot_in_closed_tree: bool) !void {
-        var touch = infra.List(*runtime.Instance).init(self.allocator());
-        errdefer touch.deinit();
-        if (self.touch_targets.len > 0) try touch.appendSlice(self.touch_targets.toSlice());
+    ///
+    /// `shadow_adjusted` says whether shadowAdjustedTarget is non-null: it
+    /// is then dispatch's `target` (`self.target`) - steps 6.3 and 6.9.8.3
+    /// pass nothing else (targetOverride, for step 6.3, is written by
+    /// `build`).
+    fn append(self: *Walk, invocation_target: *runtime.Instance, node: ?*NodeBase, shadow_adjusted: bool, slot_in_closed_tree: bool) !void {
         // Steps 1-2: invocationTargetInShadowTree - "invocationTarget is a
         // node and its root is a shadow root".
         const in_shadow_tree = node != null and self.depth > 0;
@@ -150,16 +155,16 @@ const Walk = struct {
         // whose mode is closed". Only a node with no parent can be one.
         const root_of_closed_tree = if (node) |n| n.parent_node == null and retarget.isShadowRoot(n) and retarget.isClosed(n) else false;
         // Step 5.
-        try self.state.path.append(.{
+        try self.path.append(.{
             .invocation_target = invocation_target,
-            .invocation_target_in_shadow_tree = in_shadow_tree,
-            .shadow_adjusted_target = shadow_adjusted,
             .related_target = self.related,
-            .touch_target_list = touch,
-            .root_of_closed_tree = root_of_closed_tree,
-            .slot_in_closed_tree = slot_in_closed_tree,
             .target = self.target,
             .invocation_node = node,
+            .touch_start = self.touch_start,
+            .has_shadow_adjusted_target = shadow_adjusted,
+            .invocation_target_in_shadow_tree = in_shadow_tree,
+            .root_of_closed_tree = root_of_closed_tree,
+            .slot_in_closed_tree = slot_in_closed_tree,
         });
     }
 
@@ -167,7 +172,7 @@ const Walk = struct {
     /// root, every item since the tree's first is in a shadow tree.
     fn resolveScope(self: *Walk, root: *NodeBase) void {
         if (!retarget.isShadowRoot(root)) return;
-        for (self.state.path.toSliceMut()[self.scope_start..]) |*item| item.invocation_target_in_shadow_tree = true;
+        for (self.path.items()[self.scope_start..]) |*item| item.invocation_target_in_shadow_tree = true;
     }
 
     /// Steps 6.9.3-6.9.5 when a move changes the tree: relatedTarget and the
@@ -176,9 +181,14 @@ const Walk = struct {
         self.related = retarget.retargetAgainst(self.event_related, parent);
         const touch = self.state.touch_target_list.toSlice();
         if (touch.len == 0) return;
-        self.touch_targets.clear();
+        // A new run of the path's touch targets; the items appended so far
+        // keep theirs.
+        const targets = &self.path.touch_targets;
+        try targets.ensureUnusedCapacity(self.path.allocator, touch.len);
+        self.touch_start = @intCast(targets.items.len);
+        self.path.touch_count = @intCast(touch.len);
         for (touch) |touch_target| {
-            try self.touch_targets.append(retarget.retargetAgainst(touch_target, parent).?);
+            targets.appendAssumeCapacity(retarget.retargetAgainst(touch_target, parent).?);
         }
     }
 
@@ -240,22 +250,24 @@ const Walk = struct {
     }
 };
 
-/// Dispatch steps 4-6.11 for `target`: append `state`'s path (empty on
-/// entry) and return activationTarget and clearTargets. On error the path
+/// Dispatch steps 4-6.11 for `target`: build the event's path into `path`
+/// - the dispatch's own, empty on entry, which `state` points at from here
+/// until dispatch step 9 (`EventState.clearPath`, before `path`'s frame
+/// ends) - and return activationTarget and clearTargets. On error the path
 /// holds what was appended; dispatch's end empties it.
-pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{OutOfMemory}!Result {
-    std.debug.assert(state.path.len == 0);
+pub fn build(state: *EventState, path: *DispatchPath, target: *runtime.Instance, input: Input) error{OutOfMemory}!Result {
+    std.debug.assert(state.path == null and path.len == 0);
+    state.path = path;
     const target_node = retarget.nodeOf(target);
 
     var walk: Walk = .{
         .state = state,
+        .path = path,
         .input = input,
         .event_related = state.related_target,
         .related = null,
-        .touch_targets = infra.List(*runtime.Instance).init(state.allocator),
         .target = target,
     };
-    defer walk.touch_targets.deinit();
 
     // Step 4: "Let relatedTarget be the result of retargeting event's
     // relatedTarget against target" - and steps 6.1-6.2's touchTargets,
@@ -271,12 +283,12 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
     // for the Window's load and page transition events (`target_override`).
     // Step 6.3: "Append to an event path with event, target, targetOverride,
     // relatedTarget, touchTargets, and false."
-    try walk.append(target, target_node, input.target_override orelse target, false);
+    try walk.append(target, target_node, true, false);
     // Invoke steps 1-3 read the struct's recorded target - the last
     // shadow-adjusted target at or before it, here targetOverride itself.
     // Not an invocation target, so not held by the path: its dispatcher
     // holds it (EventTarget's dispatchTrustedLegacyTargetOverride).
-    if (input.target_override) |override| state.path.toSliceMut()[0].target = override;
+    if (input.target_override) |override| path.items()[0].target = override;
 
     // Steps 6.4-6.5: isActivationEvent (activation_of non-null), and the
     // target itself as activationTarget.
@@ -291,7 +303,7 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
 
     // Step 6.9: "While parent is non-null".
     while (walk.parentOf(current, current_node)) |parent| {
-        if (state.path.len >= max_event_path_length) break;
+        if (path.len >= max_event_path_length) break;
         var slot_in_closed_tree = false;
         switch (parent.move) {
             .tree => {},
@@ -332,7 +344,7 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
             }
             // Step 6.9.6.2: "Append to an event path with event, parent,
             // null, relatedTarget, touchTargets, and slotInClosedTree."
-            try walk.append(parent.instance, parent.node, null, slot_in_closed_tree);
+            try walk.append(parent.instance, parent.node, false, slot_in_closed_tree);
         } else if (parent.instance == walk.related) {
             // Step 6.9.7: "Otherwise, if parent is relatedTarget, then set
             // parent to null."
@@ -342,15 +354,15 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
             // new depth-0 tree, its kind not known yet.
             walk.target = parent.instance;
             walk.left_target_tree = true;
-            walk.scope_start = state.path.len;
-            walk.last_target_index = state.path.len;
+            walk.scope_start = path.len;
+            walk.last_target_index = path.len;
             // Step 6.9.8.2.
             if (walk.result.activation_target == null) {
                 walk.result.activation_target = walk.activationOf(parent.instance);
             }
             // Step 6.9.8.3: "Append to an event path with event, parent,
             // target, relatedTarget, touchTargets, and slotInClosedTree."
-            try walk.append(parent.instance, parent.node, parent.instance, slot_in_closed_tree);
+            try walk.append(parent.instance, parent.node, true, slot_in_closed_tree);
         }
 
         // Step 6.9.9: "If parent is non-null, then set parent to the result
@@ -364,16 +376,16 @@ pub fn build(state: *EventState, target: *runtime.Instance, input: Input) error{
     // target, relatedTarget or a touch target is a node whose root is a
     // shadow root. The shadow-adjusted target of an item that has one is its
     // invocation target.
-    const item = state.path.toSlice()[walk.last_target_index];
+    const item = &path.constItems()[walk.last_target_index];
     walk.result.clear_targets = item.invocation_target_in_shadow_tree or
         inShadowTree(item.related_target) or
-        for (item.touch_target_list.toSlice()) |touch_target| {
+        for (path.touchTargetsOf(item)) |touch_target| {
             if (inShadowTree(touch_target)) break true;
         } else false;
 
     // The path is built: its nodes are held while dispatch runs (refcount
     // step 5g), until step 9 empties it.
-    state.holdPath();
+    path.hold();
     return walk.result;
 }
 

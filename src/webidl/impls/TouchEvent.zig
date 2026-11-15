@@ -169,7 +169,7 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
             const target = dom.touch_points.unadjustedTarget(touch) orelse continue;
             const state_ptr = event_state orelse continue;
             if (!alreadyListed(sources, @backingInt(list), index, touch)) dom.touch_points.adopt(touch, instance, listed);
-            try state_ptr.touch_target_list.append(target);
+            try state_ptr.touch_target_list.append(runtime.allocatorOf(instance), target);
             listed += 1;
         }
     }

@@ -45,6 +45,7 @@ pub const capabilities: engine.Capabilities = .{
     .seeded_random = .unsupported,
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign's P5): the engine-less test adapter has no collector.
     .wrapper_tracing = .unsupported,
 };

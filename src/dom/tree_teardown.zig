@@ -32,7 +32,8 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
-const NodeBase = @import("node_base.zig").NodeBase;
+const node_base = @import("node_base.zig");
+const NodeBase = node_base.NodeBase;
 const instance_bridge = @import("instance_bridge.zig");
 const node_creation = @import("node_creation.zig");
 const refcount = @import("refcount.zig");
@@ -132,6 +133,61 @@ pub fn countUpTo(root: *NodeBase, cap: usize) usize {
         count += 1;
     }
     return count;
+}
+
+/// A tree's size for its queueing (`measureUpTo`).
+pub const Measure = struct {
+    /// Nodes walked: the tree's, or the cap.
+    nodes: usize,
+    /// What those nodes hold of their Browser's DOM memory (`countedBytes`).
+    bytes: usize,
+};
+
+/// `countUpTo` that also sums what each node it counts holds of its Browser's
+/// DOM memory (runtime.BrowserScope.dom_memory): the one walk a garbage tree's
+/// queueing makes (dom.refcount_teardown.settle), which weighs the tree for
+/// the queue's memory bound and names the bytes that leave the figure the
+/// engine is told (runtime.gc.DeferredTeardown.Dying). Read-only. Past `cap`
+/// nodes the rest of the tree is neither counted nor summed: its bytes stay
+/// in the figure until its slices free them, as every tree's did before.
+pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
+    var measure: Measure = .{ .nodes = 1, .bytes = countedBytes(root) };
+    var at: *NodeBase = root;
+    while (measure.nodes < cap) {
+        if (at.first_child) |child| {
+            at = child;
+        } else {
+            while (at != root and at.next_sibling == null) at = at.parent_node orelse return measure;
+            if (at == root) return measure;
+            at = at.next_sibling.?;
+        }
+        measure.nodes += 1;
+        measure.bytes += countedBytes(at);
+    }
+    return measure;
+}
+
+/// What `node` holds of its Browser's DOM memory, as far as its NodeBase and
+/// its Instance say without a call into its type: its slab slot and state
+/// block (instance_bridge.storageBytes, what its registration counted), its
+/// rare data block and its registered observer records (NodeBase's own
+/// counts). NOT summed: what the node's type counts beside them - an
+/// element's rare block (dom.element_rare_data), a Document's rare data, a
+/// state block an InstanceRegistry made - and what a node owns outside its
+/// child list (a host's shadow tree, a template's contents). Those stay in
+/// the figure until the node is freed: the sum is a floor, never more than
+/// the tree's frees take out (pinned in tests/html/dm2_dying_figure_test.zig).
+/// 0 for a NodeBase no Instance owns.
+fn countedBytes(node: *const NodeBase) usize {
+    const raw = node.ownerInstance() orelse return 0;
+    const instance: *const runtime.Instance = @ptrCast(@alignCast(raw));
+    var bytes = instance_bridge.storageBytes(instance);
+    if (node.rareData() != null) {
+        bytes += @sizeOf(node_base.NodeRareData);
+        var observers = node.registeredObservers();
+        while (observers.next()) |_| bytes += @sizeOf(node_base.ObserverRegistration);
+    }
+    return bytes;
 }
 
 /// Take `child`, `parent`'s last child, out of its sibling links (a node's

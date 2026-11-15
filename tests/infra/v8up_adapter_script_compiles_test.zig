@@ -35,10 +35,13 @@ const std = @import("std");
 const adapter_dir = "src/runtime/engines/v8";
 
 /// The adapter's own script evaluations: the file, how many call sites it
-/// has, and whose defect each is.
-const listed = [_]struct { file: []const u8, sites: usize, why: []const u8 }{
-    .{ .file = "interface.zig", .sites = 1, .why = "DEFECT, owner lane wr1 (queued by the integrator, 2026-11-13): an iterable's entries fallback compiles a forEach-collecting helper on every call" },
-};
+/// has, and whose defect each is. EMPTY since lane wrap1 b3: the last entry
+/// was interface.zig's collectPairIterableEntries, whose fallback compiled a
+/// helper that called the page's `target.forEach` - a function nothing
+/// called any more (a pair iterator's next() reads the interface's entries
+/// itself), deleted with its entry.
+const Listed = struct { file: []const u8, sites: usize, why: []const u8 };
+const listed = [_]Listed{};
 
 /// How many times `source` calls v8_Script_Compile - outside a comment, a
 /// multiline string and its `extern fn` declaration.

@@ -315,6 +315,9 @@ pub const wrapper_tracing = @import("wrapper_tracing.zig");
 /// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
 pub const refcount_audit = @import("refcount_audit.zig");
 pub const refcount_teardown = @import("refcount_teardown.zig");
+/// Which trees die with the node wrappers a full collection found dead
+/// (lane dm2, batch B: runtime.lifetime's `dyingWith`).
+pub const dying_trees = @import("dying_trees.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion

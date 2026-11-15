@@ -26,8 +26,9 @@
 //!
 //! A tree held again before its slice - a reference reaching its root, or the
 //! root linked under a parent or a host - is a RESURRECTION: the flag is
-//! cleared where it happens (`resurrect`), the slice finds it unflagged and
-//! drops the item. In a correct DOM nothing reaches a garbage tree (it is
+//! cleared where it happens (`resurrect`) and its item leaves the queue
+//! there (the one a slice has in hand: that slice finds it unflagged and
+//! drops it). In a correct DOM nothing reaches a garbage tree (it is
 //! unreachable from script and from every counted holder; weak links read it
 //! as gone), so a resurrection is a raw holder the counts did not see - the
 //! zombie audit's class (refcount step 6). It is counted, and logged when a
@@ -106,26 +107,38 @@ pub fn settle(root: *NodeBase, foreign_holds: ?u32) void {
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     const queue = queueOf(instance) orelse return;
     root.rc_flags.garbage = true;
+    // The memory bound counts nodes, so the tree weighs its nodes - up to
+    // the bound itself, past which one tree alone has the next safe point
+    // free it. The walk is the one its slices then make to free them: one
+    // more pass, read-only, over a tree freed anyway. A capped weight let
+    // the bound admit trees instead of nodes (lane perf1: weighed at most
+    // 64, 1,562 innerHTML-replaced lists of 900 nodes waited - 1.39M nodes,
+    // 4 GB; the document-unreferenced item below weighs its tree the same
+    // way).
+    //
+    // The same walk sums what the tree holds of its Browser's DOM memory:
+    // THE TREE IS DECIDED DEAD HERE, so those bytes leave the figure the
+    // engine is told at this push and not when its slices free them (lane
+    // dm1's design, tmp/plans/dom-memory-figure-design.md 3.2 A: the moment
+    // a tree's count reaches zero outside a full collection). The engine
+    // sets its next threshold from what it is told is alive; a tree that
+    // only waits for its slices is not. Both browsers tell their collector
+    // survivors only (runtime.gc.ExternalMemory.dying has the sources).
+    const measure = tree_teardown.measureUpTo(root, DeferredTeardown.high_water);
     if (!queue.push(.{
         .instance = instance,
         .generation = runtime.SlabAllocator.generationOf(instance),
         .owner = queueOwner(instance.ctx),
         .steps = &garbage_tree_steps,
-        // The memory bound counts nodes, so the tree weighs its nodes - up
-        // to the bound itself, past which one tree alone has the next safe
-        // point free it. The walk is the one its slices then make to free
-        // them: one more pass, read-only, over a tree freed anyway. A
-        // capped weight let the bound admit trees instead of nodes (lane
-        // perf1: weighed at most 64, 1,562 innerHTML-replaced lists of 900
-        // nodes waited - 1.39M nodes, 4 GB; the document-unreferenced item
-        // below weighs its tree the same way).
-        .weight = tree_teardown.countUpTo(root, DeferredTeardown.high_water),
+        .weight = measure.nodes,
+        .dying = .{ .memory = &runtime.BrowserScope.ofInstance(instance).dom_memory, .bytes = measure.bytes },
     })) {
         // The agent is ending (its queue closed): the old model frees it.
         root.rc_flags.garbage = false;
         return;
     }
     queue.books.queued += 1;
+    queue.books.queued_bytes += measure.bytes;
 }
 
 /// The owner a realm's garbage is queued under: its ContextData, whose end
@@ -144,12 +157,18 @@ pub fn drainRealm(queue: *DeferredTeardown, realm: runtime.Context) void {
 
 /// `root`, flagged garbage, is held again (a reference reached it, or it was
 /// linked): the flag goes now, so weak links read its tree as alive again,
-/// and its slice drops the item.
+/// and its item leaves the queue - with it the tree's bytes go back into the
+/// figure the engine is told (they are alive again), and a tree that is
+/// queued a second time later is counted once. The item a slice has in hand
+/// is not in the queue: that slice finds the tree unflagged and drops it.
 pub fn resurrect(root: *NodeBase) void {
     if (!root.rc_flags.garbage) return;
     root.rc_flags.garbage = false;
     const instance = instanceOf(root) orelse return;
-    if (queueOf(instance)) |queue| queue.books.resurrections += 1;
+    if (queueOf(instance)) |queue| {
+        queue.books.resurrections += 1;
+        _ = queue.withdraw(instance, runtime.SlabAllocator.generationOf(instance), &garbage_tree_steps);
+    }
     if (@import("refcount.zig").diagnosticsOn())
         log.warn("a garbage tree was held again before its teardown (root node type {d}): a holder the counts do not see", .{root.node_type});
 }
@@ -205,7 +224,8 @@ fn runGarbageTree(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.
 /// lifecycle task still queued for it (Document.zig's LifecycleTask holds
 /// its document counted from its queueing to its run or drop, and stands in
 /// its Browser's dom.document_state.PendingLifecycleTasks meanwhile).
-fn ownWorkReferences(instance: *runtime.Instance) u32 {
+/// Read-only: dom.dying_trees asks inside a collection's pause.
+pub fn ownWorkReferences(instance: *runtime.Instance) u32 {
     const pending = @import("document_state.zig").PendingLifecycleTasks.of(instance) orelse return 0;
     return pending.countFor(instance);
 }
@@ -290,6 +310,7 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
 /// count.
 pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) usize {
     if (@import("builtin").mode != std.builtin.OptimizeMode.Debug) return 0;
+    reportPredictions(queue);
     const live = instance_bridge.entryCount(scope);
     if (live == 0) return 0;
     if (@import("builtin").is_test) {
@@ -301,6 +322,23 @@ pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) 
         log.warn("{d} node(s) alive at the agent's end: held past every realm's end, freed only by the final sweep", .{live});
     }
     return live;
+}
+
+/// The agent's books of the trees its collections predicted dead
+/// (dom.dying_trees), one line a sweep's log is summed from: how often the
+/// marks' rule called a tree dead that lived (the integrator's ruling 2 on
+/// lane dm1's design: that count decides whether the rule must be made
+/// exact). Logged when a tree was mispredicted - Debug builds count them, so
+/// the bug-finding WPT run prints a line for each agent that had one - and,
+/// for the totals of an agent that had none, when a run asked for the
+/// counts' diagnostics (CRANE_REFCOUNT_CHECK). Never in a unit test, where a
+/// test reads the books itself. Not a violation: the line never begins with
+/// the counts' "refcount: ".
+fn reportPredictions(queue: *const DeferredTeardown) void {
+    if (@import("builtin").is_test) return;
+    const books = &queue.books;
+    if (books.mispredicted == 0 and !(books.predicted != 0 and @import("refcount.zig").diagnosticsOn())) return;
+    log.warn("dying trees: {d} tree(s) predicted dead at a collection's end of marking ({d} B), {d} of them alive at their release; {d} B put back into the figure", .{ books.predicted, books.predicted_bytes, books.mispredicted, books.put_back_bytes });
 }
 
 /// One node alive at the agent's end, for the report: what holds it.
