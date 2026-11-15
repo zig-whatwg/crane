@@ -483,6 +483,85 @@ test "a tree predicted dead that a native reference keeps is back in the figure 
     try h.onFreshThread(aTreePredictedDeadThatLivesIsPutBack);
 }
 
+/// A Document that dies with wrapped CONNECTED nodes in its tree: a child of
+/// its body, a node 40 levels below it, a node in a shadow tree of a
+/// connected host. Each dead wrapper's root is the Document - read from the
+/// node (its node document), which must be the root a climb finds - and the
+/// tree is taken once. (While a Document lives, the walk keeps every wrapper
+/// of its tree: a connected node's wrapper is found dead only when its
+/// whole document is.)
+const ConnectedNodes = struct {
+    page: h.Page,
+    child: *dom.NodeBase,
+    deep: *dom.NodeBase,
+    in_shadow: *dom.NodeBase,
+    document: *dom.NodeBase,
+
+    fn whileHeld(self: *ConnectedNodes) !void {
+        for ([_]*dom.NodeBase{ self.child, self.deep, self.in_shadow }) |node| {
+            try testing.expect(node.wrapper.isEmpty());
+            try testing.expect(node.is_connected);
+            try testing.expect(dom.refcount.root(null, node) == self.document);
+            try testing.expect(dom.wrapper_tracing.connectedDocument(node) == self.document);
+        }
+        try testing.expect(self.document.wrapper.isEmpty());
+        // The Document's own wrapper last, and first: one tree either way.
+        for ([_][4]*dom.NodeBase{ .{ self.deep, self.in_shadow, self.child, self.document }, .{ self.document, self.in_shadow, self.deep, self.child } }) |order| {
+            var seen: Seen.State = .{};
+            const found = predictWith(self.page, &seen, &.{ try deadWrapperOf(order[0]), try deadWrapperOf(order[1]), try deadWrapperOf(order[2]), try deadWrapperOf(order[3]) });
+            try testing.expectEqual(@as(usize, 1), found.trees);
+            try testing.expectEqual(bytesOf(self.document), found.bytes);
+            try testing.expect(seen.took(try instanceOf(self.document)));
+        }
+        // Without the Document's own wrapper among the dead its reference
+        // is unexplained: nothing is taken.
+        {
+            var seen: Seen.State = .{};
+            const found = predictWith(self.page, &seen, &.{ try deadWrapperOf(self.deep), try deadWrapperOf(self.in_shadow), try deadWrapperOf(self.child) });
+            try testing.expectEqual(@as(usize, 0), found.trees);
+            try testing.expectEqual(@as(usize, 0), seen.asked);
+        }
+    }
+};
+
+fn aDocumentDiesWithItsConnectedWrappedNodes() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    try page.run(
+        \\{
+        \\  const other = document.implementation.createHTMLDocument('other');
+        \\  globalThis.other = other;
+        \\  globalThis.child = other.body.appendChild(other.createElement('div'));
+        \\  let at = child;
+        \\  for (let i = 0; i < 40; i++) at = at.appendChild(other.createElement('div'));
+        \\  globalThis.deep = at;
+        \\  const host = other.body.appendChild(other.createElement('section'));
+        \\  globalThis.inShadow = host.attachShadow({ mode: 'open' }).appendChild(other.createElement('span'));
+        \\}
+    );
+    var nodes: ConnectedNodes = .{
+        .page = page,
+        .child = try page.node("child"),
+        .deep = try page.node("deep"),
+        .in_shadow = try page.node("inShadow"),
+        .document = try page.node("other"),
+    };
+    const expected = bytesOf(nodes.document);
+    try page.run("other = child = deep = inShadow = null;");
+    const phases = try collectUnderHold(page, &nodes);
+    if (engine.capabilities.external_memory_at_collection != .unsupported) {
+        try testing.expect(phases.held.predicted >= expected);
+        try testing.expectEqual(phases.held.books.put_back_bytes, phases.after.books.put_back_bytes);
+        try testing.expectEqual(phases.held.books.mispredicted, phases.after.books.mispredicted);
+    }
+    try testing.expectEqual(@as(usize, 0), phases.after.predicted);
+    try settle(page);
+}
+
+test "a Document that dies with wrapped connected nodes, deep in its tree and in a shadow tree, is one tree whose root each node names" {
+    try h.onFreshThread(aDocumentDiesWithItsConnectedWrappedNodes);
+}
+
 /// The rule's shapes for Documents.
 const DocumentShapes = struct {
     page: h.Page,

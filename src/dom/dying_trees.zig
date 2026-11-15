@@ -137,9 +137,18 @@ pub fn predict(memory: *const ExternalMemory, dead: []const DeadWrapper, collect
         if (runtime.SlabAllocator.generationOf(wrapper.instance) != wrapper.generation) continue;
         if (runtime.instance_lifecycle.isCleanupStarted(wrapper.instance)) continue;
         const node: *NodeBase = @ptrCast(@alignCast(wrapper.target));
-        // The host-including root: the unit the counts and the walk keep.
-        const root = refcount.root(null, node);
+        // The host-including root: the unit the counts and the walk keep. A
+        // connected node's is its node document (its shadow-including root
+        // is a document, and a shadow root's host-including parent is its
+        // host): read, not climbed to, as the walk reads it
+        // (wrapper_tracing.connectedDocument). While a Document lives the
+        // walk keeps every wrapper of its tree, so a connected node's
+        // wrapper is dead only when its whole document is: a dying document
+        // with thousands of wrapped nodes costs the pause a read a wrapper,
+        // not a climb.
+        const root = wrapper_tracing.connectedDocument(node) orelse refcount.root(null, node);
         if (root.node_type == NodeBase.DOCUMENT_NODE) {
+            // A Document script still holds (the page's own, nearly always).
             if (root.rc_flags.garbage or !root.wrapper.isEmpty()) continue;
             const own = root == node;
             const foreign = refcount.documentForeignHolds(root) orelse continue;
