@@ -5718,9 +5718,12 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("tools/fw_matrix/main.zig"),
         .target = b.graph.host,
         .optimize = .ReleaseSafe,
-        // The report's HTML helpers are the WPT site's (escaping, numbers).
+        // The report's HTML helpers are the WPT site's (escaping, numbers),
+        // and its social card the WPT site's digit atlas and PNG codec, as
+        // /performance/'s is.
         .imports = &.{
             .{ .name = "site_html", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/html.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
+            .{ .name = "site_card", .module = b.createModule(.{ .root_source_file = b.path("tools/wpt_site/card.zig"), .target = b.graph.host, .optimize = .ReleaseSafe }) },
         },
     });
     const fw_matrix_exe = b.addExecutable(.{ .name = "fw_matrix", .root_module = fw_matrix_module });
@@ -5733,7 +5736,7 @@ pub fn build(b: *std.Build) void {
     addTestVerify(b, launch, fw_matrix_tests, "tools-fw_matrix", "tools/fw_matrix", &.{
         "main.zig",      "journal.zig", "exclusions.zig", "manifest.zig", "readers.zig",
         "generated.zig", "server.zig",  "fetch.zig",      "run.zig",      "report.zig",
-        "external.zig",
+        "external.zig",  "card.zig",
     });
     // The manifest and the exclusion lists, read strictly: every entry with
     // its reason, each belonging to a page.
