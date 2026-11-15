@@ -267,6 +267,13 @@ pub const DeferredTeardown = struct {
     /// callback invocation is innermost on the stack, and when it began -
     /// what decides which finalizers may run inside a callback's script.
     callback: Callbacks = .{},
+    /// The DOM memory the queued trees' dying bytes are counted in
+    /// (`Item.dying`): the one the first push that decides bytes dead names
+    /// (`Dying.memory`) - the agent's Browser's, one for the queue's life.
+    /// BORROWED; it outlives the queue's items (a BrowserScope's). A push
+    /// that names another decides nothing dead: its tree's bytes stay in
+    /// that memory's figure until they are freed.
+    memory: ?*ExternalMemory = null,
     /// The DOM's books of the trees its counts queued here (refcount step 7,
     /// dom.refcount_teardown): diagnostics and tests.
     books: Books = .{},
@@ -540,14 +547,22 @@ pub const DeferredTeardown = struct {
         owner: ?*const anyopaque,
         steps: *const Steps,
         data: ?*anyopaque,
-        weight: usize,
+        /// The nodes it stands for, as the memory bound counts them: the
+        /// request's weight, clamped to what 32 bits hold (the bound itself
+        /// is 100,000).
+        weight: u32,
         /// The part of `weight` already taken off `pending`.
-        accounted: usize = 0,
+        accounted: u32 = 0,
         position: Position = .{},
-        /// The DOM memory its tree is counted in, and what is left there of
-        /// the bytes this item's push decided dead (`Dying`); null and 0:
-        /// none.
-        memory: ?*ExternalMemory = null,
+        /// What is left, in the queue's DOM memory (`DeferredTeardown.memory`),
+        /// of the bytes this item's push decided dead (`Dying`); 0: none.
+        ///
+        /// The item is 88 bytes, as it was before it carried this (two
+        /// 32-bit counts where two words were; the memory is the queue's,
+        /// not each item's). A script that drops elements one by one queues
+        /// an item an element, up to 100,000 at once, so an item's size is
+        /// paid 100,000 times: batch A's first form was 104 bytes
+        /// (tests/runtime/dm2_dying_figure_test.zig pins 88).
         dying: usize = 0,
     };
 
@@ -601,14 +616,14 @@ pub const DeferredTeardown = struct {
             .owner = request.owner,
             .steps = request.steps,
             .data = request.data,
-            .weight = request.weight,
+            .weight = std.math.cast(u32, request.weight) orelse std.math.maxInt(u32),
         };
         if (request.dying) |dying| {
-            item.dying = dying.memory.decideDead(dying.bytes);
-            if (item.dying != 0) item.memory = dying.memory;
+            if (self.memory == null) self.memory = dying.memory;
+            if (self.memory == dying.memory) item.dying = dying.memory.decideDead(dying.bytes);
         }
         self.pushBack(item);
-        self.pending += request.weight;
+        self.pending += item.weight;
         self.queued_total += 1;
         // The memory bound: past it, the next safe point frees down to it.
         if (self.pending > high_water and !self.owed.drain) self.owed.relief = true;
@@ -773,7 +788,7 @@ pub const DeferredTeardown = struct {
         var freed: usize = 0;
         while (freed < budget) {
             const item = self.popFront() orelse break;
-            const progress = runSteps(item, budget - freed);
+            const progress = self.runSteps(item, budget - freed);
             self.account(item, progress.freed);
             // An item that freed nothing and is not done would hold the
             // queue: count it as one, so the slice still ends.
@@ -857,7 +872,7 @@ pub const DeferredTeardown = struct {
                 ordered = item.next;
                 item.next = null;
                 while (true) {
-                    const progress = runSteps(item, std.math.maxInt(usize));
+                    const progress = self.runSteps(item, std.math.maxInt(usize));
                     self.account(item, progress.freed);
                     if (progress.done) break;
                 }
@@ -868,7 +883,7 @@ pub const DeferredTeardown = struct {
 
     fn account(self: *DeferredTeardown, item: *Item, freed: usize) void {
         self.freed_total += freed;
-        const take = @min(freed, item.weight - item.accounted);
+        const take: u32 = @intCast(@min(freed, item.weight - item.accounted));
         item.accounted += take;
         self.pending -|= take;
     }
@@ -881,7 +896,7 @@ pub const DeferredTeardown = struct {
     /// not this item's.
     fn finish(self: *DeferredTeardown, item: *Item) void {
         self.pending -|= item.weight - item.accounted;
-        if (item.memory) |memory| memory.rescue(item.dying);
+        if (item.dying != 0) if (self.memory) |memory| memory.rescue(item.dying);
         self.allocator.destroy(item);
     }
 
@@ -890,10 +905,11 @@ pub const DeferredTeardown = struct {
     /// (ExternalMemory.beginTeardown): those bytes left the figure when the
     /// item was queued, and a free must not take them out of it twice. A
     /// teardown that runs another item's steps (a realm that ends inside it
-    /// drains its own) nests: each run pays its own item, and the outer
-    /// one's rest is put back when the inner returns.
-    fn runSteps(item: *Item, budget: usize) Progress {
-        const memory = item.memory orelse return item.steps.run(item, budget);
+    /// drains its own) nests: each run pays its own item - nothing, for an
+    /// item whose push decided no bytes dead - and the outer one's rest is
+    /// put back when the inner returns.
+    fn runSteps(self: *DeferredTeardown, item: *Item, budget: usize) Progress {
+        const memory = self.memory orelse return item.steps.run(item, budget);
         const outer = memory.beginTeardown(item.dying);
         const progress = item.steps.run(item, budget);
         item.dying = memory.endTeardown(outer);

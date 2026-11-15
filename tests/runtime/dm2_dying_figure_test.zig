@@ -43,6 +43,8 @@ const FakeTree = struct {
     during: ?*const fn (*FakeTree) void = null,
     queue: ?*DeferredTeardown = null,
     other_owner: ?*const anyopaque = null,
+    /// What the figure read inside this tree's teardown, where a step looked.
+    seen_live: usize = 0,
 
     /// Make the tree: its nodes are counted.
     fn make(memory: *ExternalMemory, nodes: usize, node_bytes: usize) FakeTree {
@@ -363,6 +365,83 @@ test "an allocation during a teardown is alive, and a free pays the tree's share
     // Outside a teardown a free comes off the figure.
     memory.sub(500);
     try testing.expectEqual(@as(usize, 0), memory.held());
+}
+
+test "a queue item is no larger than it was before it carried its tree's dying bytes" {
+    // A script that drops elements one by one queues an item an element:
+    // up to the queue's bound (100,000) wait at once, so the item's size is
+    // paid 100,000 times. 88 bytes is the item of main ceb3c5098a0 (eleven
+    // words, counted from its fields); batch A's first form added a pointer
+    // and a word, 104 bytes. Whether those 16 bytes are what the attributes
+    // page showed is a separate measurement (lane dm2's handoff): this test
+    // only keeps the item from growing.
+    try testing.expectEqual(@as(usize, 88), @sizeOf(DeferredTeardown.Item));
+}
+
+test "a weight beyond what an item can carry is clamped, and the memory bound still balances" {
+    var f = Fixture.init();
+    defer f.deinit();
+    var tree = FakeTree.make(&f.memory, 10, 100);
+    const instance = try f.slab.alloc(&vtable);
+    try testing.expect(f.queue.push(.{
+        .instance = instance,
+        .generation = SlabAllocator.generationOf(instance),
+        .owner = null,
+        .steps = &fake_steps,
+        .data = &tree,
+        .weight = std.math.maxInt(usize),
+        .dying = .{ .memory = &f.memory, .bytes = tree.bytes() },
+    }));
+    try testing.expectEqual(@as(usize, std.math.maxInt(u32)), f.queue.pendingNodes());
+    f.queue.drainAll();
+    try testing.expectEqual(@as(usize, 0), f.queue.pendingNodes());
+    try testing.expectEqual(@as(usize, 0), f.memory.held());
+}
+
+/// `endOtherRealm`, then what the figure reads inside the outer teardown.
+fn endOtherRealmAndLook(tree: *FakeTree) void {
+    tree.queue.?.drainOwner(tree.other_owner.?);
+    tree.seen_live = tree.memory.live;
+}
+
+test "an item with no dying bytes run inside another tree's teardown does not pay that tree's share" {
+    var f = Fixture.init();
+    defer f.deinit();
+    const realms: [2]u8 = .{ 0, 0 };
+    f.memory.add(10_000);
+    // The outer tree, decided dead; its first step ends another realm,
+    // whose item is a tree nobody decided dead (the ended-realm net's
+    // kind): its frees are the figure's, not the outer tree's.
+    var outer = FakeTree.make(&f.memory, 100, 100);
+    var inner = FakeTree.make(&f.memory, 50, 100);
+    outer.queue = &f.queue;
+    outer.other_owner = &realms[1];
+    outer.during = endOtherRealmAndLook;
+    _ = try f.push(&outer, outer.bytes(), &realms[0]);
+    const inner_instance = try f.slab.alloc(&vtable);
+    try testing.expect(f.queue.push(.{
+        .instance = inner_instance,
+        .generation = SlabAllocator.generationOf(inner_instance),
+        .owner = &realms[1],
+        .steps = &fake_steps,
+        .data = &inner,
+        .weight = inner.nodes,
+    }));
+    // 10,000 alive and the inner tree's 5,000; the outer's 10,000 dying.
+    try testing.expectEqual(@as(usize, 15_000), f.memory.live);
+    try testing.expectEqual(@as(usize, 10_000), f.memory.dying);
+    // One slice (it takes the outer item alone, so the inner one is still
+    // in the queue for the realm's end to drain - `drainAll` would hold
+    // both in hand and nothing would nest).
+    _ = f.queue.runSlice(DeferredTeardown.slice_budget);
+    try testing.expectEqual(@as(usize, 50), inner.freed);
+    // Inside the outer teardown, once the inner tree was freed: its 5,000
+    // came off the figure, and the outer tree's share was untouched.
+    try testing.expectEqual(@as(usize, 10_000), outer.seen_live);
+    f.queue.drainAll();
+    try testing.expectEqual(@as(usize, 10_000), f.memory.live);
+    try testing.expectEqual(@as(usize, 0), f.memory.dying);
+    try testing.expectEqual(@as(usize, 10_000), f.memory.held());
 }
 
 test "queueing a tree owes the adapter a report once the figure fell a report step, and freeing it owes none" {
