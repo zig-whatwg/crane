@@ -68,7 +68,10 @@ const impl = @import("engine_impl").protocol;
 /// Work queued on the realm's own agent (a task, a timer, an async request)
 /// may keep a Context across turns: a torn-down realm's Context stays a
 /// valid, inert record until its agent ends, and `hasEngine()` turns false
-/// at retirement. Keeping one is not a root - it keeps nothing alive. Such
+/// at retirement, or earlier when the collector takes a detached realm (its
+/// end is then a queued task); `engineGone()` is true from that moment and
+/// tells such a realm from a context made with no engine. Keeping one is not
+/// a root - it keeps nothing alive. Such
 /// work checks `hasEngine()` before every step that enters the realm, and
 /// passes operations only a Context that answers true; a retired one may
 /// only be compared. Work that could outlive the realm's agent keeps no

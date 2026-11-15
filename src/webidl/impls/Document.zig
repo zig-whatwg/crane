@@ -4653,7 +4653,35 @@ fn lifecycleAboutFallbackBaseUrl(document: *runtime.Instance) ?[]const u8 {
 /// A refresh the shared declarative refresh steps set up for a document
 /// (dom.document_state.DeclarativeRefresh): the document owns it until it
 /// fires; the document's end cancels it.
+///
+/// Who frees it, on every path:
+/// - never armed (a document that does not completely load): the document's
+///   state's end (`cancel`, which clears no timer);
+/// - the timer fires: `fireDeclarativeRefresh`;
+/// - the document goes first, or document.open() cancels a zero-time
+///   refresh: `cancel`, which clears the timer;
+/// - the timer manager ends with the refresh waiting - its event loop is
+///   gone, the timer never fires: `dropDeclarativeRefresh`, which the manager
+///   runs for a timer armed with the owned form. A Document is a node, and a
+///   node script still holds outlives its realm AND its event loop
+///   (Browser.deinit frees the trees only wrappers held after the loop's
+///   end): with the plain form that document's end then cleared a timer on a
+///   manager already freed (lane tl1,
+///   tests/html/tl1_declarative_refresh_owner_test.zig;
+///   docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
 const DeclarativeRefresh = document_state.DeclarativeRefresh;
+
+/// The timer manager ended with the refresh still waiting: it never comes
+/// due. A document still there gives it up first - its later end must
+/// neither `cancel` a record already freed nor clear a timer whose manager
+/// is gone. Frees memory and nothing else, as every drop does.
+fn dropDeclarativeRefresh(data: ?*anyopaque) void {
+    const self: *DeclarativeRefresh = @ptrCast(@alignCast(data orelse return));
+    defer self.destroy();
+    if (runtime.SlabAllocator.generationOf(self.document) != self.generation) return;
+    const internal = getInternal(self.document) orelse return;
+    if (internal.declarative_refresh == self) internal.declarative_refresh = null;
+}
 
 /// The refresh has come due. The document gives it up, and its step
 /// runs as a task of the document's realm, entered from the event loop.
@@ -4731,7 +4759,9 @@ fn armDeclarativeRefresh(document: *runtime.Instance) void {
     const refresh = internal.declarative_refresh orelse return;
     if (refresh.timer != null) return;
     const timer = document.ctx.getOptionalTimer() orelse return;
-    const id = timer.setTimeout(refresh.delay_ms, &fireDeclarativeRefresh, refresh);
+    // Owned by the timer; 0 also when the timer cannot promise the drop, and
+    // then the refresh never comes due, as with no timer at all.
+    const id = timer.setTimeoutOwned(refresh.delay_ms, &fireDeclarativeRefresh, refresh, &dropDeclarativeRefresh);
     if (id == 0) return;
     refresh.timer = timer;
     refresh.timer_id = id;

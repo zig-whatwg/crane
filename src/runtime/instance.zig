@@ -214,10 +214,32 @@ pub const Instance = struct {
     /// the caller's - and nothing else will ever free it - so it is freed here.
     pub fn releaseIfUnwrapped(instance: *Instance, generation: u64) void {
         if (@import("slab_allocator.zig").SlabAllocator.generationOf(instance) != generation) return;
-        // No engine realm behind it (a DOM unit test's context, a retired
-        // realm): nothing can have wrapped it, and nothing is known about who
-        // else holds it - leave it.
-        if (!instance.ctx.hasEngine()) return;
+        if (!instance.ctx.hasEngine()) {
+            // No engine realm was ever behind it (a DOM unit test's
+            // context): nothing is known about who else holds it - leave it.
+            if (!instance.ctx.engineGone()) return;
+            // Its realm's engine has gone - the collector took the realm, or
+            // it ended (ContextData.engine_gone). No wrapper will ever be
+            // made for the object, so nothing but this call can free one
+            // that never had a wrapper. Left, as every object of a realm
+            // with no engine was, the events fired at a node of a collected
+            // realm stayed until the process ended (12 allocations a time,
+            // tests/html/tl1_collected_realm_window_test.zig). An allowlist:
+            // - not a node: a node's life is its tree's and its counts';
+            // - never wrapped, by the engine's wrap tracking
+            //   (instance_lifecycle.provablyUnwrapped; an engine that does
+            //   not track answers "it may be", and the object is left). One
+            //   that was wrapped has a cache entry, live or collected, and
+            //   its realm's end frees it by that.
+            // In Blink an Event is not a context's object at all - it is
+            // freed when nothing reaches it, whatever became of the context
+            // it was made for (core/dom/events/event.h has no
+            // ExecutionContext member; read at chromium main, 2026-11-15).
+            if (instance.vtable.counted != null) return;
+            const lifecycle = @import("instance_lifecycle.zig");
+            if (!lifecycle.provablyUnwrapped(@import("engine").capabilities.wrap_tracking != .unsupported, instance)) return;
+            return deinit(instance);
+        }
         // Wrapped in its relevant realm (R28): the wrapper owns it.
         if (@import("engine").hasWrapper(instance)) return;
         deinit(instance);
