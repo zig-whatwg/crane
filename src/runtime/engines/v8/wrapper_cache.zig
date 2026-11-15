@@ -177,7 +177,15 @@ pub const Cell = extern struct {
         /// (see `Cell`; v8_wrapper.cpp kWrapperCellWeakHandle reads it).
         weak_handle: bool = false,
 
-        _unused: u1 = 0,
+        /// A weak-handle record's anchor was traced by the full collection
+        /// under way, or by the last one (`sweepUnmarked` writes it in every
+        /// full collection's atomic pause, from `marked`): the anchor
+        /// outlives that collection even if the wrapper does not - nothing
+        /// traces a weak Global, and a conservative scan of the stack can
+        /// keep the anchor alone. The wrapper's first pass reads it and
+        /// severs such an anchor (v8_wrapper.cpp kWrapperCellAnchorTraced,
+        /// `dropDeadWrapperAnchor`), so that it never names a freed record.
+        anchor_traced: bool = false,
 
         /// A full collection's marking reached the record's anchor
         /// (v8_wrapper.cpp PlatformAnchor::Trace, kWrapperCellMarked): written
@@ -224,6 +232,7 @@ comptime {
     std.debug.assert(@offsetOf(Cell, "wrapper") == 0 and @offsetOf(Cell, "instance") == 8);
     std.debug.assert(@offsetOf(Cell, "generation") == 16 and @offsetOf(Cell, "fresh") == 24 and @offsetOf(Cell, "bits") == 28);
     std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
+    std.debug.assert(@bitOffsetOf(Cell.Bits, "anchor_traced") == 30);
 }
 
 /// One block of a cache's pool of records: `Chunk.bytes` at an address that
@@ -1635,12 +1644,22 @@ pub const WrapperCache = struct {
     /// (TracedHandles::ResetDeadNodes; a Reset would free it twice) - and it
     /// leaves the map for the finalizer queue. The pool is walked, not the
     /// map: a record is 32 bytes and a chunk's records are adjacent.
+    ///
+    /// A weak-handle record's wrapper is not judged here - its Global's
+    /// first pass does that, after this pause - but whether its ANCHOR was
+    /// traced is kept for that first pass (`Bits.anchor_traced`): an anchor
+    /// this collection keeps while the wrapper dies is severed there.
     fn sweepUnmarked(self: *Self) void {
         var at = self.chunks;
         while (at) |chunk| : (at = chunk.next) {
             for (&chunk.cells) |*entry| {
                 const bits = entry.bits;
-                if (!bits.in_use or bits.boxed or bits.weak_handle or bits.collected) continue;
+                if (!bits.in_use or bits.boxed or bits.collected) continue;
+                if (bits.weak_handle) {
+                    entry.bits.anchor_traced = bits.marked;
+                    entry.bits.marked = false;
+                    continue;
+                }
                 if (bits.marked) {
                     entry.bits.marked = false;
                     continue;
