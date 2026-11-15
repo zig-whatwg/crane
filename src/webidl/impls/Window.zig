@@ -2907,7 +2907,7 @@ pub fn call_requestIdleCallback(instance: *runtime.Instance, callback: callbacks
     if (timeout_ms > 0) {
         if (instance.ctx.getOptionalTimer()) |timer| {
             const entry = &idle.requests.items[idle.requests.items.len - 1];
-            entry.timeout = IdleTimeout.arm(internal.allocator, instance.ctx, timer, handle, timeout_ms);
+            entry.timeout = IdleTimeout.arm(internal.allocator, instance, timer, handle, timeout_ms);
         }
     }
     return handle;
@@ -3106,25 +3106,65 @@ const InvokeIdleCallbacks = struct {
 /// the invoke idle callback timeout algorithm, passing handle and window".
 ///
 /// Owned by its timer while armed; by the task once the timer has fired; and
-/// freed by whichever ends it - `cancel` when the timer is cleared before it
-/// fires, else the task, which finds its callback gone or runs it.
+/// freed by whichever ends it, on every path:
+/// - `cancel`, when the timer is cleared before it fires (its callback ran in
+///   an idle period, was cancelled, or its window ended);
+/// - the task, which finds its callback gone or runs it (`run`), or its
+///   event loop's end, which drops a task that never runs (`drop`);
+/// - the timer manager's end with the timer still armed - its event loop is
+///   gone, the timer never fires and no task is queued: `dropArmed`, which
+///   the manager runs for a timer armed with the owned form. With the plain
+///   form nobody freed it: `cancel` frees only after a successful clear, and
+///   an ended manager clears nothing (lane tl1,
+///   tests/html/tl1_idle_timeout_owner_test.zig;
+///   docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
 const IdleTimeout = struct {
     allocator: Allocator,
     realm: runtime.Context,
+    /// The window whose lists name this timeout, as (address, generation):
+    /// read by `dropArmed`, which may run when the window has gone.
+    window: *runtime.Instance,
+    window_generation: u64,
     handle: u32,
     timer: runtime.TimerInterface,
     /// The armed timer; 0 once it has fired.
     id: runtime.TimerId = 0,
 
-    fn arm(allocator: Allocator, realm: runtime.Context, timer: runtime.TimerInterface, handle: u32, timeout_ms: u32) ?*IdleTimeout {
+    fn arm(allocator: Allocator, window: *runtime.Instance, timer: runtime.TimerInterface, handle: u32, timeout_ms: u32) ?*IdleTimeout {
         const self = allocator.create(IdleTimeout) catch return null;
-        self.* = .{ .allocator = allocator, .realm = realm, .handle = handle, .timer = timer };
-        self.id = timer.setTimeout(timeout_ms, &fired, self);
+        self.* = .{
+            .allocator = allocator,
+            .realm = window.ctx,
+            .window = window,
+            .window_generation = runtime.SlabAllocator.generationOf(window),
+            .handle = handle,
+            .timer = timer,
+        };
+        // Owned by the timer; 0 also when the timer cannot promise the drop,
+        // and then the callback has no timeout, as with no timer at all.
+        self.id = timer.setTimeoutOwned(timeout_ms, &fired, self, &dropArmed);
         if (self.id == 0) {
             allocator.destroy(self);
             return null;
         }
         return self;
+    }
+
+    /// The timer manager ended with the timer armed: the timeout never
+    /// comes. A window still there forgets it first - its later end must not
+    /// `cancel` a record already freed, nor clear a timer whose manager is
+    /// gone. Frees memory and nothing else, as every drop does.
+    fn dropArmed(data: ?*anyopaque) void {
+        const self: *IdleTimeout = @ptrCast(@alignCast(data orelse return));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.window) != self.window_generation) return;
+        const internal = getInternal(self.window) orelse return;
+        for (internal.idle.requests.items) |*entry| {
+            if (entry.timeout == self) entry.timeout = null;
+        }
+        for (internal.idle.runnable.items) |*entry| {
+            if (entry.timeout == self) entry.timeout = null;
+        }
     }
 
     /// Its callback ran in an idle period, was cancelled, or its window
@@ -3333,8 +3373,11 @@ fn queueDefinitelyClose(window: *runtime.Instance) void {
     // task - lane httpcache1's one intermittent allocation (lane leaks6;
     // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
     if (timer.setTimeoutOwned(0, CloseTask.run, task, CloseTask.drop) != 0) return;
-    // A timer that cannot promise the drop: the plain one, as before.
-    if (timer.setTimeout(0, CloseTask.run, task) == 0) task.allocator.destroy(task);
+    // Not armed - the timer cannot promise the drop, or it failed: nothing
+    // holds the task, and the close is not queued. It was armed on the plain
+    // form here, which is the leak above again for such a timer (lane tl1:
+    // no heap data on a plain timer).
+    task.allocator.destroy(task);
 }
 
 /// Operation: getDigitalGoodsService

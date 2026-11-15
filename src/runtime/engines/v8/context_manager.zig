@@ -1094,6 +1094,7 @@ fn retireEntry(state: *Realms, entry: *ContextEntry) void {
     }
     entry.runtime_ctx.clearV8WrapperCacheStorage();
     entry.runtime_ctx.engine_ctx = null;
+    entry.runtime_ctx.engine_gone = true;
     entry.runtime_ctx.realm = null;
     entry.runtime_ctx.event_loop = null;
     entry.runtime_ctx.timer = null;

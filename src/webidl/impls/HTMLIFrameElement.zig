@@ -3751,7 +3751,9 @@ fn embedderPolicyBlocks(integration: *IFrameIntegration, record: *Navigation, re
     // step 4 below checks that. Chromium's NavigationRequest::EnforceCOEP
     // returns before CrossOriginResourcePolicy::IsNavigationBlocked for
     // them ("Some special URLs not loaded using the network are inheriting
-    // the Cross-Origin-Embedder-Policy header from their parent"). Fetch's
+    // the Cross-Origin-Embedder-Policy header from their parent", quoted
+    // from chromium/chromium content/browser/renderer_host/
+    // navigation_request.cc at a7b97d6a9a7f, BSD-3-Clause). Fetch's
     // scheme fetch gives a blob: response headers of its own, so without
     // this its blob: URL - a cross-origin creator's - fails require-corp's
     // same-origin check: html/cross-origin-embedder-policy/blob.https.html

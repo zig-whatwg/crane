@@ -2260,11 +2260,11 @@ const Builder = struct {
         // if its computed value was blockified. This does not change the
         // computed value." Chrome and Safari blockify the COMPUTED display of
         // every legend element, in a fieldset or not, except display:
-        // contents: Blink StyleAdjuster::AdjustStyleForHTMLElement ("according
-        // to the spec, this shouldn't affect computed style (like we do
-        // here)"), WebKit Style::Adjuster::adjust (`legendTag`). Gecko follows
-        // HTML. No newer spec is involved, so the majority decides (golden
-        // rule 2): html/rendering/.../legend-display.html Chrome 28/80,
+        // contents: Blink StyleAdjuster::AdjustStyleForHTMLElement
+        // (style_adjuster.cc; its comment concedes that HTML wants the
+        // computed value left alone), WebKit Style::Adjuster::adjust
+        // (`legendTag`). Gecko follows HTML. No newer spec is involved, so
+        // the majority decides (golden rule 2): html/rendering/.../legend-display.html Chrome 28/80,
         // Firefox 80/80, Safari 28/80; css/css-transitions/starting-style-
         // adjustment.html, whose starting style display: inline must
         // blockify, passes in all three (wpt.fyi 2358bd4835).
