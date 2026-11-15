@@ -190,7 +190,21 @@ free them, and go back into it when the tree is held again - an engine sets
 its next collection threshold from what it is told is alive, and a counter
 that fell only at the free told it the dead were alive (lane dm1's design,
 lane dm2's batch A: the trees whose count reaches zero outside a full
-collection). The binding exit pays nothing for it: the host
+collection). Where `external_memory_at_collection` is native the trees a
+FULL collection makes dead leave the figure inside that collection (lane
+dm2's batch B): at the end of its marking the adapter hands the owner of
+the counts the wrappers it found dead, their references still held
+(runtime.lifetime's `dyingWith` hook, dom.dying_trees: a dead wrapper proves
+nothing the collector kept reaches its tree, so the tree dies unless a
+native reference its root shows holds it), the bytes of the trees that die
+with them leave the figure into a pool (`ExternalMemory.predictDead`), and
+the adapter takes them off its engine's count before the engine computes
+its next threshold. Each such tree's queueing, at the release of the
+wrappers' references, takes its bytes from the pool and not from the figure
+again; what no queueing took once every reference is released was predicted
+dead and lived, and goes back (`settlePredictions`; Debug builds count those
+trees, `DeferredTeardown.Books.mispredicted`). The binding exit pays nothing
+for the report: the host
 owes the report on the claiming agent's queue (`DeferredTeardown.Owed.report`),
 and the exit's one check of what the queue owes runs the adapter's
 `report_steps`. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
@@ -414,6 +428,7 @@ capability the branch compiles out.
 | `seeded_random` | native (`AgentOptions.random_seed` goes into the isolate's record before it initializes; the V8::SetEntropySource callback, installed once by v8_Platform_Start, answers that seed for every random number generator V8 makes while the isolate is current - its own, which seeds each context's Math.random (math-random.cc) - and false otherwise, so an unseeded isolate gets V8's own entropy exactly as before; never the process-wide --random-seed, which gives every isolate one sequence) | unsupported - JSGlobalObject's weak random is seeded by the private, process-wide forceWeakRandomSeed option; emulation is possible by replacing Math.random per global with JSObjectMakeFunctionWithCallback | Math.random keeps the engine's entropy: a seeded Browser replays its timers but not Math.random |
 | `repl_mode` | native (an inspector session of the agent's own - V8Inspector::create on the agent's isolate, made on the console's first use, deleted at the agent's end after its last checkpoint - dispatching Runtime.evaluate with `replMode: true`, as Chrome DevTools' console and Deno's REPL do; V8 13.1's REPL scripts, v8::debug::EvaluateGlobal's repl flag, are public only through the inspector) | unsupported - no REPL mode in the public C API (QuickJS: JS_EVAL_FLAG_ASYNC, not wired) | the console evaluates each input as a classic script of its own (`evaluateClassicScript`) - no top-level await, a re-declaration is a SyntaxError, every line is a whole input - and says so when it starts |
 | `external_memory` | native (`AgentOptions.external_memory`: the figure's change goes to Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding exit and each microtask checkpoint outside a DOM algorithm, in 128 KB steps, through the agent's v8::ExternalMemoryAccounter, and the agent's end takes back what it reported; V8 15.7 counts the figure toward its global allocation limit, starts incremental marking when that is reached and collects when it is overshot by a large margin - Heap::UpdateExternalMemory) | unsupported - JSReportExtraMemoryCost is not public API (QuickJS counts only its own allocations) | the option is ignored: the engine collects on its own heap's growth alone, so a dropped wrapper's native tree waits for a collection that growth brings |
+| `external_memory_at_collection` | native (at the end of a full collection's marking - the node anchors' weak processing, node_wrappers.zig `markedCallback` - the adapter offers runtime.lifetime's `dyingWith` hook the node wrappers THIS collection's marking found dead, never one an earlier young collection dropped, and tells V8 the figure as it then stands with one ExternalMemoryAccounter::Decrease, which starts no collection: before Heap::RecomputeLimits, so the next limit is set from survivors - external_memory.zig `endOfMarking`; when its drain has released every recorded reference it settles what was predicted, `releasesDone`) | unsupported (JavaScriptCore would be EMULATED with its internal API: a full collection zeroes the extra-memory sum and SlotVisitor::reportExtraMemoryVisited adds what each visited wrapper keeps - not in the public C API) | the engine hears of a death at the agent's next safe point, when the dead wrapper's reference is released and the counts queue its tree - after the collection that found it dead computed its next threshold with the tree in the figure |
 | `wrapper_tracing` | native (the wrapper redesign: the walk, dom.wrapper_tracing reached from NodeAnchor::Trace and the keeps in the collection's atomic pause, and from P6 the holders' traces, reached from each holder wrapper's HolderAnchor; P7 deleted node tracing's JS edges - wrapper_cache.zig drawTreeEdges and the upward closure - so `joinOpaqueRoot` / `leaveOpaqueRoot` / `keepOpaqueRoot` for a node compile out) | unsupported - no node is wrapped (QuickJS's gc_mark would call the hook; public-API JavaScriptCore would emulate with opaque-root edges, design section 5) | only a wrapper script reaches is kept: an expando on a node script reaches only through its tree can be lost |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.
