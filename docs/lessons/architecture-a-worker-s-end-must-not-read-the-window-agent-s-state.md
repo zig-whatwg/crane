@@ -1,0 +1,16 @@
+# Architecture: A worker's end must not run a step that reads the window agent's state
+
+**Date**: 2026-11-14
+**Lesson**: A cleanup hook that runs for every environment also runs on every worker's thread. A step that only a document has, and that reads state only the window agent's thread may touch, must be kept out of a worker's end. The thread rule should be checked where that state is read, because the race behind it fires once in a sweep while the read fires on every run.
+
+**Why**: dom.unloading_cleanup runs every installed step for a document's end on the window agent's thread. It also runs them for a worker's end, on the worker's thread (WorkerHost.teardownRealm; Blink's ContextDestroyed reaches every execution context). Most steps are realm-local or locked: a realm's own ports, sockets and objects, an agent's registries, Browser stores behind a mutex. Lane ifr1's Fullscreen step ("fully exit fullscreen") was not. It found the Window through user_activation.windowOfRealm, which walks the Browser's Navigables. The window agent's thread alone makes, discards and frees those browsing contexts. Navigables already said "a worker has none, and its realm never asks", but nothing checked it.
+
+**What Happened**: In ifr1's FULL A/B, a referrer-policy worker from an earlier file ended while resource-timing/TAO-match.html added and removed ten frames on the window agent's thread. The worker walked the list as it changed, read a context that had moved, and panicked "incorrect alignment" (SIGABRT). In the same sweep a service worker's end faulted on the same walk. Neither reproduced in 1,200 repeats or in the bug-finding run, because the read only crashes when it lands inside a list change. The worklet step had met this rule before: worklet_host.environmentEnded returns early for a realm whose global is not a Window ("a worker's realm ends on the worker's thread, which must not touch the Window thread's records").
+
+**Fix** (lane crash1):
+1. dom.unloading_cleanup: steps declare their environments. `installDocumentOnly` marks a document's step, and a worker's end calls `runWorkerEnd`, which skips those steps. Fullscreen's step is installed that way.
+2. user_activation.windowOfRealm asks the realm before the list: a worker or worklet realm, or a realm whose global object is not a Window, is answered null without reading Navigables.
+3. dom.browser_state checks the reader's thread in Debug (`checkWindowAgentThread`, against the thread that claimed the Browser's DOM memory, as element_name.checkOwnerThread does). Any read of the Browser's browsing contexts from another thread panics with a named message, in unit tests and in the bug-finding runner. The red tests (tests/html/crash1_worker_end_frames_test.zig, tests/service_worker/crash1_service_worker_end_frames_test.zig) end a dedicated worker and a service worker while the page adds and removes frames. They failed on every run before the fix.
+4. Audit: every other step installed in dom.unloading_cleanup reads only state its realm or agent owns, or a Browser store behind its own lock.
+
+**Takeaway**: **A hook that runs at every realm's end runs on worker threads too. Give a document-only step a document-only install, and check the owning thread where window-agent state is read, so that a once-a-sweep race fails on every run of a unit test.**
