@@ -1,0 +1,18 @@
+# Testing: A port of a project's test spec runs as the project's runner does - its config, its subjects, its hook rule - checked test by test against that runner
+
+**Date**: 2026-11-14
+**Lesson**: A port of a project's test spec is only as true as its model of the project's runner: read the runner's configuration from the project's own file, port the runner's rules (what a query re-runs, what a failed hook skips, what its spy objects have), and validate the port against the real runner in a browser, test by test, before its numbers stand beside that browser's.
+
+**Why**: Crane runs TodoMVC's Cypress spec through an in-page port (tests/frameworks/todomvc/), and the page compared Crane's port run with the same port in Chrome. Both used the port's idea of Cypress, so where the port was wrong, both columns were wrong together and the comparison looked clean. The first run of the project's real Cypress 15.14.2 in Chrome (all 43 apps, its cypress.config.js and spec unmodified) passed 804 of 1,202 tests where the port in Chrome had passed 918 of 1,197.
+
+**What Happened**: Each disagreement was a rule of the runner the port did not have:
+- `includeShadowDom: true` in TodoMVC's cypress.config.js ("required for the spec's selectors to find anything in the web-component apps"): the port queried the light DOM only, so Web Components and Lit failed in both columns. Cypress runs each selector in every shadow root and then the document, one root at a time, so a descendant combinator never crosses a shadow boundary - which is why Lit still fails in real Cypress (TodoMVC's own tests/cya.js says so).
+- `cy.focused()` always pierces shadow roots (cy/focused.ts getFocused).
+- Cypress 12+ re-runs queries, never commands: an alias of a command's result (createTodo ends in `cy.then`) is the elements as they were, and every query, assertion or action on it fails once they leave the page (cypress/ensure.ts isAttached). The port had re-found aliases by their text after `cy.reload()`; real Cypress fails "Persistence" there for every app that runs it, and fails "Item" tests in apps that re-render a todo.
+- Cypress 15's `cy.spy` is Sinon 8's: `resetHistory()`, no `reset()`. The spec's checkItemSaved ends in `invoke('reset')`, which fails in real Cypress for every app that keeps its todos in localStorage - the port had reset its own counter.
+- Mocha's rule for a failed hook: the hook's test fails and the rest of the suite that declared it does not run (Cypress reports them skipped). QUnit runs every test regardless.
+- The spec's framework value is also its folder (`frameworkFolders[x] || x`): the port had taken a separate `&folder=`, so five apps ran with tables real Cypress never applies to them.
+
+**Fix**: The port reads cypress.config.js (driver.js `readCypressConfig`), queries per root as Cypress does (`findAllShadowRoots`, jQuery 3.7.1's uniqueSort), checks a command result's attachment before each use, provides Sinon 8's spy surface, applies Mocha's hook rule (`HookSkips`), and takes `?framework=` exactly as Cypress takes `--env framework=`. Each rule has a test in tests/frameworks/todomvc/driver_test.html (red against the previous driver, green in Chrome and Crane). Chrome's TodoMVC column is now the real Cypress run, read from Cypress's own results (`fw_matrix import --reader=cypress`), and the port is compared with it per test.
+
+**Takeaway**: **A port of a test spec ports its runner too. Read the runner's config from the project's file, port the rules it applies between the spec's lines, and before trusting a port's numbers in Chrome, run the real runner in Chrome and diff them test by test - a port compared only with itself agrees with its own mistakes.**
