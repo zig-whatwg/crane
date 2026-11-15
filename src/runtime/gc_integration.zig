@@ -275,6 +275,9 @@ pub const DeferredTeardown = struct {
     /// (dom.refcount_teardown.allowLiveNodesAtAgentEnd); null, the default,
     /// makes any node alive there an error in a unit test.
     live_nodes_at_end_allowed: ?[]const u8 = null,
+    /// Debug (`prediction_checks`): the roots predicted dead since the last
+    /// `predictionsSettled`.
+    predicted_roots: if (prediction_checks) std.ArrayListUnmanaged(PredictedRoot) else void = if (prediction_checks) std.ArrayListUnmanaged(PredictedRoot).empty else {},
     /// Totals for tests and diagnostics.
     queued_total: usize = 0,
     freed_total: usize = 0,
@@ -301,6 +304,40 @@ pub const DeferredTeardown = struct {
         /// Garbage trees held again before their slice (a raw holder the
         /// counts did not see).
         resurrections: u64 = 0,
+        /// Trees a full collection's end of marking predicted dead with the
+        /// wrappers it found dead (dom.dying_trees; ExternalMemory.
+        /// predictDead), and the bytes that left the figure for them there.
+        predicted: u64 = 0,
+        predicted_bytes: u64 = 0,
+        /// Of `predicted_bytes`, what no queueing had taken once those
+        /// wrappers' references were all released, and went back into the
+        /// figure (ExternalMemory.settlePredictions): trees predicted dead
+        /// that lived - a native reference below a root, which the marks
+        /// do not show (lane dm1's design 3.3) - less what trees nobody
+        /// predicted took in the same window.
+        put_back_bytes: u64 = 0,
+        /// The trees predicted dead that were alive once those references
+        /// were released, counted root by root: Debug builds only
+        /// (`prediction_checks`), 0 elsewhere. The count that says how often
+        /// the marks' rule is wrong (the integrator's ruling 2 on the
+        /// design).
+        mispredicted: u64 = 0,
+    };
+
+    /// Whether the queue keeps the roots a collection predicted dead, to
+    /// count the mispredictions exactly (`Books.mispredicted`): Debug
+    /// builds - unit tests and the bug-finding WPT run.
+    pub const prediction_checks = @import("builtin").mode == std.builtin.OptimizeMode.Debug;
+
+    /// A root a collection's end of marking predicted dead (Debug:
+    /// `prediction_checks`), until the releases of that collection's dead
+    /// wrappers have all run (`predictionsSettled`).
+    pub const PredictedRoot = struct {
+        instance: *Instance,
+        generation: u64,
+        /// Whether the root - still the object it was, its teardown not
+        /// begun - is alive: not decided dead by the counts. The DOM's.
+        lives: *const fn (root: *Instance) bool,
     };
 
     /// What is owed, one bit each, so the binding exit's check - is
@@ -416,6 +453,37 @@ pub const DeferredTeardown = struct {
         return @ptrCast(&self.owed);
     }
 
+    /// A collection's end of marking predicted the tree of `root` dead
+    /// (dom.dying_trees): kept, in Debug builds, until that collection's
+    /// releases have run (`predictionsSettled`). Called inside the
+    /// collection's pause; allocates from the queue's allocator, never the
+    /// engine's heaps. Out of memory: the root is not kept, and the exact
+    /// count misses it.
+    pub fn notePredicted(self: *DeferredTeardown, root: PredictedRoot) void {
+        if (!prediction_checks) return;
+        self.predicted_roots.append(self.allocator, root) catch {};
+    }
+
+    /// The references of the wrappers a collection found dead are all
+    /// released (ExternalMemory.settlePredictions): `put_back` bytes of what
+    /// its end of marking predicted dead went back into the figure. In
+    /// Debug builds each root kept by `notePredicted` is looked at: one
+    /// that is still the same object, not being torn down and alive by the
+    /// counts was predicted dead and lived.
+    fn predictionsSettled(self: *DeferredTeardown, put_back: usize) void {
+        self.books.put_back_bytes += put_back;
+        if (!prediction_checks) return;
+        const instance_lifecycle = @import("instance_lifecycle.zig");
+        const SlabAllocator = @import("slab_allocator.zig").SlabAllocator;
+        for (self.predicted_roots.items) |root| {
+            if (SlabAllocator.generationOf(root.instance) != root.generation) continue;
+            if (instance_lifecycle.isCleanupStarted(root.instance)) continue;
+            if (root.lives(root.instance)) self.books.mispredicted += 1;
+        }
+        // A burst's capacity is not kept for the agent's life.
+        if (self.predicted_roots.capacity > 4096) self.predicted_roots.clearAndFree(self.allocator) else self.predicted_roots.clearRetainingCapacity();
+    }
+
     /// The agent's DOM memory is due to be reported (ExternalMemory, where
     /// its figure moves): the next safe point runs `report_steps`.
     pub fn oweReport(self: *DeferredTeardown) void {
@@ -504,6 +572,7 @@ pub const DeferredTeardown = struct {
     /// The queue is empty by now: its agent's end drained it.
     pub fn deinit(self: *DeferredTeardown) void {
         std.debug.assert(self.isEmpty());
+        if (prediction_checks) self.predicted_roots.deinit(self.allocator);
         // Whatever a release build still holds goes without its teardown:
         // its instances go with the runtime's pools.
         while (self.popFront()) |item| self.allocator.destroy(item);
@@ -927,6 +996,22 @@ pub const ExternalMemory = struct {
     /// only what each visited wrapper keeps (WebKit 621b33b3b71
     /// Source/JavaScriptCore/heap/Heap.cpp:1811-1817, :2254-2270).
     dying: usize = 0,
+    /// Of `dying`, the bytes of the trees a full collection's end of marking
+    /// PREDICTED dead (`predictDead`), which no queueing has taken yet: the
+    /// collector found their wrappers dead, and those wrappers' references
+    /// are released at the agent's next safe point, where the counts queue
+    /// each tree (`decideDead` takes its bytes from here first, so a tree
+    /// is never taken out of the figure twice). What is left when those
+    /// releases have all run was predicted dead and lived: it goes back
+    /// into the figure (`settlePredictions`). The pool is bytes, not trees:
+    /// `dying` is always the queued items' shares plus this.
+    ///
+    /// Why predict at all: the engine computes its next threshold when the
+    /// collection ends, before any release runs - and a threshold computed
+    /// with this collection's dead in it ratchets (V8's limits on the
+    /// parser page: 105.7 MB after the first collection with 47 MB alive;
+    /// lane dm1, tmp/plans/dom-memory-figure-design.md 2.1 and 3.2 B).
+    predicted: usize = 0,
     /// While a queued tree's teardown steps run (`beginTeardown`): what is
     /// left of THAT tree's share of `dying`, which a free pays down first.
     /// 0 outside one.
@@ -970,8 +1055,11 @@ pub const ExternalMemory = struct {
         if (self.live > self.high) self.becomeDue();
     }
 
-    /// The agent ended: it no longer has it.
+    /// The agent ended: it no longer has it. What a collection predicted
+    /// dead and no queueing took is back in the figure: no release of that
+    /// agent's is still to come.
     pub fn release(self: *ExternalMemory) void {
+        _ = self.settlePredictions();
         if (debug_checks) self.thread = null;
         self.queue = null;
         self.due = false;
@@ -985,10 +1073,11 @@ pub const ExternalMemory = struct {
 
     pub fn sub(self: *ExternalMemory, bytes: usize) void {
         self.checkThread();
-        // A free inside a queued tree's teardown: out of line, so every
-        // other free pays one compare for it.
-        if (self.paying != 0) return self.subDying(bytes);
-        self.live -|= bytes;
+        // A free inside a queued tree's teardown, or one of more than the
+        // figure holds: out of line, so every other free pays one compare
+        // for them.
+        if (self.paying != 0 or bytes > self.live) return self.subDying(bytes);
+        self.live -= bytes;
         if (!self.due and self.live < self.low) self.becomeDue();
     }
 
@@ -996,13 +1085,27 @@ pub const ExternalMemory = struct {
     /// that tree's share of `dying` first - they left `live` when the tree
     /// was queued - and only what is freed beyond it (what the queueing's
     /// walk did not sum) comes off `live`.
+    ///
+    /// And `sub` of more than `live` holds. Such a free is of bytes that
+    /// already left the figure and that no running teardown pays for: a
+    /// tree predicted dead (`predicted`) that a forced teardown - its
+    /// realm's end - frees before its wrappers' references are released.
+    /// What `live` cannot give comes off that pool, so `settlePredictions`
+    /// does not put back bytes that are freed. Past the pool too, `live`
+    /// stops at zero, as it always did.
     noinline fn subDying(self: *ExternalMemory, bytes: usize) void {
         const paid = @min(bytes, self.paying);
         std.debug.assert(self.dying >= paid);
         self.paying -= paid;
         self.dying -|= paid;
         if (paid == bytes) return;
-        self.live -|= bytes - paid;
+        const rest = bytes - paid;
+        if (rest > self.live) {
+            const freed_predicted = @min(rest - self.live, self.predicted);
+            self.predicted -= freed_predicted;
+            self.dying -|= freed_predicted;
+            self.live = 0;
+        } else self.live -= rest;
         if (!self.due and self.live < self.low) self.becomeDue();
     }
 
@@ -1018,13 +1121,56 @@ pub const ExternalMemory = struct {
     /// is counted - which the queue keeps for the tree
     /// (DeferredTeardown.Item.dying). The engine hears it at the agent's
     /// next safe point, as a decrease.
+    ///
+    /// A tree a collection's end of marking predicted dead left the figure
+    /// there (`predictDead`): its queueing takes its bytes from that pool
+    /// first, and only the rest from `live`.
     pub fn decideDead(self: *ExternalMemory, bytes: usize) usize {
+        self.checkThread();
+        const taken = @min(bytes, self.predicted);
+        self.predicted -= taken;
+        const moved = @min(bytes - taken, self.live);
+        self.live -= moved;
+        self.dying += moved;
+        if (!self.due and self.live < self.low) self.becomeDue();
+        return taken + moved;
+    }
+
+    /// A full collection's end of marking found `trees` trees, holding
+    /// `bytes` of what is counted, dead with the wrappers it found dead
+    /// (runtime.lifetime's `dyingWith`; dom.dying_trees): they leave the
+    /// figure now, inside the collection, and wait in `predicted` for the
+    /// queueings that follow those wrappers' releases. Returns what moved -
+    /// `bytes`, or all of `live` when the sum was more than is counted.
+    /// Owes no report: the adapter that asked tells its engine in the same
+    /// pause, as a decrease (engine.capabilities.
+    /// external_memory_at_collection), and `markReported` then.
+    pub fn predictDead(self: *ExternalMemory, bytes: usize, trees: usize) usize {
         self.checkThread();
         const moved = @min(bytes, self.live);
         self.live -= moved;
         self.dying += moved;
-        if (!self.due and self.live < self.low) self.becomeDue();
+        self.predicted += moved;
+        if (self.queue) |queue| {
+            queue.books.predicted += trees;
+            queue.books.predicted_bytes += moved;
+        }
         return moved;
+    }
+
+    /// The references of every wrapper a collection found dead are released
+    /// (the adapter's drain emptied its list; or the agent ended): each
+    /// tree that died with them has been queued and took its bytes out of
+    /// `predicted`. What is left there was predicted dead and lived, and is
+    /// back in the figure; returns it. The engine hears of it at the next
+    /// report, as growth.
+    pub fn settlePredictions(self: *ExternalMemory) usize {
+        const left = self.predicted;
+        if (self.queue) |queue| queue.predictionsSettled(left);
+        if (left == 0) return 0;
+        self.predicted = 0;
+        self.rescue(left);
+        return left;
     }
 
     /// `bytes` of `dying` are not dying any more and were not freed: the

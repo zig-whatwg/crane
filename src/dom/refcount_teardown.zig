@@ -224,7 +224,8 @@ fn runGarbageTree(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.
 /// lifecycle task still queued for it (Document.zig's LifecycleTask holds
 /// its document counted from its queueing to its run or drop, and stands in
 /// its Browser's dom.document_state.PendingLifecycleTasks meanwhile).
-fn ownWorkReferences(instance: *runtime.Instance) u32 {
+/// Read-only: dom.dying_trees asks inside a collection's pause.
+pub fn ownWorkReferences(instance: *runtime.Instance) u32 {
     const pending = @import("document_state.zig").PendingLifecycleTasks.of(instance) orelse return 0;
     return pending.countFor(instance);
 }
@@ -309,6 +310,7 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
 /// count.
 pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) usize {
     if (@import("builtin").mode != std.builtin.OptimizeMode.Debug) return 0;
+    reportPredictions(queue);
     const live = instance_bridge.entryCount(scope);
     if (live == 0) return 0;
     if (@import("builtin").is_test) {
@@ -320,6 +322,20 @@ pub fn agentEnded(scope: *runtime.BrowserScope, queue: *const DeferredTeardown) 
         log.warn("{d} node(s) alive at the agent's end: held past every realm's end, freed only by the final sweep", .{live});
     }
     return live;
+}
+
+/// The agent's books of the trees its collections predicted dead
+/// (dom.dying_trees), in a run that asked for the counts' diagnostics
+/// (CRANE_REFCOUNT_CHECK: the bug-finding WPT run) and predicted any: one
+/// line a sweep's log is summed from - how often the marks' rule called a
+/// tree dead that lived (the integrator's ruling 2 on lane dm1's design:
+/// that count decides whether the rule must be made exact). Not a
+/// violation: the line never begins with the counts' "refcount: ".
+fn reportPredictions(queue: *const DeferredTeardown) void {
+    if (@import("builtin").is_test or !@import("refcount.zig").diagnosticsOn()) return;
+    const books = &queue.books;
+    if (books.predicted == 0) return;
+    log.warn("dying trees: {d} tree(s) predicted dead at a collection's end of marking ({d} B), {d} of them alive at their release; {d} B put back into the figure", .{ books.predicted, books.predicted_bytes, books.mispredicted, books.put_back_bytes });
 }
 
 /// One node alive at the agent's end, for the report: what holds it.
