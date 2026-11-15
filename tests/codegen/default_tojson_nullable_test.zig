@@ -52,10 +52,11 @@ test "a ToJSON struct types a nullable attribute as optional and is marked defau
 }
 
 test "an interface with no attribute and a [Default] toJSON gets an empty ToJSON struct" {
-    // ReportBody (specs/supplementary/reporting-interfaces.idl): WebIDL's
-    // default toJSON steps collect no attribute and return an object with no
-    // member. The interface's toJSON delegate returns `ReportBodyToJSON`, so
-    // the struct must exist even with nothing in it.
+    // An interface like the browsers' ReportBody (Crane's until lane rep2
+    // made it the Reporting spec's dictionary): WebIDL's default toJSON steps
+    // collect no attribute and return an object with no member. The
+    // interface's toJSON delegate returns `ReportBodyToJSON`, so the struct
+    // must exist even with nothing in it.
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();

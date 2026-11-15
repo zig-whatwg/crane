@@ -39,9 +39,9 @@ fn exercise() !void {
     observer.allocator = observer_allocator;
     try dom.reporting.generate(global, "csp-violation", "absent-endpoint", "https://example.test/", "{\"effectiveDirective\":\"sequence-2\"}");
     _ = try browser.runEventLoopBlocking(20);
-    // A csp-violation report's body is a CSPViolationReportBody (the
-    // browsers' interfaces): only its attributes are readable, so the
-    // sequence rides in one of them.
+    // A csp-violation report's body converts with the CSPViolationReportBody
+    // dictionary: only its members reach script, so the sequence rides in
+    // one of them.
     const observed = try browser.evaluateScript("reportsSeen.length === 1 && reportsSeen[0] === 'sequence-2'");
     defer observed.release();
     // Check recovery first: the unfixed queue suppresses the second report's
