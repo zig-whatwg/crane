@@ -540,6 +540,11 @@ INCLUDE = [
     ('html/semantics/the-button-element/', 'button'),
     ('html/semantics/links/',              'a, href'),
     ('html/semantics/embedded-content/the-iframe-element/', 'iframe, full spec minus rendering'),
+    # Lane ifr1 b1 (the integrator, 2026-11-14): Fullscreen is a WHATWG Living
+    # Standard all three browsers ship; Crane keeps its state functional (the
+    # fullscreen flag, the fullscreen element, its events, :fullscreen), nothing
+    # drawn. Geometry, screen-size and reftest-only files are excluded below.
+    ('fullscreen/', 'Fullscreen API: requestFullscreen/exitFullscreen, the fullscreen element and events, :fullscreen; geometry exceptions below'),
 
     # --- iframe needs real browsing contexts; navigation needs the rest. ----
     ('html/browsers/windows/',           'nested browsing contexts, contentWindow'),
@@ -843,6 +848,11 @@ EXCLUDE = [
     ('html/semantics/interactive-elements/the-dialog-element/modal-dialog-ancestor-is-inert.html', 'asserts pointer targets at measured getBoundingClientRect centers'),
     ('html/semantics/interactive-elements/the-dialog-element/modal-dialog-blocks-mouse-events.html', 'asserts pointer targets at measured getBoundingClientRect centers'),
     ('html/semantics/interactive-elements/the-dialog-element/popover-dialog-does-not-block-mouse-events.html', 'targets viewport pointer clicks using measured offset coordinates'),
+
+    ('fullscreen/api/element-request-fullscreen-screen-size.https.html', 'asserts screen and window sizes during fullscreen'),
+    ('fullscreen/api/fullscreen-reordering.html', 'asserts the topmost element through elementFromPoint hit-testing'),
+    ('fullscreen/rendering/fullscreen-root-block-scroll.html', 'asserts the fullscreen root\'s scrollTop over laid-out overflow'),
+    ('fullscreen/rendering/fullscreen-root-block-size.html', 'asserts the fullscreen root\'s laid-out block size'),
 
     ('editing/other/double-click-range-selection-in-', 'double-click selection requires text-position hit-testing'),
     ('editing/other/password-bidi-dblclick.html', 'double-click selection requires bidi text-position hit-testing'),

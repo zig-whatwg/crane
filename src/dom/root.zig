@@ -103,6 +103,8 @@ pub const form_controls = @import("form_controls.zig");
 pub const saved_form_state = @import("saved_form_state.zig");
 pub const selected_content = @import("selected_content.zig");
 pub const top_layer = @import("top_layer.zig");
+/// HTML 2.5.7: a Document's lazy load intersection observer.
+pub const lazy_load_observer = @import("lazy_load_observer.zig");
 pub const dialog = @import("dialog.zig");
 pub const form_submission = @import("form_submission.zig");
 pub const form_past_names = @import("form_past_names.zig");

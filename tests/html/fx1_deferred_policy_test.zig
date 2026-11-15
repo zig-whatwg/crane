@@ -241,7 +241,11 @@ test "self and src declarations preserve opaque identity and retained origin rec
     const distinct: origins.Origin = .{ .serialized = "null", .record = other };
     try std.testing.expect(container.isFeatureAllowedForOrigin(.deferred_fetch, own));
     try std.testing.expect(container.isFeatureAllowedForOrigin(.deferred_fetch_minimal, own));
-    try std.testing.expect(!container.isFeatureAllowedForOrigin(.deferred_fetch, distinct));
+    // An opaque 'src' matches any opaque origin, as Blink's Allowlist
+    // matches_opaque_src does (lane ifr1: Chrome and Safari, the majority;
+    // Blink is the one engine that ships deferred-fetch); 'self' keeps the
+    // opaque identity.
+    try std.testing.expect(container.isFeatureAllowedForOrigin(.deferred_fetch, distinct));
     try std.testing.expect(!container.isFeatureAllowedForOrigin(.deferred_fetch_minimal, distinct));
     try std.testing.expect(!container.isFeatureAllowed(.deferred_fetch, "null"));
 }

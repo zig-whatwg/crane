@@ -256,6 +256,11 @@ pub const StyleEngine = struct {
         environment_revision: u64 = 0,
         /// The last observed Document-owned top-layer entry revision.
         top_layer_revision: u64 = 0,
+        /// Whether this document has a fullscreen element, as of the
+        /// top-layer revision `fullscreen_revision`: Fullscreen 5.2's
+        /// user-agent sheet is matched only then (`observeFullscreen`).
+        fullscreen_rules: bool = false,
+        fullscreen_revision: u64 = 0,
         /// Used style resources, absent on documents with no resource
         /// values. Kept out of the embedded StyleEngine's size class.
         resources: ?*resource_loading.State = null,
@@ -633,6 +638,29 @@ pub const StyleEngine = struct {
         self.environmentChanged();
     }
 
+    /// Fullscreen 5.2's user-agent rules (ua_sheet's fullscreen sheet) are
+    /// matched only while this document has a fullscreen element, as Blink
+    /// adds its fullscreen sheet only once an element goes fullscreen
+    /// (CSSDefaultStyleSheets::EnsureDefaultStyleSheetForFullscreen) and
+    /// WebKit adds its own on demand: in the main sheet the universal
+    /// :not(:root):fullscreen rule cost every element's resolution (lane
+    /// ifr1's cost window: style1's flush bench +4.8% instructions per
+    /// resolution). Re-read only when the top-layer revision moved - which
+    /// recomputes every style (observeTopLayer) - so a resolution pays one
+    /// bool. The document's own top layer: a frame's fullscreen element turns
+    /// on its document's sheet, and its container in the parent turns on the
+    /// parent's.
+    fn observeFullscreen(self: *StyleEngine, document: *runtime.Instance) void {
+        const rare = self.rare orelse return;
+        if (rare.fullscreen_revision == rare.top_layer_revision) return;
+        rare.fullscreen_revision = rare.top_layer_revision;
+        const state = (@import("../top_layer.zig").ofDocument(document, false) catch null) orelse {
+            rare.fullscreen_rules = false;
+            return;
+        };
+        rare.fullscreen_rules = state.fullscreenElement() != null;
+    }
+
     /// A sheet of this document was made, removed or changed one of its
     /// flags: the active sheets are rebuilt when style is next read.
     pub fn sheetsChanged(self: *StyleEngine) void {
@@ -644,6 +672,7 @@ pub const StyleEngine = struct {
     fn ensureActive(self: *StyleEngine, document: *runtime.Instance) Error!*Active {
         try self.observeEnvironment(hooks.environmentRevision(document));
         try self.observeTopLayer(@import("../top_layer.zig").revisionOf(document));
+        self.observeFullscreen(document);
         const media = hooks.mediaValues(document);
         const quirks = isQuirks(document);
         if (self.active) |*a| {
@@ -2078,6 +2107,13 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
     // The UA origin, and HTML's presentational hints.
     if (ua_sheet.get()) |ua| {
         try matchContents(res, &matcher, element, keys, ua.rules, pseudo, is_html, quirks, .{ .origin = .user_agent, .tree_scope = .{ .serial = own_scope } }, null, null);
+        // Fullscreen 5.2's rules, only while the document has a fullscreen
+        // element (StyleEngine.observeFullscreen). Their order is between
+        // html.css's last rule and html-quirks.css's first (1 << 20), where
+        // html.css's last block had them: every tie resolves as before.
+        if (res.engine.rare) |rare| if (rare.fullscreen_rules) {
+            try matchContents(res, &matcher, element, keys, ua.fullscreen, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 19, .tree_scope = .{ .serial = own_scope } }, null, null);
+        };
         if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20, .tree_scope = .{ .serial = own_scope } }, null, null);
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
     }
@@ -2719,6 +2755,14 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     const engine = hooks.engineOf(document) orelse return;
     if (!engine.declaresAnimations()) return;
     _ = updateSubtree(engine.allocator, node) catch {};
+}
+
+/// Whether `document`'s style engine matches Fullscreen 5.2's user-agent
+/// sheet now (StyleEngine.observeFullscreen): as of its last style read.
+pub fn matchesFullscreenSheet(document: *runtime.Instance) bool {
+    const engine = hooks.engineOf(document) orelse return false;
+    const rare = engine.rare orelse return false;
+    return rare.fullscreen_rules;
 }
 
 /// HTML "being rendered", as a layout-less Crane answers it (ruling Q4):

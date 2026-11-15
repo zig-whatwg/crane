@@ -2441,17 +2441,12 @@ pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMSt
     _ = try insertAdjacent(instance, where.asSlice(), text_node);
 }
 
-/// Operation: requestFullscreen
-/// Fullscreen API §4.1 - Requests fullscreen mode for this element
+/// Operation: requestFullscreen (Fullscreen 3, "the requestFullscreen(options)
+/// method steps"): html.fullscreen's, which keeps the state functional -
+/// the fullscreen flag, the top layer, the events - with nothing drawn.
 /// Spec: https://fullscreen.spec.whatwg.org/#dom-element-requestfullscreen
-///
-/// Note: Returns sentinel - fullscreen requires browser integration
 pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(dictionaries.FullscreenOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = options;
-    // Fullscreen requires browser integration - return undefined
-    // TODO: Should return a rejected Promise with TypeError
-    return runtime.JSValue.jsUndefined;
+    return @import("html").fullscreen.requestFullscreen(instance, options.getOrDefault(.{}));
 }
 
 /// Operation: getHTML
