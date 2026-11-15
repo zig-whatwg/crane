@@ -1094,12 +1094,102 @@ const Resolution = struct {
     starting: bool = false,
     /// A rule inside @starting-style matched since `starting` was set.
     starting_matched: bool = false,
+    /// Scoped style rules (Cascade 6 3.5), for the subject and sheet being
+    /// matched (`beginScopes`): each @scope rule's scopes the subject is in,
+    /// found when a rule of it is first a candidate - a span of
+    /// `activations` - and the sheet's implicit scoping root.
+    scope_spans: std.ArrayList(?ScopeSpan) = .empty,
+    activations: std.ArrayList(Activation) = .empty,
+    implicit_root: ?ScopeRoot = null,
 
     fn deinit(self: *Resolution) void {
         self.matched.deinit(self.allocator);
         self.candidates.deinit(self.allocator);
+        self.scope_spans.deinit(self.allocator);
+        self.activations.deinit(self.allocator);
     }
 };
+
+const ComplexRef = @FieldType(sheet_mod.RuleData, "complex");
+const Activation = selector_matching.StyleMatcher.Activation;
+const ScopeRoot = selector_matching.StyleMatcher.ScopeRoot;
+const ScopeSpan = struct { start: u32, len: u32 };
+
+/// Before matching `contents`' rules against one subject: forget the scopes
+/// found for the previous one, and find the sheet's implicit scoping root
+/// (Cascade 6 3.5.4) - "the parent element of the owner node of the
+/// stylesheet"; with none, the shadow host of a shadow tree, else the root of
+/// the node tree. An imported sheet's owner node is its root sheet's (Blink
+/// StyleScope::... reads the owner of the sheet chain's root). A sheet with
+/// no owner node (a constructed sheet) takes the tree `subject` is in.
+fn beginScopes(res: *Resolution, contents: *const Contents, active_sheet: ?*const ActiveSheet, subject: *NodeBase) Error!void {
+    res.activations.clearRetainingCapacity();
+    res.scope_spans.clearRetainingCapacity();
+    try res.scope_spans.appendNTimes(res.allocator, null, contents.scopes.items.len);
+    res.implicit_root = null;
+    const sheet = active_sheet orelse return;
+    var record = sheet.record;
+    while (record.parentSheet()) |parent| record = parent;
+    if (record.owner_node) |owner| {
+        const owner_node = instance_bridge.getNodeBase(owner) orelse return;
+        const parent = owner_node.parent_node orelse return;
+        res.implicit_root = treeScopeRoot(parent);
+        return;
+    }
+    var root = subject;
+    while (root.parent_node) |p| root = p;
+    res.implicit_root = treeScopeRoot(root);
+}
+
+/// `node` as a scoping root: an element; for a shadow root, its host,
+/// featureless; for a document, the document, featureless.
+fn treeScopeRoot(node: *NodeBase) ?ScopeRoot {
+    if (node.node_type == NodeBase.ELEMENT_NODE) return .{ .node = node };
+    if (isShadowRoot(node)) {
+        const host = interfaces.ShadowRoot.get_host(instanceOf(node) orelse return null) catch return null;
+        return .{ .node = instance_bridge.getNodeBase(host) orelse return null, .featureless = true };
+    }
+    if (node.node_type == NodeBase.DOCUMENT_NODE) return .{ .node = node, .featureless = true };
+    return null;
+}
+
+/// The scopes of `contents`' @scope rule `index` that `subject` is in,
+/// nearest root first: a span of `res.activations`, found once per subject
+/// and sheet (`beginScopes`). An inner @scope's roots are found relative to
+/// the enclosing rule's (3.5.5).
+fn scopeActivations(res: *Resolution, matcher: *selector_matching.StyleMatcher, subject: ScopeRoot, contents: *const Contents, index: u32) Error!ScopeSpan {
+    if (res.scope_spans.items[index]) |span| return span;
+    const scope = contents.scopes.items[index];
+    var outer_buffer: [8 * @sizeOf(Activation)]u8 align(@alignOf(Activation)) = undefined;
+    var outer_memory: std.heap.BufferFirstAllocator = .init(&outer_buffer, res.allocator);
+    const outer_allocator = outer_memory.allocator();
+    var outer: std.ArrayList(Activation) = .empty;
+    defer outer.deinit(outer_allocator);
+    if (scope.parent) |parent| {
+        const span = try scopeActivations(res, matcher, subject, contents, parent);
+        // Copied: finding this rule's scopes appends to the same list.
+        try outer.appendSlice(outer_allocator, res.activations.items[span.start..][0..span.len]);
+    }
+    const start: u32 = @intCast(res.activations.items.len);
+    try matcher.scopeActivations(subject, scope.start, scope.end, res.implicit_root, if (scope.parent != null) outer.items else null, &res.activations, res.allocator);
+    const span: ScopeSpan = .{ .start = start, .len = @intCast(res.activations.items.len - start) };
+    res.scope_spans.items[index] = span;
+    return span;
+}
+
+/// A scoped style rule (Cascade 6 3.5.3) of `contents`, in @scope rule
+/// `index`: whether `match` matches with the root of some scope the
+/// subject is in as :scope, and the subject's proximity to the nearest
+/// such root (3.1 "Scope Proximity"). Null: it does not match.
+fn scopedProximity(res: *Resolution, matcher: *selector_matching.StyleMatcher, subject: ScopeRoot, contents: *const Contents, index: u32, context: anytype, comptime match: fn (@TypeOf(context), *selector_matching.StyleMatcher) bool) Error!?u16 {
+    const span = try scopeActivations(res, matcher, subject, contents, index);
+    for (res.activations.items[span.start..][0..span.len]) |activation| {
+        const saved = matcher.enterScope(activation.root);
+        defer matcher.leaveScope(saved);
+        if (match(context, matcher)) return activation.proximity;
+    }
+    return null;
+}
 
 /// The computed style of `element` - or of its pseudo-element `pseudo`
 /// (lowercase, without colons) - resolved now if its cached one is not
@@ -2112,16 +2202,27 @@ const SpecificityOverride = enum { zero };
 fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, host: *runtime.Instance, contents: *const Contents, pseudo: ?[]const u8, quirks: bool, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
     _ = quirks;
     const candidates = if (pseudo != null) contents.buckets.pseudo.items else contents.buckets.universal.items;
+    const subject = selector_matching.StyleMatcher.hostSubject(host) orelse return;
+    if (contents.scopes.items.len != 0) try beginScopes(res, contents, active_sheet, subject.node);
     for (candidates) |index| {
         const rule = &contents.rules.items[index];
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
-        if (!matcher.matchesHost(host, rule.complex, pseudo)) continue;
+        var proximity = css.cascade.no_scope;
+        if (rule.scope) |scope_index| {
+            const Args = struct { host: *runtime.Instance, complex: ComplexRef, pseudo: ?[]const u8 };
+            proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, Args{ .host = host, .complex = rule.complex, .pseudo = pseudo }, struct {
+                fn run(args: Args, m: *selector_matching.StyleMatcher) bool {
+                    return m.matchesHost(args.host, args.complex, args.pseudo);
+                }
+            }.run)) orelse continue;
+        } else if (!matcher.matchesHost(host, rule.complex, pseudo)) continue;
         var source = base;
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
+        source.scope_proximity = proximity;
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
@@ -2137,21 +2238,36 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         .slotted => contents.buckets.slotted.items,
         .part => contents.buckets.part.items,
     };
+    // A scoped ::slotted() or ::part() rule: the slot or host - the element
+    // its selector's combinators start from, in the sheet's tree - is what
+    // must be in scope, and its proximity is the rule's.
+    const subject = selector_matching.StyleMatcher.elementSubject(outer) orelse return;
+    if (contents.scopes.items.len != 0) try beginScopes(res, contents, active_sheet, subject.node);
+    const Args = struct { kind: AroundKind, element: *runtime.Instance, outer: *runtime.Instance, complex: ComplexRef, pseudo: ?[]const u8, exposed: []const []const u8 };
+    const Run = struct {
+        fn run(args: Args, m: *selector_matching.StyleMatcher) bool {
+            return switch (args.kind) {
+                .slotted => m.matchesSlotted(args.element, args.outer, args.complex, args.pseudo),
+                .part => m.matchesPart(args.element, args.outer, args.complex, args.pseudo, args.exposed),
+            };
+        }
+    };
     for (candidates) |index| {
         const rule = &contents.rules.items[index];
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
-        const matched = switch (kind) {
-            .slotted => matcher.matchesSlotted(element, outer, rule.complex, pseudo),
-            .part => matcher.matchesPart(element, outer, rule.complex, pseudo, exposed),
-        };
-        if (!matched) continue;
+        const args: Args = .{ .kind = kind, .element = element, .outer = outer, .complex = rule.complex, .pseudo = pseudo, .exposed = exposed };
+        var proximity = css.cascade.no_scope;
+        if (rule.scope) |scope_index| {
+            proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, args, Run.run)) orelse continue;
+        } else if (!Run.run(args, matcher)) continue;
         var source = base;
         source.tree_count_allowed = kind != .part;
         source.order = base.order + rule.position;
         source.specificity = rule.specificity;
+        source.scope_proximity = proximity;
         if (rule.layer) |l| source.layer = active_sheet.layer_order[l] else if (active_sheet.import_layer) |l| source.layer = l;
         if (rule.starting) res.starting_matched = true;
         try res.matched.append(res.allocator, .{ .block = rule.block, .source = source });
@@ -2162,16 +2278,33 @@ fn matchContents(res: *Resolution, matcher: *selector_matching.StyleMatcher, ele
     if (contents.html_only and !is_html) return;
     res.candidates.clearRetainingCapacity();
     try contents.collectCandidates(keys, pseudo != null, quirks, &res.candidates, res.allocator);
+    // Cascade 6 3.5: only a sheet with @scope rules pays for scoping - a
+    // length test here, and one null test per candidate below.
+    var subject: ScopeRoot = undefined;
+    if (contents.scopes.items.len != 0) {
+        subject = selector_matching.StyleMatcher.elementSubject(element) orelse return;
+        try beginScopes(res, contents, active_sheet, subject.node);
+    }
+    const Args = struct { element: *runtime.Instance, complex: ComplexRef, pseudo: ?[]const u8 };
+    const Run = struct {
+        fn run(args: Args, m: *selector_matching.StyleMatcher) bool {
+            return m.matches(args.element, args.complex, args.pseudo);
+        }
+    };
     for (res.candidates.items) |index| {
         const rule = &contents.rules.items[index];
         // CSS Transitions 2 3.3: "Style rules in @starting-style do not
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
-        if (!matcher.matches(element, rule.complex, pseudo)) continue;
+        var proximity = css.cascade.no_scope;
+        if (rule.scope) |scope_index| {
+            proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, Args{ .element = element, .complex = rule.complex, .pseudo = pseudo }, Run.run)) orelse continue;
+        } else if (!matcher.matches(element, rule.complex, pseudo)) continue;
         var source = base;
         source.order = base.order + rule.position;
         source.specificity = if (specificity != null) .{} else rule.specificity;
+        source.scope_proximity = proximity;
         if (active_sheet) |s| {
             if (rule.layer) |l| source.layer = s.layer_order[l] else if (s.import_layer) |l| source.layer = l;
         }

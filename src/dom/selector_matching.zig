@@ -511,6 +511,125 @@ pub const StyleMatcher = struct {
         defer self.matcher.pseudo_target = null;
         return self.matcher.matchesComplex(.{ .node = node }, complex);
     }
+
+    // ------------------------------------------------------------------
+    // Scoped style rules (CSS Cascade 6 3.5)
+    // ------------------------------------------------------------------
+
+    /// A scoping root (Cascade 6 3.5.4): an element; the featureless
+    /// shadow host, when an @scope's start matches it (`:host`) or it is a
+    /// shadow tree's implicit scope; or a document, the implicit scope of a
+    /// sheet with no owner element in the document's tree.
+    pub const ScopeRoot = struct {
+        node: *NodeBase,
+        featureless: bool = false,
+    };
+
+    /// One scope an @scope rule makes that a subject is in: its root, and
+    /// the subject's scope proximity to it - "generational ... hops between
+    /// the scoping root and the scoped style rule subject" (3.1).
+    pub const Activation = struct {
+        root: ScopeRoot,
+        proximity: u16,
+    };
+
+    /// What `enterScope` replaced.
+    pub const SavedScope = struct { scope: *NodeBase, scoped: bool };
+
+    /// Match with `root` as the scoping root (3.5.1: :scope matches it, &
+    /// is :where(:scope)) until `leaveScope`.
+    pub fn enterScope(self: *StyleMatcher, root: ScopeRoot) SavedScope {
+        const saved: SavedScope = .{ .scope = self.matcher.scope, .scoped = self.matcher.scoped };
+        self.matcher.scope = root.node;
+        self.matcher.scoped = true;
+        return saved;
+    }
+
+    pub fn leaveScope(self: *StyleMatcher, saved: SavedScope) void {
+        self.matcher.scope = saved.scope;
+        self.matcher.scoped = saved.scoped;
+    }
+
+    /// The subject `matchesHost` matches: the featureless host.
+    pub fn hostSubject(host: *runtime.Instance) ?ScopeRoot {
+        const node = instance_bridge.getNodeBase(host) orelse return null;
+        return .{ .node = node, .featureless = true };
+    }
+
+    /// The subject `matches` matches.
+    pub fn elementSubject(element: *runtime.Instance) ?ScopeRoot {
+        const node = instance_bridge.getNodeBase(element) orelse return null;
+        return .{ .node = node };
+    }
+
+    /// Cascade 6 3.5.4 "Identifying Scoping Roots and Limits", for one
+    /// subject: append to `out`, nearest root first, each scope of an
+    /// @scope rule that `subject` is in. A root is an inclusive ancestor of
+    /// `subject` (through a shadow tree's featureless host) that matches
+    /// `start` - with `:scope` and `&` in it meaning a root of `outer`, the
+    /// enclosing @scope rule's scopes the root is in (3.5.5), or the top
+    /// level's with no `outer` - or, with no `start`, is `implicit`. The
+    /// subject is in the scope unless an element from it up to, not
+    /// including, the root matches `end` with that root as :scope (the
+    /// scoping limits are the root's descendants that match).
+    pub fn scopeActivations(
+        self: *StyleMatcher,
+        subject: ScopeRoot,
+        start: ?*const SelectorList,
+        end: ?*const SelectorList,
+        implicit: ?ScopeRoot,
+        outer: ?[]const Activation,
+        out: *std.ArrayList(Activation),
+        allocator: std.mem.Allocator,
+    ) error{OutOfMemory}!void {
+        var chain_buffer: [64 * @sizeOf(Subject)]u8 align(@alignOf(Subject)) = undefined;
+        var chain_memory: std.heap.BufferFirstAllocator = .init(&chain_buffer, allocator);
+        const chain_allocator = chain_memory.allocator();
+        var chain: std.ArrayList(Subject) = .empty;
+        defer chain.deinit(chain_allocator);
+        // The subject's inclusive ancestors, as combinators see them, then
+        // the document above its document element (an implicit root only).
+        var current: ?Subject = .{ .node = subject.node, .featureless = subject.featureless };
+        while (current) |c| {
+            if (chain.items.len == std.math.maxInt(u16)) break;
+            try chain.append(chain_allocator, c);
+            current = self.matcher.parentElement(c);
+            if (current == null and !c.featureless) {
+                if (c.node.parent_node) |p| if (p.node_type == DOCUMENT_NODE) {
+                    current = .{ .node = p, .featureless = true };
+                };
+            }
+        }
+        for (chain.items, 0..) |candidate, distance| {
+            const is_document = candidate.node.node_type == DOCUMENT_NODE;
+            const is_root = if (start) |list| blk: {
+                if (is_document) break :blk false;
+                const outers = outer orelse break :blk self.matcher.matchesList(candidate, list);
+                for (outers) |o| {
+                    // The candidate must be in that outer scope: an
+                    // inclusive descendant of its root.
+                    if (o.proximity < distance) continue;
+                    const saved = self.enterScope(o.root);
+                    defer self.leaveScope(saved);
+                    if (self.matcher.matchesList(candidate, list)) break :blk true;
+                }
+                break :blk false;
+            } else if (implicit) |root| root.node == candidate.node else false;
+            if (!is_root) continue;
+            if (end) |limits| {
+                const saved = self.enterScope(.{ .node = candidate.node, .featureless = candidate.featureless });
+                defer self.leaveScope(saved);
+                const limited = for (chain.items[0..distance]) |below| {
+                    if (!below.featureless and self.matcher.matchesList(below, limits)) break true;
+                } else false;
+                if (limited) continue;
+            }
+            try out.append(allocator, .{
+                .root = .{ .node = candidate.node, .featureless = candidate.featureless },
+                .proximity = @intCast(distance),
+            });
+        }
+    }
 };
 
 /// CSS Shadow Parts 4.1: the exposed set holds every selector name.
@@ -720,6 +839,12 @@ const Matcher = struct {
     /// the per-element dynamic state a match read is recorded.
     pseudo_target: ?[]const u8 = null,
     state_reads: ?*StateReads = null,
+    /// Matching a scoped style rule (Cascade 6 3.5, StyleMatcher.enterScope):
+    /// `scope` is the scoping root - an element, a featureless shadow host or
+    /// a document - and :scope matches that node and nothing else (no root
+    /// element stands in for a document); a document root is the
+    /// featureless parent of its document element.
+    scoped: bool = false,
     /// A DOM query (querySelector, querySelectorAll, matches, closest): class
     /// checks compare ids and fill the compiled selector's class operands
     /// (`hasClass`). The style engine's matching - whose rules' selectors no
@@ -880,6 +1005,11 @@ const Matcher = struct {
         if (self.shadow_root) |root| if (parent == root) {
             if (self.shadow_host) |host| return .{ .node = host, .featureless = true };
         };
+        // Cascade 6 3.5.4: a document that is a scoping root (an implicit
+        // scope with no owner element) is above its document element, for
+        // :scope alone (scope-implicit-constructed-document.html: `> html`
+        // matches the root element, `:scope` no element).
+        if (self.scoped and parent == self.scope and parent.node_type == DOCUMENT_NODE) return .{ .node = parent, .featureless = true };
         return null;
     }
 
@@ -928,8 +1058,14 @@ const Matcher = struct {
                 else => return false,
             };
             const ok = switch (kind) {
-                .Host => |argument| if (argument) |list| self.hostMatches(subject.node, list) else true,
+                // A featureless document (a scoping root, parentElement) is
+                // no shadow host.
+                .Host => |argument| if (subject.node.node_type != ELEMENT_NODE) false else if (argument) |list| self.hostMatches(subject.node, list) else true,
                 .Is, .Where => |list| self.matchesList(subject, list),
+                // Cascade 6 3.5.1: ":scope ... match[es] the @scope rule's
+                // scoping root, including the featureless shadow host when
+                // that host is the scoping root."
+                .Scope => self.scoped and self.scope == subject.node,
                 else => false,
             };
             if (!ok) return false;
@@ -1198,6 +1334,7 @@ const Matcher = struct {
     /// ships nowhere.
     fn matchesScope(self: *const Matcher, node: *NodeBase) bool {
         if (self.scope == node) return true;
+        if (self.scoped) return false;
         if (self.scope.node_type == DOCUMENT_NODE) return node.parent_node == self.scope;
         return false;
     }

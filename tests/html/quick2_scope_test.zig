@@ -137,7 +137,7 @@ test "a constructed sheet's implicit scope is its document: html is in it, :scop
 fn nestedScopesAreRelativeToTheOuterRoot() !void {
     const page = try openWith(
         "@scope (.parent) { @scope (:scope > .child) to (:scope .limit) { :scope .content { z-index: 1; } } }",
-        "<div class=parent><div class=child><div class=content id=yes></div><div class=limit><div class=content id=limited></div></div><div><div class=child><div class=content id=grandchild></div></div></div></div></div>" ++
+        "<div class=parent><div class=child><div class=content id=yes></div><div class=limit><div class=content id=limited></div></div></div><div><div class=child><div class=content id=grandchild></div></div></div></div>" ++
             "<div class=child><div class=content id=no-parent></div></div>",
     );
     defer page.close();
