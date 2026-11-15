@@ -3933,21 +3933,25 @@ const ThreadHost = struct {
             self.reportStartFailure(thread.link);
             return false;
         };
-        while (!outcome.over) {
+        while (true) {
+            const progressed = fetches.pump();
+            if (outcome.over) break;
             if (!outcome.delivered and !thread.link.runsTasks()) {
                 // Terminated mid-fetch: the fetch ends here, and the client
                 // hears nothing more.
                 in_flight.terminate();
                 return false;
             }
-            if (fetches.inFlight() > 0 and fetches.scheduler.jobs.items.len > 0) {
+            // A turn that moved the fetch - a transfer that ended, a step
+            // of its job that follows - goes straight to the next one.
+            if (progressed) continue;
+            if (fetches.scheduler.jobs.items.len > 0) {
                 fetches.scheduler.waitForSockets(fetch_slice_ms);
-            } else if (!outcome.delivered) {
+            } else {
                 // Nothing on the sockets - a service worker's answer is
                 // awaited, which each pump asks for.
                 @import("platform").sleepThread(std.time.ns_per_ms);
             }
-            _ = fetches.pump();
         }
         var fetched_result = (outcome.result orelse {
             self.reportStartFailure(thread.link);
