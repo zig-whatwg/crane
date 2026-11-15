@@ -1179,7 +1179,33 @@ const ListenerPhase = enum { capturing, bubbling };
 /// Steps 4-6.11 - the path across shadow trees, activationTarget and
 /// clearTargets - are dom.event_path's; the passes over the path and steps
 /// 1 and 7-13 are here, beside the listener lists they read.
+///
+/// The event's path is this dispatch's: a local of this frame, as WebKit's
+/// EventPath is a local of
+/// EventDispatcher::dispatchEventWithoutDebuggerDeferral and Gecko's target
+/// chain a local of EventDispatcher::Dispatch (dom.event_dispatch, "THE PATH
+/// IS THE DISPATCH'S"). The event points at it from the build (steps 4-6.11) to
+/// step 9, which every exit of `dispatchOnPath` runs; a nested dispatch -
+/// another event's, or this one's again from its activation behaviour - has
+/// a frame and a path of its own.
 fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
+    // Runtime safety off for the declaration only: ReleaseSafe would fill
+    // the path's inline items with 0xaa on every dispatch, and `init` writes
+    // every field that is read before it is written (the approved form:
+    // dom.mutation's `insert`).
+    @setRuntimeSafety(false);
+    var path: dom_module.event_dispatch.DispatchPath = undefined;
+    path.init(runtime.allocatorOf(event));
+    defer path.deinit();
+    // Whatever way the dispatch left, the event does not point at this
+    // frame once it is gone.
+    defer if (state.path == &path) state.clearPath();
+    return dispatchOnPath(&path, target, event, state, did_throw, target_override);
+}
+
+/// `dispatchWithThrowFlag` with the dispatch's path, `dispatch_path`: empty
+/// on entry, the caller's to free.
+fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
     // Step 1: Set event's dispatch flag.
     state.dispatch_flag = true;
 
@@ -1204,7 +1230,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     // event's type attribute is click"; the behaviours are the element
     // types' own (dom.activation).
     const is_activation_event = std.mem.eql(u8, event_type, "click") and event.stateAs(interfaces.MouseEvent.State) != null;
-    const built = try dom_module.event_path.build(state, target, .{
+    const built = try dom_module.event_path.build(state, dispatch_path, target, .{
         .event_type = event_type,
         .composed = interfaces.Event.get_composed(event) catch false,
         .bubbles = bubbles,
@@ -1225,7 +1251,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     // The path does not change while it runs: nothing appends to it until
     // step 9 empties it, and a listener can neither redispatch this event
     // (step 1 of dispatchEvent) nor reinitialize it (initEvent's step 1).
-    const path = state.path.toSlice();
+    const path = dispatch_path.constItems();
 
     // Step 6.12: legacy-pre-activation behaviour.
     if (activation_target) |at| {
@@ -1238,28 +1264,28 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     while (i > 0) {
         i -= 1;
         // Steps 6.13.1-6.13.2.
-        state.phase = if (path[i].shadow_adjusted_target != null)
-            interfaces.Event.get_AT_TARGET()
+        state.phase = if (path[i].has_shadow_adjusted_target)
+            event_dispatch.Phase.at_target
         else
-            interfaces.Event.get_CAPTURING_PHASE();
+            event_dispatch.Phase.capturing;
         // Step 6.13.3.
-        invoke(&path[i], event, state, .capturing, did_throw, type_key);
+        invoke(dispatch_path, &path[i], event, state, .capturing, did_throw, type_key);
     }
 
     // Step 6.14: for each item of event's path, in order, invoke with "bubbling".
     for (path) |*item| {
-        if (item.shadow_adjusted_target != null) {
+        if (item.has_shadow_adjusted_target) {
             // Step 6.14.1 - a target is AT_TARGET in both passes, which is
             // how its capturing listeners run before its bubbling ones.
-            state.phase = interfaces.Event.get_AT_TARGET();
+            state.phase = event_dispatch.Phase.at_target;
         } else {
             // Step 6.14.2.1
             if (!bubbles) continue;
             // Step 6.14.2.2
-            state.phase = interfaces.Event.get_BUBBLING_PHASE();
+            state.phase = event_dispatch.Phase.bubbling;
         }
         // Step 6.14.3
-        invoke(item, event, state, .bubbling, did_throw, type_key);
+        invoke(dispatch_path, item, event, state, .bubbling, did_throw, type_key);
     }
 
     // Steps 7-11: eventPhase NONE, currentTarget null, the path empty, the
@@ -1288,9 +1314,9 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
 /// DOM §2.9 - invoke
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
 ///
-/// `item` is BORROWED from the event's path, which outlives the call.
+/// `item` is BORROWED from the event's path, `path`, which outlives the call.
 /// `event_type` is the event's type, looked up once per dispatch.
-fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
+fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
     // Steps 1-3: event's target is the shadow-adjusted target of the last
     // item at or before this one whose shadow-adjusted target is non-null -
     // recorded on the item when the path was built. Written raw: the path
@@ -1302,17 +1328,18 @@ fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Insta
 
     // Step 5: "Set event's touch target list to pathItem's touch target
     // list." Both are empty for every event but a TouchEvent's.
-    if (state.touch_target_list.len > 0 or item.touch_target_list.len > 0) {
-        state.touch_target_list.clear();
-        state.touch_target_list.appendSlice(item.touch_target_list.toSlice()) catch {};
+    const touch_targets = path.touchTargetsOf(item);
+    if (touch_targets.len > 0 or state.touch_target_list.toSlice().len > 0) {
+        state.touch_target_list.assign(runtime.allocatorOf(event), touch_targets) catch {};
     }
 
     // Step 6: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
     if (state.stop_propagation_flag) return;
 
-    // Step 7
-    state.setCurrentTarget(item.invocation_target);
+    // Step 7: the currentTarget attribute's value is the dispatch's to
+    // keep (null outside dispatch), with its slab generation.
+    path.setCurrentTarget(item.invocation_target);
 
     // Steps 8-10. Step 8, "let listeners be a clone of event's
     // currentTarget attribute value's event listener list", is innerInvoke's
