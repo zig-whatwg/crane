@@ -11,8 +11,9 @@
 //! waits on its sink (worker_event_loop.zig, TaskSink.waitForWork). The
 //! window loop now waits there too, with the same bound, and then fires the
 //! timers that came due. Pinned here: a reply reaches an idle window at once;
-//! a timer still fires on time when nothing is posted; and a burst of posts
-//! does not leave the loop spinning.
+//! a timer still fires on time when nothing is posted; a timer armed by a
+//! timer's callback waits for the next turn, behind the tasks that callback
+//! queued; and a burst of posts does not leave the loop spinning.
 //!
 //! Each test runs a whole Browser on a thread of its own, on
 //! std.testing.allocator.
@@ -129,6 +130,41 @@ fn timerFiresOnTime() !void {
 
 test "a timer still fires on time while nothing is posted to the window" {
     try helpers.onFreshThread(timerFiresOnTime);
+}
+
+fn timerArmedByATimerWaitsForTheNextTurn() !void {
+    const browser = try openPage();
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    // AbortSignal.timeout's steps run in the timer's own callback (step 4).
+    // The first one's abort listener queues a task - Permissions query step 8
+    // queues its own - and arms a second 0 ms timeout, which is due at once.
+    // The task was queued first, and runs first: the step that fired the
+    // first timer fires nothing its callback armed
+    // (permissions/event-model.https.html: test_driver.set_permission's 0 ms
+    // timer, armed in a timer's callback, changed the permission before the
+    // query's task made the status that listens for it, and the change event
+    // never came).
+    try page.runScript(
+        \\globalThis.order = [];
+        \\globalThis.done = 0;
+        \\globalThis.first = AbortSignal.timeout(0);
+        \\first.onabort = () => {
+        \\  const note = () => order.push('task');
+        \\  navigator.permissions.query({ name: 'geolocation' }).then(note, note);
+        \\  globalThis.second = AbortSignal.timeout(0);
+        \\  second.onabort = () => { order.push('timer'); done = 1; };
+        \\};
+    );
+    try runUntil(browser, "done");
+    _ = try browser.runEventLoopBlocking(10);
+    const order = try page.evaluateScriptToString("order.join()", testing.allocator);
+    defer testing.allocator.free(order);
+    try testing.expectEqualStrings("task,timer", order);
+}
+
+test "a timer armed by a timer's callback fires on the next turn, after the tasks that callback queued" {
+    try helpers.onFreshThread(timerArmedByATimerWaitsForTheNextTurn);
 }
 
 fn cpuMs() f64 {

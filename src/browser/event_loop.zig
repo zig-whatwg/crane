@@ -556,8 +556,16 @@ pub const EventLoop = struct {
         // flight, which signal nothing, are moved on each turn.
         if (self.timer_manager) |mgr| {
             const after_each: TimerManager.AfterEach = .{ .context = self, .run = checkpointAfterTimer };
-            // Anything already due fires now, rather than after a wait.
             var start = self.nowNs();
+            // Anything already due fires now, rather than after a wait. A
+            // poll that fired anything ends the step, as the backend's own
+            // poll does (pollBlockingEach): a timer its callbacks armed -
+            // due at once at 0 ms - waits for the next turn, behind the
+            // tasks those callbacks queued (permissions/event-model.https.html:
+            // test_driver.set_permission's 0 ms timer, armed by a timer's
+            // callback, ran ahead of the permissions query's task that
+            // callback queued, and the status it made never heard the
+            // change; tests/html/rep2_window_wake_test.zig).
             if (mgr.pollEach(after_each)) {
                 did_work = true;
             } else if (wait_time > 0) {
@@ -566,8 +574,8 @@ pub const EventLoop = struct {
                 if (wait_ms > 0) self.sink.waitForWork(wait_ms * std.time.ns_per_ms);
                 // The wait is no work; the callbacks after it are.
                 start = self.nowNs();
+                if (mgr.pollEach(after_each)) did_work = true;
             }
-            if (mgr.pollEach(after_each)) did_work = true;
             self.noteWork(start, self.nowNs());
         }
 
