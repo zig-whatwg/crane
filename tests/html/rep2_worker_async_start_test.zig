@@ -42,9 +42,14 @@ const Server = struct {
     /// A script has been sent.
     answered: std.atomic.Value(bool) = .init(false),
     /// Hold every script until the server stops: a server that never answers.
-    never: bool = false,
+    never: std.atomic.Value(bool) = .init(false),
     /// When the first request arrived (the platform's monotonic clock, ms).
     first_request_ms: std.atomic.Value(i64) = .init(0),
+    /// When a running worker first asked for /started (same clock).
+    started_ms: std.atomic.Value(i64) = .init(0),
+    /// The worker script asks for /started (`fetch('/started');`) instead
+    /// of posting 'ran'.
+    reports_start: std.atomic.Value(bool) = .init(false),
 
     fn start() !*Server {
         const self = try testing.allocator.create(Server);
@@ -87,16 +92,33 @@ const Server = struct {
         var input: [8192]u8 = undefined;
         var reader = stream.reader(testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
+        var output_buffer: [0]u8 = .{};
+        if (std.mem.startsWith(u8, reader.interface.buffered(), "GET /started")) {
+            // A running worker reports in.
+            _ = self.started_ms.cmpxchgStrong(0, clock.monotonicMillis(), .acq_rel, .acquire);
+            var started_writer = stream.writer(testing.io, &output_buffer);
+            try started_writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            try started_writer.interface.flush();
+            return;
+        }
+        if (std.mem.startsWith(u8, reader.interface.buffered(), "GET /missing")) {
+            var missing_writer = stream.writer(testing.io, &output_buffer);
+            try missing_writer.interface.writeAll("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+            try missing_writer.interface.flush();
+            return;
+        }
         if (self.requests.fetchAdd(1, .acq_rel) == 0) self.first_request_ms.store(clock.monotonicMillis(), .release);
         // Held until released - at most 5 s, so that a constructor that
         // waits for the script (the bug) ends - or, for a server that never
         // answers, until the server stops.
         const deadline = clock.monotonicMillis() + 5000;
-        while (!self.listener.isStopping() and (self.never or (!self.released.load(.acquire) and clock.monotonicMillis() < deadline))) clock.sleep(std.time.ns_per_ms);
+        while (!self.listener.isStopping() and (self.never.load(.acquire) or (!self.released.load(.acquire) and clock.monotonicMillis() < deadline))) clock.sleep(std.time.ns_per_ms);
         if (self.listener.isStopping()) return;
-        var output: [0]u8 = .{};
-        var writer = stream.writer(testing.io, &output);
-        try writer.interface.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\nContent-Length: 19\r\nCache-Control: no-store\r\nConnection: close\r\n\r\npostMessage('ran');");
+        const script: []const u8 = if (self.reports_start.load(.acquire)) "fetch('/started');" else "postMessage('ran');";
+        var writer = stream.writer(testing.io, &output_buffer);
+        var head: [192]u8 = undefined;
+        try writer.interface.writeAll(try std.fmt.bufPrint(&head, "HTTP/1.1 200 OK\r\nContent-Type: text/javascript\r\nContent-Length: {d}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", .{script.len}));
+        try writer.interface.writeAll(script);
         try writer.interface.flush();
         self.answered.store(true, .release);
     }
@@ -118,7 +140,7 @@ const Page = struct {
 
     fn openWith(never: bool) !Page {
         const server = try Server.start();
-        server.never = never;
+        server.never.store(never, .release);
         errdefer server.stop();
         const base = try std.fmt.allocPrint(testing.allocator, "http://127.0.0.1:{d}/", .{server.listener.port()});
         errdefer testing.allocator.free(base);
@@ -289,25 +311,28 @@ test "the end of a Worker's realm while its script is loading cancels the fetch 
     try helpers.onFreshThread(realmEndsDuringFetch);
 }
 
-fn fetchedWhileOwnerRuns() !void {
+fn startsWhileOwnerRuns() !void {
     var page = try Page.open();
     defer page.close();
-    // The owner's script runs for 600 ms after new Worker(): the worker's
-    // script is requested meanwhile, in parallel - not by the owner's
-    // event loop once the script has returned.
+    // The script is sent at once, and the worker it starts asks for
+    // /started. The owner's script runs for 600 ms after new Worker(): the
+    // worker has started meanwhile, in parallel - its script fetched and
+    // run without the owner's event loop.
+    page.server.released.store(true, .release);
+    page.server.reports_start.store(true, .release);
     try page.run(
         \\new Worker('worker.js');
         \\const end = Date.now() + 600;
         \\while (Date.now() < end);
     );
     const returned_ms = clock.monotonicMillis();
-    const first = page.server.first_request_ms.load(.acquire);
-    try testing.expect(first != 0);
-    try testing.expect(returned_ms - first >= 200);
+    const started = page.server.started_ms.load(.acquire);
+    try testing.expect(started != 0);
+    try testing.expect(returned_ms - started >= 100);
 }
 
-test "a worker's script is requested while its owner's script still runs: the worker fetches in parallel" {
-    try helpers.onFreshThread(fetchedWhileOwnerRuns);
+test "a worker starts while its owner's script still runs: its script is fetched in parallel" {
+    try helpers.onFreshThread(startsWhileOwnerRuns);
 }
 
 fn neverAnsweringWorkersEndPromptly() !void {
@@ -347,4 +372,26 @@ fn neverAnsweringWorkersEndPromptly() !void {
 
 test "a Browser whose workers' scripts never arrive ends in under a second, and its page runs tasks meanwhile" {
     try helpers.onFreshThread(neverAnsweringWorkersEndPromptly);
+}
+
+fn missingScriptFailsOnce() !void {
+    var page = try Page.open();
+    defer page.close();
+    // The worker's thread fetches a 404: no script, so `error` at the
+    // Worker - once, from a task - and the thread ends; what the start held
+    // across threads (the request, its relay, the owner's policy copy) is
+    // freed on that path too (std.testing.allocator checks).
+    try page.run(
+        \\globalThis.state = [];
+        \\const w = new Worker('missing.js');
+        \\w.onmessage = () => state.push('message');
+        \\w.onerror = e => state.push('error ' + e.constructor.name);
+    );
+    try page.expectState("[\"error Event\"]");
+    for (0..20) |_| _ = try page.browser.runEventLoopBlocking(10);
+    try page.expectState("[\"error Event\"]");
+}
+
+test "a worker whose script is a 404 fires error once, from a task, and leaves nothing" {
+    try helpers.onFreshThread(missingScriptFailsOnce);
 }
