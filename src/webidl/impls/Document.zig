@@ -4520,17 +4520,27 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 /// still salvageable and loaded. Kept, the document stays salvageable:
 /// pagehide reports persisted true, no unload event fires, and it is not
 /// destroyed (steps 10, 12, 20). Steps 15-16 (suspension time, suspended
-/// timer handles) and 20 (destroy) run here; steps 18-19 (cleanup steps,
-/// not restored reasons) are the navigable's: navigation clears the window's
+/// timer handles) run here, and so does 20 (destroy) unless `destroy` leaves
+/// it to the caller (dom.document_lifecycle.unloadLeavingDestroy: a document
+/// whose descendants unload after it); steps 18-19 (cleanup steps, not
+/// restored reasons) are the navigable's: navigation clears the window's
 /// timers once this returns - or, for a kept document, suspends them.
-fn lifecycleUnload(document: *runtime.Instance) void {
-    engine.runInRealm(document.ctx, unloadSteps, document) catch |err| {
+fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy) void {
+    var call: UnloadCall = .{ .document = document, .destroy = destroy };
+    engine.runInRealm(document.ctx, unloadSteps, &call) catch |err| {
         log.debug("unload not run: {}", .{err});
     };
 }
 
+/// `lifecycleUnload`'s arguments, for the steps run in the document's realm.
+const UnloadCall = struct {
+    document: *runtime.Instance,
+    destroy: @import("dom").document_lifecycle.UnloadDestroy,
+};
+
 fn unloadSteps(data: ?*anyopaque) void {
-    const document: *runtime.Instance = @ptrCast(@alignCast(data.?));
+    const call: *const UnloadCall = @ptrCast(@alignCast(data.?));
+    const document = call.document;
     const internal = getInternal(document) orelse return;
     const window = (get_defaultView(document) catch null) orelse return;
 
@@ -4590,8 +4600,11 @@ fn unloadSteps(data: ?*anyopaque) void {
     // reads it (dom.bfcache.isKept) and stores the page. (Steps 18-19 run
     // after this returns - see the doc comment - so a store step's reason
     // recorded there can still make it unsalvageable; the navigation code
-    // destroys it then.)
-    if (!internal.salvageable) lifecycleDestroy(document) else internal.kept_in_bfcache = true;
+    // destroys it then.) Left to the caller (`call.destroy`), a document not
+    // salvageable is destroyed once its descendants have unloaded.
+    if (internal.salvageable) {
+        internal.kept_in_bfcache = true;
+    } else if (call.destroy == .now) lifecycleDestroy(document);
 }
 
 /// "Unload a document" steps 15-16 for `document`. Out of memory, the handles

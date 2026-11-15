@@ -43,7 +43,7 @@ pub const Implementation = struct {
     mark_initial_about_blank: *const fn (document: *runtime.Instance) void,
     is_unloading: *const fn (document: *runtime.Instance) bool,
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
-    unload: *const fn (document: *runtime.Instance) void,
+    unload: *const fn (document: *runtime.Instance, destroy: UnloadDestroy) void,
     abort: *const fn (document: *runtime.Instance) void,
     /// Navigation's provisional abort, before the replacement commits.
     abort_for_navigation: *const fn (document: *runtime.Instance) void,
@@ -223,11 +223,36 @@ pub fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     return impl.fire_beforeunload(document);
 }
 
+/// Who runs "unload" step 20 - "if oldDocument's salvageable state is false,
+/// then destroy oldDocument" - for an unload.
+pub const UnloadDestroy = enum {
+    /// The unload itself, as its last step.
+    now,
+    /// The caller, later: `unloadLeavingDestroy`.
+    by_caller,
+};
+
 /// "Unload" `document`: pagehide, visibilitychange and unload, with its
-/// unload counter raised throughout.
+/// unload counter raised throughout; then, if it is not salvageable, it is
+/// destroyed (step 20).
 pub fn unload(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
-    impl.unload(document);
+    impl.unload(document, .now);
+}
+
+/// `unload` without step 20: `document` is not destroyed here, even when it
+/// is not salvageable - the caller destroys it (`destroy`) once its
+/// descendants have unloaded too, unless the back/forward cache kept it
+/// (dom.bfcache.isKept). The browsers' order for a document and its
+/// descendants, where a child's unload handlers still find the parent's
+/// realm and document there: Blink's FrameLoader::DetachDocument dispatches
+/// the document's unload events, then LocalFrame::DetachChildren detaches
+/// its child frames (their unload events, the same way), and only after them
+/// is the document shut down (Document::Shutdown). HTMLIFrameElement's
+/// unloadDocumentTree states the order.
+pub fn unloadLeavingDestroy(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.unload(document, .by_caller);
 }
 
 /// HTML "abort" `document` (§7.5.6): a parser still running - a navigation
@@ -370,6 +395,7 @@ test "without an installed implementation nothing is asked of a document" {
     undelayLoadEvent(&document);
     markInitialAboutBlank(&document);
     unload(&document);
+    unloadLeavingDestroy(&document);
     abort(&document);
     endLoad(&document);
     propagateAbort(&document, &document);

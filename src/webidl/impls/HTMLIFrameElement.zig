@@ -4998,6 +4998,19 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
     // fires the document's unload events, then LocalFrame::DetachChildren).
     // The integrator's ruling, 2026-11-14 7:08 PM ET; whatwg/html issue draft
     // tmp/orchestration/data/nav4-unload-order-issue.md.
+    //
+    // And so a document is destroyed (unload step 20, not salvageable) only
+    // after its descendants have unloaded - below, children first - not at
+    // the end of its own unload: a child's unload handlers still find the
+    // parent's realm and document, so a listener the parent's script added
+    // to the child's window runs and reaches the frame through
+    // iframe.contentWindow, as in all three browsers (Blink's
+    // FrameLoader::DetachDocument: the document's unload events, then
+    // LocalFrame::DetachChildren, then Document::Shutdown;
+    // fetch/api/redirect/redirect-keepalive.any.js, whose keepalive fetch
+    // such a listener sends from a window its opener closes: Chrome 157,
+    // Firefox 160 and Safari 27.2 pass 12/12 on wpt.fyi stable at
+    // 2358bd4835).
     // Tree order from the list (parents first, breadth first); out of memory
     // the list's own order, still every parent before its children.
     const order: ?[]usize = preorder(documents.items, allocator) catch null;
@@ -5036,10 +5049,8 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
         // any document that is not salvageable; golden rule 2 - two of
         // three - follows Chrome and Safari, for every navigable alike (the
         // embedder's page did so alone before lane loadpath1 gave it this
-        // path).
-        if (document_lifecycle.isCompletelyLoaded(entry.document)) {
-            document_lifecycle.unload(entry.document);
-        } else document_lifecycle.destroy(entry.document);
+        // path). Either way it is destroyed after its descendants (below).
+        if (document_lifecycle.isCompletelyLoaded(entry.document)) document_lifecycle.unloadLeavingDestroy(entry.document);
         if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
         // Its children unload while it is still unloading (above).
         dom_module.document_internals.incrementUnloadCounter(entry.document);
@@ -5051,6 +5062,20 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
         if (integration.browsing_context) |bc| {
             if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
         }
+    }
+    // Step 20 for each document the back/forward cache did not keep, now that
+    // the whole tree has unloaded: destroyed, children first (the walk's
+    // order backwards), as "destroy a document and its descendants" orders
+    // it. A document a handler already destroyed - its frame removed while
+    // it unloaded - is not destroyed again.
+    var back = documents.items.len;
+    while (back > 0) {
+        back -= 1;
+        const entry = documents.items[if (order) |o| o[back] else back];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        if (offer and dom_module.bfcache.isKept(entry.document)) continue;
+        if (document_lifecycle.isDestroyed(entry.document)) continue;
+        document_lifecycle.destroy(entry.document);
     }
     // Step 18 for each document: the unloading document cleanup steps - or,
     // for a kept one, only the store steps (dom.navigables). A window the
