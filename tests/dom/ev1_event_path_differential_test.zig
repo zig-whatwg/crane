@@ -10,11 +10,14 @@
 //! integrator asked for: for every random tree - nested shadow roots, open
 //! and closed, named and manual slot assignment, slotted and unslotted
 //! elements and text, a detached tree - and every random dispatch - target,
-//! relatedTarget (or none), composed, bubbles, "load" or not, activation
-//! event or not - the walk's path must equal the literal one item by item:
-//! invocation target, shadow-adjusted target, relatedTarget, the three
-//! booleans and invoke's target, and the activation target and clearTargets
-//! too. The literal implementation takes one root walk per question, through
+//! relatedTarget (or none), up to two touch targets, composed, bubbles,
+//! "load" or not, activation event or not - the walk's path must equal the
+//! literal one item by item: invocation target, shadow-adjusted target,
+//! relatedTarget, touch target list, the three booleans and invoke's target,
+//! and the activation target and clearTargets too. The path is built into a
+//! dispatch's own `DispatchPath`, as EventTarget's dispatch builds it (lane
+//! ev1's second batch: the path is the dispatch's, and an item's touch
+//! targets are a run of the path's). The literal implementation takes one root walk per question, through
 //! the IDL getters, as the standard reads.
 //!
 //! A failure prints the seed; `ev1_seed_only` reruns one.
@@ -102,9 +105,14 @@ const Item = struct {
     in_shadow_tree: bool,
     shadow_adjusted_target: ?*Instance,
     related_target: ?*Instance,
+    /// The item's touch target list: one per touch target of the event.
+    touch: [max_touch]*Instance = undefined,
     root_of_closed_tree: bool,
     slot_in_closed_tree: bool,
 };
+
+/// The most touch targets a random dispatch gives its event.
+const max_touch = 2;
 
 const Literal = struct {
     path: std.ArrayListUnmanaged(Item) = .empty,
@@ -119,6 +127,8 @@ const Literal = struct {
 const Dispatch = struct {
     target: *Instance,
     related: ?*Instance,
+    /// The event's touch target list when dispatch begins.
+    touch: []const *Instance = &.{},
     composed: bool,
     bubbles: bool,
     load: bool,
@@ -131,15 +141,25 @@ fn hasActivationBehavior(target: *Instance) bool {
 }
 
 /// "Append to an event path".
-fn appendLiteral(path: *std.ArrayListUnmanaged(Item), invocation_target: *Instance, shadow_adjusted: ?*Instance, related: ?*Instance, slot_in_closed_tree: bool) !void {
+fn appendLiteral(path: *std.ArrayListUnmanaged(Item), invocation_target: *Instance, shadow_adjusted: ?*Instance, related: ?*Instance, touch: [max_touch]*Instance, slot_in_closed_tree: bool) !void {
     try path.append(allocator, .{
         .invocation_target = invocation_target,
         .in_shadow_tree = isNode(invocation_target) and isShadowRoot(rootOf(invocation_target)),
         .shadow_adjusted_target = shadow_adjusted,
         .related_target = related,
+        .touch = touch,
         .root_of_closed_tree = isClosedShadowRoot(invocation_target),
         .slot_in_closed_tree = slot_in_closed_tree,
     });
+}
+
+/// Steps 6.1-6.2 and 6.9.4-6.9.5: "for each touchTarget of event's touch
+/// target list, append the result of retargeting touchTarget against"
+/// `against`.
+fn retargetTouchLiteral(d: Dispatch, against: *Instance) [max_touch]*Instance {
+    var touch: [max_touch]*Instance = undefined;
+    for (d.touch, 0..) |touch_target, i| touch[i] = retargetLiteral(touch_target, against).?;
+    return touch;
 }
 
 /// A node's, a shadow root's and a document's "get the parent".
@@ -168,8 +188,10 @@ fn literal(d: Dispatch) !Literal {
     var related = retargetLiteral(d.related, target);
     // Step 6.
     if (target != related or target == d.related) {
+        // Steps 6.1-6.2.
+        var touch = retargetTouchLiteral(d, target);
         // Step 6.3.
-        try appendLiteral(&result.path, target, target, related, false);
+        try appendLiteral(&result.path, target, target, related, touch, false);
         // Steps 6.4-6.5.
         const is_activation_event = d.activation_event;
         if (is_activation_event and hasActivationBehavior(target)) result.activation_target = target;
@@ -189,11 +211,12 @@ fn literal(d: Dispatch) !Literal {
             if (assignedSlot(p) != null) slottable = p;
             // Steps 6.9.3-6.9.5.
             related = retargetLiteral(d.related, p);
+            touch = retargetTouchLiteral(d, p);
             var next: ?*Instance = p;
             // Step 6.9.6.
             if (!isNode(p) or isShadowIncludingInclusiveAncestor(rootOf(target), p)) {
                 if (is_activation_event and d.bubbles and result.activation_target == null and hasActivationBehavior(p)) result.activation_target = p;
-                try appendLiteral(&result.path, p, null, related, slot_in_closed_tree);
+                try appendLiteral(&result.path, p, null, related, touch, slot_in_closed_tree);
             } else if (p == related) {
                 // Step 6.9.7.
                 next = null;
@@ -201,7 +224,7 @@ fn literal(d: Dispatch) !Literal {
                 // Step 6.9.8.
                 target = p;
                 if (is_activation_event and result.activation_target == null and hasActivationBehavior(target)) result.activation_target = target;
-                try appendLiteral(&result.path, p, target, related, slot_in_closed_tree);
+                try appendLiteral(&result.path, p, target, related, touch, slot_in_closed_tree);
             }
             // Steps 6.9.9-6.9.10.
             parent = if (next) |n| getTheParentLiteral(n, result.path.items, d) else null;
@@ -219,6 +242,9 @@ fn literal(d: Dispatch) !Literal {
             }
         }.check;
         result.clear_targets = in_shadow(clear_item.shadow_adjusted_target) or in_shadow(clear_item.related_target);
+        for (clear_item.touch[0..d.touch.len]) |touch_target| {
+            if (in_shadow(touch_target)) result.clear_targets = true;
+        }
     }
     return result;
 }
@@ -368,15 +394,22 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
     // Raw, as dispatch reads it: the edge is not what is under test.
     state.related_target = d.related;
     defer state.related_target = null;
+    for (d.touch) |touch_target| try state.touch_target_list.append(runtime.allocatorOf(event), touch_target);
 
-    const result = try dom.event_path.build(state, d.target, .{
+    // The dispatch's path, as EventTarget's dispatch declares it.
+    var dispatch_path: dom.event_dispatch.DispatchPath = undefined;
+    dispatch_path.init(allocator);
+    defer dispatch_path.deinit();
+    const result = try dom.event_path.build(state, &dispatch_path, d.target, .{
         .event_type = if (d.load) "load" else "ev1",
         .composed = d.composed,
         .bubbles = d.bubbles,
         .activation_of = if (d.activation_event) &TestActivation.of else null,
     });
     defer state.clearPath();
-    const path = state.path.toSlice();
+    const path = state.pathItems();
+    // The event points at the dispatch's path, and nowhere else.
+    try std.testing.expect(state.path == &dispatch_path or path.len == 0);
 
     errdefer std.debug.print(
         "\nev1 differential: seed {d}, target #{d}, related #{d}, composed {}, bubbles {}, load {}, activation {}: expected {d} items, got {d}\n",
@@ -385,10 +418,11 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
 
     try std.testing.expectEqual(expected.path.items.len, path.len);
     var invoke_target: ?*Instance = null;
-    for (expected.path.items, path, 0..) |want, got, i| {
+    for (expected.path.items, path, 0..) |want, *got_item, i| {
+        const got = got_item.*;
         errdefer std.debug.print("ev1 differential: item {d} (#{d}) differs\n", .{ i, describe(tree, want.invocation_target) });
         try std.testing.expectEqual(want.invocation_target, got.invocation_target);
-        try std.testing.expectEqual(want.shadow_adjusted_target, got.shadow_adjusted_target);
+        try std.testing.expectEqual(want.shadow_adjusted_target, got.shadowAdjustedTarget());
         try std.testing.expectEqual(want.related_target, got.related_target);
         try std.testing.expectEqual(want.in_shadow_tree, got.invocation_target_in_shadow_tree);
         try std.testing.expectEqual(want.root_of_closed_tree, got.root_of_closed_tree);
@@ -396,7 +430,7 @@ fn check(seed: u64, tree: *Tree, d: Dispatch) !void {
         // Invoke steps 1-3: the last shadow-adjusted target at or before.
         if (want.shadow_adjusted_target) |t| invoke_target = t;
         try std.testing.expectEqual(invoke_target.?, got.target);
-        try std.testing.expectEqual(@as(usize, 0), got.touch_target_list.len);
+        try std.testing.expectEqualSlices(*Instance, want.touch[0..d.touch.len], dispatch_path.touchTargetsOf(got_item));
     }
     const got_activation: ?*Instance = if (result.activation_target) |at| at.target else null;
     try std.testing.expectEqual(expected.activation_target, got_activation);
@@ -410,6 +444,7 @@ test "the event path across shadow trees matches DOM 2.9 steps 4-6.11, read lite
 
     var cases: usize = 0;
     var shadow_paths: usize = 0;
+    var touch_cases: usize = 0;
     var seed: u64 = 0;
     while (seed < tree_count) : (seed += 1) {
         if (ev1_seed_only) |only| {
@@ -422,9 +457,16 @@ test "the event path across shadow trees matches DOM 2.9 steps 4-6.11, read lite
         defer tree.deinit();
         for (0..dispatches_per_tree) |_| {
             const nodes = tree.nodes.items;
+            // One dispatch in three is a touch event's: one or two touch
+            // targets, anywhere in the trees.
+            var touch: [max_touch]*Instance = undefined;
+            const touch_count: usize = if (random.uintLessThan(u8, 3) == 0) 1 + random.uintLessThan(usize, max_touch) else 0;
+            for (touch[0..touch_count]) |*touch_target| touch_target.* = nodes[random.uintLessThan(usize, nodes.len)];
+            if (touch_count > 0) touch_cases += 1;
             const d: Dispatch = .{
                 .target = nodes[random.uintLessThan(usize, nodes.len)],
                 .related = if (random.uintLessThan(u8, 100) < 30) null else nodes[random.uintLessThan(usize, nodes.len)],
+                .touch = touch[0..touch_count],
                 .composed = random.boolean(),
                 .bubbles = random.boolean(),
                 .load = random.uintLessThan(u8, 100) < 10,
@@ -440,5 +482,6 @@ test "the event path across shadow trees matches DOM 2.9 steps 4-6.11, read lite
     if (ev1_seed_only == null) {
         try std.testing.expect(cases == tree_count * dispatches_per_tree);
         try std.testing.expect(shadow_paths * 5 > cases);
+        try std.testing.expect(touch_cases * 5 > cases);
     }
 }

@@ -1,5 +1,6 @@
 //! A `storage` event's task owns its data until it runs - and when its window's loop never turns again, the
-//! timer's end frees it (lane wrap1 b2).
+//! loop's end frees it (lane wrap1 b2; since lane tl1 the task is queued on the loop itself, which drops it,
+//! where it was armed on the loop's timer).
 //!
 //! A change to a storage area queues one task per other document that shares the area (HTML "broadcast": "queue
 //! a global task on the DOM manipulation task source given remoteStorage's relevant global object to fire an

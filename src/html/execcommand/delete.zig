@@ -236,8 +236,8 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         // editing/run/delete.html's `<p contenteditable=false><span
         // contenteditable=true>[abc]</span></p>` expects. Gecko:
         // HTMLEditor::InsertPaddingBRElementToMakeEmptyLineVisibleIfNeeded
-        // ("We don't need to put <br> if it reaches an inline editing host",
-        // editor/libeditor/HTMLEditSubActionHandler.cpp).
+        // (editor/libeditor/HTMLEditSubActionHandler.cpp) adds no padding
+        // <br> once the walk reaches an inline editing host.
         if (try common.blockNodeOf(p)) |block| {
             const inline_host = common.isInlineNode(p) and try common.isEditingHost(p);
             if (!inline_host and !(try hasVisibleChild(block)) and try common.isEditableOrEditingHost(p)) {
@@ -670,9 +670,9 @@ fn emptyLineBreakBefore(node: *Instance) !?EmptyLineBreak {
 /// Whether deleting from `start` into `child_block`, a block inside the
 /// start block, leaves the child block whole instead of unwrapping its
 /// first line: Gecko's AutoBlockElementsJoiner mode
-/// DeletePrecedingLinesAndContentInRange ("If the range starts immediately
-/// after a line end and ends in a child right block, we should not unwrap
-/// the right block"; editor/libeditor/HTMLEditorDeleteHandler.cpp,
+/// DeletePrecedingLinesAndContentInRange, which keeps the child block
+/// wrapped when the range begins just past a line end and finishes inside
+/// that block (editor/libeditor/HTMLEditorDeleteHandler.cpp,
 /// mozilla-firefox/firefox 6cb22fec8a1e, the ComputeRangesToDelete
 /// prologue of AutoBlockElementsJoiner::Prepare). The range must start at a
 /// line start - after a br, a preserved line feed, a block or at its
@@ -858,10 +858,10 @@ const white_space_property_names = [_][]const u8{ "white-space", "white-space-co
 /// declaration sets that white-space, Chrome 155 and Safari 27 keep it
 /// (`<div>abc[]</div><pre>def</pre>` with `pre { white-space: pre }` ->
 /// `<div>abc<span style="white-space:pre">def</span></div>`), which Gecko's
-/// TODO there names as its target ("If `white-space` is specified by non-UA
-/// stylesheet, we should preserve it even if the right block is <pre> for
-/// compatibility with the other browsers"; mozilla-firefox/firefox main,
-/// editor/libeditor/HTMLEditorDeleteHandler.cpp, 2026-10-26).
+/// TODO there names as its target: keep an author-specified white-space
+/// even when the right block is a <pre>, to match the other browsers
+/// (mozilla-firefox/firefox main, editor/libeditor/
+/// HTMLEditorDeleteHandler.cpp, 2026-10-26).
 /// editing/other/join-pre-and-other-block.html at wpt.fyi df642c4142:
 /// Chrome 46/46, Firefox 28/46, Safari 46/46 (the ?method=backspace&block=div
 /// variant; the others alike). Majority with Gecko's stated target.

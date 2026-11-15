@@ -1054,7 +1054,7 @@ fn removeAgent(isolate: *ffi.Isolate) void {
     callback_registry.endAgent(&record.callbacks);
     protocol_modules.endAgent(&record.modules);
     worker_realm.endAgent(&record.worker_realms);
-    @import("wrapper_cache.zig").endAgent(&record.caches);
+    @import("wrapper_cache.zig").endAgent(isolate, &record.caches);
     std.heap.c_allocator.destroy(record);
 }
 

@@ -25,6 +25,11 @@ const Timer = struct {
         self.state.delay = ms;
         return 1;
     }
+    /// The owned form (runtime.TimerInterface.setTimeoutOwned), which eventsource.Retry arms since lane
+    /// tl1: this timer never ends with a timeout armed, so it never runs `drop`.
+    pub fn setTimeoutOwned(self: @This(), ms: u64, callback: *const fn (?*anyopaque) void, context: ?*anyopaque, _: *const fn (?*anyopaque) void) u64 {
+        return self.setTimeout(ms, callback, context);
+    }
     pub fn clearTimeout(self: @This(), _: u64) bool {
         if (!self.state.clear_succeeds) return false;
         self.state.callback = null;

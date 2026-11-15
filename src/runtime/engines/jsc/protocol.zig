@@ -93,6 +93,7 @@ pub const capabilities: engine.Capabilities = .{
     // script's evaluation; Web Inspector's console evaluation is private).
     .repl_mode = .unsupported,
     .external_memory = .unsupported,
+    .external_memory_at_collection = .unsupported,
     // Node wrapper reachability (the wrapper redesign's P5): JavaScriptCore placeholder: no engine is linked, so no collector ever calls the hook.
     .wrapper_tracing = .unsupported,
 };

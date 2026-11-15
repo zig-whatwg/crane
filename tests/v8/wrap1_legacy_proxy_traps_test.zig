@@ -409,3 +409,172 @@ test "the proxy of an interface with a named property setter asks no Reflect eit
     try testing.expectEqualStrings(before, after);
     try expectOk(page.realm, "calls.length === 0 ? 'ok' : 'the page was called: ' + calls.join()");
 }
+
+test "[[Set]] on a legacy platform object reaches a Proxy on its prototype chain through that Proxy's own [[Set]], once" {
+    // WebIDL 3.9.2 [[Set]] step 3 is OrdinarySetWithOwnDescriptor(O, P, V, Receiver, ownDesc), and with no
+    // ownDesc that is ES 10.1.9.2 step 1: "Let parent be ? O.[[GetPrototypeOf]](). If parent is not null,
+    // return ? parent.[[Set]](P, V, Receiver)" - the PARENT's internal method, whatever the parent is. The
+    // trap used to walk the chain itself, reading each object's own property descriptor and prototype through
+    // V8's API: an ordinary parent cannot tell, but a Proxy a page put on the chain was asked for
+    // getOwnPropertyDescriptor and getPrototypeOf, and its `set` trap - the one a browser calls - never ran.
+    // The Proxy is made the collection's own prototype (Object.setPrototypeOf on the collection, which WebIDL
+    // allows: only a [Global] interface's objects have an immutable prototype).
+    // (Lane wrap1 b3. In a browser a legacy platform object is no Proxy: its [[Set]] is the engine's own
+    // ordinary set with the interceptors, which reaches a Proxy on the chain through JSProxy's [[Set]].)
+    const page = try Realm.open();
+    defer page.close();
+    try expectOk(page.realm,
+        \\const failures = [];
+        \\const check = (name, got, want) => { if (got !== want) failures.push(name + ": " + saved.String(got)); };
+        \\const log = [];
+        \\const subject = collection();
+        \\const heir = saved.create(subject);
+        \\// The Proxy goes between the collection and its interface prototype object (whose own prototype
+        \\// Crane makes immutable): its target inherits from that prototype, so members still resolve.
+        \\const interfacePrototype = saved.getPrototypeOf(subject);
+        \\const backing = saved.create(interfacePrototype);
+        \\saved.defineProperty(backing, "viaSetter", descriptor({ set(v) { log.push("setter " + v + " on " + (this === subject ? "the collection" : "another object")); }, configurable: true }));
+        \\saved.defineProperty(backing, "frozen", descriptor({ value: 1, writable: false, configurable: true }));
+        \\const set = Reflect.set, gopd = Reflect.getOwnPropertyDescriptor, gpo = Reflect.getPrototypeOf, define = Reflect.defineProperty, has = Reflect.has, get = Reflect.get;
+        \\const onChain = new Proxy(backing, {
+        \\  set(t, k, v, r) { log.push("set " + saved.String(k) + " receiver " + (r === subject ? "the collection" : r === heir ? "the heir" : "other")); return set(t, k, v, r); },
+        \\  getOwnPropertyDescriptor(t, k) { log.push("getOwnPropertyDescriptor " + saved.String(k)); return gopd(t, k); },
+        \\  getPrototypeOf(t) { log.push("getPrototypeOf"); return gpo(t); },
+        \\  defineProperty(t, k, d) { log.push("defineProperty " + saved.String(k)); return define(t, k, d); },
+        \\  has(t, k) { log.push("has " + saved.String(k)); return has(t, k); },
+        \\  get(t, k, r) { return get(t, k, r); },
+        \\});
+        \\saved.setPrototypeOf(subject, onChain);
+        \\try {
+        \\  // A new name: the Proxy's [[Set]] runs once, finds nothing, and the value becomes the collection's own.
+        \\  log.length = 0;
+        \\  subject.fresh = 5;
+        \\  check("a new name: the traps called", log.join(" | "), "set fresh receiver the collection");
+        \\  check("a new name: the collection's own property", saved.hasOwn.call(subject, "fresh") && subject.fresh, 5);
+        \\  check("a new name: nothing on the Proxy's target", saved.hasOwn.call(backing, "fresh"), false);
+        \\  // A setter behind the Proxy runs with the collection as its receiver.
+        \\  log.length = 0;
+        \\  subject.viaSetter = 7;
+        \\  check("a setter behind the Proxy", log.join(" | "), "set viaSetter receiver the collection | setter 7 on the collection");
+        \\  // A read-only data property behind the Proxy refuses: quietly in sloppy code, a TypeError in strict.
+        \\  log.length = 0;
+        \\  subject.frozen = 2;
+        \\  check("a read-only property behind the Proxy: the traps called", log.join(" | "), "set frozen receiver the collection");
+        \\  check("a read-only property behind the Proxy: nothing made", saved.hasOwn.call(subject, "frozen"), false);
+        \\  check("a read-only property behind the Proxy, strict", attempt(() => { "use strict"; subject.frozen = 2; }), "threw TypeError");
+        \\  // Through an heir of the collection (another Receiver): the same one call.
+        \\  log.length = 0;
+        \\  heir.inherited = 9;
+        \\  check("through an heir: the traps called", log.join(" | "), "set inherited receiver the heir");
+        \\  check("through an heir: the heir's own property", saved.hasOwn.call(heir, "inherited") && heir.inherited, 9);
+        \\  check("through an heir: not the collection's", saved.hasOwn.call(subject, "inherited"), false);
+        \\  // A symbol goes the same way.
+        \\  log.length = 0;
+        \\  const mark = Symbol("mark");
+        \\  subject[mark] = 1;
+        \\  check("a symbol: the traps called", log.join(" | "), "set Symbol(mark) receiver the collection");
+        \\  check("a symbol: the collection's own property", subject[mark], 1);
+        \\  // A Receiver that is no Object (Reflect.set's fourth argument) reaches the trap as it is.
+        \\  log.length = 0;
+        \\  check("a primitive Receiver: the answer", set(subject, "viaPrimitive", 1, 5), false);
+        \\  check("a primitive Receiver: the traps called", log.join(" | "), "set viaPrimitive receiver other");
+        \\} finally {
+        \\  saved.setPrototypeOf(subject, interfacePrototype);
+        \\}
+        \\failures.join("; ") || "ok"
+    );
+}
+
+test "a Proxy on a legacy platform object's prototype chain has its [[Set]] performed whole: no trap, a false, a revoked proxy, the invariants" {
+    // ES 10.5.9, the steps a Proxy's [[Set]] has besides calling its trap (specs/ecma/
+    // ordinary-and-exotic-objects-behaviours.md): a revoked proxy throws (step 1); with no `set` trap the call
+    // goes to the Proxy's TARGET's [[Set]] with the same Receiver (step 6), which asks none of the handler's
+    // other traps; a trap's false is the store's false, a TypeError in strict code (step 8); and a trap that
+    // answers true for a property its target holds as non-configurable and read-only with another value, or as
+    // a non-configurable accessor with no setter, throws (step 10). V8's API has no [[Set]] that takes a
+    // Receiver and answers, so the adapter performs these steps itself (v8_wrapper.cpp TrapSet).
+    const page = try Realm.open();
+    defer page.close();
+    try expectOk(page.realm,
+        \\const failures = [];
+        \\const check = (name, got, want) => { if (got !== want) failures.push(name + ": " + saved.String(got)); };
+        \\const log = [];
+        \\const subject = collection();
+        \\const interfacePrototype = saved.getPrototypeOf(subject);
+        \\const set = Reflect.set, gopd = Reflect.getOwnPropertyDescriptor, gpo = Reflect.getPrototypeOf;
+        \\const through = (backing, handler) => { const p = new Proxy(backing, handler); saved.setPrototypeOf(subject, p); return p; };
+        \\try {
+        \\  // No `set` trap: the target's [[Set]], which reads the target and never the handler's other traps.
+        \\  let backing = saved.create(interfacePrototype);
+        \\  let seen = "not called";
+        \\  saved.defineProperty(backing, "viaSetter", descriptor({ set(v) { seen = v + (this === subject ? " on the collection" : " elsewhere"); }, configurable: true }));
+        \\  through(backing, {
+        \\    getOwnPropertyDescriptor(t, k) { log.push("getOwnPropertyDescriptor " + saved.String(k)); return gopd(t, k); },
+        \\    getPrototypeOf(t) { log.push("getPrototypeOf"); return gpo(t); },
+        \\  });
+        \\  subject.viaSetter = 4;
+        \\  subject.plain = 6;
+        \\  check("no set trap: the target's setter", seen, "4 on the collection");
+        \\  check("no set trap: the collection's own property", saved.hasOwn.call(subject, "plain") && subject.plain, 6);
+        \\  check("no set trap: no other trap called", log.join(" | "), "");
+        \\  // A trap's false: nothing stored, quietly in sloppy code and a TypeError in strict.
+        \\  through(saved.create(interfacePrototype), { set() { return false; } });
+        \\  subject.refused = 1;
+        \\  check("a trap's false: nothing made", saved.hasOwn.call(subject, "refused"), false);
+        \\  check("a trap's false, strict", attempt(() => { "use strict"; subject.refused = 1; }), "threw TypeError");
+        \\  // A trap's true with nothing done: the store answers true and makes nothing.
+        \\  through(saved.create(interfacePrototype), { set() { return 1; } });
+        \\  check("a trap's true, strict", attempt(() => { "use strict"; subject.swallowed = 1; return "no error"; }), "no error");
+        \\  check("a trap's true: nothing made", saved.hasOwn.call(subject, "swallowed"), false);
+        \\  // A `set` that is not callable.
+        \\  through(saved.create(interfacePrototype), { set: 1 });
+        \\  check("a set that is no function", attempt(() => { subject.x1 = 1; }), "threw TypeError");
+        \\  // The invariants: a true the target contradicts.
+        \\  backing = saved.create(interfacePrototype);
+        \\  saved.defineProperty(backing, "locked", descriptor({ value: 1, writable: false, configurable: false }));
+        \\  saved.defineProperty(backing, "getterOnly", descriptor({ get() { return 1; }, configurable: false }));
+        \\  through(backing, { set() { return true; } });
+        \\  check("a true over a locked value, another value", attempt(() => { subject.locked = 2; }), "threw TypeError");
+        \\  check("a true over a locked value, the same value", attempt(() => { subject.locked = 1; return "no error"; }), "no error");
+        \\  check("a true over a locked accessor with no setter", attempt(() => { subject.getterOnly = 2; }), "threw TypeError");
+        \\  // A revoked proxy.
+        \\  const revocable = Proxy.revocable(saved.create(interfacePrototype), {});
+        \\  saved.setPrototypeOf(subject, revocable.proxy);
+        \\  revocable.revoke();
+        \\  check("a revoked proxy", attempt(() => { subject.x2 = 1; }), "threw TypeError");
+        \\} finally {
+        \\  saved.setPrototypeOf(subject, interfacePrototype);
+        \\}
+        \\failures.join("; ") || "ok"
+    );
+}
+
+test "[[Set]] over a legacy platform object's own property keeps the property's attributes, and refuses a read-only one" {
+    // OrdinarySetWithOwnDescriptor with an ownDesc (ES 10.1.9.2 step 2): a data property that is not writable
+    // returns false (2.a), and a writable one is updated with the descriptor { [[Value]]: V } alone (2.d.iii-iv)
+    // - its other attributes stay. The trap used to redefine the property whole: writable, enumerable and
+    // configurable, whatever it had been.
+    const page = try Realm.open();
+    defer page.close();
+    try expectOk(page.realm,
+        \\const failures = [];
+        \\const check = (name, got, want) => { if (got !== want) failures.push(name + ": " + saved.String(got)); };
+        \\const subject = collection();
+        \\saved.defineProperty(subject, "hidden", descriptor({ value: 1, writable: true, enumerable: false, configurable: false }));
+        \\subject.hidden = 2;
+        \\check("a writable, non-enumerable own property: its value", subject.hidden, 2);
+        \\check("a writable, non-enumerable own property: its attributes", describe(subject, "hidden"), "value:number w");
+        \\saved.defineProperty(subject, "fixed", descriptor({ value: 1, writable: false, enumerable: true, configurable: true }));
+        \\subject.fixed = 2;
+        \\check("a read-only own property keeps its value", subject.fixed, 1);
+        \\check("a read-only own property keeps its attributes", describe(subject, "fixed"), "value:number e c");
+        \\check("a read-only own property, strict", attempt(() => { "use strict"; subject.fixed = 2; }), "threw TypeError");
+        \\let seen = "not called";
+        \\saved.defineProperty(subject, "own", descriptor({ set(v) { seen = v + (this === subject ? " on the collection" : " elsewhere"); }, configurable: true }));
+        \\subject.own = 3;
+        \\check("an own setter runs", seen, "3 on the collection");
+        \\saved.defineProperty(subject, "getterOnly", descriptor({ get() { return 1; }, configurable: true }));
+        \\check("an own accessor with no setter, strict", attempt(() => { "use strict"; subject.getterOnly = 2; }), "threw TypeError");
+        \\failures.join("; ") || "ok"
+    );
+}

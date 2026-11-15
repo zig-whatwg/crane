@@ -255,7 +255,9 @@ pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyer
     const internal = getInternal(signal).?;
     const task = try internal.allocator.create(TimeoutTask);
     task.* = .{ .signal = SignalRef.of(signal), .allocator = internal.allocator, .timer = timer };
-    task.id = timer.setTimeout(milliseconds, &TimeoutTask.fire, task);
+    // Owned by the timer (TimeoutTask's comment says who frees it on every path); 0 also when the timer
+    // cannot promise the drop, and then the signal never times out, as with no timer at all.
+    task.id = timer.setTimeoutOwned(milliseconds, &TimeoutTask.fire, task, &TimeoutTask.drop);
     if (task.id == 0) {
         internal.allocator.destroy(task);
         return signal;
@@ -266,6 +268,16 @@ pub fn call_static_timeout(instance: *runtime.Instance, milliseconds: u64) anyer
     return signal;
 }
 
+/// AbortSignal.timeout()'s timer data. Who frees it, on every path:
+/// - the timer fires: `fire`;
+/// - the signal goes first - collected, or its realm ended: `cancel`, from the signal's teardown, which
+///   clears the timer;
+/// - the timer manager ends with the timer armed - its event loop is gone, the timer never fires: `drop`,
+///   which the manager runs for a timer armed with the owned form. A realm ends before its loop's timers
+///   do (Browser.deinit ends the page's realms, then the loop; a worker's thread its realm, its agent,
+///   then its loop: WorkerThread.main steps c-e), so the signal has normally gone by then and `cancel`
+///   took this path first; `drop` is for a signal that did not (lane tl1;
+///   docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
 const TimeoutTask = struct {
     signal: SignalRef,
     allocator: std.mem.Allocator,
@@ -295,6 +307,19 @@ const TimeoutTask = struct {
         const reason = engine.createDOMException(signal.ctx, "TimeoutError", "signal timed out") catch return;
         defer reason.release();
         signalAbortWith(signal, reason.value);
+    }
+
+    /// The timer manager ended with the timer armed: the steps never run. A signal still there is
+    /// detached - its later teardown must not `cancel` a task already freed, nor clear a timer whose
+    /// manager is gone. Frees memory and nothing else, as every drop does: the pending-activity hold is
+    /// the engine's, and no engine call is made from a loop's end (a worker's agent has ended by then);
+    /// the hold goes with the signal's wrapper at its realm's end.
+    fn drop(data: ?*anyopaque) void {
+        const task: *TimeoutTask = @ptrCast(@alignCast(data orelse return));
+        defer task.allocator.destroy(task);
+        const signal = task.signal.get() orelse return;
+        const internal = getInternal(signal) orelse return;
+        if (internal.timeout == task) internal.timeout = null;
     }
 
     /// The signal is going: its timer must not fire into it, and nothing
