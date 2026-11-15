@@ -419,16 +419,22 @@ fn slotReissued(entry: *const Cell) bool {
 /// slot, its generated State block (the size its vtable carries), the cache's
 /// record of its wrapper, and - when its State names one now - each internal
 /// state block of its own that its impl keeps (interface_bindings
-/// `stateBlocksOf`, read from the generated State's types): about 1.2 KB for
-/// an Event, most of it its dispatch state. No per-interface table.
+/// `stateBlocksOf`, read from the generated State's types). What it answers
+/// on the batch's final tree (2026-11-15, tests/v8/
+/// wrap1_platform_anchor_test.zig prints them): 200 B for an Event or a
+/// CustomEvent, 288 for a URLSearchParams, 264 for a Headers, 360 for a URL,
+/// 144 for an AbortController, 160 for a ReadableStream, 104 for a
+/// NamedNodeMap, 184 for a DOMTokenList, 336 for a NodeList, 544 for an
+/// HTMLCollection. No per-interface table.
 ///
 /// The internal state block is the part that decides the collector's
-/// schedule. With the first three parts alone V8 was told 112 bytes of the
-/// 1.2 KB an Event holds, and 650,000 dropped Events ended at 99.1 MB on
-/// server1 against main's 87.5; told the block too they end at 55.2 there and
-/// at 31.1 against 87.2 on chat.local (gc_bench, 2026-11-15,
-/// tmp/plans/wrap1-evidence/b3-meas8-*.out). In Blink the whole object is on
-/// the C++ heap, whose growth V8 counts.
+/// schedule. It was measured while an Event's dispatch state was 1,024 bytes
+/// (lane ev1 has since made it 88): with the first three parts alone V8 was
+/// told 112 bytes of the 1.2 KB an Event then held, and 650,000 dropped
+/// Events ended at 99.1 MB on server1 against main's 87.5; told the block too
+/// they ended at 55.2 there and at 31.1 against 87.2 on chat.local (gc_bench,
+/// 2026-11-15, tmp/plans/wrap1-evidence/b3-meas8-*.out). In Blink the whole
+/// object is on the C++ heap, whose growth V8 counts.
 ///
 /// It is still a FLOOR: what a state allocates beyond its block (a list's
 /// spilled storage, a body, a queue) is not known here. Counting those

@@ -982,9 +982,10 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
         // function of the instance (wrapper_cache.instanceHeldBytes: its slab slot, its generated State block,
         // the cache's record, and the internal state block its State names), so what a loop adds is that
         // function's answer for one of its objects, a thousand times - and nothing a call site computes.
-        // An Event's internal state - its dispatch state, dom.event_dispatch.EventState - is most of what it
-        // holds, so V8 is told at least that: told 112 B of an Event's 1.2 KB, V8 let 650,000 dropped Events
-        // end 13% over main on server1 (gc_bench, 2026-11-15; wrapper_cache.zig `instanceHeldBytes`).
+        // An Event's internal state - its dispatch state, dom.event_dispatch.EventState - is a block of its
+        // own, so V8 is told at least that: told 112 B of the 1.2 KB an Event held while that block was
+        // 1,024 B (it is 88 B since lane ev1), V8 let 650,000 dropped Events end 13% over main on server1
+        // (gc_bench, 2026-11-15; wrapper_cache.zig `instanceHeldBytes`).
         const instanceHeldBytes = @import("v8").wrapper_cache_mod.instanceHeldBytes;
         const shapes = [_]struct { name: []const u8, make: []const u8, at_least: usize }{
             .{ .name = "an Event", .make = "new Event('x')", .at_least = 64 + @sizeOf(dom.event_dispatch.EventState) },

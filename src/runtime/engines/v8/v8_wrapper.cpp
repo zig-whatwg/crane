@@ -4736,7 +4736,10 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 //
 // A non-node platform object's wrapper is 16 bytes of V8's heap and 24 of
 // the C++ heap, and keeps a Zig instance alive that V8 cannot see: a kept
-// Event holds 1.2 KB by allocation site, a URLSearchParams 216 bytes. V8 schedules a
+// Event holds about 610 bytes of resident memory (gc_bench, chat.local,
+// 2026-11-15; 1.2 KB until lane ev1 made its dispatch state 88 bytes, which
+// is the Event every measurement quoted below was made with), a
+// URLSearchParams 216 bytes by allocation site. V8 schedules a
 // young-generation collection by the bytes of its own young space, so a
 // script that makes and drops such objects holds the dead ones' instances
 // until V8's own allocation asks for a collection - and the smaller the
@@ -4762,9 +4765,11 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // `stateBlocksOf`: read from the generated State's types, counted while the
 // pointer is set): ONE function of the instance (wrapper_cache.zig
 // `instanceHeldBytes`, called from `noteWrapped`, the one call site). The
-// internal state block is what makes the figure honest for an Event: its
-// dispatch state is about 1.1 KB of the 1.2 KB it holds. Told only the other
-// three parts (112 bytes), V8 let 650,000 dropped Events end at 99.1 MB on
+// internal state block is what makes the figure honest for an Event: when
+// this was measured its dispatch state was about 1.1 KB of the 1.2 KB it
+// held (today the block is 88 bytes and V8 is told 200 bytes for an Event).
+// Told only the other three parts (112 bytes), V8 let 650,000 dropped Events
+// end at 99.1 MB on
 // server1 against main's 87.5; told the block too they end at 55.2 there
 // and at 31.1 against 87.2 on chat.local (gc_bench, 2026-11-15, three runs,
 // tmp/plans/wrap1-evidence/b3-meas8-*.out) - with 48 to 65 small full

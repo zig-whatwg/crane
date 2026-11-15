@@ -1460,7 +1460,7 @@ pub const StateBlock = struct {
 /// The internal state blocks `State` - an interface's generated State - can
 /// name: one for each level of its inheritance chain that keeps its impl's
 /// internal state in a block of its own (runtime `InternalKind.pointer`: an
-/// Event's 1 KB of dispatch state is one). A level that keeps the state by
+/// Event's dispatch state is one). A level that keeps the state by
 /// value (a node's: it is inside the State block already), or has none,
 /// names nothing. Read from the State's own types, so no impl is named and
 /// nobody keeps a list. A hand-written State (no `internal_kind`) ends the
