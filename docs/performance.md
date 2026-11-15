@@ -358,7 +358,14 @@ workload both ran it gives the tip's figure over the base's for time, steady mem
 memory. Each ratio has a noise band: 10%, or three times the runs' spread where that is wider
 (memory never under 10%). A workload with any ratio outside its band has moved, and every one
 that moved is listed. Two geometric means, time and steady memory, are taken over the headline's
-workloads. Before the tip's rows are set beside the browsers' last ones, the base must be within
+workloads. A row whose runs read in two memory levels - two tight groups of launches at least 3%
+apart, each of two runs or more (on macOS the system allocator gives freed pages back in steps, so
+`dom.event-ctor` and the rows after it read 143.5 MB in some launches and 162.5 MB in the others
+with the same bytes allocated) - keeps the median of all runs as its figure, shows both levels
+with their counts beside it ("two levels: 143.5 MB x3 / 162.5 MB x7"), and is compared between two
+Crane builds level against level: low with low and high with high, their geometric mean judged
+against the band, and a side with one level set against the nearer level of the other. Crane
+against a browser stays the medians' ratio. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 
