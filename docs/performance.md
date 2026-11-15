@@ -184,6 +184,12 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   its `settled` mark - what the workload left behind. Each timed page also gets its own row,
   `page.<file>`: its footprint from its load mark to its done mark (after the settle time) and the
   launch's peak. The report compares the steady footprint, and shows the peak beside it.
+  The footprints at the begin and end marks are single readings of whatever the page is in the
+  middle of, and no figure is taken from them alone. On the worker rows the end mark is answered
+  while the workers the sample just terminated are still ending on their own threads (measured
+  2026-11-15: 1 to 4 of them alive at every end mark and gone 1 to 5 ms later, the footprint then
+  the settled mark's), and the last step of a chain reads wherever the collector's sawtooth is. A
+  pair's memory is judged on the steady footprint and the peak.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
