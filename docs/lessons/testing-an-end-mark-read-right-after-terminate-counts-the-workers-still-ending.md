@@ -1,0 +1,18 @@
+# Testing: A footprint read the instant a workload returns counts what is still ending - on the worker rows, the workers
+
+**Date**: 2026-11-15
+**Lesson**: perf_bench's end mark is answered the instant a timed workload's last sample returns. For a workload whose last act is `worker.terminate()`, or a navigation, that instant is inside a teardown or between two collections, so the end-mark footprint is one reading of a moving state: it changes with how fast the page reaches the mark, not with what the engine keeps. Judge memory on the steady footprint (the `settled` mark; the second-half median of a chain) and the peak, never on `footprint_end` alone.
+
+**Why**: `terminate()` returns at once and the worker ends on its own thread (as in every browser): the realm's end, the agent, the loop and the host are freed there, and the owner joins the thread on a later task (src/html/worker_thread.zig, steps a-g). The page's `onmessage` resolves the sample's promise before any of that has run. A chain page (`memory.page-growth`) reports its footprint at each document's load; the documents it left are freed by the collections that happen to have run by then, so the series is a sawtooth and its last value is wherever the tooth is.
+
+**What Happened**: Lane rep2 made the window event loop wait on its task sink instead of sleeping 1 ms. Its cost pair read `memory.page-growth` 1.193, `workers.start-work-stop` 1.170 and `workers.four-at-once` 1.137 of main at the end mark, with the steady figures at 1.016, 0.975 and 1.014, and the three rows were queued as a possible regression. Lane mem1 measured them with a diagnostic perf_bench that reads the console's thread count at every mark (`proc_pidinfo`, `PROC_PIDTASKINFO`) and, at an end mark, waits for the count to return to the loaded mark's (chat2.local, 12 launches of the workers page, 8 of the chain):
+- At every end mark of the three worker rows, 1 to 4 worker threads were still alive (12 to 15 threads against 11). They were gone 1.1 to 4.6 ms later, and the footprint was then the settled mark's: `start-work-stop` 44.7-45.3 MB at the mark, 27.3-28.0 MB after (one worker's 17.3 MB); `four-at-once` 54.0-108.8 MB at the mark (one to four workers alive), 37.6-39.7 MB after. The begin mark has the same race with the warmup's workers (52-107 MB).
+- The chain's footprint climbs 26 -> 44 MB, drops to about 30 MB at a collection, and climbs again; the last step read 44.7-45.7 MB in 8 of 8 launches on chat2.local and 37.0-46.3 MB on chat.local, where the third drop lands on step 26 or step 29. No thread was ending, and the footprint did not move in the 2 s after the last step.
+So a faster event loop reaches the mark earlier in the teardown, and the ratio at that mark moved by 14-19% while nothing the engine keeps changed.
+
+**Fix**:
+1. In a pair's table, hold the memory bar on the published marks: `footprint_settled` (the chain's second-half median, an instances row's slope) and `footprint_peak`. Print `footprint_end` only as a named, informational column (lesson `testing-a-lanes-memory-table-reads-the-published-figures-mark.md`).
+2. When a row moves only at the end mark, read the thread count at the mark before looking for a leak: more threads than at the loaded mark is a teardown in progress. Wait for the count to return and read again; if the footprint is then the settled figure, nothing is kept.
+3. For a chain, look at the whole series: a last value that differs while the plateau agrees is the sawtooth's phase.
+
+**Takeaway**: **The end mark closes the timed window; it is not a memory figure. A row that moves at the end mark and not at the settled mark is a teardown or a collection caught halfway - count the threads at the mark before calling it a regression.**

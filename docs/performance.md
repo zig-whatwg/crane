@@ -184,6 +184,12 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   its `settled` mark - what the workload left behind. Each timed page also gets its own row,
   `page.<file>`: its footprint from its load mark to its done mark (after the settle time) and the
   launch's peak. The report compares the steady footprint, and shows the peak beside it.
+  The footprints at the begin and end marks are single readings of whatever the page is in the
+  middle of, and no figure is taken from them alone. On the worker rows the end mark is answered
+  while the workers the sample just terminated are still ending on their own threads (measured
+  2026-11-15: 1 to 4 of them alive at every end mark and gone 1 to 5 ms later, the footprint then
+  the settled mark's), and the last step of a chain reads wherever the collector's sawtooth is. A
+  pair's memory is judged on the steady footprint and the peak.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
@@ -352,7 +358,18 @@ workload both ran it gives the tip's figure over the base's for time, steady mem
 memory. Each ratio has a noise band: 10%, or three times the runs' spread where that is wider
 (memory never under 10%). A workload with any ratio outside its band has moved, and every one
 that moved is listed. Two geometric means, time and steady memory, are taken over the headline's
-workloads. Before the tip's rows are set beside the browsers' last ones, the base must be within
+workloads. A row whose runs read in two memory levels - two tight groups of launches at least 3%
+apart, each of two runs or more (on macOS the system allocator gives freed pages back in steps, so
+`dom.event-ctor` and the rows after it read 143.5 MB in some launches and 162.5 MB in the others
+with the same bytes allocated) - keeps the median of all runs as its figure, shows both levels
+with their counts beside it on a Crane build's rows ("two levels: 143.5 MB x3 / 162.5 MB x7"; a
+browser's row gets no such note), and is compared level
+against level where one Crane build is checked against another - the tip against its base here,
+and a drift control against the round it repeats: low with low and high with high, their
+geometric mean judged against the band, and a side with one level set against the level of the
+other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
+a row: read it with care, a side that truly moved by the whole gap looks the same). Every published ratio - Crane against a browser,
+ReleaseFast against ReleaseSafe, a round against the first - stays the medians'. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 

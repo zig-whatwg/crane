@@ -398,6 +398,13 @@ fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
             if (!row.outside) continue;
             std.debug.print("perf_bench:   moved {s}: time {d:.3}, steady {d:.3}, peak {d:.3} (band {d:.2})\n", .{ row.workload, row.time orelse 0, row.steady orelse 0, row.peak orelse 0, row.band });
         }
+        // A row with two memory levels on one side only: the comparison
+        // set the one-level side against a level of the other, which is
+        // right for launch luck and blind to a change of the whole gap -
+        // so each such row is named with both sides' counts (lane mem1).
+        for (bt.rows) |row| for ([_]report.Measure{ .steady, .peak }) |measure| {
+            if (try report.oneSidedLine(arena, row, measure)) |line| std.debug.print("perf_bench:   {s}\n", .{line});
+        };
     }
     // A Crane-only round (crane_control): its drift control against the
     // round that measured the same binary, and what the CPU target alone did.
