@@ -315,12 +315,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
         _ = dom_module.tree_teardown.freeAllDescendants(&internal.base, &deinitNodeByType);
-        // Releases the NodeBase and clears this level's live bit.
+        // Releases the NodeBase and clears this level's live bit - the whole
+        // of this state's teardown: no second `Registry.remove` follows (it
+        // re-read the slab generation and the State to clear a bit that is
+        // clear either way: `releaseNodeBase` cleared it, and when `get`
+        // answered null there is no bit to clear).
         releaseNodeBase(instance, internal, .with_document_counts);
     }
-
-    // Clean up its internal state
-    Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
     // wrapper cache is tearing down, platformObjectDestroyed cannot flag the
