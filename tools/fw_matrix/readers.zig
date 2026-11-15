@@ -1319,3 +1319,124 @@ test "Cypress's results: every test with its context, state and first error line
     try testing.expectError(error.BadReport, parseCypressResults(a, try std.mem.replaceOwned(u8, a, cypress_results, "\"state\":\"pending\",", "\"state\":\"retried\",")));
     try testing.expectError(error.BadReport, parseCypressResults(a, "{}"));
 }
+
+// ============================================================================
+// web-test-runner's own report of a run (htmx's `npm run test:chrome`:
+// `web-test-runner --browsers chromium --config test/web-test-runner.config.mjs
+// --playwright`, its defaultReporter with reportTestResults): per test file
+// its path ("test/tests/attributes/hx-action.js:"), then each Mocha suite as
+// "<title> [<Browser>]", indented one space per level, and under it each test
+// two spaces further in, marked "✓" passed, "-" skipped, anything else failed;
+// "🚧 Browser logs:" opens a block of the page's console output, which runs
+// to the next file or suite. ANSI colour codes are ignored.
+// ============================================================================
+
+pub const WtrState = enum { passed, failed, skipped };
+
+pub const WtrTest = struct {
+    file: []const u8,
+    /// The suite titles, joined by " > " (as Crane's Mocha reader names a
+    /// test's module).
+    module: []const u8,
+    name: []const u8,
+    /// Mocha's full title: the suite titles and the test's, joined by spaces.
+    id: []const u8,
+    state: WtrState,
+};
+
+fn isWord(s: []const u8) bool {
+    if (s.len == 0) return false;
+    for (s) |c| if (!std.ascii.isAlphabetic(c)) return false;
+    return true;
+}
+
+pub fn parseWtrTree(arena: Allocator, raw: []const u8) error{ BadReport, OutOfMemory }![]const WtrTest {
+    const text = try stripAnsi(arena, raw);
+    var out: std.ArrayList(WtrTest) = .empty;
+    var file: ?[]const u8 = null;
+    var suites: std.ArrayList([]const u8) = .empty;
+    var suite_indent: usize = 0;
+    var in_logs = false;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line_raw| {
+        const line = std.mem.trimEnd(u8, line_raw, " \r\t");
+        if (line.len == 0) continue;
+        // A test file's section.
+        if (line[0] != ' ' and std.mem.endsWith(u8, line, ".js:") and std.mem.indexOfScalar(u8, line, ' ') == null) {
+            file = line[0 .. line.len - 1];
+            suites.clearRetainingCapacity();
+            in_logs = false;
+            continue;
+        }
+        if (file == null) continue;
+        const indent = line.len - std.mem.trimStart(u8, line, " ").len;
+        const body = line[indent..];
+        // "🚧 Browser logs:", "🚧 404 network requests:": the page's own
+        // output, up to the next suite or file.
+        if (std.mem.startsWith(u8, body, "\u{1F6A7}")) {
+            in_logs = true;
+            continue;
+        }
+        // A suite: "<title> [Browser]", at most one level below the last.
+        if (indent >= 1 and indent <= suites.items.len + 1 and std.mem.endsWith(u8, body, "]")) {
+            if (std.mem.lastIndexOf(u8, body, " [")) |b| if (b > 0 and isWord(body[b + 2 .. body.len - 1])) {
+                const depth = indent;
+                suites.shrinkRetainingCapacity(depth - 1);
+                try suites.append(arena, body[0..b]);
+                suite_indent = indent;
+                in_logs = false;
+                continue;
+            };
+        }
+        if (in_logs or suites.items.len == 0 or indent != suite_indent + 2) continue;
+        // A test: its mark, a space, its title.
+        const sp = std.mem.indexOfScalar(u8, body, ' ') orelse continue;
+        const mark = body[0..sp];
+        const name = body[sp + 1 ..];
+        if (name.len == 0) continue;
+        const state: WtrState = if (std.mem.eql(u8, mark, "\u{2713}")) .passed else if (std.mem.eql(u8, mark, "-")) .skipped else if (mark.len <= 4 and !std.ascii.isAlphanumeric(mark[0])) .failed else continue;
+        const module = try std.mem.join(arena, " > ", suites.items);
+        const titles = try std.mem.join(arena, " ", suites.items);
+        try out.append(arena, .{ .file = file.?, .module = module, .name = name, .id = try std.fmt.allocPrint(arena, "{s} {s}", .{ titles, name }), .state = state });
+    }
+    if (out.items.len == 0) return error.BadReport;
+    return out.items;
+}
+
+const wtr_tree =
+    "Running 3 test files...\n\n" ++
+    "\x1b[2K\x1b[1A\x1b[2K\x1b[Gtest/tests/attributes/hx-action.js:\n\n" ++
+    " hx-action attribute \x1b[2m[Chromium]\x1b[0m\x1b[0m\x1b[0m\n" ++
+    "   \x1b[32m\u{2713}\x1b[89m\x1b[0m\x1b[0m hx-action alone defaults to GET\n" ++
+    "   - hx-action skipped one\n\n" ++
+    " \u{1F6A7} Browser logs:\n" ++
+    "      Form submission prevented: SubmitEvent { isTrusted: true } Error\n" ++
+    "    - test-styles.css\n\n" ++
+    " \u{1F6A7} 404 network requests:\n" ++
+    "   - avatar/alice\n\n" ++
+    "test/tests/unit/__initializeTriggers.js:\n\n" ++
+    " __initializeTriggers unit tests [Chromium]\n" ++
+    "   \u{2713} every trigger polls at interval\n" ++
+    "  intersect modifiers [Chromium]\n" ++
+    "    \u{2713} passes threshold modifier to IntersectionObserver\n" ++
+    "    \u{274C} passes root modifier to IntersectionObserver\n\n" ++
+    "Chromium: |\u{2588}\u{2588}| 3/3 test files | 3 passed, 1 failed, 1 skipped\n";
+
+test "web-test-runner's report: each test under its file and suites, its mark, Mocha's full title; console logs ignored" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const t = try parseWtrTree(a, wtr_tree);
+    try testing.expectEqual(@as(usize, 5), t.len);
+    try testing.expectEqualStrings("test/tests/attributes/hx-action.js", t[0].file);
+    try testing.expectEqualStrings("hx-action attribute", t[0].module);
+    try testing.expectEqualStrings("hx-action attribute hx-action alone defaults to GET", t[0].id);
+    try testing.expectEqual(WtrState.passed, t[0].state);
+    try testing.expectEqual(WtrState.skipped, t[1].state);
+    // The log block's "- test-styles.css" is no test.
+    try testing.expectEqualStrings("__initializeTriggers unit tests", t[2].module);
+    try testing.expectEqualStrings("__initializeTriggers unit tests > intersect modifiers", t[3].module);
+    try testing.expectEqualStrings("__initializeTriggers unit tests intersect modifiers passes threshold modifier to IntersectionObserver", t[3].id);
+    try testing.expectEqual(WtrState.failed, t[4].state);
+    try testing.expectError(error.BadReport, parseWtrTree(a, "nothing here\n"));
+}
