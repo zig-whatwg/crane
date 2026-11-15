@@ -1566,8 +1566,10 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// - Returns null if index >= children.length
 ///
 /// This enables `window.frames[0]`, `window[0]`, etc. to access child browsing contexts.
+/// The getter is anonymous (specs/supplementary/WindowIndexedGetter.idl): no
+/// `window.item()` method exists, as in every browser.
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
-pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
+pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     // The document-tree child navigables of this's associated Document: none
     // once it has no navigable (see get_length).

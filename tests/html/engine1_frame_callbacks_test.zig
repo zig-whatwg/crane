@@ -10,9 +10,9 @@
 //!
 //! (window[i]'s document-tree fallback, the adapter's other frame path, is
 //! pinned by crane/e1-window-index-shadow-iframe.html and Codex row 81's
-//! fixture: Window.call_item answers first, and the fallback runs only for a
+//! fixture: Window.call_getter__1 answers first, and the fallback runs only for a
 //! child whose Window is not made yet - so the case is green once row 81's
-//! call_item walks the same list.)
+//! call_getter__1 walks the same list.)
 //!
 //! Each case runs on a thread of its own: a Browser's per-thread state.
 const std = @import("std");
