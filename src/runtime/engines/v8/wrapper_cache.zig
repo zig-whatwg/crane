@@ -226,18 +226,37 @@ comptime {
     std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
 }
 
-/// One block of a cache's pool of records: `chunk_bytes` at an address that
-/// is a multiple of it, so a record finds its cache with one mask
-/// (`Chunk.of`) and carries no back-pointer - every record of every wrapper
-/// would pay for it (the 88-byte entry kept one).
+/// One block of a cache's pool of records: `Chunk.bytes` at an address that
+/// is a multiple of it, so a record finds its chunk - and through it its
+/// cache - with one mask (`Chunk.of`) and carries no back-pointer: every
+/// record of every wrapper would pay for it (the 88-byte entry kept one).
+///
+/// A chunk keeps its own free records and a count of the ones in use, and
+/// the cache gives a chunk back to its allocator when its last record is
+/// freed (`WrapperCache.freeCell`): a pool that only grew kept, for its
+/// realm's life, the memory of the most wrappers the page ever held at once,
+/// where each 88-byte entry had gone back to the allocator as its wrapper
+/// died. The shape is the slab allocator's: blocks of equal objects, a list
+/// of the blocks that still have room, and an empty block returned
+/// (Bonwick, "The Slab Allocator", USENIX Summer 1994, section 3.2).
 const Chunk = extern struct {
     cache: *WrapperCache,
+    /// Every chunk of the cache (`WrapperCache.chunks`), newest first.
     next: ?*Chunk,
+    prev: ?*Chunk,
+    /// The cache's chunks that have a free record (`WrapperCache.partial`):
+    /// a chunk is on that list exactly while `free` is not null.
+    partial_next: ?*Chunk,
+    partial_prev: ?*Chunk,
+    /// This chunk's free records.
+    free: ?*Cell,
+    /// Its records in use.
+    live: usize,
     cells: [count]Cell,
 
     const bytes = 1024;
     const alignment: std.mem.Alignment = .fromByteUnits(bytes);
-    const count = (bytes - 2 * @sizeOf(usize)) / @sizeOf(Cell);
+    const count = (bytes - 7 * @sizeOf(usize)) / @sizeOf(Cell);
 
     fn of(cell: *const Cell) *Chunk {
         return @ptrFromInt(@intFromPtr(cell) & ~@as(usize, bytes - 1));
@@ -246,6 +265,7 @@ const Chunk = extern struct {
 
 comptime {
     std.debug.assert(@sizeOf(Chunk) <= Chunk.bytes);
+    std.debug.assert(Chunk.count >= 16);
 }
 
 /// A free record of the pool: every bit clear, the next free record where a
@@ -1236,12 +1256,21 @@ pub const WrapperCache = struct {
     realm_collected: bool = false,
 
     /// The pool the records are issued from (`allocCell`): its chunks, newest
-    /// first, and the records free to issue. A chunk is the cache's
-    /// allocator's and goes at the cache's end.
+    /// first, and those of them that have a free record. A chunk is the
+    /// cache's allocator's; it goes back when its last record is freed
+    /// (`freeCell`), and whatever is left at the cache's end.
     chunks: ?*Chunk = null,
-    free_cells: ?*Cell = null,
+    partial: ?*Chunk = null,
     /// How many chunks the pool holds.
     chunk_count: usize = 0,
+    /// Walks over `chunks` under way that free records (`finalizePending`,
+    /// `orphanPending`): while one runs no chunk is given back - the walk
+    /// stands on one - and the empty ones go when the last walk ends.
+    pool_walks: u32 = 0,
+    pool_release_owed: bool = false,
+    /// Tests of a wrap that runs out of memory: the next record comes from a
+    /// new chunk whatever the pool has free (`takeFreeRecordsForTest`).
+    pool_grows_for_test: bool = false,
 
     /// Records whose wrapper a collection took and whose finalizer has not
     /// run (`died` -> `finalizeCollected`): each is out of the map, flagged
@@ -1377,30 +1406,99 @@ pub const WrapperCache = struct {
         while (it.next()) |key_ptr| try visit(context, key_ptr.*);
     }
 
+    /// A new chunk for the pool, every record free, at the head of both
+    /// lists.
+    fn addChunk(self: *Self) error{OutOfMemory}!*Chunk {
+        const memory = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.bytes);
+        const chunk: *Chunk = @ptrCast(memory.ptr);
+        chunk.cache = self;
+        chunk.prev = null;
+        chunk.next = self.chunks;
+        if (self.chunks) |head| head.prev = chunk;
+        self.chunks = chunk;
+        self.chunk_count += 1;
+        chunk.live = 0;
+        chunk.free = null;
+        // Threaded last to first, so the pool issues a chunk's records in
+        // address order.
+        var index: usize = Chunk.count;
+        while (index > 0) {
+            index -= 1;
+            const free: *FreeCell = @ptrCast(&chunk.cells[index]);
+            free.* = .{ .wrapper = null, .next = chunk.free, .generation = 0, .fresh = 0, .bits = 0 };
+            chunk.free = &chunk.cells[index];
+        }
+        self.listPartial(chunk);
+        return chunk;
+    }
+
+    /// `chunk` has a free record again, or for the first time: it joins the
+    /// chunks records are issued from, at their head.
+    fn listPartial(self: *Self, chunk: *Chunk) void {
+        chunk.partial_prev = null;
+        chunk.partial_next = self.partial;
+        if (self.partial) |head| head.partial_prev = chunk;
+        self.partial = chunk;
+    }
+
+    /// `chunk` leaves the chunks records are issued from: its last free
+    /// record was issued, or it is about to be given back.
+    fn unlistPartial(self: *Self, chunk: *Chunk) void {
+        if (chunk.partial_prev) |prev| prev.partial_next = chunk.partial_next else self.partial = chunk.partial_next;
+        if (chunk.partial_next) |next| next.partial_prev = chunk.partial_prev;
+        chunk.partial_prev = null;
+        chunk.partial_next = null;
+    }
+
+    /// `chunk` has no record in use: it goes back to the allocator - unless
+    /// it is the only chunk with a free record, which stays, so that a
+    /// wrapper made and dropped where the pool is otherwise full does not
+    /// allocate a chunk each time; and not while a walk stands on the chunks
+    /// (`pool_walks`: the walk's end gives the empty ones back).
+    fn releaseIfSpare(self: *Self, chunk: *Chunk) void {
+        std.debug.assert(chunk.live == 0);
+        if (self.pool_walks != 0) {
+            self.pool_release_owed = true;
+            return;
+        }
+        if (self.partial == chunk and chunk.partial_next == null) return;
+        self.unlistPartial(chunk);
+        if (chunk.prev) |prev| prev.next = chunk.next else self.chunks = chunk.next;
+        if (chunk.next) |next| next.prev = chunk.prev;
+        self.chunk_count -= 1;
+        const memory: [*]align(Chunk.bytes) u8 = @ptrCast(@alignCast(chunk));
+        self.allocator.free(memory[0..Chunk.bytes]);
+    }
+
+    /// A walk over `chunks` that frees records begins (`pool_walks`).
+    fn beginPoolWalk(self: *Self) void {
+        self.pool_walks += 1;
+    }
+
+    /// The walk ends; the last one's end gives back the chunks the walks
+    /// emptied.
+    fn endPoolWalk(self: *Self) void {
+        std.debug.assert(self.pool_walks != 0);
+        self.pool_walks -= 1;
+        if (self.pool_walks != 0 or !self.pool_release_owed) return;
+        self.pool_release_owed = false;
+        var at = self.chunks;
+        while (at) |chunk| {
+            at = chunk.next;
+            if (chunk.live == 0) self.releaseIfSpare(chunk);
+        }
+    }
+
     /// A record of the pool, issued: every field but `wrapper` and the kind
     /// is the caller's to fill (`bits.in_use` and `bits.boxed` are set: a
     /// record is no anchored one until it is attached).
     fn allocCell(self: *Self, instance: *runtime.Instance, stamp: u32) error{OutOfMemory}!*Cell {
-        if (self.free_cells == null) {
-            const memory = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.bytes);
-            const chunk: *Chunk = @ptrCast(memory.ptr);
-            chunk.cache = self;
-            chunk.next = self.chunks;
-            self.chunks = chunk;
-            self.chunk_count += 1;
-            // Threaded last to first, so the pool issues a chunk's records in
-            // address order.
-            var index: usize = Chunk.count;
-            while (index > 0) {
-                index -= 1;
-                const free: *FreeCell = @ptrCast(&chunk.cells[index]);
-                free.* = .{ .wrapper = null, .next = self.free_cells, .generation = 0, .fresh = 0, .bits = 0 };
-                self.free_cells = &chunk.cells[index];
-            }
-        }
-        const cell = self.free_cells.?;
+        const chunk = if (self.pool_grows_for_test) try self.addChunk() else self.partial orelse try self.addChunk();
+        const cell = chunk.free.?;
         const free: *FreeCell = @ptrCast(cell);
-        self.free_cells = free.next;
+        chunk.free = free.next;
+        chunk.live += 1;
+        if (chunk.free == null) self.unlistPartial(chunk);
         cell.* = .{
             .wrapper = null,
             .instance = instance,
@@ -1415,7 +1513,9 @@ pub const WrapperCache = struct {
     /// map, not the agent's finalizer queue or holds, not its wrapper's
     /// anchor (the caller let go of a live record's wrapper first, `letGo`;
     /// a collected one's is gone). What it still owns goes with it: a boxed
-    /// record's emptied Global, the strong handle of one that was held.
+    /// record's emptied Global, the strong handle of one that was held. Its
+    /// chunk goes back to the allocator when this was its last record
+    /// (`releaseIfSpare`): `entry` is not read after this.
     fn freeCell(self: *Self, entry: *Cell) void {
         std.debug.assert(entry.bits.in_use and entry.cache() == self);
         std.debug.assert(!entry.bits.strong);
@@ -1423,9 +1523,14 @@ pub const WrapperCache = struct {
         // record's reference is empty by now (let go of, or collected).
         letGo(entry, .keep);
         if (entry.bits.collected) self.pending -= 1;
+        const chunk = Chunk.of(entry);
+        const was_full = chunk.free == null;
         const free: *FreeCell = @ptrCast(entry);
-        free.* = .{ .wrapper = null, .next = self.free_cells, .generation = 0, .fresh = 0, .bits = 0 };
-        self.free_cells = entry;
+        free.* = .{ .wrapper = null, .next = chunk.free, .generation = 0, .fresh = 0, .bits = 0 };
+        chunk.free = entry;
+        chunk.live -= 1;
+        if (was_full) self.listPartial(chunk);
+        if (chunk.live == 0) self.releaseIfSpare(chunk);
     }
 
     /// The pool's memory, at the cache's end: every record was freed.
@@ -1436,7 +1541,9 @@ pub const WrapperCache = struct {
             self.allocator.free(memory[0..Chunk.bytes]);
         }
         self.chunk_count = 0;
-        self.free_cells = null;
+        self.partial = null;
+        self.pool_walks = 0;
+        self.pool_release_owed = false;
     }
 
     /// Hold `entry`'s wrapper strongly: a record's v8::Global (a boxed
@@ -1560,20 +1667,17 @@ pub const WrapperCache = struct {
         return true;
     }
 
-    /// Tests of a wrap that runs out of memory: the pool's free records,
-    /// taken away - the next `set` asks the allocator for a chunk - and
-    /// given back.
-    pub fn takeFreeRecordsForTest(self: *Self) ?*Cell {
-        const taken = self.free_cells;
-        self.free_cells = null;
-        return taken;
+    /// Tests of a wrap that runs out of memory: the pool's free records are
+    /// set aside - the next `set` asks the allocator for a chunk - until
+    /// they are given back. What was in force before, for the give-back.
+    pub fn takeFreeRecordsForTest(self: *Self) bool {
+        const before = self.pool_grows_for_test;
+        self.pool_grows_for_test = true;
+        return before;
     }
 
-    pub fn giveFreeRecordsForTest(self: *Self, taken: ?*Cell) void {
-        var last: *FreeCell = @ptrCast(taken orelse return);
-        while (last.next) |next| last = @ptrCast(next);
-        last.next = self.free_cells;
-        self.free_cells = taken;
+    pub fn giveFreeRecordsForTest(self: *Self, taken: bool) void {
+        self.pool_grows_for_test = taken;
     }
 
     /// Tests whose wrappers are mock memory with no engine behind it:
@@ -1617,6 +1721,8 @@ pub const WrapperCache = struct {
     /// agent's queue, which is emptied of this cache's records before each
     /// one is finalized), so the walk repeats until none is left.
     fn finalizePending(self: *Self) void {
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
         while (self.pending != 0) {
             var progressed = false;
             var at = self.chunks;
@@ -1637,6 +1743,8 @@ pub const WrapperCache = struct {
     /// with the batch free.
     fn orphanPending(self: *Self) void {
         self.takePendingOffQueue();
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
         var at = self.chunks;
         while (at) |chunk| : (at = chunk.next) {
             for (&chunk.cells) |*entry| {
@@ -1851,6 +1959,11 @@ pub const WrapperCache = struct {
     /// type-specific deinit is called (the collector may never find a wrapper
     /// dead during shutdown).
     pub fn deinit(self: *Self) void {
+        // The pool gives no chunk back from here: the sweeps below free
+        // records while they walk the map that still names them, and
+        // `endStorage` frees every chunk at the end.
+        self.beginPoolWalk();
+
         // The nodes this realm queued for deferred teardown go first, while
         // the cache can still answer whether one was wrapped again. Its end
         // (context_manager.removeContextByKey) drained them already, unless it
@@ -2028,6 +2141,8 @@ pub const WrapperCache = struct {
     pub fn deinitWithoutCallbacks(self: *Self) void {
         // Mark as tearing down to prevent re-entrant access
         self.is_tearing_down = true;
+        // No chunk goes back before `endStorage` frees them all (`deinit`).
+        self.beginPoolWalk();
 
         // The realm's records no wrapper owns: each is disarmed and its host
         // data freed, exactly once, as at any realm end.
@@ -2279,6 +2394,11 @@ pub const WrapperCache = struct {
     /// Lets go of all cached wrappers, tears their instances down and
     /// clears the map. Useful for testing or explicit cache invalidation.
     pub fn clear(self: *Self) void {
+        // The sweep below frees records while it walks the map: the pool
+        // gives its empty chunks back when it is done.
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
+
         // Collected entries waiting for their finalizer run it now, and the
         // nodes they queued are torn down.
         self.finalizePending();
@@ -2438,9 +2558,23 @@ test "WrapperCache - the pool issues 32-byte records that find their cache, and 
     var at = cache.chunks;
     while (at) |chunk| : (at = chunk.next) chunks += 1;
     try testing.expectEqual(@as(usize, 3), chunks);
+    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
     for (cells) |cell| cache.freeCell(cell);
+    // The chunks nothing uses went back to the allocator; one stays.
+    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
+    try testing.expect(cache.chunks != null and cache.chunks.?.next == null and cache.partial == cache.chunks);
     // A freed record is issued again before the pool grows.
     const again = try cache.allocCell(@ptrCast(&slots[0]), 0);
     try testing.expectEqual(cells[cells.len - 1], again);
+    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
     cache.freeCell(again);
+
+    // A walk that frees records gives no chunk back until it ends.
+    for (&slots, &cells) |*slot, *cell| cell.* = try cache.allocCell(@ptrCast(slot), 0);
+    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
+    cache.beginPoolWalk();
+    for (cells) |cell| cache.freeCell(cell);
+    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
+    cache.endPoolWalk();
+    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
 }

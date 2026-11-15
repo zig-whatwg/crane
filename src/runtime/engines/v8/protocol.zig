@@ -1101,6 +1101,9 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
+/// - `wrapper_cache_pool_bytes`: the memory of the record pools of those
+///   caches, in use or not (a pool gives a chunk back when its last record is
+///   freed: wrapper_cache.zig `Chunk`);
 /// - `node_wrappers`: the current isolate's agent's node wrappers alive, each
 ///   in its node's own slot and holding one counted reference on the node
 ///   (node_wrappers.zig; never in a wrapper cache since the wrapper
