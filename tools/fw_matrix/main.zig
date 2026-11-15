@@ -37,6 +37,11 @@
 //!       naming the browser and the log: jquery-test-runner's console log
 //!       (one page, --page names it), or Bazel's web-test-runner lines (a
 //!       page per target, matched to the suite's pages by their targets)
+//!   fw_matrix import --reader=wtr-tree --suite=<id> --log=<file> --page=<id>
+//!                 --label=<l> --browser=<name> --browser-sha256=<hex>
+//!                 --runner=<text> --date=<YYYY-MM-DD> --out=<dir>
+//!       a project's own web-test-runner run (htmx's), per test from its
+//!       report, with the suite's exclusion list applied
 //!   fw_matrix import --reader=cypress --log=<dir> --label=<l> --browser=<name>
 //!                 --browser-sha256=<hex> --runner=<text> --out=<dir>
 //!       TodoMVC's own Cypress run in a browser: every results file in
@@ -226,6 +231,33 @@ pub fn main(init: std.process.Init) !void {
         try Io.Dir.cwd().createDirPath(io, out_dir);
         try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
         std.debug.print("fw_matrix: import: {d} Cypress results file(s) from {s} into {s}/journal.jsonl\n", .{ logs.items.len, dir_path, out_dir });
+    } else if (std.mem.eql(u8, cmd, "import") and std.mem.eql(u8, args.get("reader") orelse "", "wtr-tree")) {
+        // A project's own web-test-runner run, per test, the suite's
+        // exclusion list applied so the columns count the same tests.
+        const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
+        const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
+        const log_path = args.need("log");
+        const log = Io.Dir.cwd().readFileAlloc(io, log_path, arena, .limited(256 << 20)) catch |err| fail("{s}: {t}", .{ log_path, err });
+        const tests = readers.parseWtrTree(arena, log) catch fail("{s}: no web-test-runner report this reader knows", .{log_path});
+        const list_path = try std.fmt.allocPrint(arena, "{s}/{s}", .{ args.get("excluded-dir") orelse default_excluded, s.excluded });
+        const list = Io.Dir.cwd().readFileAlloc(io, list_path, arena, .limited(16 << 20)) catch |err| fail("{s}: {t}", .{ list_path, err });
+        var pf: exclusions.ParseFailure = .{};
+        const entries = exclusions.parse(arena, list, &pf) catch |err| fail("{s}:{d}: {t}", .{ list_path, pf.line, err });
+        const log_sha = fetch.sha256Hex(log);
+        const text = importWtrTree(arena, s, .{
+            .label = args.need("label"),
+            .browser = args.need("browser"),
+            .browser_sha256 = args.need("browser-sha256"),
+            .runner = args.need("runner"),
+            .log = log_path,
+            .log_sha256 = &log_sha,
+            .date = args.need("date"),
+            .page = args.need("page"),
+        }, tests, entries) catch |err| fail("import: {t}", .{err});
+        const out_dir = args.need("out");
+        try Io.Dir.cwd().createDirPath(io, out_dir);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(arena, "{s}/journal.jsonl", .{out_dir}), .data = text });
+        std.debug.print("fw_matrix: import: {d} test(s) of {s} from {s} into {s}/journal.jsonl\n", .{ tests.len, s.id, log_path, out_dir });
     } else if (std.mem.eql(u8, cmd, "import")) {
         const m = try loadManifest(gpa, arena, io, args.get("manifest") orelse default_manifest);
         const s = manifest.find(m, args.need("suite")) orelse fail("no suite {s} in the manifest", .{args.need("suite")});
@@ -239,7 +271,7 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, reader, "wtr-summary"))
             readers.parseWtrSummary(arena, log) catch fail("{s}: no Bazel web-test-runner lines this reader knows", .{log_path})
         else
-            fail("--reader={s}: jtr, wtr-summary or cypress", .{reader});
+            fail("--reader={s}: jtr, wtr-summary, wtr-tree or cypress", .{reader});
         const log_sha = fetch.sha256Hex(log);
         const text = importRecords(arena, s, .{
             .label = args.need("label"),
@@ -524,6 +556,106 @@ pub fn importRecords(arena: Allocator, s: manifest.Suite, o: ImportOptions, page
         });
     }
     return out.written();
+}
+
+/// A project's own web-test-runner run (readers.parseWtrTree) as journal
+/// lines for one page of `s`: every test a record - passed PASS, failed
+/// FAIL, skipped NOTRUN as the project's skip - except that a test the
+/// suite's exclusion list names is NOTRUN with that entry's kind, and a
+/// file the list names (a file Crane's page does not load) is left out,
+/// so the browser's column counts the tests Crane's does.
+pub fn importWtrTree(arena: Allocator, s: manifest.Suite, o: ImportOptions, tests: []const readers.WtrTest, entries: []const exclusions.Entry) ImportError![]const u8 {
+    if (!journal.isSha256(o.browser_sha256) or !journal.isSha256(o.log_sha256)) return error.BadSha256;
+    if (!journal.isDate(o.date)) return error.BadDate;
+    const page_id = o.page orelse return error.BadPage;
+    var out: Io.Writer.Allocating = .init(arena);
+    var ran: u32 = 0;
+    var failed: u32 = 0;
+    var records: u32 = 0;
+    for (tests) |t| {
+        const left_out = for (entries) |e| {
+            if (e.file and std.mem.eql(u8, e.id, t.file)) break true;
+        } else false;
+        if (left_out) continue;
+        const excluded: ?exclusions.Entry = for (entries) |e| {
+            if (!e.file and std.mem.eql(u8, e.id, t.id)) break e;
+        } else null;
+        const status: journal.Status = if (excluded != null or t.state == .skipped) .NOTRUN else if (t.state == .passed) .PASS else .FAIL;
+        if (status != .NOTRUN) ran += 1;
+        if (status == .FAIL) failed += 1;
+        records += 1;
+        try journal.writeTest(&out.writer, .{
+            .label = o.label,
+            .crane_commit = "none",
+            .console_sha256 = o.browser_sha256,
+            .framework = s.framework,
+            .version = s.version,
+            .suite = s.id,
+            .suite_kind = s.kind,
+            .source_sha256 = s.source.sha256,
+            .page = page_id,
+            .module = t.module,
+            .name = t.name,
+            .id = t.id,
+            .status = status,
+            .not_run = if (excluded) |e| e.kind.notRun() else if (t.state == .skipped) .project_skip else null,
+            .reason = if (excluded) |e| e.why else null,
+            .message = if (status == .FAIL) "failed in the runner's report" else null,
+            .browser = o.browser,
+        });
+    }
+    try journal.writePage(&out.writer, .{
+        .label = o.label,
+        .crane_commit = "none",
+        .console_sha256 = o.browser_sha256,
+        .framework = s.framework,
+        .version = s.version,
+        .suite = s.id,
+        .suite_kind = s.kind,
+        .source_sha256 = s.source.sha256,
+        .page = page_id,
+        .url = o.log,
+        .status = .OK,
+        .wall_ms = 0,
+        .reported_total = ran,
+        .reported_failed = failed,
+        .ran = ran,
+        .records = records,
+        .exit = "read from the runner's own report",
+        .browser = o.browser,
+        .imported = .{ .runner = o.runner, .log = o.log, .log_sha256 = o.log_sha256, .date = o.date },
+    });
+    return out.written();
+}
+
+test "import a web-test-runner run: per test, the suite's exclusions applied, its node-runner-only files left out" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const sha: [64]u8 = @splat('c');
+    const suite: manifest.Suite = .{ .id = "htmx-mocha", .framework = "htmx", .title = "htmx", .version = "4.0.1", .kind = .project, .repository = "https://github.com/bigskysoftware/htmx", .tag = "v4.0.1", .commit = "c", .licence = "BSD-0", .runner = "Mocha", .reader = .mocha, .source = .{ .url = "https://x", .sha256 = &sha }, .pages = &.{.{ .id = "test", .path = "test/test.html" }}, .excluded = "x.txt" };
+    const tests = [_]readers.WtrTest{
+        .{ .file = "test/tests/attributes/hx-action.js", .module = "hx-action attribute", .name = "defaults to GET", .id = "hx-action attribute defaults to GET", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-swap.js", .module = "hx-swap", .name = "scrolls the window", .id = "hx-swap scrolls the window", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-swap.js", .module = "hx-swap", .name = "a skipped one", .id = "hx-swap a skipped one", .state = .skipped },
+        .{ .file = "test/tests/attributes/hx-query.js", .module = "hx-query", .name = "only in its runner", .id = "hx-query only in its runner", .state = .passed },
+        .{ .file = "test/tests/attributes/hx-action.js", .module = "hx-action attribute", .name = "fails", .id = "hx-action attribute fails", .state = .failed },
+    };
+    const entries = [_]exclusions.Entry{
+        .{ .id = "test/tests/attributes/hx-query.js", .file = true, .kind = .node_runner_only, .why = "only its Node runner loads it", .line = 1 },
+        .{ .id = "hx-swap scrolls the window", .kind = .rendering, .why = "asserts window.scrollY", .line = 5 },
+    };
+    const o: ImportOptions = .{ .label = "chrome-htmx", .browser = "Chrome for Testing 157.0.8103.78", .browser_sha256 = &sha, .runner = "web-test-runner", .log = "tmp/wtr.log", .log_sha256 = &sha, .date = "2026-11-14", .page = "test" };
+    var failure: journal.Failure = .{};
+    const j = try journal.parseJournal(a, try importWtrTree(a, suite, o, &tests, &entries), &failure);
+    try std.testing.expectEqual(@as(usize, 4), j.tests.len);
+    try std.testing.expectEqual(journal.Status.PASS, j.tests[0].status);
+    try std.testing.expectEqual(journal.NotRun.rendering, j.tests[1].not_run.?);
+    try std.testing.expectEqual(journal.NotRun.project_skip, j.tests[2].not_run.?);
+    try std.testing.expectEqual(journal.Status.FAIL, j.tests[3].status);
+    try std.testing.expectEqual(@as(u32, 2), j.pages[0].ran);
+    try std.testing.expectEqualStrings("test", j.pages[0].page);
+    try std.testing.expectEqualStrings("web-test-runner", j.pages[0].imported.?.runner);
 }
 
 pub const CypressOptions = struct {

@@ -301,106 +301,18 @@ fn countsText(arena: Allocator, c: journal.Counts) ![]const u8 {
 }
 
 // ============================================================================
-// The axis: zoomed to where the rates are, broken between two clusters
+// The scale: one linear 0-100% axis (the user, 2026-11-14 8:15 PM ET)
 // ============================================================================
 
-pub const Segment = struct {
-    /// Its range, in percent.
-    lo: f64,
-    hi: f64,
-    /// Its tick step, in percent.
-    step: f64,
-    /// Where it sits in the plot, as fractions of its width.
-    x0: f64,
-    x1: f64,
-};
+/// The axis's ticks, in percent.
+const ticks = [_]u32{ 0, 25, 50, 75, 100 };
 
-pub const Axis = struct {
-    segs: [2]Segment,
-    n: usize,
-
-    /// The x of a rate as a fraction of the plot's width.
-    pub fn x(a: Axis, v: f64) f64 {
-        for (a.segs[0..a.n]) |s| if (v >= s.lo - 1e-9 and v <= s.hi + 1e-9) {
-            return s.x0 + (v - s.lo) / (s.hi - s.lo) * (s.x1 - s.x0);
-        };
-        // Outside every segment (never, for the values it was made from).
-        return if (v < a.segs[0].lo) a.segs[0].x0 else a.segs[a.n - 1].x1;
-    }
-
-    pub fn broken(a: Axis) bool {
-        return a.n == 2;
-    }
-};
-
-/// Two rates further apart than this split the axis.
-const cluster_gap = 15.0;
-/// The gap between two segments, as a fraction of the plot.
-const break_width = 0.07;
-const steps = [_]f64{ 0.2, 0.5, 1, 2, 5, 10, 20, 25 };
-
-/// `v` without the float noise of a multiplied step (385 * 0.2).
-fn clean(v: f64) f64 {
-    return @round(v * 1e6) / 1e6;
-}
-
-/// A cluster's range: whole percents around it, at least one percent wide,
-/// within 0-100, cut in at most five steps of 1-2-5.
-fn segmentFor(min: f64, max: f64) Segment {
-    var lo0 = @floor(min);
-    var hi0 = @max(@ceil(max), lo0 + 1);
-    if (hi0 > 100) {
-        lo0 -= hi0 - 100;
-        hi0 = 100;
-    }
-    for (steps) |st| {
-        const lo = clean(@floor(lo0 / st + 1e-9) * st);
-        const hi = @min(100.0, clean(@ceil(hi0 / st - 1e-9) * st));
-        if ((hi - lo) / st <= 5 + 1e-9) return .{ .lo = @max(0, lo), .hi = hi, .step = st, .x0 = 0, .x1 = 1 };
-    }
-    return .{ .lo = 0, .hi = 100, .step = 20, .x0 = 0, .x1 = 1 };
-}
-
-/// The axis for `values` (percentages): one segment around them, or two
-/// when they fall in two clusters more than `cluster_gap` points apart, each
-/// given room by the rates it holds (at least a quarter of the plot); 0-100
-/// when they fall in more than two.
-pub fn axisFor(arena: Allocator, values: []const f64) !Axis {
-    const whole: Axis = .{ .segs = .{ .{ .lo = 0, .hi = 100, .step = 20, .x0 = 0, .x1 = 1 }, undefined }, .n = 1 };
-    if (values.len == 0) return whole;
-    const v = try arena.dupe(f64, values);
-    std.mem.sort(f64, v, {}, std.sort.asc(f64));
-    var splits: usize = 0;
-    var cut: usize = 0;
-    for (v[1..], 1..) |x, i| if (x - v[i - 1] > cluster_gap) {
-        splits += 1;
-        cut = i;
-    };
-    if (splits == 0) return .{ .segs = .{ segmentFor(v[0], v[v.len - 1]), undefined }, .n = 1 };
-    if (splits > 1) return whole;
-    var a = segmentFor(v[0], v[cut - 1]);
-    var b = segmentFor(v[cut], v[v.len - 1]);
-    if (a.hi >= b.lo) return .{ .segs = .{ segmentFor(v[0], v[v.len - 1]), undefined }, .n = 1 };
-    // Room by the rates each holds (direction A: the crowded 99-100% gets
-    // the most), never under a quarter; every tick is labelled, so the two
-    // scales are read apart.
-    const na: f64 = @floatFromInt(cut);
-    const nb: f64 = @floatFromInt(v.len - cut);
-    const wa = @max(0.25, na / (na + nb));
-    const wb = @max(0.25, 1 - wa);
-    const room = 1 - break_width;
-    a.x0 = 0;
-    a.x1 = room * wa / (wa + wb);
-    b.x0 = a.x1 + break_width;
-    b.x1 = 1;
-    return .{ .segs = .{ a, b }, .n = 2 };
-}
-
-/// "99%", "99.2%".
-fn tickLabel(buf: []u8, v: f64) []const u8 {
-    const r = @round(v * 10) / 10;
-    if (@abs(r - @round(r)) < 1e-9) return std.fmt.bufPrint(buf, "{d}%", .{@as(i64, @intFromFloat(@round(r)))}) catch unreachable;
-    return std.fmt.bufPrint(buf, "{d:.1}%", .{r}) catch unreachable;
+/// The x of a rate on the chart's one linear scale, 0% at the left edge and
+/// 100% at the right, as a fraction of the plot's width (the user,
+/// 2026-11-14 8:15 PM ET: "Do not compress the 99th percentile. The
+/// horizontal is 0% - 100% linear.").
+fn xOf(rate_pct: f64) f64 {
+    return @min(1.0, @max(0.0, rate_pct / 100.0));
 }
 
 fn pctAttr(w: W, frac: f64) !void {
@@ -515,252 +427,193 @@ fn writeHead(w: W, arena: Allocator, rows: []const Row, o: Options, card_ref: []
     try html.text(w, card_ref);
     try w.writeAll("\">\n");
     try w.writeAll(style);
-    try w.writeAll("</head>\n<body>\n<main class=\"doc fw\" id=\"main\">\n");
+    try w.writeAll("</head>\n<body>\n<div class=\"frame\">\n<main class=\"doc fw\" id=\"main\">\n");
 }
 
 const style =
     \\<style>
-    \\.fw { --crane: #2a78d6; margin: 0 auto; }
-    \\@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fw { --crane: #3987e5; } }
-    \\:root[data-theme="dark"] .fw { --crane: #3987e5; }
-    \\.fw .subtitle { max-width: 52rem; }
     \\.fw .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    \\.fw .rates { margin: 0 0 2.6rem; }
-    \\.fw .rates .box-head { align-items: center; flex-wrap: wrap; row-gap: 0.4rem; }
-    \\.fw .rates h2.box-title { position: static; }
-    \\.fw .fw-key { display: flex; gap: 1.2rem; margin: 0; padding: 0; list-style: none; font: 500 0.84rem/1 var(--sans); color: var(--ink); }
-    \\.fw .fw-key li { display: flex; align-items: center; gap: 0.4rem; }
-    \\.fw .rows { padding: 0.5rem 1rem 0.2rem; }
-    \\.fw .dr { display: grid; grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr) 6.6rem 6.6rem; column-gap: 1.1rem; align-items: center; padding: 0.5rem 0; }
-    \\.fw .dr-head { padding: 0 0 0.1rem; font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); }
-    \\.fw .dr-head span { grid-column: 3; text-align: right; }
-    \\.fw .dr-head span + span { grid-column: 4; }
-    \\.fw .dr-name { min-width: 0; }
-    \\.fw .dr-title { display: block; font: 620 1.14rem/1.2 var(--serif); }
-    \\.fw .dr-title a { color: inherit; text-decoration: none; }
-    \\.fw .dr-sub { display: block; margin-top: 0.1rem; font: 400 0.78rem/1.3 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-    \\.fw .plot { display: block; width: 100%; height: 30px; overflow: visible; }
-    \\.fw .plot .grid { stroke: var(--rule); stroke-width: 1; }
-    \\.fw .plot .track { stroke: var(--rule-strong); stroke-width: 1; }
-    \\.fw .plot .link { stroke: color-mix(in srgb, var(--crane) 40%, transparent); stroke-width: 4; stroke-linecap: round; }
-    \\.fw .plot .crane { fill: var(--crane); stroke: var(--paper); stroke-width: 2; }
-    \\.fw .plot .chrome { fill: var(--paper); stroke: var(--ink-2); stroke-width: 2; }
-    \\.fw .plot .brk { stroke: var(--ink-2); stroke-width: 1.2; }
-    \\.fw .dr-v { text-align: right; font: 400 0.76rem/1.25 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-    \\.fw .dr-v b { display: block; font: 650 1.24rem/1.15 var(--sans); color: var(--ink); }
-    \\.fw .dr-v.g b { font-weight: 450; color: var(--ink-2); }
-    \\.fw .dr-v .vl { display: none; }
-    \\.fw .dr-v.none { font-size: 0.84rem; }
-    \\.fw .dr-wait { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.8rem; min-height: 30px; padding: 0.3rem 0.5rem; border-radius: 2px;
-    \\  background: repeating-linear-gradient(135deg, var(--unrun) 0 5px, transparent 5px 10px); }
-    \\.fw .mark-wait { padding: 0.32rem 0.5rem; border-radius: 2px; background: var(--block-wash); color: var(--block); font: 650 0.72rem/1 var(--sans); letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
-    \\.fw .why { padding: 0.05rem 0.3rem; border-radius: 2px; background: var(--paper); font: 400 0.86rem/1.35 var(--sans); color: var(--ink-2); }
-    \\.fw .axis { display: block; width: 100%; height: 22px; overflow: visible; font: 400 11px var(--sans); }
+    \\.fw .m-fail { background: var(--fail); }
+    \\.fw .key-fail { background: var(--fail); }
+    \\.fw .ratio-good { color: var(--pass); }
+    \\.fw .ratio-bad { color: var(--fail); }
+    \\.fw .fig-ref { margin: 0.55rem 0 0; font: 400 0.9rem/1.4 var(--sans); color: var(--ink-2); }
+    \\.fw .fig-ref b { color: var(--ink); font-weight: 600; }
+    \\.fw .fw-sec { margin: 0 0 3rem; }
+    \\.fw .lede { max-width: var(--measure); margin: 0 0 1rem; }
+    \\.fw .fw-key { display: flex; flex-wrap: wrap; gap: 0.3rem 1.1rem; margin: 0; padding: 0; list-style: none; color: var(--ink-2); font-size: 0.8rem; }
+    \\.fw .fw-key li { display: inline-flex; align-items: center; gap: 0.4rem; }
+    \\.fw .fr { display: grid; grid-template-columns: minmax(8rem, 10rem) minmax(0, 1fr) 5.4rem; column-gap: 1.25rem; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid var(--rule); }
+    \\.fw .fr-head { padding-top: 0.45rem; padding-bottom: 0.45rem; background: var(--paper-2); font: 600 0.74rem/1.3 var(--sans); color: var(--ink-2); }
+    \\.fw .fr-head span:last-child { grid-column: 3; text-align: right; }
+    \\.fw .fr-title { display: block; font: 600 1.05rem/1.2 var(--serif); }
+    \\.fw .fr-title a { color: inherit; text-decoration: none; }
+    \\.fw .fr-sub { display: block; margin-top: 0.1rem; font: 400 0.78rem/1.3 var(--sans); color: var(--ink-2); }
+    \\.fw .fr-bar { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr) 10.6rem; column-gap: 0.75rem; align-items: center; }
+    \\.fw .fr-bar + .fr-bar { margin-top: 0.35rem; }
+    \\.fw .fr-who { font: 600 0.74rem/1.2 var(--sans); color: var(--ink-2); }
+    \\.fw .fr .meter { margin: 0; height: 0.6rem; }
+    \\.fw .fr-rate { text-align: right; white-space: nowrap; font: 400 0.8rem/1.2 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+    \\.fw .fr-rate b { margin-right: 0.4rem; font: 650 1rem/1.2 var(--sans); color: var(--ink); }
+    \\.fw .fr-bar.g .fr-rate b { font-weight: 500; color: var(--ink-2); }
+    \\.fw .fr-diff { text-align: right; white-space: nowrap; font: 650 0.95rem/1.2 var(--sans); font-variant-numeric: tabular-nums; }
+    \\.fw .fr-diff small { display: block; margin-top: 0.1rem; font: 400 0.7rem/1.2 var(--sans); color: var(--ink-2); }
+    \\.fw .fr-diff.even { color: var(--ink-2); font-weight: 500; }
+    \\.fw .fr-wait { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.8rem; }
+    \\.fw .fr-wait .gate { text-transform: uppercase; }
+    \\.fw .fr-why { font: 400 0.86rem/1.4 var(--sans); color: var(--ink-2); }
+    \\.fw .fr-axis { padding-top: 0.35rem; padding-bottom: 0.55rem; border-bottom: 0; }
+    \\.fw .axis { display: block; width: 100%; height: 18px; overflow: visible; font: 400 11px var(--sans); }
     \\.fw .axis text { fill: var(--ink-2); font-variant-numeric: tabular-nums; }
-    \\.fw .axis .brk { stroke: var(--ink-2); stroke-width: 1.2; }
-    \\.fw .dr-axis { padding-top: 0.15rem; }
-    \\.fw .dr-axis .axis { grid-column: 2; }
-    \\.fw .axis-note { margin: 0.3rem 1rem 1rem; max-width: var(--measure); font: 400 0.8rem/1.45 var(--sans); color: var(--ink-2); }
-    \\.fw details.fold { margin: 0 0 1.2rem; padding-top: 1.1rem; border-top: 1px solid var(--rule); }
-    \\.fw details.fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem; list-style: none; cursor: pointer; }
+    \\.fw .box-key { padding: 0.55rem 1rem; border-bottom: 1px solid var(--rule); }
+    \\.fw .fw-apps .tally { justify-content: flex-end; }
+    \\.fw .fw-apps .tally b { min-width: 2.9rem; text-align: right; color: var(--ink); font-weight: 600; }
+    \\.fw .fw-apps td.g .tally b { color: var(--ink-2); font-weight: 500; }
+    \\.fw .fw-apps tbody th { font: 400 0.95rem/1.4 var(--serif); width: auto; }
+    \\.fw .fw-apps td.ratio-good, .fw .fw-apps td.ratio-bad { font-weight: 600; }
+    \\.fw .fw-apps td.even { color: var(--ink-2); }
+    \\.fw details.fold > summary { list-style: none; cursor: pointer; }
     \\.fw details.fold > summary::-webkit-details-marker { display: none; }
-    \\.fw details.fold > summary h2 { display: inline-flex; align-items: baseline; gap: 0.6rem; margin: 0; font-size: 1.32rem; }
-    \\.fw details.fold > summary h2::before { content: ""; flex: none; width: 0.42rem; height: 0.42rem; border-right: 1.4px solid var(--ink-2); border-bottom: 1.4px solid var(--ink-2); transform: translateY(-0.12em) rotate(-45deg); transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
-    \\.fw details.fold[open] > summary h2::before { transform: translateY(-0.2em) rotate(45deg); }
+    \\.fw details.fold > summary h2 { display: inline-flex; align-items: baseline; gap: 0.6rem; }
+    \\.fw details.fold > summary h2::after { content: ""; flex: none; width: 0.42rem; height: 0.42rem; border-right: 1.4px solid var(--ink-2); border-bottom: 1.4px solid var(--ink-2); transform: translateY(-0.15em) rotate(-45deg); transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+    \\.fw details.fold[open] > summary h2::after { transform: translateY(-0.25em) rotate(45deg); }
     \\.fw details.fold > summary:hover h2 { color: var(--link); }
-    \\.fw .fold-meta { margin-left: auto; font: 400 0.82rem/1.3 var(--sans); color: var(--ink-2); }
-    \\.fw .fold-body { padding: 0.9rem 0 0.6rem; }
-    \\.fw .fold-body > p, .fw .facts, .fw .method { max-width: var(--measure); }
-    \\.fw .allpass { margin: 0 0 1rem; font: 400 1rem/1.4 var(--sans); }
-    \\.fw .allpass b { font-weight: 650; font-variant-numeric: tabular-nums; }
-    \\.fw .apps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 3rem; }
-    \\.fw .app-list { margin: 0; padding: 0; list-style: none; }
-    \\.fw .app { display: grid; grid-template-columns: minmax(6rem, 11rem) minmax(0, 1fr) 3rem 3rem; column-gap: 0.75rem; align-items: center; min-height: 1.72rem; font: 400 0.84rem/1.25 var(--sans); font-variant-numeric: tabular-nums; }
-    \\.fw .app-head { min-height: 1.3rem; font: 600 0.7rem/1.2 var(--sans); color: var(--ink-2); }
-    \\.fw .app-head span:nth-child(3), .fw .app-head span:nth-child(4) { text-align: right; }
-    \\.fw .app-name { text-align: right; font: 400 0.92rem/1.2 var(--serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    \\.fw .app .plot { height: 18px; }
-    \\.fw .app .c { text-align: right; font-weight: 650; }
-    \\.fw .app .g { text-align: right; color: var(--ink-2); }
-    \\.fw .app .none { text-align: right; color: var(--ink-2); }
-    \\.fw .app-axis .axis { grid-column: 2; }
-    \\.fw .fine { margin: 1rem 0 0; max-width: var(--measure); font: 400 0.84rem/1.45 var(--sans); }
-    \\.fw .facts, .fw .method { padding-left: 1.2rem; }
+    \\.fw .fold-meta { display: block; margin: -0.3rem 0 0.4rem; font: 400 0.84rem/1.4 var(--sans); color: var(--ink-2); }
+    \\.fw .facts, .fw .method { max-width: var(--measure); padding-left: 1.2rem; }
     \\.fw .facts li, .fw .method li { margin: 0 0 0.6rem; }
-    \\.fw .note { margin-top: 0.4rem; }
+    \\@media (prefers-reduced-motion: reduce) { .fw details.fold > summary h2::after { transition: none; } }
     \\@media (max-width: 40rem) {
-    \\  .fw .rows { padding: 0.4rem 0.75rem 0.2rem; }
-    \\  .fw .dr { grid-template-columns: minmax(0, 1fr); row-gap: 0.2rem; padding: 0.6rem 0; }
-    \\  .fw .dr-head { display: none; }
-    \\  .fw .dr-name, .fw .dr .plot, .fw .dr-wait, .fw .dr-v { grid-column: 1 / -1; }
-    \\  .fw .dr-v { display: flex; align-items: baseline; gap: 0.45rem; text-align: left; }
-    \\  .fw .dr-v b { display: inline; min-width: 4.2rem; font-size: 1.05rem; }
-    \\  .fw .dr-v .vl { display: inline; min-width: 3.3rem; font-weight: 600; color: var(--ink-2); }
-    \\  .fw .dr-axis { display: block; }
-    \\  .fw .axis .minor { display: none; }
-    \\  .fw .apps { grid-template-columns: minmax(0, 1fr); }
-    \\  .fw .app { grid-template-columns: minmax(5.5rem, 7.5rem) minmax(0, 1fr) 2.8rem 2.8rem; column-gap: 0.5rem; }
-    \\  .fw .app-list + .app-list .app-head { display: none; }
-    \\  .fw .fold-meta { margin-left: 0; }
+    \\  .fw .fr { grid-template-columns: minmax(0, 1fr) auto; row-gap: 0.45rem; padding: 0.7rem 0.75rem; }
+    \\  .fw .fr-head { display: none; }
+    \\  .fw .fr > .fr-name { grid-column: 1; grid-row: 1; }
+    \\  .fw .fr > .fr-diff { grid-column: 2; grid-row: 1; }
+    \\  .fw .fr-bars, .fw .fr-wait { grid-column: 1 / -1; }
+    \\  .fw .fr-bar { grid-template-columns: 3.2rem minmax(0, 1fr) 4.6rem; }
+    \\  .fw .fw-apps .mini { display: flex; width: 3.5rem; }
+    \\  .fw .fw-apps tbody td.app-diff { text-align: right; }
+    \\  .fw .fr-rate .fr-n { display: none; }
+    \\  .fw .fr-axis > div:first-child, .fw .fr-axis > div:last-child { display: none; }
+    \\  .fw .fr-axis > .fr-bars { grid-column: 1 / -1; }
+    \\  .fw .axis .q { display: none; }
     \\}
     \\</style>
     \\
 ;
 
-const page_foot = "<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>).</p></footer>\n</main>\n</body>\n</html>\n";
+const page_foot = "<footer class=\"foot\"><p>Written as HTML by <code>tools/fw_matrix</code> from its journals (<code>crane-fw/1</code>); <code>site.js</code> sorts the tables.</p></footer>\n</main>\n";
 
-/// A circle at a percentage of the plot, with its native tooltip.
-fn dot(w: W, class: []const u8, frac: f64, cy: u32, r: u32, title: []const u8) !void {
-    try w.print("<circle class=\"{s}\" cx=\"", .{class});
-    try pctAttr(w, frac);
-    try w.print("\" cy=\"{d}\" r=\"{d}\"><title>", .{ cy, r });
+/// A pass rate as the progress page draws one: a meter, green for the tests
+/// that passed and red for those that failed, its length the share of the
+/// tests run on one linear 0-100% scale (`xOf`).
+fn meter(w: W, class: []const u8, c: journal.Counts, title: []const u8) !void {
+    const ran = c.ran();
+    const pass_pct = if (ran == 0) 0 else @as(f64, @floatFromInt(c.pass)) * 100.0 / @as(f64, @floatFromInt(ran));
+    try w.print("<span class=\"{s}\" title=\"", .{class});
     try html.text(w, title);
-    try w.writeAll("</title></circle>");
+    try w.writeAll("\"><span class=\"m-clean\" style=\"width:");
+    try pctAttr(w, xOf(pass_pct));
+    try w.writeAll("\"></span><span class=\"m-fail\" style=\"width:");
+    try pctAttr(w, if (ran == 0) 0 else 1 - xOf(pass_pct));
+    try w.writeAll("\"></span></span>");
 }
 
-/// The tracks and gridlines of one row's plot on `axis` (height `h`).
-fn plotFrame(w: W, axis: Axis, h: u32) !void {
-    for (axis.segs[0..axis.n]) |s| {
-        var v = s.lo;
-        while (v <= s.hi + 1e-9) : (v += s.step) {
-            try w.writeAll("<line class=\"grid\" x1=\"");
-            try pctAttr(w, axis.x(v));
-            try w.writeAll("\" x2=\"");
-            try pctAttr(w, axis.x(v));
-            try w.print("\" y1=\"3\" y2=\"{d}\"/>", .{h - 3});
-        }
-        try w.writeAll("<line class=\"track\" x1=\"");
-        try pctAttr(w, s.x0);
-        try w.writeAll("\" x2=\"");
-        try pctAttr(w, s.x1);
-        try w.print("\" y1=\"{d}\" y2=\"{d}\"/>", .{ h / 2, h / 2 });
-    }
+/// Crane's pass rate less Chrome's, in points of a percent, coloured as the
+/// performance page colours its ratios (green where Crane is ahead, red
+/// where it is behind); "even" within a twentieth of a point.
+fn diffCell(w: W, crane: ?journal.Counts, chrome: ?journal.Counts, tag: []const u8, decimals: bool) !void {
+    const base = if (decimals) "fr-diff" else "n app-diff";
+    const cv = if (crane) |c| pct(c) else null;
+    const gv = if (chrome) |c| pct(c) else null;
+    if (cv == null or gv == null) return w.print("<{s} class=\"{s} even\">&mdash;</{s}>", .{ tag, base, tag });
+    const d = cv.? - gv.?;
+    const shown = if (decimals) @round(d * 10) / 10 else @round(d);
+    if (shown == 0) return w.print("<{s} class=\"{s} even\" data-v=\"0\">even</{s}>", .{ tag, base, tag });
+    const sign = if (shown > 0) "+" else "&minus;";
+    try w.print("<{s} class=\"{s} {s}\" data-v=\"{d:.2}\">{s}", .{ tag, base, if (shown > 0) "ratio-good" else "ratio-bad", d, sign });
+    if (decimals) try w.print("{d:.1}", .{@abs(shown)}) else try w.print("{d}", .{@as(i64, @intFromFloat(@abs(shown)))});
+    try w.print("</{s}>", .{tag});
 }
 
-/// Two short slants where the axis breaks, centred on `y`.
-fn breakMark(w: W, axis: Axis, y: u32) !void {
-    if (!axis.broken()) return;
-    const mid = (axis.segs[0].x1 + axis.segs[1].x0) / 2;
-    try w.writeAll("<svg x=\"");
-    try pctAttr(w, mid);
-    try w.print("\" y=\"{d}\" overflow=\"visible\"><line class=\"brk\" x1=\"-6\" y1=\"5\" x2=\"-1\" y2=\"-5\"/><line class=\"brk\" x1=\"1\" y1=\"5\" x2=\"6\" y2=\"-5\"/></svg>", .{y});
-}
-
-fn writeChart(arena: Allocator, w: W, rows: []const Row) !void {
-    var values: std.ArrayList(f64) = .empty;
-    for (rows) |r| {
-        if (r.crane) |c| if (pct(c)) |v| try values.append(arena, v);
-        if (r.chrome) |c| if (pct(c)) |v| try values.append(arena, v);
-    }
-    const axis = try axisFor(arena, values.items);
-    try w.writeAll("<section class=\"box rates\" id=\"rates\" aria-labelledby=\"rates-h\">\n<div class=\"box-head\"><h2 class=\"box-title\" id=\"rates-h\">Pass rate: Crane beside Chrome</h2>\n");
-    try w.writeAll("<ul class=\"fw-key\"><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"var(--crane)\"/></svg>Crane</li><li><svg width=\"14\" height=\"14\" aria-hidden=\"true\"><circle cx=\"7\" cy=\"7\" r=\"5.5\" fill=\"var(--paper)\" stroke=\"var(--ink-2)\" stroke-width=\"2\"/></svg>Chrome</li></ul></div>\n");
-    try w.writeAll("<div class=\"rows\" role=\"list\">\n<div class=\"dr dr-head\" aria-hidden=\"true\"><span>Crane</span><span>Chrome</span></div>\n");
+fn writeRates(arena: Allocator, w: W, rows: []const Row) !void {
+    try w.writeAll("<section class=\"fw-sec\" id=\"rates\" aria-labelledby=\"rates-h\">\n<h2 id=\"rates-h\"><span class=\"secno\">1</span>Pass rate per framework<a class=\"self\" href=\"#rates\" aria-label=\"Link to section 1\">&para;</a></h2>\n");
+    try w.writeAll("<p class=\"lede\">Each framework&#39;s own browser tests in Crane, and the same tests in Chrome by the project&#39;s own runner; TodoMVC&#39;s apps are one row. Every bar is drawn on the same scale, from 0% to 100% of the tests run.</p>\n");
+    try w.writeAll("<div class=\"box\">\n<div class=\"box-head\"><h3 class=\"box-title\">Pass rate</h3><span class=\"box-sub\">tests passed of tests run</span></div>\n");
+    try w.writeAll("<div class=\"box-key\"><ul class=\"fw-key\"><li><span class=\"key key-pass\"></span>Passed</li><li><span class=\"key key-fail\"></span>Failed</li><li><span class=\"gate g-block\">CAN&#39;T RUN YET</span>Not run</li><li><span class=\"ratio-good\">+</span>/<span class=\"ratio-bad\">&minus;</span> Crane ahead of / behind Chrome, in points</li></ul></div>\n");
+    try w.writeAll("<div class=\"fr fr-head\" aria-hidden=\"true\"><span>Framework</span><span></span><span>Crane &minus; Chrome</span></div>\n");
     var buf: [16]u8 = undefined;
     for (rows) |r| {
-        try w.writeAll("<div class=\"dr\" role=\"listitem\" id=\"r-");
+        try w.writeAll("<div class=\"fr\" id=\"r-");
         try html.text(w, r.id);
-        try w.writeAll("\"><div class=\"dr-name\"><span class=\"dr-title\">");
+        try w.writeAll("\"><div class=\"fr-name\"><span class=\"fr-title\">");
         if (std.mem.eql(u8, r.id, "todomvc")) try w.writeAll("<a href=\"#todomvc\">");
         try html.text(w, r.title);
         if (std.mem.eql(u8, r.id, "todomvc")) try w.writeAll("</a>");
-        try w.writeAll("</span><span class=\"dr-sub\">");
+        try w.writeAll("</span><span class=\"fr-sub\">");
         try html.text(w, r.sub);
         try w.writeAll("</span></div>");
         if (r.waits) |p| {
-            try w.print("<div class=\"dr-wait\"><span class=\"mark-wait\">can&#39;t run yet &middot; waits for {s}</span><span class=\"why\">its test runner drives the browser over {s}, which Crane does not support yet (after 0.1)</span></div></div>\n", .{ p.short(), p.short() });
+            try w.print("<div class=\"fr-wait\"><span class=\"gate g-block\">Can&#39;t run yet &middot; waits for {s}</span><span class=\"fr-why\">its test runner drives the browser over {s}, which Crane does not support yet (after 0.1)</span></div><div class=\"fr-diff even\">&mdash;</div></div>\n", .{ p.short(), p.short() });
             continue;
         }
-        // The plot: the line from Crane's rate to Chrome's, the ring, the dot.
-        try w.writeAll("<svg class=\"plot\" aria-hidden=\"true\">");
-        try plotFrame(w, axis, 30);
-        try breakMark(w, axis, 15);
-        const cv = if (r.crane) |c| pct(c) else null;
-        const gv = if (r.chrome) |c| pct(c) else null;
-        if (cv != null and gv != null) {
-            try w.writeAll("<line class=\"link\" x1=\"");
-            try pctAttr(w, axis.x(cv.?));
-            try w.writeAll("\" x2=\"");
-            try pctAttr(w, axis.x(gv.?));
-            try w.writeAll("\" y1=\"15\" y2=\"15\"/>");
-        }
-        if (gv) |v| try dot(w, "chrome", axis.x(v), 15, 6, try std.fmt.allocPrint(arena, "Chrome: {s} ({s})", .{ try countsText(arena, r.chrome.?), rateText(&buf, r.chrome.?.pass, r.chrome.?.ran()) }));
-        if (cv) |v| try dot(w, "crane", axis.x(v), 15, 7, try std.fmt.allocPrint(arena, "Crane: {s} ({s})", .{ try countsText(arena, r.crane.?), rateText(&buf, r.crane.?.pass, r.crane.?.ran()) }));
-        try w.writeAll("</svg>");
-        // The numbers, each with its name for a reader who does not see the heads.
+        try w.writeAll("<div class=\"fr-bars\">");
         for ([_]?journal.Counts{ r.crane, r.chrome }, 0..) |maybe, i| {
-            const cls = if (i == 0) "c" else "g";
             const name = if (i == 0) "Crane" else "Chrome";
+            try w.print("<div class=\"fr-bar{s}\"><span class=\"fr-who\">{s}</span>", .{ if (i == 0) "" else " g", name });
             if (maybe) |c| if (c.ran() > 0) {
-                try w.print("<div class=\"dr-v {s}\"><span class=\"vl\">{s}</span><span class=\"vh\">{s}: </span><b>", .{ cls, name, name });
+                const title = try std.fmt.allocPrint(arena, "{s}: {s} passed ({s})", .{ name, try countsText(arena, c), rateText(&buf, c.pass, c.ran()) });
+                try meter(w, "meter", c, title);
+                try w.writeAll("<span class=\"fr-rate\"><b>");
                 try rate(w, c.pass, c.ran());
-                try w.writeAll("</b><span>");
+                try w.writeAll("</b><span class=\"fr-n\">");
                 try html.num(w, c.pass);
                 try w.writeAll(" / ");
                 try html.num(w, c.ran());
-                try w.writeAll("</span></div>");
+                try w.writeAll("</span></span></div>");
                 continue;
             };
-            try w.print("<div class=\"dr-v {s} none\"><span class=\"vl\">{s}</span><span class=\"vh\">{s}: </span>{s}</div>", .{ cls, name, name, if (i == 0) "no run yet" else "no run" });
+            try w.print("<span class=\"meter\"></span><span class=\"fr-rate\">{s}</span></div>", .{if (i == 0) "no run yet" else "no run"});
         }
+        try w.writeAll("</div>");
+        try diffCell(w, r.crane, r.chrome, "div", true);
         try w.writeAll("</div>\n");
     }
-    // The axis under the lines: every tick, the breaks marked.
-    try w.writeAll("<div class=\"dr dr-axis\" aria-hidden=\"true\"><svg class=\"axis\">");
-    var tbuf: [16]u8 = undefined;
-    for (axis.segs[0..axis.n], 0..) |s, si| {
-        var v = s.lo;
-        var k: usize = 0;
-        while (v <= s.hi + 1e-9) : ({
-            v += s.step;
-            k += 1;
-        }) {
-            const first = k == 0;
-            const last = v + s.step > s.hi + 1e-9;
-            const anchor = if (first and (si == 0 or axis.broken())) "start" else if (last) "end" else "middle";
-            const minor = !first and !last;
-            // A narrow part labels its ends only; its other ticks stay lines.
-            if (minor and s.x1 - s.x0 < 0.4) continue;
-            try w.print("<text{s} x=\"", .{if (minor) " class=\"minor\"" else ""});
-            try pctAttr(w, axis.x(v));
-            try w.print("\" y=\"14\" text-anchor=\"{s}\">{s}</text>", .{ anchor, tickLabel(&tbuf, v) });
-        }
+    // The scale under the bars: 0, 25, 50, 75 and 100%.
+    try w.writeAll("<div class=\"fr fr-axis\" aria-hidden=\"true\"><div></div><div class=\"fr-bars\"><div class=\"fr-bar\"><span></span><svg class=\"axis\">");
+    for (ticks, 0..) |t, k| {
+        const anchor = if (k == 0) "start" else if (k + 1 == ticks.len) "end" else "middle";
+        // At phone width the quarter labels give way; the scale stays linear.
+        try w.writeAll(if (t == 25 or t == 75) "<text class=\"q\" x=\"" else "<text x=\"");
+        try pctAttr(w, xOf(@floatFromInt(t)));
+        try w.print("\" y=\"14\" text-anchor=\"{s}\">{d}%</text>", .{ anchor, t });
     }
-    try breakMark(w, axis, 9);
-    try w.writeAll("</svg></div>\n</div>\n");
-    // What the axis is, said once.
-    try w.writeAll("<p class=\"axis-note\">");
-    if (axis.broken()) {
-        try w.writeAll("The axis is zoomed to where the rates are, ");
-        for (axis.segs[0..2], 0..) |s, i| {
-            if (i > 0) try w.writeAll(" and ");
-            try w.print("{s}&ndash;", .{tickLabel(&tbuf, s.lo)});
-            try w.writeAll(tickLabel(&tbuf, s.hi));
-        }
-        try w.writeAll(", broken between them: no rate falls in the gap. ");
-    } else if (axis.segs[0].lo > 0 or axis.segs[0].hi < 100) {
-        try w.print("The axis is zoomed to where the rates are, {s}&ndash;", .{tickLabel(&tbuf, axis.segs[0].lo)});
-        try w.print("{s}. ", .{tickLabel(&tbuf, axis.segs[0].hi)});
-    }
-    try w.writeAll("Pass rate is the tests that passed of the tests run; dots, not bars, so no length is cut short.</p>\n</section>\n");
+    try w.writeAll("</svg><span></span></div></div><div></div></div>\n</div>\n</section>\n");
 }
 
-/// The TodoMVC apps by their pass rate in Crane, highest first (then Chrome's,
-/// then A to Z), in two columns.
+/// The TodoMVC apps as the progress page lists directories: a table site.js
+/// sorts, each app's rate in Crane and in Chrome with a mini meter, then the
+/// difference; highest in Crane first.
 fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns) !void {
     const App = struct { title: []const u8, crane: ?journal.Counts, chrome: ?journal.Counts, crane_all: bool, chrome_all: bool };
     var apps: std.ArrayList(App) = .empty;
     var crane_all: u32 = 0;
     var chrome_all: u32 = 0;
     var tests_each: ?u32 = null;
+    var crane_total: journal.Counts = .{};
+    var chrome_total: journal.Counts = .{};
+    var any_chrome = false;
     for (suites) |s| if (s.suite.kind == .todomvc_port) {
         const r = latest(s);
         const a: App = .{ .title = s.suite.title, .crane = if (r) |x| x.counts else null, .chrome = if (s.chrome) |x| x.counts else null, .crane_all = if (r) |x| allPass(x) else false, .chrome_all = if (s.chrome) |x| allPass(x) else false };
         crane_all += @intFromBool(a.crane_all);
         chrome_all += @intFromBool(a.chrome_all);
-        if (r) |x| if (x.tests.len > 0) {
-            tests_each = @intCast(x.tests.len);
-        };
+        if (r) |x| {
+            crane_total.merge(x.counts);
+            if (x.tests.len > 0) tests_each = @intCast(x.tests.len);
+        }
+        if (s.chrome) |x| {
+            chrome_total.merge(x.counts);
+            any_chrome = true;
+        }
         try apps.append(arena, a);
     };
     if (apps.items.len == 0) return;
@@ -780,56 +633,58 @@ fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Su
         }
     };
     std.mem.sort(App, apps.items, {}, key.lt);
+
+    try w.writeAll("<section class=\"fw-sec\" id=\"todomvc\" aria-labelledby=\"todomvc-h\">\n<h2 id=\"todomvc-h\"><span class=\"secno\">2</span>TodoMVC apps<a class=\"self\" href=\"#todomvc\" aria-label=\"Link to section 2\">&para;</a></h2>\n");
+    try w.writeAll("<div class=\"figures\"><p class=\"figures-main\"><span class=\"fg-pass\">");
+    try html.num(w, crane_total.pass);
+    try w.writeAll("</span><span class=\"fg-of\">/ ");
+    try html.num(w, crane_total.ran());
+    try w.writeAll("</span><span class=\"fg-label\">TodoMVC tests passing</span></p>\n<dl class=\"figures-counts\">");
+    try w.print("<div class=\"{s}\"><dt>Failed</dt><dd>", .{if (crane_total.fail > 0) "fail" else ""});
+    try html.num(w, crane_total.fail);
+    try w.print("</dd></div><div><dt>Apps passing every test</dt><dd>{d} of {d}</dd></div>", .{ crane_all, apps.items.len });
+    if (tests_each) |n| try w.print("<div><dt>Tests per app</dt><dd>{d}</dd></div>", .{n});
+    try w.writeAll("</dl>\n");
+    if (any_chrome) {
+        try w.writeAll("<p class=\"fig-ref\">Chrome <b>");
+        try html.num(w, chrome_total.pass);
+        try w.writeAll("</b> / ");
+        try html.num(w, chrome_total.ran());
+        try w.print(" passing, {d} of {d} apps passing every test: the same tests through the same port.</p>\n", .{ chrome_all, apps.items.len });
+    }
+    try w.writeAll("</div>\n<p class=\"lede\">The apps todomvc.com lists, each its framework&#39;s unmodified build, checked in both browsers by Crane&#39;s port of TodoMVC&#39;s own app spec.</p>\n");
+    try w.print("<div class=\"box\">\n<div class=\"box-head\"><h3 class=\"box-title\">Apps</h3><span class=\"box-sub\">{d} apps &middot; highest in Crane first</span></div>\n", .{apps.items.len});
+    try w.writeAll("<table class=\"listing listing-compare fw-apps\">\n<thead><tr><th scope=\"col\">App</th><th scope=\"col\" class=\"n\">Crane</th><th scope=\"col\" class=\"n\">Chrome</th><th scope=\"col\" class=\"n\">Crane &minus; Chrome</th></tr></thead>\n<tbody>\n");
+    var buf: [16]u8 = undefined;
+    for (apps.items) |a| {
+        try w.writeAll("<tr><th scope=\"row\">");
+        try html.text(w, a.title);
+        try w.writeAll("</th>");
+        for ([_]?journal.Counts{ a.crane, a.chrome }, 0..) |maybe, i| {
+            const name = if (i == 0) "Crane" else "Chrome";
+            const cls = if (i == 0) "n" else "n g";
+            if (maybe) |c| if (c.ran() > 0) {
+                try w.print("<td class=\"{s}\" data-v=\"{d}\" data-of=\"{d}\"><span class=\"tally\">", .{ cls, c.pass, c.ran() });
+                try meter(w, "mini", c, try std.fmt.allocPrint(arena, "{s}, {s}: {s} passed ({s})", .{ a.title, name, try countsText(arena, c), rateText(&buf, c.pass, c.ran()) }));
+                try w.print("<span class=\"vh\">{s}: </span><b>", .{name});
+                try appRate(w, c.pass, c.ran());
+                try w.writeAll("</b><span class=\"vh\"> (");
+                try html.text(w, try countsText(arena, c));
+                try w.writeAll(")</span></span></td>");
+                continue;
+            };
+            try w.print("<td class=\"{s}\"><span class=\"vh\">{s}: </span>&mdash;</td>", .{ cls, name });
+        }
+        try diffCell(w, a.crane, a.chrome, "td", false);
+        try w.writeAll("</tr>\n");
+    }
+    try w.writeAll("</tbody>\n</table>\n");
     var not_served: u32 = 0;
     if (m.todomvc) |t| for (t.apps) |app| {
         not_served += @intFromBool(app.not_served != null);
     };
-
-    try w.print("<details class=\"fold\" id=\"todomvc\" open>\n<summary><h2>TodoMVC: pass rate per app</h2><span class=\"fold-meta\">{d} apps", .{apps.items.len});
-    if (tests_each) |n| try w.print(" &middot; {d} tests each", .{n});
-    try w.writeAll(" &middot; the same port in both browsers &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
-    try w.print("<p class=\"allpass\"><b>{d}</b> of {d} apps pass every test in Crane, <b>{d}</b> in Chrome.</p>\n", .{ crane_all, apps.items.len, chrome_all });
-    try w.writeAll("<div class=\"apps\">\n");
-    const half = (apps.items.len + 1) / 2;
-    const zero_to_hundred: Axis = .{ .segs = .{ .{ .lo = 0, .hi = 100, .step = 50, .x0 = 0, .x1 = 1 }, undefined }, .n = 1 };
-    var buf: [16]u8 = undefined;
-    for ([_][]const App{ apps.items[0..half], apps.items[half..] }) |col| {
-        if (col.len == 0) continue;
-        try w.writeAll("<ul class=\"app-list\">\n<li class=\"app app-head\" aria-hidden=\"true\"><span></span><span></span><span>Crane</span><span>Chrome</span></li>\n");
-        for (col) |a| {
-            try w.writeAll("<li class=\"app\"><span class=\"app-name\">");
-            try html.text(w, a.title);
-            try w.writeAll("</span><svg class=\"plot\" aria-hidden=\"true\">");
-            try plotFrame(w, zero_to_hundred, 18);
-            const cv = if (a.crane) |c| pct(c) else null;
-            const gv = if (a.chrome) |c| pct(c) else null;
-            if (cv != null and gv != null and cv.? != gv.?) {
-                try w.writeAll("<line class=\"link\" x1=\"");
-                try pctAttr(w, cv.? / 100);
-                try w.writeAll("\" x2=\"");
-                try pctAttr(w, gv.? / 100);
-                try w.writeAll("\" y1=\"9\" y2=\"9\"/>");
-            }
-            if (gv) |v| try dot(w, "chrome", v / 100, 9, 5, try std.fmt.allocPrint(arena, "{s}, Chrome: {s} ({s})", .{ a.title, try countsText(arena, a.chrome.?), rateText(&buf, a.chrome.?.pass, a.chrome.?.ran()) }));
-            if (cv) |v| try dot(w, "crane", v / 100, 9, 6, try std.fmt.allocPrint(arena, "{s}, Crane: {s} ({s})", .{ a.title, try countsText(arena, a.crane.?), rateText(&buf, a.crane.?.pass, a.crane.?.ran()) }));
-            try w.writeAll("</svg>");
-            for ([_]?journal.Counts{ a.crane, a.chrome }, 0..) |maybe, i| {
-                const name = if (i == 0) "Crane" else "Chrome";
-                if (maybe) |c| if (c.ran() > 0) {
-                    try w.print("<span class=\"{s}\"><span class=\"vh\">{s}: </span>", .{ if (i == 0) "c" else "g", name });
-                    try appRate(w, c.pass, c.ran());
-                    try w.writeAll("</span>");
-                    continue;
-                };
-                try w.print("<span class=\"none\"><span class=\"vh\">{s}: </span>&mdash;</span>", .{name});
-            }
-            try w.writeAll("</li>\n");
-        }
-        try w.writeAll("<li class=\"app app-axis\" aria-hidden=\"true\"><span></span><svg class=\"axis\"><text x=\"0%\" y=\"14\" text-anchor=\"start\">0%</text><text x=\"50%\" y=\"14\" text-anchor=\"middle\">50%</text><text x=\"100%\" y=\"14\" text-anchor=\"end\">100%</text></svg></li>\n</ul>\n");
-    }
-    try w.writeAll("</div>\n");
     if (not_served > 0) {
-        try w.writeAll("<p class=\"fine quiet\">");
+        try w.writeAll("<p class=\"more-files\">");
         if (m.todomvc) |t| {
             var k: u32 = 0;
             for (t.apps) |app| if (app.not_served != null) {
@@ -841,7 +696,7 @@ fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Su
         try w.writeAll(if (not_served == 1) " is" else " are");
         try w.writeAll(" listed on todomvc.com but cannot be served: the site&#39;s own link answers 404 and the repository has no such app.</p>\n");
     }
-    try w.writeAll("</div>\n</details>\n");
+    try w.writeAll("</div>\n</section>\n");
 }
 
 /// A whole percent where the rate is one ("100%", "93%"), else one decimal;
@@ -921,7 +776,7 @@ fn writeNotRun(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
     const rendering = sumOver(suites, .project, countOf(.rendering));
     const skipped = sumOver(suites, .project, countOf(.project_skip));
     const app_skips = sumOver(suites, .todomvc_port, countOf(.project_skip));
-    try w.writeAll("<details class=\"fold\" id=\"not-run\">\n<summary><h2>What is not run, and why</h2><span class=\"fold-meta\">");
+    try w.writeAll("<details class=\"fold fw-sec\" id=\"not-run\">\n<summary><h2><span class=\"secno\">3</span>What is not run, and why</h2><span class=\"fold-meta\">");
     var parts: u32 = 0;
     for ([_]struct { u32, []const u8 }{ .{ rendering, "rendering" }, .{ skipped, "skipped by the projects" }, .{ app_skips, "skipped by TodoMVC&#39;s spec" } }) |p| if (p[0] > 0) {
         if (parts > 0) try w.writeAll(" &middot; ");
@@ -1104,7 +959,7 @@ fn suiteMethod(w: W, s: SuiteRuns) !void {
 
 /// "How this was measured": closed.
 fn writeMethod(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns) !void {
-    try w.writeAll("<details class=\"fold\" id=\"method\">\n<summary><h2>How this was measured</h2></summary>\n<div class=\"fold-body\">\n<ul class=\"method\">\n");
+    try w.writeAll("<details class=\"fold fw-sec\" id=\"method\">\n<summary><h2><span class=\"secno\">4</span>How this was measured</h2></summary>\n<div class=\"fold-body\">\n<ul class=\"method\">\n");
     try w.writeAll("<li>Each page is opened in Crane&#39;s console as a user opens it, and read from the test framework&#39;s own report; Chrome&#39;s numbers come from the same pages, or from the project&#39;s own runner where the project runs its tests that way. Pass rate is the tests that passed of the tests run: tests not run (below) are in neither number.</li>\n");
     var order: std.ArrayList(SuiteRuns) = .empty;
     for (suites) |s| if (s.suite.kind == .project) try order.append(arena, s);
@@ -1284,12 +1139,56 @@ fn writeCheck(arena: Allocator, w: W, suites: []const SuiteRuns) !void {
 
 pub fn writeIndex(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, rows: []const Row, o: Options, card_ref: []const u8) !void {
     try writeHead(w, arena, rows, o, card_ref);
-    try w.print("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Frameworks</span></h1>\n<p class=\"subtitle\">Do JavaScript frameworks work in Crane? Each framework&#39;s own browser tests, and the TodoMVC apps built with them, run in Crane and in Chrome. <a href=\"{s}\">WPT results</a> &middot; <a href=\"{s}performance/\">Performance</a></p>\n</header>\n", .{ o.assets, o.assets });
-    try writeChart(arena, w, rows);
+    // The headline, as the progress page opens: the frameworks' own tests
+    // passing in Crane, then their counts.
+    var own: journal.Counts = .{};
+    var own_chrome: journal.Counts = .{};
+    var running: u32 = 0;
+    var waiting: u32 = 0;
+    for (rows) |r| {
+        if (r.waits != null) {
+            waiting += 1;
+            continue;
+        }
+        if (std.mem.eql(u8, r.id, "todomvc")) continue;
+        running += 1;
+        if (r.crane) |c| own.merge(c);
+        if (r.chrome) |c| own_chrome.merge(c);
+    }
+    var apps: u32 = 0;
+    for (suites) |s| apps += @intFromBool(s.suite.kind == .todomvc_port);
+    try w.writeAll("<header class=\"head\">\n<h1>Crane <span class=\"h1-rest\">Frameworks</span></h1>\n<div class=\"headline\">\n<p class=\"headline-figure\">");
+    try html.num(w, own.pass);
+    try w.writeAll("<span class=\"hl-of\"> / ");
+    try html.num(w, own.ran());
+    try w.writeAll("</span></p>\n<p class=\"headline-label\">The frameworks&#39; own tests passing in Crane</p>\n<dl class=\"headline-counts\">");
+    try w.print("<div class=\"{s}\"><dt>Failed</dt><dd>", .{if (own.fail > 0) "fail" else ""});
+    try html.num(w, own.fail);
+    try w.print("</dd></div><div><dt>Frameworks run</dt><dd>{d}</dd></div><div class=\"{s}\"><dt>Waiting for CDP</dt><dd>{d}</dd></div><div><dt>TodoMVC apps</dt><dd>{d}</dd></div></dl>\n", .{ running, if (waiting > 0) "blk" else "", waiting, apps });
+    if (own_chrome.ran() > 0) {
+        try w.writeAll("<p class=\"fig-ref\">Chrome <b>");
+        try html.num(w, own_chrome.pass);
+        try w.writeAll("</b> / ");
+        try html.num(w, own_chrome.ran());
+        try w.writeAll(" passing, by each project&#39;s own runner.</p>\n");
+    }
+    try w.print("</div>\n<p class=\"subtitle\">Do JavaScript frameworks work in Crane? Each framework&#39;s own browser tests, and the TodoMVC apps built with them, run in Crane and in Chrome.</p>\n<dl class=\"head-meta\"><div><dt>More</dt><dd><a href=\"{s}\">WPT results</a> &middot; <a href=\"{s}performance/\">Performance</a></dd></div></dl>\n</header>\n", .{ o.assets, o.assets });
+    try writeRates(arena, w, rows);
     try writeTodoMvc(arena, w, m, suites);
     try writeNotRun(arena, w, m, suites, rows);
     try writeMethod(arena, w, m, suites);
     try w.writeAll(page_foot);
+    // The rail, as on the progress page: names and section numbers only.
+    try w.writeAll("<nav class=\"toc\" aria-labelledby=\"toc-title\">\n<p class=\"toc-title\" id=\"toc-title\">Contents</p>\n<ol class=\"toc-list\">\n<li class=\"toc-front\"><a href=\"#main\"><span class=\"secno\"></span><span class=\"toc-name\">Framework totals</span></a></li>\n<li><a href=\"#rates\"><span class=\"secno\">1</span><span class=\"toc-name\">Pass rate per framework</span></a></li>\n");
+    for (rows, 1..) |r, k| {
+        try w.writeAll("<li><a href=\"#r-");
+        try html.text(w, r.id);
+        try w.print("\"><span class=\"secno\">1.{d}</span><span class=\"toc-name\">", .{k});
+        try html.text(w, r.title);
+        try w.writeAll("</span></a></li>\n");
+    }
+    if (apps > 0) try w.print("<li><a href=\"#todomvc\"><span class=\"secno\">2</span><span class=\"toc-name\">TodoMVC apps</span><span class=\"toc-count\">{d}</span></a></li>\n", .{apps});
+    try w.print("<li><a href=\"#not-run\"><span class=\"secno\">3</span><span class=\"toc-name\">What is not run, and why</span></a></li>\n<li><a href=\"#method\"><span class=\"secno\">4</span><span class=\"toc-name\">How this was measured</span></a></li>\n<li class=\"toc-back\"><a href=\"{s}\"><span class=\"secno\"></span><span class=\"toc-name\">WPT results</span></a></li>\n<li><a href=\"{s}performance/\"><span class=\"secno\"></span><span class=\"toc-name\">Performance</span></a></li>\n</ol>\n</nav>\n</div>\n</body>\n</html>\n", .{ o.assets, o.assets });
 }
 
 // ============================================================================
@@ -1438,85 +1337,98 @@ test "the chart's rows: the frameworks Crane runs A to Z, TodoMVC's apps as one 
     try testing.expectEqual(manifest.Protocol.cdp, rows[4].waits.?);
 }
 
-test "the axis: zoomed to the clusters the rates fall in, broken between two, each labelled" {
-    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
-    defer arena_state.deinit();
-    const a = arena_state.allocator();
-    // The published page's: two clusters, 76-77% and 99-100%.
-    const ax = try axisFor(a, &.{ 99.78, 99.99, 99.89, 99.44, 99.74, 76.4, 76.7 });
-    try testing.expect(ax.broken());
-    try testing.expectEqual(@as(f64, 76), ax.segs[0].lo);
-    try testing.expectEqual(@as(f64, 77), ax.segs[0].hi);
-    try testing.expectEqual(@as(f64, 99), ax.segs[1].lo);
-    try testing.expectEqual(@as(f64, 100), ax.segs[1].hi);
-    try testing.expectEqual(@as(f64, 0.2), ax.segs[1].step);
-    // Room by the rates held: five in 99-100, two in 76-77; monotonic.
-    try testing.expect(ax.segs[1].x1 - ax.segs[1].x0 > 2 * (ax.segs[0].x1 - ax.segs[0].x0));
-    try testing.expect(ax.segs[0].x1 - ax.segs[0].x0 >= 0.25 * (1 - break_width) - 1e-9);
-    try testing.expect(ax.x(76.7) < ax.x(99.0) and ax.x(99.5) < ax.x(99.9));
-    try testing.expectApproxEqAbs(@as(f64, 1), ax.x(100), 1e-9);
-    // Crane and Chrome ten points apart stay one cluster: 65-80 by 5.
-    const near = try axisFor(a, &.{ 99.8, 99.9, 99.4, 99.7, 76.4, 66.9 });
-    try testing.expect(near.broken());
-    try testing.expectEqual(@as(f64, 65), near.segs[0].lo);
-    try testing.expectEqual(@as(f64, 80), near.segs[0].hi);
-    try testing.expect(near.segs[0].x1 - near.segs[0].x0 < near.segs[1].x1 - near.segs[1].x0);
-    // One cluster: one segment around it; all at 100%: 99-100.
-    const one = try axisFor(a, &.{ 99.4, 99.8 });
-    try testing.expect(!one.broken());
-    try testing.expectEqual(@as(f64, 99), one.segs[0].lo);
-    try testing.expectEqual(@as(f64, 99), (try axisFor(a, &.{ 100, 100 })).segs[0].lo);
-    // A wide cluster takes coarser steps: 62.3-79.9 is 60-80 by 5.
-    const wide = try axisFor(a, &.{ 62.3, 66, 70, 75, 79.9 });
-    try testing.expectEqual(@as(f64, 60), wide.segs[0].lo);
-    try testing.expectEqual(@as(f64, 5), wide.segs[0].step);
-    // Three clusters: the whole 0-100.
-    const three = try axisFor(a, &.{ 10, 50, 99 });
-    try testing.expectEqual(@as(f64, 0), three.segs[0].lo);
-    try testing.expectEqual(@as(f64, 100), three.segs[0].hi);
-    var buf: [16]u8 = undefined;
-    try testing.expectEqualStrings("99.2%", tickLabel(&buf, 99.2));
-    try testing.expectEqualStrings("100%", tickLabel(&buf, 100.0000001));
-}
-
-test "one page: the chart, TodoMVC open, what is not run and the method closed; no subpage, no failure name, every rate from the journals" {
+test "the chart's axis is one linear 0-100% scale: a rate's length is the rate, no break, no zoom (the user, 2026-11-14 8:15 PM ET)" {
+    // The scale itself.
+    try testing.expectEqual(@as(f64, 0), xOf(0));
+    try testing.expectEqual(@as(f64, 0.5), xOf(50));
+    try testing.expectEqual(@as(f64, 1), xOf(100));
+    try testing.expectApproxEqAbs(@as(f64, 0.997), xOf(99.7), 1e-12);
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
     const fx = try fixture(a);
     const out = try render(a, fx.m, fx.suites, .{});
     const h = out.index_html;
-    // The order of the page.
-    const chart = std.mem.indexOf(u8, h, "<section class=\"box rates\" id=\"rates\"").?;
-    const todo = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"todomvc\" open>").?;
-    const notrun = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"not-run\">").?;
-    const method = std.mem.indexOf(u8, h, "<details class=\"fold\" id=\"method\">").?;
-    try testing.expect(chart < todo and todo < notrun and notrun < method);
-    // Each chart row once, in order.
+    const chart = h[std.mem.indexOf(u8, h, "<section class=\"fw-sec\" id=\"rates\"").?..std.mem.indexOf(u8, h, "<section class=\"fw-sec\" id=\"todomvc\"").?];
+    // Each meter's green is its rate and its red the rest: Angular 997 /
+    // 1,000 and 1,099 / 1,100; htmx 1 / 2, half way; TodoMVC 4 / 9 and 5 / 9.
+    for ([_][]const u8{
+        "<span class=\"m-clean\" style=\"width:99.70%\"></span><span class=\"m-fail\" style=\"width:0.30%\"></span>",
+        "<span class=\"m-clean\" style=\"width:99.91%\"></span><span class=\"m-fail\" style=\"width:0.09%\"></span>",
+        "<span class=\"m-clean\" style=\"width:50.00%\"></span><span class=\"m-fail\" style=\"width:50.00%\"></span>",
+        "<span class=\"m-clean\" style=\"width:44.44%\"></span><span class=\"m-fail\" style=\"width:55.56%\"></span>",
+        "<span class=\"m-clean\" style=\"width:55.56%\"></span><span class=\"m-fail\" style=\"width:44.44%\"></span>",
+    }) |want| {
+        if (std.mem.indexOf(u8, chart, want) == null) {
+            std.debug.print("not in the chart: {s}\n", .{want});
+            return error.TestUnexpectedResult;
+        }
+    }
+    // The scale under the bars: 0, 25, 50, 75 and 100%, nothing else.
+    try testing.expect(std.mem.indexOf(u8, chart, "<text x=\"0.00%\" y=\"14\" text-anchor=\"start\">0%</text><text class=\"q\" x=\"25.00%\" y=\"14\" text-anchor=\"middle\">25%</text><text x=\"50.00%\" y=\"14\" text-anchor=\"middle\">50%</text><text class=\"q\" x=\"75.00%\" y=\"14\" text-anchor=\"middle\">75%</text><text x=\"100.00%\" y=\"14\" text-anchor=\"end\">100%</text>") != null);
+    try testing.expectEqual(@as(usize, 5), occurrences(chart, "<text "));
+    // No break, no zoom, and no note about either.
+    for ([_][]const u8{ "class=\"brk\"", "//", "zoomed", "axis-note", "broken" }) |gone| {
+        if (std.mem.indexOf(u8, chart, gone) != null) {
+            std.debug.print("in the chart: {s}\n", .{gone});
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+test "one page in the site's frame: headline, rates, TodoMVC, what is not run and the method closed, the rail; no subpage, no failure name, every rate from the journals" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const fx = try fixture(a);
+    const out = try render(a, fx.m, fx.suites, .{});
+    const h = out.index_html;
+    // The progress page's frame: the document, then the rail.
+    const doc = std.mem.indexOf(u8, h, "<div class=\"frame\">\n<main class=\"doc fw\" id=\"main\">").?;
+    const rail = std.mem.indexOf(u8, h, "<nav class=\"toc\" aria-labelledby=\"toc-title\">").?;
+    try testing.expect(doc < rail);
+    // The headline: the frameworks' own tests in Crane (997 + 1 + 995 of
+    // 1,000 + 2 + 1,000), failed in red, the waiting count in grey.
+    try testing.expect(std.mem.indexOf(u8, h, "<p class=\"headline-figure\">1,993<span class=\"hl-of\"> / 2,002</span></p>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fail\"><dt>Failed</dt><dd>9</dd></div><div><dt>Frameworks run</dt><dd>3</dd></div><div class=\"blk\"><dt>Waiting for CDP</dt><dd>3</dd></div><div><dt>TodoMVC apps</dt><dd>3</dd></div>") != null);
+    // The order of the page: numbered sections.
+    const rates = std.mem.indexOf(u8, h, "<section class=\"fw-sec\" id=\"rates\"").?;
+    const todo = std.mem.indexOf(u8, h, "<section class=\"fw-sec\" id=\"todomvc\"").?;
+    const notrun = std.mem.indexOf(u8, h, "<details class=\"fold fw-sec\" id=\"not-run\">").?;
+    const method = std.mem.indexOf(u8, h, "<details class=\"fold fw-sec\" id=\"method\">").?;
+    try testing.expect(rates < todo and todo < notrun and notrun < method and method < rail);
+    for ([_][]const u8{ "<span class=\"secno\">1</span>Pass rate per framework", "<span class=\"secno\">2</span>TodoMVC apps", "<span class=\"secno\">3</span>What is not run, and why", "<span class=\"secno\">4</span>How this was measured" }) |want| try testing.expect(std.mem.indexOf(u8, h, want) != null);
+    // Each row once, in order, and in the rail.
     var at: usize = 0;
     for ([_][]const u8{ "angular", "htmx", "jquery", "todomvc", "react", "svelte", "vue" }) |id| {
-        const needle = try std.fmt.allocPrint(a, "<div class=\"dr\" role=\"listitem\" id=\"r-{s}\">", .{id});
+        const needle = try std.fmt.allocPrint(a, "<div class=\"fr\" id=\"r-{s}\">", .{id});
         try testing.expectEqual(@as(usize, 1), occurrences(h, needle));
         const i = std.mem.indexOf(u8, h, needle).?;
         try testing.expect(i > at);
         at = i;
+        try testing.expect(std.mem.indexOf(u8, h[rail..], try std.fmt.allocPrint(a, "<a href=\"#r-{s}\">", .{id})) != null);
     }
-    // The rates and counts, from the journals: Angular 997 / 1,000.
-    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"dr-v c\"><span class=\"vl\">Crane</span><span class=\"vh\">Crane: </span><b>99.7%</b><span>997 / 1,000</span></div><div class=\"dr-v g\"><span class=\"vl\">Chrome</span><span class=\"vh\">Chrome: </span><b>99.9%</b><span>1,099 / 1,100</span></div>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<title>Crane: 997 / 1,000 (99.7%)</title>") != null);
-    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"vh\">Chrome: </span>no run</div>") != null);
-    // A framework that waits: hatched, its mark and its reason, once each.
-    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"mark-wait\">can&#39;t run yet &middot; waits for CDP</span>"));
-    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"why\">its test runner drives the browser over CDP, which Crane does not support yet (after 0.1)</span>"));
-    // TodoMVC: apps passing everything, highest first.
-    try testing.expect(std.mem.indexOf(u8, h, "<p class=\"allpass\"><b>1</b> of 3 apps pass every test in Crane, <b>1</b> in Chrome.</p>") != null);
-    const react_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">React</span>").?;
-    const gwt_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">GWT</span>").?;
-    const jq_i = std.mem.indexOf(u8, h, "<span class=\"app-name\">jQuery</span>").?;
+    // The rates and counts, from the journals: Angular 997 / 1,000 in a
+    // green-and-red meter, Chrome's beside it, the difference in red.
+    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fr-bar\"><span class=\"fr-who\">Crane</span><span class=\"meter\" title=\"Crane: 997 / 1,000 passed (99.7%)\"><span class=\"m-clean\" style=\"width:99.70%\"></span><span class=\"m-fail\" style=\"width:0.30%\"></span></span><span class=\"fr-rate\"><b>99.7%</b><span class=\"fr-n\">997 / 1,000</span></span></div>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<div class=\"fr-diff ratio-bad\" data-v=\"-0.21\">&minus;0.2</div>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"meter\"></span><span class=\"fr-rate\">no run</span>") != null);
+    // A framework that waits: the site's grey block mark and its reason.
+    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"gate g-block\">Can&#39;t run yet &middot; waits for CDP</span>"));
+    try testing.expectEqual(@as(usize, 3), occurrences(h, "<span class=\"fr-why\">its test runner drives the browser over CDP, which Crane does not support yet (after 0.1)</span>"));
+    // TodoMVC: its figures, then a sortable table with mini meters, highest
+    // in Crane first.
+    try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fg-pass\">4</span><span class=\"fg-of\">/ 9</span>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<div><dt>Apps passing every test</dt><dd>1 of 3</dd></div>") != null);
+    try testing.expect(std.mem.indexOf(u8, h, "<table class=\"listing listing-compare fw-apps\">") != null);
+    const react_i = std.mem.indexOf(u8, h, "<tr><th scope=\"row\">React</th>").?;
+    const gwt_i = std.mem.indexOf(u8, h, "<tr><th scope=\"row\">GWT</th>").?;
+    const jq_i = std.mem.indexOf(u8, h, "<tr><th scope=\"row\">jQuery</th>").?;
     try testing.expect(react_i < gwt_i and gwt_i < jq_i);
+    try testing.expect(std.mem.indexOf(u8, h, "<td class=\"n\" data-v=\"1\" data-of=\"3\"><span class=\"tally\"><span class=\"mini\"") != null);
     try testing.expect(std.mem.indexOf(u8, h, "soma.js is listed on todomvc.com but cannot be served") != null);
     // The axis note, once; the five-app folder decision, once.
-    try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"axis-note\""));
+    try testing.expectEqual(@as(usize, 0), occurrences(h, "class=\"axis-note\""));
     try testing.expect(std.mem.indexOf(u8, h, "1 app is given to both as the folder of the build todomvc.com links (<code>jquery/dist</code>)") != null);
     // What Mocha left unrun in Chrome, counted from Chrome's journal.
     // Chrome's column is the port in Chrome; TodoMVC's own Cypress run is
