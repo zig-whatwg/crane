@@ -1,18 +1,18 @@
 //! Lane quick2, on top of lane tl1's rule (src/html/user_input.zig Pointer.currentTarget): a pointer is over
 //! nothing of a document that is no longer fully active, and no event is made there. The pointer state lane
-//! quick2 added follows the same rule:
+//! quick2 added follows the same rule (user_input.zig inFullyActiveDocument). What a page could see before:
 //!
-//! - a touch contact whose document has gone is forgotten without events - no pointerup, no touchend, no tap -
-//!   and it is no active pointer of its tab any more, so the next touch is the primary one;
-//! - a pointer capture target (pending or set) of a document that has gone is no target: no gotpointercapture
-//!   or lostpointercapture is fired at it, and the pointer's events go to the element under it;
-//! - the element a touch's last tap left the legacy mouse on is forgotten with its document: the next tap
-//!   fires no mouseout or mouseleave there.
-//!
-//! In the first three tests script keeps the old button, so the old document's realm is detached and alive and
-//! a listener would hear an event. In the last one nothing is kept: the collector takes the realm, and an event
-//! made in it is never freed (tests/html/tl1_pointer_after_realm_collected_test.zig says why) - the Browser is
-//! made with std.testing.allocator, so that event fails the test as a leak.
+//! - a touch contact whose frame was removed stayed an active pointer of its tab after it lifted, so the next
+//!   touch anywhere in the tab was not the primary one - and a tap that is not primary makes no click;
+//! - a mouse captured by an element of a frame that then navigated stayed captured by it: every later event of
+//!   the mouse went to that element, where no listener runs (DOM "inner invoke" skips a listener whose global's
+//!   document is not fully active), and the page under the mouse got none;
+//! - a tap's mouseover named the element of a removed frame, where the last tap had left the legacy mouse, as
+//!   its relatedTarget.
+//! Those three tests failed before the fix (2827d2546bc). The fourth did not: it is a guard on the fix's own
+//! reads. There nothing of the frame is kept, the collector takes its realm, and the contact lifts while the
+//! realm's end is still a queued task - the road of tests/html/tl1_pointer_after_realm_collected_test.zig, where
+//! the Browser's std.testing.allocator names an event made in the collected realm that nobody freed.
 
 const std = @import("std");
 const testing = std.testing;
@@ -171,12 +171,16 @@ fn legacyMouseOfAGoneDocument() !void {
     try end(page, .frame_removed);
 
     // The next tap's mouse enters the page's button from nowhere.
+    try page.run("document.getElementById('outside').addEventListener('mouseover', (e) => { globalThis.from = e.relatedTarget; });");
     press(&point, opened.buttons.outside);
     lift(&point);
-    try page.run("if (heard.join() !== 'outside mouseover') throw new Error('heard: ' + heard.join());");
+    try page.run(
+        \\if (heard.join() !== 'outside mouseover') throw new Error('heard: ' + heard.join());
+        \\if (from !== null) throw new Error('the mouse came from ' + (from === kept ? 'the gone document\'s button' : from));
+    );
 }
 
-test "a tap after the last tapped element's document has gone fires no mouse boundary event there" {
+test "a tap after the last tapped element's document has gone moves the mouse in from nowhere" {
     try h.onFreshThread(legacyMouseOfAGoneDocument);
 }
 
