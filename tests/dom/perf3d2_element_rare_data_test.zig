@@ -106,7 +106,9 @@ test "Element's InternalState: the cold fields are rare data, the slot name its 
     // association became a one-byte place, -40; item 2 the slottable state
     // went to rare data (tests/dom/perf3e1_slottable_test.zig), -64.
     try expectNoFields(ElementState, .{ "references", "shadow_root", "shadow_root_kept", "custom_element_definition", "is_value", "named_node_map", "named_node_map_generation", "slot" });
-    if (comptime !@hasField(ElementState, "rare")) {
+    // The rare data's word is the element's NodeBase's since lane nm2
+    // (tests/dom/nm2_one_rare_block_test.zig); it was a field here.
+    if (comptime @FieldType(dom.NodeBase, "rare") != dom.element_rare_data.Holder) {
         printLayout(ElementState);
         return error.NoRareData;
     }

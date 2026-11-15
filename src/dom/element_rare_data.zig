@@ -1,5 +1,18 @@
-//! An element's rare data: the fields few elements ever set, in ONE sparse
-//! block per element (lane rare1 batch 1; node-memory plan v2, B7).
+//! A node's rare data: the fields few nodes ever set, in ONE sparse block per
+//! node (lane rare1 batch 1 for an element's fields; lane nm2 batch 2 for the
+//! node's own; node-memory plan v2, B7).
+//!
+//! The block is the NODE's since lane nm2: its one word is NodeBase's `rare`
+//! (this module's `Holder`), and the node-level fields - DOM 4.3's
+//! registered observer list, the node name brand, a Text's slottable state -
+//! are fields of it like any element field. A node kept two rare pointers
+//! before: NodeBase's, to a fixed 104-byte NodeRareData, and an element's
+//! own. Blink keeps one (`Node::data_`, whose sparse NodeRareData holds the
+//! mutation observer data and the element's fields alike), WebKit one
+//! (`m_rareDataWithBitfields`; ElementRareData extends NodeRareData). The
+//! module keeps its name until its users are renamed with it.
+//!
+//! An element's part of the story, as lane rare1 wrote it:
 //!
 //! Lane perf3 D2 moved these fields out of every element into one fixed
 //! struct made on first use (WebKit's ElementRareData shape): 312 bytes, a
@@ -159,6 +172,24 @@ pub const Field = enum(u5) {
     inline_style,
     /// SVGElement's className SVGAnimatedString.
     svg_class_name,
+
+    // The node's own fields (lane nm2: NodeBase's fixed NodeRareData became
+    // fields of this block). Any node may have them; an element's teardown
+    // part leaves them to its NodeBase's (`releaseElementFields`).
+    /// DOM 4.3: the node's registered observer list (Blink's
+    /// kMutationObserverData). The list's head is a block of its own: the
+    /// entries link to each other and the head is taken by address, so
+    /// neither may move when this block grows. Written only by NodeBase.
+    registered_observers,
+    /// NodeBase's node name brand (`NodeBase.nodeName`), on the few nodes
+    /// that have one. A block of its own. Written only by NodeBase.
+    node_name,
+};
+
+/// A node's name brand: borrowed bytes (a literal), or bytes the node owns.
+pub const NodeName = struct {
+    name: []const u8 = "",
+    allocated: bool = false,
 };
 
 /// What each field's slot holds.
@@ -173,6 +204,8 @@ pub fn Value(comptime field: Field) type {
         .is_value, .nonce => *Bytes,
         .references => *element_references.State,
         .slottable => *slot_helpers.SlottableState,
+        .registered_observers => *std.DoublyLinkedList,
+        .node_name => *NodeName,
     };
 }
 
@@ -458,7 +491,7 @@ pub fn ensureWith(
 /// freed by `destroy`.
 fn isOwnBlock(comptime field: Field) bool {
     return switch (field) {
-        .attr_nodes, .custom_element_registry, .references, .slottable => true,
+        .attr_nodes, .custom_element_registry, .references, .slottable, .registered_observers, .node_name => true,
         else => false,
     };
 }
@@ -625,28 +658,99 @@ fn keptClear(holder: *Holder, comptime kept: Kept) void {
 // Teardown
 // ============================================================================
 
-/// Free the block and what it still owns - its own blocks (the Attr node
-/// list's storage, the slottable state, the registry association, the
-/// element references) and the is value's and nonce's bytes - once each
-/// owner let go of what its fields refer to (the Attr nodes, the
+/// The node's own fields: what an element's teardown part leaves in the
+/// block (`releaseElementFields`) for its NodeBase's (`destroy`).
+fn isNodeField(comptime field: Field) bool {
+    return switch (field) {
+        .registered_observers, .node_name => true,
+        else => false,
+    };
+}
+
+/// The presence bits of every field that is not the node's own.
+const element_fields_mask: u32 = blk: {
+    var mask: u32 = 0;
+    for (@typeInfo(Field).@"enum".field_names) |name| {
+        const field = @field(Field, name);
+        if (!isNodeField(field)) mask |= bit(field);
+    }
+    break :blk mask;
+};
+
+/// Whether the block has a bit for any field but the node's own: whether an
+/// element's teardown part has anything to do (`releaseElementFields`).
+pub fn hasElementFields(holder: Holder) bool {
+    const b = holder.block orelse return false;
+    return b.present & element_fields_mask != 0;
+}
+
+/// Free what one field's slot still owns (a block of its own, bytes of its
+/// own) and clear the slot. A field whose value another owner frees (an
+/// object its wrapper owns, the definition, the generations) is only cleared.
+fn releaseField(ctx: Context, holder: *Holder, comptime field: Field) void {
+    const value = get(holder.*, field) orelse return;
+    switch (field) {
+        .attr_nodes, .references => {
+            value.deinit(ctx.allocator);
+            destroyOwn(ctx, field, value);
+        },
+        .slottable, .custom_element_registry => destroyOwn(ctx, field, value),
+        .is_value, .nonce => value.destroy(ctx.allocator),
+        .registered_observers => {
+            // The node's teardown released every entry first
+            // (dom.observer_registrations.releaseList).
+            std.debug.assert(value.first == null);
+            destroyOwn(ctx, field, value);
+        },
+        .node_name => {
+            if (value.allocated) ctx.allocator.free(value.name);
+            destroyOwn(ctx, field, value);
+        },
+        else => {},
+    }
+    clear(holder, field);
+}
+
+/// An element's teardown part (Element's `end`, at both of its exits), once
+/// each owner let go of what its fields refer to (the Attr nodes, the
 /// NamedNodeMap, the shadow root, the style object, the internals, the
-/// definition, the registry's edge).
+/// definition, the registry's edge): free what the element's fields still
+/// own - their own blocks (the Attr node list's storage, the slottable
+/// state, the registry association, the element references) and the is
+/// value's and nonce's bytes - and clear every one of them and the flags,
+/// so they read as never set. The block stays: it is the node's, with the
+/// node's own fields in it, and its NodeBase's teardown frees it
+/// (`destroy`; the destruction chain runs Element's part before Node's).
+pub fn releaseElementFields(ctx: Context, holder: *Holder) void {
+    const b = holder.block orelse return;
+    inline for (comptime @typeInfo(Field).@"enum".field_names) |name| {
+        const field = comptime @field(Field, name);
+        if (comptime !isNodeField(field)) releaseField(ctx, holder, field);
+    }
+    b.flags = .{};
+}
+
+/// The node's teardown (NodeBase.deinitRareData), after its registered
+/// observers were released: free the block and everything a field still
+/// owns - the node's own fields, and an element's too where no element part
+/// ran before it (a block used on its own).
 pub fn destroy(ctx: Context, holder: *Holder) void {
     const b = holder.block orelse return;
-    if (get(holder.*, .attr_nodes)) |list| {
-        list.deinit(ctx.allocator);
-        destroyOwn(ctx, .attr_nodes, list);
-    }
-    if (get(holder.*, .references)) |refs| {
-        refs.deinit(ctx.allocator);
-        destroyOwn(ctx, .references, refs);
-    }
-    if (get(holder.*, .slottable)) |state| destroyOwn(ctx, .slottable, state);
-    if (get(holder.*, .custom_element_registry)) |association| destroyOwn(ctx, .custom_element_registry, association);
-    if (get(holder.*, .is_value)) |bytes| bytes.destroy(ctx.allocator);
-    if (get(holder.*, .nonce)) |bytes| bytes.destroy(ctx.allocator);
+    inline for (comptime @typeInfo(Field).@"enum".field_names) |name| releaseField(ctx, holder, comptime @field(Field, name));
     holder.block = null;
     freeBlock(ctx, b);
+}
+
+/// What the node-level fields hold of their Browser's DOM memory in blocks
+/// of their own (the registered observer list's head, the node name's
+/// record) - dom.tree_teardown's sum for a dying tree. The sparse block
+/// itself is not in it: an element's fields share it, and that sum has
+/// never counted an element's rare block (it is a floor).
+pub fn nodeFieldsOwnBytes(holder: Holder) usize {
+    var bytes: usize = 0;
+    if (get(holder, .registered_observers) != null) bytes += @sizeOf(std.DoublyLinkedList);
+    if (get(holder, .node_name) != null) bytes += @sizeOf(NodeName);
+    return bytes;
 }
 
 // ============================================================================
@@ -654,7 +758,7 @@ pub fn destroy(ctx: Context, holder: *Holder) void {
 // ============================================================================
 
 /// What Element hands this module for one element: the address of its rare
-/// data's holder, in Element's InternalState, and of click()'s in-progress
+/// data's holder - its NodeBase's `rare` word (lane nm2) - and of click()'s in-progress
 /// flag (HTMLElement's: HTML click() steps 2-5), a bit of the element's byte
 /// in its NodeBase (dom.NodeBase.ElementBits; lane nm1) - both good for the
 /// element's life. The flag is the one bool that would make a block on its

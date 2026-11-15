@@ -84,8 +84,7 @@ const Pin = struct { name: []const u8, State: type, block: usize, generated: usi
 
 /// Whole block, and the generated part (less every level's InternalState):
 /// the root's live word (4, padded to 8) and the [SameObject] caches still in
-/// a State - Node's childNodes (NodeRareData is not a sparse block yet) and a
-/// DocumentFragment's children.
+/// a State - Node's childNodes and a DocumentFragment's children.
 const pins = [_]Pin{
     .{ .name = "HTMLDivElement", .State = interfaces.HTMLDivElement.State, .block = 136, .generated = 16 },
     .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 136, .generated = 16 },
@@ -98,8 +97,8 @@ const pins = [_]Pin{
 
 /// The parts every node's block is made of.
 const part_pins = .{
-    // The tree links 32, the node document 8 and its generation 8, the rare
-    // data 8, the wrapper slot 8, the owner 8, the two counts 8, and 8 bytes
+    // The tree links 32, the node document 8 and its generation 8, the one
+    // rare word 8, the wrapper slot 8, the owner 8, the two counts 8, and 8 bytes
     // of type and flags.
     .{ "NodeBase", dom.NodeBase, 88 },
     // The NodeBase, and nothing else.

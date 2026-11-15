@@ -17,6 +17,7 @@ const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 const custom_elements = @import("custom_elements.zig");
+const rare_data = @import("element_rare_data.zig");
 
 // Forward declarations at file scope
 const DocumentType = interfaces.Document;
@@ -145,9 +146,16 @@ pub const NodeBase = extern struct {
     /// (Node::tree_scope_, Node::m_treeScope), Gecko one (the NodeInfo's).
     document_word: usize = 0,
 
-    /// The fields few nodes use - the registered observer list, the node
-    /// name - or null while none has been needed (NodeRareData).
-    rare: ?*NodeRareData = null,
+    /// The node's ONE rare word (lane nm2): the fields few nodes use, in one
+    /// sparse block (dom.element_rare_data) - the node's own (the registered
+    /// observer list, the node name, a Text's slottable state) and, on an
+    /// element, Element's and HTMLElement's - or empty while none has been
+    /// needed. The block MOVES when it grows: read it by value, write it
+    /// through this field's address, never keep a pointer into it. It was a
+    /// pointer to a fixed 104-byte NodeRareData, beside a second rare word
+    /// in every element's state. Blink keeps one (Node::data_), WebKit one
+    /// (Node::m_rareDataWithBitfields).
+    rare: rare_data.Holder = .{},
 
     /// The node's one wrapper per agent, whatever realm asks for it (DOM
     /// identity: `===` across realms, a MutationObserver's addedNodes[0] the
@@ -475,25 +483,14 @@ pub const NodeBase = extern struct {
     const ownerless_tag: usize = 1;
 
     // ========================================================================
-    // Rare data (lane perf2 batch 4, R6 part 1)
+    // Rare data (lane perf2 batch 4, R6 part 1; one sparse block since lane nm2)
     // ========================================================================
 
-    /// The node's rare data, or null when none was ever needed.
-    pub fn rareData(self: *const NodeBase) ?*NodeRareData {
-        return self.rare;
-    }
-
-    /// The node's rare data, made on first use (WebKit `ensureRareData`) and
-    /// kept, never moved, until the node's teardown (`deinitRareData`).
-    /// Public for dom.slot_helpers' writers' path (a Text node's slottable
-    /// state, lane perf3 E1); every other field has its writer here.
-    pub fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
-        if (self.rare) |rare| return rare;
-        const rare = try self.allocator().create(NodeRareData);
-        rare.* = .{};
-        self.rare = rare;
-        if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
-        return rare;
+    /// The allocator the node's rare data comes from and the DOM memory it
+    /// is counted in: what dom.element_rare_data's writers take. Never
+    /// called on a node with no owner (`allocator`).
+    pub fn rareContext(self: *const NodeBase) rare_data.Context {
+        return .{ .allocator = self.allocator(), .memory = self.domMemory() };
     }
 
     /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
@@ -509,15 +506,14 @@ pub const NodeBase = extern struct {
     }
 
     /// The node's teardown, after its registered observers were released
-    /// (dom.observer_registrations.releaseList): frees an owned node name and
-    /// the block. Nothing may be registered on the node any more.
+    /// (dom.observer_registrations.releaseList): frees the rare block and
+    /// what its fields still own - the registered observer list's head, an
+    /// owned node name, a Text's slottable state (an element's own fields
+    /// went with Element's part of the teardown, before this). Nothing may
+    /// be registered on the node any more.
     pub fn deinitRareData(self: *NodeBase) void {
-        const rare = self.rare orelse return;
-        std.debug.assert(rare.registered_observers.first == null);
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        self.allocator().destroy(rare);
-        self.rare = null;
-        if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
+        if (self.rare.block == null) return;
+        rare_data.destroy(self.rareContext(), &self.rare);
     }
 
     /// The node name a node type gave its NodeBase, or "" - every node but
@@ -526,55 +522,55 @@ pub const NodeBase = extern struct {
     /// insertion, removing and post-connection steps dispatch on. Read only
     /// through here, so a tag of its own (Z4/R12) changes only this.
     pub fn nodeName(self: *const NodeBase) []const u8 {
-        const rare = self.rare orelse return "";
-        return rare.node_name;
+        const record = rare_data.get(self.rare, .node_name) orelse return "";
+        return record.name;
     }
 
     /// Whether the node owns its name (`setOwnedNodeName`).
     pub fn hasOwnedNodeName(self: *const NodeBase) bool {
-        const rare = self.rare orelse return false;
-        return rare.node_name_allocated;
+        const record = rare_data.get(self.rare, .node_name) orelse return false;
+        return record.allocated;
     }
 
     /// Name the node with `name`, which outlives it (a literal).
     pub fn setStaticNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
-        const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        rare.node_name = name;
-        rare.node_name_allocated = false;
+        const record = try rare_data.ensureOwn(self.rareContext(), &self.rare, .node_name);
+        if (record.allocated) self.allocator().free(record.name);
+        record.* = .{ .name = name, .allocated = false };
     }
 
     /// Name the node with `name`, allocated from the node's allocator: the
     /// node owns it from here and frees it with its rare data. On failure
     /// the caller still owns it.
     pub fn setOwnedNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
-        const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        rare.node_name = name;
-        rare.node_name_allocated = true;
+        const record = try rare_data.ensureOwn(self.rareContext(), &self.rare, .node_name);
+        if (record.allocated) self.allocator().free(record.name);
+        record.* = .{ .name = name, .allocated = true };
     }
 
     /// DOM 4.3: the node's registered observer list, in order - registration
     /// order, transient registered observers appended like any other.
     pub fn registeredObservers(self: *const NodeBase) RegisteredObserverIterator {
-        const rare = self.rare orelse return .{ .next_link = null };
-        return .{ .next_link = rare.registered_observers.first };
+        const list = rare_data.get(self.rare, .registered_observers) orelse return .{ .next_link = null };
+        return .{ .next_link = list.first };
     }
 
     /// Whether anything is registered on the node.
     pub fn hasRegisteredObservers(self: *const NodeBase) bool {
-        const rare = self.rare orelse return false;
-        return rare.registered_observers.first != null;
+        const list = rare_data.get(self.rare, .registered_observers) orelse return false;
+        return list.first != null;
     }
 
     /// Append `registered` to the node's registered observer list (observe()
     /// step 8, "remove" step 15): one record, allocated from the node's
-    /// allocator, that stays where it is until it is removed.
+    /// allocator, that stays where it is until it is removed. The list's
+    /// head is a block of its own that the rare block points at, made with
+    /// the node's first registration and kept until its teardown.
     pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
-        const rare = try self.ensureRareData();
+        const list = try rare_data.ensureOwn(self.rareContext(), &self.rare, .registered_observers);
         const record = try self.allocator().create(ObserverRegistration);
         record.* = .{ .registered = registered };
-        rare.registered_observers.append(&record.link);
+        list.append(&record.link);
         if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
         return &record.registered;
     }
@@ -582,9 +578,9 @@ pub const NodeBase = extern struct {
     /// Remove `registered` - one of this node's - from its registered
     /// observer list and free its record. Constant time.
     pub fn removeRegisteredObserver(self: *NodeBase, registered: *RegisteredObserverType) void {
-        const rare = self.rare.?;
+        const list = rare_data.get(self.rare, .registered_observers).?;
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
-        rare.registered_observers.remove(&record.link);
+        list.remove(&record.link);
         self.allocator().destroy(record);
         if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
@@ -902,31 +898,6 @@ pub const offset_in_state: usize = @offsetOf(interfaces.Node.State, "_embedded")
 pub inline fn ofState(state: *const anyopaque) *NodeBase {
     return @ptrFromInt(@intFromPtr(state) + offset_in_state);
 }
-
-/// The fields few nodes ever use, kept out of every NodeBase (WebKit
-/// NodeRareData, Blink NodeRareData, Gecko nsINode::nsSlots): allocated once,
-/// on first use, from the node's allocator, and never moved or reallocated -
-/// Blink 601c5205e1d5 fixed a corruption from rare data that reallocated
-/// while a caller held a pointer into it. Freed by the node's own teardown
-/// (NodeBase.deinitRareData).
-pub const NodeRareData = struct {
-    /// DOM 4.3: "Each node has a registered observer list (a list of zero or
-    /// more registered observers), which is initially empty." Intrusive:
-    /// one ObserverRegistration per entry, appended at the tail, removed in
-    /// constant time - the order is the list's.
-    registered_observers: std.DoublyLinkedList = .{},
-    /// NodeBase.nodeName's, and whether the node owns it.
-    node_name: []const u8 = "",
-    node_name_allocated: bool = false,
-    /// DOM 4.2.2.2: a Text node as a slottable - its assigned slot and its
-    /// manual slot assignment (an Element's are in its ElementRareData).
-    /// Written only through dom.slot_helpers.ensureSlottable, for a node a
-    /// slot assigns; readers of a node with no rare data read
-    /// dom.slot_helpers.unassigned (lane perf3 E1; Blink's FlatTreeNodeData,
-    /// kFlatTreeNodeData in NodeRareData; WebKit's m_manuallyAssignedSlot in
-    /// NodeRareData). Owns nothing.
-    slottable: @import("slot_helpers.zig").SlottableState = .{},
-};
 
 /// One entry of a node's registered observer list: its link and the
 /// registered observer (or transient registered observer). A separate
