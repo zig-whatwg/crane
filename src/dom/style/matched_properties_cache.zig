@@ -6,9 +6,10 @@
 //! MatchedPropertiesCache (core/css/resolver/matched_properties_cache.{h,cc};
 //! chromium b41b067a9d87) and WebKit's Style::MatchedDeclarationsCache
 //! (Source/WebCore/style/MatchedDeclarationsCache.{h,cpp}; WebKit
-//! d49abe63b03f): "The MPC thus allows us to skip step 4, but equally
-//! important, it allows us to reuse subgroups of ComputedStyle so that we
-//! use less RAM" (Blink StyleResolver).
+//! d49abe63b03f). Blink's StyleResolver (style_resolver.cc) names the two
+//! gains: a hit skips applying the matched declarations, and styles that
+//! come from the cache share their groups of computed values, which saves
+//! memory.
 //!
 //! A hit (lane style1 b2; design tmp/redesign/style-memory-design.md 3.2) is
 //! Blink's full hit: `find` answers an entry whose
