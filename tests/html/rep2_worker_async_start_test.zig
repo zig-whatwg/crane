@@ -41,6 +41,10 @@ const Server = struct {
     released: std.atomic.Value(bool) = .init(false),
     /// A script has been sent.
     answered: std.atomic.Value(bool) = .init(false),
+    /// Hold every script until the server stops: a server that never answers.
+    never: bool = false,
+    /// When the first request arrived (the platform's monotonic clock, ms).
+    first_request_ms: std.atomic.Value(i64) = .init(0),
 
     fn start() !*Server {
         const self = try testing.allocator.create(Server);
@@ -83,11 +87,12 @@ const Server = struct {
         var input: [8192]u8 = undefined;
         var reader = stream.reader(testing.io, &input);
         while (std.mem.indexOf(u8, reader.interface.buffered(), "\r\n\r\n") == null) try reader.interface.fillMore();
-        _ = self.requests.fetchAdd(1, .acq_rel);
+        if (self.requests.fetchAdd(1, .acq_rel) == 0) self.first_request_ms.store(clock.monotonicMillis(), .release);
         // Held until released - at most 5 s, so that a constructor that
-        // waits for the script (the bug) ends.
+        // waits for the script (the bug) ends - or, for a server that never
+        // answers, until the server stops.
         const deadline = clock.monotonicMillis() + 5000;
-        while (!self.released.load(.acquire) and !self.listener.isStopping() and clock.monotonicMillis() < deadline) clock.sleep(std.time.ns_per_ms);
+        while (!self.listener.isStopping() and (self.never or (!self.released.load(.acquire) and clock.monotonicMillis() < deadline))) clock.sleep(std.time.ns_per_ms);
         if (self.listener.isStopping()) return;
         var output: [0]u8 = .{};
         var writer = stream.writer(testing.io, &output);
@@ -103,7 +108,17 @@ const Page = struct {
     base: []u8,
 
     fn open() !Page {
+        return openWith(false);
+    }
+
+    /// A page whose server never answers a worker's script.
+    fn openNeverAnswering() !Page {
+        return openWith(true);
+    }
+
+    fn openWith(never: bool) !Page {
         const server = try Server.start();
+        server.never = never;
         errdefer server.stop();
         const base = try std.fmt.allocPrint(testing.allocator, "http://127.0.0.1:{d}/", .{server.listener.port()});
         errdefer testing.allocator.free(base);
@@ -272,4 +287,64 @@ fn realmEndsDuringFetch() !void {
 
 test "the end of a Worker's realm while its script is loading cancels the fetch and lets the Worker go" {
     try helpers.onFreshThread(realmEndsDuringFetch);
+}
+
+fn fetchedWhileOwnerRuns() !void {
+    var page = try Page.open();
+    defer page.close();
+    // The owner's script runs for 600 ms after new Worker(): the worker's
+    // script is requested meanwhile, in parallel - not by the owner's
+    // event loop once the script has returned.
+    try page.run(
+        \\new Worker('worker.js');
+        \\const end = Date.now() + 600;
+        \\while (Date.now() < end);
+    );
+    const returned_ms = clock.monotonicMillis();
+    const first = page.server.first_request_ms.load(.acquire);
+    try testing.expect(first != 0);
+    try testing.expect(returned_ms - first >= 200);
+}
+
+test "a worker's script is requested while its owner's script still runs: the worker fetches in parallel" {
+    try helpers.onFreshThread(fetchedWhileOwnerRuns);
+}
+
+fn neverAnsweringWorkersEndPromptly() !void {
+    var page = try Page.openNeverAnswering();
+    {
+        errdefer page.close();
+        try page.run(
+            \\globalThis.state = [];
+            \\globalThis.workers = [];
+            \\for (let i = 0; i < 4; i++) {
+            \\  const w = new Worker('worker.js?' + i);
+            \\  w.onmessage = () => state.push('message');
+            \\  w.onerror = () => state.push('error');
+            \\  workers.push(w);
+            \\}
+            \\setTimeout(() => state.push('timer'), 0);
+        );
+        try page.awaitRequests(4);
+        // The owner is never blocked while the workers' fetches wait: a page
+        // task runs.
+        try page.expectState("[\"timer\"]");
+        // One is terminated mid-fetch: nothing is fired at it.
+        try page.run("workers[0].terminate();");
+        for (0..10) |_| _ = try page.browser.runEventLoopBlocking(10);
+        try page.expectState("[\"timer\"]");
+    }
+    // The Browser ends with three fetches still waiting on a server that
+    // never answers: its end - every worker's thread joined - does not wait
+    // on the network.
+    const t0 = clock.monotonicMillis();
+    page.browser.deinit();
+    const ended_ms = clock.monotonicMillis() - t0;
+    page.server.stop();
+    testing.allocator.free(page.base);
+    try testing.expect(ended_ms < 1000);
+}
+
+test "a Browser whose workers' scripts never arrive ends in under a second, and its page runs tasks meanwhile" {
+    try helpers.onFreshThread(neverAnsweringWorkersEndPromptly);
 }
