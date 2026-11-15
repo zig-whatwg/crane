@@ -389,6 +389,10 @@ fn queueStorageEvent(window: *runtime.Instance, kind: WebStorageType, key: ?[]co
     // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md;
     // Window.zig queueDefinitelyClose is the same cure).
     if (timer.setTimeoutOwned(0, StorageTask.run, task, StorageTask.drop) != 0) return;
-    // A timer that cannot promise the drop: the plain one, as before.
-    if (timer.setTimeout(0, StorageTask.run, task) == 0) task.destroy();
+    // Not armed - the timer cannot promise the drop, or it failed: nothing
+    // holds the task, and the event is not queued. It was armed on the plain
+    // form here, which is the leak above again for such a timer (lane tl1:
+    // no heap data on a plain timer; Window.zig queueDefinitelyClose lost
+    // the same line; tests/html/tl1_storage_event_plain_timer_test.zig).
+    task.destroy();
 }

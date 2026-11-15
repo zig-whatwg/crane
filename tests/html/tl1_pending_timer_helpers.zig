@@ -119,6 +119,12 @@ pub const EndingTimer = struct {
         return .{ .ctx = self, .vtable = &vtable };
     }
 
+    /// The same timer as one that cannot promise a drop: it has no owned form (TimerVTable.setTimeoutOwned
+    /// is null, so TimerInterface.setTimeoutOwned answers 0), only the plain one.
+    pub fn plainOnly(self: *EndingTimer) runtime.TimerInterface {
+        return .{ .ctx = self, .vtable = &plain_only_vtable };
+    }
+
     /// How many timers are armed on it now.
     pub fn armed(self: *const EndingTimer) usize {
         var count: usize = 0;
@@ -194,6 +200,7 @@ pub const EndingTimer = struct {
     }
 
     const vtable: runtime.TimerVTable = .{ .setTimeout = plain, .setTimeoutOwned = owned, .clearTimeout = clear };
+    const plain_only_vtable: runtime.TimerVTable = .{ .setTimeout = plain, .clearTimeout = clear };
 };
 
 /// What every "the timer ends first" test checks once its page has armed `count` timers on `timer`: the
