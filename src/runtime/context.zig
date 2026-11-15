@@ -170,6 +170,13 @@ pub const ContextData = struct {
     /// Engine-specific opaque context (V8 Isolate, JSC VM, etc.)
     engine_ctx: ?*anyopaque,
 
+    /// The engine realm that was behind this context has gone - the
+    /// collector took it (a detached realm), or the realm ended: set by the
+    /// adapter where it clears `engine_ctx`, and never cleared. It tells
+    /// such a realm from a context made with no engine (a DOM unit test's):
+    /// `hasEngine` is false for both (`engineGone`).
+    engine_gone: bool = false,
+
     /// What ends a task in this realm beyond the microtask checkpoint, when
     /// its event loop does more - a worker's forwards what the worker posted
     /// and schedules its next dispatch. Set by the host that runs the realm;
@@ -514,6 +521,14 @@ pub const ContextData = struct {
     /// has retired.
     pub fn hasEngine(self: *const Self) bool {
         return self.engine_ctx != null;
+    }
+
+    /// Whether this context HAD an engine realm that is gone now - taken by
+    /// the collector, or ended. No wrapper is made for an object of such a
+    /// realm any more. False for a live realm, and for a context made with
+    /// no engine.
+    pub fn engineGone(self: *const Self) bool {
+        return self.engine_gone;
     }
 
     /// Get the JS engine context (opaque pointer to V8 Isolate, JSC VM, etc.)
