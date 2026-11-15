@@ -1211,7 +1211,10 @@ fn scopeActivations(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
 /// `index`: whether `match` matches with the root of some scope the
 /// subject is in as :scope, and the subject's proximity to the nearest
 /// such root (3.1 "Scope Proximity"). Null: it does not match.
-fn scopedProximity(res: *Resolution, matcher: *selector_matching.StyleMatcher, subject: ScopeRoot, contents: *const Contents, index: u32, context: anytype, comptime match: fn (@TypeOf(context), *selector_matching.StyleMatcher) bool) Error!?u16 {
+/// `noinline`: out of the rule loops, which every element runs, so that
+/// a sheet without @scope compiles them as before (lane quick2's cost
+/// window; StyleMatcher.matches).
+noinline fn scopedProximity(res: *Resolution, matcher: *selector_matching.StyleMatcher, subject: ScopeRoot, contents: *const Contents, index: u32, context: anytype, comptime match: fn (@TypeOf(context), *selector_matching.StyleMatcher) bool) Error!?u16 {
     const span = try scopeActivations(res, matcher, subject, contents, index);
     for (res.activations.items[span.start..][0..span.len]) |activation| {
         const saved = matcher.enterScope(activation.root);
@@ -2239,10 +2242,11 @@ const SpecificityOverride = enum { zero };
 fn matchHostRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, host: *runtime.Instance, contents: *const Contents, pseudo: ?[]const u8, quirks: bool, base: css.cascade.Source, active_sheet: *const ActiveSheet) Error!void {
     _ = quirks;
     const candidates = if (pseudo != null) contents.buckets.pseudo.items else contents.buckets.universal.items;
-    const subject = selector_matching.StyleMatcher.hostSubject(host) orelse return;
     // The sheet applies to the host's shadow tree: its implicit scope is
     // found there (the host, featureless), not in the host's own tree.
+    var subject: ScopeRoot = undefined;
     if (contents.scopes.items.len != 0) {
+        subject = selector_matching.StyleMatcher.hostSubject(host) orelse return;
         const shadow = custom_elements.shadowRootOf(host) orelse return;
         try beginScopes(res, contents, active_sheet, instance_bridge.getNodeBase(shadow) orelse return);
     }
@@ -2283,10 +2287,13 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
     // A scoped ::slotted() or ::part() rule: the slot or host - the element
     // its selector's combinators start from, in the sheet's tree - is what
     // must be in scope, and its proximity is the rule's.
-    const subject = selector_matching.StyleMatcher.elementSubject(outer) orelse return;
-    if (contents.scopes.items.len != 0) try beginScopes(res, contents, active_sheet, subject.node);
+    var subject: ScopeRoot = undefined;
+    if (contents.scopes.items.len != 0) {
+        subject = selector_matching.StyleMatcher.elementSubject(outer) orelse return;
+        try beginScopes(res, contents, active_sheet, subject.node);
+    }
     const Args = struct { kind: AroundKind, element: *runtime.Instance, outer: *runtime.Instance, complex: ComplexRef, pseudo: ?[]const u8, exposed: []const []const u8 };
-    const Run = struct {
+    const Scoped = struct {
         fn run(args: Args, m: *selector_matching.StyleMatcher) bool {
             return switch (args.kind) {
                 .slotted => m.matchesSlotted(args.element, args.outer, args.complex, args.pseudo),
@@ -2300,11 +2307,17 @@ fn matchAroundRules(res: *Resolution, matcher: *selector_matching.StyleMatcher, 
         // apply to after-change style."
         if (rule.starting and !res.starting) continue;
         if (!contents.conditionHolds(rule.condition, &res.active.media)) continue;
-        const args: Args = .{ .kind = kind, .element = element, .outer = outer, .complex = rule.complex, .pseudo = pseudo, .exposed = exposed };
         var proximity = css.cascade.no_scope;
         if (rule.scope) |scope_index| {
-            proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, args, Run.run)) orelse continue;
-        } else if (!Run.run(args, matcher)) continue;
+            const args: Args = .{ .kind = kind, .element = element, .outer = outer, .complex = rule.complex, .pseudo = pseudo, .exposed = exposed };
+            proximity = (try scopedProximity(res, matcher, subject, contents, scope_index, args, Scoped.run)) orelse continue;
+        } else {
+            const matched = switch (kind) {
+                .slotted => matcher.matchesSlotted(element, outer, rule.complex, pseudo),
+                .part => matcher.matchesPart(element, outer, rule.complex, pseudo, exposed),
+            };
+            if (!matched) continue;
+        }
         var source = base;
         source.tree_count_allowed = kind != .part;
         source.order = base.order + rule.position;

@@ -655,7 +655,7 @@ fn keyFor(comptime own: enum { content, shape }, matched: []const Matched, pseud
             },
         }
         h = mix(h, (@as(u64, @backingInt(s.origin)) << 56) | (@as(u64, s.layer) << 40) | (@as(u64, s.tree_depth) << 24) |
-            (@as(u64, @intFromBool(s.per_element)) << 2) | (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
+            (@as(u64, s.scope_proximity) << 3) | (@as(u64, @intFromBool(s.per_element)) << 2) | (@as(u64, @intFromBool(s.element_attached)) << 1) | @intFromBool(s.tree_count_allowed));
         h = mix(h, (@as(u64, s.order) << 32) ^ (@as(u64, s.specificity.a) << 20) ^ (@as(u64, s.specificity.b) << 10) ^ s.specificity.c);
         h = mix(h, s.tree_scope.serial);
     }
@@ -1447,4 +1447,19 @@ test "a prune that finds own-block entries serving hits, or too few of them to t
         try rulesUntilPrune(cache, root.style, 1000);
         try testing.expect(try firstSightingKept(cache, root.style, "padding-left: 9px"));
     }
+}
+
+test "the key tells apart matched blocks that differ only in scope proximity" {
+    // CSS Cascade 6 3.1: proximity decides between equal specificities, so
+    // the same blocks at another proximity can cascade differently. The
+    // compare on a hit (`corresponds`, the whole Source) rejects them; the
+    // key keeps them under different keys rather than one bucket.
+    var block = try css.declarations.DeclarationBlock.parse(.{ .allocator = testing.allocator }, "color: green");
+    defer block.deinit();
+    const near = [_]Matched{.{ .block = &block, .source = .{ .origin = .author, .order = 1, .scope_proximity = 1 } }};
+    const far = [_]Matched{.{ .block = &block, .source = .{ .origin = .author, .order = 1, .scope_proximity = 2 } }};
+    const unscoped = [_]Matched{.{ .block = &block, .source = .{ .origin = .author, .order = 1 } }};
+    try testing.expect(keyOf(&near, null, null) != keyOf(&far, null, null));
+    try testing.expect(keyOf(&near, null, null) != keyOf(&unscoped, null, null));
+    try testing.expect(shapeOf(&near, null, null) != shapeOf(&far, null, null));
 }

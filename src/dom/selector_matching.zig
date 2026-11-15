@@ -431,7 +431,13 @@ pub const StyleMatcher = struct {
 
     /// Whether `complex`, a rule of the host's shadow tree (`initForHost`),
     /// matches the host `host` itself.
-    pub fn matchesHost(self: *StyleMatcher, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+    /// `inline`: the style engine's rule loop and its scoped-rule path
+    /// (engine.zig scopedProximity) both call it, and the second call site
+    /// cost it LLVM's inlining into the loop: lane quick2's cost window
+    /// measured +1.5-4.4% instructions per style resolution (style1 benches;
+    /// a sample profile showed StyleMatcher.matches out of line). Forced
+    /// inline, with the scoped path noinline: +0.2-2.0%.
+    pub inline fn matchesHost(self: *StyleMatcher, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
         const node = instance_bridge.getNodeBase(host) orelse return false;
         if (complex.compound.hasPseudoElement() != (pseudo != null)) return false;
         self.matcher.pseudo_target = pseudo;
@@ -445,7 +451,8 @@ pub const StyleMatcher = struct {
     /// flattening, to `slot`. In the subject compound, the simple selectors
     /// before ::slotted() and the combinators to its left match the slot in
     /// its tree; its argument and what follows it match `element`.
-    pub fn matchesSlotted(self: *StyleMatcher, element: *runtime.Instance, slot: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+    /// `inline`: as matchesHost.
+    pub inline fn matchesSlotted(self: *StyleMatcher, element: *runtime.Instance, slot: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
         const node = instance_bridge.getNodeBase(element) orelse return false;
         const slot_node = instance_bridge.getNodeBase(slot) orelse return false;
         return self.matchesAround(node, slot_node, complex, "slotted", pseudo, &.{});
@@ -457,7 +464,8 @@ pub const StyleMatcher = struct {
     /// names include every name ::part() lists. The simple selectors before
     /// ::part() and the combinators match the host; what follows ::part()
     /// matches `element`. `exposed` includes names forwarded by exportparts.
-    pub fn matchesPart(self: *StyleMatcher, element: *runtime.Instance, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8, exposed: []const []const u8) bool {
+    /// `inline`: as matchesHost.
+    pub inline fn matchesPart(self: *StyleMatcher, element: *runtime.Instance, host: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8, exposed: []const []const u8) bool {
         const node = instance_bridge.getNodeBase(element) orelse return false;
         const host_node = instance_bridge.getNodeBase(host) orelse return false;
         return self.matchesAround(node, host_node, complex, "part", pseudo, exposed);
@@ -503,7 +511,8 @@ pub const StyleMatcher = struct {
     /// Whether `complex` matches `element` - or, with `pseudo`, that
     /// pseudo-element of it: the subject compound must name the
     /// pseudo-element exactly when one is asked for.
-    pub fn matches(self: *StyleMatcher, element: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
+    /// `inline`: as matchesHost.
+    pub inline fn matches(self: *StyleMatcher, element: *runtime.Instance, complex: *const ComplexSelector, pseudo: ?[]const u8) bool {
         const node = instance_bridge.getNodeBase(element) orelse return false;
         if (node.node_type != ELEMENT_NODE) return false;
         if (complex.compound.hasPseudoElement() != (pseudo != null)) return false;
