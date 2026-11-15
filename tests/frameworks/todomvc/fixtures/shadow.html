@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  The port's own fixture for driver_test.js: an app shaped like TodoMVC's
+  web-component apps (Lit: todo-app > todo-list > todo-item, each with an
+  open shadow root), plus a light-DOM heading, so the driver's queries can be
+  checked against what Cypress 15.14.2 finds with and without
+  includeShadowDom.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>driver fixture: shadow roots</title></head>
+<body>
+<h1 class="light">light heading</h1>
+<todo-app></todo-app>
+<script>
+  'use strict';
+  const app = document.querySelector('todo-app').attachShadow({ mode: 'open' });
+  app.innerHTML = '<header><h1>todos</h1><input class="new-todo" placeholder="What needs to be done?"></header>' +
+    '<todo-list></todo-list>' +
+    '<ul class="todo-list"><li class="flat">one</li><li class="flat">two</li></ul>' +
+    '<footer><button class="clear-completed">Clear completed</button></footer>';
+  const list = app.querySelector('todo-list').attachShadow({ mode: 'open' });
+  list.innerHTML = '<ul class="todo-list"><todo-item></todo-item><todo-item></todo-item></ul>';
+  for (const item of list.querySelectorAll('todo-item')) {
+    item.attachShadow({ mode: 'open' }).innerHTML = '<li class="deep"><input class="toggle" type="checkbox"><label>deep</label></li>';
+  }
+</script>
+</body>
+</html>

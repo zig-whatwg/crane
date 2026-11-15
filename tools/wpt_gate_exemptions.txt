@@ -791,3 +791,50 @@ revisit         = when https://github.com/web-platform-tests/wpt/issues/65067 is
 kind      = needs-renderer
 why       = the test clicks the centre of a list box (test_driver.click on the select) and expects the option laid out under that point to be picked; with no renderer the select has no layout box and no option lies under the click, so nothing is picked
 assertion = assert_equals: clicking the middle of the list box picks its second option expected "two" but got ""
+
+# test-bug (lane nav4 batch 1, 2026-11-14; filed / commented on the user's "file them", 8:12 PM ET).
+
+[html/browsers/browsing-the-web/navigating-across-documents/012.html]
+kind            = test-bug
+why             = the click handler's document.write() replaces the test's own document, so the link is disconnected before its activation behaviour runs and cannot navigate (HTML 'cannot navigate'); every browser fails with expected "href" but got "write"
+upstream        = https://github.com/web-platform-tests/wpt/issues/20598
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/20598 is resolved
+
+[html/browsers/browsing-the-web/history-traversal/browsing_context_name_cross_origin_2.html]
+kind            = test-bug
+why             = the test's step logger stringifies f.contentWindow.location after the iframe has navigated cross-origin, which throws SecurityError (HTML CrossOriginGet) in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/9018
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/9018 is resolved
+
+[html/browsers/browsing-the-web/history-traversal/browsing_context_name_cross_origin_3.html]
+kind            = test-bug
+why             = the test's step logger stringifies f.contentWindow.location after the iframe has navigated cross-origin, which throws SecurityError (HTML CrossOriginGet) in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/9018
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/9018 is resolved
+
+[html/browsers/browsing-the-web/history-traversal/window-name-after-cross-origin-main-frame-navigation.sub.html]
+kind            = test-bug
+why             = expects window.name cleared in a popup that has an opener; HTML finalize a cross-document navigation step 4 clears the name only for a context that is not auxiliary with an opener (the sibling aux-frame test expects it kept and passes everywhere)
+upstream        = https://github.com/web-platform-tests/wpt/issues/65239
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65239 is resolved
+
+[html/browsers/browsing-the-web/overlapping-navigations-and-traversals/same-document-traversal-cross-document-nav.html]
+kind            = test-bug
+why             = the test waits for hash "#1" and then asserts hash "#2", so it cannot pass in any implementation (HTML navigate step 19 ignores the navigation during the traversal; the browsers stop earlier, timing out at the wait)
+upstream        = https://github.com/web-platform-tests/wpt/issues/65240
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65240 is resolved

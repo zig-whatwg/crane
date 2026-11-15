@@ -241,13 +241,22 @@ pub const Suite = struct {
 /// One app of TodoMVC (the report's second section).
 pub const App = struct {
     /// Its directory below examples/, which is also the name TodoMVC's app
-    /// spec keys its tables by and the port's `?framework=` ("react").
+    /// spec keys its tables by and, unless `cypress_framework` says
+    /// otherwise, the port's `?framework=` ("react").
     id: []const u8,
     /// todomvc.com's name for it ("React", "Vue.js").
     title: []const u8,
     /// Its folder below examples/ as todomvc.com links it ("react/dist"):
-    /// the build the port opens (`&folder=`).
+    /// the build measured.
     folder: []const u8,
+    /// What Cypress takes as `--env framework=` for this app, and the port
+    /// as `?framework=`, where it is not the id: the folder, for an app
+    /// whose build todomvc.com links is not the spec's default folder for
+    /// its id (spec.cy.js `frameworkFolders[id] || id`: there an unbuilt
+    /// source). The spec documents the path form ("CYPRESS_framework=
+    /// angular-dart/web"); the app's name-keyed tables then do not apply,
+    /// in Cypress as in the port.
+    cypress_framework: ?[]const u8 = null,
     /// The framework's version the app's files state (its package-lock.json,
     /// or the framework file's own header); null where they state none.
     version: ?[]const u8 = null,
@@ -423,7 +432,8 @@ pub fn parse(gpa: Allocator, arena: Allocator, source: [:0]const u8, failure: *F
 }
 
 /// The served apps of the TodoMVC block as suites, after `suites`: one page
-/// each, the port opened on the app's folder as todomvc.com links it.
+/// each, the port given the app as Cypress is (`?framework=`, the value of
+/// `--env framework=`).
 pub fn expandTodoMvc(arena: Allocator, suites: []const Suite, t: TodoMvc) Error![]const Suite {
     var out: std.ArrayList(Suite) = .empty;
     try out.appendSlice(arena, suites);
@@ -431,7 +441,7 @@ pub fn expandTodoMvc(arena: Allocator, suites: []const Suite, t: TodoMvc) Error!
     for (t.apps) |app| {
         if (app.not_served != null) continue;
         const pages = try arena.alloc(Page, 1);
-        pages[0] = .{ .id = "todomvc", .path = try std.fmt.allocPrint(arena, "{s}?framework={s}&folder={s}", .{ t.page, app.id, app.folder }) };
+        pages[0] = .{ .id = "todomvc", .path = try std.fmt.allocPrint(arena, "{s}?framework={s}", .{ t.page, app.cypress_framework orelse app.id }) };
         try out.append(arena, .{
             .id = try std.fmt.allocPrint(arena, "{s}-todomvc", .{app.id}),
             .framework = app.id,
@@ -473,6 +483,8 @@ fn validateTodoMvc(t: TodoMvc, failure: *Failure) Error!void {
         // The folder is the app's, below its own directory.
         if (!isRelativePath(app.folder) or !underPrefix(app.folder, app.id)) return error.BadPath;
         for (app.folder) |c| if (c == '&' or c == '?' or c == '#' or c == '%' or c == ' ') return error.BadPath;
+        // Cypress's framework value, where the app gives one, is its folder.
+        if (app.cypress_framework) |v| if (!std.mem.eql(u8, v, app.folder) or std.mem.eql(u8, v, app.id)) return error.BadApp;
         if (app.version) |v| if (!isName(v)) return error.BadName;
         if (app.not_served) |why| {
             if (why.len == 0 or app.sha256 != null) return error.BadApp;
@@ -926,7 +938,7 @@ const todomvc_block =
     \\        .page_budget_s = 300,
     \\        .apps = .{
     \\            .{ .id = "react", .title = "React", .folder = "react/dist", .version = "19.2.5", .sha256 = "1111111111111111111111111111111111111111111111111111111111111111" },
-    \\            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .sha256 = "2222222222222222222222222222222222222222222222222222222222222222" },
+    \\            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .cypress_framework = "javascript-es5/dist", .sha256 = "2222222222222222222222222222222222222222222222222222222222222222" },
     \\            .{ .id = "gwt", .title = "GWT", .folder = "gwt", .sha256 = "3333333333333333333333333333333333333333333333333333333333333333", .skipped_by_todomvc = "deviates from the specification" },
     \\            .{ .id = "somajs", .title = "soma.js", .folder = "somajs", .not_served = "404 on todomvc.com; not in the repository" },
     \\        },
@@ -939,7 +951,7 @@ fn withTodoMvc(a: Allocator, block: []const u8) ![:0]const u8 {
     return a.dupeSentinel(u8, text, 0);
 }
 
-test "todomvc: a suite per served app, sharing one tree; the app spec's page opened on the app's folder" {
+test "todomvc: a suite per served app, sharing one tree; the app spec's page given Cypress's framework value" {
     var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena_state.deinit();
     const a = arena_state.allocator();
@@ -953,7 +965,11 @@ test "todomvc: a suite per served app, sharing one tree; the app spec's page ope
     try testing.expectEqualStrings("react", react.framework);
     try testing.expectEqualStrings("19.2.5", react.version);
     try testing.expectEqualStrings("examples/react/dist", react.tag);
-    try testing.expectEqualStrings("crane/todomvc/index.html?framework=react&folder=react/dist", react.pages[0].path);
+    // The port takes what Cypress takes (`--env framework=`): the id, or
+    // the folder where the app names it (the spec's default folder for the
+    // id is not the build todomvc.com links).
+    try testing.expectEqualStrings("crane/todomvc/index.html?framework=react", react.pages[0].path);
+    try testing.expectEqualStrings("crane/todomvc/index.html?framework=javascript-es5/dist", find(m, "javascript-es5-todomvc").?.pages[0].path);
     try testing.expectEqualStrings("todomvc", react.pages[0].id);
     try testing.expectEqualStrings("tests/frameworks/todomvc", react.overlay[0].dir);
     try testing.expectEqual(@as(u32, 300), react.page_budget_s);
@@ -974,6 +990,9 @@ test "todomvc: a suite per served app, sharing one tree; the app spec's page ope
         .{ ".folder = \"react/dist\"", ".folder = \"react/../vue\"", error.BadPath },
         .{ ".folder = \"react/dist\"", ".folder = \"react/d&x=1\"", error.BadPath },
         .{ ".id = \"gwt\"", ".id = \"react\"", error.DuplicateApp },
+        // Cypress's framework value, where given, is the app's folder.
+        .{ ".cypress_framework = \"javascript-es5/dist\"", ".cypress_framework = \"javascript-es5/src\"", error.BadApp },
+        .{ ".cypress_framework = \"javascript-es5/dist\"", ".cypress_framework = \"javascript-es5\"", error.BadApp },
         // An app that cannot be served says why, and has no pin.
         .{ ".not_served = \"404 on todomvc.com; not in the repository\"", ".not_served = \"\"", error.BadApp },
         .{ ".folder = \"somajs\",", ".folder = \"somajs\", .sha256 = \"1111111111111111111111111111111111111111111111111111111111111111\",", error.BadApp },

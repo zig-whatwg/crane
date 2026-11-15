@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  The port's own fixture for driver_test.js: a page that saves to
+  localStorage as it unloads, as some TodoMVC apps save their todos, so the
+  test can check that Cypress's test isolation order (about:blank first,
+  then the storage cleared) leaves nothing of it behind.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>driver fixture: a save on unload</title></head>
+<body>
+<h1>todos</h1>
+<script>
+  'use strict';
+  addEventListener('pagehide', () => localStorage.setItem('fixture-saved-on-unload', 'yes'));
+</script>
+</body>
+</html>
