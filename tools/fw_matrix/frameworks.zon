@@ -430,6 +430,11 @@
     // file's own header; none where the app's files state none. TodoMVC's
     // own runner (tests/cya.js --all) skips three apps for the reasons in
     // tests/excluded.js: they run here all the same, the reason beside them.
+    // Each app is given to the port as Cypress is given it (`--env
+    // framework=`): its id, or, for the five apps whose site build is not
+    // the spec's default folder for the id (an unbuilt source there), the
+    // folder itself (`cypress_framework`), the same value in Crane, in the
+    // port's Chrome run and in TodoMVC's own Cypress run in Chrome.
     .todomvc = .{
         .repository = "https://github.com/tastejs/todomvc",
         .commit = "ff43b02e59dfa604386bb382034b2cd07c2bcd8a",
@@ -464,9 +469,9 @@
             .{ .id = "react-redux", .title = "React Redux", .folder = "react-redux/dist", .version = "9.2.0", .sha256 = "6c91e80bab20f03a13afcd8647ad16444a86e1fdf7f5ca07107bfddd246ea442" },
             .{ .id = "vue", .title = "Vue.js", .folder = "vue/dist", .version = "3.5.33", .sha256 = "61c1868aeddb1c6f6441429f79ae3f40e321eec145ef218834c3c4c40b262a1f" },
             .{ .id = "preact", .title = "Preact", .folder = "preact/dist", .version = "10.29.1", .sha256 = "3a4e7b18364d3848000736fccc97deded53f68bb17a71f56d8e8de138ffd804d" },
-            .{ .id = "backbone", .title = "Backbone.js", .folder = "backbone/dist", .version = "1.4.1", .sha256 = "12a353e74e0692c0cec2cdc03e08d49de1a8b4bfe46ce26c88eba0c5d1c5ea1a" },
+            .{ .id = "backbone", .title = "Backbone.js", .folder = "backbone/dist", .cypress_framework = "backbone/dist", .version = "1.4.1", .sha256 = "12a353e74e0692c0cec2cdc03e08d49de1a8b4bfe46ce26c88eba0c5d1c5ea1a" },
             .{ .id = "angular", .title = "Angular", .folder = "angular/dist/browser", .version = "21.2.11", .sha256 = "9b1d3bcbb9027f95adf2e86051d442d2487111b1a2e04d44c62d084d813ef524" },
-            .{ .id = "emberjs", .title = "Ember.js", .folder = "emberjs/todomvc/dist", .version = "5.12.0", .sha256 = "a6be8672a0dce4a04e96f35e468a8468f1b4a13a58ebf8a2ea1ed17921f3ca3c" },
+            .{ .id = "emberjs", .title = "Ember.js", .folder = "emberjs/todomvc/dist", .cypress_framework = "emberjs/todomvc/dist", .version = "5.12.0", .sha256 = "a6be8672a0dce4a04e96f35e468a8468f1b4a13a58ebf8a2ea1ed17921f3ca3c" },
             .{ .id = "lit", .title = "Lit", .folder = "lit/dist", .version = "3.3.2", .sha256 = "a6dabab099696d3ba0758f8f4da6aa60fb9bd80b20dc8e88909fdea433e43b26" },
             .{ .id = "knockoutjs", .title = "KnockoutJS", .folder = "knockoutjs", .version = "3.2.0", .sha256 = "18b2acc1b53102bccc8808ecbad3fcf7893265d28f9ecd1b3c643721b1f452ce" },
             .{ .id = "dojo", .title = "Dojo", .folder = "dojo", .version = "1.10.2", .sha256 = "40982502ce874fb99ff5b02c3b8011fd1923758146943655a538bb3543eda35e" },
@@ -501,10 +506,10 @@
             .{ .id = "aurelia", .title = "Aurelia", .folder = "aurelia", .sha256 = "aff48792e8014d6d352a5b26d8b33102b1f9e85c7e49a9c39f5cf2aec3f46640" },
             .{ .id = "riotjs", .title = "Riot", .folder = "riotjs", .version = "2.2.4", .sha256 = "f5e614c7df7d592b3d02d907110be6948238e36851e4e2b6c4f977b57e93bc93" },
             .{ .id = "jsblocks", .title = "JSBlocks", .folder = "jsblocks", .version = "0.3.4", .sha256 = "658801ec9d265b3de18e6a4061edc262883c08a7ca6075f7c12928013408e46a" },
-            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .sha256 = "c3d8afae83e0ee7913491b339a5c80bb70d8c5eb6abc786d23311da0c46d950d" },
+            .{ .id = "javascript-es5", .title = "JavaScript ES5", .folder = "javascript-es5/dist", .cypress_framework = "javascript-es5/dist", .sha256 = "c3d8afae83e0ee7913491b339a5c80bb70d8c5eb6abc786d23311da0c46d950d" },
             .{ .id = "javascript-es6", .title = "Modern JavaScript", .folder = "javascript-es6/dist", .sha256 = "5ae42603ad6bbcd9b02817cdd89878e49698f7c381e326070b97d071fa32888e" },
-            .{ .id = "jquery", .title = "jQuery", .folder = "jquery/dist", .version = "3.6.4", .sha256 = "cf110d54d2488736b859d8dbaf4ff8c3c80c93e541788d780bd4f9fab28aa43b" },
-            .{ .id = "web-components", .title = "Web Components", .folder = "web-components/dist", .sha256 = "3f8e6542514663821c742f869fe8c88b35da34dd49e3ef7e8d7fe48dd8769b60" },
+            .{ .id = "jquery", .title = "jQuery", .folder = "jquery/dist", .cypress_framework = "jquery/dist", .version = "3.6.4", .sha256 = "cf110d54d2488736b859d8dbaf4ff8c3c80c93e541788d780bd4f9fab28aa43b" },
+            .{ .id = "web-components", .title = "Web Components", .folder = "web-components/dist", .cypress_framework = "web-components/dist", .sha256 = "3f8e6542514663821c742f869fe8c88b35da34dd49e3ef7e8d7fe48dd8769b60" },
         },
     },
 }
