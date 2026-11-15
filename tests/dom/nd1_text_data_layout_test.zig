@@ -62,16 +62,23 @@ fn expectExactBlock(comptime State: type) !void {
     }
 }
 
-const Data = @FieldType(interfaces.CharacterData.State, "_embedded");
+const Head = @FieldType(interfaces.CharacterData.State, "_embedded");
 
-test "CharacterData's data is 16 bytes: two u32 lengths and one word" {
-    comptime std.debug.assert(Data == dom.character_data.Data);
-    try expectNoField(Data, .{ "heap", "inline_text" });
+test "CharacterData's data is 16 bytes: two u32 lengths in its state and one word in its NodeBase" {
+    // The lengths are CharacterData's own state; the word is the node's
+    // leaf word since lane nm2 (N9: a CharacterData node has no children,
+    // so its NodeBase's first-child word is its data's;
+    // tests/dom/nm2_leaf_word_test.zig). 16 bytes of the node's State it
+    // was, 8 it is.
+    if (comptime !@hasDecl(dom.character_data, "Head")) return error.NoLeafWord;
+    comptime std.debug.assert(Head == dom.character_data.Head);
+    try expectNoField(Head, .{ "heap", "inline_text", "word" });
+    try expectSize(Head, 8);
     // Safe builds give a bare union a hidden tag (lesson
     // testing-a-std-safety-field-moves-size-pins-in-safe-builds): the word
     // must stay 8 bytes in every mode this test runs in.
-    try expectSize(Data, 16);
-    try std.testing.expectEqual(@as(usize, 8), @alignOf(Data));
+    try expectSize(dom.character_data.Data.Word, 8);
+    try std.testing.expectEqual(@as(usize, 8), @alignOf(dom.character_data.Data.Word));
 }
 
 test "a text node's and a comment's one block is an exact-size arena block" {

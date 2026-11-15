@@ -158,7 +158,8 @@ const FieldPin = struct { name: []const u8, offset: usize, size: usize };
 /// document's generation.
 const node_base_fields = [_]FieldPin{
     .{ .name = "parent_node", .offset = 0, .size = 8 },
-    .{ .name = "first_child", .offset = 8, .size = 8 },
+    // A container's first child, or a leaf's own word (lane nm2, N9).
+    .{ .name = "child_or_leaf", .offset = 8, .size = 8 },
     .{ .name = "next_sibling", .offset = 16, .size = 8 },
     .{ .name = "node_type", .offset = 24, .size = 2 },
     .{ .name = "is_connected", .offset = 26, .size = 1 },
@@ -166,7 +167,8 @@ const node_base_fields = [_]FieldPin{
     .{ .name = "traces_held", .offset = 28, .size = 1 },
     .{ .name = "rc_flags", .offset = 29, .size = 1 },
     .{ .name = "element", .offset = 30, .size = 1 },
-    .{ .name = "spare", .offset = 31, .size = 1 },
+    // Whether the first-child word is a leaf's own (it was the spare byte).
+    .{ .name = "leaf", .offset = 31, .size = 1 },
     .{ .name = "previous_or_last", .offset = 32, .size = 8 },
     .{ .name = "document_word", .offset = 40, .size = 8 },
     .{ .name = "rare", .offset = 48, .size = 8 },
@@ -206,7 +208,8 @@ test "NodeBase is an extern struct: every field at its pinned offset, no padding
 }
 
 test "the fields a tree walk reads are in NodeBase's first 32 bytes" {
-    inline for (.{ "parent_node", "first_child", "next_sibling", "node_type" }) |name| {
+    // `leaf` too since lane nm2: firstChild() reads it with the word.
+    inline for (.{ "parent_node", "child_or_leaf", "next_sibling", "node_type", "leaf" }) |name| {
         if (comptime !@hasField(NodeBase, name)) return error.NoSuchField;
         const end = @offsetOf(NodeBase, name) + @sizeOf(@FieldType(NodeBase, name));
         if (end > 32) {

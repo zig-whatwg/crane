@@ -44,7 +44,11 @@
 //! history is in tests/dom/nd1_text_data_layout_test.zig); 136 after lane
 //! nm1's steps 1-4 (Node's 24 bytes above; a Text has no element flags); 128
 //! after its step 5; 120 after lane nm2's step a (childNodes, above), still a
-//! 128-byte arena block.
+//! 128-byte arena block; 112 after its step d (N9): a CharacterData node has
+//! no children, so its data's word is the NodeBase word a container keeps
+//! its first child in (tests/dom/nm2_leaf_word_test.zig) and CharacterData's
+//! own state is its two lengths, 8 bytes - an exact 112-byte arena block, 16
+//! bytes less than the 128-byte block of 128 and of 120.
 //!
 //! NodeBase, and Node's and Element's embedded states, are pinned here too
 //! since lane nm1: perf2b5_node_layout_test.zig, perf2b6_node_layout_test.zig,
@@ -95,14 +99,15 @@ const pins = [_]Pin{
     .{ .name = "HTMLSpanElement", .State = interfaces.HTMLSpanElement.State, .block = 128, .generated = 8 },
     .{ .name = "HTMLElement", .State = interfaces.HTMLElement.State, .block = 128, .generated = 8 },
     .{ .name = "Element", .State = interfaces.Element.State, .block = 128, .generated = 8 },
-    .{ .name = "Text", .State = interfaces.Text.State, .block = 120, .generated = 8 },
-    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 120, .generated = 8 },
-    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 120, .generated = 8 },
+    .{ .name = "Text", .State = interfaces.Text.State, .block = 112, .generated = 8 },
+    .{ .name = "Comment", .State = interfaces.Comment.State, .block = 112, .generated = 8 },
+    .{ .name = "CDATASection", .State = interfaces.CDATASection.State, .block = 112, .generated = 8 },
 };
 
 /// The parts every node's block is made of.
 const part_pins = .{
-    // The tree links 32, the node document 8 and its generation 8, the one
+    // The tree links 32 (the first-child word is a leaf's own word on a
+    // CharacterData node), the node document 8 and its generation 8, the one
     // rare word 8, the wrapper slot 8, the owner 8, the two counts 8, and 8 bytes
     // of type and flags.
     .{ "NodeBase", dom.NodeBase, 88 },
@@ -111,6 +116,8 @@ const part_pins = .{
     // The name 8, the attributes 8, the style 8 (the rare word is the
     // NodeBase's since lane nm2).
     .{ "Element's embedded state", Embedded(interfaces.Element.State), 24 },
+    // The data's two lengths (its word is the NodeBase's leaf word).
+    .{ "CharacterData's embedded state", Embedded(interfaces.CharacterData.State), 8 },
 };
 
 test "the parts of a node's block: NodeBase, and each level's embedded state" {
