@@ -573,10 +573,13 @@ const DocumentShapes = struct {
     detached: *dom.NodeBase,
     /// A document a native holder keeps.
     held: *dom.NodeBase,
+    /// Two detached elements of the PAGE's own document, which lives.
+    page_a: *dom.NodeBase,
+    page_b: *dom.NodeBase,
 
     fn whileHeld(self: *DocumentShapes) !void {
         const page = self.page;
-        for ([_]*dom.NodeBase{ self.plain, self.plain_body, self.owner, self.detached, self.held }) |node| {
+        for ([_]*dom.NodeBase{ self.plain, self.plain_body, self.owner, self.detached, self.held, self.page_a, self.page_b }) |node| {
             try testing.expect(node.wrapper.isEmpty());
         }
         // A Document and a node of its tree, in either order: one tree.
@@ -613,6 +616,31 @@ const DocumentShapes = struct {
             var seen: Seen.State = .{};
             try testing.expectEqual(@as(usize, 0), predictWith(page, &seen, &.{try deadWrapperOf(self.owner)}).trees);
         }
+        // Dying trees of a document that plainly LIVES (the page's own) are
+        // answered from the last such document's key, with no question to
+        // it. That answer must never stand in for another document's: a
+        // dying tree of a DYING document, met after, between or before the
+        // page's trees, is still tallied for its own document.
+        for ([_][4]*dom.NodeBase{
+            .{ self.page_a, self.page_b, self.detached, self.owner },
+            .{ self.page_a, self.detached, self.page_b, self.owner },
+            .{ self.detached, self.page_a, self.owner, self.page_b },
+            .{ self.owner, self.page_a, self.detached, self.page_b },
+        }) |order| {
+            var seen: Seen.State = .{};
+            const found = predictWith(page, &seen, &.{ try deadWrapperOf(order[0]), try deadWrapperOf(order[1]), try deadWrapperOf(order[2]), try deadWrapperOf(order[3]) });
+            try testing.expectEqual(@as(usize, 4), found.trees);
+            try testing.expectEqual(bytesOf(self.owner) + bytesOf(self.detached) + bytesOf(self.page_a) + bytesOf(self.page_b), found.bytes);
+            try testing.expect(seen.took(try instanceOf(self.owner)));
+        }
+        // And the page's trees alone, with the dying document's own wrapper
+        // not among the dead: its detached tree dies, the document does not.
+        {
+            var seen: Seen.State = .{};
+            const found = predictWith(page, &seen, &.{ try deadWrapperOf(self.page_a), try deadWrapperOf(self.detached), try deadWrapperOf(self.page_b) });
+            try testing.expectEqual(@as(usize, 3), found.trees);
+            try testing.expect(!seen.took(try instanceOf(self.owner)));
+        }
     }
 };
 
@@ -626,6 +654,8 @@ fn whichDocumentsDie() !void {
         \\globalThis.owner = document.implementation.createHTMLDocument('owner');
         \\globalThis.detached = owner.createElement('article');
         \\globalThis.held = document.implementation.createHTMLDocument('held');
+        \\globalThis.pageA = document.createElement('i');
+        \\globalThis.pageB = document.createElement('b');
     );
     var shapes: DocumentShapes = .{
         .page = page,
@@ -634,24 +664,26 @@ fn whichDocumentsDie() !void {
         .owner = try page.node("owner"),
         .detached = try page.node("detached"),
         .held = try page.node("held"),
+        .page_a = try page.node("pageA"),
+        .page_b = try page.node("pageB"),
     };
     dom.refcount.holderRef(shapes.held);
     var released = false;
     errdefer if (!released) dom.refcount.holderDeref(shapes.held);
-    const expected = bytesOf(shapes.plain) + bytesOf(shapes.owner) + bytesOf(shapes.detached);
-    try page.run("plain = plainBody = owner = detached = held = null;");
+    const expected = bytesOf(shapes.plain) + bytesOf(shapes.owner) + bytesOf(shapes.detached) + bytesOf(shapes.page_a) + bytesOf(shapes.page_b);
+    try page.run("plain = plainBody = owner = detached = held = pageA = pageB = null;");
     const phases = try collectUnderHold(page, &shapes);
 
     if (engine.capabilities.external_memory_at_collection != .unsupported) {
         // The collection decided the same: the plain document, the owner
         // and its detached element - and not the document a holder keeps.
         try testing.expect(phases.held.predicted >= expected);
-        try testing.expect(phases.held.books.predicted - phases.before.books.predicted >= 3);
+        try testing.expect(phases.held.books.predicted - phases.before.books.predicted >= 5);
         try testing.expectEqual(phases.held.books.put_back_bytes, phases.after.books.put_back_bytes);
         try testing.expectEqual(phases.held.books.mispredicted, phases.after.books.mispredicted);
     }
     try testing.expectEqual(@as(usize, 0), phases.after.predicted);
-    try testing.expect(phases.after.books.queued - phases.held.books.queued >= 3);
+    try testing.expect(phases.after.books.queued - phases.held.books.queued >= 5);
     try testing.expect(!shapes.held.rc_flags.garbage);
 
     released = true;

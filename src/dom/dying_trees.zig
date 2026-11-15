@@ -264,6 +264,13 @@ const WaitingDocuments = struct {
     len: usize = 0,
     /// The entry asked for last: a document's trees come one after another.
     last: usize = 0,
+    /// The key (NodeBase.documentKey) of the node document `dying` found
+    /// last that plainly lives or is decided dead already - the page's own
+    /// document, for nearly every detached tree a page drops: the next tree
+    /// of it is answered by one compare, with no question to the document
+    /// (30,000 lone dead wrappers in one collection cost the pause that
+    /// question each; gc_bench `wrapper-churn-nogc`). 0: none.
+    settled_key: usize = 0,
 
     const capacity = 32;
 
@@ -305,8 +312,14 @@ const WaitingDocuments = struct {
     /// plainly lives (a wrapper the collector kept) or is decided dead
     /// already.
     fn dying(self: *WaitingDocuments, root: *NodeBase) void {
+        const key = root.documentKey();
+        if (key != 0 and key == self.settled_key) return;
         const document = refcount.liveNodeDocument(root) orelse return;
-        if (!document.wrapper.isEmpty() or document.rc_flags.garbage) return;
+        if (!document.wrapper.isEmpty() or document.rc_flags.garbage) {
+            // Neither changes inside one collection's pause.
+            self.settled_key = key;
+            return;
+        }
         const entry = self.entryOf(document) orelse return;
         entry.tally += root.subtree_holds;
     }
