@@ -44,8 +44,21 @@ const fetch_page = "<!doctype html><title>fetch</title><script>" ++
     "function go() { fetch('/held.txt').then(r => r.text()).then(t => { outcome = 'ok:' + t; }, e => { outcome = e.name; }); }" ++
     "</script>";
 
+/// The same page with an XMLHttpRequest instead: `outcome` records its first
+/// terminal event, `events` every event it fires.
+const xhr_page = "<!doctype html><title>xhr</title><script>" ++
+    "var log = []; var loads = (globalThis.loads || 0) + 1; var outcome = 'pending'; var events = [];" ++
+    "addEventListener('pageshow', e => log.push('pageshow:' + e.persisted));" ++
+    "addEventListener('pagehide', e => log.push('pagehide:' + e.persisted));" ++
+    "function go() { const x = new XMLHttpRequest(); x.open('GET', '/held.txt');" ++
+    "for (const type of ['readystatechange', 'load', 'error', 'abort', 'loadend'])" ++
+    " x.addEventListener(type, () => { events.push(type + ':' + x.readyState); if (outcome === 'pending' && type !== 'readystatechange') outcome = type === 'load' ? 'load:' + x.responseText : type; });" ++
+    "x.send(); }" ++
+    "</script>";
+
 const routes = [_]http.Route{
     .{ .path = "/fetch.html", .content_type = "text/html", .body = fetch_page },
+    .{ .path = "/xhr.html", .content_type = "text/html", .body = xhr_page },
     .{ .path = "/b.html", .content_type = "text/html", .body = "<!doctype html><title>b</title>" },
     // Answered only once the test releases it: a fetch at the server with
     // its response still to come, without betting on a delay.
@@ -246,4 +259,33 @@ test "a navigation away that has not committed leaves the page's fetch in flight
         if (try popupIs(bc, "/held-nav.html")) break;
         try fixture.turn(10);
     }
+}
+
+test "a page left with an XMLHttpRequest in flight is kept; nothing of it runs while cached, and it fails as a network error once shown again (Safari)" {
+    const fixture = try Fixture.start();
+    defer fixture.stop();
+    const bc = try fixture.openPopup("/xhr.html");
+    const realm_a = activeRealm(bc).?;
+    try expectIn(realm_a, "go(); 'started'", "started");
+    try fixture.awaitRequests("/held.txt", 1);
+
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    // The answer arrives while the page is cached: none of the request's
+    // events may run in a page the cache keeps.
+    fixture.server.release("/held.txt");
+    try fixture.turn(200);
+    try expectIn(realm_a, "outcome", "pending");
+
+    try fixture.goTo(bc, "history.back()", "/xhr.html");
+    try testing.expectEqual(realm_a, activeRealm(bc).?);
+    try expectIn(realm_a, "log.join()", "pageshow:false,pagehide:true,pageshow:true");
+    // Cancelled when the page was stored, the request fails once the page is
+    // shown again as a network error does: readyState DONE, then error and
+    // loadend (WebKit XMLHttpRequest::suspend for the back/forward cache, then
+    // resumeTimerFired -> networkError).
+    const outcome = try fixture.awaitOutcome(realm_a);
+    defer testing.allocator.free(outcome);
+    try testing.expectEqualStrings("error", outcome);
+    try expectIn(realm_a, "events.slice(-3).join()", "readystatechange:4,error:4,loadend:4");
 }
