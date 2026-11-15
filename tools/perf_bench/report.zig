@@ -1988,7 +1988,9 @@ fn writeMemoryCell(w: W, c: ?*const Cell) !void {
 
 /// Beside a memory figure whose runs read in two levels: both, with how
 /// many runs read each ("two levels: 143.5 MB x3 / 162.5 MB x7"). The
-/// figure itself stays the median of all the runs.
+/// figure itself stays the median of all the runs. The note says what the
+/// runs read, never why: the allocator's ring is the measured cause on the
+/// attributes page's rows only, and another row's two levels are a finding.
 fn writeLevels(w: W, levels: ?Levels) !void {
     const l = levels orelse return;
     const mb = struct {
@@ -1996,7 +1998,7 @@ fn writeLevels(w: W, levels: ?Levels) !void {
             return @as(f64, @floatFromInt(x)) / (1024.0 * 1024.0);
         }
     }.f;
-    try w.print("<br><span class=\"quiet\" title=\"the runs read in two levels with the same work done: the figure is the median of all of them, and each level is the median of its runs (macOS gives freed memory back in steps)\">two levels: {d:.1} MB &times;{d} / {d:.1} MB &times;{d}</span>", .{ mb(l.low), l.low_runs, mb(l.high), l.high_runs });
+    try w.print("<br><span class=\"quiet\" title=\"the runs read in two levels: the figure is the median of all of them, and each level is the median of its runs\">two levels: {d:.1} MB &times;{d} / {d:.1} MB &times;{d}</span>", .{ mb(l.low), l.low_runs, mb(l.high), l.high_runs });
 }
 
 /// `subject` over `other` for `measure`, as a percentage: for two Crane
