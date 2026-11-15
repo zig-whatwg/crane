@@ -89,6 +89,16 @@ const blank_down = 10;
 
 const ink = [3]u8{ 0x20, 0x21, 0x24 };
 const ink_2 = [3]u8{ 0x5a, 0x5e, 0x63 };
+/// The site's pass and fail tokens (site.css, light): each row's Crane meter,
+/// as the page draws it - green for the tests passed, red for the rest.
+const pass_color = [3]u8{ 0x2e, 0x7d, 0x32 };
+const fail_color = [3]u8{ 0xb3, 0x26, 0x1e };
+/// Where the meters sit: between the row labels and the rates, above each
+/// row's baseline (base.png is paper there).
+pub const meter_x0 = 330;
+pub const meter_x1 = 610;
+const meter_up = 26;
+const meter_down = 14;
 
 /// Paint a box with the paper colour.
 fn blank(img: *png.Image, x0: u32, y0: u32, x1: u32, y1: u32) void {
@@ -144,6 +154,15 @@ pub fn render(gpa: Allocator, f: Figures) ![]u8 {
 
     var buf: [8]u8 = undefined;
     for (f.rows, row_baseline) |r, y| {
+        if (r.crane) |rv| {
+            const green_end: u32 = meter_x0 + @as(u32, @intFromFloat(@round(@as(f64, @floatFromInt(meter_x1 - meter_x0)) * @as(f64, @floatFromInt(rv.tenths)) / 1000.0)));
+            const yy: u32 = @intCast(y);
+            var my = yy - meter_up;
+            while (my < yy - meter_down) : (my += 1) {
+                var mx: u32 = meter_x0;
+                while (mx < meter_x1) : (mx += 1) img.at(mx, my).* = if (mx < green_end) pass_color else fail_color;
+            }
+        }
         for ([_]?Rate{ r.crane, r.chrome }, column_right, 0..) |value, right, col| {
             const color = if (col == 0) ink else ink_2;
             if (value) |rv| {
@@ -253,6 +272,30 @@ test "card: each rate lands in its cell, a missing one is a dash with no point o
     defer testing.allocator.free(c);
     try testing.expect(!std.mem.eql(u8, bytes, c));
     try testing.expect(bytes.len < 400 * 1024);
+}
+
+test "card: each row's Crane meter is green for its rate and red for the rest" {
+    const bytes = try render(testing.allocator, sample_figures);
+    defer testing.allocator.free(bytes);
+    var img = try png.decode(testing.allocator, bytes);
+    defer img.deinit(testing.allocator);
+    const Count = struct {
+        fn of(im: png.Image, y: u32, want: [3]u8) u32 {
+            var n: u32 = 0;
+            var x: u32 = meter_x0;
+            while (x < meter_x1) : (x += 1) n += @intFromBool(std.mem.eql(u8, im.at(x, y), &want));
+            return n;
+        }
+    };
+    // TodoMVC 76.4%: 214 of 280 pixels green, the rest red; Angular 99.8%: 279 green.
+    const todo_y: u32 = @intCast(row_baseline[3] - 20);
+    try testing.expectEqual(@as(u32, 214), Count.of(img, todo_y, pass_color));
+    try testing.expectEqual(@as(u32, 66), Count.of(img, todo_y, fail_color));
+    try testing.expectEqual(@as(u32, 279), Count.of(img, @intCast(row_baseline[0] - 20), pass_color));
+    // The base is paper where the meters go.
+    var base = try png.decode(testing.allocator, base_png);
+    defer base.deinit(testing.allocator);
+    for (row_baseline) |y| try testing.expectEqual(@as(usize, 0), darkIn(base, meter_x0, @intCast(y - meter_up), meter_x1, @intCast(y - meter_down)));
 }
 
 test "card: rows other than base.png's are refused until it is remade" {
