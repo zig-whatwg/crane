@@ -976,7 +976,26 @@ const PipeStream = struct {
         // realm with none (a unit test's) hears nothing.
         const loop = self.ctx.getOptionalEventLoop() orelse return;
         self.task_queued = true;
-        loop.queueTask(.{ .callback = runTask, .context = self, .drop = dropTask });
+        // A global task of the realm's Window, in a window's realm: it waits
+        // while the Window's document is not fully active - a page the
+        // back/forward cache keeps, whose body failed when it was stored
+        // (WindowOrWorkerGlobalScope FetchCall.storeInCache) - and is
+        // dropped once that document is gone. A worker's task has no
+        // document.
+        const window = taskWindow(self.ctx);
+        loop.queueTask(.{
+            .callback = runTask,
+            .context = self,
+            .drop = dropTask,
+            .document = window,
+            .document_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0,
+        });
+    }
+
+    fn taskWindow(ctx: runtime.Context) ?*runtime.Instance {
+        if (!ctx.isWindow()) return null;
+        const record = ctx.getRealm() orelse return null;
+        return @ptrCast(@alignCast(record.global_object orelse return null));
     }
 
     fn runTask(context: ?*anyopaque) void {

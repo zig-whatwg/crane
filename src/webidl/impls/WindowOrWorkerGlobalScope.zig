@@ -471,12 +471,38 @@ const FetchCall = struct {
         // The fetch is still this call's: its body is arriving, and the
         // abort steps can still end it.
         self.outcome = outcome;
+        self.queueSettle();
+    }
+
+    /// Queue the fetch task that settles p with `outcome` (or settle now, in
+    /// a bare realm with no event loop).
+    fn queueSettle(self: *Self) void {
         self.task_holds = true;
         if (self.ctx.getOptionalEventLoop()) |loop| {
-            loop.queueTask(.{ .callback = settle, .context = self, .drop = drop });
+            const window = self.taskWindow();
+            loop.queueTask(.{
+                .callback = settle,
+                .context = self,
+                .drop = drop,
+                .document = window,
+                .document_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0,
+            });
             return;
         }
         settle(self);
+    }
+
+    /// The Window whose global task this call's fetch task is ("queue a
+    /// global task on the networking task source given relevantRealm's
+    /// global object"), or null in a worker's realm, whose tasks have no
+    /// document. Naming it lets the event loop hold the task while the
+    /// Window's document is not fully active - a page the back/forward cache
+    /// keeps, shown again later - and drop it once that document is gone,
+    /// instead of running the page's promise reactions while it is cached.
+    fn taskWindow(self: *const Self) ?*runtime.Instance {
+        if (!self.ctx.isWindow()) return null;
+        const record = self.ctx.getRealm() orelse return null;
+        return @ptrCast(@alignCast(record.global_object orelse return null));
     }
 
     /// The fetch task: HTML "queue a global task", its run side - it runs
@@ -788,6 +814,125 @@ const FetchCall = struct {
         }
     }
 
+    /// Navigate step 24.3's "abort a document" leaves fetch() calls in
+    /// flight, as it leaves XMLHttpRequest's (XMLHttpRequest.zig
+    /// prepareNavigationDocumentAbort): marks none.
+    ///
+    /// Stated deviation from HTML navigate step 24.3 and "abort a document"
+    /// step 2, by golden rule 2. Chrome and Safari do not cancel a document's
+    /// fetches when a navigation away from it starts: Blink's
+    /// FrameLoader::StartNavigation aborts the document's parser only
+    /// (Document::Abort: CancelParsing), and WebKit's
+    /// FrameLoader::loadWithDocumentLoader stops no loader of the current
+    /// document before its policy check - the old document's loads stop at
+    /// the commit (commitProvisionalLoad: BackForwardCache::addIfCacheable,
+    /// whose stopForBackForwardCache stops them for a page it keeps, then
+    /// transitionToCommitted's stopLoadingSubresources). A fetch therefore
+    /// settles normally while a navigation that has not committed is in
+    /// flight, and a page left with a fetch in flight is not made
+    /// unsalvageable by it - Chrome and Safari keep such a page
+    /// (back-forward-cache/eligibility/inflight-fetch-*.html, wpt.fyi stable
+    /// at 2358bd4835: Chrome 157 keeps it, Safari 27.2 keeps it, Firefox 160
+    /// does not). What becomes of the fetch then is `storeInCache`'s. A page
+    /// that is not kept ends its fetches silently when it is destroyed
+    /// (`abortIn`). window.stop() and document.open() still abort them
+    /// (`prepareDocumentAbort`), observably.
+    fn prepareNavigationDocumentAbort(_: *runtime.Instance) bool {
+        return false;
+    }
+
+    /// dom.bfcache store step, for the realm of a document the back/forward
+    /// cache keeps (unload step 18): each fetch() call of that document still
+    /// in flight is cancelled as a network failure, and p - or, once p was
+    /// resolved, the response's body - fails with a TypeError when the page is
+    /// shown again. A keepalive fetch goes on: it is meant to outlive its
+    /// document (Fetch "terminated" step 1).
+    ///
+    /// Golden rule 2, the browsers differing three ways (wpt.fyi stable at
+    /// 2358bd4835, back-forward-cache/eligibility/inflight-fetch-1, -2,
+    /// -cors, -redirects): Chrome 157 keeps the page and lets the fetch finish
+    /// while it is cached (all PASS but -redirects, whose redirect while
+    /// cached evicts it: PRECONDITION_FAILED); Safari 27.2 keeps the page and
+    /// cancels the fetch, which rejects with "TypeError: Load failed" (FAIL,
+    /// but PASS where the test expects the fetch to fail: "CORS failed when in
+    /// BFCache", "Cross-origin redirect ... w/ CSP failing"); Firefox 160 does
+    /// not keep it (HTML: "abort a document" cancels the fetch and makes the
+    /// document unsalvageable, "fetch" - PRECONDITION_FAILED). Mechanism by
+    /// mechanism - the page is kept (Chrome, Safari), the fetch does not
+    /// survive (Safari, Firefox) - the majorities are Safari's behaviour, so
+    /// Crane does what Safari does: WebKit's BackForwardCache::addIfCacheable
+    /// stops the page's loads as it caches it (FrameLoader
+    /// stopForBackForwardCache -> DocumentLoader::stopLoading), and a fetch so
+    /// cancelled fails as a network error. Its settling is a fetch task of the
+    /// page's Window (`queueSettle`), so it waits with the page and runs once
+    /// it is shown again; a body still arriving fails through its pipe, whose
+    /// stream hears it in a task of that Window too (fetch_body.PipeStream).
+    fn storeInCache(realm: runtime.Context) void {
+        // Backwards: a cancel can free its call, which swapRemove replaces
+        // with one already visited.
+        var i = liveIn(realm).len;
+        while (i > 0) {
+            i -= 1;
+            if (i >= liveIn(realm).len) continue;
+            const call = liveIn(realm)[i];
+            if (call.ctx != realm or call.document_aborted or call.keepalive) continue;
+            call.cancelForCache();
+        }
+    }
+
+    /// `storeInCache` for this call: its fetch ends as a network failure.
+    /// No script runs here: p settles in a fetch task, and the body's stream
+    /// hears of its failure in one.
+    fn cancelForCache(self: *Self) void {
+        self.canceling += 1;
+        defer {
+            self.canceling -= 1;
+            self.maybeRelease();
+        }
+        // Nothing is left for a later abort of the document to cancel.
+        self.document_aborted = true;
+        self.document_abort_pending = false;
+        var failed = false;
+        // The body being read to be sent: the fetch has not started, and now
+        // never will. Its stream is cancelled with the TypeError, in the
+        // realm (fetch()'s "cancel request's body with error"; the page is
+        // still being unloaded, as its pagehide listeners were).
+        if (self.upload) |u| {
+            self.upload = null;
+            if (self.pending_request) |r| r.deinit();
+            self.pending_request = null;
+            engine.runInRealm(self.ctx, cancelUploadForCache, u) catch {};
+            self.fetch_holds = false;
+            failed = true;
+        }
+        if (self.in_flight) |f| {
+            self.in_flight = null;
+            // A body still arriving fails as the network failing would:
+            // reading it rejects with a TypeError.
+            f.terminateWith(.{ .kind = .network });
+            self.fetch_holds = false;
+            failed = true;
+        }
+        if (!failed) return;
+        self.releaseKeepalive();
+        // p not settled, and no settle task queued for it: its fetch task
+        // settles it as a network error ("Failed to fetch", a TypeError).
+        // A settle task already queued (the response arrived before the
+        // page was left) settles it with that response, whose body has just
+        // failed.
+        if (!self.settled and !self.task_holds) {
+            self.outcome = error.NetworkError;
+            self.queueSettle();
+        }
+    }
+
+    fn cancelUploadForCache(data: ?*anyopaque) void {
+        const upload: *fetch_body.ReadAll = @ptrCast(@alignCast(data.?));
+        const e = upload.realm.typeError("Failed to fetch") catch return;
+        defer streams_js.dispose(e);
+        upload.cancel(e);
+    }
+
     /// Mark all fetch() calls before XHR/script-owner abort callbacks run.
     fn prepareDocumentAbort(document: *runtime.Instance) bool {
         var marked = false;
@@ -893,7 +1038,11 @@ pub fn installHooks() void {
         .discard = &FetchCall.abortIn,
         .prepare_abort = &FetchCall.prepareDocumentAbort,
         .abort = &FetchCall.abortDocument,
+        .prepare_navigation_document_abort = &FetchCall.prepareNavigationDocumentAbort,
     });
+    // A page the back/forward cache keeps: its fetches in flight end as
+    // network failures (Safari's behaviour; FetchCall.storeInCache).
+    @import("dom").bfcache.installStoreStep(&FetchCall.storeInCache);
 }
 
 fn ownsOriginExtraction(instance: *runtime.Instance) bool {
