@@ -26,9 +26,9 @@ pub const waiting_titles = [_][]const u8{ "React", "Svelte", "Vue" };
 
 pub const Row = struct {
     title: []const u8,
-    /// Tenths of a percent (998 = 99.8%); null: no run.
-    crane: ?u16,
-    chrome: ?u16,
+    /// The rate as the page writes it (`rateOf`); null: no run.
+    crane: ?Rate,
+    chrome: ?Rate,
 };
 
 pub const Figures = struct {
@@ -36,17 +36,38 @@ pub const Figures = struct {
     waiting: []const []const u8,
 };
 
-/// Passed over run in tenths of a percent, rounded; never 100.0% with a
-/// failure, never 0.0% with a pass; null with nothing run.
-pub fn tenths(pass: u32, ran: u32) ?u16 {
+/// A pass rate as the page and the card both write it: tenths of a
+/// percent, rounded, with ">" where it rounds to 100.0% though a test failed
+/// (">99.9%") and "<" where it rounds to 0.0% though one passed ("<0.1%").
+pub const Rate = struct {
+    qualifier: ?u8 = null,
+    tenths: u16,
+
+    /// "99.8%", ">99.9%".
+    pub fn text(r: Rate, buf: []u8) []const u8 {
+        if (r.qualifier) |q| return std.fmt.bufPrint(buf, "{c}{d}.{d}%", .{ q, r.tenths / 10, r.tenths % 10 }) catch unreachable;
+        return std.fmt.bufPrint(buf, "{d}.{d}%", .{ r.tenths / 10, r.tenths % 10 }) catch unreachable;
+    }
+};
+
+/// Passed over run (report.zig writes every rate on the page through it);
+/// null with nothing run.
+pub fn rateOf(pass: u32, ran: u32) ?Rate {
     if (ran == 0) return null;
     const t: u16 = @intCast((@as(u64, pass) * 1000 + ran / 2) / ran);
-    if (pass < ran and t == 1000) return 999;
-    if (pass > 0 and t == 0) return 1;
-    return t;
+    if (pass < ran and t == 1000) return .{ .qualifier = '>', .tenths = 999 };
+    if (pass > 0 and t == 0) return .{ .qualifier = '<', .tenths = 1 };
+    return .{ .tenths = t };
 }
 
 const base_png = @embedFile("card/base.png");
+/// ">" and "<" in the rates' cut, one per cell as the WPT atlas's `of` row
+/// holds its glyphs (card/source.html ?part=marks): the atlas has no such
+/// glyph, and the page writes ">99.9%".
+const marks_png = @embedFile("card/marks.png");
+const marks = "><";
+/// Their advances in the cut, measured with the point's (?part=metrics).
+pub const mark_advance = [2]f64{ 30, 30 };
 
 /// The cut the rates are drawn in: Source Serif 4, 400, 60px.
 const cut = wpt_card.of;
@@ -78,6 +99,25 @@ fn blank(img: *png.Image, x0: u32, y0: u32, x1: u32, y1: u32) void {
     }
 }
 
+/// Mark `i` of the marks sheet with its origin at pen x `x` on baseline `y`
+/// (wpt_card.draw's blend, for a sheet laid out as one of its rows).
+fn drawMark(img: *png.Image, sheet: *const png.Image, c: wpt_card.Cut, i: usize, x: f64, y: i32, color: [3]u8) void {
+    const gx: i32 = @as(i32, @intFromFloat(@round(x))) - @as(i32, @intCast(c.ox));
+    const gy: i32 = y - @as(i32, @intCast(c.baseline));
+    for (0..c.cell_h) |cy| for (0..c.cell_w) |cx| {
+        const ax: u32 = @intCast(i * c.cell_w + cx);
+        const ay: u32 = @intCast(c.row_y + cy);
+        if (ax >= sheet.width or ay >= sheet.height) continue;
+        const cov: u16 = 255 - @as(u16, sheet.at(ax, ay)[0]);
+        if (cov == 0) continue;
+        const dx = gx + @as(i32, @intCast(cx));
+        const dy = gy + @as(i32, @intCast(cy));
+        if (dx < 0 or dy < 0 or dx >= img.width or dy >= img.height) continue;
+        const p = img.at(@intCast(dx), @intCast(dy));
+        for (p, color) |*ch, want| ch.* = @intCast((@as(u16, ch.*) * (255 - cov) + @as(u16, want) * cov + 127) / 255);
+    };
+}
+
 fn sameTitles(got: []const []const u8, want: []const []const u8) bool {
     if (got.len != want.len) return false;
     for (got, want) |a, b| if (!std.mem.eql(u8, a, b)) return false;
@@ -96,16 +136,28 @@ pub fn render(gpa: Allocator, f: Figures) ![]u8 {
     var atlas = try png.decode(gpa, wpt_card.atlas_png);
     defer atlas.deinit(gpa);
 
+    var marks_img = try png.decode(gpa, marks_png);
+    defer marks_img.deinit(gpa);
+    // The marks sheet is one row of the atlas's `of` cut, at row 0.
+    var mark_cut = cut;
+    mark_cut.row_y = 0;
+
     var buf: [8]u8 = undefined;
     for (f.rows, row_baseline) |r, y| {
-        for ([_]?u16{ r.crane, r.chrome }, column_right, 0..) |value, right, col| {
+        for ([_]?Rate{ r.crane, r.chrome }, column_right, 0..) |value, right, col| {
             const color = if (col == 0) ink else ink_2;
-            if (value) |t| {
+            if (value) |rv| {
+                const t = rv.tenths;
                 const whole = std.fmt.bufPrint(&buf, "{d}", .{t / 10}) catch unreachable;
                 const point_x = right - cut.digit - period;
-                _ = wpt_card.draw(&img, &atlas, cut, whole, point_x - wpt_card.measure(cut, whole), y, color);
+                const whole_x = point_x - wpt_card.measure(cut, whole);
+                _ = wpt_card.draw(&img, &atlas, cut, whole, whole_x, y, color);
                 const tenth = [1]u8{'0' + @as(u8, @intCast(t % 10))};
                 _ = wpt_card.draw(&img, &atlas, cut, &tenth, right - cut.digit, y, color);
+                if (rv.qualifier) |q| {
+                    const mi = std.mem.indexOfScalar(u8, marks, q).?;
+                    drawMark(&img, &marks_img, mark_cut, mi, whole_x - mark_advance[mi], y, color);
+                }
             } else {
                 // No run: no point and no "%", a dash in their place.
                 const r0: u32 = @intFromFloat(right);
@@ -146,10 +198,10 @@ fn darkIn(img: png.Image, x0: u32, y0: u32, x1: u32, y1: u32) usize {
 }
 
 const sample = [_]Row{
-    .{ .title = "Angular", .crane = 998, .chrome = 999 },
-    .{ .title = "htmx", .crane = 999, .chrome = null },
-    .{ .title = "jQuery", .crane = 994, .chrome = 997 },
-    .{ .title = "TodoMVC", .crane = 764, .chrome = 767 },
+    .{ .title = "Angular", .crane = .{ .tenths = 998 }, .chrome = .{ .qualifier = '>', .tenths = 999 } },
+    .{ .title = "htmx", .crane = .{ .tenths = 999 }, .chrome = null },
+    .{ .title = "jQuery", .crane = .{ .tenths = 994 }, .chrome = .{ .tenths = 997 } },
+    .{ .title = "TodoMVC", .crane = .{ .tenths = 764 }, .chrome = .{ .tenths = 767 } },
 };
 const sample_figures: Figures = .{ .rows = &sample, .waiting = &waiting_titles };
 
@@ -196,7 +248,7 @@ test "card: each rate lands in its cell, a missing one is a dash with no point o
     defer testing.allocator.free(again);
     try testing.expectEqualSlices(u8, bytes, again);
     var other = sample;
-    other[0].crane = 997;
+    other[0].crane = .{ .tenths = 997 };
     const c = try render(testing.allocator, .{ .rows = &other, .waiting = &waiting_titles });
     defer testing.allocator.free(c);
     try testing.expect(!std.mem.eql(u8, bytes, c));
@@ -211,10 +263,30 @@ test "card: rows other than base.png's are refused until it is remade" {
     try testing.expectError(error.CardOutOfDate, render(testing.allocator, .{ .rows = &sample, .waiting = &.{ "React", "Vue" } }));
 }
 
-test "tenths: rounded, never 100.0 with a failure, never 0.0 with a pass" {
-    try testing.expectEqual(@as(?u16, 998), tenths(12099, 12126));
-    try testing.expectEqual(@as(?u16, 999), tenths(13164, 13165));
-    try testing.expectEqual(@as(?u16, 1000), tenths(5, 5));
-    try testing.expectEqual(@as(?u16, 1), tenths(1, 100000));
-    try testing.expectEqual(@as(?u16, null), tenths(0, 0));
+test "rateOf: rounded, never 100.0 with a failure, never 0.0 with a pass - the page's text and the card's" {
+    var buf: [16]u8 = undefined;
+    try testing.expectEqualStrings("99.8%", rateOf(12099, 12126).?.text(&buf));
+    try testing.expectEqualStrings(">99.9%", rateOf(13164, 13165).?.text(&buf));
+    try testing.expectEqualStrings("100.0%", rateOf(5, 5).?.text(&buf));
+    try testing.expectEqualStrings("<0.1%", rateOf(1, 100000).?.text(&buf));
+    try testing.expect(rateOf(0, 0) == null);
+}
+
+test "card: a qualified rate carries its mark before the number; an exact one has none" {
+    const bytes = try render(testing.allocator, sample_figures);
+    defer testing.allocator.free(bytes);
+    var img = try png.decode(testing.allocator, bytes);
+    defer img.deinit(testing.allocator);
+    var marks_img = try png.decode(testing.allocator, marks_png);
+    defer marks_img.deinit(testing.allocator);
+    // The sheet has ink in each of its cells.
+    for (0..marks.len) |i| try testing.expect(darkIn(marks_img, @intCast(i * cut.cell_w), 0, @intCast((i + 1) * cut.cell_w), cut.cell_h) > 20);
+    // Angular's Chrome rate, ">99.9": a mark just left of its "99"; Crane's
+    // "99.8" in the same row has none.
+    const y: u32 = @intCast(row_baseline[0]);
+    for (column_right, 0..) |right, col| {
+        const whole_x: u32 = @intFromFloat(right - cut.digit - period - 2 * cut.digit);
+        const ink_left = darkIn(img, whole_x - 34, y - 40, whole_x - 2, y);
+        if (col == 1) try testing.expect(ink_left > 30) else try testing.expectEqual(@as(usize, 0), ink_left);
+    }
 }

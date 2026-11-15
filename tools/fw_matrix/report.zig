@@ -70,8 +70,15 @@ pub const SuiteRuns = struct {
     /// The `[file:...]` entries of its exclusion list (not in a journal).
     file_entries: []const exclusions.Entry,
     /// The latest comparison run in a browser (`fw_matrix run --browser`,
-    /// or a project runner's results read by `fw_matrix import`).
+    /// or a project runner's results read by `fw_matrix import`). For a
+    /// TodoMVC app, Crane's port run in Chrome - the same tests through the
+    /// same harness as Crane's column - when there is one (main, 2026-11-14
+    /// 7:00 PM ET).
     chrome: ?Run = null,
+    /// A TodoMVC app's run by TodoMVC's own runner in a browser (Cypress,
+    /// `fw_matrix import --reader=cypress`): the check of the port, stated
+    /// in the method, never a column.
+    check: ?Run = null,
 };
 
 /// How Crane's TodoMVC numbers are made (the method section).
@@ -80,7 +87,7 @@ pub const todomvc_port_note =
 
 /// How Chrome's TodoMVC numbers are made.
 pub const todomvc_chrome_note =
-    "Chrome's TodoMVC numbers are TodoMVC's own Cypress suite, not the port: Cypress 15.14.2 with the project's cypress.config.js and spec unmodified (its test server listens on a free TCP port instead of 8000), one app per run as its tests/cya.js runs them, read from Cypress's own results. A test Cypress does not run because a hook failed earlier in its suite (Mocha then skips the rest of that suite) counts as not passed, so both columns count the spec's tests.";
+    "Chrome's TodoMVC numbers are the same port run in Chrome for Testing: the same tests through the same harness as Crane's, so the two columns differ only by the browser.";
 
 /// What a test's message says when Cypress did not run it after a failed
 /// hook (main.zig importCypress).
@@ -102,6 +109,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
     for (m.suites, 0..) |s, si| {
         var runs: std.ArrayList(Run) = .empty;
         var chrome: ?Run = null;
+        var check: ?Run = null;
         for (journals) |j| {
             var labels: std.ArrayList([]const u8) = .empty;
             for (j.pages) |p| if (std.mem.eql(u8, p.suite, s.id) and std.mem.eql(u8, p.version, s.version)) {
@@ -127,8 +135,10 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 const first = pages.items[0];
                 const run: Run = .{ .label = label, .browser = first.browser, .generation = first.generation, .crane_commit = first.crane_commit, .console_sha256 = first.console_sha256, .tests = tests.items, .pages = pages.items, .counts = counts };
                 if (run.browser != null) {
-                    // The latest by label (labels name their time).
-                    if (chrome == null or std.mem.order(u8, chrome.?.label, label) == .lt) chrome = run;
+                    // The latest by label (labels name their time). A TodoMVC
+                    // app's run by its own runner is the port's check.
+                    const slot = if (s.kind == .todomvc_port and first.imported != null) &check else &chrome;
+                    if (slot.* == null or std.mem.order(u8, slot.*.?.label, label) == .lt) slot.* = run;
                 } else try runs.append(arena, run);
             }
         }
@@ -140,7 +150,7 @@ pub fn collect(arena: Allocator, m: manifest.Manifest, journals: []const journal
                 return std.mem.order(u8, a.label, b.label) == .lt;
             }
         }.lt);
-        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{}, .chrome = chrome });
+        try out.append(arena, .{ .suite = s, .runs = runs.items, .file_entries = if (si < file_entries.len) file_entries[si] else &.{}, .chrome = chrome, .check = check });
     }
     return out.items;
 }
@@ -267,22 +277,18 @@ fn pct(c: journal.Counts) ?f64 {
     return @as(f64, @floatFromInt(c.pass)) * 100.0 / @as(f64, @floatFromInt(c.ran()));
 }
 
-/// Passed over run, one decimal; never "100.0%" unless every test passed.
+/// Passed over run, one decimal; never "100.0%" unless every test passed
+/// (card.rateOf: the card writes every rate the same way).
 fn rate(w: W, pass: u32, ran: u32) !void {
     if (ran == 0) return w.writeAll("&mdash;");
-    const tenths = (@as(u64, pass) * 1000 + ran / 2) / ran;
-    if (pass < ran and tenths == 1000) return w.writeAll("&gt;99.9%");
-    if (pass > 0 and tenths == 0) return w.writeAll("&lt;0.1%");
-    try w.print("{d}.{d}%", .{ tenths / 10, tenths % 10 });
+    var buf: [16]u8 = undefined;
+    try html.text(w, rateText(&buf, pass, ran));
 }
 
 /// The same, as plain text (a tooltip, a description).
 fn rateText(buf: []u8, pass: u32, ran: u32) []const u8 {
-    if (ran == 0) return "no tests";
-    const tenths = (@as(u64, pass) * 1000 + ran / 2) / ran;
-    if (pass < ran and tenths == 1000) return ">99.9%";
-    if (pass > 0 and tenths == 0) return "<0.1%";
-    return std.fmt.bufPrint(buf, "{d}.{d}%", .{ tenths / 10, tenths % 10 }) catch unreachable;
+    const r = card.rateOf(pass, ran) orelse return "no tests";
+    return r.text(buf);
 }
 
 /// "12,099 / 12,126" as plain text.
@@ -429,7 +435,7 @@ fn cardFigures(arena: Allocator, rows: []const Row) !card.Figures {
             try waiting.append(arena, r.title);
             continue;
         }
-        try out.append(arena, .{ .title = r.title, .crane = if (r.crane) |c| card.tenths(c.pass, c.ran()) else null, .chrome = if (r.chrome) |c| card.tenths(c.pass, c.ran()) else null });
+        try out.append(arena, .{ .title = r.title, .crane = if (r.crane) |c| card.rateOf(c.pass, c.ran()) else null, .chrome = if (r.chrome) |c| card.rateOf(c.pass, c.ran()) else null });
     }
     return .{ .rows = out.items, .waiting = waiting.items };
 }
@@ -781,7 +787,7 @@ fn writeTodoMvc(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Su
 
     try w.print("<details class=\"fold\" id=\"todomvc\" open>\n<summary><h2>TodoMVC: pass rate per app</h2><span class=\"fold-meta\">{d} apps", .{apps.items.len});
     if (tests_each) |n| try w.print(" &middot; {d} tests each", .{n});
-    try w.writeAll(" &middot; Chrome by TodoMVC&#39;s own Cypress suite &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
+    try w.writeAll(" &middot; the same port in both browsers &middot; highest in Crane first</span></summary>\n<div class=\"fold-body\">\n");
     try w.print("<p class=\"allpass\"><b>{d}</b> of {d} apps pass every test in Crane, <b>{d}</b> in Chrome.</p>\n", .{ crane_all, apps.items.len, chrome_all });
     try w.writeAll("<div class=\"apps\">\n");
     const half = (apps.items.len + 1) / 2;
@@ -1156,47 +1162,124 @@ fn writeMethod(arena: Allocator, w: W, m: manifest.Manifest, suites: []const Sui
             try html.text(w, crane_commit.?);
             try w.writeAll("</code>.");
         }
-        // What Mocha left unrun in Chrome, and how Crane did on those tests.
-        var unrun: u32 = 0;
-        var unrun_apps: u32 = 0;
-        var crane_passed: u32 = 0;
-        for (suites) |s| if (s.suite.kind == .todomvc_port) {
-            const c = s.chrome orelse continue;
-            var here: u32 = 0;
-            for (c.tests) |ct| if (ct.message) |msg| if (std.mem.indexOf(u8, msg, mocha_skip_marker) != null) {
-                here += 1;
-                if (latest(s)) |r| for (r.tests) |rt| {
-                    if (std.mem.eql(u8, rt.id, ct.id) and rt.status == .PASS) crane_passed += 1;
-                };
-            };
-            unrun += here;
-            unrun_apps += @intFromBool(here > 0);
-        };
-        if (unrun > 0) {
-            try w.writeAll(" In Chrome, Cypress did not run ");
-            try html.plural(w, unrun, "test", "tests");
-            try w.writeAll(" of ");
-            try html.plural(w, unrun_apps, "app", "apps");
-            try w.print(" because a hook had failed earlier in their suite; they count as not passed, and Crane, whose run of the same apps went on, passed {d} of them.", .{crane_passed});
-        }
         if (chrome) |c| {
             try w.writeAll(" Chrome: ");
             try html.text(w, c.browser.?);
             try w.writeAll(", run <code>");
             try html.text(w, c.label);
-            try w.writeAll("</code>");
-            if (c.pages.len > 0) if (c.pages[0].imported) |im| {
-                try w.writeAll(" on ");
-                try html.text(w, im.date);
-                try w.writeAll(" (");
-                try html.text(w, im.runner);
-                try w.writeAll(")");
-            };
-            try w.writeAll(".");
+            try w.writeAll("</code>.");
         }
+        try writeCheck(arena, w, suites);
         try w.writeAll("</li>\n");
     }
     try w.writeAll("</ul>\n</div>\n</details>\n");
+}
+
+/// The port checked against TodoMVC's own runner in Chrome (the apps'
+/// `check` runs beside their `chrome` runs): how many tests the two agree
+/// on, then each kind of disagreement in one sentence - tests the runner
+/// never ran after a failed hook (with those hooks' own failures: the
+/// failed test just before each run of such tests), and the rest by app.
+fn writeCheck(arena: Allocator, w: W, suites: []const SuiteRuns) !void {
+    const Gap = struct { title: []const u8, port_fails: u32 = 0, port_passes: u32 = 0 };
+    var gaps: std.ArrayList(Gap) = .empty;
+    var check: ?Run = null;
+    var tests: u32 = 0;
+    var agree: u32 = 0;
+    var unrun: u32 = 0;
+    var hooks: u32 = 0;
+    var unrun_apps: u32 = 0;
+    for (suites) |s| if (s.suite.kind == .todomvc_port) {
+        const cy = s.check orelse continue;
+        const port = s.chrome orelse continue;
+        check = cy;
+        var gap: Gap = .{ .title = s.suite.title };
+        var here: u32 = 0;
+        const skipped = struct {
+            fn f(t: journal.TestRecord) bool {
+                return t.status == .FAIL and t.message != null and std.mem.indexOf(u8, t.message.?, mocha_skip_marker) != null;
+            }
+        }.f;
+        for (cy.tests, 0..) |ct, ci| {
+            if (ct.status == .NOTRUN) continue;
+            tests += 1;
+            const port_pass = for (port.tests) |pt| {
+                if (std.mem.eql(u8, pt.id, ct.id)) break pt.status == .PASS;
+            } else false;
+            const cy_pass = ct.status == .PASS;
+            // The failed hook that began a run of skipped tests.
+            const hook = ct.status == .FAIL and !skipped(ct) and ci + 1 < cy.tests.len and skipped(cy.tests[ci + 1]);
+            if (cy_pass == port_pass) {
+                agree += 1;
+            } else if (skipped(ct)) {
+                here += 1;
+            } else if (hook and port_pass) {
+                hooks += 1;
+            } else if (cy_pass) gap.port_fails += 1 else gap.port_passes += 1;
+        }
+        unrun += here;
+        unrun_apps += @intFromBool(here > 0);
+        if (gap.port_fails + gap.port_passes > 0) try gaps.append(arena, gap);
+    };
+    const c = check orelse return;
+    try w.writeAll(" The port was checked test by test against TodoMVC&#39;s own Cypress suite in Chrome (run <code>");
+    try html.text(w, c.label);
+    try w.writeAll("</code>");
+    if (c.pages.len > 0) if (c.pages[0].imported) |im| {
+        try w.writeAll(", ");
+        try html.text(w, im.date);
+    };
+    try w.writeAll("): the two agree on ");
+    try html.num(w, agree);
+    try w.writeAll(" of ");
+    try html.plural(w, tests, "test", "tests");
+    try w.writeAll(".");
+    if (unrun > 0) {
+        try w.writeAll(" Cypress did not run ");
+        try html.num(w, unrun);
+        try w.writeAll(" of the others, in ");
+        try html.plural(w, unrun_apps, "app", "apps");
+        try w.writeAll(", because a hook had failed earlier in their suite and Mocha skips the rest of it");
+        if (hooks == 1) try w.writeAll(", and 1 more is such a hook&#39;s own failure") else if (hooks > 1) try w.print(", and {d} more are those hooks&#39; own failures", .{hooks});
+        try w.writeAll("; the port ran them and they passed.");
+    }
+    std.mem.sort(Gap, gaps.items, {}, struct {
+        fn lt(_: void, a: Gap, b: Gap) bool {
+            const na = a.port_fails + a.port_passes;
+            const nb = b.port_fails + b.port_passes;
+            if (na != nb) return na > nb;
+            return std.ascii.lessThanIgnoreCase(a.title, b.title);
+        }
+    }.lt);
+    for ([_]bool{ true, false }) |fails| {
+        var n: u32 = 0;
+        var total: u32 = 0;
+        var k: usize = 0;
+        for (gaps.items) |g| {
+            const count = if (fails) g.port_fails else g.port_passes;
+            n += @intFromBool(count > 0);
+            total += count;
+        }
+        if (n == 0) continue;
+        try w.writeAll(" ");
+        for (gaps.items) |g| {
+            const count = if (fails) g.port_fails else g.port_passes;
+            if (count == 0) continue;
+            if (k > 0) try w.writeAll(if (k + 1 == n) " and " else ", ");
+            k += 1;
+            try html.text(w, g.title);
+            try w.print(" {d}", .{count});
+        }
+        if (fails) {
+            try w.writeAll(if (total == 1) " fails in the port and passes in Cypress" else " fail in the port and pass in Cypress");
+        } else try w.writeAll(if (total == 1) " passes in the port and fails in Cypress" else " pass in the port and fail in Cypress");
+        try w.writeAll(": the port&#39;s harness and Cypress&#39;s differ there in timing or focus.");
+    }
+    if (c.pages.len > 0) if (c.pages[0].imported) |im| {
+        try w.writeAll(" That run: ");
+        try html.text(w, im.runner);
+        try w.writeAll(".");
+    };
 }
 
 pub fn writeIndex(arena: Allocator, w: W, m: manifest.Manifest, suites: []const SuiteRuns, rows: []const Row, o: Options, card_ref: []const u8) !void {
@@ -1301,18 +1384,30 @@ fn fixture(a: Allocator) !struct { m: manifest.Manifest, suites: []SuiteRuns } {
     try f.testRec(a, ch, chrome_157, jq, "test", "core: jQuery.parseXML - error reporting", .FAIL, .{ .message = "reports error column" });
     try f.pageRec(a, ch, chrome_157, jq, "test", .{ .unnamed_passed = 997, .unnamed_failed = 2, .reported_total = 1000, .imported = .{ .runner = "jquery-test-runner 0.3.0", .log = "tmp/jtr.log", .log_sha256 = &sha, .date = "2026-11-14" } });
     // TodoMVC: React passes everything in both; GWT fails 2 in Crane and 1
-    // in Chrome; jQuery fails everything in both.
+    // in Chrome (the port in Chrome); jQuery fails everything in both.
     for ([_]manifest.Suite{ react_app, gwt_app, jq_app }) |s| for ([_][]const u8{ cr, ch }) |label| {
         const b: ?[]const u8 = if (std.mem.eql(u8, label, ch)) chrome_157 else null;
         const is_chrome = b != null;
         const gwt = std.mem.eql(u8, s.id, "gwt-todomvc");
         const jqa = std.mem.eql(u8, s.id, "jquery-todomvc");
         try f.testRec(a, label, b, s, "todomvc", "New Todo: should add", if (jqa or (gwt and !is_chrome)) .FAIL else .PASS, .{});
-        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (jqa) .FAIL else .PASS, .{ .message = if (jqa and is_chrome) "Cypress did not run it: a hook failed earlier in its suite, and Mocha skips the suite's remaining tests" else null });
+        try f.testRec(a, label, b, s, "todomvc", "No Todos: starts with nothing", if (jqa) .FAIL else .PASS, .{});
         try f.testRec(a, label, b, s, "todomvc", "Routing: should respect the back button", if (jqa or gwt) .FAIL else .PASS, .{});
         try f.testRec(a, label, b, s, "todomvc", "Persistence: should persist", .NOTRUN, .{ .not_run = .project_skip });
-        try f.pageRec(a, label, b, s, "todomvc", .{ .imported = if (is_chrome) .{ .runner = "Cypress 15.14.2", .log = "tmp/cy", .log_sha256 = &sha, .date = "2026-11-14" } else null });
+        try f.pageRec(a, label, b, s, "todomvc", .{});
     };
+    // TodoMVC's own Cypress run, the port's check: it agrees but for GWT,
+    // where a hook fails, Mocha leaves the next test unrun, and one passes in
+    // Cypress only.
+    for ([_]manifest.Suite{ react_app, gwt_app, jq_app }) |s| {
+        const gwt = std.mem.eql(u8, s.id, "gwt-todomvc");
+        const jqa = std.mem.eql(u8, s.id, "jquery-todomvc");
+        try f.testRec(a, "cy-1", chrome_157, s, "todomvc", "New Todo: should add", if (jqa or gwt) .FAIL else .PASS, .{});
+        try f.testRec(a, "cy-1", chrome_157, s, "todomvc", "No Todos: starts with nothing", if (jqa or gwt) .FAIL else .PASS, .{ .message = if (gwt) "Cypress did not run it: a hook failed earlier in its suite, and Mocha skips the suite's remaining tests" else null });
+        try f.testRec(a, "cy-1", chrome_157, s, "todomvc", "Routing: should respect the back button", if (jqa) .FAIL else .PASS, .{});
+        try f.testRec(a, "cy-1", chrome_157, s, "todomvc", "Persistence: should persist", .NOTRUN, .{ .not_run = .project_skip });
+        try f.pageRec(a, "cy-1", chrome_157, s, "todomvc", .{ .imported = .{ .runner = "Cypress 15.14.2", .log = "tmp/cy", .log_sha256 = &sha, .date = "2026-11-14" } });
+    }
     const j: journal.Journal = .{ .tests = f.tests.items, .pages = f.pages.items };
     const files = [_][]const exclusions.Entry{ &.{}, &.{.{ .id = "test/a.js", .file = true, .kind = .node_runner_only, .why = "only its Node runner loads it", .line = 1 }}, &.{}, &.{}, &.{}, &.{} };
     return .{ .m = m, .suites = try collect(a, m, &.{j}, &files) };
@@ -1424,7 +1519,11 @@ test "one page: the chart, TodoMVC open, what is not run and the method closed; 
     try testing.expectEqual(@as(usize, 1), occurrences(h, "class=\"axis-note\""));
     try testing.expect(std.mem.indexOf(u8, h, "1 app is given to both as the folder of the build todomvc.com links (<code>jquery/dist</code>)") != null);
     // What Mocha left unrun in Chrome, counted from Chrome's journal.
-    try testing.expect(std.mem.indexOf(u8, h, " In Chrome, Cypress did not run 1 test of 1 app because a hook had failed earlier in their suite; they count as not passed, and Crane, whose run of the same apps went on, passed 0 of them.") != null);
+    // Chrome's column is the port in Chrome; TodoMVC's own Cypress run is
+    // its check, stated once in the method, counted from the journals.
+    try testing.expect(std.mem.indexOf(u8, h, " The port was checked test by test against TodoMVC&#39;s own Cypress suite in Chrome (run <code>cy-1</code>, 2026-11-14): the two agree on 6 of 9 tests. Cypress did not run 1 of the others, in 1 app, because a hook had failed earlier in their suite and Mocha skips the rest of it, and 1 more is such a hook&#39;s own failure; the port ran them and they passed. GWT 1 fails in the port and passes in Cypress: the port&#39;s harness and Cypress&#39;s differ there in timing or focus. That run: Cypress 15.14.2.") != null);
+    try testing.expectEqual(@as(usize, 1), occurrences(h, "TodoMVC&#39;s own Cypress suite"));
+    try testing.expect(std.mem.indexOf(u8, h, "Chrome, run <code>chrome-1</code>.") != null or std.mem.indexOf(u8, h, "157.0.8103.78, run <code>chrome-1</code>.") != null);
     // Not run: the counts in its summary.
     try testing.expect(std.mem.indexOf(u8, h, "<span class=\"fold-meta\">rendering 1 test &middot; skipped by TodoMVC&#39;s spec 3 tests</span>") != null);
     // No failure cause, test name or message; no link to a subpage.
@@ -1481,6 +1580,22 @@ test "the social card's tags: every one present, in the head, the numbers from t
     const again = try render(a, fx.m, fx.suites, .{});
     try testing.expectEqualSlices(u8, out.card_png, again.card_png);
     try testing.expectEqualStrings(out.index_html, again.index_html);
+}
+
+test "the card's rates are the page's: one formatter, the same text for every count" {
+    var a: [16]u8 = undefined;
+    var b: [16]u8 = undefined;
+    const counts = [_][2]u32{ .{ 13164, 13165 }, .{ 12099, 12126 }, .{ 826, 1202 }, .{ 5, 5 }, .{ 1, 100000 }, .{ 0, 7 } };
+    for (counts) |c| try testing.expectEqualStrings(rateText(&a, c[0], c[1]), card.rateOf(c[0], c[1]).?.text(&b));
+    // The fixture's card rows carry exactly the rates the page shows.
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const ar = arena_state.allocator();
+    const fx = try fixture(ar);
+    const rows = try chartRows(ar, fx.m, fx.suites);
+    const figures = try cardFigures(ar, rows);
+    try testing.expectEqualStrings("99.9%", figures.rows[0].chrome.?.text(&a));
+    try testing.expectEqualStrings(rateText(&b, 1099, 1100), figures.rows[0].chrome.?.text(&a));
 }
 
 test "rate: one decimal, rounded, never 100% with a failure; nothing run is a dash" {

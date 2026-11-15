@@ -6,7 +6,9 @@ The rates are composited onto it by tools/fw_matrix/card.zig from the WPT site's
 here, at the positions card.zig computes: change COLUMN_RIGHT, ROW_BASELINE, ROWS and WAITING
 here and column_right, row_baseline, row_titles and waiting_titles there together.
   ?part=base     -> base.png
-  ?part=metrics  -> the advance of "." in the 400/60px cut (card.zig `period`)
+  ?part=marks    -> marks.png (120x80: ">" and "<" in the 400/60px cut, black on white, one per cell as
+                    the WPT atlas lays out its `of` row: cell 60x80, origin x 10, baseline 62)
+  ?part=metrics  -> the advances of ".", ">" and "<" in that cut (card.zig `period`, `mark_advance`)
 How it was made, and how to remake it: README.md beside this file.
 -->
 <html lang="en">
@@ -54,10 +56,21 @@ document.fonts.load('400 60px "Source Serif 4"').then(() => document.fonts.load(
   const probe = svg(10, 10);
   const PERIOD = text(probe, 0, 5, ".", "serif", 60, 400, "#000").getComputedTextLength();
   probe.remove();
+  if (part === "marks") {
+    const s = svg(120, 80);
+    const bg = document.createElementNS(NS, "rect");
+    bg.setAttribute("width", 120); bg.setAttribute("height", 80); bg.setAttribute("fill", "#ffffff");
+    s.append(bg);
+    [">", "<"].forEach((g, i) => text(s, i * 60 + 10, 62, g, "serif", 60, 400, "#000"));
+    document.title = "ready";
+    return;
+  }
   if (part === "metrics") {
+    const probe2 = svg(10, 10);
+    const adv = (g) => text(probe2, 0, 5, g, "serif", 60, 400, "#000").getComputedTextLength();
     const pre = document.createElement("pre");
     pre.id = "metrics";
-    pre.textContent = JSON.stringify({ period: PERIOD });
+    pre.textContent = JSON.stringify({ period: PERIOD, gt: adv(">"), lt: adv("<") });
     document.body.replaceChildren(pre);
     document.title = "ready";
     return;
