@@ -1,12 +1,11 @@
 //! CSS Selectors Level 4 Implementation
 //!
 //! Complete implementation of CSS Selectors Level 4 specification.
-//! Provides tokenization, parsing, and matching for all selector types.
+//! Provides tokenization and parsing for all selector types.
 //!
 //! ## Modules
 //! - `tokenizer` - CSS tokenization (CSS Syntax Module Level 3)
 //! - `parser` - Selector parsing (recursive descent)
-//! - `matcher` - Selector matching (right-to-left evaluation)
 //!
 //! ## Usage
 //! ```zig
@@ -56,9 +55,6 @@ pub const BacktrackingInfo = parser.BacktrackingInfo;
 const infra = @import("infra");
 pub const AncestorHashes = infra.AncestorHashes;
 pub const AncestorBloomFilter = infra.AncestorBloomFilter;
-
-pub const matcher = @import("matcher.zig");
-pub const Matcher = matcher.Matcher;
 
 pub const cache = @import("cache.zig");
 pub const SelectorQueryCache = cache.SelectorQueryCache;

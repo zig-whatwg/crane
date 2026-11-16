@@ -15,9 +15,9 @@
 //!   through the word (`keyAsDocument()` is a Document's own).
 //!
 //! These tests hold the rule the change was made under: every reader gets
-//! the answer it got from its own copy. An owner-less NodeBase (the tests'
-//! fixtures, the WithBase types) has no Instance: its document is a bare
-//! NodeBase, kept in the same word (`setDocumentBase`).
+//! the answer it got from its own copy. The word names a Document's
+//! Instance or nothing: its third form, an owner-less tree's bare NodeBase
+//! (the tests' fixtures and the WithBase types), went with those (lane wb1).
 //!
 //! It names generated interfaces and src/dom only (AGENTS.md "The impls
 //! boundary").
@@ -158,23 +158,29 @@ test "adoption moves a whole tree's node document, for every reader at once" {
     inline for (.{ section, i, t }) |node| try expectDocument(node, page.document);
 }
 
-test "an owner-less NodeBase keeps a bare NodeBase as its document, in the same word" {
+test "a node made with no node document names none; given one, the word names the Document's Instance" {
+    // Lane wb1: this test held the word's third form - an owner-less
+    // NodeBase naming a bare NodeBase as its document - which went with the
+    // owner-less NodeBases. What is left of it: the word of a real node with
+    // no document, and after it is given one.
     if (comptime !one_word) return error.NoDocumentWord;
-    var document: NodeBase = .{ .node_type = NodeBase.DOCUMENT_NODE, .owner = NodeBase.ownerless(&testing.allocator) };
-    var node: NodeBase = .{ .node_type = NodeBase.ELEMENT_NODE, .owner = NodeBase.ownerless(&testing.allocator) };
+    var page: Page = undefined;
+    try page.open(testing.allocator);
+    defer page.close();
+    const instance = try interfaces.Element.init(testing.allocator, &page.ctx);
+    const node = try baseOf(instance);
+    const document = try baseOf(page.document);
 
     try testing.expectEqual(@as(?*NodeBase, null), node.documentBase());
-    try testing.expectEqual(@as(usize, 0), node.documentKey());
-
-    node.setDocumentBase(&document);
-    try testing.expectEqual(@as(?*NodeBase, &document), node.documentBase());
-    try testing.expectEqual(@as(?*NodeBase, &document), node.getNodeDocument());
-    // No Instance owns the document, so none is named.
+    try testing.expectEqual(@as(?*NodeBase, null), node.getNodeDocument());
     try testing.expectEqual(@as(?*runtime.Instance, null), node.documentInstance());
-    try testing.expectEqual(document.keyAsDocument(), node.documentKey());
-    try testing.expectEqual(@intFromPtr(&document), node.documentKey());
-
-    node.setDocumentBase(null);
-    try testing.expectEqual(@as(?*NodeBase, null), node.documentBase());
     try testing.expectEqual(@as(usize, 0), node.documentKey());
+
+    try dom.node_document.set(instance, page.document);
+    try testing.expectEqual(@as(?*NodeBase, document), node.documentBase());
+    try testing.expectEqual(@as(?*NodeBase, document), node.getNodeDocument());
+    try testing.expectEqual(@as(?*runtime.Instance, page.document), node.documentInstance());
+    // A document's key is its Instance, and its nodes name that.
+    try testing.expectEqual(document.keyAsDocument(), node.documentKey());
+    try testing.expectEqual(@intFromPtr(page.document), node.documentKey());
 }

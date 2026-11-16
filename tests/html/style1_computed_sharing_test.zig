@@ -72,7 +72,7 @@ fn account(page: helpers.Page) !Account {
     var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
-        const element: *runtime.Instance = @ptrCast(@alignCast(c.ownerInstance() orelse continue));
+        const element: *runtime.Instance = c.registeredInstance() orelse continue;
         const state = dom.style.element_style.existingOf(element) orelse return error.NoStyleState;
         const cached = state.cached orelse return error.NoCachedStyle;
         a.elements += 1;
@@ -266,7 +266,7 @@ fn hover() !void {
     var target: ?*runtime.Instance = null;
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
-        if (index == 5) target = @ptrCast(@alignCast(c.ownerInstance().?));
+        if (index == 5) target = c.instance();
         index += 1;
     }
     var pointer: @import("html").user_input.Pointer = .{};

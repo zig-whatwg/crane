@@ -65,10 +65,9 @@ pub const NodeRef = struct {
     instance: *runtime.Instance,
     generation: u64,
 
-    /// A reference to `node`; null for a node no Instance owns.
+    /// A reference to `node`; null for a node already released.
     pub fn to(node: *NodeBase) ?NodeRef {
-        const opaque_instance = node.ownerInstance() orelse return null;
-        const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+        const instance = node.registeredInstance() orelse return null;
         return .{ .node = node, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
 
@@ -193,8 +192,7 @@ pub fn install(impl: Implementation) void {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(opaque_instance));
+    return node.registeredInstance();
 }
 
 /// Whether `node` is an Element.
@@ -269,14 +267,7 @@ pub fn slotState(node: *NodeBase) ?*SlotState {
     return f(instance);
 }
 
-test "NodeRef equality compares instance and generation" {
-    var a: NodeBase = undefined;
-    var instance: runtime.Instance = undefined;
-    const r1 = NodeRef{ .node = &a, .instance = &instance, .generation = 1 };
-    const r2 = NodeRef{ .node = &a, .instance = &instance, .generation = 2 };
-    try std.testing.expect(r1.eql(r1));
-    try std.testing.expect(!r1.eql(r2));
-}
+// NodeRef's test: tests/dom/wb1_moved_from_src_test.zig (a real node).
 
 test "slot state names are copied and freed" {
     var state = SlotState.init(std.testing.allocator);

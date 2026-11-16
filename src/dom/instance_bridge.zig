@@ -3,7 +3,9 @@
 //! This module provides the bridge layer that allows WebIDL impls (using runtime.Instance)
 //! to delegate tree operations to src/dom (using NodeBase).
 //!
-//! - NodeBase -> Instance: a field of the node (`NodeBase.ownerInstance`, its owner word).
+//! - NodeBase -> Instance: a field of the node (its owner word: `NodeBase.instance`
+//!   for code that holds a live node, `NodeBase.registeredInstance` - null once
+//!   the node is released - for everything `getInstance` serves).
 //! - Instance -> NodeBase: the node's own state, read through the hook Node
 //!   installs (`install`, `node_base_of`): Node keeps its NodeBase in its
 //!   InternalState, which lives in the instance's own generated State
@@ -140,7 +142,8 @@ pub fn visitNodes(scope: *runtime.BrowserScope, limit: usize, context: anytype, 
         fn each(self: *@This(), instance: *runtime.Instance) void {
             if (self.seen == self.limit) return;
             const node_base = getNodeBaseUnaudited(instance) orelse return;
-            if (node_base.ownerInstance() == null) return;
+            // Made and not yet registered (inside Node's initOwn): not a node yet.
+            if (node_base.registeredInstance() == null) return;
             self.seen += 1;
             visit(self.context, node_base);
         }
@@ -158,10 +161,11 @@ pub fn register(instance: *anyopaque, node_base: *NodeBase) !void {
     const scope = scopeOf(instance);
     const bridge = try scope.table(.node_bases, Bridge);
     // An instance registered again is already counted.
-    const fresh = node_base.ownerInstance() != @as(?*anyopaque, instance);
-    node_base.setOwnerInstance(instance);
+    const node: *runtime.Instance = @ptrCast(@alignCast(instance));
+    const fresh = node_base.registeredInstance() != node;
+    node_base.setOwnerInstance(node);
     // A node holder's walk asks it for what it holds (dom.wrapper_tracing).
-    node_base.traces_held = @as(*runtime.Instance, @ptrCast(@alignCast(instance))).vtable.trace_held_nodes != null;
+    node_base.traces_held = node.vtable.trace_held_nodes != null;
     if (!fresh) return;
     _ = bridge.live.fetchAdd(1, .monotonic);
     // The Browser's DOM grew by the node's storage, once per node: its window
@@ -196,7 +200,7 @@ pub fn unregister(instance: *anyopaque) void {
     const scope = scopeOf(instance);
     const bridge = scope.existingTable(.node_bases, Bridge) orelse return;
     const node_base = getNodeBaseUnaudited(instance) orelse return;
-    if (node_base.ownerInstance() != @as(?*anyopaque, instance)) return;
+    if (@as(?*anyopaque, node_base.registeredInstance()) != @as(?*anyopaque, instance)) return;
     // Not strictly required - the field dies with the node - but clearing it
     // keeps a freed instance from being observable through a resurrected node.
     node_base.setOwnerInstance(null);
@@ -230,7 +234,11 @@ pub fn getNodeBaseUnaudited(instance: *anyopaque) ?*NodeBase {
 
 /// Get the runtime.Instance for a NodeBase
 ///
-/// Returns null if the NodeBase is not from a registered runtime.Instance.
+/// Returns null if the NodeBase is not registered: its teardown released it
+/// (or it is not made yet). THE LIVENESS FORM - NodeBase.registeredInstance -
+/// for every caller: an impl handed a node by a hook or a walk does nothing
+/// with one that is gone. Code that holds a live node and wants no branch
+/// calls NodeBase.instance().
 /// This is useful when src/dom needs to return nodes to WebIDL callers.
 ///
 /// Example:
@@ -244,7 +252,7 @@ pub fn getNodeBaseUnaudited(instance: *anyopaque) ?*NodeBase {
 pub fn getInstance(node_base: *NodeBase) ?*anyopaque {
     // No map, no global state, no initialization order to get wrong: the owning
     // instance is a field of the node. Callers are unchanged.
-    return node_base.ownerInstance();
+    return node_base.registeredInstance();
 }
 
 /// Check if a NodeBase is from a registered runtime.Instance

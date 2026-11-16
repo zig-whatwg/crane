@@ -62,8 +62,7 @@ pub fn booksOf(node: *NodeBase) ?*Books {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const raw = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(raw));
+    return node.registeredInstance();
 }
 
 /// The deferred teardown queue of `instance`'s realm's agent (a ShadowRealm's:

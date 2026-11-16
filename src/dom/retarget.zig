@@ -24,10 +24,10 @@ pub fn nodeOf(instance: *runtime.Instance) ?*NodeBase {
     return instance_bridge.getNodeBase(instance);
 }
 
-/// `node`'s instance. Every node a script or the engine can reach has one.
+/// `node`'s instance; null once the node's teardown released it (a listener
+/// can tear down a node of the path it is dispatched along).
 pub fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(opaque_instance));
+    return node.registeredInstance();
 }
 
 /// DOM: a node's root - the topmost inclusive ancestor.

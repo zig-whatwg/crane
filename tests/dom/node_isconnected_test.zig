@@ -1,188 +1,140 @@
 //! Tests for Node.isConnected property
 //! Spec: https://dom.spec.whatwg.org/#dom-node-isconnected
+//!
+//! Real nodes, linked by the DOM's own append (real_nodes.zig; lane wb1):
+//! the walk to the root (`NodeBase.isConnected`), the flag the insertion
+//! steps keep (`NodeBase.is_connected`) and what script reads
+//! (Node.isConnected) agree on every node. They were mock Document NodeBases
+//! and ElementWithBase values linked by hand, which had no flag to compare.
 
 const std = @import("std");
 const dom = @import("dom");
-const infra = @import("infra");
-const webidl = @import("webidl");
+const interfaces = @import("interfaces");
+const real_nodes = @import("real_nodes.zig");
 
-// Type aliases - use NodeBase/ElementWithBase for internal testing
 const NodeBase = dom.NodeBase;
-const Element = dom.ElementWithBase;
+const baseOf = real_nodes.baseOf;
 
-/// Helper to create a mock document node for testing isConnected
-fn createMockDocumentNode() NodeBase {
-    return NodeBase{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.DOCUMENT_NODE,
-        .parent_node = null,
-    };
-}
-
-fn deinitMockDocument(doc: *NodeBase) void {
-    // A node keeps no child list (lane perf2 batch 5): nothing to free.
-    _ = doc;
-}
-
-/// Link `child` as `parent`'s last child (a node's children are its sibling
-/// links: NodeBase.children; lane perf2 batch 5).
-fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    parent.linkChildBefore(child, null);
+/// The three answers for one node.
+fn expectConnected(expected: bool, node: *real_nodes.Instance) !void {
+    const base = baseOf(node);
+    try std.testing.expectEqual(expected, base.isConnected());
+    try std.testing.expectEqual(expected, base.is_connected);
+    try std.testing.expectEqual(expected, try interfaces.Node.get_isConnected(node));
 }
 
 test "Node.isConnected - document node is connected" {
-    var doc = createMockDocumentNode();
-    defer deinitMockDocument(&doc);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
 
     // Document is its own root, and root is a document, so it's connected
-    try std.testing.expect(doc.isConnected());
+    try std.testing.expect(baseOf(doc).isConnected());
+    try std.testing.expect(try interfaces.Node.get_isConnected(doc));
 }
 
 test "Node.isConnected - detached element is not connected" {
-    const allocator = std.testing.allocator;
-
-    var elem = Element.init(&allocator, "div");
-    defer elem.deinit();
-
-    const node = elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
 
     // Detached element's root is itself (an Element), not a Document
-    try std.testing.expect(!node.isConnected());
+    try expectConnected(false, elem);
 }
 
 test "Node.isConnected - element in document tree is connected" {
-    const allocator = std.testing.allocator;
-
-    var doc = createMockDocumentNode();
-    defer deinitMockDocument(&doc);
-
-    var elem = Element.init(&allocator, "div");
-    defer elem.deinit();
-
-    const node = elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
 
     // Before connecting - not connected
-    try std.testing.expect(!node.isConnected());
+    try expectConnected(false, elem);
 
     // Connect element to document
-    linkTestChild(&doc, node);
-    node.parent_node = &doc;
+    try nodes.append(doc, elem);
+    try std.testing.expectEqual(@as(?*NodeBase, baseOf(doc)), baseOf(elem).parent_node);
 
     // Now element is connected
-    try std.testing.expect(node.isConnected());
+    try expectConnected(true, elem);
 }
 
 test "Node.isConnected - nested elements in document are connected" {
-    const allocator = std.testing.allocator;
-
-    var doc = createMockDocumentNode();
-    defer deinitMockDocument(&doc);
-
-    var parent_elem = Element.init(&allocator, "div");
-    defer parent_elem.deinit();
-
-    var child_elem = Element.init(&allocator, "span");
-    defer child_elem.deinit();
-
-    const parent = parent_elem.asNode();
-    const child = child_elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const parent = try nodes.element(doc, "div");
+    const child = try nodes.element(doc, "span");
 
     // Build tree: doc > parent > child
-    linkTestChild(&doc, parent);
-    parent.parent_node = &doc;
-
-    linkTestChild(parent, child);
-    child.parent_node = parent;
+    try nodes.append(doc, parent);
+    try nodes.append(parent, child);
 
     // Both elements are connected via the document
-    try std.testing.expect(parent.isConnected());
-    try std.testing.expect(child.isConnected());
+    try expectConnected(true, parent);
+    try expectConnected(true, child);
 }
 
 test "Node.isConnected - orphaned subtree is not connected" {
-    const allocator = std.testing.allocator;
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const parent = try nodes.element(doc, "div");
+    const child = try nodes.element(doc, "span");
 
-    var parent_elem = Element.init(&allocator, "div");
-    defer parent_elem.deinit();
-
-    var child_elem = Element.init(&allocator, "span");
-    defer child_elem.deinit();
-
-    const parent = parent_elem.asNode();
-    const child = child_elem.asNode();
-
-    // Build orphaned subtree: parent > child (no document)
-    linkTestChild(parent, child);
-    child.parent_node = parent;
+    // Build orphaned subtree: parent > child (no document above it)
+    try nodes.append(parent, child);
 
     // Neither is connected (root is an Element, not a Document)
-    try std.testing.expect(!parent.isConnected());
-    try std.testing.expect(!child.isConnected());
+    try expectConnected(false, parent);
+    try expectConnected(false, child);
 }
 
 test "Node.isConnected - deeply nested element in document" {
-    const allocator = std.testing.allocator;
-
-    var doc = createMockDocumentNode();
-    defer deinitMockDocument(&doc);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
 
     // Create a chain of 4 elements
-    var elem0 = Element.init(&allocator, "html");
-    defer elem0.deinit();
-
-    var elem1 = Element.init(&allocator, "body");
-    defer elem1.deinit();
-
-    var elem2 = Element.init(&allocator, "div");
-    defer elem2.deinit();
-
-    var elem3 = Element.init(&allocator, "span");
-    defer elem3.deinit();
-
-    const n0 = elem0.asNode();
-    const n1 = elem1.asNode();
-    const n2 = elem2.asNode();
-    const n3 = elem3.asNode();
+    const n0 = try nodes.element(doc, "html");
+    const n1 = try nodes.element(doc, "body");
+    const n2 = try nodes.element(doc, "div");
+    const n3 = try nodes.element(doc, "span");
 
     // Build tree: doc > n0 > n1 > n2 > n3
-    linkTestChild(&doc, n0);
-    n0.parent_node = &doc;
-
-    linkTestChild(n0, n1);
-    n1.parent_node = n0;
-
-    linkTestChild(n1, n2);
-    n2.parent_node = n1;
-
-    linkTestChild(n2, n3);
-    n3.parent_node = n2;
+    try nodes.append(doc, n0);
+    try nodes.append(n0, n1);
+    try nodes.append(n1, n2);
+    try nodes.append(n2, n3);
 
     // All elements are connected
-    try std.testing.expect(n0.isConnected());
-    try std.testing.expect(n1.isConnected());
-    try std.testing.expect(n2.isConnected());
-    try std.testing.expect(n3.isConnected());
+    try expectConnected(true, n0);
+    try expectConnected(true, n1);
+    try expectConnected(true, n2);
+    try expectConnected(true, n3);
 }
 
 test "Node.isConnected - document fragment root is not connected" {
-    const allocator = std.testing.allocator;
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
 
     // Create a document fragment node
-    var frag = NodeBase{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-        .parent_node = null,
-    };
-    var elem = Element.init(&allocator, "div");
-    defer elem.deinit();
-
-    const node = elem.asNode();
+    const frag = try nodes.fragment(doc);
+    const elem = try nodes.element(doc, "div");
 
     // Attach element to fragment
-    linkTestChild(&frag, node);
-    node.parent_node = &frag;
+    try nodes.append(frag, elem);
 
     // Fragment is not a document, so element is not connected
-    try std.testing.expect(!frag.isConnected());
-    try std.testing.expect(!node.isConnected());
+    try expectConnected(false, frag);
+    try expectConnected(false, elem);
 }

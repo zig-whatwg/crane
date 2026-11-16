@@ -1,117 +1,97 @@
 //! Tests for Node.contains() method
 //! Spec: https://dom.spec.whatwg.org/#dom-node-contains
+//!
+//! Real elements, linked by the DOM's own append (real_nodes.zig; lane wb1):
+//! `NodeBase.contains` - src/dom's walk - and what script reads
+//! (Node.contains) agree. They were ElementWithBase values linked by hand.
 
 const std = @import("std");
 const dom = @import("dom");
-const infra = @import("infra");
-const webidl = @import("webidl");
+const interfaces = @import("interfaces");
+const real_nodes = @import("real_nodes.zig");
 
-// Type aliases - use NodeBase/ElementWithBase for internal testing
-const NodeBase = dom.NodeBase;
-const Element = dom.ElementWithBase;
+const baseOf = real_nodes.baseOf;
+const Instance = real_nodes.Instance;
 
-/// Link `child` as `parent`'s last child (a node's children are its sibling
-/// links: NodeBase.children; lane perf2 batch 5).
-fn linkTestChild(parent: *NodeBase, child: *NodeBase) void {
-    parent.linkChildBefore(child, null);
+/// `node.contains(other)`, by src/dom's walk and by the interface.
+fn expectContains(expected: bool, node: *Instance, other: ?*Instance) !void {
+    try std.testing.expectEqual(expected, baseOf(node).contains(if (other) |o| baseOf(o) else null));
+    try std.testing.expectEqual(expected, try interfaces.Node.call_contains(node, other));
 }
 
 test "Node.contains - self" {
-    const allocator = std.testing.allocator;
-
-    var elem = Element.init(&allocator, "div");
-    defer elem.deinit();
-
-    const node = elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const node = try nodes.element(try nodes.document(), "div");
 
     // Node contains itself
-    try std.testing.expect(node.contains(node));
+    try expectContains(true, node, node);
 }
 
 test "Node.contains - null returns false" {
-    const allocator = std.testing.allocator;
-
-    var elem = Element.init(&allocator, "div");
-    defer elem.deinit();
-
-    const node = elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const node = try nodes.element(try nodes.document(), "div");
 
     // contains(null) returns false
-    try std.testing.expect(!node.contains(null));
+    try expectContains(false, node, null);
 }
 
 test "Node.contains - direct child" {
-    const allocator = std.testing.allocator;
-
-    var parent_elem = Element.init(&allocator, "div");
-    defer parent_elem.deinit();
-
-    var child_elem = Element.init(&allocator, "span");
-    defer child_elem.deinit();
-
-    const parent = parent_elem.asNode();
-    const child = child_elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const parent = try nodes.element(doc, "div");
+    const child = try nodes.element(doc, "span");
 
     // Add child to parent
-    linkTestChild(parent, child);
-    child.parent_node = parent;
+    try nodes.append(parent, child);
 
     // Parent contains child
-    try std.testing.expect(parent.contains(child));
+    try expectContains(true, parent, child);
 
     // Child does not contain parent
-    try std.testing.expect(!child.contains(parent));
+    try expectContains(false, child, parent);
 }
 
 test "Node.contains - descendant" {
-    const allocator = std.testing.allocator;
-
-    var grandparent_elem = Element.init(&allocator, "div");
-    defer grandparent_elem.deinit();
-
-    var parent_elem = Element.init(&allocator, "section");
-    defer parent_elem.deinit();
-
-    var child_elem = Element.init(&allocator, "span");
-    defer child_elem.deinit();
-
-    const grandparent = grandparent_elem.asNode();
-    const parent = parent_elem.asNode();
-    const child = child_elem.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const grandparent = try nodes.element(doc, "div");
+    const parent = try nodes.element(doc, "section");
+    const child = try nodes.element(doc, "span");
 
     // Build tree: grandparent > parent > child
-    linkTestChild(grandparent, parent);
-    parent.parent_node = grandparent;
-
-    linkTestChild(parent, child);
-    child.parent_node = parent;
+    try nodes.append(grandparent, parent);
+    try nodes.append(parent, child);
 
     // Grandparent contains all descendants
-    try std.testing.expect(grandparent.contains(parent));
-    try std.testing.expect(grandparent.contains(child));
+    try expectContains(true, grandparent, parent);
+    try expectContains(true, grandparent, child);
 
     // Parent contains child but not grandparent
-    try std.testing.expect(parent.contains(child));
-    try std.testing.expect(!parent.contains(grandparent));
+    try expectContains(true, parent, child);
+    try expectContains(false, parent, grandparent);
 
     // Child contains only itself
-    try std.testing.expect(!child.contains(parent));
-    try std.testing.expect(!child.contains(grandparent));
+    try expectContains(false, child, parent);
+    try expectContains(false, child, grandparent);
 }
 
 test "Node.contains - unrelated nodes" {
-    const allocator = std.testing.allocator;
-
-    var elem1 = Element.init(&allocator, "div");
-    defer elem1.deinit();
-
-    var elem2 = Element.init(&allocator, "span");
-    defer elem2.deinit();
-
-    const node1 = elem1.asNode();
-    const node2 = elem2.asNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const doc = try nodes.document();
+    const node1 = try nodes.element(doc, "div");
+    const node2 = try nodes.element(doc, "span");
 
     // Unrelated nodes don't contain each other
-    try std.testing.expect(!node1.contains(node2));
-    try std.testing.expect(!node2.contains(node1));
+    try expectContains(false, node1, node2);
+    try expectContains(false, node2, node1);
 }

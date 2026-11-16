@@ -354,8 +354,8 @@ pub fn queueMutationRecord(
     // and its microtask - are skipped: a legacy `*Node` carries no realm to
     // name the surrounding agent by, so the records wait in their observers'
     // queues (takeRecords). (Nothing reaches this function: its only caller,
-    // attribute_algorithms.handleAttributeChanges, is reached only from the
-    // unused dom_token_list.zig.)
+    // attribute_algorithms.handleAttributeChanges, has no caller since the
+    // unused dom_token_list.zig was deleted - lane wb1.)
 }
 
 /// DOM §7.3 - Queue a tree mutation record
@@ -523,8 +523,7 @@ pub const walk_before_asking = 32;
 /// engine-less realm keeps no agent state), so that the walk goes on. False
 /// means no node of the agent has a registered observer, transient or not.
 pub fn anyObserverMade(node: *NodeBase) bool {
-    const object = node.ownerInstance() orelse return true;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(object));
+    const instance = node.registeredInstance() orelse return true;
     const agent = agentOf(instance.ctx) orelse return true;
     return agent.observer_counter != 0;
 }
