@@ -1,5 +1,7 @@
 # Testing: Two footprint levels with equal dirty bytes are one level, undercounted - macOS does not count a reusable page that is written again
 
+**Status (2026-11-16, lane ab1)**: the under-count is as written and is fixed by Crane's own in-sandbox allocator. One sentence below needs care: the two levels do NOT hold the same blocks. With every allocation logged, the high-level launches of `fetch.loopback-gzip` held 36 of the row's bodies and the low-level ones 39 plus up to 41 of the stream row's pieces (40-44 MiB against 36); the dirty totals are close because the rest of the process is the same. See testing-footprint-levels-of-uncollected-garbage-hold-different-live-sets.md.
+
 **Date**: 2026-11-16
 **Lesson**: When a row's footprint reads two levels and `vmmap` shows the same dirty bytes in both, nothing is held in one and released in the other: the lower level leaves out pages that were given up with `MADV_FREE_REUSABLE` and then written again without `MADV_FREE_REUSE`.
 
