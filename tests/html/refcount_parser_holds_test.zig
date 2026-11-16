@@ -224,7 +224,7 @@ fn base(page: h.Page, id: []const u8) !*dom.NodeBase {
 }
 
 fn firstChildOf(node: *dom.NodeBase) !*dom.NodeBase {
-    return node.first_child orelse error.NoChild;
+    return node.firstChild() orelse error.NoChild;
 }
 
 /// `node`'s count is the parser's `held` references plus its wrapper's,
@@ -246,7 +246,7 @@ fn stackHoldsWhatIsOpen() !void {
     try h.expectCount(1, a, "an open element: the stack's reference (its creator's, adopted)");
     try h.expectCount(1, b, "the current node");
     try h.expectCount(0, try firstChildOf(b), "a text node, inserted: its creator's reference handed to the tree");
-    const head = (try base(page, "a")).parent_node.?.parent_node.?.first_child.?;
+    const head = (try base(page, "a")).parent_node.?.parent_node.?.firstChild().?;
     try h.expectCount(1, head, "the popped head: the head element pointer still names it");
     try page.run("document.write('</p></div><span id=c></span><b id=x>bold')");
     try h.expectCount(0, a, "popped: nothing of the parser holds it");

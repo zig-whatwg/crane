@@ -256,7 +256,7 @@ const Frame = struct {
     const unknown = std.math.maxInt(u64);
 
     fn enter(node: *NodeBase, path: *const Path, path_index: usize) Frame {
-        var frame: Frame = .{ .node = node, .hosted = .{ null, null }, .path_index = path_index, .cursor = node.first_child, .remaining = undefined };
+        var frame: Frame = .{ .node = node, .hosted = .{ null, null }, .path_index = path_index, .cursor = node.firstChild(), .remaining = undefined };
         var left: i64 = @as(i64, node.subtree_holds) - @intFromBool(refcount.isHeld(node));
         if (node.node_type == NodeBase.ELEMENT_NODE) {
             var hosted: [2]?*NodeBase = undefined;
@@ -481,7 +481,7 @@ fn firstEntered(node: *NodeBase, from: From, walker: anytype) ?*NodeBase {
             if (roots[1]) |contents| if (walker.enters(contents)) return contents;
         }
     }
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (walker.enters(c)) return c;
     }

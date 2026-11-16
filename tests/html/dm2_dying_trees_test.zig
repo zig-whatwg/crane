@@ -439,7 +439,7 @@ fn aTreePredictedDeadThatLivesIsPutBack() !void {
     const root = try page.node("root");
     // A native holder of a node below the root, never wrapped: pending work
     // (an image's load) holds its node this way.
-    const below = root.first_child orelse return error.NoChild;
+    const below = root.firstChild() orelse return error.NoChild;
     dom.refcount.holderRef(below);
     var released = false;
     errdefer if (!released) dom.refcount.holderDeref(below);

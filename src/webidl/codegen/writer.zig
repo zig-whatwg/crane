@@ -1882,9 +1882,25 @@ pub const SameObjectPlace = union(enum) {
     /// element pays for it only once it is read (16 bytes for the first
     /// field), as Blink keeps these objects in its ElementRareDataVector.
     element_rare: []const u8,
+    /// The NODE's sparse rare block, in this field, through
+    /// dom.same_object_cache's node accessors (lane nm2): Node's childNodes,
+    /// which every node's State carried 8 bytes for. The block is the same
+    /// one an element's caches are in - its word is the node's NodeBase's -
+    /// so any node pays for the list only once it is read. Blink keeps the
+    /// childNodes list in the node's rare data too (NodeListsNodeData's
+    /// child_node_list_, Node::childNodes() -> EnsureRareData()), WebKit in
+    /// NodeRareData's NodeListsNodeData (ensureChildNodeList).
+    node_rare: []const u8,
     /// The impl keeps the object itself, and its edge from the owner: no
     /// generated cache, the getter calls the impl.
     impl,
+};
+
+/// The [SameObject] caches of a node of ANY kind that go to the node's rare
+/// block: `interface` declares the attribute, `field` is its
+/// dom.element_rare_data.Field.
+const node_rare_caches = [_]struct { interface: []const u8, attribute: []const u8, field: []const u8 }{
+    .{ .interface = "Node", .attribute = "childNodes", .field = "child_nodes" },
 };
 
 /// The [SameObject] caches every element of a family carries, which go to
@@ -1923,6 +1939,9 @@ const impl_kept_same_object = [_]struct { interface: []const u8, attribute: []co
 
 /// Where `owner`'s [SameObject] attribute `attr` is cached.
 pub fn sameObjectPlace(owner: SameObjectOwner, attr: types.Attribute) SameObjectPlace {
+    if (attr.mixin == null) for (node_rare_caches) |cache| {
+        if (std.mem.eql(u8, cache.interface, owner.interface_name) and std.mem.eql(u8, cache.attribute, attr.name)) return .{ .node_rare = cache.field };
+    };
     if (!owner.element) return .state;
     for (impl_kept_same_object) |kept| {
         if (std.mem.eql(u8, kept.interface, owner.interface_name) and std.mem.eql(u8, kept.attribute, attr.name)) return .impl;
@@ -1935,10 +1954,13 @@ pub fn sameObjectPlace(owner: SameObjectOwner, attr: types.Attribute) SameObject
 }
 
 /// One rare-block cache of a level, for its destruction chain
-/// (dom.same_object_cache.endElement).
+/// (dom.same_object_cache.endElement, or endNode for a node-level one).
 pub const ElementRareCache = struct {
     field: []const u8,
     attribute: []const u8,
+    /// A node-level cache (`SameObjectPlace.node_rare`): ended through the
+    /// node's own holder, not the element's hook.
+    node: bool = false,
 };
 
 /// The rare-block caches among `attributes` of `owner`, in order. The caller
@@ -1950,6 +1972,7 @@ pub fn elementRareCaches(allocator: std.mem.Allocator, attributes: []const types
         if (attr.static or !hasExtendedAttribute(attr.extAttrs, "SameObject")) continue;
         switch (sameObjectPlace(owner, attr)) {
             .element_rare => |field| try list.append(allocator, .{ .field = field, .attribute = attr.name }),
+            .node_rare => |field| try list.append(allocator, .{ .field = field, .attribute = attr.name, .node = true }),
             .state, .impl => {},
         }
     }
@@ -2824,13 +2847,21 @@ pub fn writeLifecycleFunctions(
     // First, before an impl that chains by hand returns: this level's
     // [SameObject] children are the generated layer's.
     if (options.same_object_caches) try writer.writeAll("        @import(\"dom\").same_object_cache.end(State, instance);\n");
-    if (options.element_rare_caches.len > 0) {
-        try writer.writeAll("        @import(\"dom\").same_object_cache.endElement(instance, &.{");
-        for (options.element_rare_caches, 0..) |cache, i| {
-            if (i > 0) try writer.writeAll(",");
+    // An element's caches through the element's hook, a node's own through
+    // its NodeBase: one call for each kind the level has.
+    for ([_]bool{ false, true }) |node_level| {
+        var wrote: usize = 0;
+        for (options.element_rare_caches) |cache| {
+            if (cache.node != node_level) continue;
+            if (wrote == 0) {
+                try writer.print("        @import(\"dom\").same_object_cache.{s}(instance, &.{{", .{if (node_level) "endNode" else "endElement"});
+            } else {
+                try writer.writeAll(",");
+            }
             try writer.print(" .{{ .field = .{s}, .attribute = \"{s}\" }}", .{ cache.field, cache.attribute });
+            wrote += 1;
         }
-        try writer.writeAll(" });\n");
+        if (wrote > 0) try writer.writeAll(" });\n");
     }
     try writer.print("        if (comptime @hasDecl({s}, \"deinit\")) return {s}.deinit(instance);\n", .{ impl_name, impl_name });
     try writer.print("        if (comptime @hasDecl({s}, \"deinitOwn\")) {s}.deinitOwn(instance);\n", .{ impl_name, impl_name });
@@ -5402,13 +5433,15 @@ pub fn writeDelegateFunctions(
         const place: SameObjectPlace = if (cacheable) sameObjectPlace(options.owner, attr) else .state;
         const caches = cacheable and place != .impl;
         const rare_field: ?[]const u8 = if (caches) switch (place) {
-            .element_rare => |field| field,
+            .element_rare, .node_rare => |field| field,
             .state, .impl => null,
         } else null;
+        // The accessors' prefix: the element's hook, or the node's own holder.
+        const rare_prefix: []const u8 = if (place == .node_rare) "node" else "element";
         // A rare-block slot holds one non-null object: the cached value of a
         // readonly attribute (a [PutForwards] setter forwards through the getter).
         if (rare_field != null and (is_nullable or !std.mem.eql(u8, return_type, "*runtime.Instance") or !attr.readonly)) {
-            std.debug.print("codegen: {s}.{s} cannot be cached in an element's rare data (nullable, not an interface, or writable)\n", .{ options.owner.interface_name, attr.name });
+            std.debug.print("codegen: {s}.{s} cannot be cached in a node's rare data (nullable, not an interface, or writable)\n", .{ options.owner.interface_name, attr.name });
             return error.ElementRareCacheShape;
         }
         if (inherited) |mixin| if (!caches) {
@@ -5445,11 +5478,11 @@ pub fn writeDelegateFunctions(
             // its bit is given before the object is made, so that keeping it
             // after cannot fail, and the object is kept and traced from its
             // owner, whoever reads it first - as a State cache is.
-            try writer.writeAll("        // [SameObject] - Return the instance the element's rare data keeps\n");
-            try writer.print("        if (@import(\"dom\").same_object_cache.elementGet(instance, .{s})) |cached| {{\n", .{field});
+            try writer.print("        // [SameObject] - Return the instance the {s}'s rare data keeps\n", .{rare_prefix});
+            try writer.print("        if (@import(\"dom\").same_object_cache.{s}Get(instance, .{s})) |cached| {{\n", .{ rare_prefix, field });
             try writer.writeAll("            return cached;\n");
             try writer.writeAll("        }\n");
-            try writer.print("        try @import(\"dom\").same_object_cache.elementReserve(instance, .{s});\n", .{field});
+            try writer.print("        try @import(\"dom\").same_object_cache.{s}Reserve(instance, .{s});\n", .{ rare_prefix, field });
             if (reflect_getter) {
                 try writer.print("        const value = if (comptime @hasDecl({s}, \"get_{s}\")) try {s}.get_{s}(instance) else try reflection.get({s}, instance, ", .{ member_impl, sanitized_name, member_impl, sanitized_name, value_type });
                 try reflect.writeSpec(writer, reflection.?);
@@ -5457,7 +5490,7 @@ pub fn writeDelegateFunctions(
             } else {
                 try writer.print("        const value = try {s}.get_{s}(instance);\n", .{ member_impl, sanitized_name });
             }
-            try writer.print("        @import(\"dom\").same_object_cache.elementMade(instance, .{s}, value, \"{s}\");\n", .{ field, sanitized_name });
+            try writer.print("        @import(\"dom\").same_object_cache.{s}Made(instance, .{s}, value, \"{s}\");\n", .{ rare_prefix, field, sanitized_name });
             try writer.writeAll("        return value;\n");
         } else if (caches) {
             // [SameObject] - Cache the result and return same instance every time

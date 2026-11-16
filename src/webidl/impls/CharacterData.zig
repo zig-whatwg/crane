@@ -36,18 +36,25 @@ pub const ImplError = error{
     OutOfMemory,
 };
 
-/// Internal state for CharacterData implementation: the node's data. Its
-/// type is src/dom's (`dom.character_data.Data`, the small-string storage
-/// and the code-unit splice); the state is this node's.
-pub const InternalState = dom.character_data.Data;
+/// Internal state for CharacterData implementation: the two lengths of the
+/// node's data (`dom.character_data.Head`, 8 bytes). The data's word is the
+/// node's leaf word, in its NodeBase (lane nm2, N9: a CharacterData node has
+/// no children, so it keeps its data where a container keeps its first
+/// child); `Data` is the pair, whose type - the small-string storage and the
+/// code-unit splice - is src/dom's. The state is this node's.
+pub const InternalState = dom.character_data.Head;
+const Data = dom.character_data.Data;
 
 // Its internal state, in its own generated State (`own._internal`): runtime.OwnState.
 const webidl = @import("webidl");
 const Registry = runtime.OwnState(State, InternalState);
 
-/// Get the internal state from an instance
-fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+/// The node's data - its lengths here and its word in its NodeBase - or null
+/// when `instance` has no live CharacterData state. By value: it is two
+/// addresses, both good while the node's State block is.
+fn getInternal(instance: *runtime.Instance) ?Data {
+    const head = Registry.get(instance) orelse return null;
+    return Data.ofHead(head);
 }
 
 /// What a CharacterData node is given at construction (`initWith`): its
@@ -69,23 +76,26 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // arena. With `set` it was dropped from the map and held to process
     // exit - 904 bytes per discarded element, measured.
     _ = allocator; // the node's Browser's (runtime.allocatorOf): asserted the same in Node's initOwn
-    const internal = try Registry.create(instance);
-    internal.* = .empty;
+    const head = try Registry.create(instance);
+    // The node is a leaf from here: its first-child word is its data's.
+    const internal = Data.claim(head);
     if (@hasField(@TypeOf(args), "data")) {
         errdefer deinitOwn(instance);
         try internal.setData(runtime.allocatorOf(instance), args.data);
     }
 }
 
-/// Get CharacterData's internal state
-pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return Registry.get(instance);
+/// Get CharacterData's data (`getInternal`).
+pub fn getInternalState(instance: *runtime.Instance) ?Data {
+    return getInternal(instance);
 }
 
 /// CharacterData's own teardown: the generated chain runs Node's after it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     // Clean up its internal state
-    if (Registry.get(instance)) |internal| {
+    // The chain runs this before Node's teardown: the NodeBase, and in it
+    // the data's word, is still there.
+    if (getInternal(instance)) |internal| {
         internal.deinit(runtime.allocatorOf(instance));
     }
     Registry.remove(instance);
@@ -213,7 +223,7 @@ pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, da
 /// 8-11. For each live range whose start/end node is node, update start/end offset.
 /// 12. Update a ProcessingInstruction's attributes unless already updated.
 /// 13. If node's parent is non-null, run its parent's children changed steps.
-fn replaceDataInternal(instance: *runtime.Instance, internal: *InternalState, offset: u32, count_param: u32, data: []const u8) !void {
+fn replaceDataInternal(instance: *runtime.Instance, internal: Data, offset: u32, count_param: u32, data: []const u8) !void {
     const length = internal.getLength();
 
     // Step 2: Check bounds
@@ -299,6 +309,13 @@ pub fn installHooks() void {
 
 /// dom.teardown_sweeps: at its Browser's end, every CharacterData state still in
 /// `scope`'s table - an orphan's no teardown reached - frees what it owns.
+///
+/// The `.character_data` phase runs before `.nodes` (dom.teardown_sweeps),
+/// so each node's NodeBase - where its data's word is - is still there.
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
-    Registry.deinitAllAndClear(scope);
+    Registry.sweep(scope, {}, struct {
+        fn visit(_: void, instance: *runtime.Instance, head: *InternalState) void {
+            Data.ofHead(head).deinit(runtime.BrowserScope.ofInstance(instance).allocator);
+        }
+    }.visit);
 }

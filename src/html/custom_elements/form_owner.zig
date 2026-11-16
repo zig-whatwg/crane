@@ -133,7 +133,7 @@ fn resetShadowIncludingSubtree(root: *NodeBase) void {
         // The shadow root's tree before the host's children.
         const shadow = ce.shadowRootOf(element) orelse continue;
         const shadow_base = dom.instance_bridge.getNodeBase(shadow) orelse continue;
-        var child = shadow_base.first_child;
+        var child = shadow_base.firstChild();
         while (child) |c| : (child = c.next_sibling) resetShadowIncludingSubtree(c);
     }
 }
@@ -142,7 +142,7 @@ fn resetShadowIncludingSubtree(root: *NodeBase) void {
 /// a fieldset's, whose disabled state reaches into no shadow tree
 /// (form_associated.isDisabled walks parents only).
 fn resetDescendants(root: *NodeBase) void {
-    var current = root.first_child;
+    var current = root.firstChild();
     while (current) |node| : (current = nextInSubtree(node, root)) {
         if (node.node_type != ELEMENT_NODE) continue;
         ce.refreshForm(instanceOf(node) orelse continue);
@@ -206,7 +206,7 @@ fn resetObserversOf(state: *ce.AgentState, id: []const u8) void {
 
 /// The node after `node` in tree order within `root`'s subtree.
 fn nextInSubtree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;

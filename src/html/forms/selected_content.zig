@@ -96,7 +96,7 @@ fn isOmitted(node: *dom.NodeBase) bool {
 /// node from a subtree already taken out of the fragment changes nothing
 /// anything can observe (no observer, no wrapper, nothing connected).
 fn collectOmitted(allocator: std.mem.Allocator, parent: *dom.NodeBase, out: *std.ArrayListUnmanaged(*dom.NodeBase)) !void {
-    var child = parent.first_child;
+    var child = parent.firstChild();
     while (child) |node| : (child = node.next_sibling) {
         if (isOmitted(node)) {
             try out.append(allocator, node);

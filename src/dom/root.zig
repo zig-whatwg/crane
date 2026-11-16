@@ -200,10 +200,11 @@ pub const attribute_values = @import("attribute_values.zig");
 /// through, gone 10 s after its parse (lane nd2 batch 5; Blink's
 /// Document::element_data_cache_).
 pub const attribute_block_cache = @import("attribute_block_cache.zig");
-/// An element's rare data - the fields few elements use, in one sparse block
-/// made on first use that MOVES when it grows (Blink's NodeRareData since
-/// 2026-01; lanes perf3 D2, rare1) - HTMLElement's fields included, reached
-/// through the hook Element installs.
+/// A node's rare data - the fields few nodes use, in one sparse block made
+/// on first use that MOVES when it grows (Blink's NodeRareData since
+/// 2026-01; lanes perf3 D2, rare1) - the node's own fields (lane nm2: its
+/// word is NodeBase's `rare`), Element's, and HTMLElement's, which are
+/// reached through the hook Element installs.
 pub const element_rare_data = @import("element_rare_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");

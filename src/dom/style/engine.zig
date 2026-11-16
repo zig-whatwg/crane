@@ -1046,14 +1046,14 @@ fn shadowDepth(root: *NodeBase) u16 {
 /// Firefox 144 and Safari 27.0.1 ignore it).
 fn pageColorSchemes(allocator: Allocator, document: *runtime.Instance) Error!css.color_scheme.Support {
     const root = instance_bridge.getNodeBase(document) orelse return .none;
-    var next: ?*NodeBase = root.first_child;
+    var next: ?*NodeBase = root.firstChild();
     while (next) |node| {
         if (node.node_type == NodeBase.ELEMENT_NODE) if (instanceOf(node)) |element| if (colorSchemeMetaContent(element)) |content| {
             if (try css.properties.parseColorSchemeSupport(allocator, content)) |support| return support;
         };
         // Preorder: the first child, else the next sibling of the nearest
         // inclusive ancestor that has one.
-        if (node.first_child) |child| {
+        if (node.firstChild()) |child| {
             next = child;
             continue;
         }
@@ -1452,7 +1452,7 @@ fn selectKind(element: *runtime.Instance) selector_matching.SelectKind {
 /// element when that is an HTML button.
 fn isSelectButton(select: *runtime.Instance, child: *NodeBase) bool {
     const select_node = instance_bridge.getNodeBase(select) orelse return false;
-    var current = select_node.first_child;
+    var current = select_node.firstChild();
     while (current) |c| : (current = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
         if (c != child) return false;
@@ -1945,7 +1945,7 @@ pub fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
         if (cached.matches(address, generation, v)) return cached.value;
     };
     var counts: css.math_values.TreeCounts = .{ .index = 1, .count = 0 };
-    var next = parent.first_child;
+    var next = parent.firstChild();
     while (next) |sibling| : (next = sibling.next_sibling) {
         if (sibling.node_type != NodeBase.ELEMENT_NODE) continue;
         counts.count += 1;
@@ -1955,7 +1955,7 @@ pub fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
     // cache allocation leaves the stack answer intact and no node is kept.
     if (version) |v| {
         var index: usize = 0;
-        next = parent.first_child;
+        next = parent.firstChild();
         while (next) |sibling| : (next = sibling.next_sibling) {
             if (sibling.node_type != NodeBase.ELEMENT_NODE) continue;
             index += 1;

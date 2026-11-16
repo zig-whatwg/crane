@@ -73,8 +73,8 @@ const HeldTree = struct {
             try turn(page);
         }
         const host = try page.node("host");
-        const root = host.first_child orelse return error.NoChild;
-        const held = root.first_child orelse return error.NoChild;
+        const root = host.firstChild() orelse return error.NoChild;
+        const held = root.firstChild() orelse return error.NoChild;
         dom.refcount.holderRef(held);
         errdefer dom.refcount.holderDeref(held);
         try page.run("host.innerHTML = '';");

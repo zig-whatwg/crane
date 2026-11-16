@@ -246,13 +246,13 @@ fn related(allocator: Allocator, node: *Instance, comptime relation: Relation) !
 
 fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
     const base = bridge.getNodeBase(node) orelse return null;
-    var child = base.first_child;
+    var child = base.firstChild();
     while (child) |at| : (child = at.next_sibling) if (instance(at)) |candidate| if (eq(localName(candidate), name)) return candidate;
     return null;
 }
 
 fn nextInTree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var at = node;
     while (at != boundary) {
         if (at.next_sibling) |sibling| return sibling;
@@ -422,7 +422,7 @@ const Name = struct {
         }
         if (shadows.rootForHost(node)) |shadow| try self.collectOwners(shadow);
         const base = bridge.getNodeBase(node) orelse return;
-        var at = base.first_child;
+        var at = base.firstChild();
         while (at) |current| : (at = current.next_sibling) {
             if (instance(current)) |element| try self.collectOwners(element);
         }
@@ -540,7 +540,7 @@ const Name = struct {
     }
 
     fn children(self: *Name, out: *std.ArrayList(u8), base: *NodeBase, walk: Walk) !void {
-        var at = base.first_child;
+        var at = base.firstChild();
         while (at) |current| : (at = current.next_sibling) if (instance(current)) |element| try self.child(out, element, walk, false);
     }
 
@@ -633,7 +633,7 @@ const Name = struct {
     }
 
     fn otherFlowContent(self: *Name, base: *NodeBase, image: *Instance, caption: *Instance) anyerror!bool {
-        var at = base.first_child;
+        var at = base.firstChild();
         while (at) |current| : (at = current.next_sibling) {
             const node = instance(current) orelse continue;
             if (node == image or node == caption) continue;
@@ -694,7 +694,7 @@ const Name = struct {
 
     fn selectedOptions(self: *Name, node: *Instance, out: *std.ArrayList(u8), walk: Walk) anyerror!void {
         const base = bridge.getNodeBase(node) orelse return;
-        var at = base.first_child;
+        var at = base.firstChild();
         while (at) |current| : (at = current.next_sibling) if (instance(current)) |element| {
             if (eq(try role(self.allocator, element, self.options), "option") and std.ascii.eqlIgnoreCase(attribute(element, "aria-selected") orelse "", "true")) {
                 try self.append(out, try self.text(element, .{ .recursive = true, .relation = walk.relation, .include_hidden = walk.include_hidden }), true);

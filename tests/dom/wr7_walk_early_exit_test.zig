@@ -72,7 +72,7 @@ const children = 5000;
 
 /// `root`'s child at `index`.
 fn childAt(root: *runtime.Instance, index: usize) *NodeBase {
-    var child = base(root).first_child.?;
+    var child = base(root).firstChild().?;
     for (0..index) |_| child = child.next_sibling.?;
     return child;
 }
