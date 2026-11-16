@@ -74,11 +74,11 @@ const dom = @import("dom");
 const origin_domain = @import("html").origin_domain;
 
 /// What "Location-object navigate" asks of the navigable's engine.
-const NavigateRequest = dom.window_objects.NavigateRequest;
+const NavigateRequest = dom.window_globals.NavigateRequest;
 
 /// Navigation callback type for Location.assign/replace/href setter
-/// (dom.window_objects.NavigateCallback): the navigable's "navigate".
-const NavigateCallback = dom.window_objects.NavigateCallback;
+/// (dom.window_globals.NavigateCallback): the navigable's "navigate".
+const NavigateCallback = dom.window_globals.NavigateCallback;
 
 /// Internal state for Location implementation
 /// Contains private data not exposed via WebIDL attributes.
@@ -269,7 +269,7 @@ pub fn installHooks() void {
     // A Location's Window, navigable and URL, which the code that makes a
     // navigable's Window wires (HTMLIFrameElement) and the engine adapter's
     // wrapper cache reads: steps no IDL member names.
-    dom.window_objects.installLocation(.{
+    dom.window_globals.installLocation(.{
         .window = &windowOf,
         .set_window = &setWindow,
         .set_navigable = &setNavigateCallback,
@@ -330,7 +330,7 @@ fn relevantWindow(realm: runtime.Context) ?*runtime.Instance {
 
 /// Update the Location's URL from a URL string
 /// Called when navigating or when setting document URL
-/// (dom.window_objects.setLocationUrl).
+/// (dom.window_globals.setLocationUrl).
 fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
@@ -360,7 +360,7 @@ fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) anyerro
 }
 
 /// The Window this Location belongs to, or null: made for none, or not a
-/// Location (dom.window_objects.locationWindow). The wrapper cache keeps a
+/// Location (dom.window_globals.locationWindow). The wrapper cache keeps a
 /// window's Location's wrapper with the window.
 fn windowOf(instance: *runtime.Instance) ?*runtime.Instance {
     if (instance.stateAs(State) == null) return null;
@@ -371,7 +371,7 @@ fn windowOf(instance: *runtime.Instance) ?*runtime.Instance {
 /// Set the associated Window for this Location.
 /// Called by Window/context initialization to establish the bi-directional link.
 /// This enables Location.assign() to access the browsing context for navigation
-/// (dom.window_objects.setLocationWindow).
+/// (dom.window_globals.setLocationWindow).
 fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.window = window;
@@ -382,7 +382,7 @@ fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
 /// Parameters:
 /// - callback: Function to call for navigation, or null to disable
 /// - context: Opaque pointer passed to callback (e.g., IFrameIntegration*)
-/// (dom.window_objects.setLocationNavigable).
+/// (dom.window_globals.setLocationNavigable).
 fn setNavigateCallback(
     instance: *runtime.Instance,
     callback: ?NavigateCallback,

@@ -8,7 +8,7 @@
 //!   and its supported property names, which the engine's named properties
 //!   object (WindowProperties) asks through `interfaces.Window`.
 //! - A Window's Location and History name the Window they were made for
-//!   (`dom.window_objects`), which the wrapper cache asks; the Window hands
+//!   (`dom.window_globals`), which the wrapper cache asks; the Window hands
 //!   out the Location it made (`dom.window_globals.location`), which a
 //!   frame's URL update sets.
 //! - An iframe's sandbox list is associated like every reflected
@@ -77,19 +77,19 @@ fn windowObjects() !void {
     const window = try windowOf(page);
 
     const location = try interfaces.Window.get_location(window);
-    try std.testing.expectEqual(@as(?*runtime.Instance, window), dom.window_objects.locationWindow(location));
+    try std.testing.expectEqual(@as(?*runtime.Instance, window), dom.window_globals.locationWindow(location));
     // The Location the Window made - read, not made.
     try std.testing.expectEqual(@as(?*runtime.Instance, location), dom.window_globals.location(window));
 
     const history = try interfaces.Window.get_history(window);
-    try std.testing.expectEqual(@as(?*runtime.Instance, window), dom.window_objects.historyWindow(history));
+    try std.testing.expectEqual(@as(?*runtime.Instance, window), dom.window_globals.historyWindow(history));
 
     // Neither question has an answer for another type.
-    try std.testing.expectEqual(@as(?*runtime.Instance, null), dom.window_objects.locationWindow(history));
-    try std.testing.expectEqual(@as(?*runtime.Instance, null), dom.window_objects.historyWindow(location));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), dom.window_globals.locationWindow(history));
+    try std.testing.expectEqual(@as(?*runtime.Instance, null), dom.window_globals.historyWindow(location));
 }
 
-test "a Window's Location and History name their Window through dom.window_objects" {
+test "a Window's Location and History name their Window through dom.window_globals" {
     try helpers.onFreshThread(windowObjects);
 }
 

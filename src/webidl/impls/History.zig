@@ -121,7 +121,7 @@ pub fn installHooks() void {
     });
     // The Window a History belongs to, which the engine adapter's wrapper
     // cache asks: it keeps a window's History's wrapper with the window.
-    @import("dom").window_objects.installHistory(.{ .window = &windowOf });
+    @import("dom").window_globals.installHistory(.{ .window = &windowOf });
 }
 
 /// The facts a History is made with (`interfaces.History.initWith`): the
@@ -143,7 +143,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
 }
 
 /// The Window this History belongs to, or null: made for none, or not a
-/// History (dom.window_objects.historyWindow).
+/// History (dom.window_globals.historyWindow).
 fn windowOf(instance: *runtime.Instance) ?*runtime.Instance {
     if (instance.stateAs(State) == null) return null;
     const internal = getInternal(instance) orelse return null;

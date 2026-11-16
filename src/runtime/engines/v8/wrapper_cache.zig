@@ -617,12 +617,12 @@ pub fn treeOwns(instance: *runtime.Instance) bool {
 /// local_dom_window.cc).
 ///
 /// Each type says which Window it belongs to through the hook it installs
-/// (dom.window_objects), not through its impl.
+/// (dom.window_globals), not through its impl.
 fn isWindowOwned(instance: *runtime.Instance) bool {
-    const window_objects = @import("dom").window_objects;
+    const window_globals = @import("dom").window_globals;
     const name = instance.vtable.name;
-    if (std.mem.eql(u8, name, "Location")) return window_objects.locationWindow(instance) != null;
-    if (std.mem.eql(u8, name, "History")) return window_objects.historyWindow(instance) != null;
+    if (std.mem.eql(u8, name, "Location")) return window_globals.locationWindow(instance) != null;
+    if (std.mem.eql(u8, name, "History")) return window_globals.historyWindow(instance) != null;
     return false;
 }
 

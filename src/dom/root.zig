@@ -88,7 +88,6 @@ pub const window_documents = @import("window_documents.zig");
 pub const child_navigables = @import("child_navigables.zig");
 pub const cross_origin = @import("cross_origin.zig");
 pub const window_globals = @import("window_globals.zig");
-pub const window_objects = @import("window_objects.zig");
 pub const content_navigables = @import("content_navigables.zig");
 pub const style_sheet_owners = @import("style_sheet_owners.zig");
 pub const attribute_change_steps = @import("attribute_change_steps.zig");

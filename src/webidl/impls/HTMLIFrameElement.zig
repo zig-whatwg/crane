@@ -784,7 +784,7 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: 
     if (same_document) realm.updateDocumentUrl(url) catch {} else realm.setDocumentUrl(url) catch {};
 
     // Update Location's URL
-    dom_module.window_objects.setLocationUrl(location, url) catch {};
+    dom_module.window_globals.setLocationUrl(location, url) catch {};
 }
 
 // ============================================================================
@@ -8364,8 +8364,8 @@ fn hostTraversableIsNavigating(record: *anyopaque) bool {
 /// Location-object navigate), and names `window` as its own.
 fn giveLocationNavigateCallback(window: *runtime.Instance, integration: *IFrameIntegration) void {
     if (interfaces.Window.get_location(window)) |location| {
-        dom_module.window_objects.setLocationWindow(location, window);
-        dom_module.window_objects.setLocationNavigable(location, &navigateFromLocation, @ptrCast(integration));
+        dom_module.window_globals.setLocationWindow(location, window);
+        dom_module.window_globals.setLocationNavigable(location, &navigateFromLocation, @ptrCast(integration));
     } else |err| log.debug("a navigable's Location was not made: {}", .{err});
 }
 
