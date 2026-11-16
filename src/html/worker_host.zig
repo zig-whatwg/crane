@@ -3672,7 +3672,7 @@ pub const ErrorReport = struct {
     fn run(data: ?*anyopaque) void {
         const self: *ErrorReport = @ptrCast(@alignCast(data.?));
         const worker = self.owner.live() orelse return destroy(self);
-        if (queuedUntilFullyActive(worker, run, drop, self)) return;
+        if (@import("dom").document_activity.queuedUntilFullyActive(worker, run, drop, self)) return;
         defer destroy(self);
         switch (self.kind) {
             .exception => self.owner.steps.error_reported(worker, &self.info),
@@ -3692,42 +3692,6 @@ pub const ErrorReport = struct {
         self.allocator.destroy(self);
     }
 };
-
-/// For a task that reached `object`'s loop from another thread - posted
-/// through a sink, so it names no document - and is HTML's "queue a global
-/// task" given `object`'s relevant global: when that global is a Window whose
-/// Document is not fully active but may be again (the back/forward cache
-/// keeps it), the task is queued again as a global task naming the Window,
-/// and the event loop keeps it with the page - run at its restore, dropped at
-/// its eviction (src/browser/event_loop.zig, `suspendDocument`). Whether it
-/// was queued; the caller runs the steps now otherwise. A worker's realm has
-/// no Document: never queued.
-pub fn queuedUntilFullyActive(object: *runtime.Instance, callback: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void, context: *anyopaque) bool {
-    const global = inactiveWindowOf(object) orelse return false;
-    const generation = runtime.SlabAllocator.generationOf(global);
-    const loop = object.ctx.getOptionalEventLoop() orelse return false;
-    loop.queueTask(.{
-        .callback = callback,
-        .context = context,
-        .drop = drop,
-        .document = global,
-        .document_generation = generation,
-    });
-    return true;
-}
-
-/// `object`'s relevant global, when it is a Window whose Document is not
-/// fully active but may be again (dom.document_activity: inactive - the
-/// back/forward cache keeps it); null otherwise (fully active, gone, or a
-/// worker's realm).
-pub fn inactiveWindowOf(object: *runtime.Instance) ?*runtime.Instance {
-    if (!object.ctx.isWindow()) return null;
-    const record = object.ctx.getRealm() orelse return null;
-    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
-    const generation = runtime.SlabAllocator.generationOf(global);
-    if (@import("dom").document_activity.activity(global, generation) != .inactive) return null;
-    return global;
-}
 
 /// "Run a worker", as its worker object's side hands it over: a dedicated
 /// worker's Worker constructor (step 9: "run this step in parallel"), or the

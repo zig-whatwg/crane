@@ -582,7 +582,7 @@ fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.D
     // queued at the outside port, and a global task naming the Window
     // enables the port again when it runs: at the page's restore, or never
     // (dropped with the page).
-    if (worker_host.inactiveWindowOf(worker) != null) return EnableWhenActive.queue(worker, internal);
+    if (dom.document_activity.inactiveWindowOf(worker) != null) return EnableWhenActive.queue(worker, internal);
     var task: Delivery = .{ .worker = worker, .delivery = delivery };
     engine.runTaskInRealm(worker.ctx, Delivery.steps, &task) catch {};
     // The last message of a worker that has ended: nothing is pending now.
@@ -603,10 +603,10 @@ const EnableWhenActive = struct {
         if (internal.enable_queued) return;
         const self = internal.allocator.create(EnableWhenActive) catch return;
         self.* = .{ .worker = worker, .generation = runtime.SlabAllocator.generationOf(worker), .allocator = internal.allocator };
-        if (!worker_host.queuedUntilFullyActive(worker, run, drop, self)) {
+        if (!dom.document_activity.queuedUntilFullyActive(worker, run, drop, self)) {
             // Fully active after all (or no loop): enable now.
             internal.allocator.destroy(self);
-            if (internal.outside) |end| end.enable();
+            if (internal.outside) |end| enableIfEnabled(end);
             return;
         }
         internal.enable_queued = true;
@@ -618,7 +618,7 @@ const EnableWhenActive = struct {
         if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
         const internal = getInternal(self.worker) orelse return;
         internal.enable_queued = false;
-        if (internal.outside) |end| end.enable();
+        if (internal.outside) |end| enableIfEnabled(end);
     }
 
     /// Never run: the page left the cache to be destroyed, or the loop
@@ -631,6 +631,13 @@ const EnableWhenActive = struct {
         internal.enable_queued = false;
     }
 };
+
+/// Notify the outside port again of what waits there - only once its queue
+/// is enabled ("run a worker" step 11 enables it): `End.enable` on a queue
+/// not yet enabled would enable it early.
+fn enableIfEnabled(end: *End) void {
+    if (end.state().enabled) end.enable();
+}
 
 const Delivery = struct {
     worker: *runtime.Instance,
