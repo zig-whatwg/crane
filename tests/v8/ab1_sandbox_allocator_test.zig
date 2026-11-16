@@ -318,37 +318,41 @@ test "an emptied chunk waits before it goes back, so a free and an allocation ma
     try testing.expectEqual(PageState.inaccessible, f.model.states[0]);
 }
 
-test "at most 1 MiB of emptied chunks waits: the oldest go back to the OS" {
+test "at most 256 KiB of emptied chunks waits: the oldest go back to the OS, and a chunk dirtier than that at once" {
     var f = try Fixture.init(32);
     defer f.deinit();
 
-    // A live block above everything, so that what goes back is discarded,
-    // not trimmed off the top.
-    var blocks: [3][2]sa.Block = undefined;
-    for (&blocks) |*pair| {
-        // 400 KiB is the 416 KiB class: two slots to a chunk, 832 KiB dirty.
-        pair[0] = try f.take(400 * 1024);
-        pair[1] = try f.take(400 * 1024);
-    }
+    // One block in each of four classes - 104, 120, 96 and 320 KiB slots -
+    // and a live block above them, so that what goes back is discarded, not
+    // trimmed off the top.
+    const a = try f.take(100 * 1024);
+    const b = try f.take(120 * 1024);
+    const c = try f.take(90 * 1024);
+    const d = try f.take(300 * 1024);
     const top = try f.take(48);
-    try testing.expectEqual(@as(usize, 3), f.chunkOf(top));
+    try testing.expectEqual(@as(usize, 4), f.chunkOf(top));
 
-    // The first chunk empties: 832 KiB waits.
-    try f.give(blocks[0][0]);
-    try f.give(blocks[0][1]);
-    try testing.expectEqual(@as(u64, 1), f.allocator.stats().retained_chunks);
+    // The first two empty: 104 + 120 KiB wait.
+    try f.give(a);
+    try f.give(b);
+    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, (104 + 120) * 1024), f.allocator.stats().retained_bytes);
     try testing.expectEqual(@as(usize, 0), f.model.discards);
-    // The second empties: 1,664 KiB would wait, so the first goes back.
-    try f.give(blocks[1][0]);
-    try f.give(blocks[1][1]);
-    try testing.expectEqual(@as(u64, 1), f.allocator.stats().retained_chunks);
+    // The third: 320 KiB would wait, so the oldest goes back.
+    try f.give(c);
+    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, (120 + 96) * 1024), f.allocator.stats().retained_bytes);
     try testing.expectEqual(@as(usize, 1), f.model.discards);
     try testing.expectEqual(PageState.discarded, f.model.states[0]);
     try testing.expectEqual(PageState.committed, f.model.states[1]);
+    try testing.expectEqual(PageState.committed, f.model.states[2]);
     try testing.expectEqual(@as(u64, 1), f.allocator.stats().free_chunks);
+    // A chunk with 320 KiB dirty does not wait.
+    try f.give(d);
+    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(usize, 2), f.model.discards);
+    try testing.expectEqual(PageState.discarded, f.model.states[3]);
 
-    try f.give(blocks[2][0]);
-    try f.give(blocks[2][1]);
     try f.give(top);
 }
 

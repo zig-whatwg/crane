@@ -109,7 +109,7 @@ test "ArrayBuffer memory freed and allocated again is counted in the process foo
     try testing.expect(fresh >= before + total - 4 * MiB);
 
     // Freed: the memory goes back to the OS (all of it but what the
-    // allocator may keep for the next allocation, 1 MiB at most).
+    // allocator may keep for the next allocation, 256 KiB at most).
     freeBuffers(&buffers);
     const released = footprint();
     try testing.expect(released + total - 8 * MiB <= fresh);

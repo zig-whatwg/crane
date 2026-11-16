@@ -45,7 +45,11 @@
 //!   breathing room to get re-used before we really free it. This reduces
 //!   the number of system calls"): `ring`. PartitionAlloc caps the dirty
 //!   bytes that wait at 1/8 of the committed bytes; Crane caps them at
-//!   `retained_max` (1 MiB), because its memory bar reads the whole process.
+//!   `retained_max` (256 KiB), because its memory bar reads the whole
+//!   process: enough for the blocks freed at once by the call that took them
+//!   (BigInt scratch, regexp vectors), whose chunks would otherwise go back
+//!   and return on every call. ArrayBuffers are freed in batches by the
+//!   collector, so their chunks gain nothing by waiting.
 //! - **A large block is its own mapping, given back when freed**
 //!   (partition_root.cc, direct maps): a block over 512 KiB is a run of whole
 //!   chunks, discarded at its free.
@@ -110,8 +114,9 @@ pub const alignment: usize = 16;
 /// How many emptied slot chunks may wait before they go back to the OS
 /// (PartitionAlloc kDefaultEmptySlotSpanRingSize).
 pub const ring_len = 16;
-/// The dirty bytes that may wait in the ring, in total.
-pub const retained_max: usize = chunk_size;
+/// The dirty bytes that may wait in the ring, in total. An emptied chunk
+/// with more than this alone goes back at once.
+pub const retained_max: usize = chunk_size / 4;
 
 /// The number of size classes: multiples of 16 up to 128, then 8 to each
 /// power of two up to `slot_max`.
@@ -511,10 +516,12 @@ pub fn Allocator(comptime Pages: type) type {
 
         /// The chunk at `index` has just become empty: it waits in the ring,
         /// in the place of the oldest entry, and the ring's oldest go back
-        /// to the OS while more than `retained_max` dirty bytes wait.
+        /// to the OS while more than `retained_max` dirty bytes wait. A
+        /// chunk too dirty to wait at all goes back at once.
         fn enterRing(self: *Self, index: u32) void {
-            if (self.ring[self.ring_next] != none) self.evict(self.ring[self.ring_next]);
             const chunk = &self.chunks.items[index];
+            if (dirtyBytes(chunk) > retained_max) return self.releaseSlotChunk(index);
+            if (self.ring[self.ring_next] != none) self.evict(self.ring[self.ring_next]);
             self.ring[self.ring_next] = index;
             chunk.ring_slot = self.ring_next;
             self.ring_next = (self.ring_next + 1) % ring_len;
@@ -540,6 +547,12 @@ pub fn Allocator(comptime Pages: type) type {
         /// memory: to the free pool.
         fn evict(self: *Self, index: u32) void {
             self.leaveRing(index);
+            self.releaseSlotChunk(index);
+        }
+
+        /// An empty slot chunk that is not in the ring leaves its class and
+        /// the used memory: to the free pool.
+        fn releaseSlotChunk(self: *Self, index: u32) void {
             self.unlink(index);
             self.meta.free(self.chunks.items[index].bits);
             self.releaseChunks(index, 1);
