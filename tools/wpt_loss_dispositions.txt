@@ -2198,14 +2198,6 @@ pair.1 = base 6/6; tip 6/6
 pair.2 = base 6/6; tip 6/6
 pair.3 = base 6/6; tip 6/6
 
-[html/browsers/browsing-the-web/overlapping-navigations-and-traversals/cross-document-nav-same-document-traversal.html]
-generation = 225
-kind = flake
-why = First flip, under the 32-runner sweep only (production 1 -> 0); the file alone passes 1/1 on both runners in every pair. Its twin same-document-traversal-cross-document-nav.html is exempt for an upstream test bug (wpt#65240); this one's race is lane flk1's follow-up queue item. Isolated pairs, the file alone, server1 2026-11-15 about 9:08 PM ET: BASE ~/crane-frozen/main-9a0207b5b4 (generation 224's production runner), TIP ~/crane-frozen/main-86a8281a83 (generation 225's).
-pair.1 = base 1/1; tip 1/1
-pair.2 = base 1/1; tip 1/1
-pair.3 = base 1/1; tip 1/1
-
 [WebCryptoAPI/derive_bits_keys/derive_key_and_encrypt.https.any.js]
 generation = 225
 kind = fixed
