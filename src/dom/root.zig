@@ -232,7 +232,6 @@ pub const event_dispatch = @import("event_dispatch.zig");
 /// trees (retargeting, the shadow-tree booleans, activationTarget,
 /// clearTargets).
 pub const event_path = @import("event_path.zig");
-pub const selectors = @import("selectors.zig");
 /// querySelector / matches / closest over platform objects.
 pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
@@ -300,9 +299,6 @@ pub const drag_data_store = @import("drag_data_store.zig");
 // Re-export CookieChangeEvent
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
 pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
-
-// Re-export selector functions
-pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
