@@ -1626,18 +1626,25 @@ pub extern fn v8_Isolate_SetPlatformWrapperHooks(
     changed: *const fn (?*anyopaque, *WrapperCell) callconv(.c) void,
 ) bool;
 /// The realm's cache takes the wrapper in `box` by a weak handle
-/// (wrapper_cache.zig `heldByWeakHandle`): `cell`'s word becomes a strong
-/// v8::Global of the wrapper, in place, and the wrapper's anchor names
-/// `cell`. False, with nothing changed, as v8_WrapperCell_Attach.
+/// (wrapper_cache.zig `heldByWeakHandle`): `cell`'s word becomes a v8::Global
+/// of the wrapper, in place and armed weak at once (`box` still holds the
+/// wrapper), and the wrapper's anchor names `cell`. False, with nothing
+/// changed, as v8_WrapperCell_Attach.
 pub extern fn v8_WrapperCell_AttachWeak(isolate: *Isolate, box: *Object, cell: *WrapperCell) bool;
-/// `cell`'s traced reference becomes a strong v8::Global of the same wrapper,
-/// in place: the binding changed the wrapper. False for an empty reference.
-pub extern fn v8_WrapperCell_ToWeakHandle(isolate: *Isolate, cell: *WrapperCell) bool;
-/// Arm the in-place Global of `cell` weak: `unlink(cell)` in V8's first pass,
-/// `finalize(cell)` at the agent's safe point; a first pass in a
-/// young-generation collection also frees the wrapper's anchor ahead of the
-/// collector.
-pub extern fn v8_WrapperCell_ArmWeak(isolate: *Isolate, cell: *WrapperCell, unlink: WeakCallbackFn, finalize: WeakCallbackFn) void;
+/// `cell`'s traced reference becomes a v8::Global of the same wrapper, in
+/// place: the binding changed the wrapper. Armed weak at once when `arm`,
+/// strong otherwise. False for an empty reference.
+pub extern fn v8_WrapperCell_ToWeakHandle(isolate: *Isolate, cell: *WrapperCell, arm: bool) bool;
+/// Arm the in-place Global of `cell` weak. Its parameter is the wrapper's
+/// anchor, which names `cell`: when the wrapper dies, V8's first pass hands
+/// `cell` to the caches' `dropped` hook (v8_Isolate_SetPlatformWrapperHooks)
+/// - out of its cache's map, its finalizer onto the agent's queue - and, in a
+/// young-generation collection, lists the anchor for its free ahead of the
+/// collector. Nothing is allocated for the arm.
+pub extern fn v8_WrapperCell_ArmWeak(isolate: *Isolate, cell: *WrapperCell) void;
+/// The in-place Global of `cell` stops being weak: the cache holds the
+/// wrapper strongly (the caller sets the record's strong bit).
+pub extern fn v8_WrapperCell_Disarm(cell: *WrapperCell) void;
 /// `finalize(user_data, 0)` joins `isolate`'s finalizer queue: it runs at the
 /// agent's next safe point, as a collected weak Global's finalizer does.
 /// Callable inside a collection. False, with nothing queued, for an isolate
