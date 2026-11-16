@@ -30,7 +30,11 @@
 //! after-change style; its name-defining rules (@keyframes, @font-face,
 //! @layer, @property) behave as if they were outside it.
 //!
-//! Stated deviations: @container (it needs layout) and @scope rules are
+//! @scope's style rules are indexed with the rest, each with its @scope
+//! rule's index into `Contents.scopes` (Cascade 6 3.5): the engine finds
+//! their scoping roots and limits as it matches them (engine.zig).
+//!
+//! Stated deviations: @container (it needs layout) rules are
 //! skipped; a sheet whose @namespace declares the
 //! HTML namespace as default matches only HTML elements, the approximation
 //! the HTML UA sheet needs (every rule of it is in that namespace), and a
@@ -448,6 +452,23 @@ pub const RuleData = struct {
     /// The rule is inside an @starting-style rule: it applies only to the
     /// starting style (CSS Transitions 2 3.3).
     starting: bool = false,
+    /// The innermost @scope rule around the rule, an index into
+    /// `Contents.scopes`: a scoped style rule (Cascade 6 3.5.3). Null for
+    /// every rule outside @scope, which matching checks first and nothing
+    /// else.
+    scope: ?u32 = null,
+};
+
+/// An @scope rule (Cascade 6 3.5): its boundaries' selectors, in the rule
+/// tree, and the @scope rule around it (3.5.5 "Scope Nesting": its
+/// <scope-start> is matched relative to that rule's scoping roots).
+pub const ScopeData = struct {
+    /// <scope-start>; null: the implicit scope (3.5.4, the owner node's
+    /// parent element, the shadow host, or the tree's root).
+    start: ?*const selector.SelectorList,
+    /// <scope-end>; null: no scoping limits.
+    end: ?*const selector.SelectorList,
+    parent: ?u32,
 };
 
 pub const Condition = struct {
@@ -501,6 +522,8 @@ pub const Contents = struct {
     /// name no author can write), in order of first declaration.
     layers: std.ArrayList([]u8) = .empty,
     imports: std.ArrayList(ImportRule) = .empty,
+    /// The @scope rules, in order (RuleData.scope indexes this).
+    scopes: std.ArrayList(ScopeData) = .empty,
     /// The sheet's default namespace is HTML's: it matches HTML elements
     /// only (stated in the file comment).
     html_only: bool = false,
@@ -573,6 +596,7 @@ pub const Contents = struct {
         for (self.layers.items) |name| a.free(name);
         self.layers.deinit(a);
         self.imports.deinit(a);
+        self.scopes.deinit(a);
         self.buckets.deinit(a);
         if (self.owned_tree) |*tree| {
             for (tree.items) |r| r.unref();
@@ -634,6 +658,8 @@ const Compiler = struct {
     anonymous_layers: u32 = 0,
     /// Inside an @starting-style rule.
     starting: bool = false,
+    /// The innermost @scope rule being indexed (`Contents.scopes`).
+    scope: ?u32 = null,
 
     /// Index a list of rules of the tree (CSS's ordering constraints were
     /// applied when the tree was built: an @import or @namespace here
@@ -646,10 +672,26 @@ const Compiler = struct {
             },
             .nested_declarations => try self.styleRule(rule, condition, layer),
             // Container query evaluation needs the host's real container
-            // facts; CSS @SCOPE EVALUATION supplies scoping/proximity.
-            // Until those capabilities arrive, neither conditional body
-            // is compiled as an unconditional style rule.
-            .container, .scope => {},
+            // facts; until that capability arrives, its body is not compiled
+            // as an unconditional style rule.
+            .container => {},
+            // Cascade 6 3.5: the style rules inside are scoped style rules
+            // (3.5.3), the @scope rule's own scope index recorded on each;
+            // name-defining rules inside "are not scoped or otherwise
+            // affected", and the style rules inside those (an @layer
+            // block's) are scoped (3.5.5).
+            .scope => |*s| {
+                const index: u32 = @intCast(self.contents.scopes.items.len);
+                try self.contents.scopes.append(self.contents.allocator, .{
+                    .start = if (s.parsed) |parsed| (if (parsed.start) |*b| b.matching() else null) else null,
+                    .end = if (s.parsed) |parsed| (if (parsed.end) |*b| b.matching() else null) else null,
+                    .parent = self.scope,
+                });
+                const outer = self.scope;
+                self.scope = index;
+                defer self.scope = outer;
+                try self.ruleList(s.children.items, condition, layer);
+            },
             .import => |*import| {
                 // Cascade 5 2: `layer` puts the imported sheet in a new
                 // anonymous layer, `layer(name)` in that layer.
@@ -755,6 +797,7 @@ const Compiler = struct {
                 .condition = condition,
                 .pseudo = styledPseudoElementOf(&complex.compound),
                 .starting = self.starting,
+                .scope = self.scope,
             });
             if (self.starting) self.contents.starting_rules = true;
             try self.bucket(index, complex);
@@ -899,6 +942,34 @@ test "@starting-style: its style rules are indexed in order, marked; its name-de
     const plain = try Contents.parse(testing.allocator, "a { color: red }", .{});
     defer plain.destroy();
     try testing.expect(!plain.starting_rules);
+}
+
+test "@scope: its style rules are indexed with their scope, nested scopes chained, name-defining rules unscoped" {
+    const contents = try Contents.parse(testing.allocator,
+        \\a { color: red }
+        \\@scope (.x) to (.y) {
+        \\  b { color: red }
+        \\  @layer l { c { color: red } }
+        \\  @scope (.z) { d { color: red } }
+        \\  @keyframes k { from { color: red } }
+        \\  color: blue;
+        \\}
+        \\@scope { e { color: red } }
+    , .{});
+    defer contents.destroy();
+    try testing.expectEqual(@as(usize, 3), contents.scopes.items.len);
+    try testing.expect(contents.scopes.items[0].start != null and contents.scopes.items[0].end != null);
+    try testing.expectEqual(@as(?u32, null), contents.scopes.items[0].parent);
+    try testing.expectEqual(@as(?u32, 0), contents.scopes.items[1].parent);
+    try testing.expect(contents.scopes.items[2].start == null and contents.scopes.items[2].end == null);
+    const expected = [_]?u32{ null, 0, 0, 1, 0, 2 };
+    try testing.expectEqual(expected.len, contents.rules.items.len);
+    for (expected, contents.rules.items) |scope, rule| try testing.expectEqual(scope, rule.scope);
+    try testing.expectEqual(@as(usize, 1), contents.keyframes_rules.items.len);
+    // Cascade 6 3.5.3: the implied :scope anchor adds no specificity, and
+    // 3.5.6: scoped declarations match the root with none.
+    try testing.expectEqual(css.cascade.Specificity{ .c = 1 }, contents.rules.items[1].specificity);
+    try testing.expectEqual(css.cascade.Specificity{}, contents.rules.items[4].specificity);
 }
 
 test "layers: names declared in order, nested names dotted, statements first" {

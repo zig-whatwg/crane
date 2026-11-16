@@ -123,16 +123,22 @@ fn scopes(allocator: std.mem.Allocator) !void {
     try std.testing.expectEqualStrings("scope", @tagName(rule.kind()));
     try std.testing.expectEqual(@as(usize, 1), rule.children().?.items.len);
     const compiled = try record.contentsOf(.{ .allocator = allocator });
-    // Q21 preservation pin: CSS @SCOPE EVALUATION is routed. The parsed
-    // children cannot affect style until that capability actually exists.
-    try std.testing.expectEqual(@as(usize, 1), compiled.rules.items.len);
-    try std.testing.expectEqualStrings("ordinary", compiled.rules.items[0].complex.compound.simple_selectors[0].Class.class_name);
+    // Cascade 6 section 3.5 (lane quick2): @scope is evaluated. Its style
+    // rule is compiled in order, tagged with its scope; the scope keeps its
+    // parsed <scope-start> and <scope-end> for the matcher.
+    try std.testing.expectEqual(@as(usize, 2), compiled.rules.items.len);
+    try std.testing.expectEqual(@as(?u32, 0), compiled.rules.items[0].scope);
+    try std.testing.expectEqual(@as(?u32, null), compiled.rules.items[1].scope);
+    try std.testing.expectEqualStrings("ordinary", compiled.rules.items[1].complex.compound.simple_selectors[0].Class.class_name);
+    try std.testing.expectEqual(@as(usize, 1), compiled.scopes.items.len);
+    try std.testing.expect(compiled.scopes.items[0].start != null and compiled.scopes.items[0].end != null);
+    try std.testing.expectEqual(@as(?u32, null), compiled.scopes.items[0].parent);
     const text = try rule.serialize(allocator);
     defer allocator.free(text);
     try std.testing.expect(std.mem.startsWith(u8, text, "@scope (.root) to (> .limit) {"));
 }
 
-test "scope rules retain their CSSOM while their children remain inert" {
+test "scope rules retain their CSSOM and compile their children with their scope" {
     if (comptime @hasDecl(selector, "nesting")) {
         try scopes(a);
     } else return error.MissingNesting;

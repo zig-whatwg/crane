@@ -7,7 +7,7 @@
 //! (core/css/resolver/cascade_priority.h): origin and importance (important
 //! inverting the origins), tree context (important inverting it), the
 //! element-attached flag, layer order (important inverting it), specificity,
-//! and order of appearance. A longhand's cascaded value is the candidate
+//! scope proximity (CSS Cascade 6 3.1) and order of appearance. A longhand's cascaded value is the candidate
 //! with the highest priority; `revert` and `revert-layer` discard candidates
 //! and pick again (section 7.3).
 //!
@@ -87,6 +87,9 @@ pub const Origin = enum(u4) {
 /// The implicit final layer of unlayered declarations.
 pub const unlayered: u16 = std.math.maxInt(u16);
 
+/// Source.scope_proximity of a declaration with no scoping root.
+pub const no_scope: u16 = std.math.maxInt(u16);
+
 /// Plain identity for the tree scope where a value was declared. Zero is
 /// the document scope; this never holds a DOM object or a borrowed pointer.
 pub const TreeScopeRef = struct {
@@ -110,6 +113,11 @@ pub const Source = struct {
     specificity: Specificity = .{},
     /// Order of appearance (section 6.1): later is greater.
     order: u32 = 0,
+    /// Cascade 6 3.1 "Scope Proximity": the generational hops between a
+    /// scoped style rule's scoping root and its subject - fewer wins, after
+    /// specificity and before order of appearance. A declaration with no
+    /// scoping root has "infinite proximity hops": the maximum.
+    scope_proximity: u16 = no_scope,
     /// A style attribute's declarations.
     element_attached: bool = false,
     /// A block of the element's own - its style attribute's, a
@@ -330,7 +338,12 @@ fn priority(source: Source, important: bool) u128 {
     // layer order wins, and for important rules the declaration whose
     // cascade layer is earliest wins."
     const layer: u128 = if (important) 0xFFFF - @as(u128, source.layer) else source.layer;
-    return (origin << 96) | (tree << 80) | (attached << 79) | (layer << 63) | (source.specificity.packed30() << 33) | source.order;
+    // Cascade 6 3.1, after specificity: "the declaration with the fewest
+    // generational or sibling-element hops between the scoping root and the
+    // scoped style rule subject wins" - for important declarations too (the
+    // criterion is not inverted). Unscoped declarations hold the maximum.
+    const proximity: u128 = 0xFFFF - @as(u128, source.scope_proximity);
+    return (origin << 112) | (tree << 96) | (attached << 95) | (layer << 79) | (source.specificity.packed30() << 49) | (proximity << 33) | source.order;
 }
 
 const LonghandSet = std.EnumSet(Longhand);
@@ -2495,6 +2508,30 @@ test "specificity, then order of appearance, then the style attribute" {
     defer style.destroy();
     try expectResolved(style, .color, "rgb(255, 0, 0)");
     try expectResolved(style, .width, "3px");
+}
+
+test "scope proximity: after specificity, before order of appearance; unscoped is farthest" {
+    var near = try TestBlock.make("color: red; width: 1px; height: 1px !important");
+    defer near.deinit();
+    var far = try TestBlock.make("color: green; width: 2px; height: 2px !important");
+    defer far.deinit();
+    var unscoped = try TestBlock.make("color: blue; margin-top: 3px");
+    defer unscoped.deinit();
+    var specific = try TestBlock.make("width: 4px");
+    defer specific.deinit();
+    const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{
+        .{ .block = &near.block, .source = .{ .origin = .author, .specificity = .{ .b = 1 }, .scope_proximity = 1, .order = 1 } },
+        .{ .block = &far.block, .source = .{ .origin = .author, .specificity = .{ .b = 1 }, .scope_proximity = 3, .order = 2 } },
+        .{ .block = &unscoped.block, .source = .{ .origin = .author, .specificity = .{ .b = 1 }, .order = 3 } },
+        .{ .block = &specific.block, .source = .{ .origin = .author, .specificity = .{ .b = 2 }, .order = 0 } },
+    });
+    defer style.destroy();
+    // Fewer hops wins over a later rule; an unscoped later rule loses too.
+    try expectResolved(style, .color, "rgb(255, 0, 0)");
+    // Specificity decides before proximity.
+    try expectResolved(style, .width, "4px");
+    // Important declarations: proximity is not inverted.
+    try expectResolved(style, .height, "1px");
 }
 
 test "layers: later layers win for normal, earlier for important, unlayered last" {
