@@ -2221,3 +2221,10 @@ why = Not a code change: generation 225's sweep read 19 because two crossorigin 
 pair.1 = base 17/23; tip 17/23
 pair.2 = base 17/23; tip 17/23
 pair.3 = base 17/23; tip 17/23
+
+[html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks/basic.any.js]
+generation = 226
+kind = user-ruling
+why = 9 -> 8: the upstream test bug wpt#64475, not Crane - tests 2 and 3 build their module specifier from Date.now(), so when test 2 finishes inside the same millisecond test 3's "new" module is already in the module map and "import() should drain the microtask queue when fetching a new module" fails (listed PASS|FAIL with upstream wpt#64475 in tools/wpt_build_differences.txt). Its sixth flip (flake dispositions at generations 179, 185, 194, 195, 197), so the one-flake rule refuses a seventh flake entry; it cannot be timing-bound either (alone it never fails). Isolated pairs, the file alone, server1 2026-11-16 about 3:09 AM ET: generation 225's runner (~/crane-frozen/main-86a8281a83) 9/9 and generation 226's (~/crane-frozen/main-4d4cedb50d) 9/9 in each of three pairs. The user accepted the loss as this upstream test bug, standing for this file until wpt#64475 is fixed upstream.
+date = 2026-11-16
+decision = The user, 2026-11-16 7:25 AM ET: "accept" (asked whether generation 226 may publish with this loss recorded as the user's ruling for the upstream test bug wpt#64475).
