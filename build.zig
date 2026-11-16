@@ -2711,7 +2711,7 @@ pub fn build(b: *std.Build) void {
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
     // (engine_build.LinkRequest.thread_sanitized).
-    const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the V8 prebuilt or the V8 wrapper) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
+    const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the engine's prebuilt archives or the engine adapter's own C++) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
     // How the test executables and the snapshot generator link the engine:
     // the same engine as the products, linked as into a thread-sanitized
     // artifact under -Dsanitize-thread. Never the production artifacts' way
@@ -3101,7 +3101,7 @@ pub fn build(b: *std.Build) void {
     // `test-launch` runs the test executables alone, without the lints and
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
-        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
+        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link the engine)") orelse false;
         const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
         // The CRANE_POISON_FREES switch the launcher reads for libc's
         // scribbling in every test child (child.zig, `malloc_scribble`), as
@@ -4623,7 +4623,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Build step
-    const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
+    const browser_step = b.step("browser", "Build Crane browser (self-contained: the engine linked in)");
 
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
@@ -5661,7 +5661,7 @@ pub fn build(b: *std.Build) void {
         .root_module = lint_engine_module,
     });
 
-    const lint_engine_step = b.step("lint-engine", "Fail on new V8 references outside the V8 adapter (use -- --update after paying debt down)");
+    const lint_engine_step = b.step("lint-engine", "Fail on new references to the engine outside its adapter: the engine boundary (use -- --update after paying debt down)");
     const lint_engine = b.addRunArtifact(lint_engine_exe);
     // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
     lint_engine.has_side_effects = true;
