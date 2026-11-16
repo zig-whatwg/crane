@@ -148,9 +148,10 @@ fn blockBytes(element: *runtime.Instance) usize {
 
 test "el.classList: the same object every read, kept at bit 0 of a 16-byte block" {
     if (comptime !n1) return error.NoN1Fields;
-    var arena_page: ArenaPage = undefined;
-    const page = try arena_page.open();
-    defer arena_page.close();
+    var plain_page: Page = undefined;
+    try plain_page.open(testing.allocator);
+    defer plain_page.close();
+    const page = &plain_page;
     const div = try page.element("div");
 
     try testing.expectEqual(@as(usize, 0), blockBytes(div));
@@ -167,9 +168,10 @@ test "el.classList: the same object every read, kept at bit 0 of a 16-byte block
 
 test "classList and style share one 32-byte block, and neither moves the other" {
     if (comptime !n1) return error.NoN1Fields;
-    var arena_page: ArenaPage = undefined;
-    const page = try arena_page.open();
-    defer arena_page.close();
+    var plain_page: Page = undefined;
+    try plain_page.open(testing.allocator);
+    defer plain_page.close();
+    const page = &plain_page;
     const div = try page.element("div");
 
     const list = try interfaces.Element.get_classList(div);
@@ -183,9 +185,10 @@ test "classList and style share one 32-byte block, and neither moves the other" 
 
 test "children, part, dataset and attributeStyleMap: the same object every read, each in its field" {
     if (comptime !n1) return error.NoN1Fields;
-    var arena_page: ArenaPage = undefined;
-    const page = try arena_page.open();
-    defer arena_page.close();
+    var plain_page: Page = undefined;
+    try plain_page.open(testing.allocator);
+    defer plain_page.close();
+    const page = &plain_page;
 
     const a = try page.element("ul");
     const children = try interfaces.Element.get_children(a);
@@ -212,9 +215,10 @@ test "children, part, dataset and attributeStyleMap: the same object every read,
 
 test "element.attributes and element.style are the impls' objects alone: no second copy anywhere" {
     if (comptime !n1) return error.NoN1Fields;
-    var arena_page: ArenaPage = undefined;
-    const page = try arena_page.open();
-    defer arena_page.close();
+    var plain_page: Page = undefined;
+    try plain_page.open(testing.allocator);
+    defer plain_page.close();
+    const page = &plain_page;
     const div = try page.element("div");
 
     const map = try interfaces.Element.get_attributes(div);
@@ -232,9 +236,10 @@ test "element.attributes and element.style are the impls' objects alone: no seco
 
 test "an SVG element's style and className are cached in its rare data, apart from HTMLElement's style" {
     if (comptime !n1) return error.NoN1Fields;
-    var arena_page: ArenaPage = undefined;
-    const page = try arena_page.open();
-    defer arena_page.close();
+    var plain_page: Page = undefined;
+    try plain_page.open(testing.allocator);
+    defer plain_page.close();
+    const page = &plain_page;
     const rect = try page.elementNS("http://www.w3.org/2000/svg", "rect");
 
     const style = try interfaces.SVGElement.get_style(rect);

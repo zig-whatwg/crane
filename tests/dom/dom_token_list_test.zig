@@ -21,18 +21,17 @@ const Tokens = interfaces.DOMTokenList;
 
 /// A div and its classList.
 const ClassList = struct {
-    /// Over an arena: the classList object is its wrapper's to end, and an
-    /// engine-less realm has none (real_nodes.ArenaNodes).
-    arena_nodes: real_nodes.ArenaNodes,
-    nodes: *real_nodes.Nodes = undefined,
+    nodes: real_nodes.Nodes,
     element: *real_nodes.Instance = undefined,
     list: *real_nodes.Instance = undefined,
 
     /// In place. `class`: the class attribute set BEFORE the list is made.
     fn open(self: *ClassList, class: ?[]const u8) !void {
-        self.* = .{ .arena_nodes = undefined };
-        self.nodes = try self.arena_nodes.open();
-        errdefer self.arena_nodes.close();
+        self.* = .{ .nodes = undefined };
+        try self.nodes.open(std.testing.allocator);
+        errdefer self.nodes.close();
+        // In its document's tree: the document's teardown frees the element
+        // and the list it made for script.
         const document = try self.nodes.document();
         self.element = try self.nodes.element(document, "div");
         try self.nodes.append(document, self.element);
@@ -41,7 +40,7 @@ const ClassList = struct {
     }
 
     fn close(self: *ClassList) void {
-        self.arena_nodes.close();
+        self.nodes.close();
     }
 
     fn strings(buffer: *[4]runtime.DOMString, tokens: []const []const u8) []const runtime.DOMString {
