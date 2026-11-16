@@ -286,6 +286,13 @@ pub const focus_matching = @import("focus_matching.zig");
 /// A FileList's contents, set natively by its owners (an input's selected
 /// files, a DataTransfer's files): the hook FileList installs.
 pub const file_lists = @import("file_lists.zig");
+/// A Touch's unadjusted target and its place in a TouchEvent's touch target
+/// list (DOM 2.2, Touch Events "Retargeting"): the hook Touch installs.
+pub const touch_points = @import("touch_points.zig");
+/// Pointer Events 4: a top-level traversable's active pointers and their
+/// pointer capture, which Element's capture methods and html.user_input
+/// share.
+pub const pointer_capture = @import("pointer_capture.zig");
 /// HTML 6.11.2 the drag data store a DataTransfer owns, and the hooks its
 /// item list and items are made through.
 pub const drag_data_store = @import("drag_data_store.zig");

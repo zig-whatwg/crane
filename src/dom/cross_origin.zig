@@ -60,7 +60,7 @@ pub fn childNavigableNamed(window: *runtime.Instance, name: []const u8) ?*runtim
     const count = interfaces.Window.get_length(window) catch return null;
     var index: u32 = 0;
     while (index < count) : (index += 1) {
-        const child = (interfaces.Window.call_item(window, index) catch null) orelse continue;
+        const child = (interfaces.Window.call_getter__1(window, index) catch null) orelse continue;
         var child_name = interfaces.Window.get_name(child) catch continue;
         defer child_name.deinit(child.ctx.allocator);
         if (std.mem.eql(u8, child_name.asSlice(), name)) return child;

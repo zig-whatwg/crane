@@ -29,8 +29,9 @@
 //! parse, an @import after any rule but @charset, @layer statements and
 //! other @imports, an @namespace after any other rule, an unknown at-rule.
 //! Stated deviations: @charset is dropped (CSSOM has no object for it);
-//! other unmodeled at-rules remain absent. Container and scope rules retain their CSSOM but their children
-//! are inert until the corresponding query/scoping evaluator is available.
+//! other unmodeled at-rules remain absent. Container rules retain their CSSOM but their children
+//! are inert until a container query evaluator is available; an @scope rule keeps its boundaries parsed
+//! (`ScopeBoundary`) for the cascade.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#css-rules
 //! Spec: https://drafts.csswg.org/css-syntax-3/#parse-stylesheet-contents
@@ -147,6 +148,32 @@ pub const FontFeaturePayload = struct {
     objects: [6]ObjectLink = @splat(.{}),
 };
 
+/// One boundary of an @scope rule, parsed: its selector list as written
+/// (borrowing the rule's boundary text) and, when it holds `&`, that list
+/// with `&` resolved against its context (CSS Nesting 1 section 5) - a
+/// style rule parent's selectors, or `:where(:scope)` - as a style rule's
+/// `resolved` is.
+pub const ScopeBoundary = struct {
+    list: selector.SelectorList,
+    resolved: ?*selector.SelectorList = null,
+
+    /// The list the cascade matches.
+    pub fn matching(self: *const ScopeBoundary) *const selector.SelectorList {
+        return self.resolved orelse &self.list;
+    }
+
+    fn deinit(self: *ScopeBoundary, a: Allocator) void {
+        freeResolved(a, self.resolved);
+        self.list.deinit();
+    }
+};
+
+/// An @scope rule's parsed <scope-start> and <scope-end>.
+pub const ScopeBoundaries = struct {
+    start: ?ScopeBoundary = null,
+    end: ?ScopeBoundary = null,
+};
+
 pub const Data = union(Kind) {
     style: struct {
         selectors: selector.SelectorList,
@@ -159,7 +186,17 @@ pub const Data = union(Kind) {
     },
     nested_declarations: struct { selectors: selector.SelectorList, block: DeclarationBlock },
     container: struct { conditions: css.container_queries.List, children: std.ArrayList(*Rule) = .empty },
-    scope: struct { start: ?[]u8, end: ?[]u8, children: std.ArrayList(*Rule) = .empty },
+    /// Cascade 6 3.5.2: the boundaries' text as written (CSSScopeRule start
+    /// and end read it) and their parsed selectors, which the cascade's
+    /// index matches (sheet.zig `ScopeData`).
+    scope: struct {
+        start: ?[]u8,
+        end: ?[]u8,
+        /// The parsed boundaries, boxed: a rare payload does not enlarge
+        /// every rule (Q55); null when the rule has neither boundary.
+        parsed: ?*ScopeBoundaries = null,
+        children: std.ArrayList(*Rule) = .empty,
+    },
     import: Import,
     media: struct {
         list: MediaQueryList,
@@ -240,6 +277,12 @@ pub const Rule = struct {
                 releaseChildren(a, &c.children);
             },
             .scope => |*scope| {
+                // The parsed selectors borrow the text: they go first.
+                if (scope.parsed) |parsed| {
+                    if (parsed.start) |*boundary| boundary.deinit(a);
+                    if (parsed.end) |*boundary| boundary.deinit(a);
+                    a.destroy(parsed);
+                }
                 if (scope.start) |text| a.free(text);
                 if (scope.end) |text| a.free(text);
                 releaseChildren(a, &scope.children);
@@ -690,6 +733,18 @@ pub const ResolutionPlan = struct {
                 errdefer resolved.deinit();
                 try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
             },
+            // An @scope's <scope-start> resolves & against its context (a
+            // parent style rule's selectors): a new context resolves it
+            // again, as it does a nested style rule's selector.
+            .scope => |*scope| {
+                if (scope.parsed) |parsed| if (parsed.start) |*boundary| if (boundary.resolved != null or selector.nesting.contains(&boundary.list)) {
+                    const resolved = try resolveIfNeeded(self.allocator, &boundary.list, context, false);
+                    errdefer freeResolved(self.allocator, resolved);
+                    try self.entries.append(self.allocator, .{ .rule = rule, .replacement = resolved });
+                };
+                const next = contextInside(rule, context);
+                for (scope.children.items) |child| try self.prepare(child, next, null);
+            },
             else => if (rule.children()) |children| {
                 const next = contextInside(rule, context);
                 for (children.items) |child| try self.prepare(child, next, null);
@@ -710,6 +765,11 @@ pub const ResolutionPlan = struct {
                     std.debug.assert(entry.replacement.?.shared_owner == null);
                     nested.selectors = entry.replacement.?.*;
                     self.allocator.destroy(entry.replacement.?);
+                },
+                .scope => |*scope| {
+                    const boundary = &scope.parsed.?.start.?;
+                    freeResolved(self.allocator, boundary.resolved);
+                    boundary.resolved = entry.replacement;
                 },
                 else => unreachable,
             }
@@ -734,17 +794,17 @@ pub fn replaceStyleSelector(rule: *Rule, parsed: selector.CssomSelector) Allocat
     if (rule.sheet()) |record| record.changed();
 }
 
-/// Cascade 6 sections 3.5.2 and 4.1. Only the CSSOM boundaries are stored;
-/// the scoped matching/proximity capability is CSS @SCOPE EVALUATION.
+/// Cascade 6 sections 3.5.2 and 4.1: an @scope rule, its boundaries kept
+/// as written (CSSOM) and parsed for the cascade (`ScopeBoundary`).
 fn buildScope(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Error!?*Rule {
     if (!parsed.has_block) return null;
     const a = options.parse.allocator;
-    var start: ?[]u8 = null;
-    var end: ?[]u8 = null;
+    var start: ?ParsedBoundary = null;
+    var end: ?ParsedBoundary = null;
     var owns = true;
     defer if (owns) {
-        if (start) |text| a.free(text);
-        if (end) |text| a.free(text);
+        if (start) |*b| b.deinit(a);
+        if (end) |*b| b.deinit(a);
     };
     var stream = css.properties.Stream.init(parsed.prelude);
     if (stream.peek().token_type == .left_paren) {
@@ -752,30 +812,64 @@ fn buildScope(options: BuildOptions, parsed: *const css.rules.Rule) Allocator.Er
         // stores an implicit &, as a nested style selector does. All three
         // browsers agree (Q43, 2026-10-27); end and scope-in-scope keep the
         // authored boundary. This happens at parse time, not serialization.
-        start = try scopeBoundary(a, &stream, options.parse.namespaces, if (options.nesting) |n| n.kind else null) orelse return null;
+        // Cascade 6 3.5.4: "Any :scope or & selectors in <scope-start> are
+        // interpreted as defined for its outer context" - & resolves
+        // against the parent style rule, or is :where(:scope) (the outer
+        // @scope's root, or the root element at the top level).
+        start = try scopeBoundary(a, &stream, options.parse.namespaces, if (options.nesting) |n| n.kind else null, options.nesting) orelse return null;
     }
     if (!stream.atEnd()) {
         const to = stream.next();
         if (to.token_type != .ident or !css.tokenizer.nameEql(to.value, "to")) return null;
-        end = try scopeBoundary(a, &stream, options.parse.namespaces, .scope) orelse return null;
+        // 3.5.4: the limits interpret :scope and & "exactly as in scoped
+        // style rules": relative to this rule's scoping root.
+        end = try scopeBoundary(a, &stream, options.parse.namespaces, .scope, .{ .kind = .scope }) orelse return null;
     }
     if (!stream.atEnd()) return null;
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(a);
-    if (start) |text| try out.print(a, "({s})", .{text});
-    if (end) |text| {
+    if (start) |b| try out.print(a, "({s})", .{b.text});
+    if (end) |b| {
         if (start != null) try out.append(a, ' ');
-        try out.print(a, "to ({s})", .{text});
+        try out.print(a, "to ({s})", .{b.text});
     }
     const prelude = try out.toOwnedSlice(a);
-    const rule = try make(a, prelude, .{ .scope = .{ .start = start, .end = end } });
+    var parsed_boundaries: ?*ScopeBoundaries = null;
+    if (start != null or end != null) {
+        const box = a.create(ScopeBoundaries) catch |err| {
+            a.free(prelude);
+            return err;
+        };
+        box.* = .{ .start = if (start) |b| b.boundary else null, .end = if (end) |b| b.boundary else null };
+        parsed_boundaries = box;
+    }
+    const rule = make(a, prelude, .{ .scope = .{
+        .start = if (start) |b| b.text else null,
+        .end = if (end) |b| b.text else null,
+        .parsed = parsed_boundaries,
+    } }) catch |err| {
+        // The boundaries are still `start`'s and `end`'s, which the defer frees.
+        if (parsed_boundaries) |box| a.destroy(box);
+        return err;
+    };
     owns = false;
     errdefer rule.unref();
     try buildChildren(options, rule, parsed.children);
     return rule;
 }
 
-fn scopeBoundary(a: Allocator, stream: *css.properties.Stream, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext) Allocator.Error!?[]u8 {
+/// A boundary's text (OWNED) and its parsed selectors, which borrow it.
+const ParsedBoundary = struct {
+    text: []u8,
+    boundary: ScopeBoundary,
+
+    fn deinit(self: *ParsedBoundary, a: Allocator) void {
+        self.boundary.deinit(a);
+        a.free(self.text);
+    }
+};
+
+fn scopeBoundary(a: Allocator, stream: *css.properties.Stream, map: ?*const css.namespace_map.NamespaceMap, nesting: ?selector.parser.NestingContext, context: ?NestingContext) Allocator.Error!?ParsedBoundary {
     if (stream.next().token_type != .left_paren) return null;
     const start = stream.tok.pos;
     var closers: std.ArrayList(css.tokenizer.TokenType) = .empty;
@@ -798,16 +892,21 @@ fn scopeBoundary(a: Allocator, stream: *css.properties.Stream, map: ?*const css.
         error.OutOfMemory => return error.OutOfMemory,
         else => return null,
     };
-    defer parsed.selectors.deinit();
+    var owns = true;
+    defer if (owns) {
+        parsed.selectors.deinit();
+        a.free(parsed.text);
+    };
+    // 3.5.2: "Pseudo-elements cannot be scoping roots or scoping limits;
+    // they are invalid both within <scope-start> and <scope-end>."
     for (parsed.selectors.selectors) |*complex| {
         var pseudo = complex.compound.hasPseudoElement();
         for (complex.combinators) |*pair| pseudo = pseudo or pair.compound.hasPseudoElement();
-        if (pseudo) {
-            a.free(parsed.text);
-            return null;
-        }
+        if (pseudo) return null;
     }
-    return parsed.text;
+    const resolved = try resolveIfNeeded(a, &parsed.selectors, context, false);
+    owns = false;
+    return .{ .text = parsed.text, .boundary = .{ .list = parsed.selectors, .resolved = resolved } };
 }
 
 fn releaseChildren(allocator: Allocator, list: *std.ArrayList(*Rule)) void {
