@@ -226,6 +226,15 @@ pub const benches = [_]Bench{
         .every = 4_000,
         .gc = .never,
     },
+    .{
+        .name = "sandbox-megabyte-loop",
+        .what = "a 1 MiB ArrayBuffer made, written at both ends and freed at once (transfer(0) detaches it) per cycle: " ++
+            "the in-sandbox allocator's free-then-allocate loop, which makes no system call per cycle when the freed chunk waits",
+        .body = "{ const b = new ArrayBuffer(1048576); const v = new Uint8Array(b); v[0] = 1; v[1048575] = 1; b.transfer(0); }",
+        .cycles = 20_000,
+        .every = 2_000,
+        .gc = .never,
+    },
 };
 
 /// The measurement named `name`, if there is one.
@@ -389,8 +398,8 @@ test "the two much-dies pause rows are named, never force a collection, and buil
     try std.testing.expect(std.mem.indexOf(u8, parse.body, ".childNodes") != null);
 }
 
-test "the in-sandbox allocator's three rows are named and never force a collection" {
-    inline for (.{ "sandbox-small", "sandbox-bigint", "sandbox-chunks" }) |name| {
+test "the in-sandbox allocator's four rows are named and never force a collection" {
+    inline for (.{ "sandbox-small", "sandbox-bigint", "sandbox-chunks", "sandbox-megabyte-loop" }) |name| {
         const bench = benchNamed(name) orelse return error.TestBenchMissing;
         try std.testing.expectEqualStrings(name, bench.name);
         try std.testing.expect(bench.body.len > 0 and bench.what.len > 0);
@@ -403,6 +412,10 @@ test "the in-sandbox allocator's three rows are named and never force a collecti
     try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-small").?.body, "new ArrayBuffer(96)") != null);
     try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-bigint").?.body, "7n ** 3500n") != null);
     try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-chunks").?.body, "new Uint8Array(65536)") != null);
+    // The loop frees its buffer itself, each cycle: detached by transfer(0).
+    const loop = benchNamed("sandbox-megabyte-loop").?;
+    try std.testing.expect(std.mem.indexOf(u8, loop.body, "new ArrayBuffer(1048576)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, loop.body, ".transfer(0)") != null);
 }
 
 test "each measurement says whether it collects: wrapper-churn-nogc never, the kept-object ones always" {

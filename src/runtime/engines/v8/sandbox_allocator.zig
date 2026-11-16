@@ -37,7 +37,7 @@
 //!   hand unless its memory is known never to have been handed out since the
 //!   OS made it (`Block.zeroed`).
 //! - **Size classes** (partition_alloc_constants.h, bucket_lookup.h: 8
-//!   buckets per power of two): a block of up to 512 KiB is a slot of its
+//!   buckets per power of two): a block of up to 1 MiB is a slot of its
 //!   class; a free takes no search and an allocation takes the lowest free
 //!   slot of one chunk.
 //! - **An emptied span waits before it is given back** (partition_page.cc
@@ -45,13 +45,12 @@
 //!   breathing room to get re-used before we really free it. This reduces
 //!   the number of system calls"): `ring`. PartitionAlloc caps the dirty
 //!   bytes that wait at 1/8 of the committed bytes; Crane caps them at
-//!   `retained_max` (256 KiB), because its memory bar reads the whole
-//!   process: enough for the blocks freed at once by the call that took them
-//!   (BigInt scratch, regexp vectors), whose chunks would otherwise go back
-//!   and return on every call. ArrayBuffers are freed in batches by the
-//!   collector, so their chunks gain nothing by waiting.
+//!   `retained_max` (1 MiB: one whole chunk), because its memory bar reads
+//!   the whole process. One chunk is what a loop needs that frees a block
+//!   and takes one of the same size again - a 1 MiB buffer included - to
+//!   make no system call per round.
 //! - **A large block is its own mapping, given back when freed**
-//!   (partition_root.cc, direct maps): a block over 512 KiB is a run of whole
+//!   (partition_root.cc, direct maps): a block over 1 MiB is a run of whole
 //!   chunks, discarded at its free.
 //! - **Nothing the allocator trusts is inside the sandbox.** PartitionAlloc
 //!   hardens the free list of its in-sandbox pool (pool-offset free-list
@@ -83,7 +82,7 @@
 //! - **slots**: cut into equal slots of one size class. A slot is found by
 //!   the chunk's bitmap of freed slots, lowest first, then by `touched`, the
 //!   count of slots handed out at least once.
-//! - **run head / run body**: a block of more than 512 KiB, whole chunks.
+//! - **run head / run body**: a block of more than 1 MiB, whole chunks.
 //! - **free**: in the free pool, its memory given back to the OS. Recommitted
 //!   when taken.
 //!
@@ -105,22 +104,22 @@ pub const chunk_shift = 20;
 /// The unit the reservation is cut into, and the unit memory goes back to
 /// the OS in (V8's default: DefaultInSandboxAllocator::kChunkSize).
 pub const chunk_size: usize = 1 << chunk_shift;
-/// The largest block that is a slot of a size class; a larger one is a run
-/// of whole chunks.
-pub const slot_max: usize = chunk_size / 2;
+/// The largest block that is a slot of a size class - a chunk of its own; a
+/// larger one is a run of whole chunks.
+pub const slot_max: usize = chunk_size;
 /// Every block's alignment (PartitionAlloc's on 64-bit; V8's default gives
 /// 128). Enough for the widest typed-array element and for malloc's users.
 pub const alignment: usize = 16;
 /// How many emptied slot chunks may wait before they go back to the OS
 /// (PartitionAlloc kDefaultEmptySlotSpanRingSize).
 pub const ring_len = 16;
-/// The dirty bytes that may wait in the ring, in total. An emptied chunk
-/// with more than this alone goes back at once.
-pub const retained_max: usize = chunk_size / 4;
+/// The dirty bytes that may wait in the ring, in total: one whole chunk, so
+/// any one emptied chunk can wait.
+pub const retained_max: usize = chunk_size;
 
 /// The number of size classes: multiples of 16 up to 128, then 8 to each
 /// power of two up to `slot_max`.
-pub const class_count = 8 + (chunk_shift - 1 - 7) * 8;
+pub const class_count = 8 + (chunk_shift - 7) * 8;
 
 /// The slot size of each class.
 pub const class_sizes: [class_count]u32 = blk: {
@@ -516,12 +515,11 @@ pub fn Allocator(comptime Pages: type) type {
 
         /// The chunk at `index` has just become empty: it waits in the ring,
         /// in the place of the oldest entry, and the ring's oldest go back
-        /// to the OS while more than `retained_max` dirty bytes wait. A
-        /// chunk too dirty to wait at all goes back at once.
+        /// to the OS while more than `retained_max` dirty bytes wait (never
+        /// this one: a chunk holds no more than that).
         fn enterRing(self: *Self, index: u32) void {
-            const chunk = &self.chunks.items[index];
-            if (dirtyBytes(chunk) > retained_max) return self.releaseSlotChunk(index);
             if (self.ring[self.ring_next] != none) self.evict(self.ring[self.ring_next]);
+            const chunk = &self.chunks.items[index];
             self.ring[self.ring_next] = index;
             chunk.ring_slot = self.ring_next;
             self.ring_next = (self.ring_next + 1) % ring_len;
@@ -547,12 +545,6 @@ pub fn Allocator(comptime Pages: type) type {
         /// memory: to the free pool.
         fn evict(self: *Self, index: u32) void {
             self.leaveRing(index);
-            self.releaseSlotChunk(index);
-        }
-
-        /// An empty slot chunk that is not in the ring leaves its class and
-        /// the used memory: to the free pool.
-        fn releaseSlotChunk(self: *Self, index: u32) void {
             self.unlink(index);
             self.meta.free(self.chunks.items[index].bits);
             self.releaseChunks(index, 1);

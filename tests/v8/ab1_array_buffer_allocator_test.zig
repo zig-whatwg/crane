@@ -47,6 +47,45 @@ test "every isolate allocates ArrayBuffers from the process's in-sandbox allocat
     ffi.v8_ArrayBuffer_Dispose(first);
 }
 
+test "a 1 MiB ArrayBuffer made and detached in a loop: no page operation per round" {
+    var agent: test_process.TestAgent = .{};
+    const isolate = try agent.open(.{});
+    defer agent.close();
+
+    // A live buffer above the loop's, so that a freed chunk is not simply
+    // the top of the used range.
+    const top = ffi.v8_ArrayBuffer_New(isolate, 3 * MiB) orelse return error.ArrayBufferAllocationFailed;
+    defer ffi.v8_ArrayBuffer_Dispose(top);
+
+    const rounds = 500;
+    var before: sa.Stats = undefined;
+    var round: usize = 0;
+    while (round < rounds + 2) : (round += 1) {
+        // The first two rounds settle which chunk the loop uses.
+        if (round == 2) before = try stats();
+        const buffer = ffi.v8_ArrayBuffer_New(isolate, MiB) orelse return error.ArrayBufferAllocationFailed;
+        const data: [*]u8 = @ptrCast(ffi.v8_ArrayBuffer_Data(buffer).?);
+        // Zero each time, though the round before wrote it.
+        try testing.expectEqual(@as(u8, 0), data[0]);
+        try testing.expectEqual(@as(u8, 0), data[MiB - 1]);
+        data[0] = 0xee;
+        data[MiB - 1] = 0xee;
+        // Detaching frees the store at once.
+        ffi.v8_ArrayBuffer_Detach(buffer);
+        ffi.v8_ArrayBuffer_Dispose(buffer);
+    }
+    const after = try stats();
+    // V8's default discarded the chunk at every free; with a discard and a
+    // recommit per round this would read 1,000. The process's other users
+    // may make a few page operations of their own meanwhile.
+    const moved = (after.discards - before.discards) + (after.recommits - before.recommits) +
+        (after.decommits - before.decommits) + (after.grows - before.grows);
+    if (moved > 8) {
+        std.debug.print("{d} page operations in {d} rounds: discards {d}, recommits {d}, decommits {d}, grows {d}\n", .{ moved, rounds, after.discards - before.discards, after.recommits - before.recommits, after.decommits - before.decommits, after.grows - before.grows });
+        return error.PageOperationPerRound;
+    }
+}
+
 fn releaseOnThisThread(held: *hooks.HeldBackingStore) void {
     hooks.v8_test_BackingStore_Release(held);
 }

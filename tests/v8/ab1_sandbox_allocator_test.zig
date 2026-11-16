@@ -276,16 +276,16 @@ test "a full chunk: the class takes a second one, and a freed slot of the first 
     defer f.deinit();
 
     // 512 KiB: two slots to a chunk.
-    const a = try f.take(sa.slot_max);
-    const b = try f.take(sa.slot_max);
-    const c = try f.take(sa.slot_max);
+    const a = try f.take((chunk / 2));
+    const b = try f.take((chunk / 2));
+    const c = try f.take((chunk / 2));
     try testing.expectEqual(@as(usize, 0), f.chunkOf(a));
     try testing.expectEqual(@as(usize, 0), f.chunkOf(b));
     try testing.expectEqual(@as(usize, 1), f.chunkOf(c));
     try f.give(a);
-    const d = try f.take(sa.slot_max);
+    const d = try f.take((chunk / 2));
     try testing.expectEqual(a.address, d.address);
-    const e = try f.take(sa.slot_max);
+    const e = try f.take((chunk / 2));
     try testing.expectEqual(@as(usize, 1), f.chunkOf(e));
     try f.give(b);
     try f.give(c);
@@ -318,41 +318,79 @@ test "an emptied chunk waits before it goes back, so a free and an allocation ma
     try testing.expectEqual(PageState.inaccessible, f.model.states[0]);
 }
 
-test "at most 256 KiB of emptied chunks waits: the oldest go back to the OS, and a chunk dirtier than that at once" {
+test "at most 1 MiB of emptied chunks waits: the oldest go back to the OS" {
     var f = try Fixture.init(32);
     defer f.deinit();
 
-    // One block in each of four classes - 104, 120, 96 and 320 KiB slots -
-    // and a live block above them, so that what goes back is discarded, not
+    var blocks: [3][2]sa.Block = undefined;
+    for (&blocks) |*pair| {
+        // 400 KiB is the 416 KiB class: two slots to a chunk, 832 KiB dirty.
+        pair[0] = try f.take(400 * 1024);
+        pair[1] = try f.take(400 * 1024);
+    }
+    // A live block above them, so that what goes back is discarded, not
     // trimmed off the top.
-    const a = try f.take(100 * 1024);
-    const b = try f.take(120 * 1024);
-    const c = try f.take(90 * 1024);
-    const d = try f.take(300 * 1024);
     const top = try f.take(48);
-    try testing.expectEqual(@as(usize, 4), f.chunkOf(top));
+    try testing.expectEqual(@as(usize, 3), f.chunkOf(top));
 
-    // The first two empty: 104 + 120 KiB wait.
-    try f.give(a);
-    try f.give(b);
-    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
-    try testing.expectEqual(@as(u64, (104 + 120) * 1024), f.allocator.stats().retained_bytes);
+    // The first chunk empties: 832 KiB waits.
+    try f.give(blocks[0][0]);
+    try f.give(blocks[0][1]);
+    try testing.expectEqual(@as(u64, 1), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, 832 * 1024), f.allocator.stats().retained_bytes);
     try testing.expectEqual(@as(usize, 0), f.model.discards);
-    // The third: 320 KiB would wait, so the oldest goes back.
-    try f.give(c);
-    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
-    try testing.expectEqual(@as(u64, (120 + 96) * 1024), f.allocator.stats().retained_bytes);
+    // The second empties: 1,664 KiB would wait, so the first goes back.
+    try f.give(blocks[1][0]);
+    try f.give(blocks[1][1]);
+    try testing.expectEqual(@as(u64, 1), f.allocator.stats().retained_chunks);
     try testing.expectEqual(@as(usize, 1), f.model.discards);
     try testing.expectEqual(PageState.discarded, f.model.states[0]);
     try testing.expectEqual(PageState.committed, f.model.states[1]);
-    try testing.expectEqual(PageState.committed, f.model.states[2]);
     try testing.expectEqual(@as(u64, 1), f.allocator.stats().free_chunks);
-    // A chunk with 320 KiB dirty does not wait.
-    try f.give(d);
-    try testing.expectEqual(@as(u64, 2), f.allocator.stats().retained_chunks);
-    try testing.expectEqual(@as(usize, 2), f.model.discards);
-    try testing.expectEqual(PageState.discarded, f.model.states[3]);
 
+    try f.give(blocks[2][0]);
+    try f.give(blocks[2][1]);
+    try f.give(top);
+}
+
+test "a 1 MiB block freed and allocated again in a loop makes no system call per round" {
+    var f = try Fixture.init(8);
+    defer f.deinit();
+
+    // A live block above it: the path where a freed chunk would be
+    // discarded and recommitted.
+    const first = try f.take(chunk);
+    const top = try f.take(48);
+    try testing.expect(first.zeroed);
+    try f.give(first);
+    // The whole chunk waits: 1 MiB, the most that may.
+    try testing.expectEqual(@as(u64, chunk), f.allocator.stats().retained_bytes);
+    const before = f.allocator.stats();
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) {
+        const block = try f.take(chunk);
+        try testing.expectEqual(first.address, block.address);
+        // Written before: the caller zero-fills it where zeroes are asked for.
+        try testing.expect(!block.zeroed);
+        try f.give(block);
+    }
+    const after = f.allocator.stats();
+    try testing.expectEqual(before.grows, after.grows);
+    try testing.expectEqual(@as(u64, 0), after.discards + after.recommits + after.decommits);
+    try testing.expectEqual(@as(usize, 0), f.model.discards + f.model.recommits + f.model.decommits);
+
+    // Two such blocks in turn: only one chunk may wait, so the other goes
+    // back - and is recommitted when taken again.
+    const a = try f.take(chunk);
+    const b = try f.take(chunk);
+    try f.give(a);
+    try f.give(b);
+    try testing.expectEqual(@as(u64, 1), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(usize, 1), f.model.discards);
+    _ = try f.take(chunk);
+    _ = try f.take(chunk);
+    try testing.expectEqual(@as(usize, 1), f.model.recommits);
     try f.give(top);
 }
 
