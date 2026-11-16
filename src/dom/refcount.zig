@@ -1401,17 +1401,20 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
 // Ref, GCReachableRef, WeakRef
 // ============================================================================
 
+/// The one counted type. `Ref(T)` and its siblings took any struct whose
+/// first field was a NodeBase and cast to it - the shape of the WithBase node
+/// types, which lane wb1 retired: a platform node's NodeBase is a field of
+/// its State block, never the start of a struct. The parameter stays so the
+/// call sites read as before (`Ref(NodeBase)`); anything else is refused.
+pub const counts_only_node_base = true;
+
 fn nodeBaseOf(comptime T: type, ptr: *T) *NodeBase {
-    if (T == NodeBase) return ptr;
-    return @ptrCast(ptr);
+    comptime assertNodeLike(T);
+    return ptr;
 }
 
 fn assertNodeLike(comptime T: type) void {
-    if (T == NodeBase) return;
-    const info = @typeInfo(T);
-    if (info != .@"struct" or info.@"struct".field_names.len == 0 or info.@"struct".field_types[0] != NodeBase) {
-        @compileError("Ref(" ++ @typeName(T) ++ "): a counted type is NodeBase or a node struct with NodeBase as its first field");
-    }
+    if (T != NodeBase) @compileError("Ref(" ++ @typeName(T) ++ "): the counted type is NodeBase");
 }
 
 /// One counted reference to a node (WebKit `Ref<T>`/`RefPtr<T>`; `?Ref(T)` is

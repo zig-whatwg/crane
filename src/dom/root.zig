@@ -324,15 +324,6 @@ pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
-// Temporary bridge types with NodeBase pattern (until codegen is updated)
-pub const element_with_base = @import("element_with_base.zig");
-pub const ElementWithBase = element_with_base.ElementWithBase;
-pub const text_with_base = @import("text_with_base.zig");
-pub const TextWithBase = text_with_base.TextWithBase;
-pub const CommentWithBase = text_with_base.CommentWithBase;
-pub const attr_with_base = @import("attr_with_base.zig");
-pub const AttrWithBase = attr_with_base.AttrWithBase;
-
 // XPath 1.0: the grammar's types. Evaluation over platform nodes is the
 // XPathExpression interface's impl (its own parser and evaluator); the old
 // evaluator here, over NodeBase and the WithBase types, had no caller and

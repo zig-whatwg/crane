@@ -1,12 +1,15 @@
-//! NodeBase - Base type for WebIDL interface inheritance (Node hierarchy)
+//! NodeBase - a node's own data: the tree links, the node document, the type
+//! and flags, the counts, the wrapper slot.
 //!
-//! This provides a flat memory layout for the Node inheritance hierarchy,
-//! enabling safe downcasting between Node types (Node, Element, CharacterData, etc.)
-//!
-//! Design Pattern: Flat Memory Layout with Type Header
-//! - All concrete node types (Element, CharacterData, etc.) have NodeBase as FIRST field
-//! - This allows safe @ptrCast between NodeBase* and concrete types
-//! - Runtime type checking via node_type ensures type safety
+//! One layout for every node type, kept BY VALUE in the node's State block
+//! (Node's embedded state, at `offset_in_state` of the block): the block is
+//! the node, as a Blink or WebKit Node is one object. A NodeBase exists
+//! nowhere else - no test and no helper type builds one by value (lane wb1
+//! retired the ElementWithBase / TextWithBase / AttrWithBase types and the
+//! owner-less NodeBases: node-memory plan v2, X3), so a NodeBase is never
+//! cast to or recovered from a surrounding struct. A node's type-specific
+//! data is its interface's State, reached through its Instance
+//! (`instance()`), never through the NodeBase's address.
 //!
 //! Spec: https://dom.spec.whatwg.org/#interface-node
 
@@ -21,8 +24,6 @@ const custom_elements = @import("custom_elements.zig");
 const rare_data = @import("node_rare_data.zig");
 const event_listener_list = @import("event_listener_list.zig");
 
-// Forward declarations at file scope
-const DocumentType = interfaces.Document;
 pub const RegisteredObserverType = @import("registered_observer.zig").RegisteredObserver;
 
 /// A node's own data: the tree links, the node document, the type and flags,
@@ -892,72 +893,6 @@ pub const NodeBase = extern struct {
     pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
 
     // ========================================================================
-    // Safe Downcasting Utilities
-    // ========================================================================
-
-    /// Safely cast NodeBase to Element (using ElementWithBase temporarily)
-    pub fn asElement(node: *NodeBase) ?*Element {
-        if (node.node_type != ELEMENT_NODE) return null;
-        // Safe: Element has NodeBase as first field, so addresses are identical
-        return @ptrCast(node);
-    }
-
-    /// Safely cast const NodeBase to const Element
-    pub fn asElementConst(node: *const NodeBase) ?*const Element {
-        if (node.node_type != ELEMENT_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast NodeBase to CharacterData
-    /// Returns null if node is not a CharacterData-based node
-    pub fn asCharacterData(node: *NodeBase) ?*CharacterData {
-        const is_text_like = node.node_type == TEXT_NODE or
-            node.node_type == CDATA_SECTION_NODE or
-            node.node_type == COMMENT_NODE;
-        if (!is_text_like) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast const NodeBase to const CharacterData
-    pub fn asCharacterDataConst(node: *const NodeBase) ?*const CharacterData {
-        const is_text_like = node.node_type == TEXT_NODE or
-            node.node_type == CDATA_SECTION_NODE or
-            node.node_type == COMMENT_NODE;
-        if (!is_text_like) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast NodeBase to Text
-    pub fn asText(node: *NodeBase) ?*Text {
-        if (node.node_type != TEXT_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast NodeBase to Comment
-    pub fn asComment(node: *NodeBase) ?*Comment {
-        if (node.node_type != COMMENT_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast NodeBase to Attr (using AttrWithBase temporarily)
-    pub fn asAttr(node: *NodeBase) ?*AttrWithBase {
-        if (node.node_type != ATTRIBUTE_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast const NodeBase to const Attr
-    pub fn asAttrConst(node: *const NodeBase) ?*const AttrWithBase {
-        if (node.node_type != ATTRIBUTE_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    /// Safely cast NodeBase to Document
-    pub fn asDocument(node: *NodeBase) ?*DocumentType {
-        if (node.node_type != DOCUMENT_NODE) return null;
-        return @ptrCast(node);
-    }
-
-    // ========================================================================
     // Common Node Operations
     // ========================================================================
 
@@ -1073,17 +1008,6 @@ pub const RegisteredObserverIterator = struct {
         return &record.registered;
     }
 };
-
-// Forward declarations for concrete types we cast to
-// Using the WithBase variants until codegen is updated for XPath/selectors
-const Element = @import("element_with_base.zig").ElementWithBase;
-const Text = @import("text_with_base.zig").TextWithBase;
-const Comment = @import("text_with_base.zig").CommentWithBase;
-const AttrWithBase = @import("attr_with_base.zig").AttrWithBase;
-
-// CharacterData from generated WebIDL interfaces
-// Has NodeBase as first field, enabling safe downcasting
-pub const CharacterData = interfaces.CharacterData;
 
 // ============================================================================
 // Tests

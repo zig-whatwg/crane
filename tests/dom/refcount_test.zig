@@ -12,7 +12,6 @@
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
-const runtime = @import("runtime");
 const real_nodes = @import("real_nodes.zig");
 const refcount = dom.refcount;
 const NodeBase = dom.NodeBase;
@@ -484,30 +483,6 @@ test "WeakRef: null once the node's slab slot is freed or reissued, and for a ga
     _ = try fixture.nodes.bare(.element);
     _ = try fixture.nodes.bare(.element);
     try testing.expect(weak.get(&fixture.ledger) == null);
-}
-
-/// What every concrete node type is: NodeBase first, state after it.
-const Concrete = struct { base: NodeBase, extra: u32 };
-
-test "a Ref of a concrete node type counts through its NodeBase" {
-    var fixture: Fixture = undefined;
-    try fixture.init(.fatal);
-    defer fixture.deinit();
-    const concrete = try testing.allocator.create(Concrete);
-    defer testing.allocator.destroy(concrete);
-    concrete.* = .{ .base = .{
-        .owner = NodeBase.ownerless(&testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    }, .extra = 7 };
-    var born = refcount.Ref(Concrete).adopt(&fixture.ledger, concrete);
-    var second = born.clone(&fixture.ledger);
-    try testing.expectEqual(@as(u32, 2), refcount.count(&concrete.base));
-    try testing.expectEqual(@as(u32, 7), second.get().extra);
-    second.release(&fixture.ledger);
-    born.release(&fixture.ledger);
-    try testing.expectEqual(@as(u32, 0), concrete.base.subtree_holds);
-    try testing.expect(concrete.base.rc_flags.garbage);
-    try testing.expectEqual(@as(usize, 0), fixture.ledger.finish());
 }
 
 test "take hands a reference to code that holds it without a Ref" {

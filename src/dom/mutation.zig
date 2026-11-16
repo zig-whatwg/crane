@@ -33,8 +33,6 @@ const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 const document_internals = @import("document_internals.zig");
-const element_with_base = @import("element_with_base.zig");
-const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
 const wrapper_tracing = @import("wrapper_tracing.zig");
@@ -2762,42 +2760,17 @@ fn adoptHeld(
 
             // Step 3.1.2: If element, update attribute node documents
             if (desc.node_type == ELEMENT_NODE) {
-                // Access element attributes via ElementWithBase.
-                //
-                // @fieldParentPtr, NOT @ptrCast. ElementWithBase is a plain struct,
-                // so Zig's auto layout does not guarantee `base` sits at offset 0 no
-                // matter what the "MUST be the first field" comment on it says - it
-                // orders by alignment. @fieldParentPtr computes the real offset.
-                // The bare cast read element.attributes from the wrong address, whose
-                // garbage length then drove List.get into out-of-bounds access
-                // (caught by UBSan at infra/list.zig:197 via this exact path).
-                // ONLY parser-created elements embed their NodeBase in an
-                // ElementWithBase (element_with_base.zig: `.base = NodeBase{...}`).
-                // WebIDL-created ones keep a STANDALONE NodeBase in Node's state
-                // (impls/Node.zig: `InternalState.base`) and keep their
-                // attributes elsewhere entirely, so there is no ElementWithBase to
-                // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
-                // computes a different wrong address.
-                //
-                // node_type == ELEMENT_NODE does NOT distinguish them. ownerInstance()
-                // does: instance_bridge.register is called only on the WebIDL path,
-                // so a non-null owner means "standalone, not embedded". Reading
-                // `attributes` off a standalone NodeBase yielded a garbage length,
-                // which drove infra.List.get out of bounds (UBSan: list.zig:197).
-                if (desc.ownerInstance() == null) {
-                    const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
-                    for (0..element.attributes.size()) |attr_idx| {
-                        if (element.attributes.get(attr_idx)) |attr| {
-                            attr.base.setDocumentBase(document);
-                        }
-                    }
-                } else if (document_instance) |doc_instance| {
+                if (document_instance) |doc_instance| {
                     // A platform element keeps its attributes in its own
                     // state and makes an Attr node only when script asks for
                     // one: each it made follows it (its document edge with
                     // it, so the old document is let go), and an attribute
                     // with none gets none - adopting a tree allocates nothing
                     // for attributes script never touched.
+                    //
+                    // (Lane wb1: a second branch here recovered an
+                    // ElementWithBase from an element no Instance owned and
+                    // walked its attribute list. No such element exists.)
                     const element: *runtime.Instance = @ptrCast(@alignCast(desc.ownerInstance().?));
                     for (0..element_attributes.count(element)) |attr_idx| {
                         const attr = element_attributes.existingNodeAt(element, attr_idx) orelse continue;
