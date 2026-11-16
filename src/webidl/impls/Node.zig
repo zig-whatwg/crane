@@ -459,11 +459,24 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             // but handle it for completeness
             interfaces.Document.deinit(instance);
         },
+        // An Attr's own teardown, like every other type's: Attr's part (its
+        // names, its value, its edge to its element), then Node's. It was
+        // the fallback below, which cleared Node's live bit and ran
+        // EventTarget's deinit only - so the NodeBase was never released
+        // (its rare block and what that owns stayed allocated, out of the
+        // final sweep's sight: the sweep walks by the bit), the bridge and
+        // the Browser's DOM memory still counted the node, and its teardown
+        // was never marked complete, so its slot never went back
+        // (tests/dom/nm3_attr_teardown_test.zig).
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.deinit(instance),
+        // No interface makes any other type (`nodeTypeOf` answers one of the
+        // nine above). The default is the safe answer all the same: the
+        // node's own deinit when its vtable names one, completed by Node's
+        // part - the one exit of a NodeBase (`releaseNodeBase`) - when that
+        // did not reach it.
         else => {
-            // For unknown types, do generic Node cleanup
-            // (this handles ATTRIBUTE_NODE and legacy types)
-            Registry.remove(instance);
-            interfaces.EventTarget.deinitChain(instance);
+            if (instance.vtable.deinit) |own_deinit| own_deinit(instance);
+            if (!runtime.instance_lifecycle.isCleanedUp(instance)) deinit(instance);
         },
     }
 }
