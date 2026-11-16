@@ -338,6 +338,10 @@ pub const Cache = struct {
     /// The page holding `object` leaves the cache to be destroyed, at a task
     /// queued now; `reason`, when given, is recorded for it first.
     evict: *const fn (object: *const anyopaque, reason: ?Reason) void,
+    /// The page of the Browser whose scope is `scope` that holds the realm
+    /// `realm` - its own or a frame's, compared only (a key that names no
+    /// kept page names nothing) - leaves the cache the same way.
+    evict_realm: *const fn (scope: *runtime.BrowserScope, realm: *const anyopaque, reason: ?Reason) void = &noRealmEviction,
     /// Every page `traversable` keeps is destroyed now (the traversable is
     /// closing; HTML "destroy a top-level traversable" destroys every entry's
     /// document). `realm` names the Browser: one of its realms.
@@ -434,6 +438,18 @@ pub fn evict(object: *const anyopaque, reason: ?Reason) void {
     const impl = cache.get() orelse return;
     impl.evict(object, reason);
 }
+
+/// Evict the page kept by the Browser of `scope` whose realm - or one of
+/// whose frames' realms - is `realm` (compared only: it may name a realm that
+/// has ended), recording `reason`: a worker that page owns holds what another
+/// page contends for (web_locks contention). On the Browser's window thread.
+/// Nothing when no kept page has that realm.
+pub fn evictRealm(scope: *runtime.BrowserScope, realm: *const anyopaque, reason: ?Reason) void {
+    const impl = cache.get() orelse return;
+    impl.evict_realm(scope, realm, reason);
+}
+
+fn noRealmEviction(_: *runtime.BrowserScope, _: *const anyopaque, _: ?Reason) void {}
 
 /// Evict every page `traversable` keeps, now. `realm` names the Browser.
 pub fn evictTraversable(realm: runtime.Context, traversable: *anyopaque) void {

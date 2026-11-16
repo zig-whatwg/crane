@@ -50,7 +50,8 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const engine = @import("engine");
 const dom = @import("dom");
-const web_locks = @import("html").web_locks;
+const html = @import("html");
+const web_locks = html.web_locks;
 const LockManager = interfaces.LockManager;
 
 const log = std.log.scoped(.web_locks);
@@ -173,6 +174,9 @@ fn lockManagerOf(realm: runtime.Context) anyerror!*runtime.Instance {
     defer if (origin) |o| realm.allocator.free(o);
     const storage_key: ?[]const u8 = if (origin) |o| (if (std.mem.eql(u8, o, "null")) null else o) else null;
     const target = try Target.create(registry.allocator, instance, realm.task_sink);
+    // A worker's environment: its locks are contended for while the
+    // back/forward cache keeps its pages suspended (Target.contention).
+    target.watchWorker(realm, scope);
     internal.client = try registry.register(realm, instance, storage_key, target.delivery());
     internal.registry = registry;
     // The settings object's one LockManager: kept for its realm's life, with
@@ -484,6 +488,13 @@ const Target = struct {
     /// Its realm's loop's inbox, a reference; null for a realm with no loop
     /// (a test's): nothing reaches it.
     sink: ?*runtime.TaskSink,
+    /// For a worker's environment: its worker's link (a reference), the
+    /// Browser's worker registry and scope - what a lock contention needs to
+    /// find the cached pages that keep the worker suspended
+    /// (html.worker_host.evictForLockContention). Null for a Window's.
+    worker: ?*html.WorkerLink = null,
+    worker_registry: ?*html.WorkerRegistry = null,
+    scope: ?*runtime.BrowserScope = null,
 
     fn create(allocator: std.mem.Allocator, manager: *runtime.Instance, sink: ?*runtime.TaskSink) !*Target {
         const self = try allocator.create(Target);
@@ -497,7 +508,30 @@ const Target = struct {
     }
 
     fn delivery(self: *Target) web_locks.Delivery {
-        return .{ .ctx = self, .post = post, .deinit = deinitCtx };
+        return .{ .ctx = self, .post = post, .deinit = deinitCtx, .contention = contention };
+    }
+
+    /// Record the worker whose global scope's realm is `realm`, if it is a
+    /// worker's (on its own thread, as its LockManager is made).
+    fn watchWorker(self: *Target, realm: runtime.Context, scope: *runtime.BrowserScope) void {
+        const link = html.worker_host.linkOfScope(realm) orelse return;
+        const registry = html.WorkerRegistry.existingOf(realm) orelse {
+            link.release();
+            return;
+        };
+        self.worker = link;
+        self.worker_registry = registry;
+        self.scope = scope;
+    }
+
+    /// web_locks.Delivery.contention: any thread, the registry's lock held.
+    /// A Window's environment is never suspended with a lock - a page that
+    /// holds one or waits for one is not kept (LockManager.blocksBfcache) -
+    /// so only a worker's answers.
+    fn contention(ctx: *anyopaque) bool {
+        const self: *Target = @ptrCast(@alignCast(ctx));
+        const link = self.worker orelse return false;
+        return html.worker_host.evictForLockContention(self.worker_registry.?, self.scope.?, link);
     }
 
     /// Any thread, the registry's lock held: post the event's task.
@@ -515,6 +549,7 @@ const Target = struct {
 
     fn deinitCtx(ctx: *anyopaque) void {
         const self: *Target = @ptrCast(@alignCast(ctx));
+        if (self.worker) |link| link.release();
         if (self.sink) |sink| sink.release();
         self.allocator.destroy(self);
     }

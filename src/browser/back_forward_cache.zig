@@ -226,6 +226,26 @@ pub const BackForwardCache = struct {
         self.queueEviction(entry);
     }
 
+    /// The page whose realm, or one of whose frames' realms, is `realm`
+    /// (compared only) leaves at a queued task, `reason` recorded first.
+    pub fn evictRealm(self: *BackForwardCache, realm: *const anyopaque, reason: ?Reason) void {
+        for (self.entries.items) |*entry| {
+            if (!pageHasRealm(&entry.page, realm)) continue;
+            if (entry.evicting) return;
+            if (reason) |r| dom.bfcache.makeUnsalvageable(entry.page.document, r);
+            self.queueEviction(entry);
+            return;
+        }
+    }
+
+    fn pageHasRealm(page: *const KeptPage, realm: *const anyopaque) bool {
+        if (@as(*const anyopaque, page.realm) == realm) return true;
+        for (page.frames) |frame| {
+            if (@as(*const anyopaque, frame.realm) == realm) return true;
+        }
+        return false;
+    }
+
     /// Every page of `traversable` leaves now (its traversable is closing),
     /// queued evictions of them included.
     pub fn evictTraversable(self: *BackForwardCache, traversable: *anyopaque) void {
@@ -448,6 +468,11 @@ fn hookEvict(object: *const anyopaque, reason: ?Reason) void {
     cache.evictHolding(object, reason);
 }
 
+fn hookEvictRealm(scope: *runtime.BrowserScope, realm: *const anyopaque, reason: ?Reason) void {
+    const cache = scope.existing(BackForwardCache) orelse return;
+    cache.evictRealm(realm, reason);
+}
+
 fn hookEvictTraversable(realm: runtime.Context, traversable: *anyopaque) void {
     const cache = cacheOfRealm(realm) orelse return;
     cache.evictTraversable(traversable);
@@ -468,6 +493,7 @@ pub fn installHooks() void {
         .evict_taken = &hookEvictTaken,
         .holds = &hookHolds,
         .evict = &hookEvict,
+        .evict_realm = &hookEvictRealm,
         .evict_traversable = &hookEvictTraversable,
         .prune = &hookPrune,
     });

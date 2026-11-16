@@ -112,19 +112,19 @@ test "a Document's end leaves the owner set; the worker whose owner set empties 
     try manager.add(other_key, classic, alone, &host_data, &document_b);
 
     // Document A goes: the shared worker keeps B; nothing is closed.
-    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_a, null));
+    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_a, null, null));
     try testing.expect(shared.runsTasks());
     try testing.expectEqual(@as(usize, 1), manager.ownerCount(shared));
 
     // Document B goes: both workers are orphans now, and both are closed.
-    try testing.expectEqual(@as(usize, 2), manager.removeOwner(&document_b, null));
+    try testing.expectEqual(@as(usize, 2), manager.removeOwner(&document_b, null, null));
     try testing.expect(!shared.runsTasks());
     try testing.expect(!alone.runsTasks());
     try testing.expect((try manager.connect(key, classic, &document_a)) == null);
 
     // A realm that owns nothing (a worker's) changes nothing.
     var worker_realm: u8 = 0;
-    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&worker_realm, null));
+    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&worker_realm, null, null));
 }
 
 test "the manager is a supplement of its Browser's scope, found through a realm" {
@@ -152,7 +152,7 @@ test "a worker with an extended lifetime outlives its owner set emptying until t
     // The owner set empties: not closed now - the caller arms the timeout.
     var orphans: std.ArrayListUnmanaged(SharedWorkerManager.Orphan) = .empty;
     defer orphans.deinit(testing.allocator);
-    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_a, &orphans));
+    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_a, &orphans, null));
     try testing.expectEqual(@as(usize, 1), orphans.items.len);
     try testing.expect(link.runsTasks());
     const first = orphans.items[0];
@@ -166,7 +166,7 @@ test "a worker with an extended lifetime outlives its owner set emptying until t
     try testing.expect(link.runsTasks());
 
     // It empties again: the earlier timer's epoch is stale, the new one closes it.
-    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_b, &orphans));
+    try testing.expectEqual(@as(usize, 0), manager.removeOwner(&document_b, &orphans, null));
     const second = orphans.items[1];
     defer second.link.release();
     try testing.expect(!manager.closeIfStillOrphaned(first.link, first.epoch));
@@ -182,7 +182,7 @@ test "with no list to arm, an extended lifetime's orphan is closed at once" {
     const link = try makeLink(sink);
     defer link.release();
     try manager.add(key, .{ .worker_type = .classic, .credentials = .same_origin, .extended_lifetime = true }, link, &host_data, &document_a);
-    try testing.expectEqual(@as(usize, 1), manager.removeOwner(&document_a, null));
+    try testing.expectEqual(@as(usize, 1), manager.removeOwner(&document_a, null, null));
     try testing.expect(!link.runsTasks());
 }
 
@@ -205,7 +205,7 @@ test "two threads: the window thread connects and drops owners while a worker th
             var worker_realm: u8 = 0;
             while (!self.stop.load(.acquire)) {
                 // A worker realm owns no shared worker: nothing closes.
-                std.debug.assert(self.manager.removeOwner(&worker_realm, null) == 0);
+                std.debug.assert(self.manager.removeOwner(&worker_realm, null, null) == 0);
                 _ = self.manager.count();
                 self.asked += 1;
             }
@@ -224,8 +224,8 @@ test "two threads: the window thread connects and drops owners while a worker th
         round_key.name = try std.fmt.bufPrint(&name_buffer, "w{d}", .{round % 4});
         try manager.add(round_key, classic, link, &host_data, &documents[round % documents.len]);
         if ((try manager.connect(round_key, classic, &documents[(round + 1) % documents.len]))) |found| found.link.release();
-        _ = manager.removeOwner(&documents[round % documents.len], null);
-        _ = manager.removeOwner(&documents[(round + 1) % documents.len], null);
+        _ = manager.removeOwner(&documents[round % documents.len], null, null);
+        _ = manager.removeOwner(&documents[(round + 1) % documents.len], null, null);
         try testing.expect(!link.runsTasks());
         manager.remove(link);
     }
@@ -246,6 +246,6 @@ test "hasOwner answers for a Document in a shared worker's owner set, and stops 
     try manager.add(key, classic, link, &host_data, &document_a);
     try testing.expect(manager.hasOwner(&document_a));
     try testing.expect(!manager.hasOwner(&document_b));
-    _ = manager.removeOwner(&document_a, null);
+    _ = manager.removeOwner(&document_a, null, null);
     try testing.expect(!manager.hasOwner(&document_a));
 }

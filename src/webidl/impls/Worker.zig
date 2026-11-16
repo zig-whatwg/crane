@@ -91,6 +91,9 @@ pub const InternalState = struct {
     /// waits in a task of this loop (`startFailed`): the pending activity
     /// lasts until it has fired.
     error_queued: bool = false,
+    /// A task that enables the outside port once the Worker's page is fully
+    /// active again waits in its realm's loop (`EnableWhenActive`).
+    enable_queued: bool = false,
 
     pub fn deinit(self: *InternalState) void {
         // The owner lets go: a worker still running is terminated (it is no
@@ -109,19 +112,18 @@ pub const InternalState = struct {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     dom.unloading_cleanup.install(&endWorkersOf);
-    dom.bfcache.installBlocker(&blocksBfcache);
-}
-
-/// dom.bfcache: a page that owns a dedicated worker that has not ended is
-/// not kept in the back/forward cache - a stated limit of phase B, with no
-/// reason the spec names (unload step 5 leaves the choice to the user
-/// agent). A kept page's workers would have to be frozen with it, as Chrome
-/// freezes them; left running they post to a page that cannot answer, and
-/// hold what they hold (a Web Lock: web-locks/bfcache/contention.https.window.js
-/// expects a page whose worker holds a lock not to be restored).
-fn blocksBfcache(realm: runtime.Context) ?dom.bfcache.Blocked {
-    const registry = html.WorkerRegistry.existingOf(realm) orelse return null;
-    return if (registry.ownsAny(realm)) .declined else null;
+    // A page the back/forward cache keeps keeps its dedicated workers,
+    // suspended while it is cached (HTML "run a worker" step 8: a worker
+    // whose owner Document is not fully active is suspendable) and resumed
+    // when it is shown again; evicted, its unloading cleanup terminates them
+    // (`endWorkersOf`). Chrome (DedicatedWorker::ContextLifecycleStateChanged:
+    // kFrozen -> Freeze, kRunning -> Resume), Firefox and Safari all keep
+    // such a page: back-forward-cache/eligibility/dedicated-worker.html
+    // passes in all three on wpt.fyi (stable, 2026-11-15/16). A lock its
+    // worker holds is the lock manager's to resolve on contention
+    // (LockManager's contention hook), not a reason to keep the page out.
+    dom.bfcache.installStoreStep(&worker_host.suspendDedicatedWorkersOf);
+    dom.bfcache.installRestoreStep(&worker_host.resumeDedicatedWorkersOf);
 }
 
 /// An unloading document cleanup step: the realm `realm` ends - its document
@@ -573,11 +575,62 @@ fn deliverHook(receiver: *anyopaque, generation: u64, delivery: *port_channels.D
         if (delivery.next()) |message| message.destroy();
         return;
     }
+    // The port message queue's task is a task of the Worker's relevant
+    // global: while that Window's Document is not fully active - the
+    // back/forward cache keeps the page, and the worker posted this before
+    // its suspension took effect - it is not runnable. The message stays
+    // queued at the outside port, and a global task naming the Window
+    // enables the port again when it runs: at the page's restore, or never
+    // (dropped with the page).
+    if (worker_host.inactiveWindowOf(worker) != null) return EnableWhenActive.queue(worker, internal);
     var task: Delivery = .{ .worker = worker, .delivery = delivery };
     engine.runTaskInRealm(worker.ctx, Delivery.steps, &task) catch {};
     // The last message of a worker that has ended: nothing is pending now.
     releaseWhenIdle(worker);
 }
+
+/// The outside port's queue waits while the Worker's page is not fully
+/// active: a global task naming its Window that enables the port again -
+/// port_channels.End.enable notifies the queue's owner when messages wait -
+/// once the event loop runs it, at the page's restore. One at a time per
+/// Worker; a message arriving meanwhile only waits behind it.
+const EnableWhenActive = struct {
+    worker: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn queue(worker: *runtime.Instance, internal: *InternalState) void {
+        if (internal.enable_queued) return;
+        const self = internal.allocator.create(EnableWhenActive) catch return;
+        self.* = .{ .worker = worker, .generation = runtime.SlabAllocator.generationOf(worker), .allocator = internal.allocator };
+        if (!worker_host.queuedUntilFullyActive(worker, run, drop, self)) {
+            // Fully active after all (or no loop): enable now.
+            internal.allocator.destroy(self);
+            if (internal.outside) |end| end.enable();
+            return;
+        }
+        internal.enable_queued = true;
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const self: *EnableWhenActive = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
+        const internal = getInternal(self.worker) orelse return;
+        internal.enable_queued = false;
+        if (internal.outside) |end| end.enable();
+    }
+
+    /// Never run: the page left the cache to be destroyed, or the loop
+    /// ended. The Worker, if it is still there, may queue another.
+    fn drop(data: ?*anyopaque) void {
+        const self: *EnableWhenActive = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.worker) != self.generation) return;
+        const internal = getInternal(self.worker) orelse return;
+        internal.enable_queued = false;
+    }
+};
 
 const Delivery = struct {
     worker: *runtime.Instance,
@@ -697,7 +750,7 @@ fn startFailed(worker: *runtime.Instance) void {
     const task = internal.allocator.create(ErrorEventTask) catch return fireStartFailure(worker);
     task.* = .{ .worker = worker, .generation = runtime.SlabAllocator.generationOf(worker), .allocator = internal.allocator };
     internal.error_queued = true;
-    loop.queueTask(.{ .callback = ErrorEventTask.run, .context = task, .drop = ErrorEventTask.drop });
+    queueGlobalTask(worker, loop, .{ .callback = ErrorEventTask.run, .context = task, .drop = ErrorEventTask.drop });
 }
 
 /// Fire the start failure's `error` at the worker now (a plain Event, not
@@ -785,7 +838,24 @@ fn queueStartFailure(instance: *runtime.Instance) void {
         .generation = runtime.SlabAllocator.generationOf(instance),
         .allocator = instance.ctx.allocator,
     };
-    loop.queueTask(.{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
+    queueGlobalTask(instance, loop, .{ .callback = StartFailure.run, .context = task, .drop = StartFailure.drop });
+}
+
+/// HTML "queue a global task" given `instance`'s relevant global, on `loop`
+/// (its realm's): a Window's names the Window as the task's document, so the
+/// window loop runs it only while the Window's Document is fully active -
+/// it waits while the back/forward cache keeps the page and is dropped
+/// with it. A worker's realm has no Document: its loop runs every task.
+fn queueGlobalTask(instance: *runtime.Instance, loop: runtime.EventLoop, task: runtime.EventLoopTask) void {
+    var global_task = task;
+    if (instance.ctx.isWindow()) {
+        if (instance.ctx.getRealm()) |record| if (record.global_object) |object| {
+            const global: *runtime.Instance = @ptrCast(@alignCast(object));
+            global_task.document = global;
+            global_task.document_generation = runtime.SlabAllocator.generationOf(global);
+        };
+    }
+    loop.queueTask(global_task);
 }
 
 const StartFailure = struct {

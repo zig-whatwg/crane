@@ -2339,10 +2339,203 @@ pub fn sharedWorkerOwnerGone(realm: runtime.Context) void {
     const manager = SharedWorkerManager.existingOf(realm) orelse return;
     var extended: std.ArrayListUnmanaged(SharedWorkerManager.Orphan) = .empty;
     defer extended.deinit(manager.allocator);
-    const closed = manager.removeOwner(realm, &extended);
+    // A worker left with only cached owners (the Document going was the
+    // last one shown) is suspended - Chrome's OnClientConnectionLost ->
+    // OnClientStateChanged.
+    var transitions = SharedWorkerManager.Transitions.init(manager.allocator, true);
+    defer transitions.deinit();
+    const closed = manager.removeOwner(realm, &extended, &transitions);
     if (closed > 0) log.debug("{d} shared worker(s) closed: their owner set emptied", .{closed});
     for (extended.items) |orphan| ExtendedOrphan.arm(manager, realm, orphan);
+    applySharedTransitions(manager, realm, &transitions);
 }
+
+// ============================================================================
+// Suspending workers with their back/forward cached owners
+// ============================================================================
+//
+// HTML "run a worker" step 8: a worker that is suspendable - its owners'
+// Documents not fully active, its owner set not empty - has its script
+// suspended until it is not (WorkerLink.suspended, WorkerEventLoop.
+// parkWhileSuspended). A Document the back/forward cache keeps is the one
+// that stops being fully active while it stays an owner, so these are the
+// cache's store and restore steps (dom.bfcache.installStoreStep,
+// installRestoreStep), run for each kept Window's realm on the window
+// thread: the Worker impl installs the dedicated pair, the SharedWorker impl
+// the shared pair. A kept Document that is destroyed instead - evicted -
+// leaves its owner sets through its unloading cleanup, which terminates its
+// dedicated workers (Worker.endWorkersOf) and closes a shared worker whose
+// owner set empties (`sharedWorkerOwnerGone`); a suspended worker hears
+// that through its closing flag and wakes to end.
+
+/// dom.bfcache store step: the back/forward cache keeps the Document of
+/// `realm`, which is no longer fully active - its dedicated workers, and the
+/// workers they own, are suspended (WorkerRegistry.suspendOwnedByRealm).
+pub fn suspendDedicatedWorkersOf(realm: runtime.Context) void {
+    const registry = WorkerRegistry.existingOf(realm) orelse return;
+    _ = registry.suspendOwnedByRealm(realm);
+}
+
+/// dom.bfcache restore step: the Document of `realm` is fully active again -
+/// its dedicated workers, and theirs, resume.
+pub fn resumeDedicatedWorkersOf(realm: runtime.Context) void {
+    const registry = WorkerRegistry.existingOf(realm) orelse return;
+    _ = registry.resumeOwnedByRealm(realm);
+}
+
+/// dom.bfcache store step: the Document of `realm` stops counting in the
+/// owner set of every shared worker it owns, and a worker left with no fully
+/// active owner is suspended - now, or after the extended lifetime shared
+/// worker timeout for one in extended lifetime (SharedWorkerManager, the
+/// file's header).
+pub fn sharedWorkerOwnerStored(realm: runtime.Context) void {
+    const manager = SharedWorkerManager.existingOf(realm) orelse return;
+    var transitions = SharedWorkerManager.Transitions.init(manager.allocator, true);
+    defer transitions.deinit();
+    manager.ownerInactive(realm, &transitions);
+    applySharedTransitions(manager, realm, &transitions);
+}
+
+/// dom.bfcache restore step: the Document of `realm` is fully active again,
+/// and every shared worker it owns is actively needed - resumed if it was
+/// suspended.
+pub fn sharedWorkerOwnerRestored(realm: runtime.Context) void {
+    const manager = SharedWorkerManager.existingOf(realm) orelse return;
+    var transitions = SharedWorkerManager.Transitions.init(manager.allocator, false);
+    defer transitions.deinit();
+    manager.ownerActive(realm, &transitions);
+    applySharedTransitions(manager, realm, &transitions);
+}
+
+/// Suspend and resume what the manager asked, with their nested workers, and
+/// arm the extended lifetime ones' timers on `realm`'s loop (a window
+/// realm's: its Browser's window loop, where the manager's steps run).
+fn applySharedTransitions(manager: *SharedWorkerManager, realm: runtime.Context, transitions: *SharedWorkerManager.Transitions) void {
+    transitions.apply(WorkerRegistry.existingOf(realm));
+    if (transitions.delayed) |*delayed| {
+        for (delayed.items) |item| ExtendedInactive.arm(manager, realm, item);
+        // Each link's reference went to its timer.
+        delayed.clearRetainingCapacity();
+    }
+}
+
+/// The link of the worker whose global scope's realm is `ctx` - retained,
+/// the caller releases it; null for a realm that is no worker's.
+pub fn linkOfScope(ctx: runtime.Context) ?*WorkerLink {
+    const host = forScope(ctx) orelse return null;
+    return host.link.retain();
+}
+
+/// Web Locks contention (web_locks.Delivery.contention, the registry's
+/// `contend`) for a lock the worker of `link` holds: when the worker is
+/// suspended - the pages that own it are in the back/forward cache - those
+/// pages are evicted, from a task of the Browser's window loop (the owner
+/// loop of the top of its owner chain; `LockContentionEviction`), and their
+/// end terminates the worker and with it its locks. Whether the worker was
+/// suspended. Any thread, with the lock registry's lock held: it takes only
+/// the worker registry's lock, briefly (no path takes the lock registry's
+/// lock while holding that one), and posts.
+pub fn evictForLockContention(registry: *WorkerRegistry, scope: *runtime.BrowserScope, link: *WorkerLink) bool {
+    if (!link.isSuspended()) return false;
+    const root = registry.ownerChainRoot(link);
+    const allocator = registry.allocator;
+    const task = allocator.create(LockContentionEviction) catch {
+        root.release();
+        return true;
+    };
+    task.* = .{ .allocator = allocator, .scope = scope, .root = root };
+    // A closed sink - its loop has ended, the Browser with it - drops it.
+    _ = root.owner_sink.post(.{ .run = LockContentionEviction.run, .drop = LockContentionEviction.drop, .data = task });
+    return true;
+}
+
+/// The eviction a lock contention asked for, on the Browser's window thread:
+/// the cached pages that keep the suspended worker `root` - the top of the
+/// lock holder's owner chain - suspended. A dedicated root's owner page; a
+/// shared root's owner pages, all of them, unless one is fully active again
+/// (Chrome's SharedWorkerHost::OnLockContention returns at the first active
+/// client, and evicts every cached one otherwise). Nothing when `root` is
+/// not suspended any more: its page was restored meanwhile.
+const LockContentionEviction = struct {
+    allocator: Allocator,
+    scope: *runtime.BrowserScope,
+    /// A reference.
+    root: *WorkerLink,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *LockContentionEviction = @ptrCast(@alignCast(data.?));
+        defer drop(self);
+        const root = self.root;
+        if (!root.isSuspended()) return;
+        const reason: @import("dom").bfcache.Reason = .weblocks_contention;
+        if (self.scope.existing(SharedWorkerManager)) |manager| {
+            var owners: std.ArrayListUnmanaged(*const anyopaque) = .empty;
+            defer owners.deinit(self.allocator);
+            const shared = manager.ownersOf(root, &owners, self.allocator) catch return;
+            if (shared) {
+                if (manager.hasActiveOwnerOf(root)) return;
+                for (owners.items) |realm| @import("dom").bfcache.evictRealm(self.scope, realm, reason);
+                return;
+            }
+        }
+        const realm = root.owner_realm orelse return;
+        @import("dom").bfcache.evictRealm(self.scope, realm, reason);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *LockContentionEviction = @ptrCast(@alignCast(data.?));
+        const root = self.root;
+        self.allocator.destroy(self);
+        root.release();
+    }
+};
+
+/// A shared worker in extended lifetime whose owners are all cached: its
+/// suspension waits for the extended lifetime shared worker timeout, on its
+/// Browser's window loop. Holds a link reference.
+const ExtendedInactive = struct {
+    manager: *SharedWorkerManager,
+    registry: ?*WorkerRegistry,
+    item: SharedWorkerManager.Inactive,
+
+    /// Arm the timeout for `item` (its link reference taken). With no loop
+    /// to arm it on, the worker is suspended now.
+    fn arm(manager: *SharedWorkerManager, realm: runtime.Context, item: SharedWorkerManager.Inactive) void {
+        const registry = WorkerRegistry.existingOf(realm);
+        const timer = realm.getOptionalTimer() orelse return suspendNow(manager, registry, item);
+        const self = manager.allocator.create(ExtendedInactive) catch return suspendNow(manager, registry, item);
+        self.* = .{ .manager = manager, .registry = registry, .item = item };
+        if (timer.setTimeoutOwned(SharedWorkerManager.extended_lifetime_timeout_ms, fire, self, drop) == 0) {
+            manager.allocator.destroy(self);
+            suspendNow(manager, registry, item);
+        }
+    }
+
+    fn suspendNow(manager: *SharedWorkerManager, registry: ?*WorkerRegistry, item: SharedWorkerManager.Inactive) void {
+        _ = manager.suspendIfStillInactive(item.link, item.epoch, registry);
+        item.link.release();
+    }
+
+    /// The timeout has passed: suspended, unless an owner is fully active
+    /// again (another epoch) or the worker closed.
+    fn fire(data: ?*anyopaque) void {
+        const self: *ExtendedInactive = @ptrCast(@alignCast(data.?));
+        const manager = self.manager;
+        const registry = self.registry;
+        const item = self.item;
+        manager.allocator.destroy(self);
+        suspendNow(manager, registry, item);
+    }
+
+    /// Never fired: its loop ended (the Browser's end, which terminates
+    /// every worker itself).
+    fn drop(data: ?*anyopaque) void {
+        const self: *ExtendedInactive = @ptrCast(@alignCast(data.?));
+        const link = self.item.link;
+        self.manager.allocator.destroy(self);
+        link.release();
+    }
+};
 
 /// A shared worker in extended lifetime: its timer, on its Browser's window
 /// loop. Holds a link reference; the manager outlives the loop (the
@@ -2469,6 +2662,16 @@ const SharedConnect = struct {
             // 4. A type, credentials or extended lifetime mismatch: `error`
             // at worker.
             if (!worker.matched) return self.fireError();
+            // A worker whose owners were all in the back/forward cache was
+            // suspended: with this fully active Document in its owner set
+            // it is actively needed again, and resumes - with its nested
+            // workers - before its `connect` (Chrome's SharedWorkerHost::
+            // AddClient re-evaluates the freeze before Connect).
+            if (worker.resumes) {
+                if (WorkerRegistry.existingOf(self.owner_realm)) |registry| {
+                    _ = registry.markSubtree(worker.link, false);
+                } else _ = worker.link.resumeFromSuspension();
+            }
             // 5.1-5.3: a secure context mismatch fires `error` too. Crane's
             // settings objects record no secure context yet, so outside and
             // inside settings of one origin never differ here.
@@ -3460,11 +3663,17 @@ pub const ErrorReport = struct {
         return self;
     }
 
-    /// On the owner's thread.
+    /// On the owner's thread. The steps fire events at the worker object -
+    /// "queue a global task ... given worker's relevant global object" - so
+    /// they wait while that global's Document is not fully active: a report
+    /// the worker posted just before its page entered the back/forward cache
+    /// (its suspension takes effect at its next task boundary) runs once the
+    /// page is restored, or is dropped with it.
     fn run(data: ?*anyopaque) void {
         const self: *ErrorReport = @ptrCast(@alignCast(data.?));
+        const worker = self.owner.live() orelse return destroy(self);
+        if (queuedUntilFullyActive(worker, run, drop, self)) return;
         defer destroy(self);
-        const worker = self.owner.live() orelse return;
         switch (self.kind) {
             .exception => self.owner.steps.error_reported(worker, &self.info),
             .start_failed => self.owner.steps.start_failed(worker),
@@ -3483,6 +3692,42 @@ pub const ErrorReport = struct {
         self.allocator.destroy(self);
     }
 };
+
+/// For a task that reached `object`'s loop from another thread - posted
+/// through a sink, so it names no document - and is HTML's "queue a global
+/// task" given `object`'s relevant global: when that global is a Window whose
+/// Document is not fully active but may be again (the back/forward cache
+/// keeps it), the task is queued again as a global task naming the Window,
+/// and the event loop keeps it with the page - run at its restore, dropped at
+/// its eviction (src/browser/event_loop.zig, `suspendDocument`). Whether it
+/// was queued; the caller runs the steps now otherwise. A worker's realm has
+/// no Document: never queued.
+pub fn queuedUntilFullyActive(object: *runtime.Instance, callback: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void, context: *anyopaque) bool {
+    const global = inactiveWindowOf(object) orelse return false;
+    const generation = runtime.SlabAllocator.generationOf(global);
+    const loop = object.ctx.getOptionalEventLoop() orelse return false;
+    loop.queueTask(.{
+        .callback = callback,
+        .context = context,
+        .drop = drop,
+        .document = global,
+        .document_generation = generation,
+    });
+    return true;
+}
+
+/// `object`'s relevant global, when it is a Window whose Document is not
+/// fully active but may be again (dom.document_activity: inactive - the
+/// back/forward cache keeps it); null otherwise (fully active, gone, or a
+/// worker's realm).
+pub fn inactiveWindowOf(object: *runtime.Instance) ?*runtime.Instance {
+    if (!object.ctx.isWindow()) return null;
+    const record = object.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    const generation = runtime.SlabAllocator.generationOf(global);
+    if (@import("dom").document_activity.activity(global, generation) != .inactive) return null;
+    return global;
+}
 
 /// "Run a worker", as its worker object's side hands it over: a dedicated
 /// worker's Worker constructor (step 9: "run this step in parallel"), or the
