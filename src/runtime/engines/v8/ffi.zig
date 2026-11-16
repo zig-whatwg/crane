@@ -1654,13 +1654,19 @@ pub extern fn v8_Isolate_TakeQueuedFinalizers(
     context: ?*anyopaque,
 ) void;
 /// The realm's cache took a wrapper whose instance holds `bytes` of host
-/// memory: V8 is told at the agent's next safe point once 128 KB wait, and
-/// forgets the figure as its next full collection begins (v8_wrapper.cpp,
-/// "What the instances behind non-node wrappers hold"). No V8 call here.
+/// memory: they join the agent's figure of the instances behind its live
+/// non-node wrappers, which V8 is told at the agent's next safe point once
+/// 128 KB wait (v8_wrapper.cpp, "What the instances behind non-node wrappers
+/// hold"). No V8 call here.
 pub extern fn v8_Isolate_NoteWrappedInstance(isolate: *Isolate, bytes: usize) void;
-/// What V8 holds now as external memory for the instances behind non-node
-/// wrappers (`reported`), or what was noted since the last full collection
-/// began. Diagnostics and tests.
+/// A record that put `bytes` into that figure takes them out: a collection
+/// found its wrapper dead, or the record is freed. No V8 call here: a full
+/// collection tells V8 for all its dead at the end of its weak processing,
+/// the agent's next safe point for the rest.
+pub extern fn v8_Isolate_NoteInstanceGone(isolate: *Isolate, bytes: usize) void;
+/// The figure itself - what the instances behind the agent's live non-node
+/// wrappers hold - or, with `reported`, what V8 holds of it now as external
+/// memory. Diagnostics and tests.
 pub extern fn v8_Debug_WrappedInstanceBytes(isolate: ?*Isolate, reported: bool) u64;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;

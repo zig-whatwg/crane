@@ -275,3 +275,42 @@ test "a wrapper a young collection drops leaves the figure without a full collec
     std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
     return error.TestInconclusive;
 }
+
+test "a record takes out of the figure exactly what it put in" {
+    // The figure is a sum that stays true only if every record's share leaves it once, and whole. The record
+    // keeps what it added in a byte of its own, in units of 8 B (wrapper_cache.zig `Cell.Stamp.held`), and
+    // nothing of the instance is read when it leaves - the instance may be freed by then, or its slot another
+    // object's. So after any mix of objects is made, dropped and collected, the figure is back where it was: to
+    // the byte.
+    const page = try Page.open();
+    defer page.close();
+    const held = try page.heldBy(traced_shape);
+    // One unit is 8 B and these shapes' shares are whole units: counted exactly.
+    try testing.expectEqual(held, wrapper_cache.countedBytes(held));
+    // The record's byte saturates: an instance that holds more than 2,040 B is counted as 2,040 (a floor).
+    try testing.expectEqual(@as(usize, 2040), wrapper_cache.countedBytes(5000));
+    try testing.expectEqual(@as(usize, 2040), wrapper_cache.countedBytes(2040));
+    try testing.expectEqual(@as(usize, 8), wrapper_cache.countedBytes(1));
+    try testing.expectEqual(@as(usize, 0), wrapper_cache.countedBytes(0));
+
+    // Warm: every object the script itself makes once (the interfaces' prototypes are not counted, their
+    // wrappers' records are).
+    const mix = "for (let i = 0; i < 1500; i++) { const e = new Event('x'); const p = new URLSearchParams('a=b'); const h = new Headers(); " ++
+        "const q = new URLSearchParams('c=d'); q.mine = i; const c = new AbortController(); void c.signal; if (i % 3 == 0) (globalThis.some ??= []).push(e, p, h, q, c); } 0";
+    try page.run(mix);
+    try page.run("globalThis.some = null; 0");
+    page.fullGC();
+    page.fullGC();
+    const base = page.figure();
+    var round: usize = 0;
+    while (round < 3) : (round += 1) {
+        try page.run(mix);
+        try testing.expect(page.figure() > base + 1500 * held);
+        try page.run("globalThis.some = null; 0");
+        page.fullGC();
+        page.fullGC();
+        try testing.expectEqual(base, page.figure());
+        // And V8 holds no more than the figure plus a step.
+        try testing.expect(page.told() < base + step);
+    }
+}

@@ -96,10 +96,13 @@ pub const Cell = extern struct {
     /// `slotReissued` says the slot went to another object.
     instance: *runtime.Instance,
 
-    /// Slab generation of `instance` when the record was made: a record
-    /// whose instance was freed, or freed and its slot reissued, differs here
-    /// (the stamp reads dead, or later).
-    generation: u64,
+    /// Slab generation of `instance` when the record was made
+    /// (`stamp.generation`): a record whose instance was freed, or freed and
+    /// its slot reissued, differs here (the slot's stamp reads dead, or
+    /// later). And, in the byte a generation never uses, what the record put
+    /// into its agent's figure of the instances behind live wrappers
+    /// (`stamp.held`).
+    stamp: Stamp,
 
     /// When a script-called constructor made the instance, on its agent's
     /// callback clock (runtime.gc.DeferredTeardown.freshStamp, given by the
@@ -112,6 +115,24 @@ pub const Cell = extern struct {
     fresh: u32 = 0,
 
     bits: Bits = .{},
+
+    pub const Stamp = packed struct(u64) {
+        /// runtime.SlabAllocator stamps 56 bits (its `generation_bits`; the
+        /// slot keeps its occupant's lifecycle flags in the byte above).
+        generation: u56,
+        /// What this record added to the figure of the instances behind its
+        /// agent's live wrappers when its cache took the wrapper
+        /// (`noteWrapped`), in units of `held_unit` bytes; 0 for a record
+        /// that added nothing, and from the moment its share left the figure
+        /// (`takeHeld`: its wrapper found dead, or the record freed). The
+        /// record keeps the number because what it takes out must be what it
+        /// put in: `heldBytes` asked again at the wrapper's death could
+        /// answer something else - a state block freed or made since - or
+        /// read a slot that is another object's by then (`slotReissued`),
+        /// and the difference would stay in what V8 is told for the agent's
+        /// life.
+        held: u8 = 0,
+    };
 
     pub const Bits = packed struct(u32) {
         /// Pending activity (`holdForPendingActivity`), COUNTED: each owner's
@@ -230,7 +251,10 @@ comptime {
     // v8_wrapper.cpp's CraneWrapperCell, field for field, and its marked bit.
     std.debug.assert(@sizeOf(Cell) == 32);
     std.debug.assert(@offsetOf(Cell, "wrapper") == 0 and @offsetOf(Cell, "instance") == 8);
-    std.debug.assert(@offsetOf(Cell, "generation") == 16 and @offsetOf(Cell, "fresh") == 24 and @offsetOf(Cell, "bits") == 28);
+    std.debug.assert(@offsetOf(Cell, "stamp") == 16 and @offsetOf(Cell, "fresh") == 24 and @offsetOf(Cell, "bits") == 28);
+    // v8_wrapper.cpp kWrapperCellGenerationMask: the generation is the word's
+    // low 56 bits, which is all runtime.SlabAllocator stamps.
+    std.debug.assert(@bitOffsetOf(Cell.Stamp, "generation") == 0 and @bitOffsetOf(Cell.Stamp, "held") == 56);
     std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
     std.debug.assert(@bitOffsetOf(Cell.Bits, "anchor_traced") == 30);
 }
@@ -407,25 +431,20 @@ fn wrapperFactsOf(instance: *const runtime.Instance) WrapperFacts {
 /// window thread and its workers' threads, and its free list is LIFO), so
 /// nothing else of it is read unless the stamp is still the record's.
 fn slotReissued(entry: *const Cell) bool {
-    return runtime.SlabAllocator.generationOf(entry.instance) != entry.generation;
+    return runtime.SlabAllocator.generationOf(entry.instance) != entry.stamp.generation;
 }
 
 /// The bytes of host memory `instance` holds that V8 cannot see, as far as an
-/// instance says them itself: ONE function of the instance, so that every
-/// account of it adds the same number - the report made when its realm's
-/// cache takes its wrapper (`noteWrapped`), and the sum over surviving
-/// wrappers that lane dm1's design computes from an anchor's trace
-/// (tmp/plans/dom-memory-figure-design.md, section 5). Four parts: its slab
-/// slot, its generated State block (the size its vtable carries), the cache's
-/// record of its wrapper, and - when its State names one now - each internal
-/// state block of its own that its impl keeps (interface_bindings
+/// instance says them itself: ONE function of the instance. Four parts: its
+/// slab slot, its generated State block (the size its vtable carries), the
+/// cache's record of its wrapper, and - when its State names one now - each
+/// internal state block of its own that its impl keeps (interface_bindings
 /// `stateBlocksOf`, read from the generated State's types). What it answers
-/// on the batch's final tree (2026-11-15, tests/v8/
-/// wrap1_platform_anchor_test.zig prints them): 200 B for an Event or a
-/// CustomEvent, 288 for a URLSearchParams, 264 for a Headers, 360 for a URL,
-/// 144 for an AbortController, 160 for a ReadableStream, 104 for a
-/// NamedNodeMap, 184 for a DOMTokenList, 336 for a NodeList, 544 for an
-/// HTMLCollection. No per-interface table.
+/// (2026-11-15, tests/v8/wrap1_platform_anchor_test.zig prints them): 200 B
+/// for an Event or a CustomEvent, 288 for a URLSearchParams, 264 for a
+/// Headers, 360 for a URL, 144 for an AbortController, 160 for a
+/// ReadableStream, 104 for a NamedNodeMap, 184 for a DOMTokenList, 336 for a
+/// NodeList, 544 for an HTMLCollection. No per-interface table.
 ///
 /// The internal state block is the part that decides the collector's
 /// schedule. It was measured while an Event's dispatch state was 1,024 bytes
@@ -437,8 +456,7 @@ fn slotReissued(entry: *const Cell) bool {
 /// object is on the C++ heap, whose growth V8 counts.
 ///
 /// It is still a FLOOR: what a state allocates beyond its block (a list's
-/// spilled storage, a body, a queue) is not known here. Counting those
-/// belongs to the change that makes this the survivors' sum.
+/// spilled storage, a body, a queue) is not known here.
 pub fn instanceHeldBytes(instance: *const runtime.Instance) usize {
     return heldBytes(instance, wrapperFactsOf(instance));
 }
@@ -448,11 +466,49 @@ fn heldBytes(instance: *const runtime.Instance, facts: WrapperFacts) usize {
         @import("interface_bindings.zig").stateBlockBytes(facts.state_blocks, instance.state);
 }
 
-/// `instance`'s realm's cache took its wrapper: what it holds is noted for
-/// the collector's schedule (v8_wrapper.cpp, "What the instances behind
-/// non-node wrappers hold" - the one call site of that account).
-fn noteWrapped(isolate: *v8.Isolate, instance: *const runtime.Instance, facts: WrapperFacts) void {
-    v8.v8_Isolate_NoteWrappedInstance(isolate, heldBytes(instance, facts));
+/// The unit of `Cell.Stamp.held`: a record keeps what it put into the figure
+/// in one byte, so in steps of 8 bytes (every part of `heldBytes` is a
+/// multiple of a pointer's alignment) up to 2,040. An instance that holds
+/// more is counted as 2,040: the figure is a floor (`instanceHeldBytes`).
+pub const held_unit = 8;
+
+/// What a record whose instance holds `bytes` puts into the figure
+/// (`Cell.Stamp.held`): `bytes` to the next `held_unit`, at most 255 units.
+fn heldUnits(bytes: usize) u8 {
+    return @intCast(@min((bytes + held_unit - 1) / held_unit, std.math.maxInt(u8)));
+}
+
+/// What `instanceHeldBytes` becomes in the figure: itself for every instance
+/// that holds a multiple of 8 bytes up to 2,040 (tests).
+pub fn countedBytes(bytes: usize) usize {
+    return @as(usize, heldUnits(bytes)) * held_unit;
+}
+
+/// `entry`'s realm's cache took its wrapper: what its instance holds joins
+/// its agent's figure of the instances behind LIVE non-node wrappers
+/// (v8_wrapper.cpp, "What the instances behind non-node wrappers hold"), and
+/// the record keeps the amount (`Cell.Stamp.held`). The one place the figure
+/// grows; `takeHeld` is the one place it falls.
+fn noteWrapped(isolate: *v8.Isolate, entry: *Cell, facts: WrapperFacts) void {
+    std.debug.assert(entry.stamp.held == 0);
+    const units = heldUnits(heldBytes(entry.instance, facts));
+    entry.stamp.held = units;
+    v8.v8_Isolate_NoteWrappedInstance(isolate, @as(usize, units) * held_unit);
+}
+
+/// `entry`'s share of its agent's figure leaves it: a collection found its
+/// wrapper dead (`WrapperCache.died`, `WrapperCache.sweepUnmarked`), or the
+/// record is freed while its wrapper may live (`WrapperCache.freeCell`: a
+/// remove, a replacement, its realm's end). Once: the record's amount reads 0
+/// after it. A store and an add, no V8 call here: inside a full collection
+/// V8 is told once for all its dead (v8_wrapper.cpp
+/// `settleWrappedInstances`), outside one at the agent's next safe point.
+/// Nothing of the instance is read - it may be freed, or another object.
+fn takeHeld(isolate: ?*v8.Isolate, entry: *Cell) void {
+    const units = entry.stamp.held;
+    if (units == 0) return;
+    entry.stamp.held = 0;
+    if (isolate) |i| v8.v8_Isolate_NoteInstanceGone(i, @as(usize, units) * held_unit);
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -820,7 +876,7 @@ fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bo
     for (caches.items) |other| {
         if (other == except) continue;
         const entry = other.cache.get(instance) orelse continue;
-        if (entry.generation == generation) return true;
+        if (entry.stamp.generation == generation) return true;
     }
     return false;
 }
@@ -1074,7 +1130,7 @@ fn finalizeEntry(entry: *Cell) void {
     // wrapper owns it now. Blink's second pass dropped only the collected
     // wrapper's reference for the same reason.
     if (cache.cache.get(instance)) |current| {
-        if (current.generation == entry.generation) return cache.freeCell(entry);
+        if (current.stamp.generation == entry.stamp.generation) return cache.freeCell(entry);
     }
 
     // If the CleanupCoordinator is handling teardown, type-specific cleanup
@@ -1104,7 +1160,7 @@ fn finalizeEntry(entry: *Cell) void {
             if (!started) {
                 runtime.instance_lifecycle.markWrapperGone(instance);
             } else if (runtime.instance_lifecycle.isCleanedUp(instance)) {
-                runtime.cleanup_coordinator.deferStorageRelease(instance, entry.generation);
+                runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
             }
         }
         return cache.freeCell(entry);
@@ -1517,7 +1573,7 @@ pub const WrapperCache = struct {
         cell.* = .{
             .wrapper = null,
             .instance = instance,
-            .generation = runtime.SlabAllocator.generationOf(instance),
+            .stamp = .{ .generation = @intCast(runtime.SlabAllocator.generationOf(instance)) },
             .fresh = stamp,
             .bits = .{ .in_use = true, .boxed = true },
         };
@@ -1538,6 +1594,10 @@ pub const WrapperCache = struct {
         // record's reference is empty by now (let go of, or collected).
         letGo(entry, .keep);
         if (entry.bits.collected) self.pending -= 1;
+        // A record freed with its wrapper not found dead (a remove, a
+        // replacement, its realm's end): its share of the figure goes with
+        // it.
+        takeHeld(self.isolate, entry);
         const chunk = Chunk.of(entry);
         const was_full = chunk.free == null;
         const free: *FreeCell = @ptrCast(entry);
@@ -1618,6 +1678,10 @@ pub const WrapperCache = struct {
     /// instance's teardown is the finalizer's, after the collection.
     fn died(self: *Self, entry: *Cell) void {
         entry.bits.collected = true;
+        // What its instance holds is no live wrapper's any more: it leaves
+        // the figure here, where the collector decided - not at the
+        // finalizer, which runs after V8 has computed its next limits.
+        takeHeld(self.isolate, entry);
         self.pending += 1;
         self.deaths +%= 1;
         // Due to memory reuse (SlabAllocator/ArenaAllocator), the same
@@ -1664,6 +1728,14 @@ pub const WrapperCache = struct {
                 if (bits.weak_handle) {
                     entry.bits.anchor_traced = bits.marked;
                     entry.bits.marked = false;
+                    // A live wrapper's anchor is always traced (the wrapper
+                    // points at it), so an anchor this marking did not reach
+                    // is a dead wrapper's: what its instance holds leaves the
+                    // figure in this pause, with the traced records' dead -
+                    // V8 computes its next limits from what it is told here
+                    // (v8_wrapper.cpp `settleWrappedInstances`). The record
+                    // itself waits for its Global's first pass, as before.
+                    if (!bits.marked) takeHeld(self.isolate, entry);
                     continue;
                 }
                 if (bits.marked) {
@@ -2079,7 +2151,7 @@ pub const WrapperCache = struct {
                 // Outside one, it stays as it did (lane unwrapped1).
                 if (!is_reused and runtime.instance_lifecycle.isCleanedUp(instance) and
                     !wrappedElsewhere(instance, self))
-                    runtime.cleanup_coordinator.deferStorageRelease(instance, entry.generation);
+                    runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
             } else if (is_reused) {
                 // Its slot holds another object now, or none: the wrapper
                 // must not reach it. Nothing of the instance is torn down:
@@ -2098,7 +2170,7 @@ pub const WrapperCache = struct {
                 if (runtime.instance_lifecycle.isCleanedUp(instance)) {
                     letGo(entry, .sever);
                     if (runtime.cleanup_coordinator.isContextTearingDown()) {
-                        runtime.cleanup_coordinator.deferStorageRelease(instance, entry.generation);
+                        runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
                     } else {
                         runtime.gc.releaseStorage(instance);
                     }
@@ -2362,10 +2434,10 @@ pub const WrapperCache = struct {
         // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             self.pending_guard.noteRemoval(&self.pending_before_wrap);
-            if (held.value.generation == entry.generation) entry.bits.pending_activity = @intCast(@min(held.value.count, std.math.maxInt(u20)));
+            if (held.value.generation == entry.stamp.generation) entry.bits.pending_activity = @intCast(@min(held.value.count, std.math.maxInt(u20)));
         }
         // Edges traced from the instance before script saw it.
-        self.drawDeferredEdges(instance, entry.generation, wrapper);
+        self.drawDeferredEdges(instance, entry.stamp.generation, wrapper);
         // (A holder of nodes was bound to its HolderAnchor with the wrapper -
         // platform_anchor.bind - so a collection that keeps this wrapper
         // keeps the wrappers of what it holds for script: the redesign's P6,
@@ -2385,7 +2457,7 @@ pub const WrapperCache = struct {
         // call: v8_wrapper.cpp, "What the instances behind non-node wrappers
         // hold") - in an agent's realm; a cache of no agent's isolate
         // reports nothing.
-        if (self.registered) noteWrapped(isolate, instance, facts);
+        if (self.registered) noteWrapped(isolate, entry, facts);
 
         if (entry.bits.boxed) return wrapper;
         // The record's reference holds the wrapper from here; until here the
