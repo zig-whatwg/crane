@@ -1904,15 +1904,19 @@ pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) a
     return dom.selector_matching.matches(instance, selectors.asSlice());
 }
 
-/// Operation: releasePointerCapture
-/// Pointer Events §5.4.3 - Releases pointer capture
+/// Operation: releasePointerCapture (Pointer Events 4 section 8.3,
+/// "Releasing pointer capture").
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-releasepointercapture
-///
-/// Without pointer event support, this is a no-op
 pub fn call_releasePointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-    _ = instance;
-    _ = pointerId;
-    // No-op without pointer event support
+    const pointer_capture = dom.pointer_capture;
+    const document = interfaces.Node.get_ownerDocument(instance) catch null;
+    const pointers = activePointersOf(document) orelse {
+        // Step 1, with no traversable: only the mouse is active, and
+        // nothing can have captured it (step 2).
+        if (pointerId != pointer_capture.mouse_id) return error.NotFoundError;
+        return;
+    };
+    return pointer_capture.releasePointerCapture(pointers, pointerId, instance);
 }
 
 /// Operation: computedStyleMap
@@ -2531,16 +2535,14 @@ pub fn call_hasAttributes(instance: *runtime.Instance) anyerror!bool {
     return internal.data.getAttributeCount() > 0;
 }
 
-/// Operation: hasPointerCapture
-/// Pointer Events §5.4.4 - Checks if element has pointer capture
+/// Operation: hasPointerCapture (Pointer Events 4 section 4.1): whether
+/// the pending pointer capture target override for pointerId is this
+/// element.
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-haspointercapture
-///
-/// Without pointer event support, always returns false
 pub fn call_hasPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!bool {
-    _ = instance;
-    _ = pointerId;
-    // No pointer capture without pointer event support
-    return false;
+    const document = interfaces.Node.get_ownerDocument(instance) catch null;
+    const pointers = activePointersOf(document) orelse return false;
+    return dom.pointer_capture.hasPointerCapture(pointers, pointerId, instance);
 }
 
 /// Operation: toggleAttribute
@@ -3186,15 +3188,34 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
     ) catch return error.OutOfMemory;
 }
 
-/// Operation: setPointerCapture
-/// Pointer Events §5.4.2 - Sets pointer capture
+/// Operation: setPointerCapture (Pointer Events 4 section 8.2, "Setting
+/// pointer capture"), on the active pointers of the top-level traversable
+/// this element's node document is in (dom.pointer_capture).
 /// Spec: https://w3c.github.io/pointerevents/#dom-element-setpointercapture
-///
-/// Without pointer event support, this is a no-op
 pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
-    _ = instance;
-    _ = pointerId;
-    // No-op without pointer event support
+    const pointer_capture = dom.pointer_capture;
+    const document = interfaces.Node.get_ownerDocument(instance) catch null;
+    const connected = interfaces.Node.get_isConnected(instance) catch false;
+    const pointers = activePointersOf(document) orelse {
+        // No traversable: the mouse is still an active pointer (steps 1-2)
+        // that is in no active buttons state (step 5); any other pointerId
+        // matches none.
+        if (pointerId != pointer_capture.mouse_id) return error.NotFoundError;
+        if (!connected) return error.InvalidStateError;
+        return;
+    };
+    // Step 4: "the element's node document has a locked element".
+    const locked = if (document) |d| dom.designated_elements.of(d, .pointer_lock) != null else false;
+    return pointer_capture.setPointerCapture(pointers, pointerId, instance, connected, document, locked);
+}
+
+/// The active pointers of the top-level traversable `document` is in, or
+/// null for a document with no browsing context.
+fn activePointersOf(document: ?*runtime.Instance) ?*dom.pointer_capture.ActivePointers {
+    const doc = document orelse return null;
+    const window = (interfaces.Document.get_defaultView(doc) catch null) orelse return null;
+    const context = dom.browser_state.browsingContextOf(window) orelse return null;
+    return &context.getTop().active_pointers;
 }
 
 /// Operation: ariaNotify

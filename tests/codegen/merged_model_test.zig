@@ -187,7 +187,10 @@ test "a from-scratch run over the default sources matches every committed root's
     try testing.expect(contains(font_face_set, "get_size"));
     const window = try out.read("interfaces/Window.zig");
     defer testing.allocator.free(window);
-    try testing.expect(contains(window, "call_item"));
+    // specs/supplementary/WindowIndexedGetter.idl's anonymous indexed getter
+    // (the second anonymous getter, after html.idl's named one).
+    try testing.expect(contains(window, "call_getter__1"));
+    try testing.expect(!contains(window, "call_item"));
 
     // The buffer source typedefs are written too (they re-export
     // webidl/types/buffer_sources.zig), so every file a root imports exists.

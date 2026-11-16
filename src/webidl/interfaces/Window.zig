@@ -354,7 +354,6 @@ pub const Window = struct {
             .{ "prompt", "call_prompt", 0 },
             .{ "print", "call_print", 0 },
             .{ "postMessage", "call_postMessage", 1 },
-            .{ "item", "call_item", 1 },
             .{ "navigate", "call_navigate", 1 },
             .{ "requestResize", "call_requestResize", 0 },
             .{ "matchMedia", "call_matchMedia", 1 },
@@ -409,7 +408,6 @@ pub const Window = struct {
             "prompt",
             "print",
             "postMessage",
-            "item",
             "navigate",
             "requestResize",
             "matchMedia",
@@ -670,7 +668,7 @@ pub const Window = struct {
         /// the function that runs each. The binding installs indexed and named
         /// property handlers from this table (webidl.SpecialOperations).
         pub const special_operations: webidl.SpecialOperations = .{
-            .indexed_getter = .{ .function = "call_item" },
+            .indexed_getter = .{ .function = "call_getter__1", .implemented = @hasDecl(WindowImpl, "call_getter__1") },
             .named_getter = .{ .function = "call_getter", .implemented = @hasDecl(WindowImpl, "call_getter") },
             .supported_property_name = .{ .function = "isSupportedPropertyName", .implemented = @hasDecl(WindowImpl, "isSupportedPropertyName") },
             .legacy_unenumerable_named_properties = true,
@@ -1111,7 +1109,6 @@ pub const Window = struct {
         .call_getDigitalGoodsService = &call_getDigitalGoodsService,
         .call_getScreenDetails = &call_getScreenDetails,
         .call_getSelection = &call_getSelection,
-        .call_item = &call_item,
         .call_matchMedia = &call_matchMedia,
         .call_maximize = &call_maximize,
         .call_minimize = &call_minimize,
@@ -2324,13 +2321,21 @@ pub const Window = struct {
         }
     }
 
+    pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
+        if (comptime @hasDecl(WindowImpl, "call_getter__1")) {
+            return try WindowImpl.call_getter__1(instance, index);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     pub const call_structuredClone = mixins.WindowOrWorkerGlobalScope.call_structuredClone;
 
     pub fn call_requestResize(instance: *runtime.Instance) anyerror!void {
         return try WindowImpl.call_requestResize(instance);
     }
 
-    pub const call_atob = mixins.WindowOrWorkerGlobalScope.call_atob;
+    pub const call_btoa = mixins.WindowOrWorkerGlobalScope.call_btoa;
 
     pub fn call_open(instance: *runtime.Instance, url: webidl.Opt(runtime.USVString), target: webidl.Opt(runtime.DOMString), features: webidl.Opt(runtime.DOMString)) anyerror!?WindowProxy {
         return try WindowImpl.call_open(instance, url, target, features);
@@ -2338,6 +2343,11 @@ pub const Window = struct {
 
     pub fn call_moveTo(instance: *runtime.Instance, x: i32, y: i32) anyerror!void {
         return try WindowImpl.call_moveTo(instance, x, y);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_showSaveFilePicker(instance, options);
     }
 
     pub fn call_confirm(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString)) anyerror!bool {
@@ -2352,17 +2362,49 @@ pub const Window = struct {
         return try WindowImpl.call_cancelIdleCallback(instance, handle);
     }
 
-    pub const call_clearInterval = mixins.WindowOrWorkerGlobalScope.call_clearInterval;
+    pub fn call_focus(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_focus(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: runtime.DOMString) anyerror!runtime.JSValue {
+        return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
+    }
 
     /// Extended attributes: [SecureContext]
     pub fn call_getScreenDetails(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowImpl.call_getScreenDetails(instance);
     }
 
+    /// Extended attributes: [SecureContext]
+    pub fn call_setResizable(instance: *runtime.Instance, resizable: bool) anyerror!runtime.JSValue {
+        return try WindowImpl.call_setResizable(instance, resizable);
+    }
+
+    pub const call_reportError = mixins.WindowOrWorkerGlobalScope.call_reportError;
+
+    pub const call_atob = mixins.WindowOrWorkerGlobalScope.call_atob;
+
     pub const call_clearTimeout = mixins.WindowOrWorkerGlobalScope.call_clearTimeout;
+
+    pub const call_clearInterval = mixins.WindowOrWorkerGlobalScope.call_clearInterval;
+
+    pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
+
+    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
+        return try WindowImpl.call_requestAnimationFrame(instance, callback);
+    }
+
+    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_blur(instance);
+    }
 
     pub fn call_prompt(instance: *runtime.Instance, message: webidl.Opt(runtime.DOMString), default: webidl.Opt(runtime.DOMString)) anyerror!?runtime.DOMString {
         return try WindowImpl.call_prompt(instance, message, default);
+    }
+
+    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
+        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
     }
 
     /// Extended attributes: [NewObject]
@@ -2384,14 +2426,40 @@ pub const Window = struct {
         return try WindowImpl.call_moveBy(instance, x, y);
     }
 
+    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scrollBy(instance, options);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_showDirectoryPicker(instance, options);
+    }
+
+    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_captureEvents(instance);
+    }
+
+    pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
+        return try WindowImpl.call_releaseEvents(instance);
+    }
+
+    /// Extended attributes: [SecureContext]
+    pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_queryLocalFonts(instance, options);
+    }
+
     /// Extended attributes: [SecureContext]
     pub fn call_maximize(instance: *runtime.Instance) anyerror!runtime.JSValue {
         return try WindowImpl.call_maximize(instance);
     }
 
-    pub const call_setInterval = mixins.WindowOrWorkerGlobalScope.call_setInterval;
+    pub const call_setTimeout = mixins.WindowOrWorkerGlobalScope.call_setTimeout;
 
-    pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
+    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scrollTo(instance, options);
+    }
+
+    pub const call_setInterval = mixins.WindowOrWorkerGlobalScope.call_setInterval;
 
     pub fn call_print(instance: *runtime.Instance) anyerror!void {
         return try WindowImpl.call_print(instance);
@@ -2401,9 +2469,15 @@ pub const Window = struct {
         return try WindowImpl.call_navigate(instance, dir);
     }
 
+    pub const call_createImageBitmap = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap;
+
     /// Extended attributes: [SecureContext]
     pub fn call_showOpenFilePicker(instance: *runtime.Instance, options: webidl.Opt(OpenFilePickerOptions)) anyerror!runtime.JSValue {
         return try WindowImpl.call_showOpenFilePicker(instance, options);
+    }
+
+    pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
+        return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     /// Extended attributes: [NewObject], [SecureContext]
@@ -2411,84 +2485,6 @@ pub const Window = struct {
         // [NewObject] - Caller owns the returned object
 
         return try WindowImpl.call_fetchLater(instance, input, init_data);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_minimize(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try WindowImpl.call_minimize(instance);
-    }
-
-    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scroll(instance, options);
-    }
-
-    pub const call_btoa = mixins.WindowOrWorkerGlobalScope.call_btoa;
-
-    pub const call_reportError = mixins.WindowOrWorkerGlobalScope.call_reportError;
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_showSaveFilePicker(instance: *runtime.Instance, options: webidl.Opt(SaveFilePickerOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_showSaveFilePicker(instance, options);
-    }
-
-    pub const call_queueMicrotask = mixins.WindowOrWorkerGlobalScope.call_queueMicrotask;
-
-    pub fn call_requestAnimationFrame(instance: *runtime.Instance, callback: FrameRequestCallback) anyerror!u32 {
-        return try WindowImpl.call_requestAnimationFrame(instance, callback);
-    }
-
-    pub fn call_focus(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_focus(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_getDigitalGoodsService(instance: *runtime.Instance, serviceProvider: runtime.DOMString) anyerror!runtime.JSValue {
-        return try WindowImpl.call_getDigitalGoodsService(instance, serviceProvider);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_setResizable(instance: *runtime.Instance, resizable: bool) anyerror!runtime.JSValue {
-        return try WindowImpl.call_setResizable(instance, resizable);
-    }
-
-    pub fn call_blur(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_blur(instance);
-    }
-
-    pub fn call_captureEvents(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_captureEvents(instance);
-    }
-
-    pub fn call_postMessage(instance: *runtime.Instance, message: runtime.JSValue, targetOrigin: runtime.USVString, transfer: webidl.Opt(runtime.JSValue)) anyerror!void {
-        return try WindowImpl.call_postMessage(instance, message, targetOrigin, transfer);
-    }
-
-    pub fn call_scrollBy(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scrollBy(instance, options);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_queryLocalFonts(instance: *runtime.Instance, options: webidl.Opt(QueryOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_queryLocalFonts(instance, options);
-    }
-
-    pub fn call_releaseEvents(instance: *runtime.Instance) anyerror!void {
-        return try WindowImpl.call_releaseEvents(instance);
-    }
-
-    /// Extended attributes: [SecureContext]
-    pub fn call_showDirectoryPicker(instance: *runtime.Instance, options: webidl.Opt(DirectoryPickerOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_showDirectoryPicker(instance, options);
-    }
-
-    pub const call_setTimeout = mixins.WindowOrWorkerGlobalScope.call_setTimeout;
-
-    pub fn call_scrollTo(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
-        return try WindowImpl.call_scrollTo(instance, options);
-    }
-
-    pub fn call_resizeTo(instance: *runtime.Instance, width: i32, height: i32) anyerror!void {
-        return try WindowImpl.call_resizeTo(instance, width, height);
     }
 
     pub const call_fetch = mixins.WindowOrWorkerGlobalScope.call_fetch;
@@ -2521,31 +2517,26 @@ pub const Window = struct {
         return try WindowImpl.call_cancelAnimationFrame(instance, handle);
     }
 
-    pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?WindowProxy {
-        return try WindowImpl.call_item(instance, index);
+    /// Extended attributes: [SecureContext]
+    pub fn call_minimize(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try WindowImpl.call_minimize(instance);
     }
 
-    pub fn call_alert__1(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
-        if (comptime @hasDecl(WindowImpl, "call_alert__1")) {
-            return try WindowImpl.call_alert__1(instance, message);
-        } else {
-            return error.NotImplemented;
-        }
-    }
-
-    pub const call_createImageBitmap__1 = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap__1;
-
-    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
-        if (comptime @hasDecl(WindowImpl, "call_scroll__1")) {
-            return try WindowImpl.call_scroll__1(instance, x, y);
-        } else {
-            return error.NotImplemented;
-        }
+    pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
+        return try WindowImpl.call_scroll(instance, options);
     }
 
     pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue, options: webidl.Opt(WindowPostMessageOptions)) anyerror!void {
         if (comptime @hasDecl(WindowImpl, "call_postMessage__1")) {
             return try WindowImpl.call_postMessage__1(instance, message, options);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
+    pub fn call_alert__1(instance: *runtime.Instance, message: runtime.DOMString) anyerror!void {
+        if (comptime @hasDecl(WindowImpl, "call_alert__1")) {
+            return try WindowImpl.call_alert__1(instance, message);
         } else {
             return error.NotImplemented;
         }
@@ -2567,26 +2558,28 @@ pub const Window = struct {
         }
     }
 
+    pub const call_createImageBitmap__1 = mixins.WindowOrWorkerGlobalScope.call_createImageBitmap__1;
+
+    pub fn call_scroll__1(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        if (comptime @hasDecl(WindowImpl, "call_scroll__1")) {
+            return try WindowImpl.call_scroll__1(instance, x, y);
+        } else {
+            return error.NotImplemented;
+        }
+    }
+
     /// WebIDL overload sets: every overload of each overloaded operation,
     /// in IDL order, for the overload resolution algorithm
     /// (webidl.overload_resolution). The binding is installed for the first
     /// overload and forwards to the one the arguments select.
     pub const overloads = .{
-        .{ "alert", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_alert", .args = &.{} },
-            .{ .function = "call_alert__1", .implemented = @hasDecl(WindowImpl, "call_alert__1"), .args = &.{.{ .kinds = &.{.string} }} },
-        } },
-        .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other), (if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other) } }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
-            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(mixins.WindowOrWorkerGlobalScope.impl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other), (if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other) } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
-        } },
-        .{ "scroll", &[_]webidl.overload_resolution.Overload{
-            .{ .function = "call_scroll", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
-            .{ .function = "call_scroll__1", .implemented = @hasDecl(WindowImpl, "call_scroll__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
-        } },
         .{ "postMessage", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_postMessage", .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.string} }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
             .{ .function = "call_postMessage__1", .implemented = @hasDecl(WindowImpl, "call_postMessage__1"), .args = &.{ .{ .kinds = &.{.any} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "alert", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_alert", .args = &.{} },
+            .{ .function = "call_alert__1", .implemented = @hasDecl(WindowImpl, "call_alert__1"), .args = &.{.{ .kinds = &.{.string} }} },
         } },
         .{ "scrollBy", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_scrollBy", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
@@ -2595,6 +2588,14 @@ pub const Window = struct {
         .{ "scrollTo", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_scrollTo", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
             .{ .function = "call_scrollTo__1", .implemented = @hasDecl(WindowImpl, "call_scrollTo__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+        } },
+        .{ "createImageBitmap", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_createImageBitmap", .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other), (if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other) } }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+            .{ .function = "call_createImageBitmap__1", .implemented = @hasDecl(mixins.WindowOrWorkerGlobalScope.impl, "call_createImageBitmap__1"), .args = &.{ .{ .kinds = &.{ (if (@hasDecl(@import("interfaces"), "HTMLImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "SVGImageElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").SVGImageElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLVideoElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLVideoElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "HTMLCanvasElement")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").HTMLCanvasElement.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageBitmap")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageBitmap.State) } else .other), (if (@hasDecl(@import("interfaces"), "OffscreenCanvas")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").OffscreenCanvas.State) } else .other), (if (@hasDecl(@import("interfaces"), "VideoFrame")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").VideoFrame.State) } else .other), (if (@hasDecl(@import("interfaces"), "Blob")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").Blob.State) } else .other), (if (@hasDecl(@import("interfaces"), "ImageData")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").ImageData.State) } else .other) } }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.dictionary}, .optionality = .optional } } },
+        } },
+        .{ "scroll", &[_]webidl.overload_resolution.Overload{
+            .{ .function = "call_scroll", .args = &.{.{ .kinds = &.{.dictionary}, .optionality = .optional }} },
+            .{ .function = "call_scroll__1", .implemented = @hasDecl(WindowImpl, "call_scroll__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
 
@@ -2629,25 +2630,25 @@ pub const Window = struct {
     /// WebIDL: operations whose return type is a promise - an exception in
     /// their steps becomes a rejected promise.
     pub const promise_returning = .{
-        "call_getScreenDetails",
-        "call_maximize",
-        "call_createImageBitmap",
-        "call_createImageBitmap__1",
-        "call_showOpenFilePicker",
-        "call_minimize",
-        "call_scroll",
-        "call_scroll__1",
         "call_showSaveFilePicker",
         "call_getDigitalGoodsService",
+        "call_getScreenDetails",
         "call_setResizable",
         "call_scrollBy",
         "call_scrollBy__1",
-        "call_queryLocalFonts",
         "call_showDirectoryPicker",
+        "call_queryLocalFonts",
+        "call_maximize",
         "call_scrollTo",
         "call_scrollTo__1",
+        "call_createImageBitmap",
+        "call_createImageBitmap__1",
+        "call_showOpenFilePicker",
         "call_fetch",
         "call_restore",
+        "call_minimize",
+        "call_scroll",
+        "call_scroll__1",
     };
 
     /// Get supported property names for named property enumeration (Reflect.ownKeys, etc.)
