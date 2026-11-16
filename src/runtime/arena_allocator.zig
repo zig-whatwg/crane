@@ -139,12 +139,42 @@ pub const ArenaAllocator = struct {
     /// read of a freed state faults instead of finding its old bytes - the
     /// poison-on-free the WPT correctness runner's allocator gives every
     /// block it frees (the user, 2026-11-05: on by default there, never in
-    /// Crane's builds or the release runner). Set once, by the Browser,
-    /// before any state is made (BrowserConfig.poison_freed_state); off by
-    /// default, so a product build never pays it. Since lane perf2 batch 5 a
-    /// node's NodeBase and InternalStates are its State block's (Z7): their
-    /// release frees nothing the runner's allocator would have poisoned.
+    /// Crane's builds or the release runner) - and keeps it out of reuse for
+    /// a while (the quarantine below). Set once, where the Browser's scope
+    /// is made, before any state is: on in a Debug build
+    /// (runtime.BrowserScope.poisonsFreedStateByDefault: the unit tests and
+    /// the bug-finding runner, since lane uaf1 - a Debug build already
+    /// poisoned a released NodeBase, and its freed block read as merely
+    /// released), and in any build whose Browser asked
+    /// (BrowserConfig.poison_freed_state). Off in a bare arena and in every
+    /// release build by default, so a product build never pays it. Since
+    /// lane perf2 batch 5 a node's NodeBase and InternalStates are its State
+    /// block's (Z7): their release frees nothing the runner's allocator
+    /// would have poisoned.
     poison_freed: bool = false,
+
+    /// The QUARANTINE of a poisoning arena (lane uaf1): with `poison_freed`
+    /// set, a freed block does not go to its class's free list - where the
+    /// very next request of its class would take it, zeroed, and a stale
+    /// read would find the new occupant - but to the tail of this queue,
+    /// all poison, and leaves it oldest first only once more than
+    /// `quarantine_bytes` of newer frees wait behind it. So a read through a
+    /// pointer kept past a free finds the poison long after the free, not
+    /// only until the next allocation, and a WRITE through one is found
+    /// when the block leaves the queue (`checkStillPoison`: a panic).
+    /// AddressSanitizer's design (compiler-rt, sanitizer_common/
+    /// sanitizer_quarantine.h: freed chunks wait in a FIFO with a byte
+    /// budget, asan's `quarantine_size_mb`, and are recycled oldest first)
+    /// and the write check Zig's testing allocator makes when it releases a
+    /// bucket (std.heap.SafeAllocator, `check_write_after_free`).
+    ///
+    /// Never in production: an arena that does not poison keeps the LIFO
+    /// free lists, and `createRaw` is the same code either way - a block
+    /// that left the queue is on its class's list like any other.
+    quarantine_head: ?*Quarantined = null,
+    quarantine_tail: ?*Quarantined = null,
+    /// The bytes of the blocks in the queue (their classes' sizes).
+    quarantine_held: usize = 0,
 
     /// Protects `arena`, `free_lists` and the statistics: every thread that
     /// makes or frees a platform object's state takes it, for one bump or one
@@ -164,6 +194,92 @@ pub const ArenaAllocator = struct {
     /// The byte a freed block is overwritten with when `poison_freed` is set:
     /// the tests' and the WPT runner's poison (tests/test_runner/poisoning.zig).
     pub const poison_byte: u8 = 0xdd;
+
+    /// A block in the quarantine: the queue's link and the block's class,
+    /// in its first two words (the smallest class is 16 bytes). Every byte
+    /// after them is poison.
+    const Quarantined = struct {
+        next: ?*Quarantined,
+        class: usize,
+    };
+
+    comptime {
+        std.debug.assert(@sizeOf(Quarantined) <= Classes.bytes(0));
+    }
+
+    /// The quarantine's budget: the bytes of freed blocks a poisoning arena
+    /// keeps out of reuse - about 9,000 freed div states (112 bytes each).
+    /// The price of the window: a poisoning arena holds up to this much more
+    /// than a production one, per Browser.
+    pub const quarantine_bytes: usize = 1024 * 1024;
+
+    /// The bytes waiting in the quarantine. Always 0 for an arena that does
+    /// not poison.
+    pub fn quarantinedBytes(self: *ArenaAllocator) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        return self.quarantine_held;
+    }
+
+    /// The offset of the first byte of `bytes` that is not the poison, or
+    /// null: what `checkStillPoison` asks of a block leaving the quarantine.
+    pub fn firstNonPoison(bytes: []const u8) ?usize {
+        for (bytes, 0..) |byte, offset| if (byte != poison_byte) return offset;
+        return null;
+    }
+
+    /// A block of `class` at `ptr` leaves the quarantine (or the arena ends
+    /// with it there): everything after its header must still be the poison
+    /// its free wrote. Anything else was written through a pointer kept past
+    /// the free - in production, into whatever state took the block next.
+    fn checkStillPoison(ptr: [*]const u8, class: usize) void {
+        const size = classSize(class);
+        const offset = firstNonPoison(ptr[@sizeOf(Quarantined)..size]) orelse return;
+        writeAfterFree(ptr, size, @sizeOf(Quarantined) + offset);
+    }
+
+    fn writeAfterFree(ptr: [*]const u8, size: usize, offset: usize) noreturn {
+        @branchHint(.cold);
+        std.debug.panic("ArenaAllocator: a freed state block at {x} ({d}-byte class) was WRITTEN after its free: the byte at offset {d} is 0x{x:0>2}, not the poison. A pointer into the state was kept past its free; in production this write lands in the next state made in the block.", .{ @intFromPtr(ptr), size, offset, ptr[offset] });
+    }
+
+    /// A freed block of `class`, already all poison, joins the quarantine;
+    /// the oldest blocks past the budget go on to their classes' free lists.
+    fn quarantine(self: *ArenaAllocator, class: usize, ptr: [*]u8) void {
+        const block: *Quarantined = @ptrCast(@alignCast(ptr));
+        block.* = .{ .next = null, .class = class };
+        if (self.quarantine_tail) |tail| tail.next = block else self.quarantine_head = block;
+        self.quarantine_tail = block;
+        self.quarantine_held += classSize(class);
+        while (self.quarantine_held > quarantine_bytes) {
+            const oldest = self.quarantine_head.?;
+            const oldest_class = self.leaveQuarantine(oldest);
+            // Its header's second word is poison again: a block on a free
+            // list is its link and poison, whatever freed it.
+            const bytes: [*]u8 = @ptrCast(oldest);
+            @memset(bytes[@sizeOf(FreeBlock)..@sizeOf(Quarantined)], poison_byte);
+            self.pushFree(oldest_class, bytes);
+        }
+    }
+
+    /// Unlink the queue's head, checked (`checkStillPoison`); its class.
+    fn leaveQuarantine(self: *ArenaAllocator, oldest: *Quarantined) usize {
+        const class = oldest.class;
+        // The class word is the block's too: a write there is a write after
+        // the free like any other.
+        if (class >= Classes.count) writeAfterFree(@ptrCast(oldest), @sizeOf(Quarantined), @offsetOf(Quarantined, "class"));
+        checkStillPoison(@ptrCast(oldest), class);
+        self.quarantine_head = oldest.next;
+        if (self.quarantine_head == null) self.quarantine_tail = null;
+        self.quarantine_held -= classSize(class);
+        return class;
+    }
+
+    /// The arena ends, or is reset: every block still in the quarantine is
+    /// checked as one leaving it is, and the queue is dropped.
+    fn endQuarantine(self: *ArenaAllocator) void {
+        while (self.quarantine_head) |oldest| _ = self.leaveQuarantine(oldest);
+    }
 
     /// The size classes (`class_scheme`, `SizeClasses`).
     const Classes = SizeClasses(class_scheme);
@@ -222,6 +338,7 @@ pub const ArenaAllocator = struct {
 
     /// Free every block - the state of every platform object made from it.
     pub fn deinit(self: *ArenaAllocator) void {
+        self.endQuarantine();
         self.arena.deinit();
         self.free_lists = @splat(null);
     }
@@ -328,11 +445,16 @@ pub const ArenaAllocator = struct {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         self.bytes_in_use -|= size;
-        // Before the free list writes its link into the block's first word.
-        if (self.poison_freed) @memset(ptr[0..size], poison_byte);
-        if (sizeClassOf(size, alignment)) |class| {
-            self.pushFree(class, ptr);
-        }
+        const class = sizeClassOf(size, alignment) orelse {
+            if (self.poison_freed) @memset(ptr[0..size], poison_byte);
+            return;
+        };
+        if (!self.poison_freed) return self.pushFree(class, ptr);
+        // A poisoning arena: the whole block is poisoned - it is its class's
+        // size, whatever the request was (`createRaw`) - before the queue
+        // writes its header, and waits in the quarantine.
+        @memset(ptr[0..classSize(class)], poison_byte);
+        self.quarantine(class, ptr);
     }
 
     /// Allocate a slice of items
@@ -367,6 +489,7 @@ pub const ArenaAllocator = struct {
     pub fn reset(self: *ArenaAllocator) void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        self.endQuarantine();
         _ = self.arena.reset(.retain_capacity);
         self.total_resets += 1;
         // The free lists point into the memory just released. Dropping them is not

@@ -259,7 +259,9 @@ pub const Browser = struct {
         errdefer allocator.destroy(scope);
         scope.* = runtime.BrowserScope.init(allocator);
         errdefer scope.deinit();
-        scope.arena.poison_freed = config.poison_freed_state;
+        // The config turns the poison on, never off: a Debug build's scope
+        // poisons already (runtime.BrowserScope.poisonsFreedStateByDefault).
+        if (config.poison_freed_state) scope.arena.poison_freed = true;
         const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform });
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;

@@ -480,12 +480,14 @@ pub const NodeBase = extern struct {
     // ========================================================================
 
     /// Set in the owner word of no live node: an Instance is 8-aligned, and
-    /// the poison a Browser may write over a released NodeBase
-    /// (runtime.ArenaAllocator.poison_byte, Node's releaseNodeBase) has it
-    /// set - so a released node reads as "no Instance" in a poisoning build
-    /// as it does in production, where its release left the word 0. It was
-    /// the owner-less tag, and this reading was its accident; it is the rule
-    /// now, pinned below and in tests/dom/wb1_withbase_retired_test.zig.
+    /// the poison the arena writes over a freed State block
+    /// (runtime.ArenaAllocator.poison_byte) has it set - so a release build
+    /// that poisons freed state never follows the poison as an Instance's
+    /// address. It was the owner-less tag. A RELEASED node's word is 0 in
+    /// every build since lane uaf1 (Node's release keeps it across its own
+    /// poison), so the poison in this word means one thing, a freed block,
+    /// and a Debug build panics on it (`freed_owner_word`). Pinned below and
+    /// in tests/dom/wb1_withbase_retired_test.zig.
     const not_an_instance_bit: usize = 1;
 
     comptime {
@@ -503,8 +505,60 @@ pub const NodeBase = extern struct {
     /// makes this a "registered" bit of the block's stamp: the callers of
     /// this function are its list.
     pub inline fn registeredInstance(self: *const NodeBase) ?*runtime.Instance {
+        self.checkBlockNotFreed();
         if (self.owner & not_an_instance_bit != 0) return null;
         return @ptrFromInt(self.owner);
+    }
+
+    // ========================================================================
+    // A read of a FREED node block (lane uaf1)
+    // ========================================================================
+
+    /// The owner word of a node block the arena FREED, in a build that
+    /// poisons freed state (runtime.ArenaAllocator.poison_freed: every Debug
+    /// build, the bug-finding WPT runner): the poison byte in every byte.
+    /// The three things the word says there:
+    ///
+    /// - an Instance's address: the node is registered;
+    /// - 0: not registered - a node inside its construction, or one its
+    ///   teardown RELEASED. Node's release keeps the 0 across the poison it
+    ///   writes over the rest of the NodeBase (as it keeps `live`): the
+    ///   block is still this node's own, and a holder of the address may
+    ///   ask (the dispatch walk's `stands`, the teardown's own bookkeeping);
+    /// - this word: the State block went back to the arena
+    ///   (runtime.gc.releaseStorage). Whoever reads it kept a raw NodeBase
+    ///   pointer past the node's free. In production the same read finds 0
+    ///   until the arena reissues the block - at once, for the next node of
+    ///   its size - and then the NEW node's Instance: "registered", as
+    ///   another node.
+    ///
+    /// Before this lane a released node's word was poisoned too, and the
+    /// poison's low bit read as "no Instance" (`not_an_instance_bit`): a
+    /// liveness test of a freed block answered "gone" by accident, and no
+    /// gate saw the read.
+    pub const freed_owner_word: usize = @as(usize, runtime.ArenaAllocator.poison_byte) * (std.math.maxInt(usize) / 0xff);
+
+    /// THE RULE, as a function a test can pin for every build mode (the
+    /// panic itself ends the process): whether a liveness test of a NodeBase
+    /// whose owner word is `owner` panics in a build of `mode`. Crane's Debug
+    /// modules only - the unit tests and the bug-finding WPT runner - and
+    /// never a release build: the liveness tests are on the DOM's hot paths,
+    /// and there the comparison is compiled out.
+    pub inline fn freedBlockReadPanics(mode: std.builtin.OptimizeMode, owner: usize) bool {
+        return mode == .debug and owner == freed_owner_word;
+    }
+
+    /// Every liveness test of a NodeBase passes here first
+    /// (`registeredInstance`, and through it `instance`, `allocator`,
+    /// `keyAsDocument`; `stands`): a freed block is a panic that names the
+    /// read, in the builds that can tell.
+    inline fn checkBlockNotFreed(self: *const NodeBase) void {
+        if (freedBlockReadPanics(builtin.mode, self.owner)) freedBlockRead(self);
+    }
+
+    fn freedBlockRead(self: *const NodeBase) noreturn {
+        @branchHint(.cold);
+        std.debug.panic("NodeBase: a liveness test read a FREED node block at {x} (its owner word is the arena's poison): a raw NodeBase pointer was kept past the node's free. The holder must test the node's slab generation first (dom.slot_helpers.NodeRef.get, dom.refcount.WeakRef.get) or hold a counted reference; in production this read finds 0 or, once the block is reissued, another node's Instance.", .{@intFromPtr(self)});
     }
 
     /// The Instance this node is, for code that holds a LIVE node: an
@@ -618,6 +672,7 @@ pub const NodeBase = extern struct {
     /// node down under it (EventTarget's dispatch walk): the State block's
     /// bytes outlive the release, the fields in them do not.
     pub inline fn stands(self: *const NodeBase) bool {
+        self.checkBlockNotFreed();
         return self.live & node_level_live_bit != 0;
     }
 

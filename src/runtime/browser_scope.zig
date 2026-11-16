@@ -173,11 +173,25 @@ pub const BrowserScope = struct {
     /// its first platform object. It has no heap until `reserveHeap`.
     pub fn init(allocator: Allocator) BrowserScope {
         _ = live_scopes.fetchAdd(1, .monotonic);
-        return .{
+        var scope: BrowserScope = .{
             .allocator = allocator,
             .slab = SlabAllocator.init(allocator),
             .arena = ArenaAllocator.init(allocator),
         };
+        scope.arena.poison_freed = poisonsFreedStateByDefault(@import("builtin").mode);
+        return scope;
+    }
+
+    /// Whether a scope's arena poisons and quarantines a freed state block
+    /// without being asked (runtime.ArenaAllocator.poison_freed), for a
+    /// build `mode`: a Debug build's does - the unit tests and the
+    /// bug-finding WPT runner's Crane modules - so a read of a FREED node
+    /// block finds the poison there, where it found the bytes its release
+    /// left (lane uaf1: NodeBase.freed_owner_word). No release build's does:
+    /// there only a Browser that asked (BrowserConfig.poison_freed_state).
+    /// Pinned for every mode by a test.
+    pub fn poisonsFreedStateByDefault(mode: std.builtin.OptimizeMode) bool {
+        return mode == .debug;
     }
 
     /// Reserve this scope's heap through the platform `P` (`@import
