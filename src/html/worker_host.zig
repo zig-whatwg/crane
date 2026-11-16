@@ -2322,8 +2322,20 @@ pub fn connectSharedWorker(request: SharedWorkerRequest) !void {
     // queueTask returns (it cannot allocate the entry), and the drop's
     // `finish` releases this hold - taken after, it was never released.
     engine.keepPlatformObjectAlive(request.worker);
-    // A loop that will not run the task drops it: `drop` frees it.
-    loop.queueTask(.{ .callback = SharedConnect.run, .context = task, .drop = SharedConnect.drop });
+    // A loop that will not run the task drops it: `drop` frees it. It is a
+    // global task of the constructor's Window: a page the back/forward
+    // cache keeps before it runs connects once it is shown again - its
+    // Document joins the owner set fully active - or never (dropped with the
+    // page).
+    var connect_task: runtime.EventLoopTask = .{ .callback = SharedConnect.run, .context = task, .drop = SharedConnect.drop };
+    if (request.owner_realm.isWindow()) {
+        if (request.owner_realm.getRealm()) |record| if (record.global_object) |object| {
+            const global: *runtime.Instance = @ptrCast(@alignCast(object));
+            connect_task.document = global;
+            connect_task.document_generation = runtime.SlabAllocator.generationOf(global);
+        };
+    }
+    loop.queueTask(connect_task);
 }
 
 /// "Destroy a document" step 8 - "remove document from the owner set of
