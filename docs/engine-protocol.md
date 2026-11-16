@@ -210,6 +210,16 @@ and the exit's one check of what the queue owes runs the adapter's
 `report_steps`. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
 (external_memory.zig), as Blink's V8GCController::reportDOMMemoryUsageToV8 did
 before its unified heap. A worker's agent is given none: workers have no nodes.
+What the instances behind NON-node wrappers hold (an Event, a URLSearchParams,
+a collection's own state) is not in the host's figure: the V8 adapter keeps
+that sum itself, one per agent - workers included - and by the same rule
+(lane dm3, batch C of lane dm1's design): each wrapper-cache record adds what
+its instance holds when the cache takes the wrapper and keeps the amount; it
+leaves where a collection finds the wrapper dead - in a full collection at
+the end of marking, with one decrease before V8 computes its limits, and in a
+young collection at the drop - never at the instance's free
+(v8_wrapper.cpp, "What the instances behind non-node wrappers hold";
+wrapper_cache.zig `noteWrapped`, `takeHeld`).
 
 **A native walk holds teardowns.** A teardown can run inside any engine call
 that allocates: V8 runs every pending second pass in the prologue of the next
