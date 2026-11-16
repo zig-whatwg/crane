@@ -406,6 +406,15 @@ pub const List = struct {
         self.header.?.watched = true;
     }
 
+    /// Whether the block has room for `count` more listeners now: then
+    /// `ensureUnusedCapacity` would change nothing, and a holder that keeps
+    /// the list's address elsewhere (a node's rare block) has nothing to
+    /// write back.
+    pub fn hasUnusedCapacity(self: List, count: usize) bool {
+        const header = self.header orelse return false;
+        return @as(usize, header.len) + count <= header.capacity;
+    }
+
     /// Room for `count` more listeners, so that the appends after it cannot
     /// fail (a step that must change nothing when it fails makes room first).
     pub fn ensureUnusedCapacity(self: *List, allocator: std.mem.Allocator, count: usize) error{OutOfMemory}!void {

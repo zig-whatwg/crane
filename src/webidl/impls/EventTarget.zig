@@ -252,8 +252,13 @@ const Listeners = struct {
             .node => |node| {
                 // A node torn down under this handle keeps nothing.
                 if (!node.stands()) return error.OutOfMemory;
-                try node.reserveEventListeners();
                 var list = node.eventListeners();
+                // Room already (a node whose listeners come and go keeps
+                // its block): nothing moves, nothing to write back.
+                if (list.hasUnusedCapacity(count)) return;
+                // The rare block may move here; the list's own block, which
+                // `list` names, does not.
+                try node.reserveEventListeners();
                 try list.ensureUnusedCapacity(allocator, count);
                 node.setEventListeners(list);
             },
@@ -900,14 +905,17 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
         return error.OutOfMemory;
     };
     const id = nextListenerId();
-    listeners.appendAssumeCapacity(.{
+    // One read of the list for the append and the owner's flag: nothing
+    // between here and the end of step 5 can move it.
+    var list = listeners.current();
+    list.appendAssumeCapacity(.{
         .type = kept_type,
         .object = packObject(callback_value.object),
         .context = callback_value.context,
         .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once },
     });
     // Appended: its owner hears of it before step 6 can fail.
-    listenersChanged(listeners, instance);
+    if (list.watched()) dom_module.event_listener_changes.changed(instance);
 
     // Step 6: If listener's signal is not null, then add the following abort
     // steps to it: remove an event listener with eventTarget and listener.
@@ -932,7 +940,10 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
 fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, capture: bool) void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
     const key = EventTypeKey.of(@"type");
-    const index = for (listeners.view(), 0..) |existing, i| {
+    // One read of the list for the scan, the removal and the owner's flag:
+    // the comparison runs no script, and a removal moves no block.
+    var list = listeners.current();
+    const index = for (list.view(), 0..) |existing, i| {
         // An event handler's listener is removed only by deactivating the
         // handler, never by removeEventListener (its callback is internal).
         if (existing.bits.kind != .listener) continue;
@@ -944,9 +955,9 @@ fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"ty
     // eventTarget's event listener list. A listener out of the list is out
     // of every clone a dispatch walks (dom.event_listener_list `Cursor`),
     // which is what its removed flag is for; its callback goes with it.
-    const removed = listeners.removeAt(index);
+    const removed = list.removeAt(index);
     releaseListener(runtime.allocatorOf(instance), removed, true);
-    listenersChanged(listeners, instance);
+    if (list.watched()) dom_module.event_listener_changes.changed(instance);
 }
 
 /// An event handler's new value (HTML 8.1.8.1), OWNED until it is stored.
@@ -1640,13 +1651,19 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     // the callbacks append is never reached; one they remove has left the
     // list and is never reached either; the list may move while they run, so
     // nothing here holds a pointer into it.
-    var cursor = listeners.clone() orelse return false;
+    //
+    // `list` is the list's address as last read (a node's is a slot of its
+    // rare block: `Listeners`). It is read again after every callback - the
+    // only step of the walk that runs script - and not between: a listener
+    // skipped by type or phase costs no second read.
+    var list = listeners.current();
+    var cursor = list.clone() orelse return false;
 
     // Step 1: "Let found be false."
     var found = false;
 
     // Step 2: "For each listener of listeners, whose removed is false:"
-    while (listeners.next(&cursor)) |listener| {
+    while (list.next(&cursor)) |listener| {
         // Step 2.1: "If event's type attribute value is not listener's type,
         // then continue."
         if (!listener.type.matches(event_type)) continue;
@@ -1679,6 +1696,9 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
             .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw),
             .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw),
         }
+
+        // The callback ran: the list may have moved, grown or gone.
+        list = listeners.current();
 
         // Step 2.14
         if (listener.bits.passive) state.in_passive_listener_flag = false;
