@@ -1002,14 +1002,16 @@ const OneBinary = struct {
         /// Its test files, relative to `dir_path` (for test-verify).
         files: []const []const u8,
         imports: []const std.Build.Module.Import,
-        link_v8: bool,
+        /// Its tests run the engine: its executable links it
+        /// (`addTestFilesFromDir`'s `runs_engine`).
+        runs_engine: bool,
         target: std.Build.ResolvedTarget,
     };
 };
 
 /// A member suite of a one-binary executable, as the launcher runs it
 /// (`addSuiteRunWith`): its tests' name prefix, its suite_configs row, and
-/// whether its own executable linked V8 (`plain`: it did not, so the
+/// whether its own executable linked the engine (`plain`: it did not, so the
 /// many-Browsers variant never runs a busy Browser beside it).
 const SuiteGroup = struct { prefix: []const u8, config: SuiteConfig, plain: bool };
 
@@ -1857,7 +1859,10 @@ fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
 /// so a test must not assume it is the first, or the only one, to start the
 /// engine.
 ///
-/// `select.file`, a path such as `tests/v8/foo_test.zig` (-Dtest-file), builds
+/// `runs_engine`: the directory's tests run the engine, so its executable
+/// links it (the build's engine, `select.engine_link`).
+///
+/// `select.file`, a path such as `tests/dom/foo_test.zig` (-Dtest-file), builds
 /// that one file as its own executable and skips every directory that does
 /// not hold it - the quick red/green loop for a single test file.
 ///
@@ -1870,7 +1875,7 @@ fn addTestFilesFromDir(
     dir_path: []const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     select: TestSelection,
 ) !void {
     const allocator = builder.allocator;
@@ -1881,7 +1886,7 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch, select.engine_link);
+        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
         return;
     }
 
@@ -1940,12 +1945,12 @@ fn addTestFilesFromDir(
             .name = name.items,
             .files = files.items,
             .imports = try allocator.dupe(std.Build.Module.Import, modules),
-            .link_v8 = link_v8,
+            .runs_engine = runs_engine,
             .target = target,
         });
         return;
     };
-    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch, select.engine_link);
+    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, runs_engine, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
@@ -2000,7 +2005,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
         const config = suiteConfig(m.name);
-        var fits = m.link_v8 and config.jobs == null and config.shuffle and config.state_checks == .fail and
+        var fits = m.runs_engine and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
         for (imports) |imp| {
@@ -2012,7 +2017,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             continue;
         }
         const root_path = b.fmt("{s}/{s}", .{ m.dir_path, test_root_name });
-        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.link_v8, launch, one.engine_link);
+        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.runs_engine, launch, one.engine_link);
         addTestVerify(b, launch, exe, m.name, m.dir_path, m.files);
     }
     if (joined.items.len == 0) return;
@@ -2032,10 +2037,10 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     }
 
     var groups: std.ArrayList(SuiteGroup) = .empty;
-    var link_v8 = false;
+    var runs_engine = false;
     for (joined.items) |m| {
-        link_v8 = link_v8 or m.link_v8;
-        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(m.name), .plain = !m.link_v8 });
+        runs_engine = runs_engine or m.runs_engine;
+        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(m.name), .plain = !m.runs_engine });
     }
     // The table's names a joined member imports, with their modules.
     var imports: std.ArrayList(std.Build.Module.Import) = .empty;
@@ -2044,7 +2049,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             if (std.mem.eql(u8, have.name, imp.name)) break;
         } else try imports.append(allocator, imp);
     };
-    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, link_v8, launch, one.engine_link, groups.items);
+    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, runs_engine, launch, one.engine_link, groups.items);
     for (joined.items, groups.items) |m, g| addTestVerifyIn(b, launch, exe, m.name, m.dir_path, m.files, g);
 }
 
@@ -2056,11 +2061,11 @@ fn addTestRoot(
     config_name: ?[]const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     launch: *const TestLaunch,
     engine_link: engine_build.Link,
 ) *std.Build.Step.Compile {
-    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, engine_link, &.{});
+    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, runs_engine, launch, engine_link, &.{});
 }
 
 /// `addTestRoot` for an executable that holds several suites' tests
@@ -2073,7 +2078,7 @@ fn addTestRootWith(
     config_name: ?[]const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     launch: *const TestLaunch,
     engine_link: engine_build.Link,
     groups: []const SuiteGroup,
@@ -2097,19 +2102,20 @@ fn addTestRootWith(
     }));
 
     // Link the engine if requested (for the tests that run it)
-    if (link_v8) engine_link.into(builder, test_exe.root_module);
+    if (runs_engine) engine_link.into(builder, test_exe.root_module);
 
     // The many-Browsers variant's busy Browser needs the browser module: a
-    // suite that links V8 without it (tests/dom, tests/v8) gets the testing
-    // graph's, the one its own modules belong to.
-    if (link_v8 and launch.many_browsers and test_exe.root_module.import_table.get("browser") == null) {
+    // suite that links the engine without it (tests/dom, the engine
+    // adapter's own) gets the testing graph's, the one its own modules
+    // belong to.
+    if (runs_engine and launch.many_browsers and test_exe.root_module.import_table.get("browser") == null) {
         if (launch.browser_module) |browser_mod| test_exe.root_module.addImport("browser", browser_mod);
     }
 
     // The engine, for the Crane test runner's live counters (agents, Global
     // handles): the executable's own, the one its runtime is bound to - this
     // root is the executable's alone, so the import reaches nothing else.
-    if (link_v8 and test_exe.root_module.import_table.get("engine") == null) {
+    if (runs_engine and test_exe.root_module.import_table.get("engine") == null) {
         if (test_exe.root_module.import_table.get("runtime")) |runtime_mod| {
             if (runtime_mod.import_table.get("engine")) |engine_mod| test_exe.root_module.addImport("engine", engine_mod);
         }
@@ -2118,7 +2124,7 @@ fn addTestRootWith(
     step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
     // A -Dtest-file executable is named after its file and takes its
     // directory's row (`config_name`).
-    if (link_v8 and holdsTestsV8(config_name orelse name, groups)) {
+    if (runs_engine and holdsTestsV8(config_name orelse name, groups)) {
         if (addEngineLateRun(builder, launch, test_exe, name, groups)) |late| step.dependOn(&late.step);
     }
     return test_exe;
@@ -3620,7 +3626,7 @@ pub fn build(b: *std.Build) void {
             // tests/dom/hr_time_coarsen_exactness_test.zig: the coarsening grid's exact arithmetic.
             .{ .name = "hr_time", .module = testing_graph.hr_time },
         };
-        // link_v8 = true: tests/dom/mutation_test.zig calls dom.mutation.insert
+        // runs_engine = true: tests/dom/mutation_test.zig calls dom.mutation.insert
         // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
         // NodeIterator and interfaces.NodeList.vtable - i.e. the V8 FFI layer,
         // which also drags in libuv's event loop. With `false` this was the only
@@ -3837,7 +3843,7 @@ pub fn build(b: *std.Build) void {
         // only for as long as Zig's lazy analysis never walks from a test block
         // in `src/html/` into a `v8_*` extern. The day one does, this goes red
         // with ~238 `undefined symbol: _v8_*`. `tests/dom/` hit exactly that
-        // wall with 246 and was fixed by passing `link_v8 = true` for the files
+        // wall with 246 and was fixed by passing `runs_engine = true` for the files
         // under `tests/dom/`; the module-root target still is not linked, so
         // `testing_graph.dom`, `testing_graph.intl` and `testing_graph.platform` all carry the same latency.
         //
