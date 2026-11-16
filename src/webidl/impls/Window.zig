@@ -53,9 +53,6 @@ const WebStorage = web_storage.Storage;
 const getLocalStorageBackend = web_storage.getLocalStorage;
 const getSessionStorageBackend = web_storage.getSessionStorage;
 
-// Storage WebIDL interface
-const StorageImpl = @import("Storage.zig");
-
 // IndexedDB types for window.indexedDB
 const storage = @import("storage");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
@@ -424,6 +421,7 @@ pub fn installHooks() void {
         .release_browsing_context = &releaseBrowsingContext,
         .adopt_browsing_context = &replaceBrowsingContext,
         .swap_current_event = &swapCurrentEvent,
+        .location = &locationOf,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
@@ -1376,22 +1374,13 @@ pub fn get_history(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return history;
     }
 
-    // Lazily create the History instance
-    const HistoryImpl = @import("History.zig");
-    const History = interfaces.History;
-    const history = try HistoryImpl.init(
-        internal.allocator,
-        HistoryImpl.State,
-        &History.vtable,
-        instance.ctx,
-    );
-
-    // Associate this History with the window, and the window's navigable
-    // - whose traversable holds the session history it reads.
-    if (HistoryImpl.getInternal(history)) |history_internal| {
-        history_internal.window = instance;
-        history_internal.browsing_context = internal.browsing_context;
-    }
+    // Lazily create the History instance: this window's, and of the
+    // window's navigable - whose traversable holds the session history it
+    // reads (construction arguments).
+    const history = try interfaces.History.initWith(internal.allocator, instance.ctx, .{
+        .window = instance,
+        .browsing_context = internal.browsing_context,
+    });
 
     // Cache for future access
     internal.history = history;
@@ -1834,6 +1823,13 @@ fn swapCurrentEvent(instance: *runtime.Instance, event: ?*runtime.Instance) ?*ru
     return previous;
 }
 
+/// dom.window_globals.location: the Location this Window has made, or null
+/// - none made yet, or torn down. Makes none (get_location does).
+fn locationOf(instance: *runtime.Instance) ?*runtime.Instance {
+    const internal = getInternal(instance) orelse return null;
+    return internal.location;
+}
+
 /// Getter for orientation
 pub fn get_orientation(instance: *runtime.Instance) anyerror!i16 {
     _ = instance;
@@ -1857,15 +1853,7 @@ pub fn get_screen(instance: *runtime.Instance) anyerror!*runtime.Instance {
     }
 
     // Create the Screen WebIDL instance
-    const ScreenImpl = @import("Screen.zig");
-    const Screen = interfaces.Screen;
-
-    const screen_instance = try ScreenImpl.init(
-        internal.allocator,
-        Screen.State,
-        &Screen.vtable,
-        instance.ctx,
-    );
+    const screen_instance = try interfaces.Screen.init(internal.allocator, instance.ctx);
 
     // Cache and return the instance
     internal.screen = screen_instance;
@@ -2021,13 +2009,12 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
         };
     };
 
-    // Create the WebIDL Storage instance wrapping the backend
-    const storage_instance = StorageImpl.initWithStorage(
-        internal.allocator,
-        backend,
-        false, // Window owns the backend, not the Storage instance
-        instance.ctx,
-    ) catch {
+    // Create the WebIDL Storage instance wrapping the backend, which the
+    // Window owns, not the Storage instance.
+    const storage_instance = interfaces.Storage.initWith(internal.allocator, instance.ctx, .{
+        .storage = backend,
+        .owns_storage = false,
+    }) catch {
         // The errdefer above destroys the block; freed here too, it was
         // freed twice.
         backend.deinit();
@@ -2077,13 +2064,12 @@ pub fn get_localStorage(instance: *runtime.Instance) anyerror!*runtime.Instance 
         };
     };
 
-    // Create the WebIDL Storage instance wrapping the backend
-    const storage_instance = StorageImpl.initWithStorage(
-        internal.allocator,
-        backend,
-        false, // Window owns the backend, not the Storage instance
-        instance.ctx,
-    ) catch {
+    // Create the WebIDL Storage instance wrapping the backend, which the
+    // Window owns, not the Storage instance.
+    const storage_instance = interfaces.Storage.initWith(internal.allocator, instance.ctx, .{
+        .storage = backend,
+        .owns_storage = false,
+    }) catch {
         // The errdefer above destroys the block.
         backend.deinit();
         return error.OutOfMemory;

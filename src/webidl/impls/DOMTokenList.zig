@@ -130,6 +130,10 @@ fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, l
         // HTML link types this engine fetches. Other supported rel tokens
         // are a separate link-type feature, not implied by token syntax.
         internal.supported_tokens = &.{ "stylesheet", "preload", "modulepreload", "prefetch" };
+    } else if (std.mem.eql(u8, local_name, "sandbox") and element.stateAs(interfaces.HTMLIFrameElement.State) != null) {
+        // HTML 4.8.5: the sandbox attribute's supported tokens are its
+        // allowed values the user agent supports.
+        internal.supported_tokens = &dom.sandboxing.supported_tokens;
     }
 }
 
@@ -501,14 +505,8 @@ fn serialize(allocator: std.mem.Allocator, tokens: []const []const u8) ![]u8 {
     return out;
 }
 
-/// Set supported tokens for supports() method
-pub fn setSupportedTokens(instance: *runtime.Instance, tokens: []const []const u8) void {
-    const internal = getInternal(instance) orelse return;
-    internal.supported_tokens = tokens;
-}
-
-/// Set the associated element and attribute
-pub fn setElement(instance: *runtime.Instance, element: ?*runtime.Instance, attr_name: ?runtime.DOMString) void {
+/// Set the associated element and attribute (`associateWithAttribute`).
+fn setElement(instance: *runtime.Instance, element: ?*runtime.Instance, attr_name: ?runtime.DOMString) void {
     const internal = getInternal(instance) orelse return;
     internal.element = element;
     internal.attr_name = attr_name;

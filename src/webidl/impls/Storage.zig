@@ -56,48 +56,28 @@ pub const InternalState = struct {
     }
 };
 
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // Note: Internal state is set up by initWithStorage or by Window getter
-    return instance;
-}
+/// The facts a Storage is made with (`interfaces.Storage.initWith`): its
+/// storage area's backend (`storage`, a `*web_storage.Storage`) and whether
+/// the Storage owns it (`owns_storage`) - Window.get_localStorage() and
+/// get_sessionStorage() make one over the backend the Window keeps. A
+/// Storage made without them has no area: every member answers
+/// InvalidState.
+pub const construction_args = .{ "storage", "owns_storage" };
 
-/// Initialize a Storage instance with an existing backend storage
-/// Called by Window.get_localStorage() and Window.get_sessionStorage()
-pub fn initWithStorage(
-    allocator: std.mem.Allocator,
-    storage: *WebStorage,
-    owns_storage: bool,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try StorageInterface.init(allocator, ctx);
-    errdefer runtime.Instance.deinit(instance);
-
-    const state = instance.getState(State);
-
-    // Create internal state
+/// Storage's own construction steps (it has no parent interface).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    if (!@hasField(@TypeOf(args), "storage")) return;
     const internal = try allocator.create(InternalState);
-    errdefer allocator.destroy(internal);
-
     internal.* = .{
         .allocator = allocator,
-        .storage = storage,
-        .owns_storage = owns_storage,
+        .storage = args.storage,
+        .owns_storage = if (@hasField(@TypeOf(args), "owns_storage")) args.owns_storage else false,
     };
-
-    state.own._internal = internal;
-
-    return instance;
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance - clean up owned resources only
-pub fn deinit(instance: *runtime.Instance) void {
+/// Storage's own teardown - clean up owned resources only
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     if (state.own._internal) |internal| {
         internal.deinit(internal.allocator);

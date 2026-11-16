@@ -41,6 +41,11 @@ pub const Implementation = struct {
     /// while the dispatch that holds the event runs the listener. A Window
     /// torn down keeps none, and answers null.
     swap_current_event: *const fn (window: *runtime.Instance, event: ?*runtime.Instance) ?*runtime.Instance,
+    /// The Location `window` has made (HTML 7.2.1: every Window has one,
+    /// which `window.location` makes on first use when the host did not
+    /// make it with the Window), or null: none made yet, or torn down. A
+    /// read: it never makes one. BORROWED: the Window's, for the call.
+    location: *const fn (window: *runtime.Instance) ?*runtime.Instance,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -80,6 +85,13 @@ pub fn releaseBrowsingContext(window: *runtime.Instance) ?*anyopaque {
 pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopaque) void {
     const impl = implementation.get() orelse return;
     impl.adopt_browsing_context(window, browsing_context);
+}
+
+/// The Location `window` has made, or null (see Implementation.location).
+/// With no Window installed there is none.
+pub fn location(window: *runtime.Instance) ?*runtime.Instance {
+    const impl = implementation.get() orelse return null;
+    return impl.location(window);
 }
 
 /// See Implementation.swap_current_event. With no Window installed nothing

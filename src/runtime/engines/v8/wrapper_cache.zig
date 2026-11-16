@@ -571,11 +571,7 @@ fn engineHoldsWrapper(instance: *runtime.Instance) bool {
     // wraps, on the worker's thread - asks the window thread's unlocked
     // Document table nothing (`treeOwns` says why).
     if (instance.vtable.counted == null) return false;
-    const DocumentImpl = @import("impls").Document;
-    if (DocumentImpl.getInternalState(instance)) |doc_internal| {
-        if (doc_internal.default_view != null) return true;
-    }
-    return false;
+    return @import("dom").document_internals.hasDefaultView(instance);
 }
 
 /// A realm's Window: its realm's end frees it (protocol_realms).
@@ -619,17 +615,14 @@ pub fn treeOwns(instance: *runtime.Instance) bool {
 /// from the window: DOMWindow::Trace visits location_ and
 /// LocalDOMWindow::Trace visits history_ (core/frame/dom_window.cc,
 /// local_dom_window.cc).
+///
+/// Each type says which Window it belongs to through the hook it installs
+/// (dom.window_objects), not through its impl.
 fn isWindowOwned(instance: *runtime.Instance) bool {
-    const impls = @import("impls");
+    const window_objects = @import("dom").window_objects;
     const name = instance.vtable.name;
-    if (std.mem.eql(u8, name, "Location")) {
-        const internal = impls.Location.getInternalState(instance) orelse return false;
-        return internal.window != null;
-    }
-    if (std.mem.eql(u8, name, "History")) {
-        const internal = impls.History.getInternal(instance) orelse return false;
-        return internal.window != null;
-    }
+    if (std.mem.eql(u8, name, "Location")) return window_objects.locationWindow(instance) != null;
+    if (std.mem.eql(u8, name, "History")) return window_objects.historyWindow(instance) != null;
     return false;
 }
 

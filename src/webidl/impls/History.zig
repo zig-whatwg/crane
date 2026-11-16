@@ -95,7 +95,7 @@ const state_slot: engine.TracedSlot = .{ .name = "state" };
 /// Get internal state from instance using shared accessor
 const Accessor = InternalStateAccessor(InternalState, State, *runtime.Instance);
 
-pub fn getInternal(instance: *runtime.Instance) ?*InternalState {
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
     return Accessor.get(instance);
 }
 
@@ -119,32 +119,39 @@ pub fn installHooks() void {
         .update_same_document = &sameDocumentTraversal,
         .document_info = &history_documents.infoOf,
     });
+    // The Window a History belongs to, which the engine adapter's wrapper
+    // cache asks: it keeps a window's History's wrapper with the window.
+    @import("dom").window_objects.installHistory(.{ .window = &windowOf });
 }
 
-/// Initialize instance
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
+/// The facts a History is made with (`interfaces.History.initWith`): the
+/// Window whose History it is - "the History object of a Window", made with
+/// it - and that window's navigable (a `*BrowsingContext`), when the window
+/// was made for one, whose traversable holds the session history it reads.
+pub const construction_args = .{ "window", "browsing_context" };
 
-    // Initialize internal state
+/// History's own construction steps (it has no parent interface).
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .allocator = allocator,
+        .window = if (@hasField(@TypeOf(args), "window")) args.window else null,
+        .browsing_context = if (@hasField(@TypeOf(args), "browsing_context")) args.browsing_context else null,
     };
-
-    // Store internal state
-    const state = instance.getState(StateType);
-    state.own._internal = internal;
-
-    return instance;
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
+/// The Window this History belongs to, or null: made for none, or not a
+/// History (dom.window_objects.historyWindow).
+fn windowOf(instance: *runtime.Instance) ?*runtime.Instance {
+    if (instance.stateAs(State) == null) return null;
+    const internal = getInternal(instance) orelse return null;
+    return internal.window;
+}
+
+/// History's own teardown (the destruction chain's only part: it has no
+/// parent interface).
+pub fn deinitOwn(instance: *runtime.Instance) void {
     const instance_lifecycle = @import("runtime").instance_lifecycle;
     const is_first = instance_lifecycle.markCleanupStarted(instance);
 
