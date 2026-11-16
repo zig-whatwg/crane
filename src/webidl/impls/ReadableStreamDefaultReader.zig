@@ -8,9 +8,9 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
-const js = @import("streams_js.zig");
-const srd = @import("streams_readable.zig");
-const sw = @import("streams_writable.zig");
+const js = @import("dom").streams_js;
+const srd = @import("dom").streams_readable;
+const sw = @import("dom").streams_writable;
 
 pub const State = interfaces.ReadableStreamDefaultReader.State;
 pub const InternalState = srd.Reader;

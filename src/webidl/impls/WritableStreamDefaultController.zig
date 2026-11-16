@@ -9,8 +9,8 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
 const WritableStreamDefaultController = interfaces.WritableStreamDefaultController;
-const js = @import("streams_js.zig");
-const sw = @import("streams_writable.zig");
+const js = @import("dom").streams_js;
+const sw = @import("dom").streams_writable;
 
 pub const State = WritableStreamDefaultController.State;
 pub const InternalState = sw.Controller;

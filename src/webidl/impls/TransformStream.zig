@@ -10,10 +10,9 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const engine = @import("engine");
-const js = @import("streams_js.zig");
-const sw = @import("streams_writable.zig");
-const st = @import("streams_transform.zig");
-pub const streams_transform = st;
+const js = @import("dom").streams_js;
+const sw = @import("dom").streams_writable;
+const st = @import("dom").streams_transform;
 
 pub const State = interfaces.TransformStream.State;
 pub const InternalState = st.Stream;

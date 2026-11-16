@@ -194,7 +194,7 @@ test "a function given to a union with a callback arm is the callback" {
 // allocator is injected here as std.testing.allocator: a cell deinit forgets,
 // or frees twice, fails the test.
 
-const js = @import("impls").Response.streams_js;
+const js = @import("dom").streams_js;
 
 /// Make `data` a realm over the test's isolate and context whose allocator
 /// is std.testing.allocator. The caller deinits it.

@@ -21,14 +21,12 @@ const webidl = @import("webidl");
 
 const Response = interfaces.Response;
 const same_object = @import("same_object.zig");
-const js = @import("streams_js.zig");
-const srd = @import("streams_readable.zig");
+const js = @import("dom").streams_js;
+const srd = @import("dom").streams_readable;
 const BodyPipe = fetch.internal.BodyPipe;
 const fetch_body = @import("fetch_body.zig");
 const engine = @import("engine");
 
-// Exposed for tests/v8's Deferred lifetime test.
-pub const streams_js = @import("streams_js.zig");
 const abort_algorithms = @import("dom").abort_algorithms;
 
 pub const State = Response.State;
