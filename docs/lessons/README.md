@@ -528,7 +528,6 @@ A lane brief now carries the lessons chosen for its batch.
 - ["is a" and "has bytes of" are two questions of one ancestry table](architecture-is-a-and-has-bytes-of-are-two-questions-of-one-ancestry-table.md) - ask the ancestry what an object is and the offset where its state is; never `stateAs(X.State) != null` as a type test
 - [Bits kept inside a struct die with every whole-struct write](architecture-bits-kept-inside-a-struct-die-with-every-whole-struct-write.md) - list every statement that assigns, zeroes or poisons the struct whole and carry the bits across each
 - [A list in a block that moves is read per step, and its slot is reserved before it grows](architecture-a-list-in-a-block-that-moves-is-read-per-step-and-reserved-before-it-grows.md) - read by value after every call that can run script, reserve the slot before the growth, count the reads on the hot path
-||||||| b19bb7bc39d
 
 ### Spec Compliance
 - [A browsers split may be a lag behind a spec update](spec-compliance-a-browsers-split-may-be-a-lag-behind-a-spec-update.md) - A "browsers split" reading must check the spec's history first: the WPT test's commit message usually names the spec PR, and its implementation bugs say whether the minority browser is ahead, not out-voted.
@@ -1545,6 +1544,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [git apply in a subdirectory skips paths outside it and exits 0](workflow-git-apply-in-a-subdirectory-of-a-repository-skips-paths-outside-it-and-exits-0.md) - Use patch -p1 in scratch copies and count hunks before trusting a combined patch.
 - [Inside your own window the pool places your jobs at once; a plain copy is a job too](workflow-inside-your-own-window-nothing-queues-your-jobs-and-a-plain-copy-is-a-job-too.md) - A closed host is closed to every other lane's command, a copy included; check the window line first.
 - [Read the engine today before citing it - a brief's citation is a claim](workflow-read-the-engine-today-before-citing-it-a-briefs-citation-is-a-claim.md) - fetch the engine's file, cite the name and the date read, and report where it contradicts the brief
-
-||||||| b19bb7bc39d
 - [A diff against `main` names other lanes' work once main moves](workflow-a-diff-against-main-names-other-lanes-work-once-main-moves.md) - merge main first, then make the file list and the reverse patch; check a patch's file names before a job takes it
