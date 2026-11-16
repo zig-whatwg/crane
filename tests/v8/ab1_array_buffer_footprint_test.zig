@@ -12,8 +12,12 @@
 //! and no recommit, so 64 MiB of ArrayBuffers freed and allocated again read
 //! as about 1 MiB (lane mem2: fetch.loopback-gzip 100 MB against 139 MB).
 //! Crane's own allocator (src/runtime/engines/v8/sandbox_allocator.zig)
-//! recommits a discarded chunk before it hands out a byte of it, as
-//! PartitionAlloc does for Chrome's ArrayBuffers.
+//! recommits discarded pages before it hands out a byte of them, as
+//! PartitionAlloc does for Chrome's ArrayBuffers - and only the pages a block
+//! uses: MADV_FREE_REUSE counts every page of its range that still holds its
+//! old bytes, written again or not, so a recommit of whole 1 MiB chunks
+//! counted memory no buffer used (fetch.loopback-gzip: 142 MB against the
+//! 115 MB its buffers and the rest of the process held).
 //!
 //! On Linux a discarded page (MADV_DONTNEED) is counted again when it is
 //! written, so the test passes there with either allocator.
@@ -68,30 +72,47 @@ const buffer_count = 64;
 const buffer_bytes = MiB;
 const total = buffer_count * buffer_bytes;
 
-/// `buffer_count` ArrayBuffers of 1 MiB, every byte written with `value`.
-/// Each handle is OWNED by the caller (v8_ArrayBuffer_Dispose).
-fn makeBuffers(isolate: *ffi.Isolate, buffers: *[buffer_count]*ffi.ArrayBuffer, value: u8) !void {
+/// One ArrayBuffer of `bytes` in each place of `buffers`, every byte written
+/// with `value`. Each handle is OWNED by the caller (v8_ArrayBuffer_Dispose);
+/// on an error none is left.
+fn makeBuffers(isolate: *ffi.Isolate, buffers: []*ffi.ArrayBuffer, bytes: usize, value: u8) !void {
     var made: usize = 0;
     errdefer for (buffers[0..made]) |buffer| ffi.v8_ArrayBuffer_Dispose(buffer);
-    while (made < buffer_count) : (made += 1) {
-        const buffer = ffi.v8_ArrayBuffer_New(isolate, buffer_bytes) orelse return error.ArrayBufferAllocationFailed;
+    while (made < buffers.len) : (made += 1) {
+        const buffer = ffi.v8_ArrayBuffer_New(isolate, bytes) orelse return error.ArrayBufferAllocationFailed;
         buffers[made] = buffer;
         const data: [*]u8 = @ptrCast(ffi.v8_ArrayBuffer_Data(buffer) orelse return error.ArrayBufferHasNoData);
         // A zero-initialised ArrayBuffer reads zero wherever its memory was before.
         try testing.expectEqual(@as(u8, 0), data[0]);
-        try testing.expectEqual(@as(u8, 0), data[buffer_bytes / 2]);
-        try testing.expectEqual(@as(u8, 0), data[buffer_bytes - 1]);
-        @memset(data[0..buffer_bytes], value);
+        try testing.expectEqual(@as(u8, 0), data[bytes / 2]);
+        try testing.expectEqual(@as(u8, 0), data[bytes - 1]);
+        @memset(data[0..bytes], value);
     }
 }
 
 /// Detach every buffer - which frees its backing store at once, with no
 /// collection (V8 JSArrayBuffer::Detach drops the store's last reference) -
 /// and release the handles.
-fn freeBuffers(buffers: *[buffer_count]*ffi.ArrayBuffer) void {
+fn freeBuffers(buffers: []const *ffi.ArrayBuffer) void {
     for (buffers) |buffer| {
         ffi.v8_ArrayBuffer_Detach(buffer);
         ffi.v8_ArrayBuffer_Dispose(buffer);
+    }
+}
+
+/// Live allocations above `buffers`, each OWNED by the caller: the range
+/// `buffers` free then lies below a live block and is DISCARDED (the path
+/// that loses the bytes with V8's default allocator, and the one a recommit
+/// follows), not decommitted as a free range at the top is. A small block
+/// may land in a hole below them, so larger ones follow until one is above
+/// (a best-fit allocator puts a block no hole fits at the top); with none
+/// above, a test still holds for the path taken.
+fn guardAbove(isolate: *ffi.Isolate, buffers: []const *ffi.ArrayBuffer, guards: *[3]?*ffi.ArrayBuffer) !void {
+    var highest: usize = 0;
+    for (buffers) |buffer| highest = @max(highest, @intFromPtr(ffi.v8_ArrayBuffer_Data(buffer).?));
+    for ([_]usize{ 4096, 2 * MiB, 16 * MiB }, guards) |size, *guard| {
+        guard.* = ffi.v8_ArrayBuffer_New(isolate, size) orelse return error.ArrayBufferAllocationFailed;
+        if (@intFromPtr(ffi.v8_ArrayBuffer_Data(guard.*.?).?) > highest) break;
     }
 }
 
@@ -104,21 +125,13 @@ test "ArrayBuffer memory freed and allocated again is counted in the process foo
     if (before == 0) return error.SkipZigTest;
 
     var buffers: [buffer_count]*ffi.ArrayBuffer = undefined;
-    try makeBuffers(isolate, &buffers, 1);
-    // One live allocation above the 64: with V8's default allocator the freed
-    // range then lies below a live block and is DISCARDED (the path that
-    // loses the bytes), not decommitted as a free range at the top is. A
-    // small block may land in a hole below them, so larger ones follow until
-    // one is above (a best-fit allocator puts a block no hole fits at the
-    // top); with none above, the test still holds for the path taken.
-    var highest: usize = 0;
-    for (buffers) |buffer| highest = @max(highest, @intFromPtr(ffi.v8_ArrayBuffer_Data(buffer).?));
+    try makeBuffers(isolate, &buffers, buffer_bytes, 1);
     var guards: [3]?*ffi.ArrayBuffer = @splat(null);
     defer for (guards) |guard| if (guard) |g| ffi.v8_ArrayBuffer_Dispose(g);
-    for ([_]usize{ 4096, 2 * MiB, 16 * MiB }, &guards) |size, *guard| {
-        guard.* = ffi.v8_ArrayBuffer_New(isolate, size) orelse return error.ArrayBufferAllocationFailed;
-        if (@intFromPtr(ffi.v8_ArrayBuffer_Data(guard.*.?).?) > highest) break;
-    }
+    guardAbove(isolate, &buffers, &guards) catch |err| {
+        freeBuffers(&buffers);
+        return err;
+    };
     const fresh = footprint();
     try testing.expect(counted(before, fresh) >= total - slack);
 
@@ -130,11 +143,85 @@ test "ArrayBuffer memory freed and allocated again is counted in the process foo
 
     // Allocated and written again: the footprint rises by what was written,
     // as it did the first time.
-    try makeBuffers(isolate, &buffers, 2);
+    try makeBuffers(isolate, &buffers, buffer_bytes, 2);
     const reused = footprint();
     freeBuffers(&buffers);
     if (counted(released, reused) < total - slack) {
         std.debug.print("footprint: before {d} MiB, 64 MiB written {d} MiB, freed {d} MiB, written again {d} MiB\n", .{ before / MiB, fresh / MiB, released / MiB, reused / MiB });
         return error.ReusedArrayBufferMemoryIsNotCounted;
+    }
+}
+
+test "an ArrayBuffer made where larger ones were freed is counted for its own bytes, not for the pages freed beside it" {
+    var agent: test_process.TestAgent = .{};
+    const isolate = try agent.open(.{});
+    defer agent.close();
+
+    if (footprint() == 0) return error.SkipZigTest;
+
+    // 32 buffers of 2 MiB, every byte written, freed below a live block: 64
+    // MiB given back, its pages still holding their bytes until the OS needs
+    // them.
+    var large: [32]*ffi.ArrayBuffer = undefined;
+    try makeBuffers(isolate, &large, 2 * MiB, 1);
+    var guards: [3]?*ffi.ArrayBuffer = @splat(null);
+    defer for (guards) |guard| if (guard) |g| ffi.v8_ArrayBuffer_Dispose(g);
+    guardAbove(isolate, &large, &guards) catch |err| {
+        freeBuffers(&large);
+        return err;
+    };
+    freeBuffers(&large);
+    const released = footprint();
+
+    // 32 buffers of 1 MiB and 7 bytes (the body fetch.loopback-gzip reads),
+    // every byte written: 32 MiB. Each takes the place of a 2 MiB one; the
+    // megabyte beside it that it does not use stays given back. V8's default
+    // allocator counts none of the 32 MiB; a recommit of whole 1 MiB chunks
+    // counts 64.
+    var bodies: [32]*ffi.ArrayBuffer = undefined;
+    try makeBuffers(isolate, &bodies, MiB + 7, 2);
+    const reused = footprint();
+    freeBuffers(&bodies);
+    const rise = counted(released, reused);
+    if (rise < 32 * MiB - slack or rise > 32 * MiB + slack) {
+        std.debug.print("footprint: 64 MiB freed {d} MiB, 32 buffers of 1 MiB + 7 bytes written there {d} MiB: a rise of {d} MiB, not 32\n", .{ released / MiB, reused / MiB, rise / MiB });
+        return if (rise < 32 * MiB) error.ReusedArrayBufferMemoryIsNotCounted else error.FreedMemoryBesideABufferIsCounted;
+    }
+}
+
+test "small ArrayBuffers on chunks given back are counted for their own pages, not for the megabyte each chunk held" {
+    var agent: test_process.TestAgent = .{};
+    const isolate = try agent.open(.{});
+    defer agent.close();
+
+    if (footprint() == 0) return error.SkipZigTest;
+
+    // 64 MiB written and freed below a live block, as in the first test.
+    var buffers: [buffer_count]*ffi.ArrayBuffer = undefined;
+    try makeBuffers(isolate, &buffers, buffer_bytes, 1);
+    var guards: [3]?*ffi.ArrayBuffer = @splat(null);
+    defer for (guards) |guard| if (guard) |g| ffi.v8_ArrayBuffer_Dispose(g);
+    guardAbove(isolate, &buffers, &guards) catch |err| {
+        freeBuffers(&buffers);
+        return err;
+    };
+    freeBuffers(&buffers);
+    const released = footprint();
+
+    // 48 small buffers, each of a size class of its own (320 bytes to 18
+    // KiB: 220 KiB in all), so each class takes a chunk that was given back.
+    // Recommitted whole, every such chunk was counted for the megabyte
+    // written there before: 48 MiB for 220 KiB of buffers.
+    var small: [48]*ffi.ArrayBuffer = undefined;
+    var made: usize = 0;
+    defer freeBuffers(small[0..made]);
+    while (made < small.len) : (made += 1) {
+        try makeBuffers(isolate, small[made..][0..1], v8.sandbox_allocator.class_sizes[17 + made], 3);
+    }
+    const reused = footprint();
+    const rise = counted(released, reused);
+    if (rise > slack) {
+        std.debug.print("footprint: 64 MiB freed {d} MiB, 48 small buffers made there {d} MiB: a rise of {d} MiB for under 1 MiB of buffers\n", .{ released / MiB, reused / MiB, rise / MiB });
+        return error.FreedMemoryBesideABufferIsCounted;
     }
 }
