@@ -1,4 +1,4 @@
-//! A joined test executable, as build.zig's -Dtest-binaries=v8 makes one: two
+//! A joined test executable, as build.zig's -Dtest-binaries=engine makes one: two
 //! member suites in subdirectories, so their tests' names start with the
 //! member's directory ("start.", "held."), and build.zig gives each member's
 //! row to the Crane test runner by that prefix. `start` is a suite whose test

@@ -206,7 +206,7 @@ const overrides_field = "process_start.outstanding_overrides";
 /// the process start makes where its suite's test start makes it, held
 /// everywhere else. The suite is the executable's own row
 /// (`suite.standalone_runtime`), or in a joined executable (build.zig
-/// -Dtest-binaries=v8) the member whose prefix the test's name starts with -
+/// -Dtest-binaries=engine) the member whose prefix the test's name starts with -
 /// the longest one: each member keeps its own row there, as it does for its
 /// batch size and its slow, alone and tsan_skip names (lane onebin3: tests-v8's
 /// .process_start was lost in the joined "tests" executable, whose own row is
