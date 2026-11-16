@@ -110,7 +110,7 @@ test "a State whose impl omits its base's State starts at its own level and keep
 
 test "the ancestry still lists the base interface, with no bytes behind it" {
     if (comptime !omits) return error.BaseStateStillNested;
-    const ancestors = runtime.ancestorsOf(LeafState);
+    const ancestors = comptime runtime.ancestorsOf(LeafState);
     try testing.expectEqual(@as(usize, 3), ancestors.len);
     try testing.expectEqual(runtime.typeId(LeafState), ancestors[0].id);
     try testing.expectEqual(runtime.typeId(HostState), ancestors[1].id);

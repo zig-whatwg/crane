@@ -137,15 +137,21 @@ test "generated interfaces carry a correct ancestry table" {
                 try std.testing.expectEqual(@as(usize, 0), table[0].offset);
 
                 // Depth must equal the actual chain length, walked independently.
+                // A chain whose root leaves its base interface's State out
+                // (`absent_base`: a node's EventTarget, lane nm3) has one
+                // entry more: that State, with no bytes behind it.
                 comptime var depth: usize = 1;
+                comptime var absent: usize = 0;
                 comptime {
                     var Cur: type = Iface.State;
                     while (@hasField(Cur, "base") and @FieldType(Cur, "base") != void) {
                         depth += 1;
                         Cur = @FieldType(Cur, "base");
                     }
+                    if (@hasDecl(Cur, "absent_base") and Cur.absent_base != null) absent = 1;
                 }
-                try std.testing.expectEqual(depth, table.len);
+                try std.testing.expectEqual(depth + absent, table.len);
+                if (absent == 1) try std.testing.expectEqual(@as(usize, std.math.maxInt(usize)), table[depth].offset);
 
                 // And each offset must be the real one, accumulated down the chain.
                 comptime var expected: usize = 0;
