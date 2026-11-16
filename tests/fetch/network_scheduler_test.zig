@@ -397,6 +397,116 @@ test "a cancelled transfer gives its slot to the next, and a waiting one cancell
     try testing.expectEqual(@as(usize, 0), outcomes[7].calls);
 }
 
+/// Six transfers hold a destination's slots and one more waits; each
+/// transfer that ends starts another from its completion callback, as a page
+/// that keeps six requests going does (a `limiter(6)` over a poll loop:
+/// common/dispatcher/dispatcher.js). Counts every transfer that was given a
+/// slot while the waiter, started before it, still waited.
+const SlotChain = struct {
+    scheduler: *NetworkScheduler,
+    request: *const NetworkRequest,
+    waiter: Outcome = .{},
+    waiter_job: ?*NetworkScheduler.Job = null,
+    links_left: usize,
+    links_done: usize = 0,
+    passed_the_waiter: usize = 0,
+    links_done_before_waiter: usize = 0,
+
+    fn waiterDone(context: ?*anyopaque, result: NetworkError!NetworkResponse) void {
+        const self: *SlotChain = @ptrCast(@alignCast(context.?));
+        self.waiter_job = null;
+        Outcome.record(&self.waiter, result);
+    }
+
+    fn linkDone(context: ?*anyopaque, result: NetworkError!NetworkResponse) void {
+        const self: *SlotChain = @ptrCast(@alignCast(context.?));
+        if (result) |r| {
+            var response = r;
+            response.deinit();
+        } else |_| {}
+        self.links_done += 1;
+        if (self.waiter.calls == 0) self.links_done_before_waiter += 1;
+        if (self.links_left == 0) return;
+        self.links_left -= 1;
+        const link = self.scheduler.start(testing.allocator, self.request, linkDone, self) catch return;
+        if (self.waiter_job) |waiter| {
+            if (waiter.slot_wait and !link.slot_wait) self.passed_the_waiter += 1;
+        }
+    }
+
+    fn done(ctx: *anyopaque) bool {
+        const self: *SlotChain = @ptrCast(@alignCast(ctx));
+        return self.waiter.calls > 0 and self.links_left == 0 and self.scheduler.inFlight() == 0;
+    }
+};
+
+test "a transfer waiting for a connection slot is given one before any transfer started after it" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var scheduler = NetworkScheduler.init(testing.allocator);
+    defer scheduler.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    // Six chains of ten: 66 transfers in all, six at a time.
+    var chain: SlotChain = .{ .scheduler = &scheduler, .request = &request, .links_left = 60 };
+    for (0..6) |_| _ = try scheduler.start(testing.allocator, &request, SlotChain.linkDone, &chain);
+    chain.waiter_job = try scheduler.start(testing.allocator, &request, SlotChain.waiterDone, &chain);
+    try testing.expectEqual(@as(usize, 1), scheduler.waitingForSlot());
+
+    _ = pumpUntil(&scheduler, 20_000, SlotChain.done, &chain);
+    try testing.expectEqual(@as(usize, 1), chain.waiter.calls);
+    try testing.expectEqual(@as(u16, 200), chain.waiter.status);
+    try testing.expectEqual(@as(usize, 66), chain.links_done);
+    // Order, not time: no transfer started after the waiter took a slot
+    // while it waited (Chromium's ClientSocketPool hands a freed socket to
+    // its group's oldest pending request). Where a new transfer may take
+    // the slot its predecessor just gave back, the six chains pass the
+    // slots among themselves and the waiter starts only when they end -
+    // every one of the 60 links first.
+    try testing.expectEqual(@as(usize, 0), chain.passed_the_waiter);
+    try testing.expect(chain.links_done_before_waiter < 60);
+}
+
+test "a waiting transfer of another agent's scheduler is not passed either" {
+    try network.globalInit();
+    defer network.globalCleanup();
+    const server = try TestServer.start(testing.allocator);
+    defer server.stop();
+    var context = network.NetworkContext.init(testing.allocator);
+    defer context.deinit();
+    var window = NetworkScheduler.init(testing.allocator);
+    defer window.deinit();
+    var worker = NetworkScheduler.init(testing.allocator);
+    defer worker.deinit();
+
+    var url_buf: [256]u8 = undefined;
+    var request = get(try urlFor(&url_buf, server, "/get"));
+    request.network = &context;
+    // The window's six chains; the waiter is the worker's.
+    var chain: SlotChain = .{ .scheduler = &window, .request = &request, .links_left = 60 };
+    for (0..6) |_| _ = try window.start(testing.allocator, &request, SlotChain.linkDone, &chain);
+    chain.waiter_job = try worker.start(testing.allocator, &request, SlotChain.waiterDone, &chain);
+    try testing.expectEqual(@as(usize, 1), worker.waitingForSlot());
+
+    const deadline = clock.monotonicMillis() + 20_000;
+    while (!(SlotChain.done(&chain) and worker.inFlight() == 0) and clock.monotonicMillis() < deadline) {
+        _ = window.pump();
+        _ = worker.pump();
+        clock.sleep(std.time.ns_per_ms);
+    }
+    try testing.expectEqual(@as(usize, 1), chain.waiter.calls);
+    try testing.expectEqual(@as(u16, 200), chain.waiter.status);
+    try testing.expectEqual(@as(usize, 66), chain.links_done);
+    try testing.expectEqual(@as(usize, 0), chain.passed_the_waiter);
+    try testing.expect(chain.links_done_before_waiter < 60);
+}
+
 test "a destination that speaks HTTP/2 is not limited to six transfers" {
     try network.globalInit();
     defer network.globalCleanup();

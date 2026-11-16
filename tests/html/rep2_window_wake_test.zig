@@ -11,7 +11,7 @@
 //! waits on its sink (worker_event_loop.zig, TaskSink.waitForWork). The
 //! window loop now waits there too, with the same bound, and then fires the
 //! timers that came due. Pinned here: a reply reaches an idle window at once;
-//! a timer still fires on time when nothing is posted; a timer armed by a
+//! a timer still fires at its deadline when nothing is posted; a timer armed by a
 //! timer's callback waits for the next turn, behind the tasks that callback
 //! queued; and a burst of posts does not leave the loop spinning.
 //!
@@ -102,13 +102,19 @@ test "a worker's reply reaches an idle window at once: the window's loop waits o
     try helpers.onFreshThread(replyReachesIdleWindow);
 }
 
-fn timerFiresOnTime() !void {
+/// The bound the caller gives the one long run of `timerFiresAtItsDeadline`.
+const timer_run_bound_ms = 10_000;
+
+fn timerFiresAtItsDeadline() !void {
     const browser = try openPage();
     defer browser.deinit();
     const page = browser.current_context orelse return error.NoPage;
-    // Nothing is posted: the loop's wait ends at the timer's deadline.
+    // Nothing is posted: only a timer's deadline can end the loop's wait
+    // before the caller's bound does. Ten 20 ms timers, one after the other;
+    // then three armed latest first, which are due earliest first.
     try page.runScript(
         \\globalThis.lateness = [];
+        \\globalThis.order = [];
         \\globalThis.done = 0;
         \\(async () => {
         \\  for (let i = 0; i < 10; i++) {
@@ -116,20 +122,59 @@ fn timerFiresOnTime() !void {
         \\    await new Promise(r => setTimeout(r, 20));
         \\    lateness.push(performance.now() - t0 - 20);
         \\  }
+        \\  const t0 = performance.now();
+        \\  await Promise.all([60, 20, 40].map(ms => new Promise(r => setTimeout(() => {
+        \\    order.push(ms);
+        \\    lateness.push(performance.now() - t0 - ms);
+        \\    r();
+        \\  }, ms))));
         \\  done = 1;
         \\})();
     );
+    // One long run, bounded far past every deadline (the timers take 260 ms
+    // in all): a wait that ended at the caller's bound instead of a timer's
+    // deadline would fire that timer ten seconds late.
+    _ = try browser.runEventLoopBlocking(timer_run_bound_ms);
     try runUntil(browser, "done");
     const worst = try evalNumber(browser, "Math.max(...lateness)");
     const earliest = try evalNumber(browser, "Math.min(...lateness)");
-    if (!(earliest >= -0.1 and worst < 5)) {
+    const order = try page.evaluateScriptToString("order.join()", testing.allocator);
+    defer testing.allocator.free(order);
+    // Order and the mechanism, not the host's scheduler:
+    // - no timer fires before its deadline (0.1 ms: the coarse clock's tick
+    //   is 0.125 ms and both readings are floored onto it);
+    // - the wait ends at the EARLIEST deadline, whichever timer was armed
+    //   first: 20, 40, 60;
+    // - a timer fires at its deadline and not at the caller's bound - the
+    //   two are ten seconds apart, and half of that is the line between
+    //   them.
+    //
+    // The last was `worst < 5` (ms), which measured how soon the host ran a
+    // thread it had just woken, not the loop. It failed three gates in one
+    // day, 5.9 ms late each time, on server1 under a 32-runner WPT sweep with
+    // the tests at nice 10 (the pool's build shim). Measured there with the
+    // loop's step 4 instrumented (lane flk1, 2026-11-15; the test at nice 10
+    // on four CPUs beside four, then eight, nice-0 busy loops on the same
+    // four): every timer that fired 2 ms late or more - 2 of 100 with four
+    // busy loops, 17 of 100 with eight, up to 12 ms - fired straight after a
+    // wait the loop had asked to last 1 ms and the kernel returned 5.6 to
+    // 29 ms later, in a turn that did nothing else (60 us at most from its
+    // start to the wait). The old assertion failed 3 runs of 6 with eight
+    // busy loops and 0 of 82 with four or three; beside a real 32-runner
+    // sweep the worst of 3,600 timers was 3.4 ms. On macOS the same 1 ms
+    // wait measured 1.25 ms, and timers were up to 2 ms late with nothing
+    // else running. A timer is as late as the wait before it was long, and
+    // how long a 1 ms wait is belongs to the host: no bound in milliseconds
+    // holds on all of them.
+    try testing.expectEqualStrings("20,40,60", order);
+    if (!(earliest >= -0.1 and worst < timer_run_bound_ms / 2)) {
         std.log.warn("timer lateness: earliest {d:.3} ms, worst {d:.3} ms", .{ earliest, worst });
-        return error.TimerNotOnTime;
+        return error.TimerNotAtItsDeadline;
     }
 }
 
-test "a timer still fires on time while nothing is posted to the window" {
-    try helpers.onFreshThread(timerFiresOnTime);
+test "a timer fires at its deadline - never before it, earliest first, and not at the caller's bound - while nothing is posted to the window" {
+    try helpers.onFreshThread(timerFiresAtItsDeadline);
 }
 
 fn timerArmedByATimerWaitsForTheNextTurn() !void {
