@@ -166,6 +166,75 @@ pub const benches = [_]Bench{
         .every = 10_000,
         .gc = .forced,
     },
+    // The two rows where MUCH DIES in a full collection (lane dm1's design,
+    // tmp/plans/dom-memory-figure-design.md 3.5 and 6, batch B's gate; the
+    // integrator's ruling 1): the trees a full collection finds dead are
+    // walked inside its pause, where their bytes leave the figure the engine
+    // is told (dom.dying_trees), so the pause grows with what one collection
+    // kills. `pause` and `wide` hold a tree ALIVE and kill one element a
+    // collection; these kill whole trees, on the engine's own schedule.
+    .{
+        .name = "clone-drop",
+        .what = "a clone of a detached tree of 841 nodes made and dropped per cycle, never a forced collection: " ++
+            "the full-collection pause when the dead trees of one collection are walked inside it",
+        .body = "void (globalThis.cloneSource ??= (() => { const r = document.createElement('div'); " ++
+            "r.innerHTML = '<ul><li><a href=x>one</a> two</li></ul>'.repeat(168); return r; })()).cloneNode(true);",
+        .cycles = 3_000,
+        .every = 100,
+        .gc = .never,
+    },
+    .{
+        .name = "parse-drop",
+        .what = "a tree of 101 nodes parsed, its child list read (a holder of its root that dies with it) and dropped " ++
+            "per cycle, never a forced collection: the full-collection pause when many small dead trees are walked inside it",
+        .body = "{ const e = document.createElement('div'); e.innerHTML = (globalThis.parseDropHtml ??= '<p>some text</p>'.repeat(50)); " ++
+            "void e.childNodes.length; }",
+        .cycles = 26_000,
+        .every = 2_000,
+        .gc = .never,
+    },
+    // The engine's in-sandbox allocator (lane ab1: Crane's own in the V8
+    // adapter, src/runtime/engines/v8/sandbox_allocator.zig, in place of
+    // V8's default): the blocks behind ArrayBuffers, freed in batches by the
+    // engine's collections, and the engine's own short-lived blocks, each
+    // freed inside the call that took it. Time them with the process's CPU
+    // time; the table reads what the allocator keeps.
+    .{
+        .name = "sandbox-small",
+        .what = "an ArrayBuffer of 96 bytes made, written and dropped per cycle, never a forced collection: " ++
+            "the in-sandbox allocator's small blocks, taken one by one and freed by the engine's own collections",
+        .body = "{ const b = new ArrayBuffer(96); new Uint8Array(b)[0] = 1; }",
+        .cycles = 400_000,
+        .every = 40_000,
+        .gc = .never,
+    },
+    .{
+        .name = "sandbox-bigint",
+        .what = "the square of a 9,800-bit BigInt and its decimal string per cycle, never a forced collection: " ++
+            "the engine's own in-sandbox blocks (BigInt scratch digits), each taken and freed inside one call",
+        .body = "void ((globalThis.big ??= 7n ** 3500n) * globalThis.big).toString().length;",
+        .cycles = 20_000,
+        .every = 2_000,
+        .gc = .never,
+    },
+    .{
+        .name = "sandbox-chunks",
+        .what = "a 64 KiB Uint8Array made, filled and dropped per cycle, never a forced collection: " ++
+            "the in-sandbox allocator's stream-chunk-sized blocks, whose memory goes back to the OS and is used again",
+        .body = "void new Uint8Array(65536).fill(1);",
+        .cycles = 40_000,
+        .every = 4_000,
+        .gc = .never,
+    },
+    .{
+        .name = "sandbox-megabyte-loop",
+        .what = "a 1 MiB ArrayBuffer made, written at both ends and freed at once (transfer(0) detaches it) per cycle: " ++
+            "the in-sandbox allocator's free-then-allocate loop, which makes no system call per cycle when the freed chunk waits",
+        .body = "{ const b = new ArrayBuffer(1048576); const v = new Uint8Array(b); v[0] = 1; v[1048575] = 1; b.transfer(0); }",
+        .cycles = 20_000,
+        .every = 2_000,
+        .gc = .never,
+    },
 };
 
 /// The measurement named `name`, if there is one.
@@ -304,6 +373,49 @@ test "an unknown --bench= name, or --bench= beside --body=, is refused" {
     try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=nope" }));
     try std.testing.expectError(error.UnknownBench, benchOf(&.{ "gc_bench", "--bench=" }));
     try std.testing.expectError(error.BenchAndBody, benchOf(&.{ "gc_bench", "--bench=wide", "--body=void 0;" }));
+}
+
+test "the two much-dies pause rows are named, never force a collection, and build the trees their reports say" {
+    inline for (.{ "clone-drop", "parse-drop" }) |name| {
+        const bench = benchNamed(name) orelse return error.TestBenchMissing;
+        try std.testing.expectEqualStrings(name, bench.name);
+        try std.testing.expect(bench.body.len > 0 and bench.what.len > 0);
+        try std.testing.expect(bench.cycles > 0 and bench.every > 0 and bench.every <= bench.cycles);
+        // The engine's own schedule decides when the dead are found.
+        try std.testing.expectEqual(Bench.Gc.never, bench.gc);
+        try std.testing.expectError(error.GcRefused, bench.collects(true));
+        try std.testing.expectEqualStrings(bench.body, cycleBody(&.{ "gc_bench", "--bench=" ++ name }));
+    }
+    // clone-drop: a div over 168 lists of ul > li > (a > "one"), " two" -
+    // 1 + 168 * 5 = 841 nodes a clone.
+    const clone = benchNamed("clone-drop").?;
+    try std.testing.expect(std.mem.indexOf(u8, clone.body, "'<ul><li><a href=x>one</a> two</li></ul>'.repeat(168)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, clone.body, ".cloneNode(true)") != null);
+    // parse-drop: a div over 50 paragraphs of one text - 1 + 50 * 2 = 101
+    // nodes a cycle - and its childNodes read.
+    const parse = benchNamed("parse-drop").?;
+    try std.testing.expect(std.mem.indexOf(u8, parse.body, "'<p>some text</p>'.repeat(50)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, parse.body, ".childNodes") != null);
+}
+
+test "the in-sandbox allocator's four rows are named and never force a collection" {
+    inline for (.{ "sandbox-small", "sandbox-bigint", "sandbox-chunks", "sandbox-megabyte-loop" }) |name| {
+        const bench = benchNamed(name) orelse return error.TestBenchMissing;
+        try std.testing.expectEqualStrings(name, bench.name);
+        try std.testing.expect(bench.body.len > 0 and bench.what.len > 0);
+        try std.testing.expect(bench.cycles > 0 and bench.every > 0 and bench.every <= bench.cycles);
+        // The engine's own collections free the blocks, as on a page.
+        try std.testing.expectEqual(Bench.Gc.never, bench.gc);
+        try std.testing.expectEqualStrings(bench.body, cycleBody(&.{ "gc_bench", "--bench=" ++ name }));
+    }
+    // Each takes memory from the engine's in-sandbox allocator, not the DOM.
+    try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-small").?.body, "new ArrayBuffer(96)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-bigint").?.body, "7n ** 3500n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, benchNamed("sandbox-chunks").?.body, "new Uint8Array(65536)") != null);
+    // The loop frees its buffer itself, each cycle: detached by transfer(0).
+    const loop = benchNamed("sandbox-megabyte-loop").?;
+    try std.testing.expect(std.mem.indexOf(u8, loop.body, "new ArrayBuffer(1048576)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, loop.body, ".transfer(0)") != null);
 }
 
 test "each measurement says whether it collects: wrapper-churn-nogc never, the kept-object ones always" {

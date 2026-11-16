@@ -29,7 +29,7 @@
 //! An ELEMENT's family-wide caches (classList, part, children, dataset,
 //! attributeStyleMap, SVG's and MathML's style, SVG's className) are not in
 //! its generated State but in its sparse rare block (lane cg1, N1;
-//! dom.element_rare_data, lane rare1): `elementGet` / `elementReserve` /
+//! dom.node_rare_data, lane rare1): `elementGet` / `elementReserve` /
 //! `elementMade`, and `endElement` in the destruction chain. A div paid 56
 //! bytes for 7 pointers that are null on nearly every element; the block
 //! costs nothing until one is read, and 16 bytes for the first. classList is
@@ -39,10 +39,20 @@
 //! children collection in NodeListsNodeData. The codegen decides which
 //! caches go where (writer.zig `sameObjectPlace`). Identity is unchanged: a
 //! field, once set, is never cleared while its element lives.
+//!
+//! A NODE's childNodes list is in the same block, for any node (lane nm2:
+//! the block's word is the node's NodeBase's, and Node's State carried 8
+//! bytes for the list on every node): `nodeGet` / `nodeReserve` /
+//! `nodeMade` / `endNode`, which find the holder from the node's NodeBase,
+//! not through Element's hook. Its slot IS cleared when the list is freed
+//! before its node (the list holds the node, never the reverse:
+//! dom.refcount's childNodesFreed): the next read makes a new list, as
+//! Blink's and WebKit's NodeListsNodeData drop a collected child node list.
 const std = @import("std");
 const engine = @import("engine");
 const runtime = @import("runtime");
-const element_rare_data = @import("element_rare_data.zig");
+const node_rare_data = @import("node_rare_data.zig");
+const instance_bridge = @import("instance_bridge.zig");
 
 /// The traced slot of the [SameObject] attribute whose cache is
 /// `cached_<attribute>`.
@@ -85,34 +95,34 @@ pub fn end(comptime State: type, owner: *runtime.Instance) void {
 /// The child `owner`, an element, keeps in its rare data's `field`, or null
 /// before it made one. The generated getter's hit: the element's holder,
 /// then the field's slot (bit 0 needs no popcount). Never allocates.
-pub inline fn elementGet(owner: *runtime.Instance, comptime field: element_rare_data.Field) ?*runtime.Instance {
-    comptime std.debug.assert(element_rare_data.Value(field) == *runtime.Instance);
-    return element_rare_data.get(element_rare_data.of(owner), field);
+pub inline fn elementGet(owner: *runtime.Instance, comptime field: node_rare_data.Field) ?*runtime.Instance {
+    comptime std.debug.assert(node_rare_data.Value(field) == *runtime.Instance);
+    return node_rare_data.get(node_rare_data.of(owner), field);
 }
 
 /// Give `field` its bit in `owner`'s rare data before the child is made, so
 /// that keeping it after (`elementMade`) cannot fail: a child must not exist
 /// unless it can be kept. InvalidStateError for an instance that is no
 /// element.
-pub fn elementReserve(owner: *runtime.Instance, comptime field: element_rare_data.Field) error{ OutOfMemory, InvalidStateError }!void {
-    const access = element_rare_data.access(owner) orelse return error.InvalidStateError;
-    try element_rare_data.reserve(element_rare_data.contextOf(owner), access.holder, field);
+pub fn elementReserve(owner: *runtime.Instance, comptime field: node_rare_data.Field) error{ OutOfMemory, InvalidStateError }!void {
+    const access = node_rare_data.access(owner) orelse return error.InvalidStateError;
+    try node_rare_data.reserve(node_rare_data.contextOf(owner), access.holder, field);
 }
 
 /// `child` was just made for `owner`'s [SameObject] `attribute`, whose
 /// `field` `elementReserve` gave its bit: the element keeps it there, in
 /// place (the holder is read now - making the child may have moved the
 /// block), and traces it as `made` does. Never allocates.
-pub fn elementMade(owner: *runtime.Instance, comptime field: element_rare_data.Field, child: *runtime.Instance, comptime attribute: []const u8) void {
-    const access = element_rare_data.access(owner).?;
-    element_rare_data.putReserved(access.holder, field, child);
+pub fn elementMade(owner: *runtime.Instance, comptime field: node_rare_data.Field, child: *runtime.Instance, comptime attribute: []const u8) void {
+    const access = node_rare_data.access(owner).?;
+    node_rare_data.putReserved(access.holder, field, child);
     made(owner, child, attribute);
 }
 
 /// One rare-data cache of a level: its field and its attribute (the slot of
 /// its edge).
 pub const ElementCache = struct {
-    field: element_rare_data.Field,
+    field: node_rare_data.Field,
     attribute: []const u8,
 };
 
@@ -122,9 +132,52 @@ pub const ElementCache = struct {
 /// chain runs a level before its parent's). The slots are left: the block
 /// goes with the element. Never makes a wrapper.
 pub fn endElement(owner: *runtime.Instance, comptime caches: []const ElementCache) void {
-    const holder = element_rare_data.of(owner);
+    const holder = node_rare_data.of(owner);
     if (holder.block == null) return;
     inline for (caches) |cache| {
-        if (element_rare_data.get(holder, cache.field) != null) engine.forgetTracedChild(owner, slotOf(cache.attribute));
+        if (node_rare_data.get(holder, cache.field) != null) engine.forgetTracedChild(owner, slotOf(cache.attribute));
+    }
+}
+
+// ============================================================================
+// A node's caches: in its rare data, whatever kind of node it is
+// ============================================================================
+
+/// The child `owner`, a node, keeps in its rare data's `field`, or null
+/// before it made one - and for an instance that is no live node. The
+/// generated getter's hit. Never allocates.
+pub inline fn nodeGet(owner: *runtime.Instance, comptime field: node_rare_data.Field) ?*runtime.Instance {
+    comptime std.debug.assert(node_rare_data.Value(field) == *runtime.Instance);
+    const node = instance_bridge.getNodeBase(owner) orelse return null;
+    return node_rare_data.get(node.rare, field);
+}
+
+/// Give `field` its bit in `owner`'s rare data before the child is made, so
+/// that keeping it after (`nodeMade`) cannot fail. InvalidStateError for an
+/// instance that is no live node.
+pub fn nodeReserve(owner: *runtime.Instance, comptime field: node_rare_data.Field) error{ OutOfMemory, InvalidStateError }!void {
+    const node = instance_bridge.getNodeBase(owner) orelse return error.InvalidStateError;
+    try node_rare_data.reserve(node.rareContext(), &node.rare, field);
+}
+
+/// `child` was just made for `owner`'s [SameObject] `attribute`, whose
+/// `field` `nodeReserve` gave its bit: the node keeps it there, in place
+/// (the holder is read now - making the child may have moved the block), and
+/// traces it as `made` does. Never allocates.
+pub fn nodeMade(owner: *runtime.Instance, comptime field: node_rare_data.Field, child: *runtime.Instance, comptime attribute: []const u8) void {
+    const node = instance_bridge.getNodeBase(owner).?;
+    node_rare_data.putReserved(&node.rare, field, child);
+    made(owner, child, attribute);
+}
+
+/// `owner`'s destruction chain is at Node's level, whose caches `caches` are
+/// in its rare data: end the edge each cached child may still wait on, as
+/// `end` does for a State's. Runs before Node's teardown frees the block.
+/// Never makes a wrapper.
+pub fn endNode(owner: *runtime.Instance, comptime caches: []const ElementCache) void {
+    const node = instance_bridge.getNodeBase(owner) orelse return;
+    if (node.rare.block == null) return;
+    inline for (caches) |cache| {
+        if (node_rare_data.get(node.rare, cache.field) != null) engine.forgetTracedChild(owner, slotOf(cache.attribute));
     }
 }

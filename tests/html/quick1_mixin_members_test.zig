@@ -256,7 +256,8 @@ fn mathmlAnchorFollowsItsHyperlink() !void {
 // Ownership: nothing is left behind (the integrator's condition 1)
 // ============================================================================
 
-/// An engine-less page over `allocator` (tests/dom/cg1_element_same_object_test.zig's).
+/// An engine-less page over `allocator` (the fixture tests/dom/cg1_element_same_object_test.zig
+/// had until lane lk1 moved its run-time tests to a real page).
 const NativePage = struct {
     scope: runtime.BrowserScope,
     ctx: runtime.ContextData,

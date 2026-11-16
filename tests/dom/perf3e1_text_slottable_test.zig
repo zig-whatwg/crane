@@ -10,7 +10,9 @@
 //! slot in NodeRareData (m_manuallyAssignedSlot) and no assigned slot at
 //! all. The element half moved an Element's into its ElementRareData
 //! (tests/dom/perf3e1_slottable_test.zig); this moves a Text node's into
-//! its NodeBase's NodeRareData, made by dom.slot_helpers' writers' path only.
+//! its NodeBase's rare data, made by dom.slot_helpers' writers' path only -
+//! since lane nm2 the same field of the node's one sparse rare block as an
+//! element's (dom.node_rare_data's `slottable`, a block of its own).
 //!
 //! The size pins and the rare-data checks are red until the text half
 //! lands; the behaviour tests hold before and after it.
@@ -49,8 +51,8 @@ fn expectSize(comptime T: type, expected: usize) !void {
 }
 
 const TextState = @FieldType(interfaces.Text.State, "_embedded");
-const NodeRareData = dom.node_base.NodeRareData;
-const has_rare_slottable = @hasField(NodeRareData, "slottable");
+/// A Text node's slottable state is a field of its node's rare data.
+const has_rare_slottable = @hasField(dom.node_rare_data.Field, "slottable") and @FieldType(dom.NodeBase, "rare") == dom.node_rare_data.Holder;
 
 // ============================================================================
 // Sizes (red until the text half)
@@ -68,11 +70,12 @@ test "Text's InternalState keeps no slottable state: it is empty" {
 // (280 after perf2 b7 with the slottable state's 64; 216 after perf3 E1; its
 // later history is there), and its exactness in nd1_text_data_layout_test.zig.
 
-test "NodeRareData keeps a Text node's slottable state: 104 bytes" {
+test "a Text node's slottable state is a 64-byte block of its own, which its rare block points at" {
     if (comptime !has_rare_slottable) return error.NoRareSlottable;
-    // 40 (perf2 b4: the registered observer list 16, the node name 16 and
-    // its flag) + the slottable state 64.
-    try expectSize(NodeRareData, 104);
+    // It was 64 bytes of a fixed 104-byte NodeRareData (perf2 b4's
+    // registered observer list 16, node name 16 and its flag, + this).
+    try expectSize(dom.slot_helpers.SlottableState, 64);
+    try testing.expect(dom.node_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
 }
 
 // ============================================================================
@@ -124,9 +127,10 @@ const Page = struct {
     }
 };
 
-fn nodeRareOf(node: *runtime.Instance) ?*NodeRareData {
+/// `node`'s rare block, or null while it has none.
+fn nodeRareOf(node: *runtime.Instance) ?*dom.node_rare_data.Block {
     const base = dom.instance_bridge.getNodeBase(node) orelse return null;
-    return base.rareData();
+    return base.rare.block;
 }
 
 fn assignedSlotOf(node: *runtime.Instance) ?*runtime.Instance {

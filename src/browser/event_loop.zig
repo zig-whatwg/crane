@@ -14,6 +14,10 @@
 //! timer, the deadline, or I/O; timer callbacks; a last checkpoint. A turn
 //! that finds no task queued starts an idle period for the windows that asked
 //! for one (HTML 8.1.7.3 step 5; requestIdleCallback).
+//! A loop that has had nothing to run for memory_release.idle_delay_ns asks
+//! the platform, once per idle stretch, to return the allocator's free
+//! memory to the OS (the turn's last step; memory_release.zig holds the rule
+//! and the browsers it follows).
 //!
 //! ## Tasks from other threads
 //!
@@ -41,6 +45,7 @@ const runtime = @import("runtime");
 const dom = @import("dom");
 const idle_periods = dom.idle_periods;
 const rendering = @import("rendering.zig");
+const memory_release = @import("memory_release.zig");
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
@@ -147,6 +152,21 @@ pub const EventLoop = struct {
     /// platform state, which outlives the loop.
     browser_clock: platform.BrowserClock = .real,
 
+    /// How long the loop has had nothing to run - no task, no timer's
+    /// callback, none of the engine's tasks, no teardown slice, no fetch
+    /// moved on - and whether it has worked since it last had the
+    /// allocator's free memory released: it asks once per idle stretch (step
+    /// 6). In real time (platform.monotonicNow), whatever the Browser's
+    /// clock: what a release costs is real.
+    memory_idle: memory_release.IdleWatch = .{},
+
+    /// The gate the loop asks through: the process's
+    /// (memory_release.processGate, over the process's own record), since
+    /// the allocator is the process's. A test gives its loop a gate over a
+    /// record of its own, which outlives any release started through it
+    /// (Gate.settle).
+    memory_gate: memory_release.Gate,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -182,6 +202,7 @@ pub const EventLoop = struct {
             .owner_thread = std.Thread.getCurrentId(),
             .frames = rendering.Frames.initWithClock(allocator, browser_clock),
             .browser_clock = browser_clock,
+            .memory_gate = memory_release.processGate(),
         };
     }
 
@@ -502,6 +523,8 @@ pub const EventLoop = struct {
 
         const now = self.nowNs();
         self.noteWork(work_start, now);
+        // The turn's latest reading of the Browser's clock, for step 6.
+        var turn_now = now;
 
         // Step 2d (HTML 8.1.7.3 step 5): no runnable task, so an idle period
         // for the same-loop windows that asked for one. Each queues its
@@ -509,17 +532,26 @@ pub const EventLoop = struct {
         if (self.startIdlePeriod(now)) did_work = true;
 
         // Step 3: how long to wait - until the next timer or max_wait_ms.
+        // Whole milliseconds, a timer's rounded down: `timer_within_ms`
+        // says that the wait is nothing ONLY because a timer is due in
+        // under a millisecond, which step 4 waits for exactly.
+        var timer_within_ms = false;
         var wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
             // do not block. So is one another thread posted meanwhile, and a
             // tree still waiting for its teardown.
             if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) break :blk 0;
             var wait = max_wait_ms;
-            if (self.timer_manager) |mgr| {
-                if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
-            }
             // A window waiting for an idle period: wake when one can start.
             if (self.idleWaitMs(now)) |idle_wait| wait = @min(idle_wait, wait);
+            if (wait > 0) {
+                if (self.timer_manager) |mgr| {
+                    if (mgr.getNextTimerDeadline()) |deadline| {
+                        timer_within_ms = deadline == 0;
+                        wait = @min(deadline, wait);
+                    }
+                }
+            }
             break :blk wait;
         };
 
@@ -533,7 +565,11 @@ pub const EventLoop = struct {
         // A real clock never moves: the turn waits, as it always did.
         if (!self.browser_clock.isReal() and
             !(self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) and
-            self.fastForwardToNextWakeUp(now)) wait_time = 0;
+            self.fastForwardToNextWakeUp(now))
+        {
+            wait_time = 0;
+            timer_within_ms = false;
+        }
 
         // Step 3b: what other threads - or this one's channels - posted while
         // this turn ran: a port's message posted by a task above runs before
@@ -554,6 +590,21 @@ pub const EventLoop = struct {
         // sleep was: the next timer's deadline, the caller's bound, and a
         // millisecond (native_timer.zig max_block_ms) - the fetches in
         // flight, which signal nothing, are moved on each turn.
+        //
+        // A timer due in under a millisecond is waited for too, to the
+        // nanosecond (`untilNextTimerNs`), as every browser's loop waits for
+        // its next delayed task: Chromium's pump sleeps on its event for the
+        // task's exact remaining delay (base/message_loop/
+        // message_pump_default.cc, MessagePumpDefault::Run:
+        // event_.TimedWait(next_work_info.remaining_delay()); read
+        // 2026-11-16). The whole-millisecond count rounds that wait down to
+        // nothing, and the loop then turned without a wait until the timer
+        // was due - 500 to 600 turns and 0.85 ms of this thread's CPU for
+        // every timer (server1, lane flk2). On a busy host that is a late
+        // wake, not only heat: the scheduler runs last the thread that has
+        // just burned a millisecond, so a task posted to this loop right
+        // after one of its timers waited for it while the poster's thread
+        // ran at once (tests/html/rep2_window_wake_test.zig).
         if (self.timer_manager) |mgr| {
             const after_each: TimerManager.AfterEach = .{ .context = self, .run = checkpointAfterTimer };
             var start = self.nowNs();
@@ -568,24 +619,88 @@ pub const EventLoop = struct {
             // change; tests/html/rep2_window_wake_test.zig).
             if (mgr.pollEach(after_each)) {
                 did_work = true;
-            } else if (wait_time > 0) {
-                const next = mgr.getNextTimerDeadline() orelse wait_time;
-                const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
-                if (wait_ms > 0) self.sink.waitForWork(wait_ms * std.time.ns_per_ms);
-                // The wait is no work; the callbacks after it are.
-                start = self.nowNs();
-                if (mgr.pollEach(after_each)) did_work = true;
+            } else {
+                var wait_ns: u64 = 0;
+                if (wait_time > 0) {
+                    const next = mgr.getNextTimerDeadline() orelse wait_time;
+                    const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
+                    wait_ns = wait_ms * std.time.ns_per_ms;
+                    // Under a millisecond away since step 3 counted.
+                    if (wait_ms == 0) timer_within_ms = true;
+                }
+                // Not while a task step 3b's tasks queued waits for the
+                // next turn, and only on a real clock: on a virtual one a
+                // timer comes due when the clock is moved (step 3a).
+                if (wait_ns == 0 and timer_within_ms and self.browser_clock.isReal() and
+                    !(self.runnableQueued() or self.deferredPending())) wait_ns = untilNextTimerNs(mgr);
+                if (wait_ns > 0) {
+                    self.sink.waitForWork(wait_ns);
+                    // The wait is no work; the callbacks after it are.
+                    start = self.nowNs();
+                    if (mgr.pollEach(after_each)) did_work = true;
+                }
             }
-            self.noteWork(start, self.nowNs());
+            turn_now = self.nowNs();
+            self.noteWork(start, turn_now);
         }
 
         // Step 5: the microtasks the timer callbacks queued.
         self.checkpoint();
 
+        // Step 6: a loop with nothing to run for a while asks for the
+        // allocator's free memory to go back to the OS.
+        self.releaseMemoryWhenIdle(did_work, turn_now);
+
         // Tasks queued during this turn - by the tasks above or by timer
         // callbacks - wait for the next one, which a non-empty queue makes
         // the caller start at once.
         return did_work or self.hasPendingWork();
+    }
+
+    /// How long until the next timer is due (ns), when that is under a
+    /// millisecond: what step 4 waits when the whole-millisecond count says
+    /// nothing. 0: no timer, or one that is due.
+    fn untilNextTimerNs(mgr: *TimerManager) u64 {
+        const deadline = mgr.nextDeadlineNs() orelse return 0;
+        const now = mgr.nowNs();
+        if (deadline <= now) return 0;
+        return @intCast(@min(deadline - now, std.time.ns_per_ms));
+    }
+
+    /// Step 6 of a turn: return the allocator's free memory to the OS once
+    /// the loop has had nothing to run for memory_release.idle_delay_ns, and
+    /// once per idle stretch - the loop asks again only after it has worked
+    /// again. Away from the allocation path, where no allocator setting
+    /// returns it without slowing every large allocation (lane mem2), and as
+    /// browsers return theirs when a page is idle: Chrome's MemoryReclaimer
+    /// runs in idle time (base/allocator/partition_alloc_support.cc,
+    /// MemoryReclaimerSupport), Firefox purges when the main thread has no
+    /// task left, 500 ms after the memory was last reused
+    /// (xpcom/threads/TaskController.cpp, MayScheduleMemoryCleanup), WebKit
+    /// calls malloc_trim(0) once its process has no visible page
+    /// (Source/WebKit/WebProcess/WebProcess.cpp,
+    /// nonVisibleProcessEarlyMemoryCleanupTimerFired). The process's gate may
+    /// refuse (the hold-off after the last release, any Browser's, or a
+    /// release still running): the loop then asks on a later idle turn.
+    ///
+    /// The loop only starts the release: it runs on a detached thread of its
+    /// own (memory_release.Source.platform_source), never on this one - the
+    /// allocator's call cannot be interrupted, and a task posted meanwhile
+    /// (a worker's reply) must not wait for it. This thread can meet a
+    /// release only where it allocates from the arena being trimmed at that
+    /// moment.
+    ///
+    /// `turn_now` is the turn's latest reading of the Browser's clock, which
+    /// is the real one unless the Browser's is virtual: the step reads no
+    /// clock of its own on a real one, and none at all on a turn that
+    /// worked.
+    fn releaseMemoryWhenIdle(self: *Self, did_work: bool, turn_now: i64) void {
+        if (did_work) return self.memory_idle.worked();
+        if (!self.memory_idle.armed) return;
+        // Work waiting for the next turn: not idle.
+        if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) return self.memory_idle.worked();
+        if (!self.memory_idle.idleTurn(if (self.browser_clock.isReal()) turn_now else realMonotonicNs())) return;
+        if (self.memory_gate.release(.idle)) self.memory_idle.released();
     }
 
     /// Move what other threads posted to the end of the task queue, in the

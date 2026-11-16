@@ -4,8 +4,9 @@
 //! A slottable (an Element or a Text node) has an assigned slot and a manual
 //! slot assignment; a slot (an HTML `slot` element) has a name, its assigned
 //! nodes and its manually assigned nodes. That state lives with its owners -
-//! an Element's `SlottableState` in its ElementRareData, a Text node's in its
-//! NodeBase's NodeRareData (lane perf3 E1), HTMLSlotElement's `SlotState` in
+//! an Element's and a Text node's `SlottableState` in a field of the node's
+//! rare data (lane perf3 E1; one sparse block per node since lane nm2,
+//! dom.node_rare_data), HTMLSlotElement's `SlotState` in
 //! its InternalState. Element and HTMLSlotElement install functions here,
 //! once, at process start, that hand the algorithms a pointer to theirs; a
 //! Text node's is read from its NodeBase, which this module is given. The
@@ -50,6 +51,7 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const NodeBase = @import("node_base.zig").NodeBase;
+const node_rare_data = @import("node_rare_data.zig");
 const Hook = @import("hook.zig").Hook;
 
 pub const ELEMENT_NODE: u16 = NodeBase.ELEMENT_NODE;
@@ -63,10 +65,9 @@ pub const NodeRef = struct {
     instance: *runtime.Instance,
     generation: u64,
 
-    /// A reference to `node`; null for a node no Instance owns.
+    /// A reference to `node`; null for a node already released.
     pub fn to(node: *NodeBase) ?NodeRef {
-        const opaque_instance = node.ownerInstance() orelse return null;
-        const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+        const instance = node.registeredInstance() orelse return null;
         return .{ .node = node, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
 
@@ -191,8 +192,7 @@ pub fn install(impl: Implementation) void {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(opaque_instance));
+    return node.registeredInstance();
 }
 
 /// Whether `node` is an Element.
@@ -228,9 +228,10 @@ pub fn slottable(node: *NodeBase) ?Slottable {
             const f = impl.element_slottable orelse return null;
             return f(instance);
         },
-        // A Text node's state is its NodeBase's rare data (lane perf3 E1).
+        // A Text node's state is a field of its NodeBase's rare data (lane
+        // perf3 E1; the same field of the sparse block as an element's, lane nm2).
         TEXT_NODE => {
-            const state: *const SlottableState = if (node.rareData()) |rare| &rare.slottable else &unassigned;
+            const state: *const SlottableState = node_rare_data.get(node.rare, .slottable) orelse &unassigned;
             return .{ .state = state, .name = "" };
         },
         else => return null,
@@ -240,7 +241,8 @@ pub fn slottable(node: *NodeBase) ?Slottable {
 /// `node`'s slottable state, writable, made now if it has none (an element's
 /// rare data, which never moves), or null when it is not a slottable: the
 /// writers' path, taken only for a node being assigned a slot (or one whose
-/// state already names one). A Text node's is its NodeBase's rare data.
+/// state already names one). A Text node's is a field of its NodeBase's rare
+/// data, made the same way.
 pub fn ensureSlottable(node: *NodeBase) error{OutOfMemory}!?*SlottableState {
     const instance = instanceOf(node) orelse return null;
     switch (node.node_type) {
@@ -249,10 +251,9 @@ pub fn ensureSlottable(node: *NodeBase) error{OutOfMemory}!?*SlottableState {
             const f = impl.element_ensure_slottable orelse return null;
             return f(instance);
         },
-        TEXT_NODE => {
-            const rare = try node.ensureRareData();
-            return &rare.slottable;
-        },
+        // A block of its own that the node's rare block points at: its
+        // address stays good whatever the rare block does.
+        TEXT_NODE => return try node_rare_data.ensureOwn(node.rareContext(), &node.rare, .slottable),
         else => return null,
     }
 }
@@ -266,14 +267,7 @@ pub fn slotState(node: *NodeBase) ?*SlotState {
     return f(instance);
 }
 
-test "NodeRef equality compares instance and generation" {
-    var a: NodeBase = undefined;
-    var instance: runtime.Instance = undefined;
-    const r1 = NodeRef{ .node = &a, .instance = &instance, .generation = 1 };
-    const r2 = NodeRef{ .node = &a, .instance = &instance, .generation = 2 };
-    try std.testing.expect(r1.eql(r1));
-    try std.testing.expect(!r1.eql(r2));
-}
+// NodeRef's test: tests/dom/wb1_moved_from_src_test.zig (a real node).
 
 test "slot state names are copied and freed" {
     var state = SlotState.init(std.testing.allocator);

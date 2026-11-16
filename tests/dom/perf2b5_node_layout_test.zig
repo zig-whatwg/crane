@@ -79,7 +79,8 @@ test "NodeBase keeps no child list: the sibling links are the children" {
     // (wrapper_cache.zig, `set`), as Blink keeps the main world's wrapper on the object
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
-    // it, so it waits for those to carry their own (design 3.4, deferred).
+    // it, so it waits for those to carry their own (design 3.4, deferred;
+    // lane wb1 retired the owner-less NodeBases and the WithBase types).
     // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig;
     // 80 since the wrapper redesign's P6 (no holds chain). The size is
     // pinned in node_block_sizes_test.zig (one place: lane nm1).
@@ -144,13 +145,17 @@ test "a div is ONE exact-size block: its pointers and every level's InternalStat
     }
 }
 
-test "a text node is ONE exact-size block: 16 bytes of pointers and every level's InternalState" {
+test "a text node is ONE exact-size block: every level's InternalState and nothing else" {
     const S = interfaces.Text.State;
     if (embeddedBytes(S) == 0) {
         std.debug.print("Text.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
-    try std.testing.expectEqual(@as(usize, 16), @sizeOf(S) - embeddedBytes(S));
+    // 16 until lane nm2 moved Node's childNodes cache to the node's rare
+    // block; 8, the live word (4, padded), until lane nm3 made a node's live
+    // bits a byte of its NodeBase and took EventTarget's level out of a
+    // node's State.
+    try std.testing.expectEqual(@as(usize, 0), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     try std.testing.expect(slack(S) < 16);
 }

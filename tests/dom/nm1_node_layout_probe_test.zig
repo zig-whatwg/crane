@@ -436,7 +436,7 @@ test "nm1 probe: the static layout of a node's storage" {
     const parts = .{
         .{ "NodeBase", NodeBase },
         .{ "NodeBase.RcFlags", NodeBase.RcFlags },
-        .{ "NodeRareData", dom.node_base.NodeRareData },
+        .{ "node_rare_data.NodeName", dom.node_rare_data.NodeName },
         .{ "ObserverRegistration", dom.node_base.ObserverRegistration },
         .{ "ElementData", dom.element_data.ElementData },
         .{ "element_data.AttributeList", dom.element_data.AttributeList },
@@ -445,14 +445,15 @@ test "nm1 probe: the static layout of a node's storage" {
         .{ "attribute_names.QualifiedName", dom.attribute_names.QualifiedName },
         .{ "attribute_values.Value", dom.attribute_values.Value },
         .{ "element_name.ElementName", dom.element_name.ElementName },
-        .{ "element_rare_data.Holder", dom.element_rare_data.Holder },
-        .{ "element_rare_data.Block (header; its slots trail it)", dom.element_rare_data.Block },
+        .{ "node_rare_data.Holder", dom.node_rare_data.Holder },
+        .{ "node_rare_data.Block (header; its slots trail it)", dom.node_rare_data.Block },
         .{ "event_listener_list.List", dom.event_listener_list.List },
         .{ "event_listener_list.Listener", dom.event_listener_list.Listener },
         .{ "ElementStyle", dom.style.ElementStyle },
         .{ "custom_elements.State (custom element state)", dom.custom_elements.State },
         .{ "custom_elements.RegistryPlace", dom.custom_elements.RegistryPlace },
-        .{ "character_data.Data", dom.character_data.Data },
+        .{ "character_data.Head", dom.character_data.Head },
+        .{ "character_data.Data.Word", dom.character_data.Data.Word },
         .{ "DOMString", runtime.DOMString },
         .{ "Instance (the slab slot's payload)", runtime.Instance },
         .{ "engine.NodeWrapperSlot", engine.NodeWrapperSlot },
@@ -461,7 +462,7 @@ test "nm1 probe: the static layout of a node's storage" {
     print("\n=== Slab slot: {d} B (Instance {d} + stamp 8), {d} slots per {d}-B slab\n", .{ runtime.SlabAllocator.slot_bytes, @sizeOf(runtime.Instance), runtime.SlabAllocator.SLOTS_PER_SLAB, runtime.SlabAllocator.slab_bytes });
 
     // Everything the element, text and comment States point at, one level.
-    const roots = [_]type{ interfaces.HTMLDivElement.State, interfaces.HTMLAnchorElement.State, interfaces.SVGPathElement.State, interfaces.Text.State, interfaces.Comment.State, dom.element_data.ElementData, dom.node_base.NodeRareData };
+    const roots = [_]type{ interfaces.HTMLDivElement.State, interfaces.HTMLAnchorElement.State, interfaces.SVGPathElement.State, interfaces.Text.State, interfaces.Comment.State, dom.element_data.ElementData };
     const pointees = comptime blk: {
         var acc: []const type = &.{};
         for (roots) |R| acc = collectPointees(R, 0, acc);
@@ -469,7 +470,7 @@ test "nm1 probe: the static layout of a node's storage" {
     };
     print("\n##### POINTEES of the node States (one level), {d} types\n", .{pointees.len});
     inline for (pointees) |P| {
-        if (comptime containsType(&.{ runtime.Instance, NodeBase, dom.node_base.NodeRareData, dom.element_data.AttributeList, dom.style.ElementStyle }, P)) {
+        if (comptime containsType(&.{ runtime.Instance, NodeBase, dom.element_data.AttributeList, dom.style.ElementStyle }, P)) {
             print("\n=== pointee {s}: size {d} (dumped above)\n", .{ @typeName(P), @sizeOf(P) });
         } else if (comptime @sizeOf(P) > 512) {
             print("\n=== pointee {s}: size {d}, align {d} (not expanded)\n", .{ @typeName(P), @sizeOf(P), @alignOf(P) });
@@ -529,8 +530,8 @@ test "nm1 probe: what each field of a real node holds" {
     print("  NodeBase.owner 0x{x} == the div's Instance 0x{x}: {}\n", .{ nb.owner, @intFromPtr(pdiv), nb.owner == @intFromPtr(pdiv) });
     print("  Instance.state 0x{x} == the State block 0x{x}: {}\n", .{ @intFromPtr(pdiv.state), @intFromPtr(s), @intFromPtr(pdiv.state) == @intFromPtr(s) });
     print("  each level's state, offset from the block (stateAs reads the vtable's ancestry table):\n", .{});
+    // EventTarget's State is not among them: a node nests none (lane nm3).
     inline for (.{
-        .{ "EventTarget.State", interfaces.EventTarget.State },
         .{ "Node.State", interfaces.Node.State },
         .{ "Element.State", interfaces.Element.State },
         .{ "HTMLElement.State", interfaces.HTMLElement.State },
@@ -635,7 +636,7 @@ fn printSeparate(comptime S: type, label: []const u8, instance: *runtime.Instanc
     print("SEPARATE {s} ({s}):", .{ label, instance.vtable.name });
     const rare_set = blk: {
         const node_state = instance.getState(interfaces.Node.State);
-        break :blk node_state._embedded.base.rare != null;
+        break :blk node_state._embedded.base.rare.block != null;
     };
     walkSeparate(S, s);
     print(" noderare={}\n", .{rare_set});
@@ -656,7 +657,7 @@ test "nm1 probe: the blocks of their own a parsed element makes" {
     var page: Page = undefined;
     try page.open(testing.allocator);
     defer page.close();
-    print("\n##### SEPARATE (mode {s}): each level's own block on a parsed element, and its NodeRareData\n", .{@tagName(builtin.mode)});
+    print("\n##### SEPARATE (mode {s}): each level's own block on a parsed element, and its rare block\n", .{@tagName(builtin.mode)});
     const cases = .{
         .{ "<script>x</script>", interfaces.HTMLScriptElement.State },
         .{ "<img src=\"a.png\">", interfaces.HTMLImageElement.State },

@@ -137,9 +137,13 @@ test "a wrap whose cache insert runs out of memory fails, and takes nothing" {
     var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
     const saved = cache.allocator;
     cache.allocator = failing.allocator();
+    // The cache's record comes from its pool: with no record free, the
+    // insert asks the allocator for a chunk, and that fails.
+    const spare = cache.takeFreeRecordsForTest();
     var attempt: Attempt = .{ .instance = headers, .realm = page.realm };
     try protocol.runInRealm(page.realm, Attempt.steps, &attempt);
     cache.allocator = saved;
+    cache.giveFreeRecordsForTest(spare);
 
     try testing.expectEqual(@as(?anyerror, error.OutOfMemory), attempt.result);
     try testing.expect(!attempt.wrapped);
@@ -184,8 +188,10 @@ test "the protocol's wrap (retainValue of an instance) reports the failed insert
     var failing = std.testing.FailingAllocator.init(cache.allocator, .{ .fail_index = 0 });
     const saved = cache.allocator;
     cache.allocator = failing.allocator();
+    const spare = cache.takeFreeRecordsForTest();
     const result = protocol.retainValue(page.realm, .{ .instance = headers });
     cache.allocator = saved;
+    cache.giveFreeRecordsForTest(spare);
     if (result) |held| {
         held.release();
         return error.WrapSucceededWithoutTheCache;
@@ -206,11 +212,14 @@ test "a constructor whose wrapper cannot be cached throws, and frees the instanc
     const saved = cache.allocator;
     const before = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     cache.allocator = failing.allocator();
+    const spare = cache.takeFreeRecordsForTest();
     page.eval("try { globalThis.made = new Headers(); outcome = 'constructed'; } catch (e) { outcome = 'threw'; }") catch |err| {
         cache.allocator = saved;
+        cache.giveFreeRecordsForTest(spare);
         return err;
     };
     cache.allocator = saved;
+    cache.giveFreeRecordsForTest(spare);
     const after = runtime.BrowserScope.standalone().?.slab.stats().currently_allocated;
     const outcome = try page.instanceOrString("outcome");
     defer testing.allocator.free(outcome);

@@ -16,6 +16,7 @@ const infra = @import("infra");
 const performance_timeline = @import("dom").performance_timeline;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 const event_dispatch = @import("dom").event_dispatch;
+const event_construction = @import("dom").event_construction;
 const Event = interfaces.Event;
 
 pub const State = Event.State;
@@ -25,7 +26,7 @@ pub const ImplError = error{
     InvalidState,
 };
 
-/// Event's internal state - its flags, path, targets, phase and isTrusted -
+/// Event's internal state - its flags, targets, phase and isTrusted -
 /// is `dom.event_dispatch.EventState`: its type lives there so that the
 /// dispatcher (EventTarget) works on its fields directly; the state itself is
 /// this impl's, created with the event and freed with it.
@@ -43,7 +44,7 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 pub fn installHooks() void {
     // The constructing steps every subclass runs (dom.event_construction);
     // each subclass's init chains through this one.
-    @import("dom").event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag, .force_canceled_flag = &forceCanceledFlag });
+    event_construction.installEvent(.{ .inner_event_creation_steps = &innerEventCreationStepsHook, .dispatch_flag = &dispatchFlag, .force_canceled_flag = &forceCanceledFlag });
     // The state dispatch works on, and what it does to an event that no IDL
     // member does (dom.event_dispatch).
     event_dispatch.install(.{ .state = &stateOf, .swap_type = &swapTypeHook });
@@ -78,7 +79,7 @@ fn swapTypeHook(event: *runtime.Instance, event_type: runtime.DOMString) ?runtim
 }
 
 /// dom.event_construction's inner event creation steps.
-fn innerEventCreationStepsHook(event: *runtime.Instance, event_type: runtime.DOMString, init_dict: @import("dom").event_construction.EventInit) anyerror!void {
+fn innerEventCreationStepsHook(event: *runtime.Instance, event_type: runtime.DOMString, init_dict: event_construction.EventInit) anyerror!void {
     return innerEventCreationSteps(event, event_type, .{ .bubbles = init_dict.bubbles, .cancelable = init_dict.cancelable, .composed = init_dict.composed });
 }
 
@@ -95,7 +96,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         // An event its wrapper's collection frees has no edge left to end.
         internal.forgetTarget(instance);
         internal.forgetRelatedTarget(instance);
-        internal.deinit();
+        internal.deinit(runtime.allocatorOf(instance));
         // Note: Internal state memory is managed by arena allocator
         // Return the block itself, not just what it points to. `internal.deinit()`
         // releases what the state OWNS; the state struct was staying allocated for
@@ -134,8 +135,9 @@ pub fn call_constructor(ctx: runtime.Context, @"type": runtime.DOMString, eventI
     const cancelable = event_init.cancelable orelse false;
     const composed = event_init.composed orelse false;
 
-    // Store event type - clone the string to ensure we own it
-    state.own.type = try @"type".clone(ctx.allocator);
+    // Store event type - the event's own value: a listed type as the
+    // table's string, any other copied (dom.event_construction.ownedType).
+    state.own.type = try event_construction.ownedType(ctx.allocator, @"type");
 
     // Initialize from EventInit dictionary
     state.own.bubbles = bubbles;
@@ -334,7 +336,7 @@ fn initializeEvent(instance: *runtime.Instance, @"type": runtime.DOMString, bubb
     // argument left `event.type` pointing at freed memory - and dispatch, which
     // matches listeners on `event.type`, then matched nothing at all. That is
     // what made registered handlers look like they were never invoked.
-    var next_type = try @"type".clone(instance.ctx.allocator);
+    var next_type = try event_construction.ownedType(instance.ctx.allocator, @"type");
     errdefer next_type.deinit(instance.ctx.allocator);
 
     // Step 1: Set event's initialized flag
@@ -380,7 +382,7 @@ fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMStri
 
     // The event's own copy of the type first: with the Event internal state
     // below, the only fallible steps - nothing is left half-initialized.
-    var next_type = try @"type".clone(allocator);
+    var next_type = try event_construction.ownedType(allocator, @"type");
     errdefer next_type.deinit(allocator);
     const internal = state.own._internal orelse blk: {
         const created = try runtime.arenaOf(instance).create(InternalState);
@@ -406,8 +408,7 @@ fn innerEventCreationSteps(instance: *runtime.Instance, @"type": runtime.DOMStri
 
     // The attributes no member names keep their initial values.
     internal.setTarget(instance, null);
-    internal.current_target = null;
-    internal.phase = Event.get_NONE();
+    internal.phase = event_dispatch.Phase.none;
     internal.is_trusted = false;
     state.own.cancelBubble = false;
     state.own.returnValue = true;
@@ -449,10 +450,12 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     const internal = getInternal(instance) orelse return error.NotImplemented;
 
     // Step 1: Let composedPath be an empty list
-    var composed_path = infra.List(*runtime.Instance).init(internal.allocator);
+    var composed_path = infra.List(*runtime.Instance).init(runtime.allocatorOf(instance));
 
-    // Step 2: Let path be this's path
-    const path = internal.path.toSlice();
+    // Step 2: Let path be this's path - the dispatch's while the event is
+    // dispatched, and the empty list at every other time
+    // (dom.event_dispatch, "THE PATH IS THE DISPATCH'S").
+    const path = internal.pathItems();
 
     // Step 3: If path is empty, then return composedPath (empty array)
     if (path.len == 0) {
@@ -460,7 +463,7 @@ pub fn call_composedPath(instance: *runtime.Instance) anyerror!runtime.JSValue {
     }
 
     // Step 4: Let currentTarget be this's currentTarget attribute value
-    const current_target = internal.current_target;
+    const current_target = internal.currentTarget();
 
     // Step 5: Assert: currentTarget is an EventTarget object
     if (current_target == null) {

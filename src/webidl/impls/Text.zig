@@ -41,8 +41,8 @@ pub const InternalState = struct {
 
     // No allocator copy (lane perf2 batch 5): nothing here owns memory.
     // No slottable state (lane perf3 E1): a Text node's assigned slot and
-    // manual slot assignment are its NodeBase's rare data
-    // (dom.node_base.NodeRareData.slottable), made only when a slot assigns
+    // manual slot assignment are a field of its NodeBase's rare data
+    // (dom.node_rare_data's `slottable`), made only when a slot assigns
     // it, and read through dom.slot_helpers - 64 bytes off every Text node.
 
     pub fn deinit(self: *InternalState) void {

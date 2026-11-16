@@ -28,7 +28,11 @@
 //!                                       # counts and collections - and its
 //!                                       # report (wide, qsa-deep,
 //!                                       # wrapper-churn-nogc, pause, div,
-//!                                       # text: gc_bench_options.zig `benches`)
+//!                                       # text, clone-drop, parse-drop,
+//!                                       # sandbox-small, sandbox-bigint,
+//!                                       # sandbox-chunks,
+//!                                       # sandbox-megabyte-loop:
+//!                                       # gc_bench_options.zig `benches`)
 //!   zig build gc-bench -- 10000 5000 --loop "--body=..."
 //!                                       # the page's event loop turns after
 //!                                       # each batch until it is idle, so the

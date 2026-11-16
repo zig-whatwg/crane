@@ -76,7 +76,7 @@ fn keepWaitsForTheWrapper() !void {
     defer page.close();
     try page.run("globalThis.host = document.createElement('div'); host.innerHTML = '<b></b>'; 0;");
     const host = try page.node("host");
-    const b = host.first_child.?;
+    const b = host.firstChild().?;
     try testing.expect(b.wrapper.isEmpty());
     var hold: dom.node_holds.ReachableHold = .{};
     defer hold.release();

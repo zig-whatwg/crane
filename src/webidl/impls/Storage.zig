@@ -318,9 +318,9 @@ const StorageTask = struct {
         engine.runTaskInRealm(window.ctx, steps, self) catch {};
     }
 
-    /// The timer's end with this task still armed: its window's loop never
-    /// turns again, so the event is never fired and the task's copies go here
-    /// (`TimerInterface.setTimeoutOwned`).
+    /// The task will never run - its window's loop ended with it queued (or,
+    /// for a realm with no loop, its timer ended with it armed): the event
+    /// is never fired, and the task's copies go here.
     fn drop(data: ?*anyopaque) void {
         const self: *StorageTask = @ptrCast(@alignCast(data orelse return));
         self.destroy();
@@ -363,7 +363,6 @@ const StorageTask = struct {
 };
 
 fn queueStorageEvent(window: *runtime.Instance, kind: WebStorageType, key: ?[]const u8, old_value: ?[]const u8, new_value: ?[]const u8, url: []const u8) void {
-    const timer = window.ctx.getOptionalTimer() orelse return;
     const allocator = window.ctx.allocator;
     const task = allocator.create(StorageTask) catch return;
     task.* = .{
@@ -380,15 +379,49 @@ fn queueStorageEvent(window: *runtime.Instance, kind: WebStorageType, key: ?[]co
     task.old_value = if (old_value) |v| allocator.dupe(u8, v) catch return task.destroy() else null;
     task.new_value = if (new_value) |v| allocator.dupe(u8, v) catch return task.destroy() else null;
     task.url = allocator.dupe(u8, url) catch return task.destroy();
-    // Owned by the timer: a task its window's loop never runs is freed when
-    // the timer ends. With the plain form nobody freed it: a storage change
-    // just before the remote window's Browser ended leaked the task and its
-    // three copies - 12 allocations at one WPT runner child's exit, from the
-    // three changes in the cleanup of html/browsers/windows/
-    // auxiliary-browsing-contexts/opener-noopener.html (lane wrap1 b2;
-    // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md;
-    // Window.zig queueDefinitelyClose is the same cure).
+    // A TASK of the remote window's event loop, in order with every other
+    // task ("queue a global task on the DOM manipulation task source"), as
+    // in the three engines (each read at its main branch, 2026-11-15):
+    // - Blink: modules/storage/storage_area.cc StorageArea::
+    //   EnqueueStorageEvent - DomWindow()->EnqueueWindowEvent(event,
+    //   TaskType::kDOMManipulation);
+    // - WebKit: WebCore/storage/StorageEventDispatcher.cpp -
+    //   document->queueTaskToDispatchEventOnWindow(window,
+    //   TaskSource::DOMManipulation, StorageEvent::create(..));
+    // - Gecko: dom/storage/Storage.cpp Storage::NotifyChange dispatches a
+    //   StorageNotifierRunnable (SchedulerGroup::Dispatch), and
+    //   dom/storage/StorageNotifierService.cpp a runnable to each observing
+    //   window's event target.
+    // It was a zero-delay native timer, which the loop's poll runs ahead of
+    // every queued task: a storage event overtook the tasks queued before
+    // its change (tests/html/tl1_storage_event_task_order_test.zig; Window.zig
+    // queueDefinitelyClose moved for the same reason).
+    //
+    // The task names no document. Its steps check, when it runs, that the
+    // window still shows a document with a browsing context, and fire
+    // nothing otherwise - as before: a change made just before the remote
+    // document left (unloaded, or into the back/forward cache) fires no
+    // event later (whatwg/storage issue 119: no storage event for a page
+    // after it is restored). With the document named, the loop would keep
+    // the task for a cached document and run it at the restore.
+    //
+    // The loop's end drops a task that never runs (`StorageTask.drop`): a
+    // storage change just before the remote window's Browser ended leaked
+    // the task and its three copies while it had no drop - 12 allocations
+    // at one WPT runner child's exit, from the three changes in the cleanup
+    // of html/browsers/windows/auxiliary-browsing-contexts/
+    // opener-noopener.html (lane wrap1 b2;
+    // docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
+    if (window.ctx.getOptionalEventLoop()) |loop| {
+        loop.queueTask(.{ .callback = StorageTask.run, .context = task, .drop = StorageTask.drop });
+        return;
+    }
+    // A realm with no event loop (an engine test's): its timer, owned by
+    // the timer, whose end drops it.
+    const timer = window.ctx.getOptionalTimer() orelse return task.destroy();
     if (timer.setTimeoutOwned(0, StorageTask.run, task, StorageTask.drop) != 0) return;
-    // A timer that cannot promise the drop: the plain one, as before.
-    if (timer.setTimeout(0, StorageTask.run, task) == 0) task.destroy();
+    // Not armed - the timer cannot promise the drop, or it failed: nothing
+    // holds the task, and the event is not queued (lane tl1: no heap data
+    // on a plain timer; tests/html/tl1_storage_event_plain_timer_test.zig).
+    task.destroy();
 }

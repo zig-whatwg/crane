@@ -93,6 +93,16 @@ pub const Page = struct {
 /// is followed by four microtask checkpoints.
 pub fn handlesLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []const u8, rounds: usize) !i64 {
     const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
+    return @divTrunc(try handleBytesLeftBy(agent, realm, source, rounds), try handleBytes(realm, isolate));
+}
+
+/// The bytes of V8's handle tables `source` leaves behind, as `handlesLeftBy`
+/// counts handles: a v8::Global is `handleBytes` of them (32), and a traced
+/// reference - how the wrapper cache holds a non-node platform object's
+/// wrapper, and a node its own (lane wrap1 b3, the wrapper redesign's P4) -
+/// is 16.
+pub fn handleBytesLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []const u8, rounds: usize) !i64 {
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(agent));
     try expectEval(realm, source, "ok");
     for (0..8) |_| try protocol.performMicrotaskCheckpoint(agent);
     protocol.notifyMemoryPressure(agent, .critical);
@@ -104,7 +114,14 @@ pub fn handlesLeftBy(agent: *protocol.Agent, realm: runtime.Context, source: []c
     protocol.notifyMemoryPressure(agent, .critical);
     protocol.notifyMemoryPressure(agent, .critical);
     const after: i64 = @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate));
-    return @divTrunc(after - before, try handleBytes(realm, isolate));
+    return after - before;
+}
+
+/// `handleBytesLeftBy` per round, rounded to the nearest byte.
+pub fn handleBytesPerRound(agent: *protocol.Agent, realm: runtime.Context, source: []const u8, rounds: usize) !i64 {
+    const left = try handleBytesLeftBy(agent, realm, source, rounds);
+    const n: i64 = @intCast(rounds);
+    return @divFloor(left * 2 + n, n * 2);
 }
 
 /// `handlesLeftBy` per round, rounded to the nearest handle.

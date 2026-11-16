@@ -932,10 +932,10 @@ pub fn windowIndexedPropertyGetter(
 
     // HTML 7.2.3.1 WindowProxy [[GetOwnProperty]] step 2: index is in the
     // Window's document-tree child navigables, and the result is the
-    // index-th one's active WindowProxy. Window's own indexed getter answers
-    // from that list (interfaces.Window.call_item), and null when the
-    // child's Window is not made yet.
-    var result = interfaces.Window.call_item(instance, index) catch return .kNo;
+    // index-th one's active WindowProxy. Window's own (anonymous) indexed
+    // getter answers from that list (interfaces.Window.call_getter__1), and null
+    // when the child's Window is not made yet.
+    var result = interfaces.Window.call_getter__1(instance, index) catch return .kNo;
 
     // A child navigable whose Window script has not asked for yet: its
     // container makes it (its navigable's realm under this window's, its
@@ -1094,6 +1094,7 @@ fn retireEntry(state: *Realms, entry: *ContextEntry) void {
     }
     entry.runtime_ctx.clearV8WrapperCacheStorage();
     entry.runtime_ctx.engine_ctx = null;
+    entry.runtime_ctx.engine_gone = true;
     entry.runtime_ctx.realm = null;
     entry.runtime_ctx.event_loop = null;
     entry.runtime_ctx.timer = null;

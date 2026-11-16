@@ -9,26 +9,28 @@
 //! removals (first, last, middle, only child) is checked after every step
 //! against a plain array of the same children: first, last, every previous
 //! and next link, the count, index() and the reverse walk.
+//!
+//! The nodes are real ones with no node document (real_nodes.zig `bare`;
+//! lane wb1), linked and unlinked by hand through NodeBase's two functions:
+//! the links are the subject, not the DOM's insert. They were NodeBase
+//! values on the test's stack.
 
 const std = @import("std");
 const dom = @import("dom");
+const real_nodes = @import("real_nodes.zig");
 const testing = std.testing;
 const NodeBase = dom.NodeBase;
 
 const max_children = 24;
 
-fn node(node_type: u16) NodeBase {
-    return .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = node_type };
-}
-
 fn expectLinks(parent: *NodeBase, model: []const *NodeBase) !void {
     try testing.expectEqual(model.len, parent.childCount());
     if (model.len == 0) {
-        try testing.expect(parent.first_child == null);
+        try testing.expect(parent.firstChild() == null);
         try testing.expect(parent.lastChild() == null);
         return;
     }
-    try testing.expectEqual(model[0], parent.first_child.?);
+    try testing.expectEqual(model[0], parent.firstChild().?);
     try testing.expectEqual(model[model.len - 1], parent.lastChild().?);
     for (model, 0..) |child, i| {
         try testing.expectEqual(i, child.index());
@@ -46,14 +48,17 @@ fn expectLinks(parent: *NodeBase, model: []const *NodeBase) !void {
 }
 
 test "the first child's previous link is the last child: inserts and removals at every position keep every link" {
-    var parent = node(NodeBase.ELEMENT_NODE);
-    var pool: [max_children]NodeBase = undefined;
-    for (&pool) |*n| n.* = node(NodeBase.TEXT_NODE);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const parent = try nodes.bare(.element);
+    var pool: [max_children]*NodeBase = undefined;
+    for (&pool) |*n| n.* = try nodes.bare(.text);
     var model_buf: [max_children]*NodeBase = undefined;
     var model: std.ArrayListUnmanaged(*NodeBase) = .initBuffer(&model_buf);
     var free_buf: [max_children]*NodeBase = undefined;
     var free: std.ArrayListUnmanaged(*NodeBase) = .initBuffer(&free_buf);
-    for (&pool) |*n| free.appendAssumeCapacity(n);
+    for (pool) |n| free.appendAssumeCapacity(n);
 
     var prng = std.Random.DefaultPrng.init(0x7065_7266_3262_3600);
     const random = prng.random();
@@ -63,7 +68,7 @@ test "the first child's previous link is the last child: inserts and removals at
             const child = free.pop().?;
             const at = random.uintAtMost(usize, model.items.len);
             const before: ?*NodeBase = if (at == model.items.len) null else model.items[at];
-            child.parent_node = &parent;
+            child.parent_node = parent;
             parent.linkChildBefore(child, before);
             model.insertAssumeCapacity(at, child);
         } else {
@@ -75,19 +80,29 @@ test "the first child's previous link is the last child: inserts and removals at
             try testing.expect(child.previousSibling() == null);
             free.appendAssumeCapacity(child);
         }
-        try expectLinks(&parent, model.items);
+        try expectLinks(parent, model.items);
     }
+    // Leave no hand-made link for the Browser's end.
+    for (model.items) |child| {
+        parent.unlinkChild(child);
+        child.parent_node = null;
+    }
+    try expectLinks(parent, &.{});
 }
 
 test "an only child is its own last child, and its previous sibling is null" {
-    var parent = node(NodeBase.ELEMENT_NODE);
-    var only = node(NodeBase.TEXT_NODE);
-    only.parent_node = &parent;
-    parent.linkChildBefore(&only, null);
-    try testing.expectEqual(&only, parent.lastChild().?);
-    try testing.expectEqual(&only, only.previous_or_last.?);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const parent = try nodes.bare(.element);
+    const only = try nodes.bare(.text);
+    only.parent_node = parent;
+    parent.linkChildBefore(only, null);
+    try testing.expectEqual(only, parent.lastChild().?);
+    try testing.expectEqual(only, only.previous_or_last.?);
     try testing.expect(only.previousSibling() == null);
-    try expectLinks(&parent, &.{&only});
-    parent.unlinkChild(&only);
-    try expectLinks(&parent, &.{});
+    try expectLinks(parent, &.{only});
+    parent.unlinkChild(only);
+    only.parent_node = null;
+    try expectLinks(parent, &.{});
 }

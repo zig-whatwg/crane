@@ -39,8 +39,13 @@ const dom = @import("dom");
 
 const NodeBase = dom.NodeBase;
 
-/// Where NodeBase sits in every node's State block.
-const pinned_node_base_offset: usize = 24;
+/// Where NodeBase sits in every node's State block: at its first byte since
+/// lane nm3 - a node's State nests no EventTarget level (its 16 bytes: the
+/// listener list is a field of the rare block, the live bits a byte of
+/// NodeBase). It was 16 after lane nm2's step a took Node's childNodes
+/// cache, the one generated field between them, out of the State, and 24
+/// before.
+const pinned_node_base_offset: usize = 0;
 
 fn isNodeState(comptime S: type) bool {
     comptime {
@@ -156,15 +161,20 @@ const FieldPin = struct { name: []const u8, offset: usize, size: usize };
 /// document's generation.
 const node_base_fields = [_]FieldPin{
     .{ .name = "parent_node", .offset = 0, .size = 8 },
-    .{ .name = "first_child", .offset = 8, .size = 8 },
+    // A container's first child, or a leaf's own word (lane nm2, N9).
+    .{ .name = "child_or_leaf", .offset = 8, .size = 8 },
     .{ .name = "next_sibling", .offset = 16, .size = 8 },
-    .{ .name = "node_type", .offset = 24, .size = 2 },
+    // One byte since lane nm3 (it was a u16 whose high byte was always 0);
+    // the byte it gave up holds the State chain's live bits.
+    .{ .name = "node_type", .offset = 24, .size = 1 },
+    .{ .name = "live", .offset = 25, .size = 1 },
     .{ .name = "is_connected", .offset = 26, .size = 1 },
     .{ .name = "is_shadow_host", .offset = 27, .size = 1 },
     .{ .name = "traces_held", .offset = 28, .size = 1 },
     .{ .name = "rc_flags", .offset = 29, .size = 1 },
     .{ .name = "element", .offset = 30, .size = 1 },
-    .{ .name = "spare", .offset = 31, .size = 1 },
+    // Whether the first-child word is a leaf's own (it was the spare byte).
+    .{ .name = "leaf", .offset = 31, .size = 1 },
     .{ .name = "previous_or_last", .offset = 32, .size = 8 },
     .{ .name = "document_word", .offset = 40, .size = 8 },
     .{ .name = "rare", .offset = 48, .size = 8 },
@@ -204,7 +214,8 @@ test "NodeBase is an extern struct: every field at its pinned offset, no padding
 }
 
 test "the fields a tree walk reads are in NodeBase's first 32 bytes" {
-    inline for (.{ "parent_node", "first_child", "next_sibling", "node_type" }) |name| {
+    // `leaf` too since lane nm2: firstChild() reads it with the word.
+    inline for (.{ "parent_node", "child_or_leaf", "next_sibling", "node_type", "leaf" }) |name| {
         if (comptime !@hasField(NodeBase, name)) return error.NoSuchField;
         const end = @offsetOf(NodeBase, name) + @sizeOf(@FieldType(NodeBase, name));
         if (end > 32) {
@@ -231,13 +242,14 @@ test "the element's flags are one byte of NodeBase, not five of Element's state"
 }
 
 test "the padding in a div's and a Text's block only goes down" {
-    // What is left is the tail of EventTarget's level: its 4-byte live word
-    // beside the 8-byte listener pointer. It goes when the live bits join
-    // the flags and the listener reference leaves the node (plan v2 X2, I1).
+    // None since lane nm3: what was left was the tail of EventTarget's
+    // level, its 4-byte live word beside the 8-byte listener pointer. The
+    // live bits joined the flags and the listener reference left the node
+    // (plan v2 X2, I1).
     const pins = .{
-        .{ "HTMLDivElement", interfaces.HTMLDivElement.State, 4 },
-        .{ "Text", interfaces.Text.State, 4 },
-        .{ "Comment", interfaces.Comment.State, 4 },
+        .{ "HTMLDivElement", interfaces.HTMLDivElement.State, 0 },
+        .{ "Text", interfaces.Text.State, 0 },
+        .{ "Comment", interfaces.Comment.State, 0 },
     };
     var wrong: usize = 0;
     inline for (pins) |p| {

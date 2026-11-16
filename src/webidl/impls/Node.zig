@@ -79,6 +79,25 @@ pub const InternalState = struct {
     /// the wrapper slot (runtime.lifetime.countedOf reads this declaration).
     pub const counted_node = true;
 
+    /// A node's State does not nest EventTarget's (runtime.FlattenedState's
+    /// `absent_base`; lane nm3, node-memory plan v2 X2 and I1): that level
+    /// is the event listener list's address and the chain's live word, 16
+    /// bytes on every node, where nearly no node has a listener. A node
+    /// keeps its list in its rare block (NodeBase.eventListeners - Gecko's
+    /// nsINode keeps its listener manager in its slots, its rare data) and
+    /// its live bits in its NodeBase (`liveBits`). So the State block starts
+    /// with the NodeBase, and a node is still an EventTarget: its ancestry
+    /// lists EventTarget's State with no bytes behind it.
+    pub const omits_base_state = true;
+
+    /// The live bits of a node's State chain, a bit per level from Node's
+    /// own (runtime.OwnState): a byte of the NodeBase (`NodeBase.live`).
+    pub const LiveBits = u8;
+
+    pub inline fn liveBits(self: *InternalState) *LiveBits {
+        return &self.base.live;
+    }
+
     // No allocator copy (lane perf2 batch 6): what the node allocates comes
     // from its Browser's allocator, runtime.allocatorOf(instance) - the one it
     // was made with, asserted in initOwn.
@@ -111,8 +130,10 @@ pub const InternalState = struct {
     // NodeBase: two pointers to one document, 8 bytes a node.
 
     // No childNodes list here (lane nm1): the interface's [SameObject] cache
-    // (the generated State's `cached_childNodes`) is the one copy; this
-    // state kept a second pointer to the same list. 8 bytes a node.
+    // is the one copy; this state kept a second pointer to the same list. 8
+    // bytes a node. And the cache is not in the generated State either
+    // (lane nm2): it is a field of the node's rare block
+    // (dom.node_rare_data's `child_nodes`), 8 more bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
@@ -207,6 +228,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
+    // The chain's live bits are a byte of the NodeBase, which the write
+    // below replaces whole: carried over (Node's own bit, just set).
+    const live = internal.base.live;
     // Everything the node allocates later, and every free, goes through its
     // Browser's allocator, runtime.allocatorOf (its NodeBase's `allocator()`),
     // found from its address: so the allocator it is made with must BE that
@@ -220,8 +244,8 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     internal.* = .{
         .base = .{
             .node_type = node_type,
+            .live = live,
             .parent_node = null,
-            .first_child = null,
             .previous_or_last = null,
             .next_sibling = null,
             .is_connected = false,
@@ -315,12 +339,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
         _ = dom_module.tree_teardown.freeAllDescendants(&internal.base, &deinitNodeByType);
-        // Releases the NodeBase and clears this level's live bit.
+        // Releases the NodeBase and clears this level's live bit - the whole
+        // of this state's teardown: no second `Registry.remove` follows (it
+        // re-read the slab generation and the State to clear a bit that is
+        // clear either way: `releaseNodeBase` cleared it, and when `get`
+        // answered null there is no bit to clear).
         releaseNodeBase(instance, internal, .with_document_counts);
     }
-
-    // Clean up its internal state
-    Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
     // wrapper cache is tearing down, platformObjectDestroyed cannot flag the
@@ -457,11 +482,24 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             // but handle it for completeness
             interfaces.Document.deinit(instance);
         },
+        // An Attr's own teardown, like every other type's: Attr's part (its
+        // names, its value, its edge to its element), then Node's. It was
+        // the fallback below, which cleared Node's live bit and ran
+        // EventTarget's deinit only - so the NodeBase was never released
+        // (its rare block and what that owns stayed allocated, out of the
+        // final sweep's sight: the sweep walks by the bit), the bridge and
+        // the Browser's DOM memory still counted the node, and its teardown
+        // was never marked complete, so its slot never went back
+        // (tests/dom/nm3_attr_teardown_test.zig).
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.deinit(instance),
+        // No interface makes any other type (`nodeTypeOf` answers one of the
+        // nine above). The default is the safe answer all the same: the
+        // node's own deinit when its vtable names one, completed by Node's
+        // part - the one exit of a NodeBase (`releaseNodeBase`) - when that
+        // did not reach it.
         else => {
-            // For unknown types, do generic Node cleanup
-            // (this handles ATTRIBUTE_NODE and legacy types)
-            Registry.remove(instance);
-            interfaces.EventTarget.deinitChain(instance);
+            if (instance.vtable.deinit) |own_deinit| own_deinit(instance);
+            if (!runtime.instance_lifecycle.isCleanedUp(instance)) deinit(instance);
         },
     }
 }
@@ -706,15 +744,16 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// raw (the list holds the node, never the reverse: refcount design section
 /// 3), and lets it go: the next read makes a new list.
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
-    const state = node.getState(State);
-    if (state.own.cached_childNodes == list) state.own.cached_childNodes = null;
+    const internal = Registry.get(node) orelse return;
+    const rare = &internal.base.rare;
+    if (dom_module.node_rare_data.get(rare.*, .child_nodes) == list) dom_module.node_rare_data.clear(rare, .child_nodes);
 }
 
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes.
-/// [SameObject]: the generated interface caches what this makes
-/// (`cached_childNodes`, the one copy; `childNodesFreed` clears it) and calls
+/// [SameObject]: the generated interface caches what this makes (in the
+/// node's rare block, the one copy; `childNodesFreed` clears it) and calls
 /// here only while it holds none - so this makes the list and keeps nothing.
 pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
@@ -733,7 +772,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    const first = node_base.first_child orelse return null;
+    const first = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -813,7 +852,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
 
     // Otherwise, recursively collect from children using NodeBase
     const node_base = &node_internal.base;
-    var child_base = node_base.first_child;
+    var child_base = node_base.firstChild();
     while (child_base) |c| {
         const child_opaque = instance_bridge.getInstance(c) orelse {
             child_base = c.next_sibling;
@@ -971,7 +1010,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
 pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Operation: getRootNode
@@ -1127,12 +1166,12 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
     var a: *NodeBase = self_root;
     var b: *NodeBase = other_root;
     while (true) {
-        if (a.first_child) |a_child| {
+        if (a.firstChild()) |a_child| {
             // Both have children: compare the first ones next.
             a = a_child;
-            b = b.first_child orelse return false;
+            b = b.firstChild() orelse return false;
         } else {
-            if (b.first_child != null) return false;
+            if (b.firstChild() != null) return false;
             // A leaf pair: on to the next sibling pair, climbing while both
             // lists end at once - the same shape so far, so `b` climbs back
             // to its root as `a` does.
@@ -1284,7 +1323,7 @@ pub fn cloneANode(
     if (subtree) {
         const children_document = if (node_internal.base.node_type == NodeType.DOCUMENT_NODE) copy else document;
         const node_base = &node_internal.base;
-        var child_base = node_base.first_child;
+        var child_base = node_base.firstChild();
         while (child_base) |c| : (child_base = c.next_sibling) {
             const child_opaque = instance_bridge.getInstance(c) orelse continue;
             const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
@@ -1958,7 +1997,7 @@ pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = &internal.base;
-    const first_base = node_base.first_child orelse return null;
+    const first_base = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first_base) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -1998,7 +2037,7 @@ pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn hasChildren(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Get the number of child nodes
@@ -2007,7 +2046,7 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
     const node_base = &internal.base;
     var count: u32 = 0;
-    var child = node_base.first_child;
+    var child = node_base.firstChild();
     // Safety limit to prevent infinite loops from corrupted DOM trees
     // A typical DOM tree shouldn't have more than 1M direct children
     const max_iterations: u32 = 1_000_000;
@@ -2049,7 +2088,8 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 /// (lane perf2 batch 4):
 /// 1. every registered observer is told and its entry freed
 ///    (dom.observer_registrations.releaseList), while the bridge still names
-///    the node;
+///    the node; its event listeners are released, if it has any
+///    (dom.event_handlers.releaseNodeListeners);
 /// 2. the rare data that held them goes, an owned node name with it;
 /// 3. its teardown is marked begun (instance_lifecycle.markCleanupStarted,
 ///    which Node.deinit made already; the final sweep's release makes it
@@ -2076,6 +2116,11 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts
     if (@import("builtin").optimize == .debug and !node_base.wrapper.isEmpty())
         std.debug.panic("Node: a {s} was released with its wrapper slot still bound - its wrapper must end first (engine.platformObjectDestroyed; at the Browser's end engine.releaseNodeWrappers, before the teardown sweeps)", .{instance.vtable.name});
     dom_module.observer_registrations.releaseList(instance, node_base);
+    // Its event listener list is a field of the rare block (lane nm3):
+    // EventTarget releases what the listeners own and the list's block,
+    // before the block that names them goes. A test of one word for nearly
+    // every node, which has no list.
+    if (node_base.hasEventListenerBlock()) dom_module.event_handlers.releaseNodeListeners(instance);
     node_base.deinitRareData();
     _ = runtime.instance_lifecycle.markCleanupStarted(instance);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
@@ -2086,8 +2131,21 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts
     // and a Browser that asked: runtime.BrowserScope.poisonsReleasedNodes), so
     // a read of a released NodeBase still faults the way a read of the freed
     // one did.
-    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes())
+    // The State chain's live bits are a byte of the NodeBase and outlive it:
+    // a level above Node's that this release finds still set (a sweep's
+    // order) is still its own teardown's to clear. Kept across the poison.
+    // The owner word too (lane uaf1): the 0 the bridge just wrote says
+    // "released, the block still this node's own" in every build, so the
+    // poison in that word says one thing - the arena freed the block - and a
+    // liveness test that reads it panics in a Debug build
+    // (NodeBase.freed_owner_word). The poison's low bit used to read there
+    // as "no Instance": a read of a freed block answered "gone" by accident.
+    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes()) {
+        const live = node_base.live;
         @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
+        node_base.live = live;
+        node_base.setOwnerInstance(null);
+    }
     // "The node has no NodeBase from here": this level's live bit, which
     // every reader of this state passes first (Registry.get). It was a null
     // `node_base` pointer; both of the callers cleared the bit right after.

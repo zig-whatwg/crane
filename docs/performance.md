@@ -184,6 +184,30 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   its `settled` mark - what the workload left behind. Each timed page also gets its own row,
   `page.<file>`: its footprint from its load mark to its done mark (after the settle time) and the
   launch's peak. The report compares the steady footprint, and shows the peak beside it.
+  The footprints at the begin and end marks are single readings of whatever the page is in the
+  middle of, and no figure is taken from them alone. On the worker rows the end mark is answered
+  while the workers the sample just terminated are still ending on their own threads (measured
+  2026-11-15: 1 to 4 of them alive at every end mark and gone 1 to 5 ms later, the footprint then
+  the settled mark's), and the last step of a chain reads wherever the collector's sawtooth is. A
+  pair's memory is judged on the steady footprint and the peak.
+- **A page that goes idle gives the allocator's free memory back** (lane idle1, 2026-11-16;
+  `src/browser/memory_release.zig`): once a window's event loop has had nothing to run for 200 ms
+  it starts a release of the system allocator's free memory on a detached thread - once per idle
+  stretch, and for the whole process not again until 20 times the release's duration has passed,
+  at least 5 seconds, and 30 seconds after a release that returned under 1 MiB (WebKit's numbers).
+  The settle time is 500 ms, so a `settled` mark reads after the release where the hold-off let
+  one start. On Linux (glibc `malloc_trim(0)`) that lowers the rows that follow a large free:
+  server1, the tip against main ca7726f6964, 7 launches a side - settled resident memory x0.943
+  over 51 rows with no row above x0.995 (`streams.transform-chain` and `streams.blob-stream` 517
+  -> 366 MB; the `dom.*` attribute rows 92.6 -> 81.9 MB; the page peaks x0.955 to x0.995), time
+  x0.985 over 50 rows with no row outside the base's own spread. The first three streams rows stay
+  near 510 MB: the process's first release, at the page's first idle stretch, returns under 1 MiB,
+  and the next is held off for 30 seconds. On macOS nothing is returned: since macOS 26 the system
+  allocator ignores `malloc_zone_pressure_relief`, the one public call (chat.local, 27.0.1: time
+  x0.999, footprint x1.004 on the default pass and x0.992 with `MallocLargeCache=0`; three
+  `events.*` rows read 1.5 MB higher on the default pass in every launch and the same, 31 MB,
+  with the ring off - the reclaim ring's phase, not bytes held). A row timed while a release
+  runs does not wait for it; an allocation from the arena glibc is trimming at that moment does.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a
@@ -352,7 +376,41 @@ workload both ran it gives the tip's figure over the base's for time, steady mem
 memory. Each ratio has a noise band: 10%, or three times the runs' spread where that is wider
 (memory never under 10%). A workload with any ratio outside its band has moved, and every one
 that moved is listed. Two geometric means, time and steady memory, are taken over the headline's
-workloads. Before the tip's rows are set beside the browsers' last ones, the base must be within
+workloads. A row whose runs read in two memory levels - two tight groups of launches at least 3%
+apart, each of two runs or more (on macOS the system allocator gives freed pages back in steps, so
+`dom.event-ctor` and the rows after it read 143.5 MB in some launches and 162.5 MB in the others
+with the same bytes allocated) - keeps the median of all runs as its figure, shows both levels
+with their counts beside it on a Crane build's rows ("two levels: 143.5 MB x3 / 162.5 MB x7"; a
+browser's row gets no such note), and is compared level
+against level where one Crane build is checked against another - the tip against its base here,
+and a drift control against the round it repeats: low with low and high with high, their
+geometric mean judged against the band, and a side with one level set against the level of the
+other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
+a row: read it with care, a side that truly moved by the whole gap looks the same). The two
+levels `fetch.loopback-gzip` read until 2026-11-16 had another cause, an under-count: V8's
+default in-sandbox allocator gives free 1 MiB chunks up with `MADV_FREE_REUSABLE` and hands them
+out again without `MADV_FREE_REUSE`, and macOS leaves such pages out of the footprint though they
+are written again (lane mem2: 100-103 MB in 14 launches of 20 and 139-141 MB in 6; lesson
+testing-two-footprint-levels-with-equal-dirty-bytes-are-one-level-undercounted.md). Crane now has
+its own in-sandbox allocator (lane ab1, `src/runtime/engines/v8/sandbox_allocator.zig`), which
+recommits the pages a block uses before it hands them out, so the footprint is the process's
+dirty pages less about 1 MB in every launch. **The rows read after many ArrayBuffers were freed
+rose with that merge, and the rise is the reading, not memory** (chat.local, 20 launches a side,
+the tip against main 4d4cedb50d9; MB, median, with libmalloc's deferred reclamation off in
+brackets): `fetch.loopback-gzip` 105.1 -> 145.4 (78.7 -> 119.7), its peak the same;
+`fetch.loopback-br` steady 130.5 -> 131.7 (101.6 -> 103.2) and peak 131.9 -> 157.0 (101.7 ->
+131.0); `fetch.loopback-stream` steady 97.5 -> 99.1 (78.7 -> 80.3) and peak 101.7 -> 135.1 (84.2
+-> 108.8). With every in-sandbox allocation logged, the two allocators hold the same for the
+same live bytes: dirty pages less live in-sandbox bytes 79.9-82.8 MiB on the tip and 79.3-81.7
+on main, four launches each. What these rows hold at their mark is garbage V8 has not freed yet,
+and how much is left differs from launch to launch on either allocator - on the gzip row 36 to
+39 of its 1 MiB bodies and none to 41 of the stream row's 176 KiB pieces, 36 to 46 MiB - so the
+gzip row's launches spread over about 10 MB (113-122 with the reclamation off) and
+`fetch.loopback-stream` reads about 80 MB in 15 launches of 20 and about 122 in the other 5:
+two states of the collector, both counted, not one level under-read (lesson
+testing-footprint-levels-of-uncollected-garbage-hold-different-live-sets.md). A round measured
+before that merge is low on these rows by what was reused, up to about 42 MB. Every published ratio - Crane against a browser,
+ReleaseFast against ReleaseSafe, a round against the first - stays the medians'. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
 

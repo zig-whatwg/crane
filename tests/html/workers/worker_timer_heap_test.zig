@@ -156,3 +156,82 @@ test "a worker loop's turn reads as little after 5,000 timers were armed and cle
         return error.BurstLeftTurnsSlow;
     }
 }
+
+/// How many timers `WaitHost` chains, and how long each is.
+const wait_count = 40;
+const wait_ms = 3;
+
+/// The worker's part of the test below: forty 3 ms timers, each armed by
+/// the one before, and nothing else to do. Read by the test once the thread
+/// is joined.
+const WaitHost = struct {
+    timers: ?*NativeTimerManager = null,
+    timer: ?runtime.TimerInterface = null,
+    link: ?*WorkerLink = null,
+    ran: usize = 0,
+    polls_at_start: u64 = 0,
+    polls_at_end: u64 = 0,
+    failed: bool = false,
+
+    fn host(self: *WaitHost) WorkerThread.Host {
+        return .{ .data = self, .start = startOnThread, .end_realm = endRealm, .free = free };
+    }
+
+    fn startOnThread(data: ?*anyopaque, thread: *WorkerThread) bool {
+        const self: *WaitHost = @ptrCast(@alignCast(data.?));
+        self.timers = thread.loop.timers;
+        self.timer = thread.loop.timerInterface();
+        self.link = thread.link;
+        self.polls_at_start = self.timers.?.probe.polls;
+        return self.timer.?.setTimeout(wait_ms, step, self) != 0;
+    }
+
+    fn step(data: ?*anyopaque) void {
+        const self: *WaitHost = @ptrCast(@alignCast(data.?));
+        self.ran += 1;
+        if (self.ran == wait_count) {
+            self.polls_at_end = self.timers.?.probe.polls;
+            _ = self.link.?.requestClose();
+            self.link.?.wake();
+            return;
+        }
+        if (self.timer.?.setTimeout(wait_ms, step, self) == 0) {
+            self.failed = true;
+            _ = self.link.?.requestClose();
+        }
+    }
+
+    fn endRealm(_: ?*anyopaque, _: *WorkerThread) void {}
+    fn free(_: ?*anyopaque) void {}
+};
+
+test "a worker's loop waits through a timer's last sub-millisecond: it does not turn without a wait until the timer is due" {
+    const owner_sink = try TaskSink.create(allocator);
+    defer owner_sink.release();
+    const link = try WorkerLink.create(allocator, owner_sink);
+    defer link.release();
+
+    var chain: WaitHost = .{};
+    var owner: Owner = .{};
+    try WorkerThread.spawn(allocator, link, chain.host(), owner.owner(), null);
+    try testing.expect(spinUntil(owner_sink, &owner.ended, 60_000));
+    try testing.expect(!chain.failed);
+    try testing.expectEqual(@as(usize, wait_count), chain.ran);
+
+    // A count, not a time. A worker's turn polls its timers once, after its
+    // wait (worker_event_loop.zig turn, steps 5 and 6), and with nothing
+    // else to do a turn that WAITS for the next timer waits to its deadline:
+    // a turn or two for each timer. `poll_bound` allows five.
+    //
+    // The loop took the time to the next timer in whole milliseconds, rounded
+    // down, and "under a millisecond" for "do not wait" (waitBound): it
+    // waited 2 of a timer's 3 ms and turned without a wait through the rest
+    // (the window's loop did the same: tests/html/rep2_window_wake_test.zig
+    // says what that cost a thread on a busy host).
+    const polls = chain.polls_at_end - chain.polls_at_start;
+    const poll_bound = wait_count * 5;
+    if (polls > poll_bound) {
+        std.debug.print("a worker's loop polled its timers {d} times for forty 3 ms timers (at most {d} when it waits for each)\n", .{ polls, poll_bound });
+        return error.LoopTurnsWithoutWaiting;
+    }
+}

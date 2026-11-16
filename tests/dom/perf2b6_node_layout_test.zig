@@ -6,8 +6,9 @@
 //!   asserted where a node and an EventTarget are made - so what it allocates
 //!   comes from `runtime.allocatorOf(instance)`, found from its address
 //!   (docs/lessons/architecture-a-nodes-creation-allocator-is-its-browsers-only-inside-a-browser.md).
-//!   A NodeBase no Instance owns (the tests' fixtures and WithBase types) names
-//!   its allocator in its owner word instead.
+//!   (A NodeBase no Instance owned - the tests' fixtures and the WithBase
+//!   types - named its allocator in its owner word instead, until lane wb1
+//!   retired them.)
 //! - The `_internal` pointer of every level whose state is kept by value or is
 //!   empty (8 bytes a level, five on a div): one live word at the chain's root
 //!   instead (tests/runtime/perf2b6_live_flags_test.zig).
@@ -87,7 +88,8 @@ fn Own(comptime State: type) type {
 
 test "NodeBase keeps no allocator copy, no last_child, no holds chain" {
     // 112 at main f7853e77e9a: - 16 (the allocator: an owned node's is its
-    // Browser's, an owner-less one's is named by its owner word) - 8
+    // Browser's; an owner-less one's was named by its owner word until lane
+    // wb1 retired those) - 8
     // (last_child: the first child's previous link). 88 until the wrapper
     // redesign's P6 (lane wr1 batch 6): - 8 (`holds`, node_holds' chain -
     // holders trace their nodes from their wrappers instead, design 3.4).
@@ -134,10 +136,15 @@ test "no embedded or empty level keeps an `_internal` pointer; a separate block'
 // A div's generated part (72 bytes after this batch) is pinned in ONE place since lane cg1:
 // tests/dom/node_block_sizes_test.zig.
 
-test "a text node's State spends 16 bytes on pointers and the live word, in an exact-size block" {
+test "a text node's State spends nothing beyond its levels' states, in an exact-size block" {
     const S = interfaces.Text.State;
-    // 40 at main: 4 `_internal` pointers + cached_childNodes.
-    if (@sizeOf(S) - embeddedBytes(S) != 16) {
+    // 40 at main: 4 `_internal` pointers + cached_childNodes; 16 after this
+    // batch (the live word and the cache); 8 since lane nm2 moved the
+    // childNodes cache to the node's rare block; 0 since lane nm3: a node's
+    // live bits are a byte of its NodeBase, and its State nests no
+    // EventTarget level (the whole block's size is pinned in
+    // node_block_sizes_test.zig).
+    if (@sizeOf(S) - embeddedBytes(S) != 0) {
         printLayout(S);
         std.debug.print("Text.State: {d} bytes, {d} embedded\n", .{ @sizeOf(S), embeddedBytes(S) });
         return error.SizePinMoved;

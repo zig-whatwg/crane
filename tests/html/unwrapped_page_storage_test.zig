@@ -172,7 +172,7 @@ const engine = @import("engine");
 /// The first or last element child of `node`, found natively - reading it
 /// from script would wrap it.
 fn elementChild(node: *dom.NodeBase, comptime first: bool) ?*dom.NodeBase {
-    var child = if (first) node.first_child else node.lastChild();
+    var child = if (first) node.firstChild() else node.lastChild();
     while (child) |c| : (child = if (first) c.next_sibling else c.previousSibling()) {
         if (c.node_type == dom.NodeBase.ELEMENT_NODE) return c;
     }
@@ -180,7 +180,7 @@ fn elementChild(node: *dom.NodeBase, comptime first: bool) ?*dom.NodeBase {
 }
 
 fn instanceOf(node: *dom.NodeBase) *runtime.Instance {
-    return @ptrCast(@alignCast(node.ownerInstance().?));
+    return node.instance();
 }
 
 fn customElementsMarked() !void {

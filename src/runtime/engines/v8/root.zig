@@ -114,10 +114,10 @@ pub const zig_callbacks = @import("zig_callbacks.zig");
 /// V8 Type Conversion Helpers - Safe type checking before pointer casts
 pub const helpers = @import("helpers.zig");
 
-/// A platform object's wrapper has one internal field, its instance: the
-/// brand check is the instance's state ancestry, not a WrapperTypeInfo (lane
-/// v8up A0; interface.zig INTERNAL_FIELD_COUNT).
-pub const INTERNAL_FIELD_COUNT = interface_mod.INTERNAL_FIELD_COUNT;
+/// A realm's global has one internal field, its instance; no other wrapper
+/// has any - a platform object's instance is behind v8::Object::Wrap
+/// (interface.zig GLOBAL_INTERNAL_FIELD_COUNT; platform_anchor.zig).
+pub const GLOBAL_INTERNAL_FIELD_COUNT = interface_mod.GLOBAL_INTERNAL_FIELD_COUNT;
 
 /// V8 Callback Wrapper for callback interfaces (EventListener, NodeFilter, etc.)
 pub const callback_wrapper_mod = @import("callback_wrapper.zig");
@@ -148,6 +148,17 @@ pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 
 /// [external_memory]: the host's native memory reported to the isolate.
 pub const external_memory = @import("external_memory.zig");
+/// Crane's in-sandbox allocator: the memory behind ArrayBuffers and V8's own
+/// in-sandbox blocks, in place of V8's default (lane ab1).
+pub const sandbox_allocator = @import("sandbox_allocator.zig");
+/// Its V8 side: what v8_wrapper.cpp's CraneInSandboxAllocator calls, and the
+/// tests' hooks.
+pub const sandbox_allocator_exports = @import("sandbox_allocator_exports.zig");
+comptime {
+    // v8_wrapper.cpp links against the file's `export fn`s in every binary
+    // that links V8, whether or not any Zig code names them.
+    _ = sandbox_allocator_exports;
+}
 /// The young generation's size, a build option of this adapter
 /// (-Dv8-young-generation-mb), as V8's ResourceConstraints take it
 /// (tests/v8/young_generation_limit_test.zig).

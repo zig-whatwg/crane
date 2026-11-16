@@ -337,8 +337,8 @@ test "a pending-activity keep taken before the wrap holds the wrapper the bindin
     try page.run("globalThis.d = new Document(); globalThis.p = d.createElement('p'); p.innerHTML = '<span></span>';");
     queue.drainAll();
     const p = try page.instance("p");
-    const span_node = dom.instance_bridge.getNodeBase(p).?.first_child.?;
-    const span: *runtime.Instance = @ptrCast(@alignCast(span_node.ownerInstance().?));
+    const span_node = dom.instance_bridge.getNodeBase(p).?.firstChild().?;
+    const span: *runtime.Instance = span_node.instance();
     try testing.expect(runtime.lifetime.slotOf(span_node).isEmpty());
     engine.keepPlatformObjectAlive(span);
     try page.run("p.firstChild.expando = 3;");

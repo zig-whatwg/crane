@@ -61,7 +61,7 @@ pub const RegisteredObserver = struct {
 };
 ```
 
-Usage in `attr_with_base.zig`:
+Usage, as `attr_with_base.zig` had it (that file and the other WithBase node types were removed by lane wb1, 2026-11-16; the pattern is the same in any struct):
 
 ```zig
 const handles = @import("handles.zig");

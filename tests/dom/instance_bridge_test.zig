@@ -63,11 +63,11 @@ test "a node's NodeBase is its own, names it back, and is the tree's" {
     const div_base = bridge.getNodeBase(div) orelse return error.NoNodeBase;
     const text_base = bridge.getNodeBase(text) orelse return error.NoNodeBase;
     const document_base = bridge.getNodeBase(page.document) orelse return error.NoNodeBase;
-    try testing.expectEqual(@as(?*anyopaque, div), div_base.ownerInstance());
-    try testing.expectEqual(@as(?*anyopaque, text), text_base.ownerInstance());
-    try testing.expectEqual(@as(?*anyopaque, page.document), document_base.ownerInstance());
-    try testing.expectEqual(text_base, div_base.first_child.?);
-    try testing.expectEqual(div_base, document_base.first_child.?);
+    try testing.expectEqual(@as(?*runtime.Instance, div), div_base.registeredInstance());
+    try testing.expectEqual(@as(?*runtime.Instance, text), text_base.registeredInstance());
+    try testing.expectEqual(@as(?*runtime.Instance, page.document), document_base.registeredInstance());
+    try testing.expectEqual(text_base, div_base.firstChild().?);
+    try testing.expectEqual(div_base, document_base.firstChild().?);
     try testing.expectEqual(div_base, bridge.getNodeBase(div).?);
     // Typed and untyped agree.
     try testing.expectEqual(div_base, bridge.getNodeBaseTyped(runtime.Instance, div).?);

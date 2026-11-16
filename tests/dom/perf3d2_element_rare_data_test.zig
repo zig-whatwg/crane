@@ -35,7 +35,7 @@ const element_data = dom.element_data;
 const ElementData = element_data.ElementData;
 
 /// Whether D2's rare data is in this build.
-const has_rare = @hasDecl(dom, "element_rare_data");
+const has_rare = @hasDecl(dom, "node_rare_data");
 
 fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
@@ -106,7 +106,9 @@ test "Element's InternalState: the cold fields are rare data, the slot name its 
     // association became a one-byte place, -40; item 2 the slottable state
     // went to rare data (tests/dom/perf3e1_slottable_test.zig), -64.
     try expectNoFields(ElementState, .{ "references", "shadow_root", "shadow_root_kept", "custom_element_definition", "is_value", "named_node_map", "named_node_map_generation", "slot" });
-    if (comptime !@hasField(ElementState, "rare")) {
+    // The rare data's word is the element's NodeBase's since lane nm2
+    // (tests/dom/nm2_one_rare_block_test.zig); it was a field here.
+    if (comptime @FieldType(dom.NodeBase, "rare") != dom.node_rare_data.Holder) {
         printLayout(ElementState);
         return error.NoRareData;
     }
@@ -141,7 +143,7 @@ test "the rare data is one sparse block, made only for the elements that use it:
     // slottable state 64), made for any one field. Since lane rare1 it is
     // an 8-byte header and an 8-byte slot per field set
     // (tests/dom/rare1_sparse_rare_data_test.zig).
-    try testing.expectEqual(@as(usize, 16), dom.element_rare_data.blockBytesFor(1));
+    try testing.expectEqual(@as(usize, 16), dom.node_rare_data.blockBytesFor(1));
 }
 
 // ============================================================================
@@ -193,7 +195,7 @@ const Page = struct {
 /// `element`'s rare block, or null when it has none (or D2 is not in).
 fn rareOf(element: *runtime.Instance) ?*anyopaque {
     if (comptime !has_rare) return null;
-    return @ptrCast(dom.element_rare_data.of(element).block orelse return null);
+    return @ptrCast(dom.node_rare_data.of(element).block orelse return null);
 }
 
 // ============================================================================
@@ -264,7 +266,7 @@ test "each rare field goes into the one block, and every field works" {
     // Every field above went into the same block, which moved as it grew
     // (lane rare1): the map and the shadow root with their generations, the
     // Attr node list, the nonce, the style object and its generation.
-    try testing.expectEqual(@as(u32, 8), dom.element_rare_data.of(page.div).fieldCount());
+    try testing.expectEqual(@as(u32, 8), dom.node_rare_data.of(page.div).fieldCount());
 
     // An element made with a prefix keeps it in its name record (lane nd2
     // N2; rare data of its own before): it makes no rare data.

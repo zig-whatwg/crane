@@ -59,7 +59,7 @@ engine pointer or a flag saying who frees it.
 
 | Type | Meaning |
 |---|---|
-| `Context` | A realm's identity (`runtime.Context`). BORROWED wherever it is a parameter; stable until the realm is torn down. A retired realm has no engine realm behind it. Work queued on the realm's own agent may keep a Context across turns: a torn-down realm's record stays valid and inert until its agent ends (the V8 adapter retires it, `context_manager` `retired`), and `hasEngine()` turns false at retirement. Keeping one is not a root. Check `hasEngine()` before each step that enters the realm, and pass operations only a live one; a retired one may only be compared. Precedent: `src/webcrypto/tasks.zig`. |
+| `Context` | A realm's identity (`runtime.Context`). BORROWED wherever it is a parameter; stable until the realm is torn down. A retired realm has no engine realm behind it. Work queued on the realm's own agent may keep a Context across turns: a torn-down realm's record stays valid and inert until its agent ends (the V8 adapter retires it, `context_manager` `retired`), and `hasEngine()` turns false at retirement - or earlier, when the collector takes a detached realm, whose end is then a queued task (until it runs the realm's Window and tree are still allocated, and its wrapped objects are kept for the realm's end to free). `engineGone()` (lane tl1) is true from that moment on and tells such a realm from a context made with no engine at all: `Instance.releaseIfUnwrapped` frees a never-wrapped object of a realm whose engine has gone, and leaves one of a context that never had an engine. Keeping one is not a root. Check `hasEngine()` before each step that enters the realm, and pass operations only a live one; a retired one may only be compared. Precedent: `src/webcrypto/tasks.zig`. |
 | `Agent` | An ECMAScript agent: a V8 isolate, a JSC context group. Opaque. |
 | `JSValue` | The IDL-level value (`runtime.JSValue`). As a parameter, always BORROWED for the call. As an impl's RESULT, the binding's: it releases it once set. Its handle carries no ownership flag - the holder's type says who releases it. |
 | `Instance` | A platform object: the host's side of a wrapper. It lives no longer than its realm: at the realm's end its wrapper cache frees every Instance it alone wraps (a node still in a tree excepted) and severs the wrapper. A traceChild edge or an Owned value roots the wrapper, not the Instance. So a pointer to an Instance kept across turns is valid only while its realm `hasEngine()`. Keep that realm's Context beside it and check it before every dereference, never through the Instance's own `ctx`. (Blink keeps a reachable object alive past its context; Crane does not yet: feature-queue "cross-realm Instance lifetime".) |
@@ -182,12 +182,48 @@ host's struct. Where
 moved, at its safe points - the outermost binding exit back into script and
 each microtask checkpoint outside a DOM algorithm - once it moved
 `ExternalMemory.report_step` (128 KB, V8's own re-check step), and the agent's
-end takes back all it reported. The binding exit pays nothing for it: the host
+end takes back all it reported. The figure is what is counted LESS the trees
+decided dead (`ExternalMemory.live` = `held()` - `dying`): a tree's bytes
+leave it where the counts queue the tree for its sliced free
+(dom.refcount_teardown.settle, `DeferredTeardown.Dying`), not when its slices
+free them, and go back into it when the tree is held again - an engine sets
+its next collection threshold from what it is told is alive, and a counter
+that fell only at the free told it the dead were alive (lane dm1's design,
+lane dm2's batch A: the trees whose count reaches zero outside a full
+collection). Where `external_memory_at_collection` is native the trees a
+FULL collection makes dead leave the figure inside that collection (lane
+dm2's batch B): at the end of its marking the adapter hands the owner of
+the counts the wrappers it found dead, their references still held
+(runtime.lifetime's `dyingWith` hook, dom.dying_trees: a dead wrapper proves
+nothing the collector kept reaches its tree, so the tree dies unless a
+native reference its root shows holds it), the bytes of the trees that die
+with them leave the figure into a pool (`ExternalMemory.predictDead`), and
+the adapter takes them off its engine's count before the engine computes
+its next threshold. Each such tree's queueing, at the release of the
+wrappers' references, takes its bytes from the pool and not from the figure
+again; what no queueing took once every reference is released was predicted
+dead and lived, and goes back (`settlePredictions`; Debug builds count those
+trees, `DeferredTeardown.Books.mispredicted`). The binding exit pays nothing
+for the report: the host
 owes the report on the claiming agent's queue (`DeferredTeardown.Owed.report`),
 and the exit's one check of what the queue owes runs the adapter's
 `report_steps`. V8: Isolate::AdjustAmountOfExternalAllocatedMemory
 (external_memory.zig), as Blink's V8GCController::reportDOMMemoryUsageToV8 did
 before its unified heap. A worker's agent is given none: workers have no nodes.
+What the instances behind NON-node wrappers hold (an Event, a URLSearchParams,
+a collection's own state) is not in the host's figure: the V8 adapter keeps
+that sum itself, one per agent - workers included - and by the same rule
+(lane dm3, batch C of lane dm1's design): each wrapper-cache record adds what
+its instance holds when the cache takes the wrapper and keeps the amount; it
+leaves the figure where a collection finds the wrapper dead, never at the
+instance's free. What V8 is told is that figure plus what died since the last
+full collection: a wrapper a YOUNG collection dropped stays in V8's count
+until the next full collection's end of marking, where one decrease, before
+V8 computes its limits, takes away that collection's dead and everything
+that died since the one before (the user's ruling of 2026-11-15: as the
+object behind a dropped wrapper stays on Blink's heap until a full
+collection) (v8_wrapper.cpp, "What the instances behind non-node wrappers
+hold"; wrapper_cache.zig `noteWrapped`, `takeHeld`).
 
 **A native walk holds teardowns.** A teardown can run inside any engine call
 that allocates: V8 runs every pending second pass in the prologue of the next
@@ -406,6 +442,7 @@ capability the branch compiles out.
 | `seeded_random` | native (`AgentOptions.random_seed` goes into the isolate's record before it initializes; the V8::SetEntropySource callback, installed once by v8_Platform_Start, answers that seed for every random number generator V8 makes while the isolate is current - its own, which seeds each context's Math.random (math-random.cc) - and false otherwise, so an unseeded isolate gets V8's own entropy exactly as before; never the process-wide --random-seed, which gives every isolate one sequence) | unsupported - JSGlobalObject's weak random is seeded by the private, process-wide forceWeakRandomSeed option; emulation is possible by replacing Math.random per global with JSObjectMakeFunctionWithCallback | Math.random keeps the engine's entropy: a seeded Browser replays its timers but not Math.random |
 | `repl_mode` | native (an inspector session of the agent's own - V8Inspector::create on the agent's isolate, made on the console's first use, deleted at the agent's end after its last checkpoint - dispatching Runtime.evaluate with `replMode: true`, as Chrome DevTools' console and Deno's REPL do; V8 13.1's REPL scripts, v8::debug::EvaluateGlobal's repl flag, are public only through the inspector) | unsupported - no REPL mode in the public C API (QuickJS: JS_EVAL_FLAG_ASYNC, not wired) | the console evaluates each input as a classic script of its own (`evaluateClassicScript`) - no top-level await, a re-declaration is a SyntaxError, every line is a whole input - and says so when it starts |
 | `external_memory` | native (`AgentOptions.external_memory`: the figure's change goes to Isolate::AdjustAmountOfExternalAllocatedMemory at the outermost binding exit and each microtask checkpoint outside a DOM algorithm, in 128 KB steps, through the agent's v8::ExternalMemoryAccounter, and the agent's end takes back what it reported; V8 15.7 counts the figure toward its global allocation limit, starts incremental marking when that is reached and collects when it is overshot by a large margin - Heap::UpdateExternalMemory) | unsupported - JSReportExtraMemoryCost is not public API (QuickJS counts only its own allocations) | the option is ignored: the engine collects on its own heap's growth alone, so a dropped wrapper's native tree waits for a collection that growth brings |
+| `external_memory_at_collection` | native (at the end of a full collection's marking - the node anchors' weak processing, node_wrappers.zig `markedCallback` - the adapter offers runtime.lifetime's `dyingWith` hook the node wrappers THIS collection's marking found dead, never one an earlier young collection dropped, and tells V8 the figure as it then stands with one ExternalMemoryAccounter::Decrease, which starts no collection: before Heap::RecomputeLimits, so the next limit is set from survivors - external_memory.zig `endOfMarking`; when its drain has released every recorded reference it settles what was predicted, `releasesDone`) | unsupported (JavaScriptCore would be EMULATED with its internal API: a full collection zeroes the extra-memory sum and SlotVisitor::reportExtraMemoryVisited adds what each visited wrapper keeps - not in the public C API) | the engine hears of a death at the agent's next safe point, when the dead wrapper's reference is released and the counts queue its tree - after the collection that found it dead computed its next threshold with the tree in the figure |
 | `wrapper_tracing` | native (the wrapper redesign: the walk, dom.wrapper_tracing reached from NodeAnchor::Trace and the keeps in the collection's atomic pause, and from P6 the holders' traces, reached from each holder wrapper's HolderAnchor; P7 deleted node tracing's JS edges - wrapper_cache.zig drawTreeEdges and the upward closure - so `joinOpaqueRoot` / `leaveOpaqueRoot` / `keepOpaqueRoot` for a node compile out) | unsupported - no node is wrapped (QuickJS's gc_mark would call the hook; public-API JavaScriptCore would emulate with opaque-root edges, design section 5) | only a wrapper script reaches is kept: an expando on a node script reaches only through its tree can be lost |
 
 Flip a JavaScriptCore capability when an iOS release makes the API public.

@@ -63,6 +63,7 @@ const template_contents = @import("template_contents.zig");
 const refcount_audit = @import("refcount_audit.zig");
 const refcount_teardown = @import("refcount_teardown.zig");
 const wrapper_tracing = @import("wrapper_tracing.zig");
+const dying_trees = @import("dying_trees.zig");
 
 const log = std.log.scoped(.refcount);
 
@@ -294,8 +295,9 @@ fn up(ledger: ?*const Ledger, node: *NodeBase) ?*NodeBase {
 /// The live host of a `hosted` node, through the hook modules that own the
 /// two links (dom.template_contents answers for shadow roots too).
 fn hostOf(node: *NodeBase) ?*NodeBase {
-    const raw = node.ownerInstance() orelse return null;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    // Null for a node already released (a teardown walks up from a node
+    // whose hosted root went first).
+    const instance = node.registeredInstance() orelse return null;
     const host = template_contents.host(instance) orelse return null;
     return instance_bridge.getNodeBaseUnaudited(host);
 }
@@ -505,7 +507,7 @@ fn bumpTreeVersion(counts: *DocumentCounts, mutated: Mutated) void {
 noinline fn renderingWatchFired(mutated: Mutated) void {
     const instance: *runtime.Instance = switch (mutated) {
         .instance => |node_instance| node_instance,
-        .node => |node| @ptrCast(@alignCast(node.ownerInstance() orelse return)),
+        .node => |node| node.registeredInstance() orelse return,
     };
     // A Document's ownerDocument is null: the node is its own document.
     const document = (interfaces.Node.get_ownerDocument(instance) catch return) orelse instance;
@@ -594,6 +596,10 @@ pub fn install(owned: Hooks) void {
         // The wrapper redesign's P5: the walk the engine's collector runs
         // from a reachable or kept node (dom.wrapper_tracing).
         .trace_tree = wrapper_tracing.traceTree,
+        // Lane dm2, batch B: which trees die with the wrappers a full
+        // collection found dead, asked at the end of its marking
+        // (dom.dying_trees).
+        .dying_with = dying_trees.dyingWith,
     });
 }
 
@@ -920,7 +926,7 @@ fn addCreatorCensus(tree_root: *NodeBase, census: *CreatorCensus) void {
 /// The node after `node` in tree order within `tree_root`'s tree (not into
 /// hosted roots), or null at the end.
 pub fn nextInTree(tree_root: *NodeBase, node: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != tree_root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -949,8 +955,7 @@ pub fn documentCounts(document: *runtime.Instance) ?*DocumentCounts {
 /// The counts of the Document whose own node `document` is. The caller knows
 /// it is alive: it is a root it just walked to, or a node in its tree.
 fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
-    const raw = document.ownerInstance() orelse return null;
-    return documentCounts(@ptrCast(@alignCast(raw)));
+    return documentCounts(document.registeredInstance() orelse return null);
 }
 
 /// The counts of `node`'s node document, through the Node impl's accessor,
@@ -958,9 +963,9 @@ fn countsOfDocumentNode(document: *NodeBase) ?*DocumentCounts {
 /// generation it keeps; lane ownerdoc) rather than read freed memory.
 fn countsOfNodeDocument(node: *NodeBase) ?*DocumentCounts {
     if (node.node_type == NodeBase.DOCUMENT_NODE) return countsOfDocumentNode(node);
-    const raw = node.ownerInstance() orelse return null;
+    const instance = node.registeredInstance() orelse return null;
     const accessor = hooks.read().node_document_counts orelse return null;
-    return accessor(@ptrCast(@alignCast(raw)));
+    return accessor(instance);
 }
 
 fn addTo(field: *u32, delta: i64, what: []const u8) void {
@@ -1340,7 +1345,7 @@ pub fn checkAround(node: *NodeBase) void {
 /// Check every node of `tree_root`'s host-including subtree (tests).
 pub fn verifyTree(tree_root: *NodeBase) CheckError!void {
     try checkNode(tree_root, std.math.maxInt(usize));
-    var child = tree_root.first_child;
+    var child = tree_root.firstChild();
     while (child) |at| : (child = at.next_sibling) try verifyTree(at);
     var hosted: [2]?*NodeBase = undefined;
     for (hostedRootsOf(tree_root, &hosted)) |maybe| if (maybe) |hosted_root| try verifyTree(hosted_root);
@@ -1352,8 +1357,7 @@ pub const hostedRoots = hostedRootsOf;
 
 fn hostedRootsOf(node: *NodeBase, out: *[2]?*NodeBase) []?*NodeBase {
     out.* = .{ null, null };
-    const raw = node.ownerInstance() orelse return out[0..0];
-    const instance: *runtime.Instance = @ptrCast(@alignCast(raw));
+    const instance = node.registeredInstance() orelse return out[0..0];
     if (node.is_shadow_host) {
         if (shadow_hosts.rootForHost(instance)) |shadow| out[0] = instance_bridge.getNodeBaseUnaudited(shadow);
     }
@@ -1367,22 +1371,21 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
     if (hasParentBit(node) != (node.parent_node != null)) return error.ParentBitMismatch;
     if (node.rc_flags.hosted and node.parent_node != null) return error.FlagMismatch;
     if (node.rc_flags.foreign and (node.parent_node != null or node.rc_flags.hosted or !countsAsForeign(node))) return error.FlagMismatch;
-    // A detached root of a document is counted there - for a node made
-    // through the WebIDL layer, whose node document is set through
-    // Node.setOwnerDocument (a NodeBase built outside it has no counts).
-    if (node.ownerInstance() != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
+    // A detached root of a document is counted there - while it is
+    // registered (a root already released by its teardown left the counts).
+    if (node.registeredInstance() != null and node.parent_node == null and !node.rc_flags.hosted and countsAsForeign(node) and !node.rc_flags.foreign) return error.FlagMismatch;
     // A node with more children than `fanout` is not checked (a bounded
     // walk of its links: a node keeps no child list).
     {
         var children_seen: usize = 0;
-        var walked = node.first_child;
+        var walked = node.firstChild();
         while (walked) |at| : (walked = at.next_sibling) {
             children_seen += 1;
             if (children_seen > fanout) return;
         }
     }
     var total: u64 = @intFromBool(isHeld(node));
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |at| : (child = at.next_sibling) total += at.subtree_holds;
     var hosted: [2]?*NodeBase = undefined;
     for (hostedRootsOf(node, &hosted)) |maybe| if (maybe) |hosted_root| {
@@ -1396,17 +1399,20 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
 // Ref, GCReachableRef, WeakRef
 // ============================================================================
 
+/// The one counted type. `Ref(T)` and its siblings took any struct whose
+/// first field was a NodeBase and cast to it - the shape of the WithBase node
+/// types, which lane wb1 retired: a platform node's NodeBase is a field of
+/// its State block, never the start of a struct. The parameter stays so the
+/// call sites read as before (`Ref(NodeBase)`); anything else is refused.
+pub const counts_only_node_base = true;
+
 fn nodeBaseOf(comptime T: type, ptr: *T) *NodeBase {
-    if (T == NodeBase) return ptr;
-    return @ptrCast(ptr);
+    comptime assertNodeLike(T);
+    return ptr;
 }
 
 fn assertNodeLike(comptime T: type) void {
-    if (T == NodeBase) return;
-    const info = @typeInfo(T);
-    if (info != .@"struct" or info.@"struct".field_names.len == 0 or info.@"struct".field_types[0] != NodeBase) {
-        @compileError("Ref(" ++ @typeName(T) ++ "): a counted type is NodeBase or a node struct with NodeBase as its first field");
-    }
+    if (T != NodeBase) @compileError("Ref(" ++ @typeName(T) ++ "): the counted type is NodeBase");
 }
 
 /// One counted reference to a node (WebKit `Ref<T>`/`RefPtr<T>`; `?Ref(T)` is
@@ -1561,11 +1567,10 @@ pub fn WeakRef(comptime T: type) type {
         instance: *const runtime.Instance,
         generation: u64,
 
-        /// Null for a NodeBase with no owning Instance (built outside the
-        /// WebIDL layer): it has no generation to compare.
+        /// Null for a node already released by its teardown: it has no
+        /// slot generation to compare.
         pub fn of(ptr: *T) ?Self {
-            const owner = nodeBaseOf(T, ptr).ownerInstance() orelse return null;
-            const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
+            const instance: *const runtime.Instance = nodeBaseOf(T, ptr).registeredInstance() orelse return null;
             return .{ .ptr = ptr, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
         }
 
@@ -1584,19 +1589,5 @@ pub fn WeakRef(comptime T: type) type {
     };
 }
 
-// ============================================================================
-// Tests: the count word, holds, garbage. The types' own tests live in
-// tests/dom/refcount_test.zig (they need real nodes and the slab).
-// ============================================================================
-
-test "the parent bit and the count are independent" {
-    var node: NodeBase = undefined;
-    node.rc = NodeBase.rc_one;
-    try std.testing.expectEqual(@as(u32, 1), count(&node));
-    try std.testing.expect(!hasParentBit(&node));
-    setParentBit(&node, true);
-    try std.testing.expectEqual(@as(u32, 1), count(&node));
-    try std.testing.expect(hasParentBit(&node));
-    setParentBit(&node, false);
-    try std.testing.expectEqual(NodeBase.rc_one, node.rc);
-}
+// Tests: tests/dom/refcount_test.zig and its siblings (real nodes and the
+// slab; the count word's own test moved there with lane wb1).

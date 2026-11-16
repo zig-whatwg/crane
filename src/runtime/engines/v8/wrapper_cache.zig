@@ -1,66 +1,46 @@
 //! V8 Wrapper Identity Cache
 //!
-//! Per-context cache that maintains 1:1 mapping between Zig instances and V8 wrappers.
-//! Solves the wrapper identity problem where multiple calls to querySelector
-//! return different V8 wrappers for the same DOM element.
+//! Per-realm cache that maintains the 1:1 mapping between Zig instances and
+//! their V8 wrappers, and decides when a wrapped non-node platform object is
+//! torn down: when its wrapper dies.
 //!
-//! ## Problem Solved
+//! ## Identity
 //!
-//! **Before** (without cache):
 //! ```javascript
-//! const h1 = document.querySelector("header");
-//! const h2 = document.querySelector("header");
-//! console.log(h1 === h2); // false ❌ Different V8 wrappers!
+//! const p1 = url.searchParams;
+//! const p2 = url.searchParams;
+//! console.log(p1 === p2); // true: the one wrapper the realm's cache holds
 //! ```
 //!
-//! **After** (with cache):
-//! ```javascript
-//! const h1 = document.querySelector("header");
-//! const h2 = document.querySelector("header");
-//! console.log(h1 === h2); // true ✅ Same V8 wrapper cached!
-//! ```
+//! ## Architecture (lane wrap1 b3; tmp/plans/object-wrap-design.md 3.4)
 //!
-//! ## Architecture
-//!
-//! - **Key**: `*runtime.Instance` (Zig DOM instance pointer)
-//! - **Value**: `*anyopaque` (V8 Global<Object>* handle - persistent across scopes)
-//! - **Lifetime**: Weak callbacks automatically remove entries when V8 GC collects wrappers
-//! - **Scope**: Per-context (each V8 Context has its own cache)
-//!
-//! ## Usage
-//!
-//! During V8 Context initialization:
-//! ```zig
-//! var cache = try WrapperCache.init(allocator, context);
-//! defer cache.deinit();
-//! ```
-//!
-//! When wrapping an instance (in template_registry.wrapInstanceAsV8Object):
-//! ```zig
-//! // Check cache first
-//! if (cache.get(instance)) |cached_wrapper| {
-//!     return cached_wrapper; // Return existing wrapper
-//! }
-//!
-//! // Create new wrapper
-//! const v8_obj = createNewWrapper(instance, template, context);
-//!
-//! // Cache it with weak callback for GC cleanup
-//! try cache.set(instance, v8_obj, isolate);
-//! ```
-//!
-//! ## GC Integration
-//!
-//! Weak callbacks automatically clean up cache entries when V8 garbage collects wrappers:
-//! 1. V8 GC determines wrapper is no longer reachable
-//! 2. Weak callback fires with CacheEntry pointer
-//! 3. Callback removes entry from HashMap
-//! 4. Callback frees Global<Object>* handle
-//!
-//! ## Thread Safety
-//!
-//! NOT thread-safe. Each V8 Context is single-threaded, so the cache is also single-threaded.
-//! Multiple contexts can have separate caches on different threads.
+//! - **Key**: `*runtime.Instance`. **Value**: `*Cell`, the cache's 32-byte
+//!   record of the wrapper, from the cache's own pool. A node is never here:
+//!   its wrapper lives in the node's own slot (node_wrappers.zig).
+//! - **The wrapper** is held by a `v8::TracedReference` in the record, which
+//!   the wrapper's anchor on the agent's C++ heap names (v8_wrapper.cpp
+//!   PlatformAnchor, "The wrapper cache's records") - Blink's
+//!   `ScriptWrappable::wrapper_` with the wrapper's `Object::Wrap` pointer
+//!   back. The record's address is the handle every borrower gets (`get`):
+//!   it is valid, and reads empty once the wrapper is collected, until the
+//!   wrapper's finalizer frees the record at the agent's safe point.
+//! - **Collection**: a young-generation collection drops an unmodified
+//!   wrapper nothing reaches (`dropped`); a full collection's weak processing
+//!   finds every record whose anchor was not marked (`processWeak`). Either
+//!   takes the record out of the map and puts its finalizer on the agent's
+//!   queue; the instance's teardown (`finalizeEntry`) runs at the agent's
+//!   safe point, never inside the collector.
+//! - **A wrapper V8 will not drop in a young collection** (an Event, a
+//!   legacy platform object's proxy, one the binding changed) is held by a
+//!   weak `v8::Global` made in the record's own word, whose parameter is the
+//!   wrapper's anchor: its first pass hands the record to `dropped` as a
+//!   young collection's drop does (lane wrap2: no callback record, no map
+//!   node, no lock for the arm).
+//! - **A wrapper with no platform anchor** - a realm's global, which has its
+//!   own GlobalAnchor - is held as every wrapper was before this design: by a
+//!   weak `v8::Global` with a first-pass callback and a finalizer (a `boxed`
+//!   record).
+//! - **Scope**: per realm. Not thread-safe: a realm is its agent's thread's.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -69,6 +49,7 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const realm_finalizers = @import("realm_finalizers.zig");
 const node_wrappers = @import("node_wrappers.zig");
+const platform_anchor = @import("platform_anchor.zig");
 const tombstones = @import("webidl").utils.tombstones;
 /// Every map keyed by an instance hashes it under a seed of its own
 /// (infra.address_map): this cache's end frees objects by walking `cache`,
@@ -77,94 +58,60 @@ const address_map = @import("infra").address_map;
 
 const log = std.log.scoped(.wrapper_cache);
 
-/// Cache entry stored in the HashMap
+/// The cache's record of one wrapper: 32 bytes of the cache's own pool
+/// (`Chunk`), which the map names and - for a wrapper with a platform anchor
+/// - the anchor names too (v8_wrapper.cpp CraneWrapperCell mirrors the
+/// layout). It replaces what the cache kept per wrapper until lane wrap1 b3:
+/// an 88-byte entry, a weak `v8::Global` in a 16-byte box with V8's 32-byte
+/// global-handle node, and that handle's 48-byte callback record with its
+/// node in the adapter's armed-handle map.
 ///
-/// Contains both the V8 wrapper handle and backpointer to the cache for cleanup.
-const CacheEntry = struct {
-    /// V8 Global<Object>* handle (persistent wrapper)
-    wrapper: *anyopaque,
+/// Three kinds, told apart by `bits.boxed` and `bits.weak_handle`:
+/// - TRACED (the default: a non-node platform object's wrapper that V8 can
+///   drop in a young collection): `wrapper` IS a
+///   `v8::TracedReference<v8::Object>`, one word, attached by
+///   v8_WrapperCell_Attach. Blink keeps a wrapper the same way -
+///   `ScriptWrappable::wrapper_`, a TraceWrapperV8Reference traced by the
+///   object the wrapper points at (platform/bindings/script_wrappable.h:147,
+///   script_wrappable.cc:63-66; Chromium 157.0.8103.51). The collector tells
+///   the cache when the wrapper died (`WrapperCache.processWeak`, `dropped`).
+/// - WEAK HANDLE (a non-node platform object's wrapper that V8 will NOT drop
+///   in a young collection: `heldByWeakHandle`, `WrapperCache.changed`):
+///   `wrapper` IS a `v8::Global<v8::Object>`, made in place in the same one
+///   word, weak. Its parameter is the wrapper's anchor, which names the
+///   record as a traced one's does: V8's first pass for a dead wrapper
+///   reads the record through it and tells the cache (`dropped`), with
+///   nothing allocated for the arm (v8_wrapper.cpp
+///   `platformAnchorFirstPass`; lane wrap2 - until then the arm was a
+///   48-byte callback record and a node in the adapter's armed-handle map).
+/// - BOXED (an object with no platform anchor: a realm's global, which has
+///   its GlobalAnchor; a test's plain object): `wrapper` is the
+///   `Global<Object>*` the binding made, weak in the same way.
+///
+/// The record outlives its wrapper: a collection that takes the wrapper
+/// leaves the record `collected`, out of the map, its reference empty, until
+/// its finalizer (`finalizeEntry`) frees it at the agent's safe point - so a
+/// handle borrowed from the cache (`handle`) reads empty there, never freed
+/// memory, exactly as the weak Global's box did.
+pub const Cell = extern struct {
+    /// Anchored: the TracedReference's one word (V8's `internal::Address*`,
+    /// a TracedNode; null when empty), written by V8 (attach, detach, a
+    /// young collection's Reset) and by `processWeak` alone in Zig - raw, in
+    /// a full collection's atomic pause, for a TracedNode V8 frees itself
+    /// there. Boxed: the `Global<Object>*`, OWNED; null once disposed.
+    wrapper: ?*anyopaque,
 
-    /// Zig instance pointer (key for HashMap lookup during cleanup)
+    /// The instance the wrapper was made for. Nothing of it is read once
+    /// `slotReissued` says the slot went to another object.
     instance: *runtime.Instance,
 
-    /// Backpointer to cache (needed for removal during weak callback)
-    cache: *WrapperCache,
-
-    /// Set to true when the instance has been cleaned up externally
-    /// (e.g., via Node.deinit). When true, deinit should NOT call
-    /// onObjectFreed since the instance is already cleaned up.
-    instance_already_cleaned: bool = false,
-
-    /// True while the wrapper is held strongly (no weak arm): some reason in
-    /// `shouldBeStrong` holds. Kept equal to it by `syncEntry`.
-    strong: bool = false,
-
-    /// Reasons to hold the wrapper that only a caller can state - see `Holds`.
-    holds: Holds = .{},
-
-    /// Pending activity (`holdForPendingActivity`), COUNTED: each owner's
-    /// keep is ended by its own release, and the wrapper is held while any
-    /// remains - WebKit's ActiveDOMObject `m_pendingActivityInstanceCount`,
-    /// `GCReachableRefMap`'s HashCountedSet (refcount design 2.3). A flag
-    /// could not carry a second owner: a script element's queued task and its
-    /// fetch both keep it, and the first release ended both (fix-list D15).
-    pending_activity: u32 = 0,
-
-    /// Kept by an edge from its realm's global object instead of a strong
-    /// handle, since the realm's navigable was destroyed
-    /// (`WrapperCache.detach`).
-    retained: bool = false,
-
-    /// Set to true when the cache is being destroyed. This allows pending
-    /// weak callbacks to detect that they should skip cleanup because:
-    /// 1. The cache is no longer valid
-    /// 2. The instance pointer may have been reused by a new object
-    /// When orphaned, callbacks should just dispose the wrapper and entry
-    /// without calling onObjectFreed.
-    is_orphaned: bool = false,
-
-    /// VTable pointer captured when entry was created.
-    /// Used to detect if instance address was reused for a different object.
-    /// If the current instance's vtable differs from this, the address was
-    /// reused and we should not call onObjectFreed.
-    original_vtable: *const runtime.VTable,
-
-    /// State pointer captured when entry was created.
-    /// Used to detect if instance address was reused for the SAME type.
-    /// Even if vtable matches, if state differs, it's a different instance.
-    original_state: *anyopaque,
-
-    /// Slab generation of `instance` when this entry was made. A stale entry -
-    /// one whose instance was freed and its slot reissued before the weak
-    /// callback ran - differs here even when vtable and state match.
-    original_generation: u64,
-
-    /// Collected: V8's first pass took the wrapper and `unlinkCollected` took
-    /// the entry out of the cache. Its finalizer (`finalizeCollected`) runs at
-    /// the agent's next safe point; until then it waits on the cache's pending
-    /// list.
-    collected: bool = false,
-
-    /// The first pass found another entry under this instance, or none: this
-    /// one was replaced or removed before its wrapper died, and owns nothing
-    /// but its handle.
-    stale: bool = false,
-
-    /// Its finalizer ran while its agent's teardowns were held
-    /// (engine.deferTeardowns): it waits on the pending list, and on the
-    /// agent's TeardownHolds.deferred, for the last resume to tear it down.
-    teardown_deferred: bool = false,
-
-    /// The cache's list of collected entries awaiting their finalizer.
-    pending_prev: ?*CacheEntry = null,
-    pending_next: ?*CacheEntry = null,
-
-    /// The counted object this wrapper holds a reference on - a node's
-    /// NodeBase - as runtime.lifetime.wrapperAcquired answered it in `set`;
-    /// null for a type that does not count, and once the reference is let go
-    /// (`releaseCounted`). The finalizer hands it back without looking the
-    /// node up again (refcount design 2.1, 5.1).
-    counted: ?*anyopaque = null,
+    /// Slab generation of `instance` when the record was made
+    /// (`stamp.generation`): a record whose instance was freed, or freed and
+    /// its slot reissued, differs here (the slot's stamp reads dead, or
+    /// later). And, in the byte a generation never uses, what the record put
+    /// into its agent's figure of the instances behind live wrappers
+    /// (`stamp.held`).
+    stamp: Stamp,
 
     /// When a script-called constructor made the instance, on its agent's
     /// callback clock (runtime.gc.DeferredTeardown.freshStamp, given by the
@@ -173,175 +120,416 @@ const CacheEntry = struct {
     /// one wrapped while it was being constructed, one made outside any
     /// callback. Its finalizer may run at a binding's return into a
     /// callback's script only when this is at or after that callback's
-    /// beginning (`freshStampOf`; finalizer_safe_point.zig). Four bytes the
-    /// entry's padding already held (the size is pinned below).
+    /// beginning (`freshStampOf`; finalizer_safe_point.zig).
     fresh: u32 = 0,
+
+    bits: Bits = .{},
+
+    pub const Stamp = packed struct(u64) {
+        /// runtime.SlabAllocator stamps 56 bits (its `generation_bits`; the
+        /// slot keeps its occupant's lifecycle flags in the byte above).
+        generation: u56,
+        /// What this record added to the figure of the instances behind its
+        /// agent's live wrappers when its cache took the wrapper
+        /// (`noteWrapped`), in units of `held_unit` bytes; 0 for a record
+        /// that added nothing, and from the moment its share left the figure
+        /// (`takeHeld`: its wrapper found dead, or the record freed). The
+        /// record keeps the number because what it takes out must be what it
+        /// put in: `heldBytes` asked again at the wrapper's death could
+        /// answer something else - a state block freed or made since - or
+        /// read a slot that is another object's by then (`slotReissued`),
+        /// and the difference would stay in what V8 is told for the agent's
+        /// life.
+        held: u8 = 0,
+    };
+
+    pub const Bits = packed struct(u32) {
+        /// Pending activity (`holdForPendingActivity`), COUNTED: each owner's
+        /// keep is ended by its own release, and the wrapper is held while
+        /// any remains - WebKit's ActiveDOMObject
+        /// `m_pendingActivityInstanceCount`, `GCReachableRefMap`'s
+        /// HashCountedSet (refcount design 2.3). A flag could not carry a
+        /// second owner: a script element's queued task and its fetch both
+        /// keep it, and the first release ended both (fix-list D15).
+        /// Saturating: a count that reached the top stays there.
+        pending_activity: u20 = 0,
+
+        /// The record is issued (a free record of the pool has every bit
+        /// clear).
+        in_use: bool = false,
+
+        /// `wrapper` is a `Global<Object>*`, not a traced reference (see
+        /// `Cell`). Set when the record is issued and cleared by a
+        /// successful attach: the collector's weak processing never takes a
+        /// record that is not attached yet for a dead anchored one.
+        boxed: bool = false,
+
+        /// Held strongly now: some reason in `shouldBeStrong` holds. An
+        /// anchored record's wrapper then has a strong handle beside its
+        /// reference (`WrapperCache.makeStrong`); a boxed one's Global is
+        /// not weak. Kept equal to `shouldBeStrong` by `syncEntry`.
+        strong: bool = false,
+
+        /// A window's document (`holdStrong`): the window aliases the
+        /// wrapper. A reason only a caller can state, orthogonal to the
+        /// others - Blink keeps these apart the same way: a document is
+        /// reachable from its frame, while an ActiveScriptWrappable is kept
+        /// by HasPendingActivity() (platform/bindings/
+        /// active_script_wrappable_base.h) - so ending one never drops
+        /// another.
+        hold_document: bool = false,
+
+        /// Kept by an edge from its realm's retained store instead of a
+        /// strong handle, since the realm's navigable was destroyed
+        /// (`WrapperCache.detach`).
+        retained: bool = false,
+
+        /// The instance was cleaned up externally (`markAsCleanedUp`): the
+        /// cache's end must not tear it down again.
+        instance_already_cleaned: bool = false,
+
+        /// A collection took the wrapper and the record out of the cache's
+        /// map. Its finalizer (`finalizeCollected`) runs at the agent's next
+        /// safe point; until then the record waits (`WrapperCache.pending`).
+        collected: bool = false,
+
+        /// The collection found another record under this instance, or none:
+        /// this one was replaced or removed before its wrapper died, and owns
+        /// nothing but itself.
+        stale: bool = false,
+
+        /// Its finalizer ran while its agent's teardowns were held
+        /// (engine.deferTeardowns): it waits on the agent's
+        /// TeardownHolds.deferred for the last resume to tear it down.
+        teardown_deferred: bool = false,
+
+        /// `wrapper` is a `v8::Global` made in place, not a traced reference
+        /// (see `Cell`; v8_wrapper.cpp kWrapperCellWeakHandle reads it).
+        weak_handle: bool = false,
+
+        /// Unused since lane wrap2 (it said whether a full collection traced
+        /// a weak-handle record's anchor; the wrapper's first pass severs
+        /// the anchor in every collection now).
+        _spare: bool = false,
+
+        /// A full collection's marking reached the record's anchor
+        /// (v8_wrapper.cpp PlatformAnchor::Trace, kWrapperCellMarked): written
+        /// there, read and cleared by `processWeak` in the same atomic pause.
+        marked: bool = false,
+    };
+
+    /// The wrapper as the `Global<Object>*` every borrower holds, BORROWED:
+    /// the box, or - anchored - the record's own address, read as a Global
+    /// is (a TracedReference and a Global are both one IndirectHandleBase
+    /// word, and a borrower only reads it: v8_wrapper.cpp, "Node wrappers on
+    /// the agent's C++ heap"). Valid until the record's finalizer or its
+    /// realm's end frees it, and empty once the wrapper is collected: take a
+    /// reference of your own (a Local, a clone) before anything that can
+    /// collect. Never disposed, armed or tagged by a borrower.
+    pub fn handle(self: *Cell) *v8.Object {
+        if (self.bits.boxed) return @ptrCast(@alignCast(self.wrapper.?));
+        return @ptrCast(self);
+    }
+
+    /// The record's v8::Global - a boxed record's box, a weak-handle
+    /// record's own word - or null for a traced record, and for a boxed one
+    /// whose box is gone.
+    fn global(self: *Cell) ?*anyopaque {
+        if (self.bits.boxed) return self.wrapper;
+        if (self.bits.weak_handle) return @ptrCast(self);
+        return null;
+    }
+
+    /// The record as v8_wrapper.cpp takes it.
+    fn raw(self: *Cell) *v8.WrapperCell {
+        return @ptrCast(self);
+    }
+
+    /// The realm's cache whose pool the record is from.
+    fn cache(self: *const Cell) *WrapperCache {
+        return Chunk.of(self).cache;
+    }
 };
 
 comptime {
-    // Nothing is added to a live wrapper: the stamp sits in the entry's
-    // padding (8 pointers, a u64, two u32, 8 one-byte flags).
-    if (@sizeOf(usize) == 8) std.debug.assert(@sizeOf(CacheEntry) == 88);
+    // v8_wrapper.cpp's CraneWrapperCell, field for field, and its marked bit.
+    std.debug.assert(@sizeOf(Cell) == 32);
+    std.debug.assert(@offsetOf(Cell, "wrapper") == 0 and @offsetOf(Cell, "instance") == 8);
+    std.debug.assert(@offsetOf(Cell, "stamp") == 16 and @offsetOf(Cell, "fresh") == 24 and @offsetOf(Cell, "bits") == 28);
+    // v8_wrapper.cpp kWrapperCellGenerationMask: the generation is the word's
+    // low 56 bits, which is all runtime.SlabAllocator stamps.
+    std.debug.assert(@bitOffsetOf(Cell.Stamp, "generation") == 0 and @bitOffsetOf(Cell.Stamp, "held") == 56);
+    std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
+    // kWrapperCellStrong.
+    std.debug.assert(@bitOffsetOf(Cell.Bits, "strong") == 22);
 }
 
-/// Let `entry`'s counted reference go (runtime.lifetime), once - only while
-/// its node is alive. A node whose teardown began under its wrapper had it let
-/// go then (`markAsCleanedUp`); one freed some other way - its slot reissued,
-/// or a teardown this cache did not hear because the entry was waiting for
-/// its finalizer - is forgotten, never read. Since refcount step 7 the
-/// release decides: a tree it leaves with no hold is queued by the counts.
-fn releaseCounted(entry: *CacheEntry) void {
-    const target = entry.counted orelse return;
-    entry.counted = null;
-    if (slotReissued(entry) or runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
-        runtime.lifetime.wrapperForgotten();
-        return;
+/// One block of a cache's pool of records: `Chunk.bytes` at an address that
+/// is a multiple of it, so a record finds its chunk - and through it its
+/// cache - with one mask (`Chunk.of`) and carries no back-pointer: every
+/// record of every wrapper would pay for it (the 88-byte entry kept one).
+///
+/// A chunk keeps its own free records and a count of the ones in use, and
+/// the cache gives a chunk back to its allocator when its last record is
+/// freed (`WrapperCache.freeCell`): a pool that only grew kept, for its
+/// realm's life, the memory of the most wrappers the page ever held at once,
+/// where each 88-byte entry had gone back to the allocator as its wrapper
+/// died. The shape is the slab allocator's: blocks of equal objects, a list
+/// of the blocks that still have room, and an empty block returned
+/// (Bonwick, "The Slab Allocator", USENIX Summer 1994, section 3.2).
+const Chunk = extern struct {
+    cache: *WrapperCache,
+    /// Every chunk of the cache (`WrapperCache.chunks`), newest first.
+    next: ?*Chunk,
+    prev: ?*Chunk,
+    /// The cache's chunks that have a free record (`WrapperCache.partial`):
+    /// a chunk is on that list exactly while `free` is not null.
+    partial_next: ?*Chunk,
+    partial_prev: ?*Chunk,
+    /// This chunk's free records.
+    free: ?*Cell,
+    /// Its records in use.
+    live: usize,
+    cells: [count]Cell,
+
+    const bytes = 1024;
+    const alignment: std.mem.Alignment = .fromByteUnits(bytes);
+    const count = (bytes - 7 * @sizeOf(usize)) / @sizeOf(Cell);
+
+    fn of(cell: *const Cell) *Chunk {
+        return @ptrFromInt(@intFromPtr(cell) & ~@as(usize, bytes - 1));
     }
-    runtime.lifetime.wrapperReleased(target);
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Chunk) <= Chunk.bytes);
+    std.debug.assert(Chunk.count >= 16);
 }
 
-/// Forget `entry`'s counted reference without letting it go: its node goes
-/// with a batch free (`deinitWithoutCallbacks`) and must not be read.
-fn forgetCounted(entry: *CacheEntry) void {
-    if (entry.counted == null) return;
-    entry.counted = null;
-    runtime.lifetime.wrapperForgotten();
-}
-
-/// Why a wrapper is held strongly, beyond what `engineOwns` reads off the
-/// instance itself. Orthogonal reasons: each is set and cleared by its own
-/// caller, and the wrapper is weak only when none remains (`shouldBeStrong`).
-/// Blink keeps these apart the same way - a document is reachable from its
-/// frame, while an ActiveScriptWrappable is kept by HasPendingActivity()
-/// (platform/bindings/active_script_wrappable_base.h) - so ending one reason
-/// never drops another.
-const Holds = packed struct {
-    /// A window's document (`holdStrong`): the window aliases the wrapper.
-    document: bool = false,
+/// A free record of the pool: every bit clear, the next free record where a
+/// live one keeps its instance.
+const FreeCell = extern struct {
+    wrapper: ?*anyopaque,
+    next: ?*Cell,
+    generation: u64,
+    fresh: u32,
+    bits: u32,
 };
 
 /// Whether `entry`'s wrapper must be held strongly: a caller's reason
-/// (`Holds`), or the engine holding the wrapper itself (a window's document,
-/// Location or History). The default - no reason - is weak, and only then.
-/// A streams object is weak too: the pointers between streams objects are
-/// traced edges and pending work holds what it touches (pending activity),
-/// streams_js.zig "Lifetime of the objects the reactions point at". (A node's
-/// wrapper has no entry here since the wrapper redesign's P2: its agent's
-/// walk keeps it - `joinOpaqueRoot`'s comment says how.)
-fn shouldBeStrong(entry: *const CacheEntry) bool {
+/// (`hold_document`, pending activity), or the engine holding the wrapper
+/// itself (a window's Location or History). The default - no reason - is
+/// weak, and only then. A streams object is weak too: the pointers between
+/// streams objects are traced edges and pending work holds what it touches
+/// (pending activity), streams_js.zig "Lifetime of the objects the reactions
+/// point at". (A node's wrapper has no entry here since the wrapper
+/// redesign's P2: its agent's walk keeps it - `joinOpaqueRoot`'s comment says
+/// how.)
+fn shouldBeStrong(entry: *const Cell) bool {
     // A torn-down instance's wrapper is never what keeps anything.
-    if (entry.instance_already_cleaned) return false;
-    if (entry.holds.document or entry.pending_activity != 0) return true;
+    if (entry.bits.instance_already_cleaned) return false;
+    if (entry.bits.hold_document or entry.bits.pending_activity != 0) return true;
     return engineHoldsWrapper(entry.instance);
 }
 
-/// The realm is ending and `entry`'s instance is freed (or already was, or
-/// its slot went to another object): clear the wrapper's internal fields
-/// first - what severWindow does for a Window's global, for every wrapper.
-/// Script elsewhere - another realm, which is how a removed frame's objects
-/// are usually held - can outlive this realm and keep the wrapper; the next
-/// read through it then fails the binding's unwrap with a TypeError instead
-/// of reaching an impl with a freed instance (23 impls unwrap `_internal`
-/// unchecked; crane/fl-xhr-frame-removed-mid-request.html panicked in
-/// XMLHttpRequest.getXHRState). Blink clears a wrapper's native pointer when
-/// the object it names goes (V8DOMWrapper::ClearNativeInfo). Only a wrapper
-/// whose instance goes: a node its tree owns, or an instance another realm
-/// still wraps, keeps its fields.
-fn severWrapper(entry: *CacheEntry) void {
-    // A wrapper the collector already took has nothing to sever.
-    if (v8.v8_Global_IsEmpty(@ptrCast(entry.wrapper))) return;
-    const wrapper: *v8.Object = @ptrCast(@alignCast(entry.wrapper));
-    // A holder's anchor (the redesign's P6) traces nothing from here.
-    if (entry.original_vtable.trace_held_nodes != null) node_wrappers.clearHolder(wrapper);
-    // A legacy platform object's wrapper is a proxy whose target holds the
-    // fields (the unwrap reads them through it): sever the target.
-    if (v8.v8_Value_IsProxy(@ptrCast(wrapper))) {
-        const target = v8.v8_Proxy_GetTarget(wrapper) orelse return;
-        defer v8.v8_Value_Dispose(target);
-        if (v8.v8_Value_IsObject(target)) clearFields(@ptrCast(target));
-        return;
-    }
-    clearFields(wrapper);
-}
-
-fn clearFields(object: *v8.Object) void {
-    const count = v8.v8_Object_InternalFieldCount(object);
-    if (count < 1) return;
-    v8.v8_Object_SetAlignedPointerInInternalField(object, 0, null);
-}
-
-/// What a path that ends an entry did to the entry's instance, for
-/// `disposeEntryWrapper`.
-const EntryInstance = enum {
-    /// Not freed here: the instance may still be the entry's, and its node,
-    /// if it is one, lets go of the wrapper (`unbindNode`).
-    kept,
-    /// Freed here (gc.onObjectFreed, gc.releaseStorage), or not the entry's
-    /// any more: nothing of it is read. Its node, if it was one, went with it.
-    freed,
+/// What the wrapper reaches once the cache has let go of it (`letGo`).
+const Link = enum {
+    /// Nothing: the instance is freed (or already was, or its slot went to
+    /// another object). Script elsewhere - another realm, which is how a
+    /// removed frame's objects are usually held - can outlive this realm and
+    /// keep the wrapper; the next read through it then fails the binding's
+    /// unwrap with a TypeError instead of reaching an impl with a freed
+    /// instance (23 impls unwrap `_internal` unchecked;
+    /// crane/fl-xhr-frame-removed-mid-request.html panicked in
+    /// XMLHttpRequest.getXHRState), and a holder's anchor traces nothing from
+    /// here. Blink clears a wrapper's native pointer when the object it names
+    /// goes (V8DOMWrapper::ClearNativeInfo).
+    sever,
+    /// Its instance, as before: the instance stays - another realm's cache
+    /// still wraps it, or the entry was only removed.
+    keep,
 };
 
-/// Dispose an entry's V8 handle, first dropping any alias to it - only while
-/// its instance is still the entry's (`instance`, `unbindNode`).
-///
-/// The node's wrapper slot (NodeBase.wrapper, engine.NodeWrapperSlot, reached
-/// through runtime.lifetime.slotOf; set by WrapperCache.set and
-/// template_registry.wrapInstanceAsV8Object) stores the SAME
-/// `Global<Object>*` handle that the cache entry owns, so that
-/// DOM nodes keep JavaScript `===` identity across contexts. Disposing the
-/// handle without clearing that alias leaves a dangling pointer which the next
-/// wrapInstanceAsV8Object call would happily return.
-///
-/// A path that freed the instance says so (`.freed`), and then its slot is not
-/// read at all: the slab is the Browser's, shared by its window thread and its
-/// workers' threads, and its free list is LIFO, so the next allocation on ANY
-/// thread takes the slot just freed. A worker's realm ending read the slot of
-/// an instance it had just freed (getNodeBase -> SlabAllocator.generationOf)
-/// while the window thread issued it to a MessageEvent (lane tsanfix1,
-/// ThreadSanitizer; docs/testing/test-variant-findings-2026-11-02.tsv F2) - a
-/// slot reissued to a node would even have answered that thread's NodeBase.
-fn disposeEntryWrapper(entry: *CacheEntry, instance: EntryInstance) void {
-    if (instance == .kept) unbindNode(entry);
-    v8.v8_Object_Dispose(@ptrCast(entry.wrapper));
+/// The cache lets go of `entry`'s wrapper, outside a collection: its
+/// reference (anchored) or its Global (boxed) goes, and the wrapper - if
+/// script still holds it - reaches what `link` says. Nothing for a record
+/// whose wrapper a collection already took, but a boxed one's emptied Global
+/// is still disposed. The record itself is the caller's to free (`freeCell`).
+fn letGo(entry: *Cell, link: Link) void {
+    // A wrapper the cache held strongly is held no more.
+    entry.cache().dropStrongHandle(entry);
+    if (!entry.bits.boxed) {
+        // A record with an anchor: its cache joined its agent's caches with
+        // the isolate it was handed (`register`). Its handle - the traced
+        // reference, or the in-place weak Global with its arm - is Reset, and
+        // the anchor stops naming it.
+        v8.v8_WrapperCell_Detach(entry.cache().isolate.?, entry.raw(), link == .keep);
+        // No handle and no anchor from here: the record is inert until it is
+        // freed, and the collector's weak processing - a teardown the caller
+        // runs next can collect - does not take it for a traced record whose
+        // wrapper died.
+        entry.bits.weak_handle = false;
+        entry.bits.boxed = true;
+        entry.wrapper = null;
+        return;
+    }
+    const box: *v8.Object = @ptrCast(@alignCast(entry.wrapper orelse return));
+    entry.wrapper = null;
+    // A legacy platform object's wrapper is a proxy; its target is the bound
+    // object, and the sever looks through it as the unwrap does.
+    if (link == .sever and !v8.v8_Global_IsEmpty(@ptrCast(box))) platform_anchor.sever(box);
+    // Its weak arm ends with it (v8_Object_Dispose releases the arm; a
+    // finalizer still queued for it is cancelled).
+    v8.v8_Object_Dispose(box);
 }
 
-/// `entry.instance`'s node lets go of `entry`'s wrapper, if it is bound to
-/// it - only while the slot is still the entry's: the stamp is read first
-/// (`slotReissued`), and nothing else of a slot that is no longer the entry's.
+/// THE RULE for which wrappers the cache holds by a weak handle, stated once:
+/// A WRAPPER V8 WOULD NOT TREAT AS AN UNMODIFIED API OBJECT IS HELD BY A WEAK
+/// HANDLE; every other one by a droppable traced reference.
 ///
-/// The pointer-equality guard matters too: the NodeBase reachable from a live
-/// `entry.instance` may hold a newer wrapper of the same node. Only an exact
-/// match is ours to clear.
-///
-/// Only a node has one, which its type says (`treeOwns`): an entry of any
-/// other type - every entry of a worker realm's cache - asks the Browser's
-/// node bridge nothing.
-fn unbindNode(entry: *CacheEntry) void {
-    if (slotReissued(entry)) return;
-    if (entry.instance.vtable.counted == null) return;
-    const instance_bridge = @import("dom").instance_bridge;
-    if (instance_bridge.getNodeBase(@ptrCast(entry.instance))) |nodebase| {
-        const slot = runtime.lifetime.slotOf(nodebase);
-        if (slot.handle == @as(?*anyopaque, @ptrCast(entry.wrapper))) slot.* = .empty;
-    }
+/// V8 drops a traced reference's wrapper in a young-generation collection
+/// only while `JSObject::IsUnmodifiedApiObject` holds (V8 15.7.112.43
+/// src/objects/js-objects.cc:3152-3168): a JS API object with no elements and
+/// no identity hash whose map is still its constructor's initial map. Any
+/// other wrapper would wait for a full collection, which V8 runs about every
+/// 100 MB of memory it is told of - 650,000 dropped Events ended at 198 MB
+/// against 88 with a weak handle (v8_wrapper.cpp, "The wrappers V8 will not
+/// drop"). A weak v8::Global is processed in every collection whatever the
+/// object's map. The cache knows of three ways a wrapper is not unmodified:
+/// - FROM BIRTH, answered here from the interface's template
+///   (interface_bindings.wrapperIsBornChanged, computed from each interface's
+///   metadata, never a list of names): its instance template has own
+///   properties - V8 adds them after it makes the object from the initial map
+///   (src/api/api-natives.cc:351-356), so `Event`, with its
+///   [LegacyUnforgeable] isTrusted, and every interface that inherits from
+///   one with such a member - or its wrapper is a Proxy (a legacy platform
+///   object with named properties), which is no API object at all;
+/// - WHEN THE BINDING CHANGES IT: `WrapperCache.changed`, called by the
+///   adapter's own writes on a wrapper (a traced child's or [SameObject]
+///   value's private property, a prototype, a captured stack);
+/// - when script changes it (an expando, a WeakMap key): not known here. Such
+///   a wrapper waits for a full collection, as in Blink and as a node's has
+///   since the wrapper redesign.
+/// tests/v8/wrap1_platform_anchor_test.zig asks V8 itself, template by
+/// template, and pins this answer against it.
+fn heldByWeakHandle(facts: WrapperFacts) bool {
+    return facts.born_changed;
+}
+
+const WrapperFacts = @import("interface_bindings.zig").WrapperFacts;
+
+/// What the binding's tables say of `instance`'s interface, read ONCE per
+/// wrap (a lookup by name).
+fn wrapperFactsOf(instance: *const runtime.Instance) WrapperFacts {
+    return @import("interface_bindings.zig").wrapperFactsOf(instance.vtable.name);
 }
 
 /// True when the slab slot behind `entry.instance` no longer holds the
-/// instance this entry was created for: freed (generation reads dead) or
-/// reissued to a newcomer (a later generation). The vtable/state comparison
-/// alone cannot see a same-type newcomer whose state block was recycled at
-/// the same address - the case in which a stale callback's `Registry.remove`
-/// evicted a live document's entry (AGENTS.md, "A stale weak callback's
-/// `Registry.remove` evicts the LIVE entry at a recycled address").
+/// instance this record was made for: freed (the generation reads dead) or
+/// reissued to a newcomer (a later generation) - the case in which a stale
+/// callback's `Registry.remove` evicted a live document's entry (AGENTS.md,
+/// "A stale weak callback's `Registry.remove` evicts the LIVE entry at a
+/// recycled address").
 ///
-/// The stamp is read first, and alone: a slot that is no longer the entry's
-/// may be another thread's object by now (the slab is the Browser's), so
-/// nothing else of it - its vtable, its state - is read unless the stamp is
-/// still the entry's generation.
-fn slotReissued(entry: *const CacheEntry) bool {
-    if (runtime.SlabAllocator.generationOf(entry.instance) != entry.original_generation) return true;
-    return entry.instance.vtable != entry.original_vtable or
-        entry.instance.state != entry.original_state;
+/// Only the stamp is read: a slot that is no longer the record's may be
+/// another thread's object by now (the slab is the Browser's, shared by its
+/// window thread and its workers' threads, and its free list is LIFO), so
+/// nothing else of it is read unless the stamp is still the record's.
+fn slotReissued(entry: *const Cell) bool {
+    return runtime.SlabAllocator.generationOf(entry.instance) != entry.stamp.generation;
+}
+
+/// The bytes of host memory `instance` holds that V8 cannot see, as far as an
+/// instance says them itself: ONE function of the instance. Four parts: its
+/// slab slot, its generated State block (the size its vtable carries), the
+/// cache's record of its wrapper, and - when its State names one now - each
+/// internal state block of its own that its impl keeps (interface_bindings
+/// `stateBlocksOf`, read from the generated State's types). What it answers
+/// (2026-11-15, tests/v8/wrap1_platform_anchor_test.zig prints them): 200 B
+/// for an Event or a CustomEvent, 288 for a URLSearchParams, 264 for a
+/// Headers, 360 for a URL, 144 for an AbortController, 160 for a
+/// ReadableStream, 104 for a NamedNodeMap, 184 for a DOMTokenList, 336 for a
+/// NodeList, 544 for an HTMLCollection. No per-interface table.
+///
+/// The internal state block is the part that decides the collector's
+/// schedule. It was measured while an Event's dispatch state was 1,024 bytes
+/// (lane ev1 has since made it 88): with the first three parts alone V8 was
+/// told 112 bytes of the 1.2 KB an Event then held, and 650,000 dropped
+/// Events ended at 99.1 MB on server1 against main's 87.5; told the block too
+/// they ended at 55.2 there and at 31.1 against 87.2 on chat.local (gc_bench,
+/// 2026-11-15, tmp/plans/wrap1-evidence/b3-meas8-*.out). In Blink the whole
+/// object is on the C++ heap, whose growth V8 counts.
+///
+/// It is still a FLOOR: what a state allocates beyond its block (a list's
+/// spilled storage, a body, a queue) is not known here.
+pub fn instanceHeldBytes(instance: *const runtime.Instance) usize {
+    return heldBytes(instance, wrapperFactsOf(instance));
+}
+
+fn heldBytes(instance: *const runtime.Instance, facts: WrapperFacts) usize {
+    return runtime.SlabAllocator.slot_bytes + instance.vtable.state_size + @sizeOf(Cell) +
+        @import("interface_bindings.zig").stateBlockBytes(facts.state_blocks, instance.state);
+}
+
+/// The unit of `Cell.Stamp.held`: a record keeps what it put into the figure
+/// in one byte, so in steps of 8 bytes (every part of `heldBytes` is a
+/// multiple of a pointer's alignment) up to 2,040. An instance that holds
+/// more is counted as 2,040: the figure is a floor (`instanceHeldBytes`).
+pub const held_unit = 8;
+
+/// What a record whose instance holds `bytes` puts into the figure
+/// (`Cell.Stamp.held`): `bytes` to the next `held_unit`, at most 255 units.
+fn heldUnits(bytes: usize) u8 {
+    return @intCast(@min((bytes + held_unit - 1) / held_unit, std.math.maxInt(u8)));
+}
+
+/// What `instanceHeldBytes` becomes in the figure: itself for every instance
+/// that holds a multiple of 8 bytes up to 2,040 (tests).
+pub fn countedBytes(bytes: usize) usize {
+    return @as(usize, heldUnits(bytes)) * held_unit;
+}
+
+/// `entry`'s realm's cache took its wrapper: what its instance holds joins
+/// its agent's figure of the instances behind LIVE non-node wrappers
+/// (v8_wrapper.cpp, "What the instances behind non-node wrappers hold"), and
+/// the record keeps the amount (`Cell.Stamp.held`). The one place the figure
+/// grows; `takeHeld` is the one place it falls.
+fn noteWrapped(isolate: *v8.Isolate, entry: *Cell, facts: WrapperFacts) void {
+    std.debug.assert(entry.stamp.held == 0);
+    const units = heldUnits(heldBytes(entry.instance, facts));
+    entry.stamp.held = units;
+    v8.v8_Isolate_NoteWrappedInstance(isolate, @as(usize, units) * held_unit);
+}
+
+/// How a record's share leaves its agent's figure (`takeHeld`).
+const Gone = enum {
+    /// A collection found the record's wrapper dead (`WrapperCache.died`,
+    /// `WrapperCache.sweepUnmarked`). When that collection is a young one
+    /// the share stays in what V8 is told until the next full collection
+    /// (v8_wrapper.cpp v8_Isolate_NoteWrapperDead: the user's ruling of
+    /// 2026-11-15, Blink's model).
+    dead,
+    /// The record is freed while its wrapper may live
+    /// (`WrapperCache.freeCell`: a remove, a replacement, its realm's end).
+    freed,
+};
+
+/// `entry`'s share of its agent's figure leaves it. Once: the record's
+/// amount reads 0 after it. A store and a call that only adds and compares,
+/// no V8 call here: inside a full collection V8 is told once for all its
+/// dead (v8_wrapper.cpp `forgetDeadWrappedInstances`), outside one at the
+/// agent's next safe point. Nothing of the instance is read - it may be
+/// freed, or another object.
+fn takeHeld(isolate: ?*v8.Isolate, entry: *Cell, how: Gone) void {
+    const units = entry.stamp.held;
+    if (units == 0) return;
+    entry.stamp.held = 0;
+    const i = isolate orelse return;
+    const bytes = @as(usize, units) * held_unit;
+    switch (how) {
+        .dead => v8.v8_Isolate_NoteWrapperDead(i, bytes),
+        .freed => v8.v8_Isolate_NoteInstanceGone(i, bytes),
+    }
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -393,15 +581,6 @@ fn engineHoldsWrapper(instance: *runtime.Instance) bool {
 /// A realm's Window: its realm's end frees it (protocol_realms).
 fn isRealmWindow(instance: *runtime.Instance) bool {
     return std.mem.eql(u8, instance.vtable.name, "Window");
-}
-
-/// Push `entry` - a live entry the deinit walk took out of its map, so on
-/// no pending list - onto `list`, through its pending link (unused while it
-/// is live): a list that needs no allocation, so it cannot fail.
-fn setAside(list: *?*CacheEntry, entry: *CacheEntry) void {
-    std.debug.assert(entry.pending_next == null and entry.pending_prev == null);
-    entry.pending_next = list.*;
-    list.* = entry;
 }
 
 /// True for a node with a parent: its tree holds it - the parent's child list
@@ -515,7 +694,7 @@ pub fn keepOpaqueRoot(owner: *runtime.Instance, member: *runtime.Instance, slot:
 /// it, on a non-node instance (P9 deletes it with that case).
 pub fn holdStrong(instance: *runtime.Instance) void {
     const entry = entryOf(instance) orelse return;
-    entry.holds.document = true;
+    entry.bits.hold_document = true;
     syncEntry(entry);
 }
 
@@ -532,7 +711,7 @@ pub fn holdForPendingActivity(instance: *runtime.Instance) void {
     if (instance.vtable.counted != null) return node_wrappers.keep(instance);
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
-        entry.pending_activity +|= 1;
+        entry.bits.pending_activity +|= 1;
         syncEntry(entry);
         return;
     }
@@ -554,9 +733,10 @@ pub fn releasePendingActivity(instance: *runtime.Instance) void {
     if (instance.vtable.counted != null) return node_wrappers.release(instance);
     const cache = cacheOf(instance) orelse return;
     if (cache.cache.get(instance)) |entry| {
-        if (entry.pending_activity == 0) return cache.unmatchedRelease(instance);
-        entry.pending_activity -= 1;
-        if (entry.pending_activity == 0) syncEntry(entry);
+        if (entry.bits.pending_activity == 0) return cache.unmatchedRelease(instance);
+        // A count that saturated stays: its keeps can no longer be told apart.
+        if (entry.bits.pending_activity != std.math.maxInt(u20)) entry.bits.pending_activity -= 1;
+        if (entry.bits.pending_activity == 0) syncEntry(entry);
         return;
     }
     const waiting = cache.pending_before_wrap.getPtr(instance) orelse return cache.unmatchedRelease(instance);
@@ -581,38 +761,31 @@ fn cacheOf(instance: *runtime.Instance) ?*WrapperCache {
 
 /// `instance`'s entry in its realm's cache, or null when it has no wrapper
 /// there or the cache is being torn down.
-fn entryOf(instance: *runtime.Instance) ?*CacheEntry {
+fn entryOf(instance: *runtime.Instance) ?*Cell {
     const cache = cacheOf(instance) orelse return null;
     return cache.cache.get(instance);
 }
 
-/// Arm or disarm `entry`'s weak callback to match `shouldBeStrong` - the one
+/// Hold or let go of `entry`'s wrapper to match `shouldBeStrong` - the one
 /// path by which a wrapper's strength changes after it is made.
 ///
 /// In a detached cache (`WrapperCache.detach`) no wrapper is strong: one that
-/// should be is kept by an edge from the realm's global object instead,
+/// should be is kept by an edge from the realm's retained store instead,
 /// drawn once and never withdrawn - the realm is going, and what it kept goes
 /// with it.
-fn syncEntry(entry: *CacheEntry) void {
-    if (entry.cache.detached_holder) |holder| {
-        if (shouldBeStrong(entry) and !entry.retained) {
-            retainOnGlobal(holder, @ptrCast(entry.wrapper));
-            entry.retained = true;
+fn syncEntry(entry: *Cell) void {
+    const cache = entry.cache();
+    if (cache.detached_holder) |holder| {
+        if (shouldBeStrong(entry) and !entry.bits.retained) {
+            retainOnGlobal(holder, @ptrCast(entry.handle()));
+            entry.bits.retained = true;
         }
-        if (entry.strong) {
-            armWeak(entry);
-            entry.strong = false;
-        }
+        if (entry.bits.strong) cache.makeWeak(entry);
         return;
     }
     const strong = shouldBeStrong(entry);
-    if (entry.strong == strong) return;
-    if (strong) {
-        v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-    } else {
-        armWeak(entry);
-    }
-    entry.strong = strong;
+    if (entry.bits.strong == strong) return;
+    if (strong) cache.makeStrong(entry) else cache.makeWeak(entry);
 }
 
 /// The private key of the array on a detached realm's global object that
@@ -673,6 +846,35 @@ pub fn liveEntryCount() usize {
     return total;
 }
 
+/// The records of the current agent's caches whose wrapper a collection took
+/// and whose finalizer has not run (diagnostics: `wrapper_cache_pending`).
+pub fn livePendingCount() usize {
+    const caches = currentCaches() orelse return 0;
+    var total: usize = 0;
+    for (caches.items) |cache| total += cache.pending;
+    return total;
+}
+
+/// How many times a collection of the current agent took a weak-handle
+/// record's share out of the figure while its wrapper lived
+/// (`WrapperCache.heldAgain`), over its live caches (diagnostics:
+/// `wrapped_instance_mispredictions`; expected 0).
+pub fn liveMispredictionCount() usize {
+    const caches = currentCaches() orelse return 0;
+    var total: usize = 0;
+    for (caches.items) |cache| total += cache.mispredicted;
+    return total;
+}
+
+/// The bytes of the record pools of the current agent's caches (diagnostics:
+/// `wrapper_cache_pool_bytes`): every chunk a cache holds, in use or not.
+pub fn livePoolBytes() usize {
+    const caches = currentCaches() orelse return 0;
+    var total: usize = 0;
+    for (caches.items) |cache| total += cache.chunk_count * Chunk.bytes;
+    return total;
+}
+
 /// The edges every live cache of the current agent holds for owners script
 /// has not seen yet (`WrapperCache.deferEdge`), for tests and diagnostics.
 pub fn liveDeferredEdgeCount() usize {
@@ -683,10 +885,12 @@ pub fn liveDeferredEdgeCount() usize {
 }
 
 /// The agent's end, once its realms - and so their caches - have ended
-/// (protocol_agents.removeAgent): the list's storage goes. A cache still on
-/// it outlived its agent's realms; it is taken off, so that its own end
-/// touches no freed list.
-pub fn endAgent(caches: *Caches) void {
+/// (protocol_agents.removeAgent): the list's storage goes, and `isolate`'s
+/// collections ask the caches nothing from here (the list they were handed
+/// is the agent's record's). A cache still on it outlived its agent's
+/// realms; it is taken off, so that its own end touches no freed list.
+pub fn endAgent(isolate: *v8.Isolate, caches: *Caches) void {
+    _ = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, null, &noWeakProcessing, &nothingDropped, &nothingDropped);
     if (caches.items.len != 0) log.err("{d} wrapper cache(s) outlived their agent's realms", .{caches.items.len});
     for (caches.items) |cache| {
         cache.peers = null;
@@ -704,87 +908,130 @@ fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bo
     for (caches.items) |other| {
         if (other == except) continue;
         const entry = other.cache.get(instance) orelse continue;
-        if (entry.original_generation == generation and entry.original_vtable == instance.vtable) return true;
+        if (entry.stamp.generation == generation) return true;
     }
     return false;
 }
 
-/// Arm `entry`'s wrapper weak: the collector takes the entry out of the cache
-/// in its first pass and its instance is torn down after the collection.
-fn armWeak(entry: *CacheEntry) void {
-    v8.v8_Global_SetWeakFinalizer(@ptrCast(entry.wrapper), @ptrCast(entry), unlinkCollected, finalizeCollected);
-}
-
-/// V8's FIRST pass: `entry`'s wrapper was collected and its handle Reset. No
-/// V8 API may be called here (v8-weak-callback-info.h) - other wrappers of
-/// this collection may still hold the 0xCA11 zap value - so this only makes
-/// the entry unreachable, as Blink's firstWeakCallback reset the object's
-/// wrapper: out of the cache's map, off a node's bound wrapper, onto the
-/// cache's pending list. A wrap from here on makes a new wrapper. The
-/// instance's teardown is the finalizer's, after the collection.
-fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
-    const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
-    entry.collected = true;
-    // A destroyed cache's entry: nothing to unlink from (the finalizer
-    // frees it).
-    if (entry.is_orphaned) return;
-
-    // Its node, if the slot is still its instance's.
-    unbindNode(entry);
-
-    // Due to memory reuse (SlabAllocator/ArenaAllocator), the same instance
-    // address can be used for different objects over time: take out only
-    // this entry; one that replaced it stays. (Looked at before removing, so
-    // the first pass never inserts: an insert may rehash - `set`.)
-    if (entry.cache.cache.getEntry(entry.instance)) |found| {
-        if (found.value_ptr.* == entry) {
-            entry.cache.cache.removeByPtr(found.key_ptr);
-            entry.cache.guard.noteRemoval(&entry.cache.cache);
-        } else {
-            log.debug("[unlinkCollected] STALE ENTRY: instance={*} - entry replaced, keeping the new entry", .{entry.instance});
-            entry.stale = true;
-        }
-    } else {
-        log.debug("[unlinkCollected] NOT FOUND: instance={*}", .{entry.instance});
-        entry.stale = true;
+/// Arm a record's v8::Global weak - a boxed record's box, a weak-handle
+/// record's own word: the collector takes the record out of the cache in its
+/// first pass and its instance is torn down after the collection.
+fn armWeak(entry: *Cell) void {
+    if (entry.bits.weak_handle) {
+        // Its parameter is the wrapper's anchor: the first pass hands the
+        // record to `dropped`, and nothing is allocated for the arm.
+        v8.v8_WrapperCell_ArmWeak(entry.cache().isolate.?, entry.raw());
+        return;
     }
-    entry.cache.linkPending(entry);
+    std.debug.assert(entry.bits.boxed);
+    v8.v8_Global_SetWeakFinalizer(@ptrCast(entry.wrapper.?), @ptrCast(entry), unlinkCollected, finalizeCollected);
 }
 
-/// The finalizer of a collected wrapper (`unlinkCollected` ran), at its
-/// agent's safe point - never while the engine is collecting: V8's first
-/// pass only queues it (v8_wrapper.cpp `runQueuedFinalizers`: a binding's
-/// return into script, the pump, a forced collection's return) - the
-/// instance's teardown runs here,
-/// and may do any engine work - a dropped Response cancels its open body
-/// transfer, which reports to its page.
+/// End the weak arm of a record's v8::Global, which stays: a boxed record's
+/// box, a weak-handle record's own word. Nothing for a traced record.
+fn disarm(entry: *Cell) void {
+    if (entry.bits.weak_handle) return v8.v8_WrapperCell_Disarm(entry.raw());
+    if (entry.bits.boxed) {
+        if (entry.wrapper) |box| v8.v8_Global_ClearWeak(box);
+    }
+}
+
+/// V8's FIRST pass for a BOXED record: its wrapper was collected and its
+/// Global Reset. (A weak-handle record's first pass is `dropped`.) No V8 API may be called here (v8-weak-callback-info.h) -
+/// other wrappers of this collection may still hold the 0xCA11 zap value - so
+/// this only makes the record unreachable, as Blink's firstWeakCallback reset
+/// the object's wrapper (`WrapperCache.died`). The finalizer is queued by the
+/// handle's own first pass (v8_wrapper.cpp WeakCallbackWrapper).
+fn unlinkCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
+    const entry: *Cell = @ptrCast(@alignCast(data orelse return));
+    entry.cache().died(entry);
+}
+
+/// The caches' weak processing in a full collection's atomic pause, after
+/// its marking (v8_wrapper.cpp NodeWrapperRegistry::ProcessWeak): `data` is
+/// the collecting agent's live caches. Every live anchored record whose
+/// anchor the marking did not reach is a dead wrapper's
+/// (`WrapperCache.sweepUnmarked`). No V8 API but the finalizer queue's push,
+/// no allocation on either collected heap, no instance freed.
+fn processWeak(data: ?*anyopaque) callconv(.c) void {
+    const caches: *Caches = @ptrCast(@alignCast(data orelse return));
+    for (caches.items) |cache| cache.sweepUnmarked();
+}
+
+/// A collection took `raw`'s wrapper, and the record's handle is Reset and
+/// its anchor severed already: a young-generation collection dropped an
+/// unmodified API object nothing reached (v8_wrapper.cpp
+/// NodeWrapperRootsHandler::resetPlatformRoot), or - a weak-handle record -
+/// its Global's first pass ran, in a collection of either kind
+/// (`platformAnchorFirstPass`). The record leaves its cache's map and its
+/// finalizer joins the agent's queue, under the weak processing's rules: no
+/// V8 call but the queue's push.
+fn dropped(_: ?*anyopaque, raw: *v8.WrapperCell) callconv(.c) void {
+    const entry: *Cell = @ptrCast(@alignCast(raw));
+    entry.cache().died(entry);
+    entry.cache().queueFinalizer(entry);
+}
+
+/// The binding changed the wrapper `raw` holds by a traced reference
+/// (v8_wrapper.cpp notePlatformWrapperChanged: a private property, a
+/// prototype, a captured stack): V8 will not drop it in a young collection
+/// any more, so the record holds it by a weak handle from here
+/// (`heldByWeakHandle`'s rule).
+fn changed(_: ?*anyopaque, raw: *v8.WrapperCell) callconv(.c) void {
+    const entry: *Cell = @ptrCast(@alignCast(raw));
+    entry.cache().toWeakHandle(entry);
+}
+
+/// The hooks of an agent that ended: its caches are gone.
+fn noWeakProcessing(_: ?*anyopaque) callconv(.c) void {}
+fn nothingDropped(_: ?*anyopaque, _: *v8.WrapperCell) callconv(.c) void {}
+
+/// The finalizer of a collected wrapper (`WrapperCache.died` ran), at its
+/// agent's safe point - never while the engine is collecting: the collection
+/// only queues it (v8_wrapper.cpp `runQueuedFinalizers`: a binding's return
+/// into script, the pump, a forced collection's return) - the instance's
+/// teardown runs here, and may do any engine work - a dropped Response
+/// cancels its open body transfer, which reports to its page.
 fn finalizeCollected(data: ?*anyopaque, _: usize) callconv(.c) void {
-    const entry: *CacheEntry = @ptrCast(@alignCast(data orelse return));
+    const entry: *Cell = @ptrCast(@alignCast(data orelse return));
     // A walk holds the agent's teardowns (engine.deferTeardowns): this one
-    // waits for the last resume, on the pending list where it already is.
-    // V8 is done with it - the first pass reset the handle, and the C++ side
-    // forgot the finalizer before calling here - so the later finalizeEntry
-    // only deletes the Global, as the cache's end does for a pending entry.
-    if (!entry.is_orphaned) {
-        if (entry.cache.teardownHolds()) |holds| {
-            if (holds.count != 0 and holds.wait(entry)) return;
-        }
+    // waits for the last resume, flagged and listed on the agent's holds.
+    // The engine is done with it - its reference is empty and its record is
+    // off the queue - so the later finalizeEntry tears it down as the cache's
+    // end does for a record still waiting.
+    //
+    // The realm is collected and has not ended (lane tl1): the record stays
+    // collected and counted (`WrapperCache.pending`), off the agent's queue
+    // and on no hold, and the realm's end tears it down
+    // (`WrapperCache.realm_collected`, `finalizePending`).
+    if (entry.cache().realm_collected) return;
+    if (entry.cache().teardownHolds()) |holds| {
+        if (holds.count != 0 and holds.wait(entry)) return;
     }
     finalizeEntry(entry);
 }
 
-/// The stamp of the object a queued finalizer is for (`CacheEntry.fresh`), for
-/// the agent's safe point inside a callback (finalizer_safe_point.zig): 0 -
-/// never fresh - for a finalizer that is not a wrapper cache entry's (an
-/// observable array's, an asynchronous iterator's, a promise reaction's), and
-/// for an entry whose cache is gone. `data` is what the finalizer was armed
-/// with; it has not been cancelled (the caller checked).
+/// The stamp of the object a queued finalizer is for (`Cell.fresh`), for the
+/// agent's safe point inside a callback (finalizer_safe_point.zig): 0 - never
+/// fresh - for a finalizer that is not a wrapper cache record's (an
+/// observable array's, an asynchronous iterator's, a promise reaction's).
+/// `data` is what the finalizer was queued with; it has not been cancelled
+/// (the caller checked).
 pub fn freshStampOf(finalize: v8.WeakCallbackFn, data: ?*anyopaque) u32 {
     if (finalize != &finalizeCollected) return 0;
-    const entry: *const CacheEntry = @ptrCast(@alignCast(data orelse return 0));
-    if (entry.is_orphaned) return 0;
+    const entry: *const Cell = @ptrCast(@alignCast(data orelse return 0));
     return entry.fresh;
 }
+
+/// v8_Isolate_TakeQueuedFinalizers' two callbacks for a cache's end: the
+/// queued finalizers of `context`'s own records leave the agent's queue
+/// uncalled - the cache then finalizes, or drops, each record itself
+/// (`WrapperCache.finalizePending`, `orphanPending`), by walking its pool.
+fn belongsToCache(data: ?*anyopaque, context: ?*anyopaque) callconv(.c) bool {
+    const entry: *const Cell = @ptrCast(@alignCast(data orelse return false));
+    return @as(?*anyopaque, @ptrCast(entry.cache())) == context;
+}
+fn takenOffQueue(_: ?*anyopaque, _: ?*anyopaque) callconv(.c) void {}
 
 /// An agent's holds on the teardowns of its collected platform objects
 /// (engine.deferTeardowns / resumeTeardowns), kept on its agent record
@@ -800,21 +1047,21 @@ pub const TeardownHolds = struct {
     /// The entries waiting, each still on its cache's pending list and
     /// flagged `teardown_deferred`. OWNED storage (std.heap.c_allocator);
     /// the entries are their caches'.
-    deferred: std.ArrayListUnmanaged(*CacheEntry) = .empty,
+    deferred: std.ArrayListUnmanaged(*Cell) = .empty,
 
     /// List `entry` to wait, and flag it; false - tear it down now - when
     /// there is no memory to list it.
-    fn wait(self: *TeardownHolds, entry: *CacheEntry) bool {
+    fn wait(self: *TeardownHolds, entry: *Cell) bool {
         self.deferred.append(std.heap.c_allocator, entry) catch return false;
-        entry.teardown_deferred = true;
+        entry.bits.teardown_deferred = true;
         return true;
     }
 
     /// `entry` is torn down or dropped some other way while it waits - its
     /// cache's end: it leaves the list.
-    fn forget(self: *TeardownHolds, entry: *CacheEntry) void {
-        entry.teardown_deferred = false;
-        const index = std.mem.indexOfScalar(*CacheEntry, self.deferred.items, entry) orelse return;
+    fn forget(self: *TeardownHolds, entry: *Cell) void {
+        entry.bits.teardown_deferred = false;
+        const index = std.mem.indexOfScalar(*Cell, self.deferred.items, entry) orelse return;
         _ = self.deferred.swapRemove(index);
     }
 
@@ -892,177 +1139,112 @@ pub fn resumeTeardowns(realm: runtime.Context) void {
 fn runDeferredTeardowns(holds: *TeardownHolds) void {
     while (holds.count == 0) {
         const entry = holds.deferred.pop() orelse return;
-        entry.teardown_deferred = false;
+        entry.bits.teardown_deferred = false;
         finalizeEntry(entry);
     }
 }
 
-/// The teardown of a collected entry: free its instance unless something
-/// still owns it, then its handle and the entry. Run by the finalizer, or
-/// by the cache's end for one whose finalizer has not run yet.
-fn finalizeEntry(entry: *CacheEntry) void {
+/// The teardown of a collected record: free its instance unless something
+/// still owns it, then the record. Run by the finalizer, or by the cache's
+/// end for one whose finalizer has not run yet. (A counted instance - a node
+/// - is never here: its wrapper is its agent's, node_wrappers.zig.)
+fn finalizeEntry(entry: *Cell) void {
+    const cache = entry.cache();
     // Waiting for a hold's end (engine.deferTeardowns) and torn down another
     // way first - its cache's end: it leaves the agent's list.
-    if (entry.teardown_deferred) {
-        if (entry.cache.holds) |holds| holds.forget(entry) else entry.teardown_deferred = false;
+    if (entry.bits.teardown_deferred) {
+        if (cache.holds) |holds| holds.forget(entry) else entry.bits.teardown_deferred = false;
     }
-    // An orphaned entry means the cache was destroyed (via
-    // deinitWithoutCallbacks): the instance pointer may have been reused for
-    // a new object - just clean up the entry itself. The cache allocator
-    // outlives its caches' entries.
-    if (entry.is_orphaned) {
-        log.debug("[finalizeEntry] ORPHANED: instance={*} - cache was destroyed, skipping cleanup", .{entry.instance});
-        disposeEntryWrapper(entry, .freed);
-        entry.cache.allocator.destroy(entry);
-        return;
-    }
-    entry.cache.unlinkPending(entry);
-
-    // The wrapper's reference goes first, while its node is certainly still
-    // there: everything below may free it (refcount design 2.1, "dispose the
-    // handle; deref"). For a counted instance - a node - that deref is the
-    // whole lifetime decision since refcount step 7: a tree it leaves
-    // garbage is queued by the counts (dom.refcount_teardown), never here.
-    const counted = entry.counted != null;
-    releaseCounted(entry);
+    const instance = entry.instance;
 
     // Replaced or removed before it was collected: nothing of the instance
-    // is this entry's.
-    if (entry.stale) {
-        disposeEntryWrapper(entry, .kept);
-        entry.cache.allocator.destroy(entry);
-        return;
-    }
+    // is this record's.
+    if (entry.bits.stale) return cache.freeCell(entry);
 
     // The SlabAllocator can reuse instance addresses: an instance freed
-    // since (its tree's teardown, or the realm's end) and its slot reissued is
-    // not this entry's to free.
-    log.debug("[finalizeEntry] VTABLE_CHECK: instance={*} orig_vtable={*} curr_vtable={*} orig_state={*} curr_state={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable, entry.original_state, entry.instance.state });
+    // since (its own teardown, or the realm's end) and its slot reissued is
+    // not this record's to free.
     if (slotReissued(entry)) {
-        log.debug("[finalizeEntry] INSTANCE REUSED: instance={*} - vtable/state/generation mismatch, skipping cleanup", .{entry.instance});
-        disposeEntryWrapper(entry, .freed);
-        entry.cache.allocator.destroy(entry);
-        return;
+        log.debug("[finalizeEntry] INSTANCE REUSED: instance={*} - generation mismatch, skipping cleanup", .{instance});
+        return cache.freeCell(entry);
     }
 
     // Wrapped again since the collection - script reached the instance
     // through something the host holds, and a new wrapper was made: that
     // wrapper owns it now. Blink's second pass dropped only the collected
     // wrapper's reference for the same reason.
-    if (entry.cache.cache.get(entry.instance)) |current| {
-        if (current.original_generation == entry.original_generation and current.original_vtable == entry.original_vtable) {
-            disposeEntryWrapper(entry, .kept);
-            entry.cache.allocator.destroy(entry);
-            return;
-        }
+    if (cache.cache.get(instance)) |current| {
+        if (current.stamp.generation == entry.stamp.generation) return cache.freeCell(entry);
     }
 
     // If the CleanupCoordinator is handling teardown, type-specific cleanup
     // must still happen for an instance nothing has cleaned up yet - unless
     // another realm still wraps it.
     //
-    // Except a node still in a tree: its tree's teardown frees it. Node
-    // tracing lets a whole detached tree's wrappers die in one collection, so
-    // the realm's end can find a parented node's entry pending beside its
-    // root's - freed here first, the root's teardown then walked into it
-    // (gc_bench's host-in-dropped-parent body, a segfault in Node.deinit at the
-    // page's end).
-    //
     // The wrapper finalized here was the last engine object of an instance
     // no other realm wraps, so nothing in script reaches the instance any
-    // more (lane pageretention1). One its tree already tore down hands its
-    // storage to the teardown, which returns it after its last phase; a tree
-    // node still to be torn down is marked released, so that its tree's
-    // teardown returns its storage the same way (Node.deinitNodeByType). Both
-    // kept their slots until the Browser ended: the teardown found the node
-    // marked wrapped and no entry left to return it.
+    // more (lane pageretention1). One its owner already tore down hands its
+    // storage to the teardown, which returns it after its last phase; one
+    // still to be torn down is marked released, so that its teardown returns
+    // its storage the same way.
     if (runtime.cleanup_coordinator.isContextTearingDown()) {
-        const started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
-        const elsewhere = wrappedElsewhere(entry.instance, entry.cache);
-        var instance: EntryInstance = .kept;
-        if (!started and !elsewhere and !treeOwns(entry.instance)) {
-            runtime.gc.onObjectFreed(entry.instance);
-            instance = .freed;
-        } else if (!elsewhere and !isRealmWindow(entry.instance)) {
+        const started = runtime.instance_lifecycle.isCleanupStarted(instance);
+        const elsewhere = wrappedElsewhere(instance, cache);
+        // Never a realm's Window: its realm's end frees it, whatever
+        // collection took its global first - a detached frame's realm the
+        // collector takes while another realm's teardown is under way
+        // (lane winslot1's E10, tests/v8/window_finalized_in_teardown_test.zig).
+        // Until lane wrap1 b3 nothing here said so: that test's Window
+        // carried a vtable of the test's own, which the entry's vtable
+        // comparison took for a reissued slot.
+        if (isRealmWindow(instance)) return cache.freeCell(entry);
+        if (!started and !elsewhere) {
+            runtime.gc.onObjectFreed(instance);
+        } else if (!elsewhere) {
             if (!started) {
-                runtime.instance_lifecycle.markWrapperGone(entry.instance);
-            } else if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
-                runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+                runtime.instance_lifecycle.markWrapperGone(instance);
+            } else if (runtime.instance_lifecycle.isCleanedUp(instance)) {
+                runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
             }
         }
-        disposeEntryWrapper(entry, instance);
-        entry.cache.allocator.destroy(entry);
-        return;
+        return cache.freeCell(entry);
     }
 
-    // Already being cleaned up (Node.deinit ran): free the storage a
+    // Already being cleaned up (its own teardown ran): free the storage a
     // completed cleanup left.
-    if (runtime.instance_lifecycle.isCleanupStarted(entry.instance)) {
-        if (runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
-            runtime.gc.releaseStorage(entry.instance);
-            disposeEntryWrapper(entry, .freed);
-        } else {
-            disposeEntryWrapper(entry, .kept);
-        }
-        entry.cache.allocator.destroy(entry);
-        return;
-    }
-
-    // A counted instance - a node - lives by its counts (refcount step 7):
-    // the deref above queued its tree if that left it garbage, and its slice
-    // frees it between tasks. Only the wrapper goes here. With no other
-    // realm's wrapper, nothing in script reaches the node now, so its
-    // teardown may return its storage (instance_lifecycle.provablyUnwrapped,
-    // [wrap_tracking]) - the slice's, or its tree's later. An agent made
-    // without a queue (engine.AgentOptions.deferred_teardown null: a test's
-    // own) has nowhere for its counts to queue a tree, and keeps the old
-    // model below: the finalizer frees a collected root nothing owns.
-    if (counted and entry.cache.deferredQueue() != null) {
-        if (!wrappedElsewhere(entry.instance, entry.cache))
-            runtime.instance_lifecycle.markWrapperGone(entry.instance);
-        disposeEntryWrapper(entry, .kept);
-        entry.cache.allocator.destroy(entry);
-        return;
+    if (runtime.instance_lifecycle.isCleanupStarted(instance)) {
+        if (runtime.instance_lifecycle.isCleanedUp(instance)) runtime.gc.releaseStorage(instance);
+        return cache.freeCell(entry);
     }
 
     // An instance the ENGINE still owns is not freed when JS drops its
-    // wrapper: a node in a tree is reachable from its parent, a window's
-    // document from its browsing context, and neither pointer is visible to
-    // V8. Only the wrapper goes; a later wrap makes a fresh one. A realm's
-    // Window is freed by its realm's end, never by its wrapper's death.
-    if (isRealmWindow(entry.instance) or engineOwns(entry.instance)) {
-        log.debug("[finalizeEntry] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{entry.instance});
+    // wrapper: a window's Location or History is its Window's. Only the
+    // wrapper goes; a later wrap makes a fresh one. A realm's Window is freed
+    // by its realm's end, never by its wrapper's death.
+    if (isRealmWindow(instance) or engineOwns(instance)) {
+        log.debug("[finalizeEntry] ENGINE-OWNED: instance={*} - wrapper released, instance kept", .{instance});
         // [wrap_tracking]: this was the instance's last engine object - no
         // other realm's cache wraps it, and it is no realm's global - so
         // nothing in script reaches it now, and the host's teardown of it may
-        // return its storage as for a node no wrapper ever reached
-        // (instance_lifecycle.provablyUnwrapped). A removed frame's realm
-        // is taken whole by the collector: every wrapped node of its document,
-        // and the document, kept its slot when the realm's end tore them
-        // down, marked wrapped with no entry left to return it (lane
-        // pageretention1). WebKit: the wrapper's `Ref` to its node goes with
-        // the wrapper (JSDOMWrapper::m_wrapped), leaving the node its tree's.
-        if (!isRealmWindow(entry.instance) and !wrappedElsewhere(entry.instance, entry.cache))
-            runtime.instance_lifecycle.markWrapperGone(entry.instance);
-        disposeEntryWrapper(entry, .kept);
-        entry.cache.allocator.destroy(entry);
-        return;
+        // return its storage (instance_lifecycle.provablyUnwrapped; lane
+        // pageretention1). WebKit: the wrapper's `Ref` to its object goes
+        // with the wrapper (JSDOMWrapper::m_wrapped).
+        if (!isRealmWindow(instance) and !wrappedElsewhere(instance, cache))
+            runtime.instance_lifecycle.markWrapperGone(instance);
+        return cache.freeCell(entry);
     }
 
     // Another realm's cache still wraps this instance: only this realm's
     // wrapper goes. See `Caches`.
-    if (wrappedElsewhere(entry.instance, entry.cache)) {
-        disposeEntryWrapper(entry, .kept);
-        entry.cache.allocator.destroy(entry);
-        return;
-    }
+    if (wrappedElsewhere(instance, cache)) return cache.freeCell(entry);
 
     // The type's deinit (e.g., Response.deinit frees headers, body, URL
     // list), which returns the Instance to the SlabAllocator - engine calls
-    // allowed: it may release the values it holds.
-    runtime.gc.onObjectFreed(entry.instance);
-    disposeEntryWrapper(entry, .freed);
-    entry.cache.allocator.destroy(entry);
+    // allowed: it may release the values it holds. The record goes after it:
+    // a teardown can collect, and the weak processing skips a record that is
+    // still marked collected.
+    runtime.gc.onObjectFreed(instance);
+    cache.freeCell(entry);
 }
 
 const DeferredTeardown = runtime.gc.DeferredTeardown;
@@ -1071,11 +1253,11 @@ const DeferredTeardown = runtime.gc.DeferredTeardown;
 ///
 /// Per-context cache maintaining 1:1 mapping between Zig instances and V8 wrappers.
 pub const WrapperCache = struct {
-    /// HashMap: *runtime.Instance → CacheEntry. Each entry is its own
-    /// allocation, so a `*CacheEntry` read out of the map stays valid however
+    /// HashMap: *runtime.Instance → its record. Each record is the pool's,
+    /// not the map's, so a `*Cell` read out of the map stays valid however
     /// the map moves its slots; only a key or value POINTER into the map
     /// (getPtr, getEntry, an iterator) is invalidated by an insert.
-    cache: address_map.AddressHashMap(*runtime.Instance, *CacheEntry),
+    cache: address_map.AddressHashMap(*runtime.Instance, *Cell),
 
     /// Bounds the tombstones `cache`'s removals leave
     /// (webidl.utils.tombstones). Every collected wrapper takes its entry out
@@ -1163,11 +1345,73 @@ pub const WrapperCache = struct {
     /// kept by an edge from it instead (`syncEntry`).
     detached_holder: ?*v8.Value = null,
 
-    /// Entries whose wrapper was collected and whose finalizer has not run
-    /// (`unlinkCollected` -> `finalizeCollected`), most recent first. The
-    /// cache's end finalizes what is still here: a finalizer its agent's
-    /// safe points never reached does not run.
-    pending_head: ?*CacheEntry = null,
+    /// The collector took this cache's realm - a detached realm nothing of
+    /// script reached any more (protocol_realms.realmCollected) - and the
+    /// realm's end, a task that queues, has not run yet. Until it has, the
+    /// realm's Window and its tree are still allocated, and native code can
+    /// still reach them through a weak reference (an address and a slab
+    /// generation: the embedder's pointer was over one of its elements). The
+    /// Window names the objects it made by plain pointers - its Performance,
+    /// its Navigator, its Storage objects, each kept alive by a traced edge
+    /// from the global object - and the same collection took their wrappers.
+    /// So their teardown waits for the realm's end (`finalizeCollected`),
+    /// which frees them after the Window, in its own order, as it does for
+    /// a realm that ends without having been collected. Freed at the safe
+    /// point instead, the Window named freed objects for that while: an
+    /// event made in the realm read its Performance for its timestamp - a
+    /// segmentation fault in 3 of 96 WPT runner processes
+    /// (tests/html/tl1_collected_realm_window_test.zig). Blink has no such
+    /// state: a window's Performance is traced from the window, so it lives
+    /// exactly as long as the window does - LocalDOMWindow::Trace
+    /// (core/frame/local_dom_window.cc) traces its supplements
+    /// (Supplementable<LocalDOMWindow>::Trace), and the supplement that
+    /// holds the Performance traces it (core/timing/global_performance.cc,
+    /// GlobalPerformanceImpl::Trace: `visitor->Trace(performance_)`; read at
+    /// chromium main, 2026-11-15).
+    realm_collected: bool = false,
+
+    /// The pool the records are issued from (`allocCell`): its chunks, newest
+    /// first, and those of them that have a free record. A chunk is the
+    /// cache's allocator's; it goes back when its last record is freed
+    /// (`freeCell`), and whatever is left at the cache's end.
+    chunks: ?*Chunk = null,
+    partial: ?*Chunk = null,
+    /// How many chunks the pool holds.
+    chunk_count: usize = 0,
+    /// Walks over `chunks` under way that free records (`finalizePending`,
+    /// `orphanPending`): while one runs no chunk is given back - the walk
+    /// stands on one - and the empty ones go when the last walk ends.
+    pool_walks: u32 = 0,
+    pool_release_owed: bool = false,
+    /// Tests of a wrap that runs out of memory: the next record comes from a
+    /// new chunk whatever the pool has free (`takeFreeRecordsForTest`).
+    pool_grows_for_test: bool = false,
+
+    /// Records whose wrapper a collection took and whose finalizer has not
+    /// run (`died` -> `finalizeCollected`): each is out of the map, flagged
+    /// `collected`, and on its agent's finalizer queue or its teardown
+    /// holds. The cache's end finalizes what still waits (`finalizePending`):
+    /// a finalizer its agent's safe points never reached does not run on a
+    /// freed pool.
+    pending: usize = 0,
+    /// Every record a collection ever took, and how many of them were taken
+    /// off the agent's queue the last time the cache emptied it of its own
+    /// (`takePendingOffQueue`).
+    deaths: usize = 0,
+
+    /// Weak-handle records whose share a collection took out of the agent's
+    /// figure while their wrapper lived (`heldAgain`): expected 0, logged at
+    /// the cache's end when it is not, and read by tests and diagnostics
+    /// (`liveMispredictionCount`).
+    mispredicted: usize = 0,
+    deaths_taken: usize = 0,
+
+    /// The realm's isolate, from the first `set`; null before.
+    isolate: ?*v8.Isolate = null,
+    /// Whether this cache may hold a wrapper by an anchored record: it is on
+    /// its agent's live caches and the agent's collections ask them
+    /// (`register`). Otherwise every record is boxed.
+    anchors: bool = false,
 
     /// What this realm's end finalizes that no wrapper owns: its promise
     /// reactions that have not run and its asynchronous iterators still
@@ -1261,20 +1505,6 @@ pub const WrapperCache = struct {
         return count;
     }
 
-    /// Let every wrapper's counted reference go - the live entries' and the
-    /// collected ones waiting for their finalizer - at the realm's end,
-    /// before its sweep frees anything.
-    fn releaseAllCounted(self: *Self) void {
-        // A walk: since references decide (refcount step 7) a release can
-        // leave a tree garbage, and what that starts can wrap.
-        self.beginWalk();
-        defer self.endWalk();
-        var it = self.cache.valueIterator();
-        while (it.next()) |entry_ptr| releaseCounted(entry_ptr.*);
-        var at = self.pending_head;
-        while (at) |entry| : (at = entry.pending_next) releaseCounted(entry);
-    }
-
     /// A walk over `cache` that calls out of this file begins: until the
     /// matching `endWalk`, `set` inserts without rehashing, so the slots the
     /// walk's iterator reads stay where they are. Every iteration of `cache`
@@ -1297,25 +1527,417 @@ pub const WrapperCache = struct {
         while (it.next()) |key_ptr| try visit(context, key_ptr.*);
     }
 
-    fn linkPending(self: *Self, entry: *CacheEntry) void {
-        entry.pending_prev = null;
-        entry.pending_next = self.pending_head;
-        if (self.pending_head) |head| head.pending_prev = entry;
-        self.pending_head = entry;
+    /// A new chunk for the pool, every record free, at the head of both
+    /// lists.
+    fn addChunk(self: *Self) error{OutOfMemory}!*Chunk {
+        const memory = try self.allocator.alignedAlloc(u8, Chunk.alignment, Chunk.bytes);
+        const chunk: *Chunk = @ptrCast(memory.ptr);
+        chunk.cache = self;
+        chunk.prev = null;
+        chunk.next = self.chunks;
+        if (self.chunks) |head| head.prev = chunk;
+        self.chunks = chunk;
+        self.chunk_count += 1;
+        chunk.live = 0;
+        chunk.free = null;
+        // Threaded last to first, so the pool issues a chunk's records in
+        // address order.
+        var index: usize = Chunk.count;
+        while (index > 0) {
+            index -= 1;
+            const free: *FreeCell = @ptrCast(&chunk.cells[index]);
+            free.* = .{ .wrapper = null, .next = chunk.free, .generation = 0, .fresh = 0, .bits = 0 };
+            chunk.free = &chunk.cells[index];
+        }
+        self.listPartial(chunk);
+        return chunk;
     }
 
-    fn unlinkPending(self: *Self, entry: *CacheEntry) void {
-        if (entry.pending_prev) |prev| prev.pending_next = entry.pending_next else if (self.pending_head == entry) self.pending_head = entry.pending_next;
-        if (entry.pending_next) |next| next.pending_prev = entry.pending_prev;
-        entry.pending_prev = null;
-        entry.pending_next = null;
+    /// `chunk` has a free record again, or for the first time: it joins the
+    /// chunks records are issued from, at their head.
+    fn listPartial(self: *Self, chunk: *Chunk) void {
+        chunk.partial_prev = null;
+        chunk.partial_next = self.partial;
+        if (self.partial) |head| head.partial_prev = chunk;
+        self.partial = chunk;
     }
 
-    /// Tests: put `entry` - taken out of the map by hand - where the first
-    /// pass puts a collected one, to stand in for the window between V8's two
-    /// passes.
-    pub fn linkPendingForTest(self: *Self, entry: *CacheEntry) void {
-        self.linkPending(entry);
+    /// `chunk` leaves the chunks records are issued from: its last free
+    /// record was issued, or it is about to be given back.
+    fn unlistPartial(self: *Self, chunk: *Chunk) void {
+        if (chunk.partial_prev) |prev| prev.partial_next = chunk.partial_next else self.partial = chunk.partial_next;
+        if (chunk.partial_next) |next| next.partial_prev = chunk.partial_prev;
+        chunk.partial_prev = null;
+        chunk.partial_next = null;
+    }
+
+    /// `chunk` has no record in use: it goes back to the allocator - unless
+    /// it is the only chunk with a free record, which stays, so that a
+    /// wrapper made and dropped where the pool is otherwise full does not
+    /// allocate a chunk each time; and not while a walk stands on the chunks
+    /// (`pool_walks`: the walk's end gives the empty ones back).
+    fn releaseIfSpare(self: *Self, chunk: *Chunk) void {
+        std.debug.assert(chunk.live == 0);
+        if (self.pool_walks != 0) {
+            self.pool_release_owed = true;
+            return;
+        }
+        if (self.partial == chunk and chunk.partial_next == null) return;
+        self.unlistPartial(chunk);
+        if (chunk.prev) |prev| prev.next = chunk.next else self.chunks = chunk.next;
+        if (chunk.next) |next| next.prev = chunk.prev;
+        self.chunk_count -= 1;
+        const memory: [*]align(Chunk.bytes) u8 = @ptrCast(@alignCast(chunk));
+        self.allocator.free(memory[0..Chunk.bytes]);
+    }
+
+    /// A walk over `chunks` that frees records begins (`pool_walks`).
+    fn beginPoolWalk(self: *Self) void {
+        self.pool_walks += 1;
+    }
+
+    /// The walk ends; the last one's end gives back the chunks the walks
+    /// emptied.
+    fn endPoolWalk(self: *Self) void {
+        std.debug.assert(self.pool_walks != 0);
+        self.pool_walks -= 1;
+        if (self.pool_walks != 0 or !self.pool_release_owed) return;
+        self.pool_release_owed = false;
+        var at = self.chunks;
+        while (at) |chunk| {
+            at = chunk.next;
+            if (chunk.live == 0) self.releaseIfSpare(chunk);
+        }
+    }
+
+    /// A record of the pool, issued: every field but `wrapper` and the kind
+    /// is the caller's to fill (`bits.in_use` and `bits.boxed` are set: a
+    /// record is no anchored one until it is attached).
+    fn allocCell(self: *Self, instance: *runtime.Instance, stamp: u32) error{OutOfMemory}!*Cell {
+        const chunk = if (self.pool_grows_for_test) try self.addChunk() else self.partial orelse try self.addChunk();
+        const cell = chunk.free.?;
+        const free: *FreeCell = @ptrCast(cell);
+        chunk.free = free.next;
+        chunk.live += 1;
+        if (chunk.free == null) self.unlistPartial(chunk);
+        cell.* = .{
+            .wrapper = null,
+            .instance = instance,
+            .stamp = .{ .generation = @intCast(runtime.SlabAllocator.generationOf(instance)) },
+            .fresh = stamp,
+            .bits = .{ .in_use = true, .boxed = true },
+        };
+        return cell;
+    }
+
+    /// `entry` goes back to the pool: nothing names it any more - not the
+    /// map, not the agent's finalizer queue or holds, not its wrapper's
+    /// anchor (the caller let go of a live record's wrapper first, `letGo`;
+    /// a collected one's is gone). What it still owns goes with it: a boxed
+    /// record's emptied Global, the strong handle of one that was held. Its
+    /// chunk goes back to the allocator when this was its last record
+    /// (`releaseIfSpare`): `entry` is not read after this.
+    fn freeCell(self: *Self, entry: *Cell) void {
+        std.debug.assert(entry.bits.in_use and entry.cache() == self);
+        std.debug.assert(!entry.bits.strong);
+        // A boxed record's Global, emptied by its collection; an anchored
+        // record's reference is empty by now (let go of, or collected).
+        letGo(entry, .keep);
+        if (entry.bits.collected) self.pending -= 1;
+        // A record freed with its wrapper not found dead (a remove, a
+        // replacement, its realm's end): its share of the figure goes with
+        // it.
+        takeHeld(self.isolate, entry, .freed);
+        const chunk = Chunk.of(entry);
+        const was_full = chunk.free == null;
+        const free: *FreeCell = @ptrCast(entry);
+        free.* = .{ .wrapper = null, .next = chunk.free, .generation = 0, .fresh = 0, .bits = 0 };
+        chunk.free = entry;
+        chunk.live -= 1;
+        if (was_full) self.listPartial(chunk);
+        if (chunk.live == 0) self.releaseIfSpare(chunk);
+        self.shrinkMapIfSparse();
+    }
+
+    /// The map's slots follow the live wrappers down, as the pool's chunks
+    /// do (`releaseIfSpare`): std's map only grows, so a page that held
+    /// 200,000 streams at once - each with its reader and its controller -
+    /// kept a million slots, 17.8 MB, for the realm's life once they were
+    /// collected (lane wrap1 b3's reading of the perf suite's streams page;
+    /// tmp/plans/lane-wrap1-handoff.md). When an eighth or less of the slots
+    /// is in use, the entries move to a map with room for twice as many.
+    /// WebKit's WTF::HashTable has the same policy: after a removal it
+    /// shrinks a table whose keys take under a sixth of it (Source/WTF/wtf/
+    /// HashTable.h `shouldShrink`, minLoad = 6, WebKit aa0d9480a516; an LGPL
+    /// file - the policy was read, no code taken). Each rebuild at least
+    /// halves the slots, so a free pays a constant share. Called where a
+    /// record is freed: the agent's safe point or a remove, never inside the
+    /// collector (`died` only takes an entry out) - and it does nothing
+    /// while a walk reads the slots or the cache is torn down. With no
+    /// memory for the smaller map, the map stays.
+    fn shrinkMapIfSparse(self: *Self) void {
+        const capacity = self.cache.capacity();
+        if (capacity <= map_shrink_floor) return;
+        const count = self.cache.count();
+        if (count > capacity / 8) return;
+        if (self.walks != 0 or self.is_tearing_down) return;
+        var smaller = @TypeOf(self.cache).init(self.allocator);
+        smaller.ensureTotalCapacity(@max(count * 2, map_shrink_floor / 4)) catch return;
+        var entries = self.cache.iterator();
+        while (entries.next()) |kv| smaller.putAssumeCapacityNoClobber(kv.key_ptr.*, kv.value_ptr.*);
+        self.cache.deinit();
+        self.cache = smaller;
+        // A new table has no tombstones.
+        self.guard.reset();
+    }
+
+    /// At or below this many slots the map is never rebuilt smaller
+    /// (`shrinkMapIfSparse`): 17 bytes a slot, 1.1 MB - above what a page's
+    /// wrappers between two young collections take, so a make-and-drop loop
+    /// never rebuilds its map.
+    pub const map_shrink_floor = 1 << 16;
+
+    /// The pool's memory, at the cache's end: every record was freed.
+    fn freeChunks(self: *Self) void {
+        while (self.chunks) |chunk| {
+            self.chunks = chunk.next;
+            const memory: [*]align(Chunk.bytes) u8 = @ptrCast(@alignCast(chunk));
+            self.allocator.free(memory[0..Chunk.bytes]);
+        }
+        self.chunk_count = 0;
+        self.partial = null;
+        self.pool_walks = 0;
+        self.pool_release_owed = false;
+    }
+
+    /// Hold `entry`'s wrapper strongly: a record's v8::Global (a boxed
+    /// record's, a weak-handle record's) stops being weak; a traced record's
+    /// wrapper gets a strong handle beside its reference, kept by its
+    /// isolate's record (v8_WrapperCell_SetStrong: a droppable reference is
+    /// no root in a young collection, and a traced one none in a full one).
+    /// Few wrappers are held: most are only script's.
+    fn makeStrong(self: *Self, entry: *Cell) void {
+        // The bit first: a weak-handle record's first pass reads it
+        // (v8_wrapper.cpp kWrapperCellStrong).
+        entry.bits.strong = true;
+        if (entry.bits.boxed or entry.bits.weak_handle) {
+            disarm(entry);
+        } else v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), true);
+    }
+
+    /// End `makeStrong`'s hold: the wrapper is the collector's again.
+    fn makeWeak(self: *Self, entry: *Cell) void {
+        if (entry.bits.boxed or entry.bits.weak_handle) {
+            entry.bits.strong = false;
+            if (entry.global() != null) armWeak(entry);
+            return;
+        }
+        self.dropStrongHandle(entry);
+    }
+
+    fn dropStrongHandle(self: *Self, entry: *Cell) void {
+        if (!entry.bits.strong) return;
+        entry.bits.strong = false;
+        if (!entry.bits.boxed and !entry.bits.weak_handle) v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), false);
+    }
+
+    /// A traced record becomes a weak-handle record: its wrapper is one V8
+    /// will not drop in a young collection any more (`changed`). The handle
+    /// borrowers hold - the record's address - is the same handle after it.
+    /// A record the cache holds strongly stays held: its Global is strong.
+    fn toWeakHandle(self: *Self, entry: *Cell) void {
+        if (entry.bits.boxed or entry.bits.weak_handle or entry.bits.collected or !entry.bits.in_use) return;
+        const was_strong = entry.bits.strong;
+        self.dropStrongHandle(entry);
+        // Armed weak in the same call, unless the cache keeps the wrapper.
+        if (!v8.v8_WrapperCell_ToWeakHandle(self.isolate.?, entry.raw(), !was_strong)) {
+            if (was_strong) self.makeStrong(entry);
+            return;
+        }
+        entry.bits.weak_handle = true;
+        entry.bits.marked = false;
+        if (was_strong) entry.bits.strong = true;
+    }
+
+    /// A collection took `entry`'s wrapper (its reference is empty): the
+    /// record leaves the map and waits for its finalizer. Inside the
+    /// collector - a young collection's ResetRoot, a full one's weak
+    /// processing, a boxed record's first pass - so nothing here calls V8 or
+    /// inserts into the map (an insert may rehash - `set`): the record is
+    /// only made unreachable. A wrap from here on makes a new wrapper; the
+    /// instance's teardown is the finalizer's, after the collection.
+    fn died(self: *Self, entry: *Cell) void {
+        entry.bits.collected = true;
+        // What its instance holds is no live wrapper's any more: it leaves
+        // the figure here, where the collector decided - not at the
+        // finalizer, which runs after V8 has computed its next limits.
+        takeHeld(self.isolate, entry, .dead);
+        self.pending += 1;
+        self.deaths +%= 1;
+        // Due to memory reuse (SlabAllocator/ArenaAllocator), the same
+        // instance address can be used for different objects over time: take
+        // out only this record; one that replaced it stays.
+        if (self.cache.getEntry(entry.instance)) |found| {
+            if (found.value_ptr.* == entry) {
+                self.cache.removeByPtr(found.key_ptr);
+                self.guard.noteRemoval(&self.cache);
+                return;
+            }
+        }
+        entry.bits.stale = true;
+    }
+
+    /// `entry`, an anchored record a collection just took (`died`), joins
+    /// its agent's finalizer queue (a boxed record's handle queues its own).
+    /// With no queue - an isolate with no record - it waits for the cache's
+    /// end (`finalizePending`).
+    fn queueFinalizer(self: *Self, entry: *Cell) void {
+        const isolate = self.isolate orelse return;
+        _ = v8.v8_Isolate_QueueFinalizer(isolate, &finalizeCollected, entry);
+    }
+
+    /// The weak processing of a full collection's atomic pause (`processWeak`)
+    /// for this cache: every live anchor's Trace has marked its record
+    /// (v8_wrapper.cpp PlatformAnchor::Trace), so an anchored record left
+    /// unmarked is a dead wrapper's. Its reference is written empty - raw: V8
+    /// frees the unmarked TracedNode itself in this pause
+    /// (TracedHandles::ResetDeadNodes; a Reset would free it twice) - and it
+    /// leaves the map for the finalizer queue. The pool is walked, not the
+    /// map: a record is 32 bytes and a chunk's records are adjacent.
+    ///
+    /// A weak-handle record's wrapper is not judged here - its Global's
+    /// first pass does that, after this pause (`dropped`) - but what its
+    /// instance holds leaves the figure here when the marking did not reach
+    /// its anchor.
+    fn sweepUnmarked(self: *Self) void {
+        var at = self.chunks;
+        while (at) |chunk| : (at = chunk.next) {
+            for (&chunk.cells) |*entry| {
+                const bits = entry.bits;
+                if (!bits.in_use or bits.boxed or bits.collected) continue;
+                if (bits.weak_handle) {
+                    entry.bits.marked = false;
+                    // A live wrapper's anchor is always traced (the wrapper
+                    // points at it), so an anchor this marking did not reach
+                    // is a dead wrapper's: what its instance holds leaves the
+                    // figure in this pause, with the traced records' dead -
+                    // V8 computes its next limits from what it is told here
+                    // (v8_wrapper.cpp `forgetDeadWrappedInstances`). The record
+                    // itself waits for its Global's first pass, as before.
+                    if (!bits.marked) {
+                        takeHeld(self.isolate, entry, .dead);
+                    } else if (entry.stamp.held == 0) self.heldAgain(entry);
+                    continue;
+                }
+                if (bits.marked) {
+                    entry.bits.marked = false;
+                    continue;
+                }
+                entry.wrapper = null;
+                self.died(entry);
+                self.queueFinalizer(entry);
+            }
+        }
+    }
+
+    /// A weak-handle record whose share left the figure in an earlier
+    /// collection's weak processing - that marking had not reached its
+    /// anchor - and whose anchor THIS collection's marking reached: the
+    /// wrapper lived, so what its instance holds is counted again, and the
+    /// case is counted (`mispredicted`). It should not happen: a live
+    /// wrapper points at its anchor, V8's marker pushes the anchor of every
+    /// wrapper it marks or wraps while a cycle marks (v8_wrapper.cpp
+    /// collectingRecord), and every pushed anchor is traced in the pause.
+    /// The count is what says so on real pages (the bug-finding sweep reads
+    /// the line `endStorage` logs), and the figure does not stay low if it
+    /// ever does. An instance torn down under its live wrapper
+    /// (`markAsCleanedUp`) or gone is not read.
+    fn heldAgain(self: *Self, entry: *Cell) void {
+        if (!self.registered or entry.bits.instance_already_cleaned or slotReissued(entry)) return;
+        const isolate = self.isolate orelse return;
+        self.mispredicted += 1;
+        noteWrapped(isolate, entry, wrapperFactsOf(entry.instance));
+    }
+
+    /// Tests: `instance`'s live record loses its share of the figure, as in
+    /// a weak processing whose marking did not reach its anchor - what
+    /// `heldAgain` repairs at the next collection that does.
+    pub fn forgetHeldForTest(self: *Self, instance: *runtime.Instance) bool {
+        const entry = self.cache.get(instance) orelse return false;
+        takeHeld(self.isolate, entry, .freed);
+        return true;
+    }
+
+    /// Tests: stand in for the collection that takes `instance`'s wrapper -
+    /// the record leaves the map as `died` leaves it, its wrapper severed
+    /// and let go - without queueing its finalizer: the window between a
+    /// collection and the agent's safe point, which `finalizePendingForTest`
+    /// ends.
+    pub fn collectForTest(self: *Self, instance: *runtime.Instance) bool {
+        const entry = self.cache.get(instance) orelse return false;
+        self.dropStrongHandle(entry);
+        if (entry.bits.boxed) {
+            if (entry.wrapper) |box| v8.v8_Global_ClearWeak(@ptrCast(box));
+        } else letGo(entry, .sever);
+        self.died(entry);
+        return true;
+    }
+
+    /// Tests of the pool alone (tests/v8/wrapper_cache_pool_test.zig), with
+    /// no engine behind the records: how many records a chunk holds, a
+    /// record issued for `instance` and given back (never in the map, its
+    /// wrapper never set), a walk that frees records, and whether the pool
+    /// is down to one chunk that records are issued from.
+    pub const records_per_chunk = Chunk.count;
+
+    pub fn allocRecordForTest(self: *Self, instance: *runtime.Instance, stamp: u32) error{OutOfMemory}!*Cell {
+        return self.allocCell(instance, stamp);
+    }
+
+    pub fn freeRecordForTest(self: *Self, entry: *Cell) void {
+        self.freeCell(entry);
+    }
+
+    pub fn beginPoolWalkForTest(self: *Self) void {
+        self.beginPoolWalk();
+    }
+
+    pub fn endPoolWalkForTest(self: *Self) void {
+        self.endPoolWalk();
+    }
+
+    pub fn ownsRecordForTest(self: *const Self, entry: *const Cell) bool {
+        return entry.cache() == self;
+    }
+
+    pub fn poolIsOneOpenChunkForTest(self: *const Self) bool {
+        const only = self.chunks orelse return false;
+        return only.next == null and self.partial == only;
+    }
+
+    /// Tests of a wrap that runs out of memory: the pool's free records are
+    /// set aside - the next `set` asks the allocator for a chunk - until
+    /// they are given back. What was in force before, for the give-back.
+    pub fn takeFreeRecordsForTest(self: *Self) bool {
+        const before = self.pool_grows_for_test;
+        self.pool_grows_for_test = true;
+        return before;
+    }
+
+    pub fn giveFreeRecordsForTest(self: *Self, taken: bool) void {
+        self.pool_grows_for_test = taken;
+    }
+
+    /// Tests whose wrappers are mock memory with no engine behind it:
+    /// `instance`'s record leaves the cache with no engine call - its box is
+    /// the test's to end. Whether there was one.
+    pub fn forgetMockForTest(self: *Self, instance: *runtime.Instance) bool {
+        const kv = self.cache.fetchRemove(instance) orelse return false;
+        self.guard.noteRemoval(&self.cache);
+        std.debug.assert(kv.value.bits.boxed);
+        kv.value.wrapper = null;
+        self.freeCell(kv.value);
+        return true;
     }
 
     /// Tests: run the finalizers waiting for the agent's safe point now.
@@ -1323,32 +1945,63 @@ pub const WrapperCache = struct {
         self.finalizePending();
     }
 
-    /// Entries collected and not finalized yet (tests, diagnostics).
+    /// Records collected and not finalized yet (tests, diagnostics).
     pub fn pendingFinalizerCount(self: *const Self) usize {
-        var count: usize = 0;
-        var at = self.pending_head;
-        while (at) |entry| : (at = entry.pending_next) count += 1;
-        return count;
+        return self.pending;
+    }
+
+    /// This cache's collected records leave the agent's finalizer queue,
+    /// uncalled: the cache is about to finalize or drop each one itself, and
+    /// then frees the memory a queued finalizer would be handed. Nothing to
+    /// take when no record died since the last time (a record joins the
+    /// queue only where it dies).
+    fn takePendingOffQueue(self: *Self) void {
+        if (self.deaths == self.deaths_taken) return;
+        self.deaths_taken = self.deaths;
+        const isolate = self.isolate orelse return;
+        v8.v8_Isolate_TakeQueuedFinalizers(isolate, &finalizeCollected, &belongsToCache, &takenOffQueue, self);
     }
 
     /// The cache is ending: run every finalizer still waiting for its safe
-    /// point now - outside any collection - and cancel its queued record
-    /// (disposing the entry's handle does). Each runs as it would have there.
+    /// point now - outside any collection - each as it would have run there.
+    /// The pool is walked for the records a collection took; a teardown can
+    /// collect, and what that collection takes joins the wait (and the
+    /// agent's queue, which is emptied of this cache's records before each
+    /// one is finalized), so the walk repeats until none is left.
     fn finalizePending(self: *Self) void {
-        while (self.pending_head) |entry| finalizeEntry(entry);
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
+        while (self.pending != 0) {
+            var progressed = false;
+            var at = self.chunks;
+            while (at) |chunk| : (at = chunk.next) {
+                for (&chunk.cells) |*entry| {
+                    if (!entry.bits.in_use or !entry.bits.collected) continue;
+                    self.takePendingOffQueue();
+                    finalizeEntry(entry);
+                    progressed = true;
+                }
+            }
+            if (!progressed) break;
+        }
     }
 
     /// The cache is being destroyed without running teardowns
-    /// (`deinitWithoutCallbacks`): each pending entry's handle and storage go
-    /// now, its instance with the batch free.
+    /// (`deinitWithoutCallbacks`): each waiting record goes now, its instance
+    /// with the batch free.
     fn orphanPending(self: *Self) void {
-        while (self.pending_head) |entry| {
-            if (entry.teardown_deferred) {
-                if (self.holds) |holds| holds.forget(entry) else entry.teardown_deferred = false;
+        self.takePendingOffQueue();
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
+        var at = self.chunks;
+        while (at) |chunk| : (at = chunk.next) {
+            for (&chunk.cells) |*entry| {
+                if (!entry.bits.in_use or !entry.bits.collected) continue;
+                if (entry.bits.teardown_deferred) {
+                    if (self.holds) |holds| holds.forget(entry) else entry.bits.teardown_deferred = false;
+                }
+                self.freeCell(entry);
             }
-            self.unlinkPending(entry);
-            disposeEntryWrapper(entry, .kept);
-            self.allocator.destroy(entry);
         }
     }
 
@@ -1533,14 +2186,14 @@ pub const WrapperCache = struct {
     /// Creates an empty HashMap ready to cache wrappers.
     ///
     /// ## Parameters
-    /// - allocator: Memory allocator for cache entries
+    /// - allocator: Memory allocator for the map and the pool of records
     /// - context: V8 Context this cache belongs to
     ///
     /// ## Returns
     /// Initialized WrapperCache
     pub fn init(allocator: std.mem.Allocator, context: *v8.Context) !Self {
         return .{
-            .cache = address_map.AddressHashMap(*runtime.Instance, *CacheEntry).init(allocator),
+            .cache = address_map.AddressHashMap(*runtime.Instance, *Cell).init(allocator),
             .allocator = allocator,
             .context = context,
         };
@@ -1548,16 +2201,16 @@ pub const WrapperCache = struct {
 
     /// Clean up cache resources
     ///
-    /// Disposes all cached Global handles and frees the HashMap.
+    /// Lets go of every cached wrapper and frees the map and the pool.
     /// Should be called when the V8 Context is destroyed.
     /// This also calls gc.onObjectFreed for each instance to ensure
-    /// type-specific deinit is called (since weak callbacks may not fire
-    /// during shutdown).
+    /// type-specific deinit is called (the collector may never find a wrapper
+    /// dead during shutdown).
     pub fn deinit(self: *Self) void {
-        // Every wrapper's counted reference goes before anything of the realm
-        // is freed: once the sweep below starts, a node's teardown can no
-        // longer tell its entry (`markAsCleanedUp` is off while tearing down).
-        self.releaseAllCounted();
+        // The pool gives no chunk back from here: the sweeps below free
+        // records while they walk the map that still names them, and
+        // `endStorage` frees every chunk at the end.
+        self.beginPoolWalk();
 
         // The nodes this realm queued for deferred teardown go first, while
         // the cache can still answer whether one was wrapped again. Its end
@@ -1566,7 +2219,7 @@ pub const WrapperCache = struct {
         self.drainDeferred();
 
         // Mark as tearing down to prevent re-entrant access during cleanup.
-        // When Node.deinit calls markInstanceCleanedUp, it will be a no-op.
+        // When a teardown calls markInstanceCleanedUp, it will be a no-op.
         self.is_tearing_down = true;
 
         // The realm's records no wrapper owns - its end drained them
@@ -1577,32 +2230,30 @@ pub const WrapperCache = struct {
         // it would find this cache gone. Run them now.
         self.finalizePending();
 
-        // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
-        // during cleanup. This must happen before any cleanup to avoid races
-        // where a weak callback tries to free an already-freed entry.
+        // PHASE 1: End every weak arm first - a boxed record's, a weak-handle
+        // record's - so that no first pass fires for one during cleanup. (A
+        // traced record a collection takes while the sweep below runs - a
+        // teardown can collect - only joins the wait, and is finalized after
+        // the sweep.)
         {
             var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-            }
+            while (iter.next()) |entry_ptr| disarm(entry_ptr.*);
         }
 
-        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
-        // (No dump of the entries' nodes here: an entry's slot may be another
-        // thread's object by now - the slab is the Browser's - and nothing of
-        // it but its stamp is read until `slotReissued` says it is still the
-        // entry's. The dump read every entry's node state first, through an
-        // impl.)
+        // PHASE 2: Now clean up all entries.
+        // (No dump of the entries' instances here: an entry's slot may be
+        // another thread's object by now - the slab is the Browser's - and
+        // nothing of it but its stamp is read until `slotReissued` says it is
+        // still the entry's.)
         log.debug("[wrapper_cache.deinit] cache={*} PHASE 2: Processing {} entries", .{ self, self.cache.count() });
         // Each entry leaves the map before anything of it is torn down, so
-        // the map holds only the entries still to come - never one destroyed
+        // the map holds only the entries still to come - never one freed
         // below. A teardown here runs a type's own steps, and they can reach
         // this cache: a response body freed ends its fetch's body, and mark
         // resource timing makes a PerformanceResourceTiming and asks whether
         // it is wrapped (engine.hasWrapper, through `get`). Left in the map,
         // a handled entry answered for whatever object the slab gave its
-        // address next - "wrapped", by a destroyed entry's wrapper - and that
+        // address next - "wrapped", by a freed record's wrapper - and that
         // object was never freed (lane exitleak1: the runner's intermittent
         // groups of 5 and 6 leaked blocks at exit). `set` refuses while the
         // cache is torn down, so nothing joins the map this walks either.
@@ -1611,9 +2262,6 @@ pub const WrapperCache = struct {
         // while it runs.
         self.beginWalk();
         defer self.endWalk();
-        // Tree-owned entries the walk reaches before their root, waiting for
-        // its end (the treeOwns branch below).
-        var aside: ?*CacheEntry = null;
         var iter = self.cache.iterator();
         var processed: usize = 0;
         var skipped_cleaned: usize = 0;
@@ -1623,156 +2271,109 @@ pub const WrapperCache = struct {
             self.cache.removeByPtr(kv.key_ptr);
             self.guard.noteRemoval(&self.cache);
             processed += 1;
-            // Whether this pass frees the instance: then nothing of its slot
-            // is read after (`disposeEntryWrapper`).
-            var instance: EntryInstance = .kept;
+            const instance = entry.instance;
 
             // Only call deinit if not already cleaned up externally
             // Check both:
-            // 1. instance_already_cleaned flag (set by markAsCleanedUp during tree walk)
-            // 2. isCleanupStarted flag (set at start of Node.deinit)
+            // 1. instance_already_cleaned flag (set by markAsCleanedUp)
+            // 2. isCleanupStarted flag (set at the start of the instance's teardown)
             // The second check catches cases where markAsCleanedUp couldn't set the flag
             // (e.g., if is_tearing_down was already true or entry wasn't found)
             //
-            // CRITICAL: Also check if the instance has been reused (vtable/state changed).
-            // The SlabAllocator can reuse memory addresses multiple times. If the instance
-            // at this address is different from what we cached, we must NOT call onObjectFreed
-            // as it would deinit the wrong object.
-            const is_started = runtime.instance_lifecycle.isCleanupStarted(entry.instance);
+            // CRITICAL: Also check if the instance has been reused (its slot's generation
+            // moved). The SlabAllocator can reuse memory addresses multiple times. If the
+            // instance at this address is different from what we cached, we must NOT call
+            // onObjectFreed as it would deinit the wrong object.
+            const is_started = runtime.instance_lifecycle.isCleanupStarted(instance);
             const is_reused = slotReissued(entry);
-            if (entry.instance_already_cleaned) {
-                severWrapper(entry);
+            if (entry.bits.instance_already_cleaned) {
+                letGo(entry, .sever);
                 skipped_cleaned += 1;
-                // Its teardown began under its live wrapper (markAsCleanedUp -
-                // a node its realm's tree tore down before this sweep), and
-                // PHASE 1 disarmed the finalizer that would have freed the
-                // storage it left. Inside the realm's coordinated teardown the
+                // Its teardown began under its live wrapper (markAsCleanedUp),
+                // and the finalizer that would have freed the storage it left
+                // will not run. Inside the realm's coordinated teardown the
                 // coordinator returns it after the teardown's LAST phase
                 // (releaseDeferredStorage), not here: a teardown later in this
-                // sweep can still read it - a detached root reads its
-                // document, torn down with the realm's tree - and a slot
-                // returned now could be reissued under that read by an
-                // allocation the sweep makes. Outside one, it stays as it did.
-                // It used to stay until the Browser ended - every page's
-                // wrapped nodes kept their slots (lane unwrapped1).
-                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
-                    !wrappedElsewhere(entry.instance, self))
-                    runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+                // sweep can still read it, and a slot returned now could be
+                // reissued under that read by an allocation the sweep makes.
+                // Outside one, it stays as it did (lane unwrapped1).
+                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(instance) and
+                    !wrappedElsewhere(instance, self))
+                    runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
+            } else if (is_reused) {
+                // Its slot holds another object now, or none: the wrapper
+                // must not reach it. Nothing of the instance is torn down:
+                // it is not this entry's.
+                letGo(entry, .sever);
+                log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*}", .{instance});
             } else if (is_started) {
                 skipped_started += 1;
-                // Its tree tore it down and left the storage: free that, and
+                // Its owner tore it down and left the storage: free that, and
                 // only that - deinit has run. Inside a coordinated teardown,
                 // after its last phase (the coordinator), as for an entry
                 // `instance_already_cleaned`: returned here, mid-sweep, the
                 // slot was the next allocation of any type's (the slab's free
                 // list is LIFO) while a teardown later in this sweep could
                 // still read it (lane pageretention1; unwrapped1's rule).
-                if (!is_reused and runtime.instance_lifecycle.isCleanedUp(entry.instance)) {
-                    severWrapper(entry);
+                if (runtime.instance_lifecycle.isCleanedUp(instance)) {
+                    letGo(entry, .sever);
                     if (runtime.cleanup_coordinator.isContextTearingDown()) {
-                        runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
+                        runtime.cleanup_coordinator.deferStorageRelease(instance, entry.stamp.generation);
                     } else {
-                        runtime.gc.releaseStorage(entry.instance);
-                        instance = .freed;
+                        runtime.gc.releaseStorage(instance);
                     }
-                }
-            } else if (is_reused) {
-                // Its slot holds another object now: the wrapper must not
-                // reach it.
-                severWrapper(entry);
-                instance = .freed;
-                // Instance was reused for a different object - don't call onObjectFreed
-                // This can happen when:
-                // 1. Old instance X was cached
-                // 2. Old X was GC'd and deinit'd via weakCallback
-                // 3. New instance Y was allocated at same address
-                // 4. Y was also GC'd and deinit'd via weakCallback
-                // 5. Yet another instance Z was allocated at same address
-                // 6. Cache deinit runs, entry.instance points to Z, not Y
-                log.debug("[wrapper_cache.deinit] SKIP_REUSED instance={*} orig_vtable={*} curr_vtable={*}", .{ entry.instance, entry.original_vtable, entry.instance.vtable });
-            } else if (treeOwns(entry.instance)) {
-                // A node still in a tree is the tree's to free, whatever
-                // realm's cache wrapped it. Freed here, in hash order, a child
-                // went before its detached root and the root's teardown walk
-                // read the freed child; and a parent document's node wrapped
-                // in a frame's realm went while the parent's tree still held
-                // it. Only the wrapper goes: the root's teardown frees the
-                // node - this cache's, if the root is wrapped here.
-                //
-                // The other order was already safe: a root freed first frees
-                // its children in Node.deinit, which marks each one's cleanup
-                // started, so a child's entry reached after its root is
-                // skipped above as `is_started`.
-                //
-                // In THIS order the root's teardown, later in the walk, frees
-                // the node but not its slot - the node was wrapped, and its
-                // teardown leaves a wrapped node's storage to its wrapper,
-                // whose entry this is - so every wrapped node of a detached
-                // wrapped tree whose entry came first kept its slot until the
-                // Browser ended (lane pageretention1). The entry waits until
-                // the walk is done (`setAside`): a node its root's teardown
-                // freed then gives its slot to the teardown, severed from its
-                // wrapper; one still alive keeps both, as before. No
-                // allocation: the entry's own pending link, which a live
-                // entry does not use, holds the list.
-                setAside(&aside, entry);
-                continue;
-            } else if (isRealmWindow(entry.instance)) {
+                } else letGo(entry, .keep);
+            } else if (isRealmWindow(instance)) {
                 // A Window entry this sweep meets is no realm's own: the
                 // realm's end takes its Window's entry out before the sweep
                 // (context_manager.removeContextByKey). A Window is freed by
                 // its own realm's end, never by another realm's cache: only
                 // the wrapper goes (lane winslot1, E3).
-                severWrapper(entry);
-            } else if (wrappedElsewhere(entry.instance, self)) {
+                letGo(entry, .sever);
+            } else if (wrappedElsewhere(instance, self)) {
                 // Another realm's cache still wraps it; that one frees it.
+                letGo(entry, .keep);
             } else {
                 // The wrapper may outlive this realm (script elsewhere holds
                 // it): it must not reach the instance freed next.
-                severWrapper(entry);
+                letGo(entry, .sever);
                 // Call GC integration to invoke type-specific deinit
-                // This is essential for cleanup since weak callbacks may not fire during shutdown
-                runtime.gc.onObjectFreed(entry.instance);
-                instance = .freed;
+                // This is essential for cleanup since the collector may never find the wrapper dead during shutdown
+                runtime.gc.onObjectFreed(instance);
             }
 
-            // Dispose the Global<Object>* handle - reading nothing of an
-            // instance this pass freed.
-            disposeEntryWrapper(entry, instance);
-
-            // Free the CacheEntry
-            self.allocator.destroy(entry);
+            // The record goes - reading nothing of an instance this pass
+            // freed.
+            self.freeCell(entry);
         }
 
-        // The tree-owned entries set aside: a node whose root's teardown ran
-        // later in the walk is gone, and only this entry's wrapper can still
-        // reach its slot - severed, the slot goes to the teardown, which
-        // returns it after its last phase. A node still alive (its tree is
-        // another realm's, or its root was not reached) keeps wrapper and
-        // slot. Then each entry goes as every other did above.
-        while (aside) |entry| {
-            aside = entry.pending_next;
-            entry.pending_next = null;
-            if (!slotReissued(entry) and runtime.instance_lifecycle.isCleanedUp(entry.instance) and
-                !wrappedElsewhere(entry.instance, self))
-            {
-                severWrapper(entry);
-                runtime.cleanup_coordinator.deferStorageRelease(entry.instance, entry.original_generation);
-            }
-            disposeEntryWrapper(entry, .kept);
-            self.allocator.destroy(entry);
-        }
+        // The anchored records a collection took while the sweep ran.
+        self.finalizePending();
 
         log.debug("[wrapper_cache.deinit] Summary: processed={}, skipped_cleaned={}, skipped_started={}", .{ processed, skipped_cleaned, skipped_started });
         // The realm's detached wrapped trees: their wrappers are the agent's
         // (node_wrappers), and the net this sweep made for them while they
         // were its entries is theirs now (refcount step 7a).
         node_wrappers.endRealm(@ptrCast(self));
+        self.endStorage();
+    }
+
+    /// The cache's own memory, once every record is freed (`deinit`,
+    /// `deinitWithoutCallbacks`).
+    fn endStorage(self: *Self) void {
+        // The figure's one prediction, checked: logged when it was wrong,
+        // and for every cache that saw a wrapper die when a runner asked for
+        // the counts' diagnostics (CRANE_REFCOUNT_CHECK: the positive control
+        // that shows the line can reach a sweep's log at all, as the dying
+        // trees' line - dom.refcount_teardown).
+        if (self.mispredicted != 0 or (self.deaths != 0 and @import("dom").refcount.diagnosticsOn()))
+            log.warn("wrapped instances: {d} wrapper(s) found dead by this cache's collections, {d} weak-handle record(s) taken out of the figure while their wrapper lived", .{ self.deaths, self.mispredicted });
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);
         self.disposeDeferredEdges();
         self.disposeDetachedHolder();
+        self.freeChunks();
     }
 
     /// Clean up cache without calling onObjectFreed callbacks.
@@ -1784,94 +2385,64 @@ pub const WrapperCache = struct {
     /// batch-freed anyway, so calling individual deinit functions
     /// can cause crashes if they reference already-freed memory.
     ///
-    /// CRITICAL: This function marks entries as "orphaned" before cleanup.
-    /// If V8's GC has already queued a weak callback that fires after this
-    /// function returns, the callback will see the orphaned flag and skip
-    /// calling onObjectFreed. This prevents a critical bug where a callback
-    /// for an old instance at address X incorrectly deinits a NEW instance
-    /// that reused address X.
+    /// No finalizer of this cache's runs after it: the records waiting for
+    /// one leave the agent's queue first (`orphanPending`), and every live
+    /// record's wrapper is let go of - a boxed one's weak arm ends with its
+    /// Global, an anchored one's anchor stops naming the record - before the
+    /// pool goes.
     pub fn deinitWithoutCallbacks(self: *Self) void {
         // Mark as tearing down to prevent re-entrant access
         self.is_tearing_down = true;
+        // No chunk goes back before `endStorage` frees them all (`deinit`).
+        self.beginPoolWalk();
 
         // The realm's records no wrapper owns: each is disarmed and its host
         // data freed, exactly once, as at any realm end.
         self.finalizers.drain();
 
-        // Nothing of the realm's nodes is read again: their counted
-        // references are forgotten, not let go (they go with the batch free).
-        {
-            var it = self.cache.valueIterator();
-            while (it.next()) |entry_ptr| forgetCounted(entry_ptr.*);
-            var at = self.pending_head;
-            while (at) |entry| : (at = entry.pending_next) forgetCounted(entry);
-        }
-
-        // Collected entries waiting for their finalizer: nothing of theirs
-        // runs now either; their handles and storage go.
+        // Collected records waiting for their finalizer: nothing of theirs
+        // runs now either; they go.
         self.orphanPending();
         // And the nodes they queued for deferred teardown: forgotten, their
         // instances going with the batch free like every other here.
         if (self.deferred) |queue| queue.dropOwner(self);
 
-        // PHASE 1: Mark all entries as orphaned FIRST.
-        // This must happen before ClearWeak because if a callback fires
-        // after ClearWeak but before we destroy entries, it needs to see
-        // the orphaned flag to skip onObjectFreed.
+        // Every live record: its wrapper let go of (its instance goes with
+        // the batch free, after this), then the record.
         {
             var iter = self.cache.valueIterator();
             while (iter.next()) |entry_ptr| {
                 const entry = entry_ptr.*;
-                entry.is_orphaned = true;
+                letGo(entry, .keep);
+                self.freeCell(entry);
             }
         }
-
-        // PHASE 2: Try to clear weak callbacks.
-        // This may not stop callbacks that V8 already queued.
-        {
-            var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-            }
-        }
-
-        // PHASE 3: Dispose V8 handles and destroy entries.
-        // Since we've cleared weak callbacks, they should not fire.
-        // The orphaned flag serves as a safety net - if a callback somehow
-        // fires after this point (race with V8 GC), it will see is_orphaned=true.
-        {
-            var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                // Dispose the Global<Object>* handle (its instance goes with
-                // the batch free, after this).
-                disposeEntryWrapper(entry, .kept);
-                // Free the CacheEntry
-                self.allocator.destroy(entry);
-            }
-        }
-
-        self.unregister();
-        self.cache.deinit();
-        self.pending_before_wrap.deinit(self.allocator);
-        self.disposeDeferredEdges();
-        self.disposeDetachedHolder();
+        self.endStorage();
     }
 
     /// Join its agent's live caches (`isolate`'s: the realm's, whose wrapper
     /// `set` is storing) - on first use, when this cache's address is final
-    /// (callers copy `init`'s result into place). A cache of an isolate
-    /// createAgent did not make joins none.
+    /// (callers copy `init`'s result into place) - and have the agent's
+    /// collections ask its caches about their wrappers (`processWeak`,
+    /// `dropped`: installed once per isolate, by its first cache). A cache of
+    /// an isolate createAgent did not make joins none, and holds every
+    /// wrapper by a weak Global (a boxed record): no collection would find
+    /// an anchored record's wrapper dead.
     fn register(self: *Self, isolate: *v8.Isolate) void {
         if (self.registered) return;
+        self.isolate = isolate;
         const caches = @import("protocol_agents.zig").cachesOf(isolate) orelse return;
         caches.append(std.heap.page_allocator, self) catch return;
         self.peers = caches;
         self.registered = true;
+        // The anchors' registry, whose weak processing calls the caches',
+        // is made with the agent's node wrapper registry.
+        node_wrappers.prepareHolderTracing(isolate);
+        self.anchors = v8.v8_Isolate_SetPlatformWrapperHooks(isolate, caches, &processWeak, &dropped, &changed);
     }
 
     fn unregister(self: *Self) void {
+        self.anchors = false;
         if (!self.registered) return;
         const caches = self.peers orelse return;
         for (caches.items, 0..) |c, i| {
@@ -1895,8 +2466,8 @@ pub const WrapperCache = struct {
     pub fn existingWrapper(self: *Self, instance: *runtime.Instance) ?*v8.Object {
         if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
         const entry = self.cache.get(instance) orelse return null;
-        if (entry.instance_already_cleaned or slotReissued(entry)) return null;
-        return @ptrCast(entry.wrapper);
+        if (entry.bits.instance_already_cleaned or slotReissued(entry)) return null;
+        return entry.handle();
     }
 
     /// Get cached wrapper for an instance
@@ -1905,26 +2476,27 @@ pub const WrapperCache = struct {
     /// - instance: The Zig instance to look up
     ///
     /// ## Returns
-    /// V8 Object wrapper if cached, null otherwise
+    /// The wrapper's handle if cached, BORROWED (`Cell.handle`), null
+    /// otherwise
     pub fn get(self: *Self, instance: *runtime.Instance) ?*v8.Object {
         // A node's wrapper is in its own slot, whatever realm asks
         // (node_wrappers): never in a cache.
         if (instance.vtable.counted != null) return node_wrappers.wrapperOfInstance(instance);
-        if (self.cache.get(instance)) |entry| {
-            return @ptrCast(entry.wrapper);
-        }
+        if (self.cache.get(instance)) |entry| return entry.handle();
         return null;
     }
 
     /// Take `wrapper` - a fresh `Global<Object>*` the binding made, OWNED by
     /// the caller until this succeeds - as `instance`'s wrapper in this
     /// realm, and answer the handle the caller holds it by from here,
-    /// BORROWED: `wrapper` itself for an instance the cache keeps (a weak
-    /// entry), and for a NODE its slot's handle - `wrapper`'s box is gone
-    /// then, disposed once the node's wrapper is made (node_wrappers.adopt
-    /// and arm: the wrapper redesign's P2 and P4, the node's wrapper is its
-    /// agent's, a TracedReference in its own slot, never in a cache). On an
-    /// error nothing was taken and `wrapper` is still the caller's.
+    /// BORROWED (`Cell.handle`): the cache's record for a platform object's
+    /// wrapper - `wrapper`'s box is gone then, disposed once the record's
+    /// reference holds the object - `wrapper` itself for an object with no
+    /// platform anchor (a realm's global: a boxed record), and for a NODE its
+    /// slot's handle (node_wrappers.adopt and arm: the wrapper redesign's P2
+    /// and P4, the node's wrapper is its agent's, a TracedReference in its
+    /// own slot, never in a cache). On an error nothing was taken and
+    /// `wrapper` is still the caller's.
     pub fn set(
         self: *Self,
         instance: *runtime.Instance,
@@ -1936,7 +2508,7 @@ pub const WrapperCache = struct {
 
     /// `set` for the receiver of a script-called constructor, whose
     /// `instance` that same binding call created: `stamp` is when, on its
-    /// agent's callback clock (`CacheEntry.fresh`; 0: not fresh). Only the
+    /// agent's callback clock (`Cell.fresh`; 0: not fresh). Only the
     /// constructor trampoline calls it, and only for an instance nothing
     /// wrapped while it was made (interface.adoptExistingWrapper returns
     /// first). A node takes no stamp: its wrapper is its slot's, and its
@@ -1960,8 +2532,8 @@ pub const WrapperCache = struct {
 
         // An instance has ONE wrapper in a realm. One that is live already
         // is never replaced: every edge drawn on it - a traced child, a
-        // [SameObject] value, its tree edges - would go with it (a template's
-        // content was freed this way when a constructor bound the template to
+        // [SameObject] value - would go with it (a template's content was
+        // freed this way when a constructor bound the template to
         // NewTarget's object, PR-M1). A constructor whose instance was
         // wrapped while it was made returns that wrapper instead
         // (interface.zig, `adoptExistingWrapper`). Only an entry left by a
@@ -1970,77 +2542,86 @@ pub const WrapperCache = struct {
         // global object, bound here when the realm is made: none of its edges
         // hang on a cached wrapper (protocol_tracing.zig holderOf hangs them
         // on the global object).
-        if (self.cache.get(instance)) |existing| {
-            if (!existing.instance_already_cleaned and !slotReissued(existing) and !isRealmWindow(instance))
+        const replaced = self.cache.get(instance);
+        if (replaced) |existing| {
+            if (!existing.bits.instance_already_cleaned and !slotReissued(existing) and !isRealmWindow(instance))
                 return error.AlreadyWrapped;
         }
 
-        // Allocate CacheEntry
-        const entry = try self.allocator.create(CacheEntry);
-        errdefer self.allocator.destroy(entry);
+        const entry = try self.allocCell(instance, stamp);
+        errdefer self.freeCell(entry);
 
-        entry.* = .{
-            .wrapper = @ptrCast(wrapper),
-            .instance = instance,
-            .cache = self,
-            .original_vtable = instance.vtable,
-            .original_state = instance.state,
-            .original_generation = runtime.SlabAllocator.generationOf(instance),
-            .fresh = stamp,
-        };
-
-        // Store in HashMap.
+        // Store in the map. Rehash first if the tombstones could take half
+        // the unused slots - never while a walk reads the slots (`walks`).
+        // The only insert into `cache`: nothing else here can move its slots
+        // but growth.
         //
-        // An existing entry here is a dead or torn-down instance's (a live
-        // one was refused above). Replacing the value without releasing the
-        // old entry would leak its CacheEntry and its Global<Object>* handle,
-        // and leave that handle's weak callback armed pointing at memory we
-        // are about to orphan. Release it the same way remove() does before
-        // taking over the key.
-        if (self.cache.fetchRemove(instance)) |kv| {
-            self.guard.noteRemoval(&self.cache);
-            const old_entry = kv.value;
-            log.debug(
-                "[set] replacing existing wrapper for instance={*} old_entry={*} new_entry={*}",
-                .{ instance, old_entry, entry },
-            );
-            v8.v8_Global_ClearWeak(@ptrCast(old_entry.wrapper));
-            releaseCounted(old_entry);
-            disposeEntryWrapper(old_entry, .kept);
-            self.allocator.destroy(old_entry);
-        }
-        // Rehash first if the tombstones could take half the unused slots -
-        // never while a walk reads the slots (`walks`). The only insert into
-        // `cache`: nothing else here can move its slots but growth.
-        if (self.walks == 0) self.guard.beforeInsert(&self.cache);
+        // An existing entry here is a dead or torn-down instance's, or a
+        // realm's Window's (a live one was refused above): it is let go of
+        // as `remove` lets go of one - its wrapper severed, unless it is the
+        // realm's global - before the key is taken over.
+        if (replaced == null and self.walks == 0) self.guard.beforeInsert(&self.cache);
         try self.cache.put(instance, entry);
+        if (replaced) |old_entry| {
+            log.debug("[set] replacing existing wrapper for instance={*} old_entry={*} new_entry={*}", .{ instance, old_entry, entry });
+            letGo(old_entry, if (isRealmWindow(instance)) .keep else .sever);
+            self.freeCell(old_entry);
+        }
 
-        // The wrapper owns one reference to a counted instance (a node:
-        // runtime.lifetime, refcount design 2.1) - not one made while the
-        // realm's sweep runs, which no longer lets references go.
-        if (!self.is_tearing_down) entry.counted = runtime.lifetime.wrapperAcquired(instance);
+        // The cache's handle. A platform object's wrapper - an object
+        // platform_anchor.bind bound, behind its proxy or not - is held by
+        // the record itself, and its anchor names the record: by a weak
+        // Global made in the record when V8 would not drop the wrapper in a
+        // young collection (`heldByWeakHandle`), by a droppable traced
+        // reference otherwise. Anything else (a realm's global) is held by
+        // the caller's Global.
+        const facts = wrapperFactsOf(instance);
+        if (self.anchors and heldByWeakHandle(facts)) {
+            // Armed weak from here; `wrapper`, the caller's box, holds the
+            // object until this function's end.
+            if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
+                entry.bits.weak_handle = true;
+                entry.bits.boxed = false;
+            }
+        } else if (self.anchors and v8.v8_WrapperCell_Attach(isolate, wrapper, entry.raw())) {
+            entry.bits.boxed = false;
+        }
+        if (entry.bits.boxed) entry.wrapper = @ptrCast(wrapper);
 
         // Pending-activity keeps placed before the wrapper existed.
         if (self.pending_before_wrap.fetchRemove(instance)) |held| {
             self.pending_guard.noteRemoval(&self.pending_before_wrap);
-            if (held.value.generation == entry.original_generation) entry.pending_activity = held.value.count;
+            if (held.value.generation == entry.stamp.generation) entry.bits.pending_activity = @intCast(@min(held.value.count, std.math.maxInt(u20)));
         }
         // Edges traced from the instance before script saw it.
-        self.drawDeferredEdges(instance, entry.original_generation, wrapper);
-        // A holder of nodes: its anchor, so a collection that keeps this
-        // wrapper keeps the wrappers of what it holds for script (the
-        // redesign's P6, design 4.4 "Holders"; Blink's holders trace their
-        // Member<Node>s). Its nodes are counted holds; nothing is wrapped.
-        if (instance.vtable.trace_held_nodes != null) node_wrappers.attachHolder(isolate, instance, wrapper);
+        self.drawDeferredEdges(instance, entry.stamp.generation, wrapper);
+        // (A holder of nodes was bound to its HolderAnchor with the wrapper -
+        // platform_anchor.bind - so a collection that keeps this wrapper
+        // keeps the wrappers of what it holds for script: the redesign's P6,
+        // design 4.4 "Holders"; Blink's holders trace their Member<Node>s.)
         // (A node never gets here: its wrapper is its agent's, in its own
         // slot - `setNode` - a constructor's included, and the walk keeps it.)
+        // (A weak-handle record is armed already: where it was attached,
+        // or where the edges just drawn made a traced record one -
+        // `changed`.)
         if (shouldBeStrong(entry) and self.detached_holder == null) {
-            entry.strong = true;
+            self.makeStrong(entry);
         } else {
-            armWeak(entry);
+            if (entry.bits.boxed) armWeak(entry);
             if (self.detached_holder != null) syncEntry(entry);
         }
-        return wrapper;
+
+        // What the instance holds, for the collector's schedule (the one
+        // call: v8_wrapper.cpp, "What the instances behind non-node wrappers
+        // hold") - in an agent's realm; a cache of no agent's isolate
+        // reports nothing.
+        if (self.registered) noteWrapped(isolate, entry, facts);
+
+        if (entry.bits.boxed) return wrapper;
+        // The record's reference holds the wrapper from here; until here the
+        // caller's box did, across everything above that allocates.
+        v8.v8_Object_Dispose(wrapper);
+        return entry.handle();
     }
 
     /// `set` for a node: its wrapper goes into the node's own slot, its
@@ -2065,70 +2646,61 @@ pub const WrapperCache = struct {
 
     /// Clear the entire cache
     ///
-    /// Disposes all cached wrappers and clears the HashMap.
-    /// Useful for testing or explicit cache invalidation.
-    /// Uses two-phase cleanup like deinit() to prevent use-after-free
-    /// from weak callbacks firing during cleanup.
+    /// Lets go of all cached wrappers, tears their instances down and
+    /// clears the map. Useful for testing or explicit cache invalidation.
     pub fn clear(self: *Self) void {
+        // The sweep below frees records while it walks the map: the pool
+        // gives its empty chunks back when it is done.
+        self.beginPoolWalk();
+        defer self.endPoolWalk();
+
         // Collected entries waiting for their finalizer run it now, and the
         // nodes they queued are torn down.
         self.finalizePending();
         self.drainDeferred();
 
-        // PHASE 1: Clear ALL weak callbacks first to prevent any from firing
-        // during cleanup. This must happen before any cleanup to avoid races
-        // where a weak callback tries to free an already-freed entry.
+        // PHASE 1: End every weak arm first, as `deinit` does.
         {
             var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-            }
+            while (iter.next()) |entry_ptr| disarm(entry_ptr.*);
         }
 
-        // PHASE 2: Now safe to clean up all entries (no weak callbacks can fire)
-        // A walk: a teardown run here can wrap a new object (`set`).
+        // PHASE 2: Now clean up all entries. A walk: a teardown run here can
+        // wrap a new object (`set`).
         self.beginWalk();
         defer self.endWalk();
-        var iter = self.cache.valueIterator();
-        while (iter.next()) |entry_ptr| {
-            const entry = entry_ptr.*;
+        var iter = self.cache.iterator();
+        while (iter.next()) |kv| {
+            const entry = kv.value_ptr.*;
+            self.cache.removeByPtr(kv.key_ptr);
+            self.guard.noteRemoval(&self.cache);
+            const instance = entry.instance;
 
-            // The wrapper's reference, before anything is freed.
-            releaseCounted(entry);
+            // Call GC integration to invoke type-specific deinit - unless
+            // another realm's cache still wraps the instance. The wrapper of
+            // an instance freed here reaches it no more.
+            if (!wrappedElsewhere(instance, self)) {
+                letGo(entry, .sever);
+                runtime.gc.onObjectFreed(instance);
+            } else letGo(entry, .keep);
 
-            // Call GC integration to invoke type-specific deinit
-            // This is essential for cleanup since weak callbacks were disabled
-            var instance: EntryInstance = .kept;
-            if (!wrappedElsewhere(entry.instance, self)) {
-                runtime.gc.onObjectFreed(entry.instance);
-                instance = .freed;
-            }
-
-            // Dispose the Global<Object>* handle - reading nothing of an
-            // instance freed above.
-            disposeEntryWrapper(entry, instance);
-
-            // Free the CacheEntry
-            self.allocator.destroy(entry);
+            self.freeCell(entry);
         }
-
-        self.cache.clearRetainingCapacity();
-        self.guard.reset();
+        // The anchored records a collection took while the entries were torn
+        // down.
+        self.finalizePending();
         self.disposeDeferredEdges();
     }
 
     /// Mark an entry as already cleaned (instance deinit already called)
     ///
-    /// This is used when the instance is being cleaned up by other means
-    /// (e.g., Node.deinit cleaning up DOM tree). We mark it so that
-    /// wrapper_cache.deinit() won't call onObjectFreed again (double-free).
+    /// This is used when the instance is being cleaned up by other means.
+    /// We mark it so that wrapper_cache.deinit() won't call onObjectFreed
+    /// again (double-free).
     ///
-    /// Also sets lifecycle tracking flags for coordinated cleanup (RC2 fix).
-    ///
-    /// We don't dispose the V8 handle here because we might still be in
-    /// JavaScript execution context. The handle will be disposed during
-    /// wrapper_cache.deinit().
+    /// We don't let go of the wrapper here because we might still be in
+    /// JavaScript execution context. That happens during
+    /// wrapper_cache.deinit(), or when the wrapper is collected.
     ///
     /// ## Parameters
     /// - instance: The Zig instance that has been cleaned up
@@ -2137,9 +2709,7 @@ pub const WrapperCache = struct {
     /// true if entry was found and marked, false if not in cache
     pub fn markAsCleanedUp(self: *Self, instance: *runtime.Instance) bool {
         // CRITICAL: Skip during teardown to avoid HashMap access corruption.
-        // During wrapper_cache.deinit, we're iterating and destroying entries.
-        // Accessing the HashMap via get() during this phase can cause alignment
-        // errors because entries are being deallocated.
+        // During wrapper_cache.deinit, we're iterating and freeing entries.
         //
         // Instead, callers should use runtime.instance_lifecycle.markCleanupStarted()
         // which uses a SEPARATE tracking data structure that's safe to access
@@ -2151,29 +2721,14 @@ pub const WrapperCache = struct {
 
         if (self.cache.get(instance)) |entry| {
             // Mark as already cleaned - deinit will skip onObjectFreed
-            entry.instance_already_cleaned = true;
-            // The node's teardown has begun under its live wrapper: the
-            // wrapper's reference goes now, while the node is still there
-            // (its cleanup is marked started, so `releaseCounted`'s guard
-            // would forget it instead).
-            if (entry.counted) |target| {
-                entry.counted = null;
-                runtime.lifetime.wrapperReleased(target);
-            }
+            entry.bits.instance_already_cleaned = true;
             // The instance is gone, its wrapper not: script may still hold
-            // it. Weak from here, whatever held it before (a node's tree did,
-            // while it had a parent) - its weak callback, which skips an
-            // instance whose cleanup started, frees the storage the teardown
-            // left (releaseStorage). It used to be held strongly until the
-            // page ended, a wrapper and an instance a torn-down node, and with
-            // it everything it reaches: gc_bench retained both for every
-            // `void div.attachShadow().appendChild(span)`, and a removed
-            // frame whose torn-down nodes' wrappers were held could never be
-            // collected.
-            if (entry.strong) {
-                armWeak(entry);
-                entry.strong = false;
-            }
+            // it. Weak from here, whatever held it before - its finalizer,
+            // which skips an instance whose cleanup started, frees the
+            // storage the teardown left (releaseStorage). It used to be held
+            // strongly until the page ended, a wrapper and an instance a
+            // torn-down object, and with it everything it reaches.
+            if (entry.bits.strong) self.makeWeak(entry);
             return true;
         }
         return false;
@@ -2181,8 +2736,10 @@ pub const WrapperCache = struct {
 
     /// Remove a specific entry from the cache
     ///
-    /// Removes the entry completely, disposing the V8 handle.
-    /// Use markAsCleanedUp() instead if still in JS execution context.
+    /// Removes the entry completely: the cache lets go of the wrapper, which
+    /// - if script still holds it - reaches its instance as before, cached
+    /// no more. Use markAsCleanedUp() instead if still in JS execution
+    /// context.
     ///
     /// ## Parameters
     /// - instance: The Zig instance to remove from cache
@@ -2193,19 +2750,8 @@ pub const WrapperCache = struct {
         if (self.cache.fetchRemove(instance)) |kv| {
             self.guard.noteRemoval(&self.cache);
             const entry = kv.value;
-
-            // Clear weak callback first to prevent it from firing
-            v8.v8_Global_ClearWeak(@ptrCast(entry.wrapper));
-
-            // The wrapper's reference goes with it.
-            releaseCounted(entry);
-
-            // Dispose the Global<Object>* handle
-            disposeEntryWrapper(entry, .kept);
-
-            // Free the CacheEntry
-            self.allocator.destroy(entry);
-
+            letGo(entry, .keep);
+            self.freeCell(entry);
             return true;
         }
         return false;
@@ -2220,154 +2766,8 @@ pub const WrapperCache = struct {
     }
 };
 
-// ============================================================================
-// Tests
-// ============================================================================
-
-const testing = std.testing;
-
-test "WrapperCache - init and deinit" {
-    // Mock V8 Context (just a dummy pointer for testing)
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    try testing.expectEqual(@as(usize, 0), cache.size());
-}
-
-test "WrapperCache - get returns null when empty" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // Mock instance
-    var dummy_instance: runtime.Instance = undefined;
-
-    const result = cache.get(&dummy_instance);
-    try testing.expectEqual(@as(?*v8.Object, null), result);
-}
-
-test "WrapperCache - set and get basic operation" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // Mock instance and wrapper
-    var dummy_instance: runtime.Instance = undefined;
-    var dummy_wrapper: u64 = 0xDEADBEEF;
-    const wrapper: *v8.Object = @ptrCast(&dummy_wrapper);
-
-    // Mock isolate
-    var dummy_isolate: u32 = 99;
-    const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
-
-    // NOTE: This test will fail when run with actual V8 because v8_Global_SetWeak
-    // expects a real Global handle. This is a structural test only.
-    // Actual integration testing requires V8 runtime.
-
-    // Set wrapper in cache
-    _ = try cache.set(&dummy_instance, wrapper, isolate);
-
-    // Get wrapper from cache
-    const cached = cache.get(&dummy_instance);
-    try testing.expect(cached != null);
-    try testing.expectEqual(wrapper, cached.?);
-
-    try testing.expectEqual(@as(usize, 1), cache.size());
-}
-
-test "WrapperCache - clear removes all entries" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // Mock instances and wrappers
-    var instance1: runtime.Instance = undefined;
-    var instance2: runtime.Instance = undefined;
-    var wrapper1: u64 = 0xDEAD;
-    var wrapper2: u64 = 0xBEEF;
-    var dummy_isolate: u32 = 99;
-    const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
-
-    _ = try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
-    _ = try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
-
-    try testing.expectEqual(@as(usize, 2), cache.size());
-
-    // Clear cache
-    cache.clear();
-
-    try testing.expectEqual(@as(usize, 0), cache.size());
-    try testing.expectEqual(@as(?*v8.Object, null), cache.get(&instance1));
-    try testing.expectEqual(@as(?*v8.Object, null), cache.get(&instance2));
-}
-
-test "WrapperCache - no memory leaks" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // Allocate multiple entries
-    var instances: [10]runtime.Instance = undefined;
-    var wrappers: [10]u64 = undefined;
-    var dummy_isolate: u32 = 99;
-    const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
-
-    for (&instances, &wrappers) |*inst, *wrap| {
-        wrap.* = 0xDEADBEEF;
-        _ = try cache.set(inst, @ptrCast(wrap), isolate);
-    }
-
-    try testing.expectEqual(@as(usize, 10), cache.size());
-
-    // deinit() should clean up all entries without leaking
-}
-
-test "WrapperCache - remove specific entry" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // Mock instances and wrappers
-    var instance1: runtime.Instance = undefined;
-    var instance2: runtime.Instance = undefined;
-    var instance3: runtime.Instance = undefined;
-    var wrapper1: u64 = 0xDEAD;
-    var wrapper2: u64 = 0xBEEF;
-    var wrapper3: u64 = 0xCAFE;
-    var dummy_isolate: u32 = 99;
-    const isolate: *v8.Isolate = @ptrCast(&dummy_isolate);
-
-    _ = try cache.set(&instance1, @ptrCast(&wrapper1), isolate);
-    _ = try cache.set(&instance2, @ptrCast(&wrapper2), isolate);
-    _ = try cache.set(&instance3, @ptrCast(&wrapper3), isolate);
-
-    try testing.expectEqual(@as(usize, 3), cache.size());
-
-    // Remove middle entry
-    const removed = cache.remove(&instance2);
-    try testing.expect(removed);
-    try testing.expectEqual(@as(usize, 2), cache.size());
-
-    // Verify correct entries remain
-    try testing.expect(cache.get(&instance1) != null);
-    try testing.expectEqual(@as(?*v8.Object, null), cache.get(&instance2)); // Removed
-    try testing.expect(cache.get(&instance3) != null);
-
-    // Remove non-existent entry
-    const removed_again = cache.remove(&instance2);
-    try testing.expect(!removed_again);
-    try testing.expectEqual(@as(usize, 2), cache.size());
-}
+// No test lives in this file: a test block inside src/runtime/engines/v8/ is
+// never collected (build.zig, "V8 engine tests"). The pool's and the map's
+// tests are tests/v8/wrapper_cache_pool_test.zig and
+// wrap1_platform_anchor_test.zig; the cache with mock wrappers is
+// wrapper_cache_gc_test.zig.

@@ -122,6 +122,13 @@ pub const capabilities: engine.Capabilities = .{
     // that is reached and collects when it is overshot by a large margin
     // (V8 15.7 heap.cc Heap::UpdateExternalMemory).
     .external_memory = .native,
+    // The figure is told in time for V8's next limits: at the end of a
+    // full collection's marking (the node anchors' weak processing) the
+    // owner of the counts says which trees die with the wrappers found
+    // dead, and one ExternalMemoryAccounter::Decrease takes them off V8's
+    // count before Heap::RecomputeLimits (external_memory.zig endOfMarking,
+    // node_wrappers.zig markedCallback).
+    .external_memory_at_collection = .native,
     // Node wrapper reachability (the wrapper redesign, design 3.3): the walk
     // alone keeps trees (dom.wrapper_tracing, reached from NodeAnchor::Trace,
     // HolderAnchor::Trace and the anchors' registry in cppgc's atomic pause:
@@ -1101,6 +1108,9 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   isolate (0 with none), which counts every Global whoever made it;
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
+/// - `wrapper_cache_pool_bytes`: the memory of the record pools of those
+///   caches, in use or not (a pool gives a chunk back when its last record is
+///   freed: wrapper_cache.zig `Chunk`);
 /// - `node_wrappers`: the current isolate's agent's node wrappers alive, each
 ///   in its node's own slot and holding one counted reference on the node
 ///   (node_wrappers.zig; never in a wrapper cache since the wrapper
@@ -1128,6 +1138,13 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   external memory, of the pointer-table entries left by node wrappers
 ///   dropped since its last full collection began (v8_wrapper.cpp
 ///   `reportDroppedTableEntries`); 0 with no isolate current;
+/// - `wrapped_instance_bytes_live`, `wrapped_instance_bytes_reported`,
+///   `wrapped_instance_mispredictions`: what the instances behind the
+///   current isolate's live non-node wrappers hold (v8_wrapper.cpp, "What
+///   the instances behind non-node wrappers hold"), how much of it V8 holds
+///   now as external memory, and how many times a full collection took a
+///   record's share out while its wrapper lived (wrapper_cache.zig
+///   `heldAgain`; expected 0); 0 with no isolate current;
 /// - `node_anchors_registered`: the current isolate's node anchors in its
 ///   registry - those whose wrapper may still live - now;
 /// - `node_anchors_dropped_waiting`, `node_anchors_freed`,
@@ -1193,6 +1210,12 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "node_anchors_registered", .value = @intCast(anchors.registered) },
         .{ .name = "node_anchors_dropped_waiting", .value = @intCast(anchors.dropped_waiting) },
         .{ .name = "node_wrapper_table_bytes", .value = @intCast(ffi.v8_Debug_NodeWrapperTableBytes(ffi.v8_Isolate_GetCurrent())) },
+        .{ .name = "wrapped_instance_bytes_live", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), false)) },
+        .{ .name = "wrapped_instance_bytes_reported", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), true)) },
+        .{ .name = "wrapped_instance_bytes_dead", .value = @intCast(ffi.v8_Debug_WrappedInstanceDeadBytes(ffi.v8_Isolate_GetCurrent())) },
+        .{ .name = "wrapped_instance_mispredictions", .value = @intCast(@import("wrapper_cache.zig").liveMispredictionCount()) },
+        .{ .name = "wrapper_cache_pending", .value = @intCast(@import("wrapper_cache.zig").livePendingCount()) },
+        .{ .name = "wrapper_cache_pool_bytes", .value = @intCast(@import("wrapper_cache.zig").livePoolBytes()) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },
         .{ .name = "node_anchor_frees_deferred", .value = @intCast(anchors.frees_deferred) },
         .{ .name = "node_anchor_weak_ns_max", .value = @intCast(anchors.weak_ns_max) },

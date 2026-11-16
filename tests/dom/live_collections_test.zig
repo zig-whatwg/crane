@@ -10,235 +10,109 @@
 //! 2. Collections are "live" (update when DOM changes)
 //! 3. Collections work correctly with nested elements
 //!
-//! NOTE: These tests use the internal NodeBase/ElementWithBase types directly
-//! to avoid requiring the full WebIDL interface chain and V8 runtime.
+//! Lane wb1: the document, its elements and its collections are the real
+//! ones (real_nodes.zig; Document.images / forms / scripts / links, each an
+//! HTMLCollection). The tests used a mock Document NodeBase, ElementWithBase
+//! values and a tree walk of their own that stood in for the collections, so
+//! they held nothing of production's. Two assertions changed with that, both
+//! toward the spec: `document.links` holds only a and area elements WITH an
+//! href attribute (the mock took every a and area), and the live tests read
+//! ONE collection object before and after a mutation (the mock built a new
+//! list for each read, which could not show liveness).
 
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
-const infra = @import("infra");
+const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const real_nodes = @import("real_nodes.zig");
 
-// Internal DOM types (don't require V8)
-const NodeBase = dom.NodeBase;
-const ElementWithBase = dom.ElementWithBase;
-const TextWithBase = dom.TextWithBase;
+const Instance = real_nodes.Instance;
+const Collection = interfaces.HTMLCollection;
 
 // =============================================================================
 // Test Infrastructure
 // =============================================================================
 
-/// A simple document-like root for testing
-/// This simulates document structure without requiring runtime.Instance
+/// A document with its root element: a Document takes one element child, so
+/// what the tests append "to the document" goes under the root.
 const TestDocument = struct {
-    allocator: std.mem.Allocator,
-    root: NodeBase,
-    children: std.ArrayListUnmanaged(*NodeBase),
-    elements: std.ArrayListUnmanaged(*ElementWithBase),
+    nodes: real_nodes.Nodes,
+    document: *Instance = undefined,
+    root: *Instance = undefined,
 
-    /// Document type determines case-sensitivity for matching
-    is_html: bool = true,
-
-    pub fn init(allocator: std.mem.Allocator) TestDocument {
-        return .{
-            .allocator = allocator,
-            .root = NodeBase{
-                .owner = NodeBase.ownerless(&std.testing.allocator),
-                .node_type = NodeBase.DOCUMENT_NODE,
-                .parent_node = null,
-            },
-            .children = .empty,
-            .elements = .empty,
-        };
-    }
-
-    pub fn deinit(self: *TestDocument) void {
-        // Clean up all created elements
-        for (self.elements.items) |elem| {
-            elem.deinit();
-            self.allocator.destroy(elem);
+    /// In place (the scope must not move).
+    fn open(self: *TestDocument, kind: enum { html, xhtml }) !void {
+        self.* = .{ .nodes = undefined };
+        try self.nodes.open(testing.allocator);
+        errdefer self.nodes.close();
+        self.document = try self.nodes.document();
+        if (kind == .xhtml) {
+            try dom.document_internals.setContentType(self.document, "application/xhtml+xml");
+            try dom.document_internals.setDocumentType(self.document, .xml);
         }
-        self.elements.deinit(self.allocator);
-        self.children.deinit(self.allocator);
+        self.root = try self.createElement("html");
+        try self.nodes.append(self.document, self.root);
     }
 
-    /// Create an element and track it for cleanup
-    pub fn createElement(self: *TestDocument, tag_name: []const u8) !*ElementWithBase {
-        const elem = try self.allocator.create(ElementWithBase);
-        errdefer self.allocator.destroy(elem);
-
-        elem.* = ElementWithBase.init(&self.allocator, tag_name);
-        try self.elements.append(self.allocator, elem);
-        return elem;
+    fn close(self: *TestDocument) void {
+        self.nodes.close();
     }
 
-    /// Append child to document root
-    pub fn appendChild(self: *TestDocument, child: *ElementWithBase) !void {
-        const node = child.asNode();
-        node.parent_node = &self.root;
-        // Link it last (a node's children are its sibling links:
-        // NodeBase.children; lane perf2 batch 5)
-        self.root.linkChildBefore(node, null);
-        try self.children.append(self.allocator, node);
+    fn createElement(self: *TestDocument, tag_name: []const u8) !*Instance {
+        return self.nodes.element(self.document, tag_name);
     }
 
-    /// Remove child from document root
-    pub fn removeChild(self: *TestDocument, child: *ElementWithBase) !void {
-        const node = child.asNode();
-        var root_children = self.root.children();
-        while (root_children.next()) |item| {
-            if (item == node) {
-                self.root.unlinkChild(node);
-                node.parent_node = null;
-
-                // Also remove from children tracking list
-                for (self.children.items, 0..) |c, j| {
-                    if (c == node) {
-                        _ = self.children.orderedRemove(j);
-                        break;
-                    }
-                }
-                return;
-            }
-        }
-        return error.NotFoundError;
+    /// Append `child` under the document's root element.
+    fn appendChild(self: *TestDocument, child: *Instance) !void {
+        try self.nodes.append(self.root, child);
     }
 
-    /// Get images collection (elements with tag "img")
-    /// Returns a list of matching elements
-    pub fn getImages(self: *TestDocument) !std.ArrayListUnmanaged(*ElementWithBase) {
-        return self.getElementsByTagName("img");
+    fn removeChild(self: *TestDocument, child: *Instance) !void {
+        _ = try interfaces.Node.call_removeChild(self.root, child);
     }
 
-    /// Get forms collection (elements with tag "form")
-    pub fn getForms(self: *TestDocument) !std.ArrayListUnmanaged(*ElementWithBase) {
-        return self.getElementsByTagName("form");
+    fn images(self: *TestDocument) !*Instance {
+        return interfaces.Document.get_images(self.document);
     }
 
-    /// Get scripts collection (elements with tag "script")
-    pub fn getScripts(self: *TestDocument) !std.ArrayListUnmanaged(*ElementWithBase) {
-        return self.getElementsByTagName("script");
+    fn forms(self: *TestDocument) !*Instance {
+        return interfaces.Document.get_forms(self.document);
     }
 
-    /// Get links collection (a and area elements)
-    /// Note: Full spec requires href attribute, this is simplified
-    pub fn getLinks(self: *TestDocument) !std.ArrayListUnmanaged(*ElementWithBase) {
-        return self.getElementsByTagNames(&[_][]const u8{ "a", "area" });
+    fn scripts(self: *TestDocument) !*Instance {
+        return interfaces.Document.get_scripts(self.document);
     }
 
-    /// Get elements by tag name (tree traversal)
-    pub fn getElementsByTagName(self: *TestDocument, tag_name: []const u8) !std.ArrayListUnmanaged(*ElementWithBase) {
-        var results: std.ArrayListUnmanaged(*ElementWithBase) = .empty;
-        errdefer results.deinit(self.allocator);
-
-        // Traverse all children of root
-        var child_walk = self.root.children();
-        while (child_walk.next()) |child| {
-            try self.collectElementsByTagName(child, tag_name, &results);
-        }
-
-        return results;
-    }
-
-    /// Get elements by multiple tag names
-    pub fn getElementsByTagNames(self: *TestDocument, tag_names: []const []const u8) !std.ArrayListUnmanaged(*ElementWithBase) {
-        var results: std.ArrayListUnmanaged(*ElementWithBase) = .empty;
-        errdefer results.deinit(self.allocator);
-
-        // Traverse all children of root
-        var child_walk = self.root.children();
-        while (child_walk.next()) |child| {
-            try self.collectElementsByTagNames(child, tag_names, &results);
-        }
-
-        return results;
-    }
-
-    fn collectElementsByTagName(
-        self: *TestDocument,
-        node: *NodeBase,
-        target_name: []const u8,
-        results: *std.ArrayListUnmanaged(*ElementWithBase),
-    ) !void {
-        if (node.node_type == NodeBase.ELEMENT_NODE) {
-            const elem: *ElementWithBase = @ptrCast(node);
-            // Case-insensitive comparison for HTML documents
-            if (self.is_html) {
-                if (std.ascii.eqlIgnoreCase(elem.tag_name, target_name)) {
-                    try results.append(self.allocator, elem);
-                }
-            } else {
-                if (std.mem.eql(u8, elem.tag_name, target_name)) {
-                    try results.append(self.allocator, elem);
-                }
-            }
-
-            // Recurse into children
-            var child_walk = elem.base.children();
-            while (child_walk.next()) |child| {
-                try self.collectElementsByTagName(child, target_name, results);
-            }
-        }
-    }
-
-    fn collectElementsByTagNames(
-        self: *TestDocument,
-        node: *NodeBase,
-        target_names: []const []const u8,
-        results: *std.ArrayListUnmanaged(*ElementWithBase),
-    ) !void {
-        if (node.node_type == NodeBase.ELEMENT_NODE) {
-            const elem: *ElementWithBase = @ptrCast(node);
-
-            // Check against all target names
-            var matches = false;
-            for (target_names) |target_name| {
-                if (self.is_html) {
-                    if (std.ascii.eqlIgnoreCase(elem.tag_name, target_name)) {
-                        matches = true;
-                        break;
-                    }
-                } else {
-                    if (std.mem.eql(u8, elem.tag_name, target_name)) {
-                        matches = true;
-                        break;
-                    }
-                }
-            }
-
-            if (matches) {
-                try results.append(self.allocator, elem);
-            }
-
-            // Recurse into children
-            var child_walk = elem.base.children();
-            while (child_walk.next()) |child| {
-                try self.collectElementsByTagNames(child, target_names, results);
-            }
-        }
+    fn links(self: *TestDocument) !*Instance {
+        return interfaces.Document.get_links(self.document);
     }
 };
+
+fn expectLength(expected: u32, collection: *Instance) !void {
+    try testing.expectEqual(expected, try Collection.get_length(collection));
+}
+
+fn expectItem(expected: ?*Instance, collection: *Instance, index: u32) !void {
+    try testing.expectEqual(expected, try Collection.call_item(collection, index));
+}
 
 // =============================================================================
 // document.images Tests
 // =============================================================================
 
 test "document.images - empty document returns empty collection" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 0), images.items.len);
+    try expectLength(0, try doc.images());
 }
 
 test "document.images - returns img elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Create img elements
     const img1 = try doc.createElement("img");
@@ -249,19 +123,16 @@ test "document.images - returns img elements" {
     try doc.appendChild(img2);
 
     // Get images collection
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 2), images.items.len);
-    try testing.expectEqual(img1, images.items[0]);
-    try testing.expectEqual(img2, images.items[1]);
+    const images = try doc.images();
+    try expectLength(2, images);
+    try expectItem(img1, images, 0);
+    try expectItem(img2, images, 1);
 }
 
 test "document.images - does not include other elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Create mixed elements
     const img = try doc.createElement("img");
@@ -272,28 +143,25 @@ test "document.images - does not include other elements" {
     try doc.appendChild(div);
     try doc.appendChild(span);
 
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
     // Should only include img
-    try testing.expectEqual(@as(usize, 1), images.items.len);
-    try testing.expectEqual(img, images.items[0]);
+    const images = try doc.images();
+    try expectLength(1, images);
+    try expectItem(img, images, 0);
 }
 
 test "document.images - case insensitive in HTML mode" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Create IMG with uppercase (uncommon but valid)
+    // createElement("IMG") in an HTML document makes an img (DOM 4.5
+    // createElement step 2 lowercases the name)
     const img = try doc.createElement("IMG");
     try doc.appendChild(img);
 
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), images.items.len);
+    const images = try doc.images();
+    try expectLength(1, images);
+    try expectItem(img, images, 0);
 }
 
 // =============================================================================
@@ -301,22 +169,17 @@ test "document.images - case insensitive in HTML mode" {
 // =============================================================================
 
 test "document.forms - empty document returns empty collection" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    var forms = try doc.getForms();
-    defer forms.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 0), forms.items.len);
+    try expectLength(0, try doc.forms());
 }
 
 test "document.forms - returns form elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Create form elements
     const form1 = try doc.createElement("form");
@@ -325,10 +188,10 @@ test "document.forms - returns form elements" {
     try doc.appendChild(form1);
     try doc.appendChild(form2);
 
-    var forms = try doc.getForms();
-    defer forms.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 2), forms.items.len);
+    const forms = try doc.forms();
+    try expectLength(2, forms);
+    try expectItem(form1, forms, 0);
+    try expectItem(form2, forms, 1);
 }
 
 // =============================================================================
@@ -336,22 +199,17 @@ test "document.forms - returns form elements" {
 // =============================================================================
 
 test "document.scripts - empty document returns empty collection" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    var scripts = try doc.getScripts();
-    defer scripts.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 0), scripts.items.len);
+    try expectLength(0, try doc.scripts());
 }
 
 test "document.scripts - returns script elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     const script1 = try doc.createElement("script");
     const script2 = try doc.createElement("script");
@@ -361,10 +219,7 @@ test "document.scripts - returns script elements" {
     try doc.appendChild(script2);
     try doc.appendChild(script3);
 
-    var scripts = try doc.getScripts();
-    defer scripts.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 3), scripts.items.len);
+    try expectLength(3, try doc.scripts());
 }
 
 // =============================================================================
@@ -372,37 +227,38 @@ test "document.scripts - returns script elements" {
 // =============================================================================
 
 test "document.links - empty document returns empty collection" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    var links = try doc.getLinks();
-    defer links.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 0), links.items.len);
+    try expectLength(0, try doc.links());
 }
 
 test "document.links - returns a and area elements" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Create link elements (a and area)
+    // Create link elements (a and area), each with an href attribute, and
+    // one a without: HTML's document.links "matches only a elements with
+    // href attributes and area elements with href attributes".
     const a1 = try doc.createElement("a");
     const a2 = try doc.createElement("a");
     const area1 = try doc.createElement("area");
+    const no_href = try doc.createElement("a");
+    for ([_]*Instance{ a1, a2, area1 }) |link| try doc.nodes.setAttribute(link, "href", "https://example.com/");
 
     try doc.appendChild(a1);
     try doc.appendChild(a2);
     try doc.appendChild(area1);
+    try doc.appendChild(no_href);
 
-    var links = try doc.getLinks();
-    defer links.deinit(allocator);
-
-    // Should include all a and area elements
-    try testing.expectEqual(@as(usize, 3), links.items.len);
+    // Should include all a and area elements that have an href
+    const links = try doc.links();
+    try expectLength(3, links);
+    try expectItem(a1, links, 0);
+    try expectItem(a2, links, 1);
+    try expectItem(area1, links, 2);
 }
 
 // =============================================================================
@@ -410,55 +266,49 @@ test "document.links - returns a and area elements" {
 // =============================================================================
 
 test "document.images - finds nested img elements" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Create nested structure: doc > div > img
+    // Create nested structure: root > div > img
     const div = try doc.createElement("div");
     const img = try doc.createElement("img");
 
     try doc.appendChild(div);
-    _ = try div.appendChild(img.asNode());
+    try doc.nodes.append(div, img);
 
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), images.items.len);
-    try testing.expectEqual(img, images.items[0]);
+    const images = try doc.images();
+    try expectLength(1, images);
+    try expectItem(img, images, 0);
 }
 
 test "document.forms - finds deeply nested form elements" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Create deeply nested structure: doc > div > section > form
+    // Create deeply nested structure: root > div > section > form
     const div = try doc.createElement("div");
     const section = try doc.createElement("section");
     const form = try doc.createElement("form");
 
     try doc.appendChild(div);
-    _ = try div.appendChild(section.asNode());
-    _ = try section.appendChild(form.asNode());
+    try doc.nodes.append(div, section);
+    try doc.nodes.append(section, form);
 
-    var forms = try doc.getForms();
-    defer forms.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), forms.items.len);
+    const forms = try doc.forms();
+    try expectLength(1, forms);
+    try expectItem(form, forms, 0);
 }
 
 test "document.scripts - finds scripts at multiple levels" {
-    const allocator = testing.allocator;
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Create: doc > script1
-    //              div > script2
-    //                    span > script3
+    // Create: root > script1
+    //               div > script2
+    //                     span > script3
     const script1 = try doc.createElement("script");
     const div = try doc.createElement("div");
     const script2 = try doc.createElement("script");
@@ -467,14 +317,16 @@ test "document.scripts - finds scripts at multiple levels" {
 
     try doc.appendChild(script1);
     try doc.appendChild(div);
-    _ = try div.appendChild(script2.asNode());
-    _ = try div.appendChild(span.asNode());
-    _ = try span.appendChild(script3.asNode());
+    try doc.nodes.append(div, script2);
+    try doc.nodes.append(div, span);
+    try doc.nodes.append(span, script3);
 
-    var scripts = try doc.getScripts();
-    defer scripts.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 3), scripts.items.len);
+    const scripts = try doc.scripts();
+    try expectLength(3, scripts);
+    // Tree order.
+    try expectItem(script1, scripts, 0);
+    try expectItem(script2, scripts, 1);
+    try expectItem(script3, scripts, 2);
 }
 
 // =============================================================================
@@ -482,54 +334,47 @@ test "document.scripts - finds scripts at multiple levels" {
 // =============================================================================
 
 test "document.images - collection reflects added elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Get images collection when empty
-    var images1 = try doc.getImages();
-    defer images1.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 0), images1.items.len);
+    const images = try doc.images();
+    try expectLength(0, images);
 
     // Add an image
     const img = try doc.createElement("img");
     try doc.appendChild(img);
 
-    // Get a new collection - it should include the new image
-    var images2 = try doc.getImages();
-    defer images2.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), images2.items.len);
+    // The SAME collection includes the new image, and a second read of the
+    // attribute is that object ([SameObject])
+    try expectLength(1, images);
+    try expectItem(img, images, 0);
+    try testing.expectEqual(images, try doc.images());
 }
 
 test "document.forms - collection reflects removed elements" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Add two forms
     const form1 = try doc.createElement("form");
     const form2 = try doc.createElement("form");
+
     try doc.appendChild(form1);
     try doc.appendChild(form2);
 
     // Get initial collection
-    var forms1 = try doc.getForms();
-    defer forms1.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 2), forms1.items.len);
+    const forms = try doc.forms();
+    try expectLength(2, forms);
 
     // Remove one form
     try doc.removeChild(form1);
 
-    // Get new collection - should reflect the removal
-    var forms2 = try doc.getForms();
-    defer forms2.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), forms2.items.len);
+    // The same collection reflects the removal
+    try expectLength(1, forms);
+    try expectItem(form2, forms, 0);
 }
 
 // =============================================================================
@@ -537,23 +382,22 @@ test "document.forms - collection reflects removed elements" {
 // =============================================================================
 
 test "collection - out of bounds returns nothing" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     const img = try doc.createElement("img");
     try doc.appendChild(img);
 
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
+    const images = try doc.images();
 
     // Valid index
-    try testing.expect(images.items.len > 0);
-    try testing.expectEqual(img, images.items[0]);
+    try expectLength(1, images);
+    try expectItem(img, images, 0);
 
-    // Out of bounds would be index >= len
-    try testing.expectEqual(@as(usize, 1), images.items.len);
+    // Out of bounds: item(index >= length) is null
+    try expectItem(null, images, 1);
+    try expectItem(null, images, 4_000_000_000);
 }
 
 // =============================================================================
@@ -561,10 +405,9 @@ test "collection - out of bounds returns nothing" {
 // =============================================================================
 
 test "document collections - mixed elements sorted in tree order" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
+    var doc: TestDocument = undefined;
+    try doc.open(.html);
+    defer doc.close();
 
     // Create various elements
     const img1 = try doc.createElement("img");
@@ -572,6 +415,7 @@ test "document collections - mixed elements sorted in tree order" {
     const script1 = try doc.createElement("script");
     const img2 = try doc.createElement("img");
     const a1 = try doc.createElement("a");
+    try doc.nodes.setAttribute(a1, "href", "#");
 
     // Append in specific order
     try doc.appendChild(img1);
@@ -581,24 +425,20 @@ test "document collections - mixed elements sorted in tree order" {
     try doc.appendChild(a1);
 
     // Get each collection
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-    var forms = try doc.getForms();
-    defer forms.deinit(allocator);
-    var scripts = try doc.getScripts();
-    defer scripts.deinit(allocator);
-    var links = try doc.getLinks();
-    defer links.deinit(allocator);
+    const images = try doc.images();
+    const forms = try doc.forms();
+    const scripts = try doc.scripts();
+    const links = try doc.links();
 
     // Verify counts
-    try testing.expectEqual(@as(usize, 2), images.items.len);
-    try testing.expectEqual(@as(usize, 1), forms.items.len);
-    try testing.expectEqual(@as(usize, 1), scripts.items.len);
-    try testing.expectEqual(@as(usize, 1), links.items.len);
+    try expectLength(2, images);
+    try expectLength(1, forms);
+    try expectLength(1, scripts);
+    try expectLength(1, links);
 
     // Verify images are in tree order
-    try testing.expectEqual(img1, images.items[0]);
-    try testing.expectEqual(img2, images.items[1]);
+    try expectItem(img1, images, 0);
+    try expectItem(img2, images, 1);
 }
 
 // =============================================================================
@@ -606,26 +446,22 @@ test "document collections - mixed elements sorted in tree order" {
 // =============================================================================
 
 test "XML document - case sensitive tag matching" {
-    const allocator = testing.allocator;
-
-    var doc = TestDocument.init(allocator);
-    defer doc.deinit();
-
-    // Set to XML mode (case-sensitive)
-    doc.is_html = false;
+    var doc: TestDocument = undefined;
+    // An XHTML document: createElement makes HTML-namespace elements and
+    // does not lowercase the name (DOM 4.5 createElement steps 2 and 4)
+    try doc.open(.xhtml);
+    defer doc.close();
 
     // Create img with lowercase
     const img_lower = try doc.createElement("img");
-    // Create IMG with uppercase (different in XML)
+    // Create IMG with uppercase (a different element in XML)
     const img_upper = try doc.createElement("IMG");
 
     try doc.appendChild(img_lower);
     try doc.appendChild(img_upper);
 
-    // In XML mode, only lowercase "img" should match
-    var images = try doc.getImages();
-    defer images.deinit(allocator);
-
-    try testing.expectEqual(@as(usize, 1), images.items.len);
-    try testing.expectEqual(img_lower, images.items[0]);
+    // In XML mode, only lowercase "img" is an img element
+    const images = try doc.images();
+    try expectLength(1, images);
+    try expectItem(img_lower, images, 0);
 }

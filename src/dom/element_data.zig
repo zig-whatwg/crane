@@ -472,7 +472,7 @@ pub const AttributeList = struct {
 /// is stable while the attribute lives), made when script asks for the first
 /// one. Blink keeps an element's Attr nodes apart from its attributes too
 /// (its rare data's kAttrNodeList, looked up by QualifiedName); Crane keeps
-/// this list in the element's ElementRareData (dom.element_rare_data, lane
+/// this list in the element's ElementRareData (dom.node_rare_data, lane
 /// perf3 D2).
 pub const AttrNodeList = struct {
     entries: std.ArrayList(Item) = .empty,
@@ -534,7 +534,7 @@ pub const AttrNodeList = struct {
 };
 
 /// An element's attribute list, ID, classes and qualified name. The Attr
-/// nodes made for its attributes are rare data (dom.element_rare_data, lane
+/// nodes made for its attributes are rare data (dom.node_rare_data, lane
 /// perf3 D2): no element of the perf pages had one.
 pub const ElementData = struct {
     /// The element's namespace, namespace prefix and local name (DOM 4.9),
@@ -1328,9 +1328,9 @@ pub fn ofIn(element: *runtime.Instance, scope: *runtime.BrowserScope) ?View {
     return .{ .data = data, .name = data.name, .scope = scope };
 }
 
-/// An element's rare data (dom.element_rare_data), which Element keeps and
+/// An element's rare data (dom.node_rare_data), which Element keeps and
 /// reaches through this slot too: one hook per owner, not one per field.
-const element_rare_data = @import("element_rare_data.zig");
+const node_rare_data = @import("node_rare_data.zig");
 
 /// What Element supplies.
 pub const Implementation = struct {
@@ -1341,7 +1341,7 @@ pub const Implementation = struct {
     /// element. The block moves when it grows, so a writer passes the
     /// holder itself (lane rare1; Blink's RareDataUpdate refreshes
     /// Node::data_).
-    rare_holder: *const fn (element: *runtime.Instance) ?element_rare_data.Access,
+    rare_holder: *const fn (element: *runtime.Instance) ?node_rare_data.Access,
 };
 
 // process-wide: an immutable function pointer Element installs once at process start (crane.Process); it reads only the element it is given, so one serves every Browser and thread
@@ -1361,8 +1361,8 @@ pub fn of(element: *runtime.Instance) ?View {
 }
 
 /// `element`'s rare data access, or null when it is no element:
-/// dom.element_rare_data.access.
-pub fn rareHolderOf(element: *runtime.Instance) ?element_rare_data.Access {
+/// dom.node_rare_data.access.
+pub fn rareHolderOf(element: *runtime.Instance) ?node_rare_data.Access {
     const impl = implementation.get() orelse return null;
     return impl.rare_holder(element);
 }
@@ -1860,6 +1860,6 @@ test "without an installed implementation no node has element data or rare data"
     var element: runtime.Instance = undefined;
     try std.testing.expect(of(&element) == null);
     try std.testing.expect(rareHolderOf(&element) == null);
-    try std.testing.expect(element_rare_data.access(&element) == null);
-    try std.testing.expect(element_rare_data.of(&element).block == null);
+    try std.testing.expect(node_rare_data.access(&element) == null);
+    try std.testing.expect(node_rare_data.of(&element).block == null);
 }

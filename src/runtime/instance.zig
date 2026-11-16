@@ -85,11 +85,31 @@ pub const Instance = struct {
             if (ancestors.len <= depth) break :found null;
             const a = ancestors[ancestors.len - 1 - depth];
             if (a.id != typeId(T)) break :found null;
+            // An interface this instance implements with no State of its
+            // own (`Ancestor.absent`). Only a State that says a derived
+            // State may leave it out can be one (`ancestorsOf` refuses any
+            // other), so no other `T` pays the test.
+            if (comptime mayBeAbsent(T)) {
+                if (a.offset == Ancestor.absent) break :found null;
+            }
             const bytes: [*]u8 = @ptrCast(self.state);
             break :found @ptrCast(@alignCast(bytes + a.offset));
         };
         if (@import("builtin").mode == .debug) std.debug.assert(found == self.stateByScan(T));
         return found;
+    }
+
+    /// Whether this instance implements the interface whose generated State
+    /// is `T`: `T` is in its ancestry - the WebIDL brand check. True also
+    /// where the instance keeps no State of `T`'s (an absent base: a node
+    /// implements EventTarget and nests no EventTarget State), which is the
+    /// one case `stateAs(T) != null` answers differently: ask this to know
+    /// what an object IS, `stateAs` to read its state.
+    pub inline fn implements(self: *const Instance, comptime T: type) bool {
+        const depth = comptime depthOf(T);
+        const ancestors = self.vtable.ancestors;
+        if (ancestors.len <= depth) return false;
+        return ancestors[ancestors.len - 1 - depth].id == typeId(T);
     }
 
     /// `stateAs` by scanning the whole ancestry: the oracle a Debug build checks the
@@ -98,6 +118,7 @@ pub const Instance = struct {
         const want = typeId(T);
         for (self.vtable.ancestors) |a| {
             if (a.id == want) {
+                if (a.offset == Ancestor.absent) return null;
                 const bytes: [*]u8 = @ptrCast(self.state);
                 return @ptrCast(@alignCast(bytes + a.offset));
             }
@@ -214,10 +235,32 @@ pub const Instance = struct {
     /// the caller's - and nothing else will ever free it - so it is freed here.
     pub fn releaseIfUnwrapped(instance: *Instance, generation: u64) void {
         if (@import("slab_allocator.zig").SlabAllocator.generationOf(instance) != generation) return;
-        // No engine realm behind it (a DOM unit test's context, a retired
-        // realm): nothing can have wrapped it, and nothing is known about who
-        // else holds it - leave it.
-        if (!instance.ctx.hasEngine()) return;
+        if (!instance.ctx.hasEngine()) {
+            // No engine realm was ever behind it (a DOM unit test's
+            // context): nothing is known about who else holds it - leave it.
+            if (!instance.ctx.engineGone()) return;
+            // Its realm's engine has gone - the collector took the realm, or
+            // it ended (ContextData.engine_gone). No wrapper will ever be
+            // made for the object, so nothing but this call can free one
+            // that never had a wrapper. Left, as every object of a realm
+            // with no engine was, the events fired at a node of a collected
+            // realm stayed until the process ended (12 allocations a time,
+            // tests/html/tl1_collected_realm_window_test.zig). An allowlist:
+            // - not a node: a node's life is its tree's and its counts';
+            // - never wrapped, by the engine's wrap tracking
+            //   (instance_lifecycle.provablyUnwrapped; an engine that does
+            //   not track answers "it may be", and the object is left). One
+            //   that was wrapped has a cache entry, live or collected, and
+            //   its realm's end frees it by that.
+            // In Blink an Event is not a context's object at all - it is
+            // freed when nothing reaches it, whatever became of the context
+            // it was made for (core/dom/events/event.h has no
+            // ExecutionContext member; read at chromium main, 2026-11-15).
+            if (instance.vtable.counted != null) return;
+            const lifecycle = @import("instance_lifecycle.zig");
+            if (!lifecycle.provablyUnwrapped(@import("engine").capabilities.wrap_tracking != .unsupported, instance)) return;
+            return deinit(instance);
+        }
         // Wrapped in its relevant realm (R28): the wrapper owns it.
         if (@import("engine").hasWrapper(instance)) return;
         deinit(instance);
@@ -257,14 +300,21 @@ pub fn typeId(comptime T: type) TypeId {
 pub const Ancestor = struct {
     id: TypeId,
     offset: usize,
+
+    /// The offset of an ancestor the interface implements WITHOUT nesting
+    /// its State (a generated State's `absent_base`: a node's EventTarget):
+    /// the instance is one - `Instance.implements` - and has no bytes of
+    /// that State - `Instance.stateAs` answers null.
+    pub const absent: usize = std.math.maxInt(usize);
 };
 
-/// Walk `State` and every `base` beneath it, accumulating byte offsets.
-///
-/// Entry 0 is the type itself at offset 0; each further entry adds the
-/// `@offsetOf(.., "base")` of the level above. This is what retires the
-/// derived-to-base pun: `getState` assumed every one of these offsets was 0, which
-/// auto layout does not guarantee (see tests/dom/state_layout_test.zig).
+/// Whether a derived State may leave `State` out (`Ancestor.absent`): the
+/// generated State says so (`may_be_absent`, from its impl's InternalState;
+/// runtime.FlattenedState). False for a hand-written State.
+fn mayBeAbsent(comptime State: type) bool {
+    return @typeInfo(State) == .@"struct" and @hasDecl(State, "may_be_absent") and State.may_be_absent;
+}
+
 /// How many levels lie below `State` in its own ancestry: its `base`, that one's
 /// `base`, ... down to the root. `State` sits this many entries from the END of every
 /// ancestry it appears in (`Instance.stateAs`).
@@ -272,6 +322,20 @@ pub fn depthOf(comptime State: type) usize {
     return comptime ancestorsOf(State).len - 1;
 }
 
+/// Walk `State` and every `base` beneath it, accumulating byte offsets.
+///
+/// Entry 0 is the type itself at offset 0; each further entry adds the
+/// `@offsetOf(.., "base")` of the level above. This is what retires the
+/// derived-to-base pun: `getState` assumed every one of these offsets was 0, which
+/// auto layout does not guarantee (see tests/dom/state_layout_test.zig).
+///
+/// A level that implements its base interface without nesting that
+/// interface's State (`absent_base`, runtime.FlattenedState) is followed by
+/// that State as an entry with no bytes (`Ancestor.absent`): the ancestry
+/// stays the interface's whole inheritance chain, which is what the brand
+/// check reads, and every State keeps its place from the end. Such a State
+/// must be the root of its own chain and allow it (`mayBeAbsent`), so
+/// `stateAs` tests for it only where it reads such a State.
 pub fn ancestorsOf(comptime State: type) []const Ancestor {
     comptime {
         var list: []const Ancestor = &.{};
@@ -281,7 +345,16 @@ pub fn ancestorsOf(comptime State: type) []const Ancestor {
             list = list ++ [_]Ancestor{.{ .id = typeId(Cur), .offset = off }};
             if (!@hasField(Cur, "base")) break;
             const Base = @FieldType(Cur, "base");
-            if (Base == void) break;
+            if (Base == void) {
+                if (!@hasDecl(Cur, "absent_base")) break;
+                const Absent = Cur.absent_base orelse break;
+                if (@hasField(Absent, "base") and @FieldType(Absent, "base") != void)
+                    @compileError(@typeName(Absent) ++ " is not nested by " ++ @typeName(Cur) ++ " and has a base State of its own: only a chain's root State can be left out");
+                if (!mayBeAbsent(Absent))
+                    @compileError(@typeName(Absent) ++ " is not nested by " ++ @typeName(Cur) ++ ", and its impl does not allow it: its InternalState must declare `pub const may_be_absent = true` (every reader of that State then expects `stateAs` to answer null for such an instance)");
+                list = list ++ [_]Ancestor{.{ .id = typeId(Absent), .offset = Ancestor.absent }};
+                break;
+            }
             off += @offsetOf(Cur, "base");
             Cur = Base;
         }

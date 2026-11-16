@@ -52,6 +52,29 @@ pub const State = packed struct(u16) {
     _unused: u7 = 0,
 };
 
+/// The process's record of the releases of the system allocator's free
+/// memory - one allocator per process, so one hold-off between releases for
+/// every Browser's event loop. Only the record is here, because it is the
+/// process's; the rule that reads and writes it is the browser layer's
+/// (src/browser/memory_release.zig: Gate), and a test makes one of its own.
+/// Atomics, written from any Browser's loop thread and from the detached
+/// thread a release runs on.
+pub const MemoryHoldOff = struct {
+    /// Real monotonic time (ns) before which no release is asked for;
+    /// `releasing` while one runs. A release claims the record by swapping
+    /// the value it read for `releasing`, so of several loops that find it
+    /// open at once exactly one starts a release.
+    not_before_ns: std.atomic.Value(i64) = .init(open),
+    /// How many releases have ended: a count that only rises.
+    releases: std.atomic.Value(u64) = .init(0),
+    /// The level of the release that runs (platform.MemoryRelease, as its
+    /// integer): written by the claim, read by the release's thread.
+    level: std.atomic.Value(u8) = .init(0),
+
+    pub const open: i64 = std.math.minInt(i64);
+    pub const releasing: i64 = std.math.maxInt(i64);
+};
+
 /// The process's start-up record: the state word, and a test build's hook
 /// bookkeeping (hook.zig) - the test starts installing now
 /// (`installForTest`) and the overrides not yet restored
@@ -86,6 +109,10 @@ const Start = struct {
     /// Set by the Crane test runner before its first test, read by the test
     /// thread's overrides (`observeOverridesForTest`).
     test_override_observer: ?OverrideObserver = null,
+    /// The process's hold-off between releases of the allocator's free
+    /// memory (`memoryHoldOff`). Not part of the start-up: it is here because
+    /// this is the process's one record.
+    memory_hold_off: MemoryHoldOff = .{},
 
     /// Take the install lock - or nothing, when this thread holds it
     /// already: true when this call took it (and its caller gives it back).
@@ -145,6 +172,13 @@ fn endReleasesInstalls(phase: Phase) bool {
 
 // process-wide: crane.Process's start-up phase; every hook slot (Hook(T), hook.zig) is written only while it is .starting
 var state: Start = .{};
+
+/// The process's hold-off between releases of the allocator's free memory:
+/// every event loop's, through its gate (browser/memory_release.zig). Any
+/// thread.
+pub fn memoryHoldOff() *MemoryHoldOff {
+    return &state.memory_hold_off;
+}
 
 /// The current start-up state.
 pub fn get() State {

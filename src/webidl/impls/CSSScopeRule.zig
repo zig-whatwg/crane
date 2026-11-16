@@ -1,5 +1,6 @@
-//! CSS Cascade 6 section 4.1: the serialized scoping boundaries.
-//! Evaluation and scope proximity are tracked by CSS @SCOPE EVALUATION.
+//! CSS Cascade 6 section 4.1: the serialized scoping boundaries. The
+//! cascade matches the parsed boundaries (dom.style: sheet.zig ScopeData,
+//! engine.zig's scoped matching and scope proximity).
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");

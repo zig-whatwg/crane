@@ -200,11 +200,12 @@ pub const attribute_values = @import("attribute_values.zig");
 /// through, gone 10 s after its parse (lane nd2 batch 5; Blink's
 /// Document::element_data_cache_).
 pub const attribute_block_cache = @import("attribute_block_cache.zig");
-/// An element's rare data - the fields few elements use, in one sparse block
-/// made on first use that MOVES when it grows (Blink's NodeRareData since
-/// 2026-01; lanes perf3 D2, rare1) - HTMLElement's fields included, reached
-/// through the hook Element installs.
-pub const element_rare_data = @import("element_rare_data.zig");
+/// A node's rare data - the fields few nodes use, in one sparse block made
+/// on first use that MOVES when it grows (Blink's NodeRareData since
+/// 2026-01; lanes perf3 D2, rare1) - the node's own fields (lane nm2: its
+/// word is NodeBase's `rare`), Element's, and HTMLElement's, which are
+/// reached through the hook Element installs.
+pub const node_rare_data = @import("node_rare_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");
 /// The generated [SameObject] caches' edges: an owner keeps the child it
@@ -231,7 +232,6 @@ pub const event_dispatch = @import("event_dispatch.zig");
 /// trees (retargeting, the shadow-tree booleans, activationTarget,
 /// clearTargets).
 pub const event_path = @import("event_path.zig");
-pub const selectors = @import("selectors.zig");
 /// querySelector / matches / closest over platform objects.
 pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
@@ -239,9 +239,6 @@ pub const pointer_states = @import("pointer_states.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");
-pub const dom_token_list = @import("dom_token_list.zig");
-pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
-pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
@@ -285,6 +282,13 @@ pub const focus_matching = @import("focus_matching.zig");
 /// A FileList's contents, set natively by its owners (an input's selected
 /// files, a DataTransfer's files): the hook FileList installs.
 pub const file_lists = @import("file_lists.zig");
+/// A Touch's unadjusted target and its place in a TouchEvent's touch target
+/// list (DOM 2.2, Touch Events "Retargeting"): the hook Touch installs.
+pub const touch_points = @import("touch_points.zig");
+/// Pointer Events 4: a top-level traversable's active pointers and their
+/// pointer capture, which Element's capture methods and html.user_input
+/// share.
+pub const pointer_capture = @import("pointer_capture.zig");
 /// HTML 6.11.2 the drag data store a DataTransfer owns, and the hooks its
 /// item list and items are made through.
 pub const drag_data_store = @import("drag_data_store.zig");
@@ -292,9 +296,6 @@ pub const drag_data_store = @import("drag_data_store.zig");
 // Re-export CookieChangeEvent
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
 pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
-
-// Re-export selector functions
-pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
@@ -308,6 +309,9 @@ pub const wrapper_tracing = @import("wrapper_tracing.zig");
 /// Refcount step 6, the zombie audit (CRANE_REFCOUNT_AUDIT; lane refcount7).
 pub const refcount_audit = @import("refcount_audit.zig");
 pub const refcount_teardown = @import("refcount_teardown.zig");
+/// Which trees die with the node wrappers a full collection found dead
+/// (lane dm2, batch B: runtime.lifetime's `dyingWith`).
+pub const dying_trees = @import("dying_trees.zig");
 pub const NodeBase = node_base.NodeBase;
 
 // Instance bridge for runtime.Instance <-> NodeBase conversion
@@ -320,24 +324,14 @@ pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
-// Temporary bridge types with NodeBase pattern (until codegen is updated)
-pub const element_with_base = @import("element_with_base.zig");
-pub const ElementWithBase = element_with_base.ElementWithBase;
-pub const text_with_base = @import("text_with_base.zig");
-pub const TextWithBase = text_with_base.TextWithBase;
-pub const CommentWithBase = text_with_base.CommentWithBase;
-pub const attr_with_base = @import("attr_with_base.zig");
-pub const AttrWithBase = attr_with_base.AttrWithBase;
-
-// XPath 1.0 implementation
+// XPath 1.0: the grammar's types. Evaluation over platform nodes is the
+// XPathExpression interface's impl (its own parser and evaluator); the old
+// evaluator here, over NodeBase and the WithBase types, had no caller and
+// went with those types (lane wb1).
 pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
     pub const parser = @import("xpath/parser.zig");
-    pub const value = @import("xpath/value.zig");
-    pub const context = @import("xpath/context.zig");
-    pub const functions = @import("xpath/functions.zig");
-    pub const evaluator = @import("xpath/evaluator.zig");
 };
 
 pub const boundary_points = @import("boundary_points.zig");

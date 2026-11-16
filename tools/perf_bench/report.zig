@@ -46,6 +46,15 @@
 //! Medians, not means (a page's samples and a run's launches both have
 //! outliers): a run's figure is the median of its samples; a cell's, the
 //! median of its runs' figures, with the runs' spread (relative MAD).
+//!
+//! A memory row whose runs read in two levels (`Levels`: two tight groups of
+//! launches, as macOS's allocator makes of a workload that frees about one
+//! reclaim ring's worth) keeps the median of all its runs as its figure and
+//! shows both levels with their counts beside it; two Crane builds are
+//! compared on such a row level against level (`steadyRatio`, `peakRatio`)
+//! where one is checked against the other - a tip against its base, a drift
+//! control against the round it repeats - so a median that changed level
+//! reads no change. Every published ratio stays the medians'.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -108,6 +117,12 @@ pub const Cell = struct {
     /// collection the page asked for (`forced_gc`), and their idle time.
     forced_gc_runs: u32 = 0,
     settle_ms: ?f64 = null,
+    /// The two levels the runs' steady footprints read in, where they form
+    /// two tight groups (`levelsOf`); null for a row with one level, and for
+    /// a row whose memory figure is not a footprint (`readsFootprint`).
+    levels: ?Levels = null,
+    /// The same for the runs' peaks.
+    peak_levels: ?Levels = null,
     /// The newest record's time: which version of an engine is current.
     latest_time: []const u8 = "",
     engine_info: journal.Engine,
@@ -164,6 +179,67 @@ pub const Cell = struct {
         return @floatFromInt(p);
     }
 };
+
+/// A row whose launches read in two levels (lane mem1, 2026-11-15; the
+/// user: print both levels with their counts, and compare two sides level
+/// against level). On macOS the system allocator gives freed pages back only
+/// when its deferred-reclamation ring fills, so a workload whose frees end
+/// near the ring's size reads in one of two footprints, launch by launch,
+/// with the same bytes allocated (dom.event-ctor and the four rows after it:
+/// 143.5 MB in 3 launches of 10, 162.5 MB in 7; docs/lessons/
+/// debugging-two-memory-modes-with-equal-allocations-are-a-reclaim-ring-at-its-threshold.md).
+/// The median of such runs is one level or the other by the launches'
+/// luck, and a ratio of two such medians reads +-13% for no change.
+pub const Levels = struct {
+    /// Each level: the median of its group's runs (bytes), and how many.
+    low: u64,
+    low_runs: u32,
+    high: u64,
+    high_runs: u32,
+};
+
+/// Two groups are two levels only when the gap between them is at least
+/// this share of the lower one: 3%, the cost bar a flipping median would
+/// otherwise break. Closer groups are one level with its spread.
+pub const level_gap = 0.03;
+/// ... and when each group is tight: its own range at most a quarter of the
+/// gap between the groups.
+pub const level_tightness = 4;
+/// ... and when each group has at least two runs: one run apart is an
+/// outlier, which the median already ignores.
+pub const level_min_runs = 2;
+
+/// The two levels of `values` (a row's steady footprint in each of its ok
+/// runs), or null when they are one level: split at the widest gap between
+/// neighbours of the sorted values, then held to `level_gap`,
+/// `level_tightness` and `level_min_runs`. Three or more groups are not two
+/// levels (the group that holds two of them is not tight).
+pub fn levelsOf(gpa: Allocator, values: []const u64) Allocator.Error!?Levels {
+    if (values.len < 2 * level_min_runs) return null;
+    const sorted = try gpa.dupe(u64, values);
+    defer gpa.free(sorted);
+    std.mem.sort(u64, sorted, {}, std.sort.asc(u64));
+    if (sorted[0] == 0) return null;
+    // The widest gap between neighbours; the first of equals.
+    var split: usize = 1;
+    for (1..sorted.len) |i| {
+        if (sorted[i] - sorted[i - 1] > sorted[split] - sorted[split - 1]) split = i;
+    }
+    const low = sorted[0..split];
+    const high = sorted[split..];
+    if (low.len < level_min_runs or high.len < level_min_runs) return null;
+    const gap = high[0] - low[low.len - 1];
+    const low_level = (try stats.medianU64(gpa, low)).?;
+    if (@as(f64, @floatFromInt(gap)) < level_gap * @as(f64, @floatFromInt(low_level))) return null;
+    const widest = @max(low[low.len - 1] - low[0], high[high.len - 1] - high[0]);
+    if (widest * level_tightness > gap) return null;
+    return .{
+        .low = low_level,
+        .low_runs = @intCast(low.len),
+        .high = (try stats.medianU64(gpa, high)).?,
+        .high_runs = @intCast(high.len),
+    };
+}
 
 pub const Model = struct {
     cells: []Cell,
@@ -328,6 +404,9 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
     c.instructions = try stats.medianU64(arena, ins.items);
     c.footprint = try stats.medianU64(arena, foot.items);
     c.settled = try stats.medianU64(arena, settled.items);
+    // The levels of the values the memory figure is the median of.
+    if (readsFootprint(c)) c.levels = try levelsOf(arena, if (settled.items.len > 0) settled.items else foot.items);
+    if (c.kind != .startup) c.peak_levels = try levelsOf(arena, peak.items);
     c.peak = try stats.medianU64(arena, peak.items);
     c.growth = try stats.median(arena, growth.items);
     c.plateau = try stats.medianU64(arena, plateaus.items);
@@ -342,6 +421,17 @@ fn summarise(arena: Allocator, c: *Cell, runs: []const journal.Record) !void {
         if (try stats.median(arena, vals.items)) |m| try counters.append(arena, .{ .name = name, .value = m });
     }
     c.counters = counters.items;
+}
+
+/// Whether `c`'s memory figure is a footprint - the steady one where it was
+/// read, else the one at the workload's end (`Cell.memoryFigure`'s last
+/// case) - and not a chain's plateau, an instances row's slope or nothing.
+fn readsFootprint(c: *const Cell) bool {
+    if (std.mem.eql(u8, c.workload, "memory.page-growth")) return false;
+    return switch (c.kind) {
+        .timed, .chain, .idle => true,
+        .instances, .startup, .retained, .gc_bench => false,
+    };
 }
 
 fn counterOf(counters: []const journal.Counter, name: []const u8) ?f64 {
@@ -397,7 +487,9 @@ pub fn compare(arena: Allocator, m: *const Model, round: u32, subject: EngineNam
         v.version = b.version;
         const c = m.rowsFor(round, subject, w) orelse continue;
         if (c.timeFigure()) |ct| if (b.timeFigure()) |bt| if (bt > 0) try t.append(arena, ct / bt);
-        if (c.memoryFigure()) |cm| if (b.memoryFigure()) |bm| if (bm > 0) try mem.append(arena, cm / bm);
+        // The published figures' ratio, also between two Crane builds
+        // (ReleaseFast, the progress since the first round): never by level.
+        if (ratioOf(c.memoryFigure(), b.memoryFigure())) |r| try mem.append(arena, r);
     }
     v.time_ratio = stats.geometricMean(t.items);
     v.time_n = t.items.len;
@@ -496,10 +588,10 @@ pub fn driftBetween(arena: Allocator, m: *const Model, round: u32, engine: Engin
             try t.append(arena, ct / rt);
             if (@abs(ct / rt - 1.0) > band) out = true;
         };
-        if (c.memoryFigure()) |cm| if (r.memoryFigure()) |rm| if (rm > 0) {
-            try mem.append(arena, cm / rm);
-            if (@abs(cm / rm - 1.0) > @max(0.10, band)) out = true;
-        };
+        if (steadyRatio(c, r)) |sr| {
+            try mem.append(arena, sr.ratio);
+            if (@abs(sr.ratio - 1.0) > @max(0.10, band)) out = true;
+        }
         if (out) d.outside += 1;
     }
     d.time_ratio = stats.geometricMean(t.items);
@@ -528,8 +620,13 @@ pub const BaseTipRow = struct {
     base: *const Cell,
     tip: *const Cell,
     time: ?f64 = null,
+    /// Steady and peak memory, level against level where either side reads
+    /// in two levels (`steadyRatio`, `peakRatio`): the ratio judged against
+    /// the band, and its levels for the page.
     steady: ?f64 = null,
     peak: ?f64 = null,
+    steady_levels: ?LevelRatio = null,
+    peak_levels: ?LevelRatio = null,
     band: f64,
     /// Any of the three ratios outside its band.
     outside: bool = false,
@@ -565,8 +662,10 @@ pub fn baseTip(arena: Allocator, m: *const Model, round: u32) !?BaseTip {
         const band = noiseBand(b, c);
         var row: BaseTipRow = .{ .workload = w, .base = b, .tip = c, .band = band };
         row.time = ratioOf(c.timeFigure(), b.timeFigure());
-        row.steady = ratioOf(c.memoryFigure(), b.memoryFigure());
-        row.peak = ratioOf(c.peakFigure(), b.peakFigure());
+        row.steady_levels = steadyRatio(c, b);
+        row.peak_levels = peakRatio(c, b);
+        if (row.steady_levels) |r| row.steady = r.ratio;
+        if (row.peak_levels) |r| row.peak = r.ratio;
         const memory_band = @max(0.10, band);
         if (row.time) |r| if (@abs(r - 1.0) > band) {
             row.outside = true;
@@ -695,7 +794,9 @@ pub fn compareRounds(arena: Allocator, m: *const Model, round: u32, subject: Eng
         if (c.kind == .gc_bench) continue;
         v.version = b.version;
         if (c.timeFigure()) |ct| if (b.timeFigure()) |bt| if (bt > 0) try t.append(arena, ct / bt);
-        if (c.memoryFigure()) |cm| if (b.memoryFigure()) |bm| if (bm > 0) try mem.append(arena, cm / bm);
+        // The published figures' ratio, also between two Crane builds
+        // (ReleaseFast, the progress since the first round): never by level.
+        if (ratioOf(c.memoryFigure(), b.memoryFigure())) |r| try mem.append(arena, r);
     }
     v.time_ratio = stats.geometricMean(t.items);
     v.time_n = t.items.len;
@@ -720,6 +821,7 @@ pub const round_notes = [_]RoundNote{
     .{ .round = 6, .note = "The node-data lanes. nd1: a CharacterData node's data 48 -> 16 B. nd2: an element's name is one pointer to a shared record, its attributes one block of 8-B entries whose values are interned, counted records, and a class value's token list is made once per value. rare1: one sparse rare block per element. lis1: a target's listeners and handlers in one lazily made block. cg1: [SameObject] caches in the rare block, and a generated State keeps only the slots its impl uses. style1: a per-document matched-properties cache. h1: the per-Browser address-space reservation. A kept div 546 -> 368 B." },
     .{ .round = 7, .note = "Lane v8up: V8 13.1.203 -> 15.7.112.43, the V8 Chrome 157 ships, with wrapper finalizers run at binding exits and inside callbacks; Crane's builds take the V8 adapter's default build options, a 24 MB young generation (8 MB semispaces) and a collection after a main frame's navigation once V8's heap holds 16 MB. Lane nd2: equal attribute lists share one block at parse and clone, through a cache their Document owns. Lane style1: a style's own blocks keyed by content in the matched-properties cache. Against round 6's build run again in this round's window (the drift control), time fell by more than 5% on 31 of 45 workloads and rose on none, and the pages that navigate hold 0.61-0.82x the memory. Memory rose by more than 5% on 18 workloads, 2.8% over the suite: V8 15.7 allocates a cppgc object per wrapper (the attribute and Event-dictionary rows 1.17x; a kept div 368 -> 386 B), a detached tree waits one collection longer (cloneNode 1.39x, document.write 1.25x), and 15.7 collects later than 13.1 did (fetch over loopback 1.31-1.47x, streams.reader 1.41x, each further instance 1.12x). Accepted for this round by the user's ruling of 2026-11-12, each row queued with an owner (lanes wrap1, wr1 and v8up)." },
     .{ .round = 8, .note = "Lane wr1, the rest of the wrapper redesign (phases P4-P8): a node's wrapper has no internal field - it reaches its node through an anchor on V8's C++ heap (v8::Object::Wrap) - and the node holds it by a reference V8 may drop in a young collection once script holds no reference to the wrapper and has added nothing to it; what a kept wrapper's tree keeps alive is found by a walk in the collector's pause; a collected wrapper's hold on its node is released right after the collection that found it dead; and V8 is told 8 B for each dropped wrapper, so its own limit paces full collections under churn. V8 starts with --no-handle-weak-ref-weakly-in-minor-gc, so a FinalizationRegistry callback does not fire for a node still in its document. Against round 7's build run again in this round's window (the drift control): time 0.975x, instructions 0.985x, memory 0.937x; memory fell by more than 5% on 12 of 47 workloads and rose by that much on none (querySelectorAll, matches and getElementsByClassName 0.65x; cloneNode 0.75x, which takes back round 7's 1.39x; the tree page's other rows 0.82-0.83x; createElement and the getter, setter and method loops 0.91-0.92x), and time fell by more than 5% on 8 of 45 and rose on none (insert-remove 0.74x, build-tree 0.82x). A kept div 386 -> 336 B; a div in the document, whose wrapper script let go, 397 -> 294 B; a div with two attributes 437 -> 385 B; a text node 374 -> 306 B; a parsed span, which never had a wrapper, stays at 489 B. Stated as they are, not as noise: cloneNode retires 1.046x the instructions between its marks (a dropped clone's frees now run inside them; lane wr1 measured 0.885x through the settle mark); load.news holds 1.049x at its last reading and load.app peaks at 1.16x, because the collection after a navigation lands a page earlier or later than it did - one reading after page 10 of a sawtooth (owner: lane v8up); the Event and attribute rows read one of two levels from run to run, 0.84-0.86x in 3 runs of 7 and 0.96-0.98x in 4, and the median shown is the higher: each of the 650,000 Events a workload drops leaves 32 B until the next full collection, and the level is whether one lands inside the page (owner: lane wrap1, the non-node wrappers); and the rows where V8 15.7 keeps memory for 8-30 s after the work, as Chrome does (fetch over loopback, streams.reader, each further instance), are unchanged." },
+    .{ .round = 9, .note = "A memory round. Lane nm1, the node's layout: NodeBase's fields at pinned offsets, Node's duplicate fields gone, an element's five flag bytes as bits and the node document as one tagged word (a div's block 192 -> 144 B, a Text's 160 -> 128 B). Lane ev1: an Event's path is built at dispatch as a local of the dispatch, and the block that keeps its relatedTarget is made only for an event that has one (by the lane's measure a kept Event 1,508 -> 579 B). Lane wrap1, the non-node wrappers: V8 is told each one's real size, its own state block included, so a page that makes and drops Events is collected in time; the wrapper cache's record pool gives chunks back; and a legacy platform object's proxy shares one frozen handler per realm. Lane dm2: the DOM memory figure V8 sets its limit from no longer counts the trees already decided dead. Lane rep2: a dedicated worker fetches its script on its own thread, and the window's event loop waits on its task sink instead of sleeping 1 ms at a time. Lane quick1: Fetch decodes content codings itself (gzip, deflate, br, zstd). Lane v8up: ReadableStream values() compiles no script per call. Lanes tl1 and mem1: leaks removed. The suite gains five rows, which rounds 0 to 8 have no value for: three worker rows, and fetch over loopback with a gzip and a Brotli body. Against round 8's build run again in this round's window (the drift control), over the workloads both rounds have: time 0.990x, instructions 1.007x, memory 0.878x, peak 0.867x. Memory fell by more than 5% on 26 of 47 workloads: the attribute and Event-dictionary rows 0.49x, the Event constructor 0.56x, the events page 0.56-0.63x, MessageChannel 0.69x, DOMParser 0.78x, document.write 0.80x, innerHTML of a large document 0.88x, load.app 0.91x, the node rows (createElement, the getter, setter and method loops, the tree and innerHTML pages) and load.docs 0.92-0.93x, fetch 0.92-0.95x. It rose by that much on 4: the four stream rows after streams.reader hold 1.11x (424 against 381 MB), pages the workload freed that macOS's allocator has not given back yet - lane wrap1 measured the same rows 4% under its base with the allocator's deferred reclamation off - accepted by the user's ruling of 2026-11-15. Time fell by more than 5% on 5 of 45 (fetch over loopback 0.83-0.92x with the same instructions: less waiting, not less work) and on each new row (the worker rows 0.83-0.93x, the gzip body 0.89x, the Brotli body 0.91x). A kept div 336 -> 292 B; a div in the document 294 -> 224 B; a div with two attributes 385 -> 342 B; a text node 306 -> 274 B; a parsed span 489 -> 418 B. Over the suite Crane holds less memory than Lightpanda for the first time (0.94x; round 8: 1.08x). Stated as they are, not as noise: telling V8 an object's real size costs instructions where a workload makes and drops many - the Event constructor retires 1.07x (its time is 0.975x: lane ev1's gain paid for it), streams.reader 1.07x with 1.08x the time - and DOMParser retires 1.06x for lane dm2's accounting at a collection, each accepted by the user's rulings of 2026-11-15; cloneNode retires 1.075x between its marks (1.05x measured in a dropped clone's teardown at lane nm1's merge). getElementsByClassName reads 1.09x the time with 0.98x the instructions: in both builds a launch reads 2.6 or 3.1 ms, and the two medians fell on different sides - no change. The Event and attribute rows, which read one of two levels in round 8, read one here (73 MB in 6 launches of 7); round 8's build still reads two (130 and 150 MB)." },
 };
 
 pub fn roundNote(round: u32) ?[]const u8 {
@@ -845,6 +947,91 @@ fn ratioOf(subject: ?f64, other: ?f64) ?f64 {
     const o = other orelse return null;
     if (o <= 0) return null;
     return s / o;
+}
+
+/// One Crane build's memory over another's (a tip over its base, a control
+/// over the round it repeats), level against level where either side reads
+/// in two levels (`Levels`).
+pub const LevelRatio = struct {
+    /// What is judged against the noise band and enters a geometric mean:
+    /// the figures' ratio for two one-level rows; else the geometric mean of
+    /// the level ratios there are.
+    ratio: f64,
+    /// The subject's low level over the other's, and the high ones. A side
+    /// with one level stands for the level of the other side it is at
+    /// (within `level_gap`), and the other level has no ratio. Both null:
+    /// no levels, or a one-level side at neither level of the other.
+    low: ?f64 = null,
+    high: ?f64 = null,
+
+    pub fn leveled(r: LevelRatio) bool {
+        return r.low != null or r.high != null;
+    }
+};
+
+/// `subject`'s steady memory over `other`'s; null where either has no
+/// memory figure. Level against level only between two Crane builds, and
+/// only where the question is "did this build move against that one":
+/// a tip against its base in one window (`baseTip`) and a control against
+/// the round it repeats (`driftBetween`). Every published comparison -
+/// Crane against a browser, ReleaseFast against ReleaseSafe, a round
+/// against the first (`compare`, `compareRounds`) - stays the ratio of the
+/// published figures, the medians of all runs: across builds that differ
+/// by design a side's one level has no "same level" on the other side.
+pub fn steadyRatio(subject: *const Cell, other: *const Cell) ?LevelRatio {
+    const both_crane = subject.engine.isCrane() and other.engine.isCrane();
+    return levelRatio(subject.memoryFigure(), if (both_crane) subject.levels else null, other.memoryFigure(), if (both_crane) other.levels else null);
+}
+
+/// The same for the peak (`Cell.peakFigure`, `Cell.peak_levels`).
+pub fn peakRatio(subject: *const Cell, other: *const Cell) ?LevelRatio {
+    const both_crane = subject.engine.isCrane() and other.engine.isCrane();
+    return levelRatio(subject.peakFigure(), if (both_crane) subject.peak_levels else null, other.peakFigure(), if (both_crane) other.peak_levels else null);
+}
+
+/// A figure `s` with its levels over a figure `o` with its own.
+///
+/// A side with one level is set against the nearer level of the other side
+/// (in ratio) when it is within `level_gap` of it: its launches all landed
+/// in that level. Further from both levels it is no level of the other
+/// side's, and the ratio is the figures' (a tip 8% over its base's low
+/// level is not 10% under the high one). What this cannot tell apart is a
+/// side that truly moved by the whole gap between the levels: the counts
+/// beside each figure say which side had which launches, and a cost pair's
+/// memory bar is read with the allocator's ring off (AGENTS.md, "The 3%
+/// memory bar reads what Crane holds").
+fn levelRatio(s: ?f64, s_levels: ?Levels, o: ?f64, o_levels: ?Levels) ?LevelRatio {
+    const plain = ratioOf(s, o) orelse return null;
+    const f = struct {
+        fn f(x: u64) f64 {
+            return @floatFromInt(x);
+        }
+    }.f;
+    if (s_levels) |sl| {
+        if (o_levels) |ol| {
+            const low = f(sl.low) / f(ol.low);
+            const high = f(sl.high) / f(ol.high);
+            return .{ .ratio = @sqrt(low * high), .low = low, .high = high };
+        }
+        const at_low = nearerLow(sl, o.?);
+        const r = f(if (at_low) sl.low else sl.high) / o.?;
+        if (@abs(r - 1.0) > level_gap) return .{ .ratio = plain };
+        return .{ .ratio = r, .low = if (at_low) r else null, .high = if (at_low) null else r };
+    }
+    if (o_levels) |ol| {
+        const at_low = nearerLow(ol, s.?);
+        const r = s.? / f(if (at_low) ol.low else ol.high);
+        if (@abs(r - 1.0) > level_gap) return .{ .ratio = plain };
+        return .{ .ratio = r, .low = if (at_low) r else null, .high = if (at_low) null else r };
+    }
+    return .{ .ratio = plain };
+}
+
+/// Whether `v` is nearer `l`'s low level than its high one, in ratio.
+fn nearerLow(l: Levels, v: f64) bool {
+    const low: f64 = @floatFromInt(l.low);
+    const high: f64 = @floatFromInt(l.high);
+    return @abs(@log(v / low)) <= @abs(@log(v / high));
 }
 
 /// Every file of /performance/ for `m`: name -> bytes.
@@ -1598,7 +1785,7 @@ fn writeDrift(w: W, arena: Allocator, m: *const Model) !void {
         try writeRatio(w, c.timeFigure(), if (r) |x| x.timeFigure() else null);
         try writeMemoryCell(w, r);
         try writeMemoryCell(w, c);
-        try writeRatio(w, c.memoryFigure(), if (r) |x| x.memoryFigure() else null);
+        try writeMeasureRatio(w, c, r, .steady);
         if (ta != null) {
             const b = m.current(round, .crane_base, wl);
             try writeTimeCell(w, b);
@@ -1656,10 +1843,48 @@ fn writeRemeasured(w: W, arena: Allocator, m: *const Model, rm: Remeasured) !voi
         try writeRatio(w, c.timeFigure(), if (r) |x| x.timeFigure() else null);
         try writeMemoryCell(w, r);
         try writeMemoryCell(w, c);
-        try writeRatio(w, c.memoryFigure(), if (r) |x| x.memoryFigure() else null);
+        try writeMeasureRatio(w, c, r, .steady);
         try w.writeAll("</tr>\n");
     }
     try w.writeAll("</tbody></table></div></section>\n");
+}
+
+/// perf_bench's stderr line for a row of `baseTip` in which the runs of
+/// exactly one side read in two levels for `measure` (steady or peak
+/// memory): both sides' levels and counts, and what the one-level side was
+/// compared with. Null for every other row. Such a row is the one the
+/// comparison cannot settle by itself (`levelRatio`): a one-level side at
+/// the other's high level in every run is launch luck or a real change of
+/// the whole gap, and whoever reads the summary must see the counts.
+pub fn oneSidedLine(arena: Allocator, row: BaseTipRow, measure: Measure) !?[]const u8 {
+    if (measure == .time) return null;
+    const steady = measure == .steady;
+    const base_levels = if (steady) row.base.levels else row.base.peak_levels;
+    const tip_levels = if (steady) row.tip.levels else row.tip.peak_levels;
+    const base_figure = if (steady) row.base.memoryFigure() else row.base.peakFigure();
+    const tip_figure = if (steady) row.tip.memoryFigure() else row.tip.peakFigure();
+    const ratio = if (steady) row.steady_levels else row.peak_levels;
+    if ((base_levels == null) == (tip_levels == null)) return null;
+    const r = ratio orelse return null;
+    var out: Io.Writer.Allocating = .init(arena);
+    const w = &out.writer;
+    try w.print("one-sided {s} ({s}): base ", .{ row.workload, @tagName(measure) });
+    try writeSideText(w, base_levels, base_figure, row.base.ok);
+    try w.writeAll(", tip ");
+    try writeSideText(w, tip_levels, tip_figure, row.tip.ok);
+    if (r.low != null) {
+        try w.print(", at the low level {d:.3}", .{r.ratio});
+    } else if (r.high != null) {
+        try w.print(", at the high level {d:.3}", .{r.ratio});
+    } else try w.print(", at neither level: the medians' ratio {d:.3}", .{r.ratio});
+    return out.written();
+}
+
+/// One side of `oneSidedLine`: "137.9 MB x5 / 154.4 MB x2", or "138.0 MB x7".
+fn writeSideText(w: W, levels: ?Levels, figure: ?f64, runs: u32) !void {
+    const mb = 1024.0 * 1024.0;
+    if (levels) |l| return w.print("{d:.1} MB x{d} / {d:.1} MB x{d}", .{ @as(f64, @floatFromInt(l.low)) / mb, l.low_runs, @as(f64, @floatFromInt(l.high)) / mb, l.high_runs });
+    try w.print("{d:.1} MB x{d}", .{ (figure orelse 0) / mb, runs });
 }
 
 /// A Crane-only window's comparison (`baseTip`), where the round has a
@@ -1696,7 +1921,7 @@ fn writeBaseTip(w: W, arena: Allocator, m: *const Model) !void {
         for ([_]Measure{ .time, .steady, .peak }) |measure| {
             try writeMeasureCell(w, row.base, measure);
             try writeMeasureCell(w, row.tip, measure);
-            try writeRatio(w, figureOf(row.tip, measure), figureOf(row.base, measure));
+            try writeMeasureRatio(w, row.tip, row.base, measure);
         }
         try w.print("<td class=\"n\">&plusmn;{d:.0}%</td></tr>\n", .{row.band * 100});
     }
@@ -1812,6 +2037,50 @@ fn writeMemoryCell(w: W, c: ?*const Cell) !void {
             try w.writeAll(" a page</span>");
         }
     }
+    try writeLevels(w, cell, cell.levels);
+    try w.writeAll("</td>");
+}
+
+/// Beside a memory figure whose runs read in two levels: both, with how
+/// many runs read each ("two levels: 143.5 MB x3 / 162.5 MB x7"). The
+/// figure itself stays the median of all the runs. The note says what the
+/// runs read, never why: the allocator's ring is the measured cause on the
+/// attributes page's rows only, and another row's two levels are a finding.
+///
+/// On a Crane build's rows only, in every table (the user, 2026-11-15): a
+/// browser's runs read in two tight groups too (16 of Chrome's rows, 6 of
+/// Safari's and 1 of Firefox's in the journals up to round 8), but no
+/// comparison uses a browser's levels and nobody here has measured why.
+fn writeLevels(w: W, cell: *const Cell, levels: ?Levels) !void {
+    if (!cell.engine.isCrane()) return;
+    const l = levels orelse return;
+    const mb = struct {
+        fn f(x: u64) f64 {
+            return @as(f64, @floatFromInt(x)) / (1024.0 * 1024.0);
+        }
+    }.f;
+    try w.print("<br><span class=\"quiet\" title=\"the figure is the median of all the runs; each level is the median of the runs that read it\">two levels: {d:.1} MB &times;{d} / {d:.1} MB &times;{d}</span>", .{ mb(l.low), l.low_runs, mb(l.high), l.high_runs });
+}
+
+/// `subject` over `other` for `measure`, as a percentage: for two Crane
+/// builds' memory, level against level where either reads in two levels
+/// (`steadyRatio`, `peakRatio`), and the cell says so.
+fn writeMeasureRatio(w: W, subject: ?*const Cell, other: ?*const Cell, measure: Measure) !void {
+    const s = subject orelse return w.writeAll("<td class=\"n\"></td>");
+    const o = other orelse return w.writeAll("<td class=\"n\"></td>");
+    const r = switch (measure) {
+        .time => return writeRatio(w, s.timeFigure(), o.timeFigure()),
+        .steady => steadyRatio(s, o),
+        .peak => peakRatio(s, o),
+    } orelse return w.writeAll("<td class=\"n\"></td>");
+    try w.print("<td class=\"n {s}\">{d}%", .{ ratioClass(r.ratio), percent(r.ratio) });
+    if (r.leveled()) {
+        try w.writeAll("<br><span class=\"quiet\" title=\"a side with one level is set against the nearer level of the other\">level against level:");
+        if (r.low) |x| try w.print(" low {d:.1}%", .{x * 100});
+        if (r.low != null and r.high != null) try w.writeAll(",");
+        if (r.high) |x| try w.print(" high {d:.1}%", .{x * 100});
+        try w.writeAll("</span>");
+    }
     try w.writeAll("</td>");
 }
 
@@ -1831,7 +2100,7 @@ fn writeRatio(w: W, crane: ?f64, other: ?f64) !void {
     try w.print("<td class=\"n {s}\">{d}%</td>", .{ ratioClass(r), percent(r) });
 }
 
-const Measure = enum { time, steady, peak };
+pub const Measure = enum { time, steady, peak };
 
 fn figureOf(c: *const Cell, measure: Measure) ?f64 {
     return switch (measure) {
@@ -1851,6 +2120,7 @@ fn writeMeasureCell(w: W, c: ?*const Cell, measure: Measure) !void {
             const v = cell.peakFigure() orelse return w.writeAll("<td class=\"n\">&ndash;</td>");
             try w.writeAll("<td class=\"n\">");
             try writeBytes(w, v);
+            try writeLevels(w, cell, cell.peak_levels);
             try w.writeAll("</td>");
         },
     }
@@ -1893,7 +2163,7 @@ fn writeRound(w: W, arena: Allocator, m: *const Model) !void {
             if (with_base) {
                 const bc = m.current(round, .crane_base, wl);
                 try writeMeasureCell(w, bc, measure);
-                try writeRatio(w, cf, if (bc) |x| figureOf(x, measure) else null);
+                try writeMeasureRatio(w, c, bc, measure);
             }
             if (with_fast) {
                 const fc = m.current(round, .crane_fast, wl);
@@ -2808,10 +3078,10 @@ test "every round has its note, in order" {
     }
     try testing.expect(roundNote(1) != null);
     try testing.expect(roundNote(2) != null);
-    // Every published round, through the latest (round 8): rounds 3-6 went
+    // Every published round, through the latest (round 9): rounds 3-6 went
     // out with no line, which the loop above cannot see - it holds only the
     // lines that exist.
-    for (3..9) |round| try testing.expect(roundNote(@intCast(round)) != null);
+    for (3..10) |round| try testing.expect(roundNote(@intCast(round)) != null);
     try testing.expect(roundNote(99) == null);
 }
 
@@ -2956,4 +3226,243 @@ test "a list in a sentence: a, a and b, a, b and c" {
         try out.writer.writeAll("|");
     }
     try testing.expectEqualStrings("Firefox|Firefox and Safari|Firefox, Safari and Lightpanda|", out.written());
+}
+
+const mib = 1024 * 1024;
+
+/// `lows` runs of `workload` at `low` bytes and `highs` at `high`, each a
+/// few KiB off its level as real launches are (the steady footprint, the
+/// footprint at the end and the peak alike).
+fn twoLevels(arena: Allocator, round: u32, name: EngineName, version: []const u8, workload: []const u8, lows: u32, low: u64, highs: u32, high: u64) ![]journal.Record {
+    var out: std.ArrayList(journal.Record) = .empty;
+    var run: u32 = 0;
+    while (run < lows + highs) : (run += 1) {
+        // Interleaved, as launches land: a high one first.
+        const is_low = if (run % 2 == 1) run / 2 < lows else run / 2 >= highs;
+        const nth: u64 = run / 2;
+        var r = try timed(arena, round, name, version, workload, run, 20, (if (is_low) low else high) + nth * 16 * 1024);
+        r.memory.?.footprint_settled = r.memory.?.footprint_end;
+        try out.append(arena, r);
+    }
+    return out.items;
+}
+
+test "two levels: two tight groups of launches, never a near-tie, a loose group or one launch apart" {
+    const a = testing.allocator;
+    // dom.class-list's steady footprint in 10 launches of main (chat2.local,
+    // 2026-11-15): 3 at 143.5 MB, 7 at 162.5 MB.
+    const measured = [_]u64{ 150_575_512, 170_491_288, 170_409_368, 170_491_288, 170_425_752, 170_409_368, 150_477_208, 150_477_208, 170_573_208, 170_442_136 };
+    const l = (try levelsOf(a, &measured)).?;
+    try testing.expectEqual(@as(u32, 3), l.low_runs);
+    try testing.expectEqual(@as(u32, 7), l.high_runs);
+    try testing.expectEqual(@as(u64, 150_477_208), l.low);
+    try testing.expectEqual(@as(u64, 170_442_136), l.high);
+
+    // One level: ten launches within 0.2 MB.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 150_470_656, 150_503_424, 150_487_040, 150_536_192, 150_470_656, 150_519_808, 150_552_576, 150_487_040, 150_503_424, 150_470_656 }));
+    // A near-tie: launches spread evenly over 4%, the widest gap 0.8%.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 102_400 * 1024, 103_219 * 1024, 104_038 * 1024, 104_858 * 1024, 105_677 * 1024, 106_496 * 1024 }));
+    // Two tight groups, but 2% apart: under the gap that makes a level.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 100 * mib, 100 * mib + 4096, 102 * mib, 102 * mib + 4096, 100 * mib + 8192, 102 * mib + 8192 }));
+    // ... and 4% apart they are two.
+    try testing.expect((try levelsOf(a, &.{ 100 * mib, 100 * mib + 4096, 104 * mib, 104 * mib + 4096 })) != null);
+    // A wide gap between two loose groups (ranges of 4 and 7 MB around a 16 MB gap).
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 100 * mib, 104 * mib, 120 * mib, 127 * mib }));
+    // One launch apart from six: an outlier, not a level.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 143 * mib, 162 * mib, 162 * mib + 4096, 162 * mib, 162 * mib + 8192, 162 * mib, 162 * mib + 4096 }));
+    // Three groups are not two levels.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 100 * mib, 100 * mib, 120 * mib, 120 * mib, 150 * mib, 150 * mib }));
+    // Too few launches to have two groups of two; none; a row that read nothing.
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 100 * mib, 100 * mib, 120 * mib }));
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{}));
+    try testing.expectEqual(@as(?Levels, null), try levelsOf(a, &.{ 0, 0, 5, 5 }));
+    // The input is not reordered.
+    const kept = [_]u64{ 120 * mib, 100 * mib, 120 * mib, 100 * mib };
+    _ = try levelsOf(a, &kept);
+    try testing.expectEqualSlices(u64, &.{ 120 * mib, 100 * mib, 120 * mib, 100 * mib }, &kept);
+}
+
+test "a two-level row: the published figure stays the median of all runs, with both levels and their counts beside it" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const low = 143 * mib + mib / 2;
+    const high = 162 * mib + mib / 2;
+    var records: std.ArrayList(journal.Record) = .empty;
+    try records.appendSlice(a, try twoLevels(a, 0, .crane, "abc", "dom.class-list", 3, low, 7, high));
+    try records.append(a, try timed(a, 0, .chrome, "157", "dom.class-list", 0, 10, 50 * mib));
+    // A row with one level beside it.
+    for (0..7) |i| try records.append(a, try timed(a, 0, .crane, "abc", "dom.getter-loop", @intCast(i), 20, 65 * mib + i * 4096));
+    const m = try build(a, records.items);
+    const c = m.current(0, .crane, "dom.class-list").?;
+    try testing.expectEqual(@as(u32, 10), c.ok);
+    // The median of 3 low and 7 high launches: a high one.
+    try testing.expectEqual(@as(?f64, @floatFromInt(high + 24 * 1024)), c.memoryFigure());
+    const l = c.levels.?;
+    try testing.expectEqual(@as(u32, 3), l.low_runs);
+    try testing.expectEqual(@as(u32, 7), l.high_runs);
+    try testing.expectEqual(@as(u64, low + 16 * 1024), l.low);
+    try testing.expectEqual(@as(u64, high + 3 * 16 * 1024), l.high);
+    try testing.expectEqual(@as(u32, 3), c.peak_levels.?.low_runs);
+    try testing.expectEqual(@as(?Levels, null), m.current(0, .crane, "dom.getter-loop").?.levels);
+    try testing.expectEqual(@as(?Levels, null), m.current(0, .chrome, "dom.class-list").?.levels);
+
+    // Against a browser the comparison is the published figures': the medians.
+    const v = try versus(a, &m, 0, .chrome);
+    try testing.expectEqual(@as(usize, 1), v.memory_n);
+    try testing.expectApproxEqAbs(c.memoryFigure().? / (50.0 * mib), v.memory_ratio.?, 1e-12);
+
+    const page = (try render(a, &m, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 143.5 MB &times;3 / 162.5 MB &times;7") != null);
+    // Once per table the row is in, never on a one-level row.
+    const i = std.mem.indexOf(u8, page, "<code>dom.getter-loop</code>").?;
+    const row = page[i .. i + std.mem.indexOf(u8, page[i..], "</tr>").?];
+    try testing.expect(std.mem.indexOf(u8, row, "two levels") == null);
+}
+
+test "the two-level note is on Crane's rows only, never on a browser's" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var records: std.ArrayList(journal.Record) = .empty;
+    // Every Crane build, and two browsers, each with two tight groups of runs.
+    try records.appendSlice(a, try twoLevels(a, 0, .crane, "abc", "dom.a", 3, 143 * mib + mib / 2, 7, 162 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .crane_fast, "abc", "dom.a", 3, 133 * mib + mib / 2, 4, 152 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .crane_base, "old", "dom.a", 4, 123 * mib + mib / 2, 3, 142 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .chrome, "157", "dom.a", 4, 328 * mib + mib / 2, 3, 547 * mib + mib / 2));
+    try records.appendSlice(a, try twoLevels(a, 0, .safari, "26", "dom.a", 3, 105 * mib + mib / 2, 4, 144 * mib + mib / 2));
+    const m = try build(a, records.items);
+    // The browsers' runs do read in two levels; the page does not say so.
+    try testing.expect(m.current(0, .chrome, "dom.a").?.levels != null);
+    try testing.expect(m.current(0, .safari, "dom.a").?.peak_levels != null);
+    const page = (try render(a, &m, .{})).index_html;
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 143.5 MB &times;3 / 162.5 MB &times;7") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 133.5 MB &times;3 / 152.5 MB &times;4") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 123.5 MB &times;4 / 142.5 MB &times;3") != null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 328.5 MB") == null);
+    try testing.expect(std.mem.indexOf(u8, page, "two levels: 105.5 MB") == null);
+    // Every note on the page is one of the three Crane builds'.
+    const all = std.mem.count(u8, page, "two levels:");
+    const cranes = std.mem.count(u8, page, "two levels: 143.5 MB") + std.mem.count(u8, page, "two levels: 133.5 MB") + std.mem.count(u8, page, "two levels: 123.5 MB");
+    try testing.expect(all > 0);
+    try testing.expectEqual(all, cranes);
+}
+
+test "a tip and its base are compared level against level, so a median that flips reads no change" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const low = 143 * mib + mib / 2;
+    const high = 162 * mib + mib / 2;
+    var records: std.ArrayList(journal.Record) = .empty;
+    // dom.a: the same two levels on both sides; the base's median is a high
+    // launch (3 low, 4 high), the tip's a low one (4 low, 3 high).
+    try records.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.a", 3, low, 4, high));
+    try records.appendSlice(a, try twoLevels(a, 1, .crane, "tip", "dom.a", 4, low, 3, high));
+    // dom.b: the base in two levels, its median the low one; the tip in the
+    // high one in every launch (lane dm2's pair read such a row as a gain).
+    try records.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.b", 4, low, 3, high));
+    try records.appendSlice(a, try twoLevels(a, 1, .crane, "tip", "dom.b", 0, low, 7, high));
+    // dom.c: both in two levels, and the tip 6% higher at each.
+    try records.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.c", 3, 100 * mib, 4, 120 * mib));
+    try records.appendSlice(a, try twoLevels(a, 1, .crane, "tip", "dom.c", 5, 106 * mib, 2, 127 * mib + mib / 5));
+    // dom.d: one level on both sides, the tip 20% higher.
+    for (0..7) |i| {
+        try records.append(a, try timed(a, 1, .crane_base, "base", "dom.d", @intCast(i), 20, 100 * mib));
+        try records.append(a, try timed(a, 1, .crane, "tip", "dom.d", @intCast(i), 20, 120 * mib));
+    }
+    // dom.e: the base in two levels (100 and 120 MB, its median the low
+    // one), the tip in one, at neither (108 MB in every launch).
+    try records.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.e", 4, 100 * mib, 3, 120 * mib));
+    for (0..7) |i| try records.append(a, try timed(a, 1, .crane, "tip", "dom.e", @intCast(i), 20, 108 * mib));
+    const m = try build(a, records.items);
+    const base_a = m.current(1, .crane_base, "dom.a").?;
+    const tip_a = m.current(1, .crane, "dom.a").?;
+    // The medians alone: the tip 12% under its base.
+    try testing.expect(tip_a.memoryFigure().? / base_a.memoryFigure().? < 0.89);
+
+    const bt = (try baseTip(a, &m, 1)).?;
+    try testing.expectEqual(@as(usize, 5), bt.rows.len);
+    // dom.a: no change at either level.
+    try testing.expectApproxEqAbs(@as(f64, 1.0), bt.rows[0].steady.?, 2e-4);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), bt.rows[0].peak.?, 2e-4);
+    try testing.expect(!bt.rows[0].outside);
+    const by_level = steadyRatio(tip_a, base_a).?;
+    try testing.expect(by_level.leveled());
+    try testing.expectApproxEqAbs(@as(f64, 1.0), by_level.low.?, 2e-4);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), by_level.high.?, 2e-4);
+    // dom.b: the tip's one level is the base's high one.
+    try testing.expectApproxEqAbs(@as(f64, 1.0), bt.rows[1].steady.?, 2e-4);
+    try testing.expect(!bt.rows[1].outside);
+    const one_side = steadyRatio(m.current(1, .crane, "dom.b").?, m.current(1, .crane_base, "dom.b").?).?;
+    try testing.expectEqual(@as(?f64, null), one_side.low);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), one_side.high.?, 2e-4);
+    // ... and the other way round: the base's one level against the tip's two.
+    const other_side = steadyRatio(m.current(1, .crane_base, "dom.b").?, m.current(1, .crane, "dom.b").?).?;
+    try testing.expectApproxEqAbs(@as(f64, 1.0), other_side.high.?, 2e-4);
+    try testing.expectEqual(@as(?f64, null), other_side.low);
+    // dom.c: a change at both levels is still read, as the level ratios' geometric mean.
+    try testing.expectApproxEqAbs(@as(f64, 1.06), bt.rows[2].steady.?, 1e-3);
+    // dom.d: one level each: the medians' ratio, as before.
+    try testing.expectApproxEqAbs(@as(f64, 1.2), bt.rows[3].steady.?, 1e-12);
+    try testing.expect(bt.rows[3].outside);
+    try testing.expectEqual(@as(usize, 1), bt.outside.len);
+    try testing.expectEqualStrings("dom.d", bt.outside[0]);
+    // dom.e: 8% over the base's low level is not 10% under its high one:
+    // at neither level, the figures' ratio (the base's median is a low launch).
+    const neither = steadyRatio(m.current(1, .crane, "dom.e").?, m.current(1, .crane_base, "dom.e").?).?;
+    try testing.expect(!neither.leveled());
+    try testing.expectApproxEqAbs(108.0 * mib / m.current(1, .crane_base, "dom.e").?.memoryFigure().?, neither.ratio, 1e-12);
+    try testing.expectApproxEqAbs(@as(f64, 1.08), bt.rows[4].steady.?, 1e-3);
+    try testing.expectApproxEqAbs(std.math.pow(f64, 1.06 * 1.2 * 1.08, 0.2), bt.memory_ratio.?, 1e-3);
+
+    // The page: the row is not "moved", its ratio is the levels', and it says so.
+    const page = (try render(a, &m, .{})).index_html;
+    const s0 = std.mem.indexOf(u8, page, "id=\"base-tip\"").?;
+    const section = page[s0 .. s0 + std.mem.indexOf(u8, page[s0..], "</section>").?];
+    const r0 = std.mem.indexOf(u8, section, "<code>dom.a</code>").?;
+    const row = section[r0 .. r0 + std.mem.indexOf(u8, section[r0..], "</tr>").?];
+    try testing.expect(std.mem.indexOf(u8, row, "moved") == null);
+    try testing.expect(std.mem.indexOf(u8, row, "two levels: 143.5 MB &times;3 / 162.5 MB &times;4") != null);
+    try testing.expect(std.mem.indexOf(u8, row, "two levels: 143.5 MB &times;4 / 162.5 MB &times;3") != null);
+    try testing.expect(std.mem.indexOf(u8, row, "level against level") != null);
+    try testing.expect(std.mem.indexOf(u8, row, ">88%<") == null);
+    try testing.expect(std.mem.indexOf(u8, section, "1 workload outside") != null);
+
+    // perf_bench's stderr summary names each row with two levels on one
+    // side only, with both sides' counts: dom.b and dom.e, steady and peak.
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[0], .steady));
+    try testing.expectEqualStrings("one-sided dom.b (steady): base 143.5 MB x4 / 162.5 MB x3, tip 162.5 MB x7, at the high level 1.000", (try oneSidedLine(a, bt.rows[1], .steady)).?);
+    try testing.expectEqualStrings("one-sided dom.b (peak): base 143.5 MB x4 / 162.5 MB x3, tip 162.5 MB x7, at the high level 1.000", (try oneSidedLine(a, bt.rows[1], .peak)).?);
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[2], .steady));
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[3], .steady));
+    try testing.expectEqualStrings("one-sided dom.e (steady): base 100.0 MB x4 / 120.0 MB x3, tip 108.0 MB x7, at neither level: the medians' ratio 1.079", (try oneSidedLine(a, bt.rows[4], .steady)).?);
+    try testing.expectEqual(@as(?[]const u8, null), try oneSidedLine(a, bt.rows[1], .time));
+    // ... and the other way round: the tip in two levels, the base in one.
+    var flipped: std.ArrayList(journal.Record) = .empty;
+    try flipped.appendSlice(a, try twoLevels(a, 1, .crane, "tip", "dom.b", 5, low, 2, high));
+    try flipped.appendSlice(a, try twoLevels(a, 1, .crane_base, "base", "dom.b", 7, low, 0, high));
+    const fm = try build(a, flipped.items);
+    const fbt = (try baseTip(a, &fm, 1)).?;
+    try testing.expectEqualStrings("one-sided dom.b (steady): base 143.5 MB x7, tip 143.5 MB x5 / 162.5 MB x2, at the low level 1.000", (try oneSidedLine(a, fbt.rows[0], .steady)).?);
+
+    // Two rounds of one build: the drift control reads no drift where the
+    // median flipped between the rounds.
+    const earlier = try build(a, try twoLevels(a, 0, .crane, "base", "dom.a", 5, low, 2, high));
+    const d = try driftBetween(a, &earlier, 0, .crane, &m, 1, .crane_base);
+    try testing.expectEqual(@as(usize, 1), d.memory_n);
+    try testing.expectApproxEqAbs(@as(f64, 1.0), d.memory_ratio.?, 2e-4);
+    try testing.expectEqual(@as(usize, 0), d.outside);
+    try testing.expect(d.within);
+
+    // A published ratio is the published figures': Crane's progress since
+    // its first round stays the medians' ratio, flipped level and all.
+    var rounds: std.ArrayList(journal.Record) = .empty;
+    try rounds.appendSlice(a, try twoLevels(a, 0, .crane, "r0", "dom.a", 5, low, 2, high));
+    try rounds.appendSlice(a, try twoLevels(a, 1, .crane, "r1", "dom.a", 3, low, 4, high));
+    const mr = try build(a, rounds.items);
+    const since = try compareRounds(a, &mr, 1, .crane, 0, .crane);
+    try testing.expectEqual(@as(usize, 1), since.memory_n);
+    try testing.expectApproxEqAbs(mr.current(1, .crane, "dom.a").?.memoryFigure().? / mr.current(0, .crane, "dom.a").?.memoryFigure().?, since.memory_ratio.?, 1e-12);
+    try testing.expect(since.memory_ratio.? > 1.12);
 }

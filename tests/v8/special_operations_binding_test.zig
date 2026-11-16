@@ -70,7 +70,9 @@ comptime {
     std.debug.assert(eqlOpt(specialBinding(interfaces.HTMLSelectElement).indexed_setter, "call_setter"));
     // A [Global]'s named properties are its named properties object's.
     std.debug.assert(specialBinding(interfaces.Window).named_getter == null);
-    std.debug.assert(eqlOpt(specialBinding(interfaces.Window).indexed_getter, "call_item"));
+    // Its indexed getter (specs/supplementary/WindowIndexedGetter.idl) is
+    // anonymous - the second anonymous getter - so no window.item() exists.
+    std.debug.assert(eqlOpt(specialBinding(interfaces.Window).indexed_getter, "call_getter__1"));
     // The browsers' exceptions: none for TouchEvent or XMLDocument.
     std.debug.assert(!@hasDecl(interfaces.TouchEvent.Meta, "special_operations"));
     std.debug.assert(!@hasDecl(interfaces.XMLDocument.Meta, "special_operations"));

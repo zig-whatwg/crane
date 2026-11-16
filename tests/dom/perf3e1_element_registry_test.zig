@@ -59,7 +59,7 @@ fn expectSize(comptime T: type, expected: usize) !void {
 /// Element's InternalState, as its generated State keeps it by value.
 const ElementState = @FieldType(interfaces.Element.State, "_embedded");
 /// Whether E1's rare registry field is in this build.
-const has_rare_registry = @hasField(dom.element_rare_data.Field, "custom_element_registry");
+const has_rare_registry = @hasField(dom.node_rare_data.Field, "custom_element_registry");
 
 // ============================================================================
 // Sizes (red until E1)
@@ -89,7 +89,7 @@ test "the rare data keeps the association for a registry that is not the node do
     // 344 at E1 in one fixed block; since lane rare1 the rare data is one
     // sparse block whose slot names the association's own block, so the
     // block may move without moving it (tests/dom/rare1_sparse_rare_data_test.zig).
-    try testing.expect(dom.element_rare_data.Value(.custom_element_registry) == *dom.custom_elements.RegistryAssociation);
+    try testing.expect(dom.node_rare_data.Value(.custom_element_registry) == *dom.custom_elements.RegistryAssociation);
 }
 
 // ============================================================================
@@ -149,14 +149,14 @@ fn registryOf(element: *runtime.Instance) !?*runtime.Instance {
 }
 
 /// `element`'s rare block, or null when it has none.
-fn rareOf(element: *runtime.Instance) ?*dom.element_rare_data.Block {
-    return dom.element_rare_data.of(element).block;
+fn rareOf(element: *runtime.Instance) ?*dom.node_rare_data.Block {
+    return dom.node_rare_data.of(element).block;
 }
 
 /// The registry `element`'s rare data keeps, if it has rare data.
 fn rareRegistryOf(element: *runtime.Instance) ?*runtime.Instance {
     if (comptime !has_rare_registry) return null;
-    const association = dom.element_rare_data.get(dom.element_rare_data.of(element), .custom_element_registry) orelse return null;
+    const association = dom.node_rare_data.get(dom.node_rare_data.of(element), .custom_element_registry) orelse return null;
     return association.get();
 }
 

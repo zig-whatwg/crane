@@ -1,0 +1,18 @@
+# Workflow: A cause is a guess until a run that could have refuted it did not - tabulate where the difference appears, write the prediction down, then act
+
+**Date**: 2026-11-15
+**Lesson**: When a number comes back over the bar, the order is: locate the difference (which step, which mark), state ONE hypothesis and what it predicts, run the experiment that can refute it, and only then stop gates, change code and write the cause down. Acting on the first arithmetic that fits one row skips the step that tells a cause from a coincidence.
+
+**Why**: Lane dm2's attributes page read 4.3% higher than main (144.6 -> 150.8 MB, 10 runs a side, no overlap). The lane's first reaction was a guess that fit a third of it: batch A had grown the teardown queue's item from 88 to 104 bytes, and 100,000 items times 16 bytes is about the 1.9 MB seen on the first row. On that guess alone the lane stopped its Linux gate with a STOP file, killed a 30-minute Mac build, rewrote the item, and wrote into a code comment and a test comment that 104 bytes "was 1.9 MB on the attributes page's dom.create-element row" - a measurement nobody had made. The guess said nothing about the other 4.3 MB, which appeared during the Event rows where no node is queued.
+
+**What Happened**: What turned the guess into a finding was three steps the lane then did in the right order. (1) A per-mark table of the difference (median of 10): +1.9 MB during dom.create-element, +4.3 MB once during dom.event-ctor's warm-up, nothing anywhere else - two steps, not a drift. (2) Predictions written into the handoff before the run: with an 88-byte item the first step goes to about 0; the second goes only if it has the same cause. (3) A three-console run: main, the old tip, and a console with the item at 88 bytes, 10 runs each. Result: 65.10 / 67.20 / 65.25 MB at the first step, 108.87 / 114.70 / 108.91 at the second, 144.74 / 150.81 / 144.63 at the end. Both predictions held, and the committed build repeated it (145.24 against 144.52). The same discipline exposed two more things: the first version of a new test also failed in the GREEN run (it never reached the path it was written for), and the experiment console differed from the old tip by two commits, not one - both said in the report instead of being smoothed over. What stayed unknown stayed labelled unknown: HOW 16 bytes an item make 4 MB at the Event rows was not measured.
+
+**Fix**:
+1. Locate before you explain: split the difference by step. A regression that arrives in two jumps has at most two causes and rules out "everything is slightly bigger".
+2. One hypothesis, with predictions for EVERY part of the difference, written where a later reader can see they came first.
+3. Build the experiment as one variable; when it is not (a second commit rode along), say so and say why you think it does not matter.
+4. Until the run is back: no "measured" wording in comments or commit messages, and no stopping of gates that the guess does not require. A STOP costs the same whether the guess is right or wrong.
+5. In the report, separate "shown" (the item's size is the cause) from "not shown" (the mechanism of the second step), and correct earlier messages by name when a later run changes them (a "+10% user time" from one host did not appear on the timing host).
+6. A red test that also fails green is a broken test: read why before touching the code.
+
+**Takeaway**: **The first explanation that fits is a hypothesis with a deadline. Give it a prediction it can fail, run that before you act on it, and write down only what the run showed - including the part it did not explain.**

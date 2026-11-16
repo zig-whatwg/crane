@@ -48,8 +48,15 @@ const RawHandler = listener_list.RawHandler;
 /// React page's elements, 99.9% of a parsed page's).
 pub const InternalState = struct {
     /// Kept by value in this interface's own State (runtime.OwnState, the
-    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    /// State's `_embedded`; lane perf2 batch 5, Z7).
     pub const embedded_in_state = true;
+
+    /// A derived State may leave EventTarget's out (runtime.FlattenedState's
+    /// `absent_base`), and Node's does (lane nm3): a node keeps its event
+    /// listener list in its rare block, so `Own.get` answers null for a
+    /// node and every reader here goes through `Listeners`, which knows
+    /// both places.
+    pub const may_be_absent = true;
 
     // No allocator copy (lane perf2 batch 6): what the state owns is
     // allocated from its target's Browser's allocator, runtime.allocatorOf -
@@ -89,11 +96,12 @@ pub const InternalState = struct {
     }
 };
 
-// Every node carries an InternalState: 64 bytes until lane perf2 batch 6
+// Every node carried an InternalState: 64 bytes until lane perf2 batch 6
 // took out the allocator copy (16) and the lazy entry's record (24), 24
 // since batch 7 moved the current event to Window (8), and one pointer since
 // lane lis1 made the list, the handler map and the watched flag one block
-// made with the first listener (16).
+// made with the first listener (16). Since lane nm3 a node carries none: the
+// pointer is a field of its rare block, there only once it has a listener.
 comptime {
     if (@sizeOf(InternalState) != 8) @compileError(std.fmt.comptimePrint("EventTarget's InternalState is one pointer, not {d} bytes", .{@sizeOf(InternalState)}));
 }
@@ -144,6 +152,235 @@ fn ownedObject(object: ?*anyopaque) engine.Owned {
 /// list, or owned by the caller for a listener just taken out of it.
 fn callbackOf(listener: Listener) engine.CallbackInterface {
     return .{ .object = ownedObject(listener.object), .context = listener.context };
+}
+
+/// A target's event listener list, wherever the target keeps it - what
+/// every step below reads and changes the list through.
+///
+/// - A node keeps its list's address in a slot of its rare block
+///   (NodeBase.eventListeners; lane nm3, node-memory plan v2 X2). That block
+///   moves when it grows and the list's own block moves when IT grows, so a
+///   node's list is never held by address: every call here reads the slot
+///   again, and a call that makes or moves the list's block writes the slot
+///   back. A handle held across a callback - dispatch's walk - is therefore
+///   as good after it as before, whatever the callback added to the node or
+///   to its list.
+/// - Every other target keeps the list at an address that stays put for the
+///   target's life: its own State (a chained target, `Own`) or its lazily
+///   made entry (`LazyEntry`).
+///
+/// WHAT KEEPS A NODE'S HANDLE GOOD ACROSS A CALLBACK (lane lk1, 2026-11-16).
+/// `place.node` is a NodeBase's address, and dispatch's walk keeps one
+/// across every listener it calls (`innerInvoke`); the items of the path
+/// are addresses too. Two things, each enough alone, keep them the nodes
+/// they were until the walk ends:
+///
+/// - NOTHING IS FREED UNDER A CALLBACK. The agent's teardown queue frees no
+///   tree and runs no collected wrapper's finalizer while a callback
+///   invocation is on its stack (runtime.gc.DeferredTeardown's algorithm
+///   depth; engine.callUserObjectOperation counts the invocation): a
+///   collection inside a listener only records what it found. The microtask
+///   checkpoint after a listener returns runs inside that same invocation
+///   (its "clean up after running script"), so a microtask frees nothing
+///   either, and between two listeners the walk is native code that queues
+///   nothing.
+/// - THE PATH HOLDS ITS NODES: one counted reference on every invocation
+///   target that is a node, and on every relatedTarget, from before the
+///   first listener to dispatch step 9 (dom.event_dispatch
+///   `DispatchPath.hold`) - as the three browsers hold every item of the
+///   path for the dispatch: WebKit's EventContext keeps `RefPtr<Node>
+///   m_node` and `RefPtr<EventTarget> m_currentTarget`
+///   (Source/WebCore/dom/EventContext.h), Blink's NodeEventContext
+///   `Member<Node> node_` and its WindowEventContext `Member<LocalDOMWindow>
+///   window_` (core/dom/events/node_event_context.h,
+///   window_event_context.h), Gecko's EventTargetChainItem
+///   `nsCOMPtr<EventTarget> mTarget` (dom/events/EventDispatcher.cpp; each
+///   read on its main branch, 2026-11-16). A tree with a counted node is
+///   never garbage, whenever the queue does run.
+///
+/// Measured (tests/html/lk1_dispatch_path_holds_test.zig, Debug, lane
+/// uaf1's freed-block instrument on): 10 of 10 as the code is; 10 of 10
+/// with the path's references taken out; 10 of 10 with the queue made to
+/// free at every binding exit; and with BOTH taken out the walk comes back
+/// to two freed path nodes whose slots new nodes have taken, and calls the
+/// new nodes' listeners. Keep both.
+///
+/// The one free made whatever the counts say is a realm's end, and that
+/// runs from a task of its own, never under a dispatch: a removed frame's
+/// realm is detached and ends once the collector has taken it. `stands`
+/// (below) is the net for that free; it is not what keeps the node. A path
+/// item that is not a node - the Window - has no count: only its realm's
+/// end, that same task, frees it.
+///
+/// 16 bytes, passed by value. `view` is BORROWED as the list's is: valid
+/// until the list next changes, so never across a call that can run script.
+const Listeners = struct {
+    place: Place,
+
+    const Place = union(enum) {
+        node: *dom_module.NodeBase,
+        own: *ListenerList,
+    };
+
+    /// The list as it is now. A node torn down since this handle was made
+    /// (a callback of the dispatch that holds it ended the node's realm)
+    /// reads as empty: its NodeBase's fields are gone, its bytes are not
+    /// (NodeBase.stands) - as a chained target's State reads an empty list
+    /// after its teardown.
+    inline fn current(self: Listeners) ListenerList {
+        return switch (self.place) {
+            .node => |node| if (node.stands()) node.eventListeners() else .{},
+            .own => |list| list.*,
+        };
+    }
+
+    inline fn len(self: Listeners) usize {
+        return self.current().len();
+    }
+
+    inline fn view(self: Listeners) []const Listener {
+        return self.current().view();
+    }
+
+    inline fn at(self: Listeners, index: usize) Listener {
+        return self.current().at(index);
+    }
+
+    inline fn watched(self: Listeners) bool {
+        return self.current().watched();
+    }
+
+    inline fn indexOfId(self: Listeners, id: u56) ?usize {
+        return self.current().indexOfId(id);
+    }
+
+    inline fn indexOfHandler(self: Listeners, key: EventTypeKey) ?usize {
+        return self.current().indexOfHandler(key);
+    }
+
+    inline fn clone(self: Listeners) ?listener_list.Cursor {
+        return self.current().clone();
+    }
+
+    inline fn next(self: Listeners, cursor: *listener_list.Cursor) ?Listener {
+        return self.current().next(cursor);
+    }
+
+    // The three below change the list inside its block, which stays where
+    // it is: a copy of the list's address is enough.
+
+    fn removeAt(self: Listeners, index: usize) Listener {
+        var list = self.current();
+        return list.removeAt(index);
+    }
+
+    fn replaceAt(self: Listeners, index: usize, listener: Listener) Listener {
+        var list = self.current();
+        return list.replaceAt(index, listener);
+    }
+
+    fn appendAssumeCapacity(self: Listeners, listener: Listener) void {
+        var list = self.current();
+        list.appendAssumeCapacity(listener);
+    }
+
+    // The two below can make the list's block or move it. A node's slot is
+    // given its place in the rare block FIRST - the one step of the two that
+    // can fail after the other succeeded - so a failure leaves the list as
+    // it was, and the write-back cannot fail.
+
+    fn ensureUnusedCapacity(self: Listeners, allocator: std.mem.Allocator, count: usize) error{OutOfMemory}!void {
+        switch (self.place) {
+            .own => |list| try list.ensureUnusedCapacity(allocator, count),
+            .node => |node| {
+                // A node torn down under this handle keeps nothing.
+                if (!node.stands()) return error.OutOfMemory;
+                var list = node.eventListeners();
+                // Room already (a node whose listeners come and go keeps
+                // its block): nothing moves, nothing to write back.
+                if (list.hasUnusedCapacity(count)) return;
+                // The rare block may move here; the list's own block, which
+                // `list` names, does not.
+                try node.reserveEventListeners();
+                try list.ensureUnusedCapacity(allocator, count);
+                node.setEventListeners(list);
+            },
+        }
+    }
+
+    fn watch(self: Listeners, allocator: std.mem.Allocator) error{OutOfMemory}!void {
+        switch (self.place) {
+            .own => |list| try list.watch(allocator),
+            .node => |node| {
+                if (!node.stands()) return error.OutOfMemory;
+                try node.reserveEventListeners();
+                var list = node.eventListeners();
+                try list.watch(allocator);
+                node.setEventListeners(list);
+            },
+        }
+    }
+
+    /// The target is going: release what every listener owns - its type's
+    /// copy, and its callback or event handler value, the engine's only
+    /// while `engine_alive` - then free the list's block. The list is empty
+    /// after.
+    fn release(self: Listeners, allocator: std.mem.Allocator, engine_alive: bool) void {
+        var list = self.current();
+        if (list.header == null) return;
+        // From the end, each out of the list before it is released.
+        while (list.len() > 0) {
+            const listener = list.removeAt(list.len() - 1);
+            releaseListener(allocator, listener, engine_alive);
+        }
+        list.deinit(allocator);
+        switch (self.place) {
+            .own => |own| own.* = list,
+            .node => |node| node.setEventListeners(list),
+        }
+    }
+};
+
+/// The NodeBase of `target` when it is a node whose NodeBase still stands -
+/// where a node's event listener list is (`Listeners`) - else null: any
+/// other target, a freed slot, and a node its teardown has released.
+///
+/// The vtable says whether it is a node (`counted`: runtime.lifetime's
+/// predicate, Node's state on the chain), and a node's NodeBase is at one
+/// offset of its State block (dom.node_base.ofLiveNode): two loads and a
+/// bit test, no call. A freed slot's first word is the slab's free-list
+/// pointer, not a vtable: its stamp is read first.
+inline fn nodeOf(target: *runtime.Instance) ?*dom_module.NodeBase {
+    if (runtime.SlabAllocator.generationOf(target) == runtime.SlabAllocator.dead_generation) return null;
+    if (target.vtable.counted == null) return null;
+    return dom_module.node_base.ofLiveNode(target);
+}
+
+/// `target`'s event listener list, or null when it keeps none: an instance
+/// that never ran EventTarget's init and has no lazy entry yet, or a target
+/// torn down. A node with a NodeBase always answers: its list is empty until
+/// its first listener, and reading an empty list allocates nothing.
+fn listenersOf(target: *runtime.Instance) ?Listeners {
+    if (nodeOf(target)) |node| return .{ .place = .{ .node = node } };
+    const internal = getInternalFromRegistry(target) orelse return null;
+    return .{ .place = .{ .own = &internal.listeners } };
+}
+
+/// `target`'s event listener list, made for an instance that never ran
+/// EventTarget's init (`lazyInternal`).
+fn ensureListeners(target: *runtime.Instance) !Listeners {
+    if (nodeOf(target)) |node| return .{ .place = .{ .node = node } };
+    const internal = try lazyInternal(target);
+    return .{ .place = .{ .own = &internal.listeners } };
+}
+
+/// dom.event_handlers.releaseNodeListeners: `node` is being torn down - by
+/// its own deinit or by its Browser's final sweep, both while the agent
+/// lives - and its rare block goes next (Node's releaseNodeBase).
+fn releaseNodeListeners(node: *runtime.Instance) void {
+    const base = dom_module.instance_bridge.getNodeBaseUnaudited(node) orelse return;
+    const listeners: Listeners = .{ .place = .{ .node = base } };
+    listeners.release(runtime.allocatorOf(node), true);
 }
 
 /// What an entry made lazily records about the instance it was made for.
@@ -212,6 +449,7 @@ pub fn installHooks() void {
         .set_raw = setRawEventHandler,
         .erase = eraseAllEventListenersAndHandlers,
         .has_listeners = hasListeners,
+        .release_node_listeners = releaseNodeListeners,
     });
     dom_module.event_listener_types.install(hasListenersOfType);
     dom_module.event_listener_changes.install(watchListeners);
@@ -221,8 +459,8 @@ pub fn installHooks() void {
 /// `target`'s event listener list calls the owners' steps
 /// (`listenersChanged`). Its owner calls this from its construction steps.
 fn watchListeners(target: *runtime.Instance) error{OutOfMemory}!void {
-    const internal = lazyInternal(target) catch return error.OutOfMemory;
-    try internal.listeners.watch(runtime.allocatorOf(target));
+    const listeners = ensureListeners(target) catch return error.OutOfMemory;
+    try listeners.watch(runtime.allocatorOf(target));
 }
 
 /// After `target`'s event listener list changed - a listener appended, or
@@ -231,18 +469,41 @@ fn watchListeners(target: *runtime.Instance) error{OutOfMemory}!void {
 /// addEventListener, a removeEventListener that removed, and
 /// removeAllEventListeners). One bit test in the block for every other
 /// target. Never from a teardown: the list goes with the target.
-inline fn listenersChanged(internal: *const InternalState, target: *runtime.Instance) void {
-    if (internal.listeners.watched()) dom_module.event_listener_changes.changed(target);
+inline fn listenersChanged(listeners: Listeners, target: *runtime.Instance) void {
+    if (listeners.watched()) dom_module.event_listener_changes.changed(target);
 }
 
 /// EventTarget's own construction steps, the first of every EventTarget's
 /// chain: the generated root makes the instance, then this registers
 /// EventTarget's internal state.
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
-    _ = StateType;
     _ = args;
+    // A node's State nests no EventTarget State (`may_be_absent`): its
+    // event listener list is a field of its rare block, made with its first
+    // listener. Its Browser's table is still made known here, as for every
+    // chained target.
+    if (comptime leavesOutOwnState(StateType)) return noteScope(instance, allocator);
     // Its internal state, in its own State.
     _ = try initInternal(instance, allocator);
+}
+
+/// Whether `StateType` - the State of the interface being made - is of a
+/// chain whose root leaves EventTarget's State out (`absent_base`): a
+/// node's.
+fn leavesOutOwnState(comptime StateType: type) bool {
+    comptime {
+        var Level: type = StateType;
+        while (true) {
+            if (@typeInfo(Level) != .@"struct") return false;
+            if (@hasDecl(Level, "absent_base")) {
+                if (Level.absent_base) |Absent| return Absent == State;
+            }
+            if (!@hasField(Level, "base")) return false;
+            const Base = @FieldType(Level, "base");
+            if (Base == void) return false;
+            Level = Base;
+        }
+    }
 }
 
 /// EventTarget's own teardown, the last of every EventTarget's destruction
@@ -253,6 +514,13 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
         Own.remove(instance);
         return;
     }
+    // A node keeps no state of this level: its listeners went with its
+    // NodeBase, in Node's part of the chain, which ran before this
+    // (`releaseNodeListeners`). The chain reaches here for every node torn
+    // down, so the table below - a lock and a hash lookup - is not asked
+    // for one: an entry made lazily for a node after its teardown leaves at
+    // its realm's end, as it did when it was made after this ran.
+    if (instance.vtable.counted != null) return;
     // An entry made lazily for it after its own state went (a listener added
     // to a torn-down target).
     if (getInternalFromRegistry(instance)) |internal| {
@@ -273,6 +541,16 @@ pub fn call_constructor(ctx: runtime.Context) !*runtime.Instance {
 /// Initialize an EventTarget's internal state, in its own State: a block of
 /// its Browser's arena (runtime.OwnState), returned by `deinitOwn`.
 fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*InternalState {
+    try noteScope(instance, allocator);
+    const internal = try Own.create(instance);
+    internal.* = .{};
+    return internal;
+}
+
+/// What every chained target's construction does first, a node's included:
+/// its Browser's table exists and knows its scope, and the allocator the
+/// target is made with is that Browser's.
+fn noteScope(instance: *runtime.Instance, allocator: std.mem.Allocator) !void {
     // The table's end releases what no deinit and no sweep reached - a scope
     // with no Browser (runtime.initializeRuntime's) runs no sweeps - so it
     // must exist, and know its scope, once a state is made here.
@@ -288,9 +566,6 @@ fn initInternal(instance: *runtime.Instance, allocator: std.mem.Allocator) !*Int
     // (tests/html/perf2b6_worker_target_allocator_test.zig).
     if (std.debug.runtime_safety and !runtime.isScopeAllocator(instance, allocator))
         std.debug.panic("an EventTarget ({s}) made with an allocator that is not its Browser's (runtime.allocatorOf would free through another)", .{instance.vtable.name});
-    const internal = try Own.create(instance);
-    internal.* = .{};
-    return internal;
 }
 
 /// One Browser's lazily made EventTarget states (`LazyEntry`) - a side table
@@ -331,11 +606,16 @@ pub const Registry = struct {
     pub fn deinit(self: *Registry) void {
         // The chained states left (Own): a walk of the scope's slab, which
         // ends after its tables. Without the engine, which is gone.
-        if (self.scope.load(.acquire)) |scope| Own.sweep(scope, {}, struct {
-            fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
-                internal.deinitEx(runtime.allocatorOf(instance), false);
-            }
-        }.visit);
+        if (self.scope.load(.acquire)) |scope| {
+            Own.sweep(scope, {}, struct {
+                fn visit(_: void, instance: *runtime.Instance, internal: *InternalState) void {
+                    internal.deinitEx(runtime.allocatorOf(instance), false);
+                }
+            }.visit);
+            // And the nodes left with a NodeBase (a scope no Browser swept):
+            // their lists are fields of their rare blocks.
+            releaseNodesListeners(scope, false);
+        }
         var map = self.takeAll() orelse return;
         // Every entry is this scope's: its allocator is this table's.
         var iter = map.valueIterator();
@@ -398,6 +678,10 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
             internal.deinitEx(runtime.allocatorOf(instance), true); // the agent is alive: release its values
         }
     }.visit);
+    // The nodes no deinit reached: their lists are fields of their rare
+    // blocks, which the `.nodes` sweep frees later, with nothing left to
+    // release.
+    releaseNodesListeners(scope, true);
     // Then the lazy entries.
     const registry = scope.existingTable(.event_targets, Registry) orelse return;
     registry.lock();
@@ -410,6 +694,20 @@ fn sweepRemaining(scope: *runtime.BrowserScope) void {
         }
         map.deinit();
     }
+}
+
+/// Release the event listener list of every node of `scope` whose NodeBase
+/// still stands - a walk of the Browser's slab, for its end. The engine's
+/// values only while `engine_alive`.
+fn releaseNodesListeners(scope: *runtime.BrowserScope, engine_alive: bool) void {
+    const Walk = struct {
+        fn visit(alive: bool, node: *dom_module.NodeBase) void {
+            if (!node.hasEventListenerBlock()) return;
+            const listeners: Listeners = .{ .place = .{ .node = node } };
+            listeners.release(node.allocator(), alive);
+        }
+    };
+    dom_module.instance_bridge.visitNodes(scope, std.math.maxInt(usize), engine_alive, Walk.visit);
 }
 
 fn getInternalFromRegistry(instance: *runtime.Instance) ?*InternalState {
@@ -582,14 +880,14 @@ const SignalRemoval = struct {
         defer std.heap.page_allocator.destroy(self);
         // "Remove an event listener with eventTarget and listener."
         if (runtime.SlabAllocator.generationOf(self.target) != self.target_generation) return;
-        const internal = getInternalFromRegistry(self.target) orelse return;
-        const index = internal.listeners.indexOfId(self.listener_id) orelse return;
+        const listeners = listenersOf(self.target) orelse return;
+        const index = listeners.indexOfId(self.listener_id) orelse return;
         // "Set listener's removed to true and remove listener from
         // eventTarget's event listener list": out of the list, it is out of
         // every clone a dispatch walks (dom.event_listener_list `Cursor`).
-        const removed = internal.listeners.removeAt(index);
+        const removed = listeners.removeAt(index);
         releaseListener(runtime.allocatorOf(self.target), removed, true);
-        listenersChanged(internal, self.target);
+        listenersChanged(listeners, self.target);
     }
 
     fn drop(ctx: *anyopaque) void {
@@ -602,7 +900,7 @@ const SignalRemoval = struct {
 /// To add an event listener, given an EventTarget object eventTarget and
 /// an event listener listener - here its type (BORROWED), its callback
 /// (OWNED: stored or released on every path) and its flattened options.
-fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, options: FlatOptions) !void {
+fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, options: FlatOptions) !void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
     // Step 2: If listener's signal is not null and is aborted, then return
@@ -625,7 +923,7 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, @"t
     // callback, and capture is listener's capture, then append listener to
     // eventTarget's event listener list.
     const key = EventTypeKey.of(@"type");
-    for (internal.listeners.view()) |existing| {
+    for (listeners.view()) |existing| {
         // An event handler's listener has the event handler processing
         // algorithm as its callback, which script never holds.
         if (existing.bits.kind != .listener) continue;
@@ -644,20 +942,23 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, @"t
         callback_value.release();
         return error.OutOfMemory;
     };
-    internal.listeners.ensureUnusedCapacity(allocator, 1) catch {
+    listeners.ensureUnusedCapacity(allocator, 1) catch {
         kept_type.deinit(allocator);
         callback_value.release();
         return error.OutOfMemory;
     };
     const id = nextListenerId();
-    internal.listeners.appendAssumeCapacity(.{
+    // One read of the list for the append and the owner's flag: nothing
+    // between here and the end of step 5 can move it.
+    var list = listeners.current();
+    list.appendAssumeCapacity(.{
         .type = kept_type,
         .object = packObject(callback_value.object),
         .context = callback_value.context,
         .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once },
     });
     // Appended: its owner hears of it before step 6 can fail.
-    listenersChanged(internal, instance);
+    if (list.watched()) dom_module.event_listener_changes.changed(instance);
 
     // Step 6: If listener's signal is not null, then add the following abort
     // steps to it: remove an event listener with eventTarget and listener.
@@ -679,10 +980,13 @@ fn addAnEventListener(internal: *InternalState, instance: *runtime.Instance, @"t
 /// ("If this's event listener list contains an event listener whose type is
 /// type, callback is callback, and capture is capture, then remove an event
 /// listener"). `callback` is BORROWED.
-fn removeAnEventListener(internal: *InternalState, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, capture: bool) void {
+fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type": []const u8, callback: ?engine.CallbackInterface, capture: bool) void {
     // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
     const key = EventTypeKey.of(@"type");
-    const index = for (internal.listeners.view(), 0..) |existing, i| {
+    // One read of the list for the scan, the removal and the owner's flag:
+    // the comparison runs no script, and a removal moves no block.
+    var list = listeners.current();
+    const index = for (list.view(), 0..) |existing, i| {
         // An event handler's listener is removed only by deactivating the
         // handler, never by removeEventListener (its callback is internal).
         if (existing.bits.kind != .listener) continue;
@@ -694,9 +998,9 @@ fn removeAnEventListener(internal: *InternalState, instance: *runtime.Instance, 
     // eventTarget's event listener list. A listener out of the list is out
     // of every clone a dispatch walks (dom.event_listener_list `Cursor`),
     // which is what its removed flag is for; its callback goes with it.
-    const removed = internal.listeners.removeAt(index);
+    const removed = list.removeAt(index);
     releaseListener(runtime.allocatorOf(instance), removed, true);
-    listenersChanged(internal, instance);
+    if (list.watched()) dom_module.event_listener_changes.changed(instance);
 }
 
 /// An event handler's new value (HTML 8.1.8.1), OWNED until it is stored.
@@ -741,17 +1045,17 @@ const NewHandlerValue = union(enum) {
 ///
 /// "Activate an event handler":
 /// https://html.spec.whatwg.org/multipage/webappapis.html#activate-an-event-handler
-fn storeEventHandler(target: *runtime.Instance, internal: *InternalState, event_type: []const u8, value: NewHandlerValue) !void {
+fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8, value: NewHandlerValue) !void {
     const allocator = runtime.allocatorOf(target);
     // Activate step 3: "If eventHandler's listener is not null, then
     // return": the listener stays where it is - only the value changes,
     // which is how a handler set again keeps its place among the listeners
     // (Gecko's SetEventHandlerInternal, WebKit's setAttributeEventListener
     // and Servo's set_inline_event_listener replace it in place).
-    if (internal.listeners.indexOfHandler(EventTypeKey.of(event_type))) |index| {
-        var updated = internal.listeners.at(index);
+    if (listeners.indexOfHandler(EventTypeKey.of(event_type))) |index| {
+        var updated = listeners.at(index);
         value.keepIn(&updated);
-        const old = internal.listeners.replaceAt(index, updated);
+        const old = listeners.replaceAt(index, updated);
         releaseValue(allocator, old, true);
         return;
     }
@@ -767,7 +1071,7 @@ fn storeEventHandler(target: *runtime.Instance, internal: *InternalState, event_
     // then the callback, then the ones registered after" depends on.
     const kept_type = try listener_list.EventType.init(allocator, event_type);
     errdefer kept_type.deinit(allocator);
-    try internal.listeners.ensureUnusedCapacity(allocator, 1);
+    try listeners.ensureUnusedCapacity(allocator, 1);
     var listener: Listener = .{
         .type = kept_type,
         .object = null,
@@ -775,23 +1079,23 @@ fn storeEventHandler(target: *runtime.Instance, internal: *InternalState, event_
         .bits = .{ .id = nextListenerId(), .passive = defaultPassiveValue(event_type, target), .kind = .handler },
     };
     value.keepIn(&listener);
-    internal.listeners.appendAssumeCapacity(listener);
-    listenersChanged(internal, target);
+    listeners.appendAssumeCapacity(listener);
+    listenersChanged(listeners, target);
 }
 
 /// HTML "deactivate an event handler" given `target` and the event handler
 /// for `event_type`, steps 3-6: its value becomes null and its listener is
 /// removed, so a later non-null value activates a NEW listener, at the end.
 /// https://html.spec.whatwg.org/multipage/webappapis.html#deactivate-an-event-handler
-fn deactivateEventHandler(target: *runtime.Instance, internal: *InternalState, event_type: []const u8) void {
-    const index = internal.listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return;
+fn deactivateEventHandler(target: *runtime.Instance, listeners: Listeners, event_type: []const u8) void {
+    const index = listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return;
     // Step 3: "Set eventHandler's value to null." Steps 4-6: "Let listener
     // be eventHandler's listener. If listener is not null, then remove an
     // event listener with eventTarget and listener. Set eventHandler's
     // listener to null."
-    const removed = internal.listeners.removeAt(index);
+    const removed = listeners.removeAt(index);
     releaseListener(runtime.allocatorOf(target), removed, true);
-    listenersChanged(internal, target);
+    listenersChanged(listeners, target);
 }
 
 /// HTML "erase all event listeners and handlers" given `target` (§8.1.8.1),
@@ -801,18 +1105,18 @@ fn deactivateEventHandler(target: *runtime.Instance, internal: *InternalState, e
 /// deactivate an event handler given eventTarget and name. 2. Remove all
 /// event listeners given eventTarget."
 pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
-    const internal = getInternalFromRegistry(target) orelse return;
-    if (internal.listeners.len() == 0) return;
+    const listeners = listenersOf(target) orelse return;
+    if (listeners.len() == 0) return;
     const allocator = runtime.allocatorOf(target);
     // Step 1, each handler's value null and its listener removed, then step
     // 2, DOM "remove all event listeners" - for each listener, "remove an
     // event listener" (its removed flag set, out of the list): every
     // listener leaves, each out of the list before what it owns is released.
-    while (internal.listeners.len() > 0) {
-        const removed = internal.listeners.removeAt(internal.listeners.len() - 1);
+    while (listeners.len() > 0) {
+        const removed = listeners.removeAt(listeners.len() - 1);
         releaseListener(allocator, removed, true);
     }
-    listenersChanged(internal, target);
+    listenersChanged(listeners, target);
 }
 
 /// "Getting the current value of the event handler" (HTML §8.1.8.1):
@@ -835,11 +1139,11 @@ pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_typ
 /// `target`: null deactivates the handler; any other value becomes the
 /// handler's value, which is then activated.
 pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8, value: Handler) !void {
-    const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
+    const listeners = listenersOf(target) orelse return error.InvalidStateError;
     // Step 3: "If the given value is null, then deactivate an event handler
     // given eventTarget and name."
     const handler = value orelse {
-        deactivateEventHandler(target, internal, event_type);
+        deactivateEventHandler(target, listeners, event_type);
         return;
     };
     // Step 4: set eventHandler's value to the given value, then activate it.
@@ -851,7 +1155,7 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
     const callback = engine.takeCallbackFunction(@ptrFromInt(address));
     const new_value: NewHandlerValue = .{ .compiled = callback };
     errdefer new_value.release(runtime.allocatorOf(target));
-    try storeEventHandler(target, internal, event_type, new_value);
+    try storeEventHandler(target, listeners, event_type, new_value);
 }
 
 fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
@@ -861,10 +1165,10 @@ fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
 /// Content attribute change steps 5.2-5.6: store an owned raw body and
 /// location and activate the handler, without compiling or running script.
 fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source: dom_module.event_handlers.RawSource) anyerror!void {
-    const internal = getInternalFromRegistry(target) orelse return error.InvalidStateError;
+    const listeners = listenersOf(target) orelse return error.InvalidStateError;
     const new_value: NewHandlerValue = .{ .raw = try RawHandler.create(runtime.allocatorOf(target), source) };
     errdefer new_value.release(runtime.allocatorOf(target));
-    try storeEventHandler(target, internal, event_type, new_value);
+    try storeEventHandler(target, listeners, event_type, new_value);
 }
 
 /// "Getting the current value of the event handler" (HTML 8.1.8.1) given
@@ -881,10 +1185,10 @@ fn setRawEventHandler(target: *runtime.Instance, event_type: []const u8, source:
 /// errors, which can run script that reads this handler again, and that read must find it
 /// settled rather than compile it a second time.
 fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
-    const internal = getInternalFromRegistry(target) orelse return null;
+    const listeners = listenersOf(target) orelse return null;
     const key = EventTypeKey.of(event_type);
-    const index = internal.listeners.indexOfHandler(key) orelse return null;
-    const listener = internal.listeners.at(index);
+    const index = listeners.indexOfHandler(key) orelse return null;
+    const listener = listeners.at(index);
     switch (listener.bits.value) {
         .none => return null,
         .compiled => return handlerValueOf(listener),
@@ -898,13 +1202,13 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?Handl
             cleared.object = null;
             cleared.context = null;
             cleared.bits.value = .none;
-            _ = internal.listeners.replaceAt(index, cleared);
+            _ = listeners.replaceAt(index, cleared);
             switch (dom_module.event_handlers.compileRaw(target, event_type, raw.source())) {
                 .scripting_disabled => {
                     // Step 3.2 runs no script: the listener is where it was,
                     // and stays raw.
-                    if (internal.listeners.indexOfId(listener.bits.id)) |at| {
-                        _ = internal.listeners.replaceAt(at, listener);
+                    if (listeners.indexOfId(listener.bits.id)) |at| {
+                        _ = listeners.replaceAt(at, listener);
                     } else raw.destroy(allocator);
                     return null;
                 },
@@ -914,7 +1218,7 @@ fn currentHandlerValue(target: *runtime.Instance, event_type: []const u8) ?Handl
                     // HTML getting the current value steps 3.12-3.13. Take
                     // the compiled callback directly: IDL conversion here
                     // would capture the getter's caller as the incumbent.
-                    const current = getInternalFromRegistry(target) orelse {
+                    const current = listenersOf(target) orelse {
                         callback.release();
                         return null;
                     };
@@ -965,9 +1269,9 @@ fn handlerValueOf(listener: Listener) HandlerValue {
 /// `target`'s event handler's compiled value for `event_type`, for the
 /// getter and for dispatch.
 fn eventHandlerValue(target: *runtime.Instance, event_type: []const u8) ?HandlerValue {
-    const internal = getInternalFromRegistry(target) orelse return null;
-    const index = internal.listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return null;
-    const listener = internal.listeners.at(index);
+    const listeners = listenersOf(target) orelse return null;
+    const index = listeners.indexOfHandler(EventTypeKey.of(event_type)) orelse return null;
+    const listener = listeners.at(index);
     if (listener.bits.value != .compiled) return null;
     return handlerValueOf(listener);
 }
@@ -1056,12 +1360,13 @@ fn flattenOptions(ctx: runtime.Context, options: webidl.Opt(runtime.JSValue), co
 }
 
 pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMString, callback: ??*runtime.CallbackWrapper, options: webidl.Opt(runtime.JSValue)) anyerror!void {
-    // Get the internal state, or make it for an instance that never ran
-    // EventTarget's init.
-    const internal = lazyInternal(instance) catch return error.OutOfMemory;
-
     // https://dom.spec.whatwg.org/#concept-flatten-more
     const flat = try flattenOptions(instance.ctx, options, true);
+
+    // Its event listener list - made, for an instance that never ran
+    // EventTarget's init. After the options' getters ran: they are script,
+    // and nothing below can run any before the listener is in the list.
+    const listeners = ensureListeners(instance) catch return error.OutOfMemory;
 
     // The callback interface value, with the incumbent realm now - the
     // conversion's - as its callback context. The binding's wrapper is the
@@ -1077,7 +1382,7 @@ pub fn call_addEventListener(instance: *runtime.Instance, @"type": runtime.DOMSt
     // binding for the call: the list keeps an id for a type the platform
     // fires and a copy of any other. It stores or releases the callback on
     // every path.
-    try addAnEventListener(internal, instance, @"type".asSlice(), callback_value, flat);
+    try addAnEventListener(listeners, instance, @"type".asSlice(), callback_value, flat);
 }
 
 /// Operation: removeEventListener
@@ -1086,7 +1391,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     // The binding's wrapper, borrowed for the call.
     const raw_callback_wrapper: ?*runtime.CallbackWrapper = if (callback) |cb_opt| cb_opt else null;
 
-    const internal = getInternalFromRegistry(instance) orelse return;
+    const listeners = listenersOf(instance) orelse return;
 
     // https://dom.spec.whatwg.org/#concept-flatten
     //
@@ -1099,7 +1404,7 @@ pub fn call_removeEventListener(instance: *runtime.Instance, @"type": runtime.DO
     const callback_value: ?engine.CallbackInterface = if (raw_callback_wrapper) |wrapper| engine.takeCallbackInterface(wrapper) else null;
     defer if (callback_value) |value| value.release();
 
-    removeAnEventListener(internal, instance, @"type".asSlice(), callback_value, capture);
+    removeAnEventListener(listeners, instance, @"type".asSlice(), callback_value, capture);
 }
 
 /// Operation: dispatchEvent
@@ -1179,7 +1484,33 @@ const ListenerPhase = enum { capturing, bubbling };
 /// Steps 4-6.11 - the path across shadow trees, activationTarget and
 /// clearTargets - are dom.event_path's; the passes over the path and steps
 /// 1 and 7-13 are here, beside the listener lists they read.
+///
+/// The event's path is this dispatch's: a local of this frame, as WebKit's
+/// EventPath is a local of
+/// EventDispatcher::dispatchEventWithoutDebuggerDeferral and Gecko's target
+/// chain a local of EventDispatcher::Dispatch (dom.event_dispatch, "THE PATH
+/// IS THE DISPATCH'S"). The event points at it from the build (steps 4-6.11) to
+/// step 9, which every exit of `dispatchOnPath` runs; a nested dispatch -
+/// another event's, or this one's again from its activation behaviour - has
+/// a frame and a path of its own.
 fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
+    // Runtime safety off for the declaration only: ReleaseSafe would fill
+    // the path's inline items with 0xaa on every dispatch, and `init` writes
+    // every field that is read before it is written (the approved form:
+    // dom.mutation's `insert`).
+    @setRuntimeSafety(false);
+    var path: dom_module.event_dispatch.DispatchPath = undefined;
+    path.init(runtime.allocatorOf(event));
+    defer path.deinit();
+    // Whatever way the dispatch left, the event does not point at this
+    // frame once it is gone.
+    defer if (state.path == &path) state.clearPath();
+    return dispatchOnPath(&path, target, event, state, did_throw, target_override);
+}
+
+/// `dispatchWithThrowFlag` with the dispatch's path, `dispatch_path`: empty
+/// on entry, the caller's to free.
+fn dispatchOnPath(dispatch_path: *dom_module.event_dispatch.DispatchPath, target: *runtime.Instance, event: *runtime.Instance, state: *EventState, did_throw: ?*bool, target_override: ?*runtime.Instance) !bool {
     // Step 1: Set event's dispatch flag.
     state.dispatch_flag = true;
 
@@ -1204,7 +1535,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     // event's type attribute is click"; the behaviours are the element
     // types' own (dom.activation).
     const is_activation_event = std.mem.eql(u8, event_type, "click") and event.stateAs(interfaces.MouseEvent.State) != null;
-    const built = try dom_module.event_path.build(state, target, .{
+    const built = try dom_module.event_path.build(state, dispatch_path, target, .{
         .event_type = event_type,
         .composed = interfaces.Event.get_composed(event) catch false,
         .bubbles = bubbles,
@@ -1225,7 +1556,7 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     // The path does not change while it runs: nothing appends to it until
     // step 9 empties it, and a listener can neither redispatch this event
     // (step 1 of dispatchEvent) nor reinitialize it (initEvent's step 1).
-    const path = state.path.toSlice();
+    const path = dispatch_path.constItems();
 
     // Step 6.12: legacy-pre-activation behaviour.
     if (activation_target) |at| {
@@ -1238,28 +1569,28 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     while (i > 0) {
         i -= 1;
         // Steps 6.13.1-6.13.2.
-        state.phase = if (path[i].shadow_adjusted_target != null)
-            interfaces.Event.get_AT_TARGET()
+        state.phase = if (path[i].has_shadow_adjusted_target)
+            event_dispatch.Phase.at_target
         else
-            interfaces.Event.get_CAPTURING_PHASE();
+            event_dispatch.Phase.capturing;
         // Step 6.13.3.
-        invoke(&path[i], event, state, .capturing, did_throw, type_key);
+        invoke(dispatch_path, &path[i], event, state, .capturing, did_throw, type_key);
     }
 
     // Step 6.14: for each item of event's path, in order, invoke with "bubbling".
     for (path) |*item| {
-        if (item.shadow_adjusted_target != null) {
+        if (item.has_shadow_adjusted_target) {
             // Step 6.14.1 - a target is AT_TARGET in both passes, which is
             // how its capturing listeners run before its bubbling ones.
-            state.phase = interfaces.Event.get_AT_TARGET();
+            state.phase = event_dispatch.Phase.at_target;
         } else {
             // Step 6.14.2.1
             if (!bubbles) continue;
             // Step 6.14.2.2
-            state.phase = interfaces.Event.get_BUBBLING_PHASE();
+            state.phase = event_dispatch.Phase.bubbling;
         }
         // Step 6.14.3
-        invoke(item, event, state, .bubbling, did_throw, type_key);
+        invoke(dispatch_path, item, event, state, .bubbling, did_throw, type_key);
     }
 
     // Steps 7-11: eventPhase NONE, currentTarget null, the path empty, the
@@ -1288,9 +1619,9 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
 /// DOM §2.9 - invoke
 /// https://dom.spec.whatwg.org/#concept-event-listener-invoke
 ///
-/// `item` is BORROWED from the event's path, which outlives the call.
+/// `item` is BORROWED from the event's path, `path`, which outlives the call.
 /// `event_type` is the event's type, looked up once per dispatch.
-fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
+fn invoke(path: *dom_module.event_dispatch.DispatchPath, item: *const dom_module.event_dispatch.PathItem, event: *runtime.Instance, state: *EventState, phase: ListenerPhase, did_throw: ?*bool, event_type: EventTypeKey) void {
     // Steps 1-3: event's target is the shadow-adjusted target of the last
     // item at or before this one whose shadow-adjusted target is non-null -
     // recorded on the item when the path was built. Written raw: the path
@@ -1302,17 +1633,18 @@ fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Insta
 
     // Step 5: "Set event's touch target list to pathItem's touch target
     // list." Both are empty for every event but a TouchEvent's.
-    if (state.touch_target_list.len > 0 or item.touch_target_list.len > 0) {
-        state.touch_target_list.clear();
-        state.touch_target_list.appendSlice(item.touch_target_list.toSlice()) catch {};
+    const touch_targets = path.touchTargetsOf(item);
+    if (touch_targets.len > 0 or state.touch_target_list.toSlice().len > 0) {
+        state.touch_target_list.assign(runtime.allocatorOf(event), touch_targets) catch {};
     }
 
     // Step 6: stopPropagation() ends the walk here, but the caller still has to
     // run steps 7-10, so this returns rather than unwinding.
     if (state.stop_propagation_flag) return;
 
-    // Step 7
-    state.setCurrentTarget(item.invocation_target);
+    // Step 7: the currentTarget attribute's value is the dispatch's to
+    // keep (null outside dispatch), with its slab generation.
+    path.setCurrentTarget(item.invocation_target);
 
     // Steps 8-10. Step 8, "let listeners be a clone of event's
     // currentTarget attribute value's event listener list", is innerInvoke's
@@ -1351,7 +1683,7 @@ fn invoke(item: *const dom_module.event_dispatch.PathItem, event: *runtime.Insta
 /// item's invocation-target-in-shadow-tree; `event_type` is the event's
 /// type attribute value now.
 fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *runtime.Instance, phase: ListenerPhase, in_shadow_tree: bool, did_throw: ?*bool, event_type: EventTypeKey) bool {
-    const internal = getInternalFromRegistry(current_target) orelse return false;
+    const listeners = listenersOf(current_target) orelse return false;
 
     // Step 8 of "invoke": "Let listeners be a clone of event's currentTarget
     // attribute value's event listener list." The clone copies nothing: it
@@ -1362,13 +1694,19 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
     // the callbacks append is never reached; one they remove has left the
     // list and is never reached either; the list may move while they run, so
     // nothing here holds a pointer into it.
-    var listeners = internal.listeners.clone() orelse return false;
+    //
+    // `list` is the list's address as last read (a node's is a slot of its
+    // rare block: `Listeners`). It is read again after every callback - the
+    // only step of the walk that runs script - and not between: a listener
+    // skipped by type or phase costs no second read.
+    var list = listeners.current();
+    var cursor = list.clone() orelse return false;
 
     // Step 1: "Let found be false."
     var found = false;
 
     // Step 2: "For each listener of listeners, whose removed is false:"
-    while (internal.listeners.next(&listeners)) |listener| {
+    while (list.next(&cursor)) |listener| {
         // Step 2.1: "If event's type attribute value is not listener's type,
         // then continue."
         if (!listener.type.matches(event_type)) continue;
@@ -1385,7 +1723,7 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // invoking it, so a re-entrant dispatch cannot reach it. Its callback
         // is then this call's to release, after the call.
         var expired: ?engine.CallbackInterface = null;
-        if (listener.bits.once) expired = detachListener(internal, current_target, listener.bits.id);
+        if (listener.bits.once) expired = detachListener(listeners, current_target, listener.bits.id);
         defer if (expired) |value| value.release();
 
         // Step 2.11 (passive): set event's in passive listener flag.
@@ -1401,6 +1739,9 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
             .listener => callListener(expired orelse callbackOf(listener), event, current_target, in_shadow_tree, did_throw),
             .handler => invokeIdlEventHandler(current_target, event, in_shadow_tree, did_throw),
         }
+
+        // The callback ran: the list may have moved, grown or gone.
+        list = listeners.current();
 
         // Step 2.14
         if (listener.bits.passive) state.in_passive_listener_flag = false;
@@ -1421,13 +1762,13 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
 /// of the removal, before the callback runs (WebKit's
 /// innerInvokeEventListeners removes a once listener through
 /// removeEventListener, which calls eventListenersDidChange).
-fn detachListener(internal: *InternalState, target: *runtime.Instance, id: u56) ?engine.CallbackInterface {
-    const index = internal.listeners.indexOfId(id) orelse return null;
+fn detachListener(listeners: Listeners, target: *runtime.Instance, id: u56) ?engine.CallbackInterface {
+    const index = listeners.indexOfId(id) orelse return null;
     // "Set listener's removed to true and remove listener from eventTarget's
     // event listener list."
-    const removed = internal.listeners.removeAt(index);
+    const removed = listeners.removeAt(index);
     removed.type.deinit(runtime.allocatorOf(target));
-    listenersChanged(internal, target);
+    listenersChanged(listeners, target);
     return callbackOf(removed);
 }
 
@@ -1770,11 +2111,6 @@ pub fn call_when(instance: *runtime.Instance, @"type": runtime.DOMString, option
 // Helper functions for subclasses (Node, Element, etc.)
 // ============================================================================
 
-/// Get the internal state for an EventTarget instance
-pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternalFromRegistry(instance);
-}
-
 /// The node type of an EventTarget that is a node, 0 for one that is not:
 /// its NodeBase's, which Node's construction sets (no copy is kept here).
 pub fn getNodeType(instance: *runtime.Instance) u16 {
@@ -1786,17 +2122,17 @@ pub fn getNodeType(instance: *runtime.Instance) u16 {
 /// listener whose removed is false - an event handler's included. Every
 /// listener in the list is one (a removed one has left it).
 fn hasListeners(instance: *runtime.Instance) bool {
-    const internal = getInternalFromRegistry(instance) orelse return false;
-    return internal.listeners.len() > 0;
+    const listeners = listenersOf(instance) orelse return false;
+    return listeners.len() > 0;
 }
 
 /// dom.event_listener_types: whether `instance`'s event listener list holds
 /// a listener of `event_type` whose removed is false - an activated event
 /// handler's included.
 fn hasListenersOfType(instance: *runtime.Instance, event_type: []const u8) bool {
-    const internal = getInternalFromRegistry(instance) orelse return false;
+    const listeners = listenersOf(instance) orelse return false;
     const key = EventTypeKey.of(event_type);
-    for (internal.listeners.view()) |listener| {
+    for (listeners.view()) |listener| {
         if (listener.type.matches(key)) return true;
     }
     return false;

@@ -629,7 +629,8 @@ fn workerTimerTrampoline(context_ptr: ?*anyopaque) void {
             );
             ctx.interval_delay_ms = if (repeat_ms >= 0) @intCast(repeat_ms) else 0;
 
-            // Schedule the next interval
+            // Schedule the next interval. The plain form, for the reason at
+            // setTimer's arm: the host's `timers` map owns the context.
             const new_timer_id = timer.setTimeout(ctx.interval_delay_ms, workerTimerTrampoline, ctx);
             if (new_timer_id != 0) {
                 // The same timer, armed again: script's id, and the map entry
@@ -1342,8 +1343,10 @@ pub const WorkerHost = struct {
         // run for the worker's realm as Blink runs them for every execution
         // context that ends (the File API's: the blob URL entries the worker
         // made leave the store - "This needs a similar hook when a worker is
-        // unloaded").
-        @import("dom").unloading_cleanup.run(realm);
+        // unloaded"). Those for workers only: a document-only step - the
+        // Fullscreen one - reads the window agent's state, and this is the
+        // worker's thread (lane crash1).
+        @import("dom").unloading_cleanup.runWorkerEnd(realm);
         self.realm = null;
         // The realm's per-context data - the callbacks its script registered,
         // its wrapper cache and every Instance in it, the global scope last -
@@ -2032,6 +2035,26 @@ pub const WorkerHost = struct {
         const delay_u64: u64 = if (clamped_ms >= 0) @intCast(clamped_ms) else 0;
         timer_ctx.interval_delay_ms = delay_u64;
 
+        // The plain form, with heap data - and a proof instead of a drop
+        // (lane tl1: a plain timer's data is freed by nobody when its timer
+        // manager ends first; docs/lessons/architecture-a-task-queued-on-a-loop-that-never-runs-again-leaks-its-data.md).
+        // The host's `timers` map owns the context, not the timer. Who frees
+        // it, on every path:
+        // - the timer fires: workerTimerTrampoline (a one-shot, a cancelled
+        //   one, a worker that no longer runs tasks, an interval whose
+        //   re-arm failed);
+        // - clearTimeout / clearInterval, close() and "terminate a worker":
+        //   `clearTimer`, which frees it whatever the timer's clear answers
+        //   (a callback on the stack is freed by its trampoline on return);
+        // - the realm's end: `teardownRealm` runs `cancelWorkerTimers` over
+        //   the whole map, on the worker's thread, BEFORE the agent and the
+        //   event loop - and so the timer manager - end (WorkerThread.main
+        //   steps c-e); `free` asserts the map is empty.
+        // So no context is armed when the timer manager ends. A drop could
+        // not do this work: freeing a context releases engine handles (its
+        // function and arguments), and a drop runs at a loop's end, after
+        // the agent's, where no engine call may be made
+        // (tests/html/tl1_worker_timer_owner_test.zig pins the order).
         const timer_id = timer.setTimeout(delay_u64, workerTimerTrampoline, timer_ctx);
         if (timer_id == 0) {
             freeWorkerTimer(timer_ctx);

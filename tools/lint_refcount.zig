@@ -12,6 +12,13 @@
 //!    into the setter, which lowers it to zero. Struct initialisers
 //!    (`.{ .parent_node = null }`) are not assignments: a node is born
 //!    parentless.
+//!    `child-word`: every `<expr>.child_or_leaf` field access outside
+//!    src/dom/node_base.zig (lane nm2, the node design's N9). A node's
+//!    first-child word is a container's first child OR, on a leaf (a
+//!    CharacterData node), a word of the node's own data: read as a child
+//!    anywhere but through `NodeBase.firstChild()`, a text node's bytes
+//!    become a pointer. A struct initialiser is not a field access (a bare
+//!    NodeBase starts with a null child).
 //! 2. `ref-in-node-state`: a field of a node's own state whose type holds a
 //!    counted reference (`Ref(...)`, `?Ref(...)`, `GCReachableRef(...)`,
 //!    however wrapped). A tree is the unit of lifetime (decision D1): a node
@@ -168,6 +175,8 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
         for (parent_owner_files) |owner| if (std.mem.eql(u8, path, owner)) break :blk true;
         break :blk false;
     };
+    // The first-child word is read and written in NodeBase's own file only.
+    const child_word_allowed = std.mem.eql(u8, path, "src/dom/node_base.zig");
     const every_container_is_node_state = isNodeStateFile(path);
     const moved_node_state = isMovedNodeStateFile(path);
 
@@ -216,6 +225,18 @@ pub fn findings(gpa: std.mem.Allocator, path: []const u8, source: [:0]const u8) 
                         .code = nodeText(&tree, node),
                     });
                 }
+            }
+        }
+
+        // Rule 1, second half: `<expr>.child_or_leaf` outside NodeBase's file.
+        if (!child_word_allowed and tree.nodeTag(node) == .field_access) {
+            const field_token = tree.nodeData(node).node_and_token[1];
+            if (std.mem.eql(u8, tree.tokenSlice(field_token), "child_or_leaf")) {
+                try out.append(gpa, .{
+                    .line = @intCast(tree.tokenLocation(0, first).line + 1),
+                    .key = try gpa.dupe(u8, "child-word"),
+                    .code = nodeText(&tree, node),
+                });
             }
         }
 
@@ -565,6 +586,23 @@ test "parent-write: an assignment to .parent_node outside NodeBase's setter" {
     , &.{ "2:parent-write", "4:parent-write" });
 }
 
+test "child-word: the first-child word is named in NodeBase's file only" {
+    const source =
+        \\fn first(node: *NodeBase) ?*NodeBase {
+        \\    const bare: NodeBase = .{ .child_or_leaf = .{ .first_child = null }, .node_type = 1 };
+        \\    _ = bare;
+        \\    if (node.leaf) return null;
+        \\    return node.child_or_leaf.first_child;
+        \\}
+        \\fn ok(node: *NodeBase) ?*NodeBase {
+        \\    return node.firstChild();
+        \\}
+    ;
+    try expectFindings("src/dom/mutation.zig", source, &.{"5:child-word"});
+    try expectFindings("src/webidl/impls/Node.zig", source, &.{"5:child-word"});
+    try expectFindings("src/dom/node_base.zig", source, &.{});
+}
+
 test "parent-write: struct initialisers, reads and comparisons are not writes" {
     try expectFindings("src/dom/mutation.zig",
         \\fn f(child: *NodeBase) bool {
@@ -596,8 +634,8 @@ test "parent-write: test declarations are not production code; tests/ and tools/
 }
 
 test "ref-in-node-state: a counted reference in a struct with a NodeBase field" {
-    try expectFindings("src/dom/element_with_base.zig",
-        \\pub const ElementWithBase = struct {
+    try expectFindings("src/dom/some_node.zig",
+        \\pub const SomeNode = struct {
         \\    base: NodeBase,
         \\    owner: Ref(NodeBase),
         \\    maybe: ?Ref(Foo),
@@ -607,10 +645,10 @@ test "ref-in-node-state: a counted reference in a struct with a NodeBase field" 
         \\    raw: ?*NodeBase,
         \\};
     , &.{
-        "3:ref-in-node-state.ElementWithBase.owner",
-        "4:ref-in-node-state.ElementWithBase.maybe",
-        "5:ref-in-node-state.ElementWithBase.kept",
-        "6:ref-in-node-state.ElementWithBase.list",
+        "3:ref-in-node-state.SomeNode.owner",
+        "4:ref-in-node-state.SomeNode.maybe",
+        "5:ref-in-node-state.SomeNode.kept",
+        "6:ref-in-node-state.SomeNode.list",
     });
 }
 
