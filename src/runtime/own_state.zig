@@ -23,7 +23,9 @@
 //! - The state is kept BY VALUE in the same State, in `_embedded`
 //!   (runtime.FlattenedState; lane perf2 batch 5, Z7): `create` sets the
 //!   level's bit in the chain's live word (the root's `_live`; lane perf2
-//!   batch 6 - it was a pointer per level, `own._internal`) and allocates
+//!   batch 6 - it was a pointer per level, `own._internal` - or, for a chain
+//!   whose root level keeps the bits itself, that state's `liveBits`: a
+//!   node's are a byte of its NodeBase, lane nm3) and allocates
 //!   nothing, `remove` clears it. So a node's every level lives in its ONE State block, made
 //!   zeroed by `Instance.init` and returned whole by `gc.releaseStorage`
 //!   after the destruction chain. An InternalState kept here says so with
@@ -86,11 +88,10 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         if (State.internal_kind != .embedded or @FieldType(State, "_embedded") != T)
             @compileError(@typeName(T) ++ " is not kept by value in " ++ @typeName(State) ++
                 ": declare `pub const embedded_in_state = true;` in it (runtime.FlattenedState's `_embedded`)");
-        if (@FieldType(Root(State), "_live") == void)
-            @compileError(@typeName(Root(State)) ++ ", the root of " ++ @typeName(State) ++ "'s chain, keeps no live word: its own level must be kept by value too");
-        if (levelsBelow(State) >= @bitSizeOf(LiveWord)) @compileError(@typeName(State) ++ " is deeper than the live word has bits");
+        if (levelsBelow(State) >= @bitSizeOf(LiveBits(State))) @compileError(@typeName(State) ++ " is deeper than its chain's live bits (" ++ @typeName(LiveBits(State)) ++ ")");
     }
-    const bit: LiveWord = @as(LiveWord, 1) << @intCast(levelsBelow(State));
+    const Bits = LiveBits(State);
+    const bit: Bits = @as(Bits, 1) << @intCast(levelsBelow(State));
     return struct {
         /// `instance`'s State, or null when its slot is freed or its ancestry
         /// has no `State` - the brand check.
@@ -103,7 +104,7 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         /// made, already removed, or `instance` is no `State`.
         pub inline fn get(instance: *const Instance) ?*T {
             const state = stateOf(instance) orelse return null;
-            if (rootOf(State, state)._live & bit == 0) return null;
+            if (liveOf(State, state).* & bit == 0) return null;
             return &state._embedded;
         }
 
@@ -119,10 +120,10 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         /// The caller writes its initial value; `remove` clears it.
         pub fn create(instance: *const Instance) error{InvalidStateError}!*T {
             const state = stateOf(instance) orelse return error.InvalidStateError;
-            const root = rootOf(State, state);
+            const live = liveOf(State, state);
             // Once per instance: a second init would overwrite a live state.
-            std.debug.assert(root._live & bit == 0);
-            root._live |= bit;
+            std.debug.assert(live.* & bit == 0);
+            live.* |= bit;
             return &state._embedded;
         }
 
@@ -133,7 +134,7 @@ pub fn OwnState(comptime State: type, comptime T: type) type {
         /// Does nothing when none is set.
         pub fn remove(instance: *const Instance) void {
             const state = stateOf(instance) orelse return;
-            rootOf(State, state)._live &= ~bit;
+            liveOf(State, state).* &= ~bit;
         }
 
         /// How many of `scope`'s objects have the state set (a slab walk:
@@ -203,14 +204,38 @@ inline fn rootOf(comptime State: type, state: *State) *Root(State) {
     return rootOf(@FieldType(State, "base"), &state.base);
 }
 
+/// The type of the live bits of `State`'s chain: the root State's own live
+/// word, or - when the root level's InternalState keeps them itself
+/// (runtime.field_merger `hostsLiveBits`: a node's, in its NodeBase) - the
+/// type that state declares.
+fn LiveBits(comptime State: type) type {
+    const R = Root(State);
+    if (@FieldType(R, "_live") != void) return LiveWord;
+    const Host = @FieldType(R, "_embedded");
+    if (Host == void or !@hasDecl(Host, "LiveBits"))
+        @compileError(@typeName(R) ++ ", the root of " ++ @typeName(State) ++ "'s chain, keeps no live word: its own level must be kept by value too");
+    if (@typeInfo(Host.LiveBits) != .int or @typeInfo(Host.LiveBits).int.signedness != .unsigned)
+        @compileError(@typeName(Host) ++ ".LiveBits must be an unsigned integer type");
+    return Host.LiveBits;
+}
+
+/// The live bits of `state`'s chain: the root's `_live`, or the bits its
+/// root level's state keeps (`liveBits`).
+inline fn liveOf(comptime State: type, state: *State) *LiveBits(State) {
+    const root = rootOf(State, state);
+    if (comptime @FieldType(Root(State), "_live") != void) return &root._live;
+    return root._embedded.liveBits();
+}
+
 /// Whether `state`'s own level has its internal state set: its live bit for a
 /// level kept by value, its `own._internal` for one kept in a block of its own;
 /// a level with no state (empty, or a hand-written State) never has one.
 fn isSet(comptime State: type, state: *State) bool {
     switch (comptime State.internal_kind) {
         .embedded => {
-            const bit: LiveWord = @as(LiveWord, 1) << @intCast(levelsBelow(State));
-            return rootOf(State, state)._live & bit != 0;
+            const Bits = LiveBits(State);
+            const bit: Bits = @as(Bits, 1) << @intCast(levelsBelow(State));
+            return liveOf(State, state).* & bit != 0;
         },
         .pointer => return state.own._internal != null,
         .empty, .none => return false,

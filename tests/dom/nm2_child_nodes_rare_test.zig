@@ -4,7 +4,7 @@
 //! Every node's generated State carried `cached_childNodes`, 8 bytes for a
 //! [SameObject] NodeList that most nodes never hand out - a Text, a Comment
 //! and a childless element included. It is a field of the node's ONE sparse
-//! rare block now (dom.element_rare_data's `child_nodes`; the block's word is
+//! rare block now (dom.node_rare_data's `child_nodes`; the block's word is
 //! NodeBase's since this batch's step b), read and kept by the generated
 //! getter through dom.same_object_cache's node accessors. Blink keeps the
 //! list in the node's rare data (Node::childNodes() ->
@@ -32,7 +32,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 
 /// Whether this build keeps the list in the rare block.
 const in_rare = @hasField(rare_data.Field, "child_nodes");

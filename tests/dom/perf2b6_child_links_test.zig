@@ -18,7 +18,8 @@ const NodeBase = dom.NodeBase;
 const max_children = 24;
 
 fn node(node_type: u16) NodeBase {
-    return .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = node_type };
+    // The field is one byte since lane nm3; DOM's node types are 1 to 12.
+    return .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = @intCast(node_type) };
 }
 
 fn expectLinks(parent: *NodeBase, model: []const *NodeBase) !void {

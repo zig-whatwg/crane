@@ -111,7 +111,7 @@ test "the rare data keeps no prefix: it is the name record's" {
     // lane rare1 the rare data is one sparse block with a slot per field
     // set (tests/dom/rare1_sparse_rare_data_test.zig), and no field is the
     // prefix.
-    try testing.expect(!@hasField(dom.element_rare_data.Field, "prefix"));
+    try testing.expect(!@hasField(dom.node_rare_data.Field, "prefix"));
 }
 
 test "a name record is 88 bytes, its count (batch 1-fix) in what was padding" {

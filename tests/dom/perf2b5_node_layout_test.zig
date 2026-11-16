@@ -144,15 +144,17 @@ test "a div is ONE exact-size block: its pointers and every level's InternalStat
     }
 }
 
-test "a text node is ONE exact-size block: the live word and every level's InternalState" {
+test "a text node is ONE exact-size block: every level's InternalState and nothing else" {
     const S = interfaces.Text.State;
     if (embeddedBytes(S) == 0) {
         std.debug.print("Text.State: {d} bytes, nothing embedded\n", .{@sizeOf(S)});
         return error.NotEmbedded;
     }
     // 16 until lane nm2 moved Node's childNodes cache to the node's rare
-    // block: the live word (4, padded to 8) is what is left.
-    try std.testing.expectEqual(@as(usize, 8), @sizeOf(S) - embeddedBytes(S));
+    // block; 8, the live word (4, padded), until lane nm3 made a node's live
+    // bits a byte of its NodeBase and took EventTarget's level out of a
+    // node's State.
+    try std.testing.expectEqual(@as(usize, 0), @sizeOf(S) - embeddedBytes(S));
     try std.testing.expectEqual(@as(usize, 8), @alignOf(S));
     try std.testing.expect(slack(S) < 16);
 }

@@ -57,9 +57,9 @@ pub const InternalState = struct {
     // Nothing here (lane perf3 D2): every field it kept - the nonce, the
     // ElementInternals and element.style objects with their edges, the
     // internals flags, 88 bytes on every HTML element - is in the element's
-    // sparse rare block (dom.element_rare_data; lane rare1), each made on
+    // sparse rare block (dom.node_rare_data; lane rare1), each made on
     // first use; click()'s flag is a bit of the element's NodeBase. Reached through
-    // the hook Element installs (dom.element_rare_data.access), never
+    // the hook Element installs (dom.node_rare_data.access), never
     // through Element's impl.
 
     pub fn deinit(self: *InternalState) void {
@@ -67,14 +67,14 @@ pub const InternalState = struct {
     }
 };
 
-/// HTMLElement's fields of the element's rare data (dom.element_rare_data:
+/// HTMLElement's fields of the element's rare data (dom.node_rare_data:
 /// element_internals and its flags; style and nonce, which the
 /// ElementCSSInlineStyle and HTMLOrSVGOrMathMLElement mixins' impls write and
 /// this element's teardown releases). The block MOVES when a
 /// field is added: read it by value (`rare_data.of`), write it through the
 /// holder's address (`rare_data.access`), and never keep either across a
 /// call that can run script or add a field.
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 
 /// `instance`'s rare holder's address and click()'s flag; null for an
 /// instance that is no element.
