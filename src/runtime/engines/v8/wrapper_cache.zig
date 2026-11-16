@@ -1658,6 +1658,12 @@ pub const WrapperCache = struct {
         if (chunk.live == 0) self.releaseIfSpare(chunk);
     }
 
+    /// At or below this many slots the map is never rebuilt smaller
+    /// (`shrinkMapIfSparse`): 17 bytes a slot, 1.1 MB - above what a page's
+    /// wrappers between two young collections take, so a make-and-drop loop
+    /// never rebuilds its map.
+    pub const map_shrink_floor = 1 << 16;
+
     /// The pool's memory, at the cache's end: every record was freed.
     fn freeChunks(self: *Self) void {
         while (self.chunks) |chunk| {

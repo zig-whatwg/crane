@@ -608,6 +608,39 @@ test "the cache's pool of records gives its memory back once a burst of wrappers
     try testing.expect(after <= before + 4 * 1024);
 }
 
+test "the cache's map gives its slots back once a burst of wrappers is collected, and still answers for the rest" {
+    // The cache's map is std's, which only grows: a slot (17 bytes) per live non-node wrapper at the page's
+    // high-water mark, for the realm's life. The perf suite's streams page holds 200,000 streams with their
+    // readers and controllers at once - a million slots, 17.8 MB that stayed after everything was collected
+    // (lane wrap1 b3's reading of that page: "the cache's map 17.8 MB"). The map now follows the live
+    // wrappers down, as the pool does (the test above): rebuilt smaller where a record is freed, once an
+    // eighth or less of more than `map_shrink_floor` slots is in use.
+    const WrapperCache = @import("v8").WrapperCache;
+    const page = try Page.open();
+    defer page.close();
+    const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+    const floor = WrapperCache.map_shrink_floor;
+    // A burst well over the floor, beside five wrappers that stay.
+    const n = 120_000;
+    var source: [200]u8 = undefined;
+    try page.run("globalThis.stay = []; for (let i = 0; i < 5; i++) { const p = new URLSearchParams('a=' + i); p.mine = i; stay.push(p); } 0");
+    try page.run(try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < {d}; i++) keep.push(new URLSearchParams('a=b')); 0", .{n}));
+    const peak = cache.cache.capacity();
+    try testing.expect(cache.cache.count() >= n and peak > floor);
+    try page.run("globalThis.keep = null; 0");
+    page.fullGC();
+    page.fullGC();
+    const after = cache.cache.capacity();
+    std.debug.print("the map: {d} slots with {d} kept wrappers, {d} slots after their collection ({d} entries)\n", .{ peak, n, after, cache.cache.count() });
+    try testing.expect(cache.cache.count() < 64);
+    // Std's map alone would still hold `peak` slots.
+    try testing.expect(after <= floor and after * 4 <= peak);
+    // The wrappers that stayed are the same objects, found by the same records.
+    try page.expectOk("stay.every((p, i) => p.mine === i && p.get('a') === String(i)) ? 'ok' : 'a wrapper that stayed was lost'");
+    try page.run("globalThis.stay = null; 0");
+    page.fullGC();
+}
+
 test "a young collection takes the dead wrappers of objects script only made and dropped, shape by shape" {
     // The make-and-drop loops of the perf suite (tests/perf/workloads/streams.html, timers.html, events.html)
     // make objects script never changes and drop them. Whatever the binding itself does to their wrappers - a
