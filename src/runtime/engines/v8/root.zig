@@ -148,6 +148,17 @@ pub const cleanupTemplateStorage = isolate_templates.cleanupTemplateStorage;
 
 /// [external_memory]: the host's native memory reported to the isolate.
 pub const external_memory = @import("external_memory.zig");
+/// Crane's in-sandbox allocator: the memory behind ArrayBuffers and V8's own
+/// in-sandbox blocks, in place of V8's default (lane ab1).
+pub const sandbox_allocator = @import("sandbox_allocator.zig");
+/// Its V8 side: what v8_wrapper.cpp's CraneInSandboxAllocator calls, and the
+/// tests' hooks.
+pub const sandbox_allocator_exports = @import("sandbox_allocator_exports.zig");
+comptime {
+    // v8_wrapper.cpp links against the file's `export fn`s in every binary
+    // that links V8, whether or not any Zig code names them.
+    _ = sandbox_allocator_exports;
+}
 /// The young generation's size, a build option of this adapter
 /// (-Dv8-young-generation-mb), as V8's ResourceConstraints take it
 /// (tests/v8/young_generation_limit_test.zig).
