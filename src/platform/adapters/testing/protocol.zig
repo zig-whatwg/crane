@@ -175,6 +175,7 @@ pub const protocol = struct {
     pub const logicalProcessorCount = posix.logicalProcessorCount;
     pub const deviceMemoryGiB = posix.deviceMemoryGiB;
     pub const residentMemory = posix.residentMemory;
+    pub const releaseFreeMemory = posix.releaseFreeMemory;
     pub const monotonicNow = posix.monotonicNow;
     pub const wallNow = posix.wallNow;
     pub const sleepThread = posix.sleepThread;

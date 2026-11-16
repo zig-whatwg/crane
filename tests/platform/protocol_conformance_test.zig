@@ -535,3 +535,69 @@ test "every built-in platform answers layout as headless does: no renderer, no b
     try testing.expect(!platform.adapter.isRendered(browser, document, node));
     try testing.expect((try platform.adapter.renderedText(browser, document, node, allocator)) == null);
 }
+
+// ---------------------------------------------------------------------------
+// 6.1 releaseFreeMemory: the allocator's free memory goes back to the OS
+// (lane idle1)
+// ---------------------------------------------------------------------------
+
+test "releaseFreeMemory answers at both levels on every platform" {
+    // What it returns depends on the allocator and on what the process
+    // freed; that it can be asked, from any thread and with nothing to
+    // return, does not.
+    _ = platform.releaseFreeMemory(.idle);
+    _ = platform.releaseFreeMemory(.pressure);
+    const Other = struct {
+        fn ask(returned: *usize) void {
+            returned.* = platform.releaseFreeMemory(.idle);
+        }
+    };
+    var returned: usize = std.math.maxInt(usize);
+    const thread = try std.Thread.spawn(.{}, Other.ask, .{&returned});
+    thread.join();
+    try testing.expect(returned != std.math.maxInt(usize));
+}
+
+test "releaseFreeMemory on glibc returns the free blocks between live ones, which no malloc threshold reaches" {
+    const builtin = @import("builtin");
+    // The built-in platforms share kit/posix's implementation. Not under
+    // ThreadSanitizer, whose own allocator serves malloc there.
+    if (comptime !(builtin.os.tag == .linux and builtin.abi.isGnu()) or builtin.sanitize_thread) return error.SkipZigTest;
+    if (comptime platform.capabilities.resident_memory == .unsupported) return error.SkipZigTest;
+
+    // 4,000 blocks of 64 KiB - below any mmap threshold glibc can have (its
+    // floor is 128 KiB), so each is cut from a heap - written, so that their
+    // pages are resident.
+    const block_size = 64 * 1024;
+    const count = 4000;
+    const keep_every = 64;
+    const blocks = try testing.allocator.alloc(?[*]u8, count);
+    defer testing.allocator.free(blocks);
+    @memset(blocks, null);
+    defer for (blocks) |block| std.c.free(block);
+    for (blocks) |*slot| {
+        const block: [*]u8 = @ptrCast(std.c.malloc(block_size) orelse return error.OutOfMemory);
+        @memset(block[0..block_size], 0x5a);
+        slot.* = block;
+    }
+    // All but every 64th freed: each freed run lies between two live blocks,
+    // nothing is at the heap's top, and the frees return nothing.
+    var freed: usize = 0;
+    for (blocks, 0..) |*slot, i| {
+        if (i % keep_every == 0) continue;
+        std.c.free(slot.*);
+        slot.* = null;
+        freed += block_size;
+    }
+    const before = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
+
+    const returned = platform.releaseFreeMemory(.idle);
+
+    const after = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
+    // 246 MiB were freed: at least half of it left the process, and the
+    // operation says so.
+    try testing.expect(before >= after + freed / 2);
+    try testing.expect(returned >= freed / 2);
+    // Nothing more to return: a second call returns (next to) nothing.
+    try testing.expect(platform.releaseFreeMemory(.idle) < freed / 8);
+}

@@ -169,6 +169,54 @@ pub fn residentMemory() ?platform.MemoryReading {
     return .{ .resident_bytes = bytes };
 }
 
+/// platform.releaseFreeMemory over the C library's allocator, the calls
+/// WebKit makes for its system malloc (Source/WebKit/WebProcess/glib/
+/// WebProcessGLib.cpp and cocoa/WebProcessCocoa.mm, WebProcess::
+/// releaseSystemMallocMemory; Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp,
+/// MemoryPressureHandler::platformReleaseMemory).
+///
+/// - glibc: malloc_trim(0). It consolidates every arena, gives back the top
+///   of the main heap and - what no malloc threshold does - every whole page
+///   inside a free block between live ones (malloc/malloc.c mtrim, glibc
+///   2.43). Measured on server1 (lane idle1, 2026-11-16): 275 MB of freed
+///   1,500-byte blocks returned in 8.4 ms, 244 MB of 64 KiB blocks in 5.1
+///   ms; a call with nothing to return 0.02 to 0.43 ms. It does not return
+///   the free top of a thread arena's heap (mtrim trims a top only for the
+///   main arena), and nothing of a free block smaller than a page. It
+///   answers only whether anything was returned, so the bytes are the fall
+///   in resident memory across the call - other threads' work is in that
+///   figure too, and a rise reads as 0.
+/// - darwin: malloc_zone_pressure_relief(NULL, 0), every zone, no goal. It
+///   answers the bytes released. On macOS 26 and later the default
+///   allocator's entry for it is a stub (libmalloc
+///   malloc_zone_pressure_relief_fallback): it answers 0 and nothing leaves
+///   the footprint (chat2.local, macOS 27.0.1: all of 250 MB of freed 64 KiB
+///   blocks stayed). Freed pages wait there in a ring only the kernel drains;
+///   the one routine that drains it on request is not public
+///   (mach_vm_deferred_reclamation_buffer_flush) and is not called.
+/// - any other C library (musl, bionic): nothing to call; 0.
+///
+/// The level changes nothing here: neither call takes one.
+pub fn releaseFreeMemory(level: platform.MemoryRelease) usize {
+    _ = level;
+    if (comptime builtin.os.tag.isDarwin()) return malloc_zone_pressure_relief(null, 0);
+    if (comptime builtin.os.tag == .linux and builtin.abi.isGnu()) {
+        const before = memory.residentBytes();
+        _ = malloc_trim(0);
+        const after = memory.residentBytes();
+        return (before orelse return 0) -| (after orelse return 0);
+    }
+    return 0;
+}
+
+/// <malloc.h>, glibc: return free memory to the system, keeping `pad` bytes
+/// at the top of the main heap. 1 when any was returned.
+extern "c" fn malloc_trim(pad: usize) c_int;
+
+/// <malloc/malloc.h>, darwin: ask `zone` (null: every zone) to release
+/// `goal` bytes (0: as much as it can). The bytes released.
+extern "c" fn malloc_zone_pressure_relief(zone: ?*anyopaque, goal: usize) usize;
+
 // ---------------------------------------------------------------------------
 // 6.2 Clocks: today's src/platform/clock.zig
 // ---------------------------------------------------------------------------

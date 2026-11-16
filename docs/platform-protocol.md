@@ -342,6 +342,7 @@ today; a lane that implements the capability flips the constant.
 | `logicalProcessorCount` | `() u32` | any | navigator.hardwareConcurrency. |
 | `deviceMemoryGiB` | `() f64` | any | navigator.deviceMemory before Device Memory's rounding. |
 | `residentMemory` | `() ?MemoryReading` [resident_memory] | any | Diagnostics (tools). |
+| `releaseFreeMemory` | `(level: MemoryRelease) usize` | any | Return the system allocator's free memory to the OS (glibc `malloc_trim(0)`; darwin `malloc_zone_pressure_relief(NULL, 0)`, without effect on macOS 26 and later). `level`: `idle` (an event loop with nothing to run) or `pressure`. The bytes returned, 0 if none or unknown. Never from inside a task: the caller holds the rule for when (`browser/memory_release.zig`). |
 
 ### 6.2 Clocks (HR-Time 2.1)
 

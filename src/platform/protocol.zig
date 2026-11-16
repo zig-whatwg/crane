@@ -547,6 +547,31 @@ pub inline fn residentMemory() ?MemoryReading {
     return impl.residentMemory();
 }
 
+/// How hard the host wants the allocator's free memory back
+/// (`releaseFreeMemory`): `idle` from an event loop with nothing to run -
+/// bounded work, as Chrome's MemoryReclaimer::ReclaimFast and Firefox's idle
+/// purge task; `pressure` when the OS is short of memory - everything,
+/// whatever it costs, as ReclaimAll and jemalloc_free_dirty_pages.
+pub const MemoryRelease = enum(u8) { idle, pressure };
+
+/// Return the system allocator's free memory to the OS: what the process
+/// freed and the allocator kept. glibc: malloc_trim(0), which also reaches
+/// the free blocks between live ones that no malloc threshold returns.
+/// darwin: malloc_zone_pressure_relief(NULL, 0) - without effect on macOS 26
+/// and later, whose allocator ignores it (its freed pages wait in a ring
+/// only the kernel drains). The calls WebKit makes (WebProcess::
+/// releaseSystemMallocMemory; MemoryPressureHandler::platformReleaseMemory).
+/// Both built-in implementations do the same at both levels; the level is
+/// for a platform with an allocator of its own. The bytes returned, as far as
+/// the platform can tell: 0 when nothing was, or when it cannot tell. It
+/// takes the allocator's locks and its time grows with what it returns
+/// (glibc 2.43: about 8 ms for 275 MB), so the caller decides when: never
+/// from inside a task (browser/memory_release.zig holds the rule). Any
+/// thread.
+pub inline fn releaseFreeMemory(level: MemoryRelease) usize {
+    return impl.releaseFreeMemory(level);
+}
+
 // ============================================================================
 // 6.2 Clocks (HR-Time 2.1)
 // ============================================================================
