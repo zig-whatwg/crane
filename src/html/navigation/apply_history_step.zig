@@ -1012,6 +1012,21 @@ pub fn beginPushReplace(navigable: *BrowsingContext, waiter: dom.navigables.Trav
     history.holdAllViews();
 }
 
+/// The session history traversal steps appended to `navigable`'s
+/// traversable before now have run, as far as they go without waiting
+/// (TraversalQueue.catchUp says why and what runs). For the task of
+/// "attempt to populate the history entry's document" step 5, before its
+/// step 5.1 reads the navigable's ongoing navigation: a traversal appended
+/// before the response's task ran - history.back() right after
+/// location.href= - has set it to "traversal" by then (step 8.4), and the
+/// navigation ends. Script may run (a traversal's beforeunload and navigate
+/// events): the caller holds nothing across it.
+pub fn catchUp(navigable: *BrowsingContext) void {
+    const top = navigable.getTop();
+    const navigables = top.navigables orelse return;
+    TraversalQueue.catchUp(navigables, top.id);
+}
+
 /// Whether `bc` is `ancestor` or one of its descendants.
 fn isSelfOrUnder(bc: *BrowsingContext, ancestor: *BrowsingContext) bool {
     var at: ?*BrowsingContext = bc;
