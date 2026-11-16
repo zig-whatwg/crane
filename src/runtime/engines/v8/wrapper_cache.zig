@@ -1883,6 +1883,38 @@ pub const WrapperCache = struct {
         return true;
     }
 
+    /// Tests of the pool alone (tests/v8/wrapper_cache_pool_test.zig), with
+    /// no engine behind the records: how many records a chunk holds, a
+    /// record issued for `instance` and given back (never in the map, its
+    /// wrapper never set), a walk that frees records, and whether the pool
+    /// is down to one chunk that records are issued from.
+    pub const records_per_chunk = Chunk.count;
+
+    pub fn allocRecordForTest(self: *Self, instance: *runtime.Instance, stamp: u32) error{OutOfMemory}!*Cell {
+        return self.allocCell(instance, stamp);
+    }
+
+    pub fn freeRecordForTest(self: *Self, entry: *Cell) void {
+        self.freeCell(entry);
+    }
+
+    pub fn beginPoolWalkForTest(self: *Self) void {
+        self.beginPoolWalk();
+    }
+
+    pub fn endPoolWalkForTest(self: *Self) void {
+        self.endPoolWalk();
+    }
+
+    pub fn ownsRecordForTest(self: *const Self, entry: *const Cell) bool {
+        return entry.cache() == self;
+    }
+
+    pub fn poolIsOneOpenChunkForTest(self: *const Self) bool {
+        const only = self.chunks orelse return false;
+        return only.next == null and self.partial == only;
+    }
+
     /// Tests of a wrap that runs out of memory: the pool's free records are
     /// set aside - the next `set` asks the allocator for a chunk - until
     /// they are given back. What was in force before, for the give-back.
@@ -2734,67 +2766,8 @@ pub const WrapperCache = struct {
     }
 };
 
-// ============================================================================
-// Tests
-// ============================================================================
-//
-// The cache's behaviour with real wrappers is tests/v8's
-// (wrap1_platform_anchor_test.zig, engine_pending_activity_test.zig,
-// wrapper_cache_tombstones_test.zig, ...). Here: what needs no engine.
-
-const testing = std.testing;
-
-test "WrapperCache - init and deinit" {
-    // Mock V8 Context (just a dummy pointer for testing)
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    try testing.expectEqual(@as(usize, 0), cache.size());
-}
-
-test "WrapperCache - the pool issues 32-byte records that find their cache, and takes them back" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // A slab slot's worth of memory to stand for instances: only the stamp
-    // word of each is read (SlabAllocator.generationOf).
-    var slots: [2 * Chunk.count + 1][4]u64 = undefined;
-    for (&slots) |*slot| slot.* = @splat(0);
-    var cells: [slots.len]*Cell = undefined;
-    for (&slots, &cells) |*slot, *cell| {
-        cell.* = try cache.allocCell(@ptrCast(slot), 7);
-        try testing.expect(cell.*.cache() == &cache);
-        try testing.expect(cell.*.bits.in_use and cell.*.bits.boxed);
-        try testing.expectEqual(@as(u32, 7), cell.*.fresh);
-    }
-    // Three chunks for 2 * count + 1 records.
-    var chunks: usize = 0;
-    var at = cache.chunks;
-    while (at) |chunk| : (at = chunk.next) chunks += 1;
-    try testing.expectEqual(@as(usize, 3), chunks);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    for (cells) |cell| cache.freeCell(cell);
-    // The chunks nothing uses went back to the allocator; one stays.
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-    try testing.expect(cache.chunks != null and cache.chunks.?.next == null and cache.partial == cache.chunks);
-    // A freed record is issued again before the pool grows.
-    const again = try cache.allocCell(@ptrCast(&slots[0]), 0);
-    try testing.expectEqual(cells[cells.len - 1], again);
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-    cache.freeCell(again);
-
-    // A walk that frees records gives no chunk back until it ends.
-    for (&slots, &cells) |*slot, *cell| cell.* = try cache.allocCell(@ptrCast(slot), 0);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    cache.beginPoolWalk();
-    for (cells) |cell| cache.freeCell(cell);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    cache.endPoolWalk();
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-}
+// No test lives in this file: a test block inside src/runtime/engines/v8/ is
+// never collected (build.zig, "V8 engine tests"). The pool's and the map's
+// tests are tests/v8/wrapper_cache_pool_test.zig and
+// wrap1_platform_anchor_test.zig; the cache with mock wrappers is
+// wrapper_cache_gc_test.zig.
