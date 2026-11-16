@@ -182,13 +182,15 @@ pub const BrowserScope = struct {
         return scope;
     }
 
-    /// Whether a scope's arena poisons and quarantines a freed state block
-    /// without being asked (runtime.ArenaAllocator.poison_freed), for a
-    /// build `mode`: a Debug build's does - the unit tests and the
-    /// bug-finding WPT runner's Crane modules - so a read of a FREED node
-    /// block finds the poison there, where it found the bytes its release
-    /// left (lane uaf1: NodeBase.freed_owner_word). No release build's does:
-    /// there only a Browser that asked (BrowserConfig.poison_freed_state).
+    /// Whether a scope's arena poisons a freed state block without being
+    /// asked (runtime.ArenaAllocator.poison_freed), for a build `mode`: a
+    /// Debug build's does - the unit tests and the bug-finding WPT runner's
+    /// Crane modules - so a read of a FREED node block finds the poison
+    /// there, where it found the bytes its release left (lane uaf1:
+    /// NodeBase.freed_owner_word). No release build's does: there only a
+    /// Browser that asked (BrowserConfig.poison_freed_state), which also
+    /// gets the arena's quarantine (`quarantine_freed`); the default never
+    /// does, so a Debug build reuses a freed block as production does.
     /// Pinned for every mode by a test.
     pub fn poisonsFreedStateByDefault(mode: std.builtin.OptimizeMode) bool {
         return mode == .debug;

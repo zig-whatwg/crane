@@ -6,11 +6,13 @@
 //! size class (a LIFO free list). So the poison a detection build writes
 //! over a freed block was readable only until the next node of that size
 //! was made: a read through a pointer kept past the free found the NEW
-//! occupant, in every build, and no gate saw it. A poisoning arena now
-//! keeps a freed block out of reuse - all poison, in a FIFO queue with a
-//! byte budget, as AddressSanitizer's quarantine does - and checks that it
-//! is still all poison when it leaves the queue (a write after the free).
-//! Production keeps the LIFO lists: `createRaw` is the same code either way.
+//! occupant, in every build, and no gate saw it. An arena whose Browser
+//! asked for poisoned frees (the bug-finding WPT runner) now keeps a freed
+//! block out of reuse - all poison, in a FIFO queue with a byte budget, as
+//! AddressSanitizer's quarantine does - and checks that it is still all
+//! poison when it leaves the queue (a write after the free). Production
+//! keeps the LIFO lists, and so does a Debug build's default, which only
+//! poisons: `createRaw` is the same code either way.
 //!
 //! RED at 7fd36b074a9 (lane wb1's tip merged, before the quarantine): no
 //! `quarantine_bytes`, and a poisoned block comes straight back.
@@ -24,9 +26,12 @@ const has_quarantine = @hasDecl(ArenaAllocator, "quarantine_bytes");
 /// The queue's header: its link and the block's class.
 const header = 2 * @sizeOf(usize);
 
-fn poisoningArena() ArenaAllocator {
+/// An arena as the bug-finding WPT runner's Browser has it
+/// (BrowserConfig.poison_freed_state): poison and quarantine.
+fn quarantiningArena() ArenaAllocator {
     var arena = ArenaAllocator.init(testing.allocator);
     arena.poison_freed = true;
+    arena.quarantine_freed = true;
     return arena;
 }
 
@@ -51,13 +56,34 @@ test "a scope's arena poisons freed state by default in a Debug build, and in no
     var scope = runtime.BrowserScope.init(testing.allocator);
     defer scope.deinit();
     try testing.expectEqual(rule(@import("builtin").mode), scope.arena.poison_freed);
+    // The quarantine is no default's: only a Browser whose config asked has
+    // one (tests/html/perf2b5_poison_config_test.zig), so a Debug build's
+    // tests measure the reuse production has.
+    try testing.expect(!scope.arena.quarantine_freed);
     // A released NodeBase is poisoned wherever a freed block is.
     try testing.expectEqual(scope.arena.poison_freed, scope.poisonsReleasedNodes());
 }
 
-test "a poisoning arena keeps a freed block out of reuse, all poison to the end of its class" {
+test "an arena that poisons without the quarantine - a Debug build's default - poisons to the end of the class and reissues at once" {
     if (comptime !has_quarantine) return error.NoQuarantine;
-    var arena = poisoningArena();
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    arena.poison_freed = true;
+    const held = ArenaAllocator.heldBytes(100, 8);
+    const block = try arena.createRaw(100, 8);
+    @memset(block[0..held], 0x11);
+    arena.destroyRaw(block, 100, 8);
+    try testing.expectEqual(@as(usize, 0), arena.quarantinedBytes());
+    // The first word is the free list's link; the rest of the block is
+    // poison, past the request too.
+    for (block[@sizeOf(usize)..held]) |byte| try testing.expectEqual(ArenaAllocator.poison_byte, byte);
+    try testing.expectEqual(block, try arena.createRaw(100, 8));
+    arena.destroyRaw(block, 100, 8);
+}
+
+test "a quarantining arena keeps a freed block out of reuse, all poison to the end of its class" {
+    if (comptime !has_quarantine) return error.NoQuarantine;
+    var arena = quarantiningArena();
     defer arena.deinit();
 
     // A div-sized state: 112 bytes, its own class; and a request that does
@@ -86,7 +112,7 @@ test "a poisoning arena keeps a freed block out of reuse, all poison to the end 
 
 test "the quarantine is bounded and first in, first out: the oldest block is reissued once the budget is behind it" {
     if (comptime !has_quarantine) return error.NoQuarantine;
-    var arena = poisoningArena();
+    var arena = quarantiningArena();
     defer arena.deinit();
 
     const size = 112;
@@ -120,9 +146,9 @@ test "the quarantine is bounded and first in, first out: the oldest block is rei
     arena.destroyRaw(second, size, 8);
 }
 
-test "a create/discard loop in a poisoning arena holds the budget, not the loop" {
+test "a create/discard loop in a quarantining arena holds the budget, not the loop" {
     if (comptime !has_quarantine) return error.NoQuarantine;
-    var arena = poisoningArena();
+    var arena = quarantiningArena();
     defer arena.deinit();
     const size = 112;
     var i: usize = 0;
@@ -141,7 +167,7 @@ test "a create/discard loop in a poisoning arena holds the budget, not the loop"
 
 test "the write check's question: the first byte of a quarantined block that is not the poison" {
     if (comptime !has_quarantine) return error.NoQuarantine;
-    var arena = poisoningArena();
+    var arena = quarantiningArena();
     defer arena.deinit();
     const block = try arena.createRaw(112, 8);
     arena.destroyRaw(block, 112, 8);
@@ -158,7 +184,7 @@ test "the write check's question: the first byte of a quarantined block that is 
 
 test "a block of no class is poisoned and never reissued; a reset drops the queue" {
     if (comptime !has_quarantine) return error.NoQuarantine;
-    var arena = poisoningArena();
+    var arena = quarantiningArena();
     defer arena.deinit();
     const big = try arena.createRaw(20_000, 8);
     arena.destroyRaw(big, 20_000, 8);

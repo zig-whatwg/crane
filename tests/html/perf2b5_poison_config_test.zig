@@ -20,6 +20,9 @@ test "a Browser poisons freed state when its config asks, and in a Debug build e
         const debug = @import("builtin").mode == .debug;
         try testing.expectEqual(debug or poison, browser.scope.arena.poison_freed);
         try testing.expectEqual(debug or poison, browser.scope.poisonsReleasedNodes());
+        // The arena's quarantine - a freed block kept out of reuse - is the
+        // config's alone: no default turns it on.
+        try testing.expectEqual(poison, browser.scope.arena.quarantine_freed);
     }
     // The default is off.
     const default_config: browser_mod.BrowserConfig = .{};

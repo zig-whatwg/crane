@@ -129,9 +129,12 @@ pub const BrowserConfig = struct {
     /// Whether a platform object's freed state - its State block, and a
     /// node's NodeBase released at its teardown - is overwritten with the
     /// poison byte (runtime.ArenaAllocator.poison_freed), so a read after the
-    /// free faults instead of finding the old bytes. For the WPT correctness
-    /// runner, which poisons its allocator's frees by default (the user,
-    /// 2026-11-05); off by default - never in a product build.
+    /// free faults instead of finding the old bytes - and kept out of reuse
+    /// for a while, so the poison is still there when a stale read comes
+    /// (runtime.ArenaAllocator.quarantine_freed, lane uaf1). For the WPT
+    /// bug-finding runner, which poisons its allocator's frees by default
+    /// (the user, 2026-11-05); off by default - never in a product build. A
+    /// Debug build poisons either way, without the quarantine.
     poison_freed_state: bool = false,
     /// How many pages the back/forward cache keeps (back_forward_cache.zig):
     /// 8 by default - Firefox's desktop cap, for the whole Browser
@@ -261,7 +264,13 @@ pub const Browser = struct {
         errdefer scope.deinit();
         // The config turns the poison on, never off: a Debug build's scope
         // poisons already (runtime.BrowserScope.poisonsFreedStateByDefault).
-        if (config.poison_freed_state) scope.arena.poison_freed = true;
+        // And with it the arena's quarantine, which no default turns on: a
+        // freed state block stays out of reuse, all poison, for a while
+        // (runtime.ArenaAllocator.quarantine_freed).
+        if (config.poison_freed_state) {
+            scope.arena.poison_freed = true;
+            scope.arena.quarantine_freed = true;
+        }
         const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform });
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;

@@ -18,7 +18,8 @@
 //!   own, and a holder of the address may ask;
 //! - a FREED block's owner word is the arena's poison in a build that
 //!   poisons freed state (every Debug build, the bug-finding WPT runner),
-//!   and stays so while the block waits in the arena's quarantine;
+//!   until the block is reissued - at the next request of its size in a
+//!   unit test, after the arena's quarantine in the bug-finding runner;
 //! - a liveness test that reads that word panics in a Debug build
 //!   (`NodeBase.freedBlockReadPanics`, which `registeredInstance` and
 //!   `stands` ask first). The panic ends the process, so the tests pin the
@@ -82,8 +83,11 @@ test "released, then freed: the owner word is 0 while the block is the node's ow
     try nodes.open(testing.allocator);
     defer nodes.close();
     // A Debug build's scope poisons freed state by default; said here, so
-    // the test reads the same in any mode.
+    // the test reads the same in any mode. And the quarantine, as the
+    // bug-finding WPT runner's Browser has it: the freed block stays out of
+    // reuse, so the reads of it below are of the poison, not of a new node.
     nodes.scope.arena.poison_freed = true;
+    nodes.scope.arena.quarantine_freed = true;
     const doc = try nodes.document();
     const div = try nodes.element(doc, "div");
     const base = baseOf(div);
