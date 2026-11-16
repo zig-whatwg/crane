@@ -108,6 +108,8 @@ using NativeStepScope = Isolate::SuppressMicrotaskExecutionScope;
 static constexpr ExternalPointerTypeTag kCraneExternalTag = kExternalPointerTypeTagDefault;
 static constexpr EmbedderDataTypeTag kCraneEmbedderDataTag = kEmbedderDataTypeTagDefault;
 
+class CraneInSandboxAllocator;
+
 /// V8's platform and its start, once per process (v8_Platform_Start). V8
 /// itself allows one start: V8::InitializePlatform and V8::Initialize advance
 /// a process-wide state and FATAL on a second or concurrent start (13.1.203
@@ -142,6 +144,15 @@ struct PlatformStart {
     std::string flags;
     /// v8_Platform_Dispose ran: V8 cannot start again in this process.
     bool disposed = false;
+    /// Crane's in-sandbox allocator, made by the start and handed to V8
+    /// (v8::V8::SetInSandboxAllocator) before `started` is published; null
+    /// where V8 has no sandbox. NEVER deleted, as `platform`: V8's sandbox,
+    /// every isolate's ArrayBuffer allocator and every BackingStore - one
+    /// may be released after its isolate, on any thread, even after
+    /// V8::Dispose - call it, and V8's sweeper frees stores from worker
+    /// threads that run until the process ends. Its one lock orders them.
+    /// Held here, it stays reachable to leak checkers.
+    CraneInSandboxAllocator* sandbox_allocator = nullptr;
     /// How many times v8_SetFlagsFromString set flags outside the start
     /// (diagnostics: v8_Platform_FlagWrites). V8 has no public API to read
     /// its flags back; they freeze when it starts, so a write before the
@@ -2508,6 +2519,322 @@ static Platform* defaultPlatform() {
 /// The per-isolate seed V8 asks for (defined with IsolateData, below).
 static bool craneEntropySource(unsigned char* buffer, size_t length);
 
+// ============================================================================
+// Crane's in-sandbox allocator
+// ============================================================================
+//
+// The memory behind every ArrayBuffer and behind V8's own in-sandbox blocks
+// (BigInt digits, regexp result vectors, number conversions, wasm tiering
+// budgets: V8 15.7 src/sandbox/sandbox-malloc.h, src/execution/isolate.cc
+// BigIntPlatform). sandbox_allocator.zig is the allocator and says why Crane
+// has its own; this is its V8 side - the v8::Allocator V8 calls, the lock,
+// the zero-fill, and the page operations on V8's sandbox address space. One
+// per process, as V8 has one sandbox per process: v8_Platform_Start makes it
+// and hands it to V8 (v8::V8::SetInSandboxAllocator, as V8's d8 does with its
+// PartitionAlloc one, src/d8/d8.cc PAInSandboxAllocator).
+
+#ifdef V8_ENABLE_SANDBOX
+
+extern "C" {
+
+/// sandbox_allocator_exports.zig's state: the chunk records, outside the
+/// sandbox.
+struct CraneSandboxAllocatorState;
+
+/// sandbox_allocator.zig Stats.
+struct CraneSandboxAllocatorStats {
+    uint64_t reserved_chunks;
+    uint64_t high_water_chunks;
+    uint64_t free_chunks;
+    uint64_t retained_chunks;
+    uint64_t retained_bytes;
+    uint64_t live_blocks;
+    uint64_t live_bytes;
+    uint64_t grows;
+    uint64_t recommits;
+    uint64_t discards;
+    uint64_t decommits;
+};
+
+// The allocator's page operations (sandbox_allocator.zig `Pages`), on V8's
+// sandbox address space: V8's public v8::VirtualAddressSpace, which makes the
+// OS calls (V8 15.7 src/base/platform/platform-posix.cc). `address` and
+// `size` are whole 1 MiB chunks where access changes (set_read_write,
+// decommit) and whole pages of the space's page_size() where it does not
+// (discard, recommit: the allocator recommits what a block uses, not its
+// chunks). Handed to the Zig side as a table (kSandboxPageOps): it names no
+// symbol of this file, so Zig code that is compiled without this file still
+// links.
+
+/// Inaccessible pages become readable and writable, and read zero.
+static bool sandboxPagesSetReadWrite(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+    return space->SetPagePermissions(address, size, PagePermissions::kReadWrite);
+}
+
+/// Give the pages' memory back; they stay accessible. macOS:
+/// MADV_FREE_REUSABLE, which takes them out of the task's footprint until
+/// sandboxPagesRecommit; Linux: MADV_DONTNEED.
+static bool sandboxPagesDiscard(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+    return space->DiscardSystemPages(address, size);
+}
+
+/// Account discarded pages again before they are used ("Discarded pages must
+/// be recommitted with their original permissions before they are used
+/// again", v8-platform.h): MADV_FREE_REUSE on macOS, nothing on Linux. V8's
+/// default allocator never calls it - the under-count this allocator exists
+/// to end.
+static bool sandboxPagesRecommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+    return space->RecommitPages(address, size, PagePermissions::kReadWrite);
+}
+
+/// Give the pages' memory back and make them inaccessible; they read zero
+/// when made accessible again.
+static bool sandboxPagesDecommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+    return space->DecommitPages(address, size);
+}
+
+/// sandbox_allocator_exports.zig PageOps.
+struct CraneSandboxPageOps {
+    bool (*set_read_write)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*discard)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*recommit)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*decommit)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+};
+
+// sandbox_allocator_exports.zig. Each is called with the allocator's lock held.
+CraneSandboxAllocatorState* crane_SandboxAllocator_create(VirtualAddressSpace* space, const CraneSandboxPageOps* ops, uintptr_t base, size_t size, size_t page_size);
+void* crane_SandboxAllocator_allocate(CraneSandboxAllocatorState* state, size_t size, bool* zeroed);
+void crane_SandboxAllocator_free(CraneSandboxAllocatorState* state, void* block);
+void crane_SandboxAllocator_releaseRetained(CraneSandboxAllocatorState* state);
+void crane_SandboxAllocator_stats(const CraneSandboxAllocatorState* state, CraneSandboxAllocatorStats* out);
+
+}  // extern "C"
+
+/// The page operations the Zig side calls: constant, alive for the process.
+static constexpr CraneSandboxPageOps kSandboxPageOps = {
+    sandboxPagesSetReadWrite,
+    sandboxPagesDiscard,
+    sandboxPagesRecommit,
+    sandboxPagesDecommit,
+};
+
+/// The process's in-sandbox allocator, as V8 calls it. Thread-safe ("V8 will
+/// invoke these methods concurrently from multiple threads", v8-platform.h):
+/// one lock around the state, as V8's default has one mutex and
+/// PartitionAlloc one lock per root. The zero-fill runs outside it.
+///
+/// NEVER deleted (g_platform.sandbox_allocator says why), so every pointer to
+/// it stays valid: an isolate's ArrayBuffer allocator, a BackingStore freed
+/// after its isolate, V8's own sandbox record.
+class CraneInSandboxAllocator final : public v8::Allocator {
+ public:
+    CraneInSandboxAllocator() = default;
+    CraneInSandboxAllocator(const CraneInSandboxAllocator&) = delete;
+    CraneInSandboxAllocator& operator=(const CraneInSandboxAllocator&) = delete;
+
+    void* Allocate(size_t size) override {
+        bool zeroed = false;
+        void* block = AllocateBlock(size, &zeroed);
+        if (block && !zeroed) memset(block, 0, size);
+        return block;
+    }
+
+    void* AllocateUninitialized(size_t size) override {
+        bool zeroed = false;
+        return AllocateBlock(size, &zeroed);
+    }
+
+    void* AllocateUninitializedOrCrash(size_t size) override {
+        void* block = AllocateUninitialized(size);
+        if (!block) {
+            // V8's default ends the process here too (FatalProcessOutOfMemory).
+            fprintf(stderr, "v8_wrapper: out of memory: the in-sandbox allocator has no block of %zu bytes\n", size);
+            abort();
+        }
+        return block;
+    }
+
+    void Free(void* block) override {
+        if (!block) return;
+        std::lock_guard<std::mutex> guard(mutex_);
+        // After V8's end the sandbox's memory is gone with every block in it.
+        if (ended_) return;
+        crane_SandboxAllocator_free(state_, block);
+    }
+
+    /// V8 is about to end (V8::Dispose frees the sandbox's whole reservation):
+    /// from here no page is touched, an allocation fails and a free does
+    /// nothing - a BackingStore released after V8's end frees nothing that
+    /// still exists.
+    void End() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        ended_ = true;
+    }
+
+    /// The allocator's figures; false before its first allocation.
+    bool Stats(CraneSandboxAllocatorStats* out) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!state_) return false;
+        crane_SandboxAllocator_stats(state_, out);
+        return true;
+    }
+
+    /// Give back the emptied chunks kept for reuse.
+    void ReleaseRetained() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (state_ && !ended_) crane_SandboxAllocator_releaseRetained(state_);
+    }
+
+ private:
+    /// The reservation: 8 GiB of the sandbox's address space, halved down to
+    /// 1 GiB while the sandbox has no room - V8's default allocator's sizes
+    /// (DefaultInSandboxAllocator::LazyInitialize), so the largest
+    /// ArrayBuffer is what it was.
+    static constexpr size_t kMaxReservation = size_t{8} << 30;
+    static constexpr size_t kMinReservation = size_t{1} << 30;
+    /// sandbox_allocator.zig chunk_size: the reservation's alignment.
+    static constexpr size_t kChunkSize = size_t{1} << 20;
+
+    void* AllocateBlock(size_t size, bool* zeroed) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (ended_) return nullptr;
+        if (!state_ && !Reserve()) return nullptr;
+        return crane_SandboxAllocator_allocate(state_, size, zeroed);
+    }
+
+    /// Reserve the range, inaccessible, on the first allocation (as V8's
+    /// default does): nothing is committed until a block is asked for.
+    bool Reserve() {
+        VirtualAddressSpace* space = V8::GetSandboxAddressSpace();
+        size_t size = kMaxReservation;
+        uintptr_t base = 0;
+        while (size >= kMinReservation) {
+            base = space->AllocatePages(VirtualAddressSpace::kNoHint, size, kChunkSize, PagePermissions::kNoAccess);
+            if (base) break;
+            size /= 2;
+        }
+        if (!base) return false;
+        state_ = crane_SandboxAllocator_create(space, &kSandboxPageOps, base, size, space->page_size());
+        if (!state_) {
+            space->FreePages(base, size);
+            return false;
+        }
+        return true;
+    }
+
+    std::mutex mutex_;
+    /// The chunk records (Zig, outside the sandbox). Never destroyed.
+    CraneSandboxAllocatorState* state_ = nullptr;
+    bool ended_ = false;
+};
+
+/// An isolate's ArrayBuffer allocator: the process's in-sandbox allocator,
+/// zero-filling only where V8 asks for zeroes (gin's ArrayBufferAllocator
+/// does the same over PartitionAlloc, chromium gin/array_buffer.cc; V8's
+/// default wrapper zero-fills both, src/api/api.cc ArrayBufferAllocator).
+/// Owned as V8's default was: by its isolate and every BackingStore it
+/// allocated (CreateParams::array_buffer_allocator_shared).
+class CraneArrayBufferAllocator final : public ArrayBuffer::Allocator {
+ public:
+    explicit CraneArrayBufferAllocator(CraneInSandboxAllocator* memory)
+        : memory_(memory), v8_default_(ArrayBuffer::Allocator::NewDefaultAllocator()) {}
+
+    void* Allocate(size_t length) override { return memory_->Allocate(length); }
+    void* AllocateUninitialized(size_t length) override { return memory_->AllocateUninitialized(length); }
+    void Free(void* data, size_t) override { memory_->Free(data); }
+    size_t MaxAllocationSize() const override { return v8_default_->MaxAllocationSize(); }
+    /// The sandbox's page allocator, for the stores V8 maps itself
+    /// (resizable buffers, wasm memories): V8's own default's answer.
+    PageAllocator* GetPageAllocator() override { return v8_default_->GetPageAllocator(); }
+
+ private:
+    /// The process's allocator: never deleted, so valid for any BackingStore.
+    CraneInSandboxAllocator* memory_;
+    std::unique_ptr<ArrayBuffer::Allocator> v8_default_;
+};
+
+#endif  // V8_ENABLE_SANDBOX
+
+/// A new isolate's ArrayBuffer allocator, OWNED by the caller: Crane's over
+/// the process's in-sandbox allocator; V8's default where V8 has no sandbox
+/// (malloc). After v8_Platform_Start.
+static ArrayBuffer::Allocator* newArrayBufferAllocator() {
+#ifdef V8_ENABLE_SANDBOX
+    if (g_platform.sandbox_allocator) return new CraneArrayBufferAllocator(g_platform.sandbox_allocator);
+#endif
+    return ArrayBuffer::Allocator::NewDefaultAllocator();
+}
+
+extern "C" {
+
+/// tests/v8: the process's in-sandbox allocator's figures (sandbox_allocator.zig
+/// Stats). False when V8 has not started, has no sandbox, or the allocator
+/// has made no allocation yet.
+bool v8_test_SandboxAllocator_Stats(void* out) {
+#ifdef V8_ENABLE_SANDBOX
+    if (!g_platform.started.load(std::memory_order_acquire) || !g_platform.sandbox_allocator) return false;
+    return g_platform.sandbox_allocator->Stats(static_cast<CraneSandboxAllocatorStats*>(out));
+#else
+    (void)out;
+    return false;
+#endif
+}
+
+/// tests/v8: give back the emptied chunks the process's in-sandbox allocator
+/// keeps for reuse.
+void v8_test_SandboxAllocator_ReleaseRetained() {
+#ifdef V8_ENABLE_SANDBOX
+    if (!g_platform.started.load(std::memory_order_acquire) || !g_platform.sandbox_allocator) return;
+    g_platform.sandbox_allocator->ReleaseRetained();
+#endif
+}
+
+/// tests/v8: a block of the process's in-sandbox allocator, zero-filled or
+/// not, as V8's own in-sandbox users take one; null with no memory or no
+/// allocator. OWNED: v8_test_SandboxAllocator_Free. Any thread.
+void* v8_test_SandboxAllocator_Allocate(size_t size, bool zero) {
+#ifdef V8_ENABLE_SANDBOX
+    if (!g_platform.started.load(std::memory_order_acquire) || !g_platform.sandbox_allocator) return nullptr;
+    return zero ? g_platform.sandbox_allocator->Allocate(size) : g_platform.sandbox_allocator->AllocateUninitialized(size);
+#else
+    (void)size;
+    (void)zero;
+    return nullptr;
+#endif
+}
+
+/// tests/v8: free a block v8_test_SandboxAllocator_Allocate returned.
+void v8_test_SandboxAllocator_Free(void* block) {
+#ifdef V8_ENABLE_SANDBOX
+    if (g_platform.sandbox_allocator) g_platform.sandbox_allocator->Free(block);
+#else
+    (void)block;
+#endif
+}
+
+/// tests/v8: `buffer`'s BackingStore, held as a transferred or serialized
+/// ArrayBuffer's is - by a reference that is no isolate's and may outlive
+/// the one that allocated it. OWNED: v8_test_BackingStore_Release, on any
+/// thread, before or after the isolate ends.
+void* v8_test_BackingStore_Hold(Global<ArrayBuffer>* buffer) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope scope(isolate);
+    return new std::shared_ptr<BackingStore>(buffer->Get(isolate)->GetBackingStore());
+}
+
+/// tests/v8: the first byte's address of a held store.
+void* v8_test_BackingStore_Data(void* held) {
+    return (*static_cast<std::shared_ptr<BackingStore>*>(held))->Data();
+}
+
+/// tests/v8: drop a held store's reference; the last one frees its memory
+/// through the allocator of the isolate that made it.
+void v8_test_BackingStore_Release(void* held) {
+    delete static_cast<std::shared_ptr<BackingStore>*>(held);
+}
+
+}  // extern "C"
+
 /// The address space cppgc's cage asks for (cppgc::InitializeProcess): 16 GB,
 /// as Chromium's on desktop (gin/cppgc.cc kCageSize).
 static constexpr size_t kCppgcCageBytes = static_cast<size_t>(16) * 1024 * 1024 * 1024;
@@ -2578,6 +2905,15 @@ int v8_Platform_Start(const char* flags) {
             // The state is V8's own, process-wide by design, under this lock.
             cppgc::InitializeProcess(g_platform.platform->GetPageAllocator(), kCppgcCageBytes);
             V8::Initialize();
+#ifdef V8_ENABLE_SANDBOX
+            // Crane's in-sandbox allocator in place of V8's default: "after
+            // V8 is initialized but before the first Isolate is created"
+            // (v8-initialization.h). V8 gets a shared_ptr that deletes
+            // nothing: the allocator is the process's, never deleted
+            // (PlatformStart::sandbox_allocator).
+            g_platform.sandbox_allocator = new CraneInSandboxAllocator();
+            V8::SetInSandboxAllocator(std::shared_ptr<v8::Allocator>(g_platform.sandbox_allocator, [](v8::Allocator*) {}));
+#endif
             g_platform.flags = flags ? flags : "";
             g_platform.started.store(true, std::memory_order_release);
             return kPlatformStartedNow;
@@ -2726,6 +3062,11 @@ extern "C" void v8_Debug_CollectHoldingFinalizers(Isolate* isolate) {
 void v8_Platform_Dispose() {
     std::lock_guard<std::mutex> guard(g_platform.mutex);
     if (g_platform.started.load(std::memory_order_relaxed)) {
+#ifdef V8_ENABLE_SANDBOX
+        // V8::Dispose frees the sandbox's reservation, and the allocator's
+        // range with it: from here the allocator touches no page.
+        if (g_platform.sandbox_allocator) g_platform.sandbox_allocator->End();
+#endif
         V8::Dispose();
         // cppgc's process start's end, after every agent's C++ heap is gone
         // (gin::MaybeShutdownCppgc's place).
@@ -6483,7 +6824,7 @@ Isolate* v8_Isolate_NewWithOptions(const CraneIsolateOptions* options) {
 
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
-        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
+        std::shared_ptr<ArrayBuffer::Allocator>(newArrayBufferAllocator());
     auto record = std::make_unique<IsolateData>();
     applyIsolateOptions(record.get(), options);
     applyHeapConstraints(create_params, options);
@@ -13656,7 +13997,7 @@ void* v8_SnapshotCreator_New(const intptr_t* external_references) {
 
     // Create isolate params with external references
     Isolate::CreateParams params;
-    params.array_buffer_allocator = ArrayBuffer::Allocator::NewDefaultAllocator();
+    params.array_buffer_allocator = newArrayBufferAllocator();
     params.external_references = external_references;
     
     // SnapshotCreator creates and enters its own isolate
@@ -14040,7 +14381,7 @@ Isolate* v8_Isolate_NewFromSnapshotWithOptions(
     // BackingStore it allocated are gone (v8_Isolate_New says why).
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator_shared =
-        std::shared_ptr<ArrayBuffer::Allocator>(ArrayBuffer::Allocator::NewDefaultAllocator());
+        std::shared_ptr<ArrayBuffer::Allocator>(newArrayBufferAllocator());
     create_params.snapshot_blob = &isolate_data->startup_data;
     create_params.external_references = external_references;
     applyHeapConstraints(create_params, options);

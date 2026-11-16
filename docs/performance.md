@@ -369,15 +369,29 @@ and a drift control against the round it repeats: low with low and high with hig
 geometric mean judged against the band, and a side with one level set against the level of the
 other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
 a row: read it with care, a side that truly moved by the whole gap looks the same). The two
-levels of `fetch.loopback-gzip` have another cause, and there the HIGH level is the bytes Crane
-holds (measured on that row only; any row read after many ArrayBuffers were freed can be low the
-same way): V8's default in-sandbox allocator gives
-free 1 MiB chunks up with `MADV_FREE_REUSABLE` and hands them out again without `MADV_FREE_REUSE`,
-and macOS leaves such pages out of the footprint though they are written again (lane mem2,
-2026-11-16: `fetch.loopback-gzip` 100-103 MB in 14 launches of 20 and 139-141 MB in 6, the same
-119-121 MB of dirty pages in both by `vmmap`; turning libmalloc's deferred reclamation off does
-not join them; lesson testing-two-footprint-levels-with-equal-dirty-bytes-are-one-level-
-undercounted.md). Every published ratio - Crane against a browser,
+levels `fetch.loopback-gzip` read until 2026-11-16 had another cause, an under-count: V8's
+default in-sandbox allocator gives free 1 MiB chunks up with `MADV_FREE_REUSABLE` and hands them
+out again without `MADV_FREE_REUSE`, and macOS leaves such pages out of the footprint though they
+are written again (lane mem2: 100-103 MB in 14 launches of 20 and 139-141 MB in 6; lesson
+testing-two-footprint-levels-with-equal-dirty-bytes-are-one-level-undercounted.md). Crane now has
+its own in-sandbox allocator (lane ab1, `src/runtime/engines/v8/sandbox_allocator.zig`), which
+recommits the pages a block uses before it hands them out, so the footprint is the process's
+dirty pages less about 1 MB in every launch. **The rows read after many ArrayBuffers were freed
+rose with that merge, and the rise is the reading, not memory** (chat.local, 20 launches a side,
+the tip against main 4d4cedb50d9; MB, median, with libmalloc's deferred reclamation off in
+brackets): `fetch.loopback-gzip` 105.1 -> 145.4 (78.7 -> 119.7), its peak the same;
+`fetch.loopback-br` steady 130.5 -> 131.7 (101.6 -> 103.2) and peak 131.9 -> 157.0 (101.7 ->
+131.0); `fetch.loopback-stream` steady 97.5 -> 99.1 (78.7 -> 80.3) and peak 101.7 -> 135.1 (84.2
+-> 108.8). With every in-sandbox allocation logged, the two allocators hold the same for the
+same live bytes: dirty pages less live in-sandbox bytes 79.9-82.8 MiB on the tip and 79.3-81.7
+on main, four launches each. What these rows hold at their mark is garbage V8 has not freed yet,
+and how much is left differs from launch to launch on either allocator - on the gzip row 36 to
+39 of its 1 MiB bodies and none to 41 of the stream row's 176 KiB pieces, 36 to 46 MiB - so the
+gzip row's launches spread over about 10 MB (113-122 with the reclamation off) and
+`fetch.loopback-stream` reads about 80 MB in 15 launches of 20 and about 122 in the other 5:
+two states of the collector, both counted, not one level under-read (lesson
+testing-footprint-levels-of-uncollected-garbage-hold-different-live-sets.md). A round measured
+before that merge is low on these rows by what was reused, up to about 42 MB. Every published ratio - Crane against a browser,
 ReleaseFast against ReleaseSafe, a round against the first - stays the medians'. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
