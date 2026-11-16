@@ -239,7 +239,7 @@ pub const ElementWithBase = struct {
 
     /// Get first child
     pub fn getFirstChild(self: *const ElementWithBase) ?*NodeBase {
-        return self.base.first_child;
+        return self.base.firstChild();
     }
 
     /// Get last child
@@ -249,7 +249,7 @@ pub const ElementWithBase = struct {
 
     /// Check if element has children
     pub fn hasChildNodes(self: *const ElementWithBase) bool {
-        return self.base.first_child != null;
+        return self.base.firstChild() != null;
     }
 
     /// Get child nodes count

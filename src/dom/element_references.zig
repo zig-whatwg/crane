@@ -99,7 +99,7 @@ pub fn byId(owner: *runtime.Instance, id: []const u8) ?*runtime.Instance {
     const base = bridge.getNodeBase(scope) orelse return null;
     // Blink getElementByIdIncludingDisconnected and WebKit's identically
     // named helper search descendants, excluding the disconnected root.
-    var at = base.first_child;
+    var at = base.firstChild();
     while (at) |node| {
         if (bridge.getInstanceTyped(runtime.Instance, node)) |candidate| {
             if (data.of(candidate)) |element| if (std.mem.eql(u8, element.idValue(), id)) return candidate;
@@ -110,7 +110,7 @@ pub fn byId(owner: *runtime.Instance, id: []const u8) ?*runtime.Instance {
 }
 
 fn next(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != boundary) {
         if (current.next_sibling) |sibling| return sibling;

@@ -1,10 +1,12 @@
-//! NodeRareData and the intrusive registered observer list (lane perf2 batch
-//! 4, R6 part 1; tmp/plans/perf2b4-design.md).
+//! A node's rare data and the intrusive registered observer list (lane perf2
+//! batch 4, R6 part 1; tmp/plans/perf2b4-design.md).
 //!
 //! - A node that never needs rare data has none, and costs no allocation.
-//! - Rare data is made once, on first use, and never moves (Blink
-//!   601c5205e1d5: rare data that reallocated left a caller holding a stale
-//!   pointer into it).
+//! - What a caller holds never moves: a registered observer's record and the
+//!   list's head are blocks of their own (Blink 601c5205e1d5: rare data that
+//!   reallocated left a caller holding a stale pointer into it). The rare
+//!   block itself is the node's one sparse block since lane nm2 and MAY move
+//!   when a field is added (tests/dom/nm2_one_rare_block_test.zig).
 //! - DOM 4.3's registered observer list is a list: entries come back in the
 //!   order they were appended, a removed entry leaves the others in order,
 //!   and a walk may remove the entry it was just given.
@@ -50,26 +52,26 @@ const Observers = struct {
 
 test "a node that never needs rare data has none" {
     var node = bareNode();
-    try testing.expect(node.rareData() == null);
+    try testing.expect(node.rare.block == null);
     try testing.expectEqualStrings("", node.nodeName());
     try testing.expect(!node.hasOwnedNodeName());
     try testing.expect(!node.hasRegisteredObservers());
     var entries = node.registeredObservers();
     try testing.expect(entries.next() == null);
     node.deinitRareData();
-    try testing.expect(node.rareData() == null);
+    try testing.expect(node.rare.block == null);
 }
 
-test "rare data is made once and never moves; the list keeps registration order" {
+test "the list's head is made once and never moves; the list keeps registration order" {
     var observers: Observers = .{};
     var node = bareNode();
     defer node.deinitRareData();
 
     const first = try node.appendRegisteredObserver(observers.registration(0, false));
-    const rare = node.rareData().?;
+    const rare = dom.element_rare_data.get(node.rare, .registered_observers).?;
     const second = try node.appendRegisteredObserver(observers.registration(1, true));
     const third = try node.appendRegisteredObserver(observers.registration(2, false));
-    try testing.expectEqual(rare, node.rareData().?);
+    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
     try observers.expectOrder(&node, &.{ 0, 1, 2 });
 
     // observe() step 7.2: the entry is updated where it is.
@@ -83,10 +85,10 @@ test "rare data is made once and never moves; the list keeps registration order"
     _ = try node.appendRegisteredObserver(transient);
     try observers.expectOrder(&node, &.{ 0, 1, 2, 0 });
 
-    // Removing from the middle leaves the rest in order; the block stays.
+    // Removing from the middle leaves the rest in order; the head stays.
     node.removeRegisteredObserver(second);
     try observers.expectOrder(&node, &.{ 0, 2, 0 });
-    try testing.expectEqual(rare, node.rareData().?);
+    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
 
     // A walk may remove the entry it was just given (disconnect(), the
     // transient removal of notify step 6.3, the node's teardown).
@@ -98,7 +100,7 @@ test "rare data is made once and never moves; the list keeps registration order"
     node.removeRegisteredObserver(third);
     node.removeRegisteredObserver(first);
     try testing.expect(!node.hasRegisteredObservers());
-    try testing.expectEqual(rare, node.rareData().?);
+    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
 }
 
 test "the node name lives in rare data, and an owned one is freed with it" {
@@ -119,6 +121,6 @@ test "the node name lives in rare data, and an owned one is freed with it" {
     try testing.expectEqualStrings("IFRAME", node.nodeName());
 
     node.deinitRareData();
-    try testing.expect(node.rareData() == null);
+    try testing.expect(node.rare.block == null);
     try testing.expectEqualStrings("", node.nodeName());
 }

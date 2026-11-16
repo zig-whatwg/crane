@@ -6,8 +6,12 @@
 //! that almost no node ever uses. The engines keep a node's mutation observer
 //! registrations - and its other cold fields - in rare data made on first use
 //! (WebKit NodeRareData / NodeMutationObserverData, Blink NodeRareData, Gecko
-//! nsINode::nsSlots); Crane's NodeRareData is allocated once and never moved
-//! (Blink 601c5205e1d5 fixed a corruption from rare data that reallocated).
+//! nsINode::nsSlots). Crane's was a fixed NodeRareData, allocated once and
+//! never moved; since lane nm2 it is fields of the node's one sparse rare
+//! block (dom.element_rare_data, Blink's shape since 2026-01), where the
+//! registered observer list's head and the node name's record are blocks of
+//! their own, so neither moves when the block grows (Blink 601c5205e1d5
+//! fixed a corruption from a pointer held across such a grow).
 //!
 //! These pins assert Crane's own layout, in the safe builds the tests and the
 //! WPT runner's Crane modules use (Debug; ReleaseSafe lays out the same: the
@@ -24,7 +28,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 
 const NodeBase = dom.NodeBase;
-const NodeRareData = dom.node_base.NodeRareData;
 const ObserverRegistration = dom.node_base.ObserverRegistration;
 const RegisteredObserver = dom.node_base.RegisteredObserverType;
 
@@ -63,11 +66,14 @@ test "NodeBase keeps the registered observer list and the node name in rare data
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(NodeBase, "rare")));
 }
 
-test "NodeRareData is 104 bytes and a registration record 64" {
-    // The list head (16), the node name (16) and whether it was allocated:
-    // 40; lane perf3 E1 + a Text node's slottable state (64,
-    // tests/dom/perf3e1_text_slottable_test.zig).
-    try expectSize(NodeRareData, 104);
+test "a registration record is 64 bytes, the node name's record 24, and neither is a fixed NodeRareData's" {
+    // NodeRareData was 104 bytes for any one of its fields: the list head
+    // (16), the node name (16) and whether it was allocated, and a Text
+    // node's slottable state (64). Since lane nm2 each is a field of the
+    // node's sparse rare block (tests/dom/nm2_one_rare_block_test.zig): a
+    // registered observer costs the 16-byte block and this 16-byte head.
+    try std.testing.expect(!@hasDecl(dom.node_base, "NodeRareData"));
+    try expectSize(dom.element_rare_data.NodeName, 24);
     // The link (16) and the registered observer (48).
     try expectSize(ObserverRegistration, 64);
 }

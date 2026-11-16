@@ -925,7 +925,7 @@ fn addCreatorCensus(tree_root: *NodeBase, census: *CreatorCensus) void {
 /// The node after `node` in tree order within `tree_root`'s tree (not into
 /// hosted roots), or null at the end.
 pub fn nextInTree(tree_root: *NodeBase, node: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != tree_root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -1345,7 +1345,7 @@ pub fn checkAround(node: *NodeBase) void {
 /// Check every node of `tree_root`'s host-including subtree (tests).
 pub fn verifyTree(tree_root: *NodeBase) CheckError!void {
     try checkNode(tree_root, std.math.maxInt(usize));
-    var child = tree_root.first_child;
+    var child = tree_root.firstChild();
     while (child) |at| : (child = at.next_sibling) try verifyTree(at);
     var hosted: [2]?*NodeBase = undefined;
     for (hostedRootsOf(tree_root, &hosted)) |maybe| if (maybe) |hosted_root| try verifyTree(hosted_root);
@@ -1380,14 +1380,14 @@ fn checkNode(node: *NodeBase, fanout: usize) CheckError!void {
     // walk of its links: a node keeps no child list).
     {
         var children_seen: usize = 0;
-        var walked = node.first_child;
+        var walked = node.firstChild();
         while (walked) |at| : (walked = at.next_sibling) {
             children_seen += 1;
             if (children_seen > fanout) return;
         }
     }
     var total: u64 = @intFromBool(isHeld(node));
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |at| : (child = at.next_sibling) total += at.subtree_holds;
     var hosted: [2]?*NodeBase = undefined;
     for (hostedRootsOf(node, &hosted)) |maybe| if (maybe) |hosted_root| {

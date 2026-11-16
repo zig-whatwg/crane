@@ -39,7 +39,7 @@ pub fn getParentNode(node: anytype) ?*Node {
 /// Get the first child of the given node
 /// O(1) - Direct pointer access via sibling pointers (Phase 1 optimization)
 pub fn getFirstChild(node: anytype) ?*Node {
-    return node.first_child;
+    return node.firstChild();
 }
 
 /// Get the last child of the given node
@@ -149,7 +149,7 @@ pub fn areSiblings(a: anytype, b: anytype) bool {
 /// Check if node has any children
 /// O(1) - Check its first child link
 pub fn hasChildren(node: anytype) bool {
-    return node.first_child != null;
+    return node.firstChild() != null;
 }
 
 /// Check if node is the root (has no parent)
@@ -159,7 +159,7 @@ pub fn isRoot(node: anytype) bool {
 
 /// Check if node is a leaf (has no children)
 pub fn isLeaf(node: anytype) bool {
-    return node.first_child == null;
+    return node.firstChild() == null;
 }
 
 /// Check if node A is following node B (comes after B in tree order)
@@ -748,7 +748,7 @@ pub const ShadowIncludingWalk = struct {
         if (node.is_shadow_host) {
             if (shadowRootForHost(node)) |shadow| return shadow;
         }
-        if (node.first_child) |child| return child;
+        if (node.firstChild()) |child| return child;
         var at = node;
         while (at != self.root) {
             if (at.next_sibling) |sibling| return sibling;
@@ -759,7 +759,7 @@ pub const ShadowIncludingWalk = struct {
             // `at` is a shadow root the walk entered from its host: the
             // host's light children follow its shadow tree.
             const host = hostOfShadowRoot(at) orelse return null;
-            if (host.first_child) |child| return child;
+            if (host.firstChild()) |child| return child;
             at = host;
         }
         return null;

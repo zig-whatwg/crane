@@ -95,7 +95,11 @@ test "Element's rare data is one word, and click()'s flag is a bit of the elemen
     // Element's state's size is pinned in node_block_sizes_test.zig.
     if (comptime !@hasDecl(dom.NodeBase, "ElementBits")) return error.NoElementBits;
     try testing.expect(@hasField(dom.NodeBase.ElementBits, "click_in_progress"));
-    try testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(ElementState, "rare")));
+    // One word: the element's NodeBase's since lane nm2 (it was a second
+    // word in Element's state; tests/dom/nm2_one_rare_block_test.zig).
+    try testing.expect(!@hasField(ElementState, "rare"));
+    try testing.expectEqual(@as(usize, 8), @sizeOf(@FieldType(dom.NodeBase, "rare")));
+    try testing.expect(@FieldType(dom.NodeBase, "rare") == rare_data.Holder);
 }
 
 // A div's whole State block is pinned in ONE place: tests/dom/node_block_sizes_test.zig

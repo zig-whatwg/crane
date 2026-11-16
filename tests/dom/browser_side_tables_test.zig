@@ -70,7 +70,7 @@ const Page = struct {
         // The bridge and the tree.
         const div_base = dom.instance_bridge.getNodeBase(self.div) orelse return error.NoNodeBase;
         const text_base = dom.instance_bridge.getNodeBase(self.text) orelse return error.NoNodeBase;
-        try testing.expectEqual(text_base, div_base.first_child.?);
+        try testing.expectEqual(text_base, div_base.firstChild().?);
         try testing.expect(dom.instance_bridge.getNodeBase(self.orphan) != null);
         // Element's state: the attribute.
         const value = (try interfaces.Element.call_getAttribute(self.div, name("id"))) orelse return error.NoAttribute;
