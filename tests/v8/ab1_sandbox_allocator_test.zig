@@ -424,6 +424,55 @@ test "the ring holds 16 emptied chunks: a seventeenth sends the oldest back" {
     try f.give(top);
 }
 
+test "chunks that empty and fill in turn keep their places in the ring: no system call, however often the others turn" {
+    var f = try Fixture.init(32);
+    defer f.deinit();
+
+    // One operation, as a BigInt product and its decimal string take their
+    // scratch blocks: one large block once, and twenty smaller ones of four
+    // other sizes, each freed before the next is taken. Twenty-one chunks
+    // empty in every operation - more than the ring has places.
+    const top = try f.take(48);
+    const sizes = [_]usize{ 700, 1500, 3000, 6000 };
+    var op: usize = 0;
+    var after_first: sa.Stats = undefined;
+    while (op < 200) : (op += 1) {
+        const large = try f.take(40_000);
+        try f.give(large);
+        var k: usize = 0;
+        while (k < 20) : (k += 1) {
+            const block = try f.take(sizes[k % sizes.len]);
+            try f.give(block);
+        }
+        if (op == 0) after_first = f.allocator.stats();
+    }
+    const end = f.allocator.stats();
+    // Five chunks wait, as after the first operation, and no page was
+    // touched since: the large block's chunk was not pushed out by the
+    // twenty turns of the others.
+    try testing.expectEqual(@as(u64, 5), end.retained_chunks);
+    try testing.expectEqual(after_first.grows, end.grows);
+    try testing.expectEqual(@as(u64, 0), end.discards + end.recommits + end.decommits);
+
+    // Sixteen chunks empty while one of the five is in use (two of the
+    // sixteen are chunks that waited: the 3,072 and 6,144-byte classes).
+    // The fourteen new to the ring take the oldest places: the two empty
+    // chunks they find there go back to the OS, and the one in use only
+    // loses its place - it takes the oldest place when it empties, from
+    // another empty chunk.
+    const held = try f.take(700);
+    var fresh: [sa.ring_len]sa.Block = undefined;
+    for (&fresh, 0..) |*block, class| block.* = try f.take(sa.class_sizes[40 + class]);
+    for (fresh) |block| try f.give(block);
+    try testing.expectEqual(@as(usize, 2), f.model.discards);
+    try f.give(held);
+    try f.model.check();
+    try testing.expectEqual(@as(usize, 3), f.model.discards);
+    try testing.expectEqual(@as(u64, sa.ring_len), f.allocator.stats().retained_chunks);
+    try testing.expect(f.allocator.stats().retained_bytes <= sa.retained_max);
+    try f.give(top);
+}
+
 test "THE RULE: a chunk given back to the OS is recommitted before a block lies on it" {
     var f = try Fixture.init(32);
     defer f.deinit();
