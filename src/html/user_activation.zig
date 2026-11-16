@@ -108,8 +108,18 @@ pub fn hasTransientActivation(window: *Instance) bool {
 }
 
 /// The Window of `realm`: the active window of the browsing context whose
-/// window lives in it.
+/// window lives in it. Null for a realm whose global object is not a Window
+/// - a worker's, a worklet's, a ShadowRealm's - asked of the realm itself
+/// first: the browsing contexts are the window agent's, read on its thread
+/// alone, and a worker's realm is on the worker's (lane crash1: a worker's
+/// end walked them as the window agent removed frames, and crashed). A realm
+/// with no global yet (an engine-less test's) is looked for on the list.
 pub fn windowOfRealm(realm: runtime.Context) ?*Instance {
+    if (realm.isWorker() or realm.isWorklet()) return null;
+    if (realm.getRealm()) |record| if (record.global_object) |object| {
+        const global: *Instance = @ptrCast(@alignCast(object));
+        if (global.stateAs(interfaces.Window.State) == null) return null;
+    };
     const navigables = dom.browser_state.navigablesOf(realm) orelse return null;
     for (navigables.contexts()) |context| {
         if (context.orphaned) continue;

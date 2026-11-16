@@ -12,6 +12,8 @@
 //! accessor answers null, and its caller does what the spec says when the
 //! user agent has no such storage.
 
+const std = @import("std");
+const builtin = @import("builtin");
 const runtime = @import("runtime");
 const storage = @import("storage");
 const file = @import("file");
@@ -24,20 +26,49 @@ pub const Navigables = html_core.Navigables;
 pub const BrowsingContext = html_core.BrowsingContext;
 pub const NetworkContext = fetch.network.NetworkContext;
 
+const log = std.log.scoped(.browser_state);
+
 /// The browsing contexts of the Browser `realm` belongs to (a side table of
 /// its scope), made on first use; null for a realm of no Browser - no scope,
 /// not even the standalone one - or out of memory. A frame's realm and a
 /// popup's carry their page's scope, so their contexts are on one list.
-/// Read on the Browser's window agent thread only (Navigables).
+/// Read on the Browser's window agent thread only (Navigables), which a
+/// Debug build checks (`checkWindowAgentThread`).
 pub fn navigablesOf(realm: runtime.Context) ?*Navigables {
     const scope = realm.browserScope() orelse return null;
+    checkWindowAgentThread(scope);
     return scope.table(.navigables, Navigables) catch null;
 }
 
-/// `scope`'s browsing contexts if it made any list; never makes one.
+/// `scope`'s browsing contexts if it made any list; never makes one. The
+/// window agent's thread only, as `navigablesOf`.
 pub fn existingNavigablesIn(scope: *runtime.BrowserScope) ?*Navigables {
+    checkWindowAgentThread(scope);
     return scope.existingTable(.navigables, Navigables);
 }
+
+/// Debug: a Browser's browsing contexts are read on its window agent's
+/// thread alone - the thread whose agent claimed the Browser's DOM memory
+/// (runtime.gc.ExternalMemory.claim), which makes, discards and frees every
+/// browsing context. A read from any other thread - a worker's realm, whose
+/// end runs on the worker's thread - races those changes: lane crash1's
+/// crash, a worker's end walking the list while the window agent removed
+/// frames, panicked "incorrect alignment" once in a 13,683-file sweep. Here
+/// it fails on every such read, in the unit tests and the bug-finding
+/// runner (Crane's modules in Debug), whatever the timing. A scope no agent
+/// has claimed (an engine-less test's, a Browser's end after its agent let
+/// go) is not checked, as its DOM memory is not (element_name's
+/// checkOwnerThread, the same check for element names).
+fn checkWindowAgentThread(scope: *runtime.BrowserScope) void {
+    if (comptime !debug_checks or @TypeOf(scope.dom_memory.thread) == void) return;
+    const owner = scope.dom_memory.thread orelse return;
+    const current = std.Thread.getCurrentId();
+    if (owner == current) return;
+    log.err("a Browser's browsing contexts were read on thread {d}; its window agent's thread is {d}", .{ current, owner });
+    @panic("a Browser's browsing contexts were read on a thread other than its window agent's");
+}
+
+const debug_checks = builtin.mode == .debug;
 
 /// The browsing context whose active window is `window` (HTML: the
 /// Window's browsing context, while it is the active window of one), on
