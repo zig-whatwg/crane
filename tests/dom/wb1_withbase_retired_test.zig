@@ -193,17 +193,23 @@ test "every node reached by a tree link from a live node names a live Instance" 
     try testing.expectEqual(inner, shadow_base.firstChild().?.instance());
 }
 
-test "a released node reads as released: registeredInstance is null, in a poisoning build too" {
+test "a released node reads as released: registeredInstance is null, its owner word 0 in every build" {
     // The liveness test the teardown and collector code asks (dom.refcount's
     // host walks, the dying-tree prediction, the audit). Node's release
-    // leaves the owner word 0 (dom.instance_bridge.unregister), and a
-    // Browser that poisons released nodes then writes the poison byte over
-    // the NodeBase: its low bit is set, which no Instance's address has, and
-    // the accessor reads that as "no Instance". Before lane wb1 that was the
-    // owner-less tag's accident; now it is the rule, pinned here.
+    // leaves the owner word 0 (dom.instance_bridge.unregister) and, since
+    // lane uaf1, keeps the 0 across the poison a Browser may write over the
+    // released NodeBase: "released" reads the same in a poisoning build and
+    // in production. The poison in the owner word then means one thing - the
+    // arena FREED the block - and it is no answer to a liveness test: a
+    // Debug build panics on it (tests/dom/uaf1_freed_block_read_test.zig).
+    // Lane wb1 pinned here that the poison read as "no Instance" (its low
+    // bit, which no Instance's address has); that holds only for a release
+    // build that poisons, so the poison is never followed as an address.
     if (comptime !@hasDecl(NodeBase, "registeredInstance")) return error.NoInstanceAccessors;
+    if (comptime !@hasDecl(NodeBase, "freedBlockReadPanics")) return error.NoFreedBlockCheck;
     try testing.expectEqual(@as(u8, 1), runtime.ArenaAllocator.poison_byte & 1);
     try testing.expect(@alignOf(Instance) >= 2);
+    try testing.expectEqual(@as(usize, 1), NodeBase.freed_owner_word & 1);
 
     var nodes: real_nodes.Nodes = undefined;
     try nodes.open(testing.allocator);
@@ -213,13 +219,12 @@ test "a released node reads as released: registeredInstance is null, in a poison
     const base = baseOf(instance);
     try testing.expectEqual(@as(?*Instance, instance), base.registeredInstance());
 
-    // The two states a release leaves, written on a live node's block (a
-    // read of a really released block would be a read after its free).
+    // The state a release leaves, written on a live node's block (a read
+    // of a really released block would be a read after its free): the owner
+    // word 0, the rest poison where the Browser poisons.
     const saved = base.*;
-    base.owner = 0;
-    try testing.expectEqual(@as(?*Instance, null), base.registeredInstance());
-    try testing.expectEqual(@as(?*anyopaque, null), dom.instance_bridge.getInstance(base));
     @memset(std.mem.asBytes(base), runtime.ArenaAllocator.poison_byte);
+    base.owner = 0;
     try testing.expectEqual(@as(?*Instance, null), base.registeredInstance());
     try testing.expectEqual(@as(?*anyopaque, null), dom.instance_bridge.getInstance(base));
     base.* = saved;
