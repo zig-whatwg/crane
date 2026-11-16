@@ -19,8 +19,14 @@ const testing = std.testing;
 
 const MiB: usize = 1024 * 1024;
 
+/// The process's allocator's figures. It reserves its range at its first
+/// allocation and has no figures before: a test that is first in its process
+/// makes that allocation here.
 fn stats() !sa.Stats {
     var out: sa.Stats = .{};
+    if (hooks.v8_test_SandboxAllocator_Stats(&out)) return out;
+    const first = hooks.v8_test_SandboxAllocator_Allocate(16, false) orelse return error.NoSandboxAllocator;
+    hooks.v8_test_SandboxAllocator_Free(first);
     if (!hooks.v8_test_SandboxAllocator_Stats(&out)) return error.NoSandboxAllocator;
     return out;
 }
