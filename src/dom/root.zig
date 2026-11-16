@@ -205,7 +205,7 @@ pub const attribute_block_cache = @import("attribute_block_cache.zig");
 /// 2026-01; lanes perf3 D2, rare1) - the node's own fields (lane nm2: its
 /// word is NodeBase's `rare`), Element's, and HTMLElement's, which are
 /// reached through the hook Element installs.
-pub const element_rare_data = @import("element_rare_data.zig");
+pub const node_rare_data = @import("node_rare_data.zig");
 /// HTML's algorithms for reflecting content attributes in IDL attributes.
 pub const reflection = @import("reflection.zig");
 /// The generated [SameObject] caches' edges: an owner keeps the child it

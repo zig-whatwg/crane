@@ -436,7 +436,7 @@ test "nm1 probe: the static layout of a node's storage" {
     const parts = .{
         .{ "NodeBase", NodeBase },
         .{ "NodeBase.RcFlags", NodeBase.RcFlags },
-        .{ "element_rare_data.NodeName", dom.element_rare_data.NodeName },
+        .{ "node_rare_data.NodeName", dom.node_rare_data.NodeName },
         .{ "ObserverRegistration", dom.node_base.ObserverRegistration },
         .{ "ElementData", dom.element_data.ElementData },
         .{ "element_data.AttributeList", dom.element_data.AttributeList },
@@ -445,8 +445,8 @@ test "nm1 probe: the static layout of a node's storage" {
         .{ "attribute_names.QualifiedName", dom.attribute_names.QualifiedName },
         .{ "attribute_values.Value", dom.attribute_values.Value },
         .{ "element_name.ElementName", dom.element_name.ElementName },
-        .{ "element_rare_data.Holder", dom.element_rare_data.Holder },
-        .{ "element_rare_data.Block (header; its slots trail it)", dom.element_rare_data.Block },
+        .{ "node_rare_data.Holder", dom.node_rare_data.Holder },
+        .{ "node_rare_data.Block (header; its slots trail it)", dom.node_rare_data.Block },
         .{ "event_listener_list.List", dom.event_listener_list.List },
         .{ "event_listener_list.Listener", dom.event_listener_list.Listener },
         .{ "ElementStyle", dom.style.ElementStyle },
@@ -530,8 +530,8 @@ test "nm1 probe: what each field of a real node holds" {
     print("  NodeBase.owner 0x{x} == the div's Instance 0x{x}: {}\n", .{ nb.owner, @intFromPtr(pdiv), nb.owner == @intFromPtr(pdiv) });
     print("  Instance.state 0x{x} == the State block 0x{x}: {}\n", .{ @intFromPtr(pdiv.state), @intFromPtr(s), @intFromPtr(pdiv.state) == @intFromPtr(s) });
     print("  each level's state, offset from the block (stateAs reads the vtable's ancestry table):\n", .{});
+    // EventTarget's State is not among them: a node nests none (lane nm3).
     inline for (.{
-        .{ "EventTarget.State", interfaces.EventTarget.State },
         .{ "Node.State", interfaces.Node.State },
         .{ "Element.State", interfaces.Element.State },
         .{ "HTMLElement.State", interfaces.HTMLElement.State },

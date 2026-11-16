@@ -39,10 +39,13 @@ const dom = @import("dom");
 
 const NodeBase = dom.NodeBase;
 
-/// Where NodeBase sits in every node's State block: after EventTarget's
-/// level (16). It was 24 until lane nm2's step a took Node's childNodes
-/// cache, the one generated field between them, out of the State.
-const pinned_node_base_offset: usize = 16;
+/// Where NodeBase sits in every node's State block: at its first byte since
+/// lane nm3 - a node's State nests no EventTarget level (its 16 bytes: the
+/// listener list is a field of the rare block, the live bits a byte of
+/// NodeBase). It was 16 after lane nm2's step a took Node's childNodes
+/// cache, the one generated field between them, out of the State, and 24
+/// before.
+const pinned_node_base_offset: usize = 0;
 
 fn isNodeState(comptime S: type) bool {
     comptime {
@@ -161,7 +164,10 @@ const node_base_fields = [_]FieldPin{
     // A container's first child, or a leaf's own word (lane nm2, N9).
     .{ .name = "child_or_leaf", .offset = 8, .size = 8 },
     .{ .name = "next_sibling", .offset = 16, .size = 8 },
-    .{ .name = "node_type", .offset = 24, .size = 2 },
+    // One byte since lane nm3 (it was a u16 whose high byte was always 0);
+    // the byte it gave up holds the State chain's live bits.
+    .{ .name = "node_type", .offset = 24, .size = 1 },
+    .{ .name = "live", .offset = 25, .size = 1 },
     .{ .name = "is_connected", .offset = 26, .size = 1 },
     .{ .name = "is_shadow_host", .offset = 27, .size = 1 },
     .{ .name = "traces_held", .offset = 28, .size = 1 },
@@ -236,13 +242,14 @@ test "the element's flags are one byte of NodeBase, not five of Element's state"
 }
 
 test "the padding in a div's and a Text's block only goes down" {
-    // What is left is the tail of EventTarget's level: its 4-byte live word
-    // beside the 8-byte listener pointer. It goes when the live bits join
-    // the flags and the listener reference leaves the node (plan v2 X2, I1).
+    // None since lane nm3: what was left was the tail of EventTarget's
+    // level, its 4-byte live word beside the 8-byte listener pointer. The
+    // live bits joined the flags and the listener reference left the node
+    // (plan v2 X2, I1).
     const pins = .{
-        .{ "HTMLDivElement", interfaces.HTMLDivElement.State, 4 },
-        .{ "Text", interfaces.Text.State, 4 },
-        .{ "Comment", interfaces.Comment.State, 4 },
+        .{ "HTMLDivElement", interfaces.HTMLDivElement.State, 0 },
+        .{ "Text", interfaces.Text.State, 0 },
+        .{ "Comment", interfaces.Comment.State, 0 },
     };
     var wrong: usize = 0;
     inline for (pins) |p| {

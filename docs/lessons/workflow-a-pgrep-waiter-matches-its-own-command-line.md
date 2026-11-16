@@ -1,6 +1,7 @@
 # Workflow: A pgrep waiter matches its own command line
 
 **Date**: 2026-10-31
+**Status** (2026-11-15, lane dm3): the same trap with `grep` on a job's out-file. `run-job.sh` and `run-wpt.sh` write the whole command as the file's first line, so a wait loop that greps for a marker the command itself echoes - `== default pass rc`, `rc=` - matches at once and every wait returns immediately (lane dm3 believed a 60-minute window had its steps racing; lane wrap1 met `rc=` the same day). Anchor the pattern to the start of a line the job prints (`^== default pass rc`, `^\[run-wpt [0-9:]+\] rc=`).
 **Lesson**: `while pgrep -f "<the job's command text>"; do sleep N; done` never ends when it runs through a shell whose own command line contains that text - the waiter's zsh -c is a match. Wait on the job's exact pid (`kill -0 <pid>`) or on a file the job writes, never on a pattern of the waiter's own words.
 
 **Why**: The Bash tool runs each command as `zsh -c '<the whole command>'`, so every word of the loop, the pattern included, is on that process's command line; `pgrep -f` matches full command lines.

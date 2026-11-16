@@ -8,7 +8,7 @@
 //! [Reflect]: the generated mixin module reflects it.
 //!
 //! The [[CryptographicNonce]] slot (HTML 2.5.6) is every includer's, in its
-//! element's sparse rare block (dom.element_rare_data's `nonce` bytes:
+//! element's sparse rare block (dom.node_rare_data's `nonce` bytes:
 //! WebKit's m_nonce, Blink's kNonce), which Element's rare-data teardown
 //! frees at both of the element's exits - its deinit and its Browser's
 //! teardown sweep. The nonce steps - attribute change, hiding when
@@ -37,11 +37,11 @@ pub const ImplError = error{
 /// instances; the nonce slot is its includer's rare data.
 pub const InternalState = struct {};
 
-/// The element's sparse rare block (dom.element_rare_data). The block MOVES
+/// The element's sparse rare block (dom.node_rare_data). The block MOVES
 /// when a field is added: read it by value (`rare_data.of`), write it
 /// through the holder's address (`rare_data.access`), and never keep either
 /// across a call that can run script or add a field.
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 const element_data = dom.element_data;
 
 const html_namespace = "http://www.w3.org/1999/xhtml";

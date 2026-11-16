@@ -18,7 +18,8 @@ const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 const custom_elements = @import("custom_elements.zig");
-const rare_data = @import("element_rare_data.zig");
+const rare_data = @import("node_rare_data.zig");
+const event_listener_list = @import("event_listener_list.zig");
 
 // Forward declarations at file scope
 const DocumentType = interfaces.Document;
@@ -52,7 +53,8 @@ pub const RegisteredObserverType = @import("registered_observer.zig").Registered
 /// The type and flags stay bytes of their own, at pinned offsets: one packed
 /// 32-bit word (the plan's N7) saves nothing until the links are 32-bit, and
 /// `traces_held` must not share a word the node's thread rewrites while a
-/// collector reads it (the deep review's Z7).
+/// collector reads it (the deep review's Z7). The eight bytes are full: the
+/// node type, the State chain's live bits (lane nm3), and six of flags.
 pub const NodeBase = extern struct {
     // ========================================================================
     // +0: the walk's window
@@ -90,7 +92,22 @@ pub const NodeBase = extern struct {
     // live_collections.IndexCache over the links (Blink's
     // CollectionIndexCache): sequential reads are O(1) each.
 
-    node_type: u16,
+    /// DOM 4.4 nodeType: 1 to 12 (the constants below), in one byte since
+    /// lane nm3 - it was a u16 whose high byte was always 0. WebKit keeps it
+    /// in four bits of a 16-bit word of flags (Node::m_typeBitFields).
+    node_type: u8,
+
+    /// The live bits of this node's State chain (runtime.OwnState): bit `d`
+    /// is set while the level `d` steps above Node's (Node's own is bit 0,
+    /// Element's or CharacterData's bit 1, ...) has its impl's state made
+    /// and not torn down. The byte `node_type` gave up (lane nm3, plan v2
+    /// I1): it was a 4-byte word of EventTarget's level, which a node's
+    /// State no longer nests - Blink keeps such facts in Node::node_flags_.
+    /// Nothing in src/dom reads it: Node's impl hands its address to the
+    /// runtime (its InternalState's `liveBits`), and Node's release keeps it
+    /// across the poison it writes over the rest of this struct. Zero on a
+    /// NodeBase no Instance owns.
+    live: u8 = 0,
 
     /// Connection status - true when root is a document
     /// Used by isConnected getter
@@ -165,7 +182,7 @@ pub const NodeBase = extern struct {
     document_word: usize = 0,
 
     /// The node's ONE rare word (lane nm2): the fields few nodes use, in one
-    /// sparse block (dom.element_rare_data) - the node's own (the registered
+    /// sparse block (dom.node_rare_data) - the node's own (the registered
     /// observer list, the node name, a Text's slottable state) and, on an
     /// element, Element's and HTMLElement's - or empty while none has been
     /// needed. The block MOVES when it grows: read it by value, write it
@@ -542,7 +559,7 @@ pub const NodeBase = extern struct {
     // ========================================================================
 
     /// The allocator the node's rare data comes from and the DOM memory it
-    /// is counted in: what dom.element_rare_data's writers take. Never
+    /// is counted in: what dom.node_rare_data's writers take. Never
     /// called on a node with no owner (`allocator`).
     pub fn rareContext(self: *const NodeBase) rare_data.Context {
         return .{ .allocator = self.allocator(), .memory = self.domMemory() };
@@ -601,6 +618,56 @@ pub const NodeBase = extern struct {
         const record = try rare_data.ensureOwn(self.rareContext(), &self.rare, .node_name);
         if (record.allocated) self.allocator().free(record.name);
         record.* = .{ .name = name, .allocated = true };
+    }
+
+    // ========================================================================
+    // The event listener list (lane nm3: a field of the rare block)
+    // ========================================================================
+
+    /// Whether this NodeBase - an Instance's - still stands: Node's teardown
+    /// has not released it (Node's own bit of `live`, which the release
+    /// clears and keeps readable across the poison it writes). For a holder
+    /// of the address that may be asked again after a callback tore the
+    /// node down under it (EventTarget's dispatch walk): the State block's
+    /// bytes outlive the release, the fields in them do not. Meaningless
+    /// for a NodeBase no Instance owns (always false).
+    pub inline fn stands(self: *const NodeBase) bool {
+        return self.live & node_level_live_bit != 0;
+    }
+
+    /// DOM 2.7: the node's event listener list, BY VALUE - the list is the
+    /// address of its one block (dom.event_listener_list.List), kept in a
+    /// slot of the node's rare block; empty for a node that never had a
+    /// listener, an event handler or a watching owner, which is nearly every
+    /// node. The copy is good until the list next grows or is freed: read it
+    /// again after anything that can add a listener (a callback, a step that
+    /// can run script), and give a list that grew back with
+    /// `setEventListeners`. Only EventTarget's impl reads and writes it.
+    pub inline fn eventListeners(self: *const NodeBase) event_listener_list.List {
+        return .{ .header = rare_data.get(self.rare, .event_listeners) };
+    }
+
+    /// Whether the node has an event listener list block - with listeners or
+    /// without (a list whose last listener was removed keeps its block).
+    pub inline fn hasEventListenerBlock(self: *const NodeBase) bool {
+        return rare_data.get(self.rare, .event_listeners) != null;
+    }
+
+    /// Give the list its slot in the rare block before the list is made or
+    /// grown, so that keeping it after (`setEventListeners`) cannot fail: a
+    /// step that must change nothing when it fails reserves first.
+    pub fn reserveEventListeners(self: *NodeBase) error{OutOfMemory}!void {
+        try rare_data.reserve(self.rareContext(), &self.rare, .event_listeners);
+    }
+
+    /// Keep `list` - the node's list after it was made or grew (its block
+    /// moved), in the slot `reserveEventListeners` gave it - or forget a
+    /// list that was freed (empty: the slot keeps its bit and reads null).
+    /// Never allocates.
+    pub fn setEventListeners(self: *NodeBase, list: event_listener_list.List) void {
+        if (list.header) |header| {
+            rare_data.putReserved(&self.rare, .event_listeners, header);
+        } else rare_data.clear(&self.rare, .event_listeners);
     }
 
     /// DOM 4.3: the node's registered observer list, in order - registration
@@ -798,6 +865,8 @@ pub const NodeBase = extern struct {
     // Node Type Constants (DOM Spec §5.1)
     // ========================================================================
 
+    // u16, as WebIDL's `unsigned short nodeType`: a comparison with the
+    // field (a u8) widens it, and each value fits it.
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
     pub const TEXT_NODE: u16 = 3;
@@ -957,6 +1026,30 @@ pub const offset_in_state: usize = @offsetOf(interfaces.Node.State, "_embedded")
 /// state): nothing is checked.
 pub inline fn ofState(state: *const anyopaque) *NodeBase {
     return @ptrFromInt(@intFromPtr(state) + offset_in_state);
+}
+
+/// The NodeBase of the node `instance` is, while it stands: null once Node's
+/// teardown released it (Node's own live bit, bit 0 of `NodeBase.live` -
+/// Node's level is the root of a node's State chain, checked below). Only
+/// for an instance the caller knows is a node in a live slot - its vtable's
+/// `counted` is set (runtime.lifetime) and its slab stamp is not the dead
+/// one: nothing is checked here. What dom.instance_bridge.getNodeBase
+/// answers through Node's hook, for a caller that reads a node's field on a
+/// hot path (EventTarget's listener list on every dispatch).
+pub inline fn ofLiveNode(instance: *const runtime.Instance) ?*NodeBase {
+    const base = ofState(instance.state);
+    if (!base.stands()) return null;
+    return base;
+}
+
+/// Node's own bit of `NodeBase.live`: runtime.OwnState gives a level the bit
+/// of its depth from the chain's root, and Node's State is that root.
+const node_level_live_bit: u8 = 1;
+
+comptime {
+    // Node's State nests no base State (its EventTarget level is absent:
+    // lane nm3), which is what makes its level bit 0.
+    std.debug.assert(@FieldType(interfaces.Node.State, "base") == void);
 }
 
 /// One entry of a node's registered observer list: its link and the
