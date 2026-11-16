@@ -204,7 +204,8 @@ const Chunk = struct {
     kind: Kind = .free,
     /// slots: the size class.
     class: u8 = 0,
-    /// slots: its place in the ring while it is empty and waits there.
+    /// slots: its place in the ring, taken when it became empty and kept
+    /// while it is used again, until a newer chunk takes the place.
     ring_slot: u8 = not_in_ring,
     /// slots: the slots at and above `touched` have read zero since the OS
     /// made the chunk's memory.
@@ -258,7 +259,8 @@ pub fn Allocator(comptime Pages: type) type {
         /// Per class, the chunks with a free slot; empty ones last.
         heads: [class_count]u32 = @splat(none),
         tails: [class_count]u32 = @splat(none),
-        /// Emptied slot chunks, oldest at `ring_next`.
+        /// The slot chunks that were empty last, oldest at `ring_next`; the
+        /// empty ones among them wait (`retained_bytes`).
         ring: [ring_len]u32 = @splat(none),
         ring_next: u8 = 0,
         retained_bytes: usize = 0,
@@ -357,7 +359,7 @@ pub fn Allocator(comptime Pages: type) type {
         /// Give back every emptied chunk that waits in the ring.
         pub fn releaseRetained(self: *Self) void {
             for (self.ring) |index| {
-                if (index != none) self.evict(index);
+                if (index != none and self.chunks.items[index].used == 0) self.evict(index);
             }
         }
 
@@ -385,7 +387,9 @@ pub fn Allocator(comptime Pages: type) type {
             var index = self.heads[class];
             if (index == none) index = self.assign(class) orelse return null;
             const chunk = &self.chunks.items[index];
-            if (chunk.ring_slot != not_in_ring) self.leaveRing(index);
+            // Empty and in the ring: it waited (a chunk just assigned is
+            // empty too, and is not in the ring yet).
+            if (chunk.used == 0 and chunk.ring_slot != not_in_ring) self.reuseWaiting(chunk);
             const size = class_sizes[class];
             var slot: u32 = undefined;
             var zeroed = false;
@@ -513,30 +517,44 @@ pub fn Allocator(comptime Pages: type) type {
             return @min(chunk_size, @as(usize, chunk.touched) * class_sizes[chunk.class]);
         }
 
-        /// The chunk at `index` has just become empty: it waits in the ring,
-        /// in the place of the oldest entry, and the ring's oldest go back
-        /// to the OS while more than `retained_max` dirty bytes wait (never
-        /// this one: a chunk holds no more than that).
+        /// The chunk at `index` has just become empty: its dirty bytes wait.
+        /// A chunk that has a place in the ring keeps it - it took it when
+        /// it was empty before, and has been used again since: a chunk that
+        /// empties and fills in a loop must not push the others out
+        /// (PartitionAlloc RegisterEmpty: "If the slot span is already
+        /// registered as empty, don't do anything. This prevents continually
+        /// reusing a slot span from decommitting a bunch of other slot
+        /// spans"). A chunk new to the ring takes the oldest place: what was
+        /// there goes back to the OS if it is empty, and only loses its
+        /// place if it is in use. Then the oldest empty ones go back while
+        /// more than `retained_max` dirty bytes wait (never this one: a
+        /// chunk holds no more than that).
         fn enterRing(self: *Self, index: u32) void {
-            if (self.ring[self.ring_next] != none) self.evict(self.ring[self.ring_next]);
-            const chunk = &self.chunks.items[index];
-            self.ring[self.ring_next] = index;
-            chunk.ring_slot = self.ring_next;
-            self.ring_next = (self.ring_next + 1) % ring_len;
-            self.retained_bytes += dirtyBytes(chunk);
+            if (self.chunks.items[index].ring_slot == not_in_ring) {
+                const before = self.ring[self.ring_next];
+                if (before != none) {
+                    if (self.chunks.items[before].used == 0) self.evict(before) else self.chunks.items[before].ring_slot = not_in_ring;
+                }
+                self.ring[self.ring_next] = index;
+                self.chunks.items[index].ring_slot = self.ring_next;
+                self.ring_next = (self.ring_next + 1) % ring_len;
+            }
+            self.retained_bytes += dirtyBytes(&self.chunks.items[index]);
             self.retained_chunks += 1;
             var at = self.ring_next;
-            while (self.retained_bytes > retained_max) : (at = (at + 1) % ring_len) {
+            var seen: usize = 0;
+            while (self.retained_bytes > retained_max and seen < ring_len) : ({
+                at = (at + 1) % ring_len;
+                seen += 1;
+            }) {
                 const oldest = self.ring[at];
-                if (oldest == index) break;
-                if (oldest != none) self.evict(oldest);
+                if (oldest != none and oldest != index and self.chunks.items[oldest].used == 0) self.evict(oldest);
             }
         }
 
-        fn leaveRing(self: *Self, index: u32) void {
-            const chunk = &self.chunks.items[index];
-            self.ring[chunk.ring_slot] = none;
-            chunk.ring_slot = not_in_ring;
+        /// An empty chunk that waits is used again: its bytes wait no more.
+        /// It keeps its place in the ring.
+        fn reuseWaiting(self: *Self, chunk: *const Chunk) void {
             self.retained_bytes -= dirtyBytes(chunk);
             self.retained_chunks -= 1;
         }
@@ -544,9 +562,13 @@ pub fn Allocator(comptime Pages: type) type {
         /// An empty slot chunk leaves the ring, its class and the used
         /// memory: to the free pool.
         fn evict(self: *Self, index: u32) void {
-            self.leaveRing(index);
+            const chunk = &self.chunks.items[index];
+            std.debug.assert(chunk.used == 0);
+            self.ring[chunk.ring_slot] = none;
+            self.retained_bytes -= dirtyBytes(chunk);
+            self.retained_chunks -= 1;
             self.unlink(index);
-            self.meta.free(self.chunks.items[index].bits);
+            self.meta.free(chunk.bits);
             self.releaseChunks(index, 1);
         }
 
