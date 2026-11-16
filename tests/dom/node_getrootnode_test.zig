@@ -17,7 +17,7 @@ const Instance = real_nodes.Instance;
 /// `node`'s root, by src/dom's walk and by the interface.
 fn expectRoot(expected: *Instance, node: *Instance) !void {
     try std.testing.expect(baseOf(node).getRoot() == baseOf(expected));
-    try std.testing.expect((try interfaces.Node.call_getRootNode(node, .{})) == expected);
+    try std.testing.expect((try interfaces.Node.call_getRootNode(node, .notPassed())) == expected);
 }
 
 test "Node.getRoot - detached element is its own root" {

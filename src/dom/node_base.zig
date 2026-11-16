@@ -106,8 +106,7 @@ pub const NodeBase = extern struct {
     /// State no longer nests - Blink keeps such facts in Node::node_flags_.
     /// Nothing in src/dom reads it: Node's impl hands its address to the
     /// runtime (its InternalState's `liveBits`), and Node's release keeps it
-    /// across the poison it writes over the rest of this struct. Zero on a
-    /// NodeBase no Instance owns.
+    /// across the poison it writes over the rest of this struct.
     live: u8 = 0,
 
     /// Connection status - true when root is a document
@@ -148,11 +147,8 @@ pub const NodeBase = extern struct {
     /// holds a word of the node's own data, not a child. Set once, by the
     /// node type that takes the word (`claimLeafWord`: CharacterData, at its
     /// construction), and never cleared - a node's type is fixed. False on
-    /// every node that can have children, and on a NodeBase no Instance owns
-    /// (the tests' fixtures and the WithBase types, whatever their node
-    /// type: their word is a child pointer, null on a Text). It took the
-    /// spare byte: the struct still has no padding (tests/dom/
-    /// nm1_node_layout_pins_test.zig).
+    /// every node that can have children. It took the spare byte: the struct
+    /// still has no padding (tests/dom/nm1_node_layout_pins_test.zig).
     leaf: bool = false,
 
     // ========================================================================
@@ -164,22 +160,22 @@ pub const NodeBase = extern struct {
     /// The node document, in ONE word (lane nm1's layout batch; the design's
     /// N4). Read through `documentInstance`, `documentBase`, `documentKey`;
     /// written through `setDocumentInstance` (Node's impl, the one setter of
-    /// a platform node's document) and `setDocumentBase` (owner-less trees).
+    /// a node's document).
     ///
     /// - 0: none (a Document, which is its own; a node not yet given one).
-    /// - bit 0 set: the Document's runtime.Instance, for a node an Instance
-    ///   owns. With bit 1 too: the Document had no live NodeBase when it was
-    ///   set - `documentBase` then answers null, as the NodeBase copy this
-    ///   word replaced was null there.
-    /// - bit 0 clear: the Document's NodeBase, for an owner-less tree (the
-    ///   tests' fixtures and the test-only WithBase types), whose document is
-    ///   no Instance.
+    /// - otherwise the Document's runtime.Instance. With bit 0 set too: the
+    ///   Document had no live NodeBase when the word was set - `documentBase`
+    ///   then answers null, as the NodeBase copy this word replaced was null
+    ///   there.
     ///
     /// It was two fields: this one as the Document's NodeBase, which
     /// src/dom's algorithms read with no check, and the Document's Instance
     /// in Node's own state, with a slab generation as the net under "a node
     /// keeps its document". One setter wrote both. Blink and WebKit keep one
     /// (Node::tree_scope_, Node::m_treeScope), Gecko one (the NodeInfo's).
+    /// Until lane wb1 the word had a third form, a bare NodeBase as the
+    /// document of a tree no Instance owned (the tests' fixtures and the
+    /// WithBase types), and a tag bit to tell it from an Instance.
     document_word: usize = 0,
 
     /// The node's ONE rare word (lane nm2): the fields few nodes use, in one
@@ -209,22 +205,27 @@ pub const NodeBase = extern struct {
     // +64: the owner and the counts
     // ========================================================================
 
-    /// Who owns this NodeBase, in one word (lane perf2 batch 6): the
-    /// runtime.Instance whose node it is (`ownerInstance`), or - for a
-    /// NodeBase built outside the WebIDL layer, the tests' fixtures and the
-    /// test-only WithBase types - the allocator it allocates from, tagged in
-    /// bit 0 (`ownerless`), or 0 for neither (a node before its registration
-    /// and after its release).
+    /// The runtime.Instance whose node this is, in one word (lane perf2
+    /// batch 6), or 0: a node before its registration and after its release
+    /// (dom.instance_bridge's register and unregister write it). Read through
+    /// `instance()` - by code that holds a live node - and
+    /// `registeredInstance()`, the liveness test.
     ///
     /// The owner is a property OF the node, so it belongs on the node: it
     /// replaced the global `nodebase_to_instance` map in
     /// src/dom/instance_bridge.zig (process-wide, on page_allocator, "NOT
     /// thread-safe", consulted 37 times on the DOM hot path), and it dies
     /// with the node. It also names the node's allocator, so the node keeps
-    /// no copy of one (`allocator`): an owned node's is its Browser's, found
-    /// from the Instance's address (runtime.allocatorOf), which is the
-    /// allocator it was made with - asserted where every node is made
-    /// (Node's initOwn). 16 bytes a node.
+    /// no copy of one (`allocator`): its Browser's, found from the
+    /// Instance's address (runtime.allocatorOf), which is the allocator it
+    /// was made with - asserted where every node is made (Node's initOwn).
+    /// 16 bytes a node.
+    ///
+    /// Until lane wb1 the word could also name an allocator, tagged in bit 0,
+    /// for a NodeBase no Instance owned (the tests' fixtures and the WithBase
+    /// types): every node is an Instance's now (node-memory plan v2, X3), and
+    /// the plan's H3 folds the Instance into the node block, where this word
+    /// becomes address arithmetic.
     owner: usize = 0,
 
     /// The reference count word, WebKit's encoding (Source/WebCore/dom/Node.h
@@ -250,7 +251,7 @@ pub const NodeBase = extern struct {
     /// (`documentBase`, Node's ownerDocument), never as the freed object or
     /// whatever took its slot. It was Node's own field, beside the Instance
     /// pointer; with the pointer here, src/dom's readers pass the net too.
-    /// 0 for an owner-less tree's document.
+    /// 0 while the node names no document.
     document_generation: u64 = 0,
 
     comptime {
@@ -404,29 +405,24 @@ pub const NodeBase = extern struct {
     // The node document (lane nm1: one word)
     // ========================================================================
 
-    /// `document_word` names a Document's Instance (else its NodeBase, or none).
-    const document_instance_tag: usize = 1;
-    /// With `document_instance_tag`: the Document had no live NodeBase when
-    /// the word was set.
-    const document_no_base_tag: usize = 2;
-    const document_tags: usize = document_instance_tag | document_no_base_tag;
+    /// With the Document's Instance in `document_word`: the Document had no
+    /// live NodeBase when the word was set. An Instance is 8-aligned, so the
+    /// bit is free.
+    const document_no_base_tag: usize = 1;
 
     /// The node document's Instance - what Node's impl hands script and every
-    /// caller outside src/dom - or null: none set, or an owner-less tree's
-    /// document, which no Instance owns. NOT checked against the net: Node's
-    /// impl checks `documentIsLive` where it did before.
+    /// caller outside src/dom - or null when none is set. NOT checked against
+    /// the net: Node's impl checks `documentIsLive` where it did before.
     pub inline fn documentInstance(self: *const NodeBase) ?*runtime.Instance {
-        const word = self.document_word;
-        if (word & document_instance_tag == 0) return null;
-        return @ptrFromInt(word & ~document_tags);
+        return @ptrFromInt(self.document_word & ~document_no_base_tag);
     }
 
     /// Whether the node document's Instance is still the one that was set:
     /// its slot was not freed (or freed and reissued) under this node. True
-    /// for a node that names no Instance.
+    /// for a node that names no document.
     pub inline fn documentIsLive(self: *const NodeBase) bool {
-        const instance = self.documentInstance() orelse return true;
-        return runtime.SlabAllocator.generationOf(instance) == self.document_generation;
+        const document = self.documentInstance() orelse return true;
+        return runtime.SlabAllocator.generationOf(document) == self.document_generation;
     }
 
     /// The node document's own NodeBase, for src/dom's algorithms, or null:
@@ -436,11 +432,10 @@ pub const NodeBase = extern struct {
     /// "node document", which for a document is itself.
     pub inline fn documentBase(self: *const NodeBase) ?*NodeBase {
         const word = self.document_word;
-        if (word & document_instance_tag == 0) return @ptrFromInt(word);
-        if (word & document_no_base_tag != 0) return null;
-        const instance: *const runtime.Instance = @ptrFromInt(word & ~document_tags);
-        if (runtime.SlabAllocator.generationOf(instance) != self.document_generation) return null;
-        return ofState(instance.state);
+        if (word == 0 or word & document_no_base_tag != 0) return null;
+        const document: *const runtime.Instance = @ptrFromInt(word);
+        if (runtime.SlabAllocator.generationOf(document) != self.document_generation) return null;
+        return ofState(document.state);
     }
 
     /// The node document's identity, for `==`, `!= 0` and cache keys: equal
@@ -451,109 +446,100 @@ pub const NodeBase = extern struct {
     /// compared. A Document's own key is `keyAsDocument`.
     pub inline fn documentKey(self: *const NodeBase) usize {
         const word = self.document_word;
-        if (word & document_instance_tag == 0) return word;
         if (word & document_no_base_tag != 0) return 0;
-        return word & ~document_tags;
+        return word;
     }
 
     /// This node's key as a node document - what `documentKey` answers for
-    /// the nodes that name it: its Instance for a Document an Instance owns,
-    /// its own address for an owner-less one.
+    /// the nodes that name it: its Instance. For a Document already
+    /// released, whose owner word no longer names one (a teardown's
+    /// bookkeeping can still ask), its own address as before - a key no node
+    /// names.
     pub inline fn keyAsDocument(self: *const NodeBase) usize {
-        if (self.owner != 0 and self.owner & ownerless_tag == 0) return self.owner;
+        if (self.registeredInstance()) |document| return @intFromPtr(document);
         return @intFromPtr(self);
     }
 
-    /// Node's impl, the one setter of a platform node's document: name
-    /// `document`'s Instance, with its generation. `has_base` is whether the
-    /// document has a live NodeBase now (its Node state is made and not torn
-    /// down); without one `documentBase` answers null.
+    /// Node's impl, the one setter of a node's document: name `document`'s
+    /// Instance, with its generation. `has_base` is whether the document has
+    /// a live NodeBase now (its Node state is made and not torn down);
+    /// without one `documentBase` answers null.
     pub fn setDocumentInstance(self: *NodeBase, document: ?*runtime.Instance, has_base: bool) void {
-        const instance = document orelse {
+        const named = document orelse {
             self.document_word = 0;
             self.document_generation = 0;
             return;
         };
-        std.debug.assert(@intFromPtr(instance) & document_tags == 0);
-        self.document_word = @intFromPtr(instance) | document_instance_tag | if (has_base) @as(usize, 0) else document_no_base_tag;
-        self.document_generation = runtime.SlabAllocator.generationOf(instance);
-    }
-
-    /// An owner-less tree's node document: `document`'s NodeBase, or none.
-    /// For a Document an Instance owns, the Instance is named (so every
-    /// reader of the word agrees) - src/dom's adopt on a platform tree goes
-    /// through dom.node_document, which calls `setDocumentInstance`.
-    pub fn setDocumentBase(self: *NodeBase, document: ?*NodeBase) void {
-        const base = document orelse {
-            self.document_word = 0;
-            self.document_generation = 0;
-            return;
-        };
-        if (base.ownerInstance()) |raw| {
-            self.setDocumentInstance(@ptrCast(@alignCast(raw)), true);
-            return;
-        }
-        std.debug.assert(@intFromPtr(base) & document_tags == 0);
-        self.document_word = @intFromPtr(base);
-        self.document_generation = 0;
+        std.debug.assert(@intFromPtr(named) & document_no_base_tag == 0);
+        self.document_word = @intFromPtr(named) | if (has_base) @as(usize, 0) else document_no_base_tag;
+        self.document_generation = runtime.SlabAllocator.generationOf(named);
     }
 
     // ========================================================================
-    // The owner word (lane perf2 batch 6)
+    // The owner word (lane perf2 batch 6; one meaning since lane wb1)
     // ========================================================================
 
-    /// The runtime.Instance this node is, or null: a node not yet
-    /// registered, one its teardown released, or one no Instance owns.
-    /// Typed `?*anyopaque` to keep src/dom free of a hard dependency on the
-    /// concrete runtime.Instance type, matching the bridge API it replaces.
-    pub inline fn ownerInstance(self: *const NodeBase) ?*anyopaque {
-        if (self.owner & ownerless_tag != 0) return null;
+    /// Set in the owner word of no live node: an Instance is 8-aligned, and
+    /// the poison a Browser may write over a released NodeBase
+    /// (runtime.ArenaAllocator.poison_byte, Node's releaseNodeBase) has it
+    /// set - so a released node reads as "no Instance" in a poisoning build
+    /// as it does in production, where its release left the word 0. It was
+    /// the owner-less tag, and this reading was its accident; it is the rule
+    /// now, pinned below and in tests/dom/wb1_withbase_retired_test.zig.
+    const not_an_instance_bit: usize = 1;
+
+    comptime {
+        std.debug.assert(runtime.ArenaAllocator.poison_byte & not_an_instance_bit != 0);
+        std.debug.assert(@alignOf(runtime.Instance) > not_an_instance_bit);
+    }
+
+    /// THE LIVENESS TEST: the Instance this node is, or null - a node not
+    /// yet registered (inside Node's initOwn) or one its teardown released.
+    /// For code that can be handed a node after its release and must do
+    /// nothing then: the teardown's own bookkeeping, the collector's walk,
+    /// the audit, and dom.instance_bridge.getInstance, whose callers ask
+    /// exactly this. Everything else holds a live node and calls
+    /// `instance()`. The plan's H3 (the Instance folded into the node block)
+    /// makes this a "registered" bit of the block's stamp: the callers of
+    /// this function are its list.
+    pub inline fn registeredInstance(self: *const NodeBase) ?*runtime.Instance {
+        if (self.owner & not_an_instance_bit != 0) return null;
         return @ptrFromInt(self.owner);
+    }
+
+    /// The Instance this node is, for code that holds a LIVE node: an
+    /// argument a caller just read through its Instance, or a node reached
+    /// from one by a tree link (a node linked to a live node is not released
+    /// before it: a held node keeps its whole tree, and a teardown releases a
+    /// tree only once nothing holds any node of it). A released or
+    /// unregistered node here is a bug in the caller, and a panic in every
+    /// build - one predictable test, where `ownerInstance() orelse return`
+    /// was one too, and silently did nothing.
+    pub inline fn instance(self: *const NodeBase) *runtime.Instance {
+        return self.registeredInstance() orelse deadNode();
+    }
+
+    fn deadNode() noreturn {
+        @branchHint(.cold);
+        @panic("NodeBase.instance: the node is not registered (released by its teardown, or not made yet) - code that holds a live node was handed a dead one");
     }
 
     /// dom.instance_bridge's register and unregister: the Instance this
     /// node is from now on, or none.
-    pub fn setOwnerInstance(self: *NodeBase, instance: ?*anyopaque) void {
-        const address = @intFromPtr(instance);
-        std.debug.assert(address & ownerless_tag == 0);
-        self.owner = address;
-    }
-
-    /// The owner word of a NodeBase no Instance owns, which allocates from
-    /// `allocator_of_node` - borrowed: it must outlive the node (the tests
-    /// pass `&std.testing.allocator`, a WithBase type its own field).
-    pub fn ownerless(allocator_of_node: *const Allocator) usize {
-        const address = @intFromPtr(allocator_of_node);
-        std.debug.assert(address & ownerless_tag == 0);
-        return address | ownerless_tag;
-    }
-
-    /// The allocator an owner-less NodeBase's owner word names
-    /// (`ownerless`), for a WithBase type that makes a part of its own with
-    /// it (an attribute node).
-    pub fn ownerlessAllocator(self: *const NodeBase) *const Allocator {
-        std.debug.assert(self.owner & ownerless_tag != 0);
-        return @ptrFromInt(self.owner & ~ownerless_tag);
+    pub fn setOwnerInstance(self: *NodeBase, registered: ?*runtime.Instance) void {
+        std.debug.assert(@intFromPtr(registered) & not_an_instance_bit == 0);
+        self.owner = @intFromPtr(registered);
     }
 
     /// What this node allocates and frees from - its rare data, its observer
-    /// records, a mutation's scratch lists: its Browser's allocator for an
-    /// owned node (runtime.allocatorOf, the allocator it was made with), the
-    /// one its owner word names for an owner-less one. Never called on a
-    /// node with no owner (before its registration, after its release).
+    /// records, a mutation's scratch lists: its Browser's allocator
+    /// (runtime.allocatorOf, the allocator it was made with). Never called
+    /// on a node that is not registered (before its registration, after its
+    /// release): a panic.
     pub fn allocator(self: *const NodeBase) Allocator {
-        if (self.owner & ownerless_tag != 0) {
-            const named: *const Allocator = @ptrFromInt(self.owner & ~ownerless_tag);
-            return named.*;
-        }
-        if (self.owner == 0) @panic("a NodeBase with no owner allocates: not registered yet, or released");
-        const instance: *const runtime.Instance = @ptrFromInt(self.owner);
-        return runtime.allocatorOf(instance);
+        const owner = self.registeredInstance() orelse @panic("a NodeBase with no Instance allocates: not registered yet, or released");
+        return runtime.allocatorOf(owner);
     }
-
-    /// The owner word's tag: set for an allocator, clear for an Instance.
-    /// Both are 8-byte aligned, so bit 0 is free.
-    const ownerless_tag: usize = 1;
 
     // ========================================================================
     // Rare data (lane perf2 batch 4, R6 part 1; one sparse block since lane nm2)
@@ -561,7 +547,7 @@ pub const NodeBase = extern struct {
 
     /// The allocator the node's rare data comes from and the DOM memory it
     /// is counted in: what dom.node_rare_data's writers take. Never
-    /// called on a node with no owner (`allocator`).
+    /// called on a node that is not registered (`allocator`).
     pub fn rareContext(self: *const NodeBase) rare_data.Context {
         return .{ .allocator = self.allocator(), .memory = self.domMemory() };
     }
@@ -569,13 +555,13 @@ pub const NodeBase = extern struct {
     /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
     /// which counts what the node holds so V8 can schedule collections by it
     /// (runtime.own_state.nodeDomMemory): its rare data and its registered
-    /// observer entries are counted here, as they are made and freed. Null for
-    /// a NodeBase no Instance owns (the test-only WithBase types), and after
-    /// the node's teardown unregistered it - nothing is counted for it then.
+    /// observer entries are counted here, as they are made and freed. Null
+    /// after the node's teardown unregistered it - nothing is counted for it
+    /// then (Node's release frees the rare data before it unregisters, so
+    /// this is a net, not a path).
     fn domMemory(self: *const NodeBase) ?*runtime.gc.ExternalMemory {
-        const owner = self.ownerInstance() orelse return null;
-        const instance: *const runtime.Instance = @ptrCast(@alignCast(owner));
-        return &runtime.BrowserScope.ofInstance(instance).dom_memory;
+        const owner = self.registeredInstance() orelse return null;
+        return &runtime.BrowserScope.ofInstance(owner).dom_memory;
     }
 
     /// The node's teardown, after its registered observers were released
@@ -590,8 +576,8 @@ pub const NodeBase = extern struct {
     }
 
     /// The node name a node type gave its NodeBase, or "" - every node but
-    /// the HTML and SVG script, iframe, embed, object and frame elements
-    /// (and the test-only WithBase types). Not DOM's nodeName: a brand the
+    /// the HTML and SVG script, iframe, embed, object and frame elements.
+    /// Not DOM's nodeName: a brand the
     /// insertion, removing and post-connection steps dispatch on. Read only
     /// through here, so a tag of its own (Z4/R12) changes only this.
     pub fn nodeName(self: *const NodeBase) []const u8 {
@@ -630,8 +616,7 @@ pub const NodeBase = extern struct {
     /// clears and keeps readable across the poison it writes). For a holder
     /// of the address that may be asked again after a callback tore the
     /// node down under it (EventTarget's dispatch walk): the State block's
-    /// bytes outlive the release, the fields in them do not. Meaningless
-    /// for a NodeBase no Instance owns (always false).
+    /// bytes outlive the release, the fields in them do not.
     pub inline fn stands(self: *const NodeBase) bool {
         return self.live & node_level_live_bit != 0;
     }

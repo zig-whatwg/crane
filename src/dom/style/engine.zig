@@ -968,7 +968,7 @@ fn ancestorChain(node: *NodeBase, out: *[256]*NodeBase) usize {
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
+    return node.registeredInstance();
 }
 
 fn isShadowRoot(node: *NodeBase) bool {

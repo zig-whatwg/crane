@@ -523,8 +523,7 @@ pub const walk_before_asking = 32;
 /// engine-less realm keeps no agent state), so that the walk goes on. False
 /// means no node of the agent has a registered observer, transient or not.
 pub fn anyObserverMade(node: *NodeBase) bool {
-    const object = node.ownerInstance() orelse return true;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(object));
+    const instance = node.registeredInstance() orelse return true;
     const agent = agentOf(instance.ctx) orelse return true;
     return agent.observer_counter != 0;
 }

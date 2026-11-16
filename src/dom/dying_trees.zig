@@ -239,8 +239,7 @@ fn take(found: *Prediction, memory: *const ExternalMemory, root: *NodeBase, coll
 }
 
 fn instanceOf(node: *const NodeBase) ?*runtime.Instance {
-    const raw = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(raw));
+    return node.registeredInstance();
 }
 
 /// A Debug build's question about a root it kept as predicted dead, once

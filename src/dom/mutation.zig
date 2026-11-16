@@ -1679,7 +1679,7 @@ fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
     if (node.parent_node != null or !node.wrapper.isEmpty()) return;
     if (wrapper_tracing.holdsWrapper(node)) return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
+    const instance = node.registeredInstance() orelse return;
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
 }
@@ -2723,12 +2723,12 @@ fn adoptHeld(
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
 
-            // Step 3.1.1: Set node document to document. A platform node's
-            // is set by the node_document hook below (the Node impl's setter,
-            // which also moves the node between the documents' counts and
-            // must see the OLD document still named: the word is one, since
-            // lane nm1); an owner-less node's is written here.
-            if (document_instance == null or instance_bridge.getInstance(desc) == null) desc.setDocumentBase(document);
+            // Step 3.1.1: Set node document to document: by the
+            // node_document hook below (the Node impl's setter, which also
+            // moves the node between the documents' counts and must see the
+            // OLD document still named: the word is one, since lane nm1).
+            // (Until lane wb1 an owner-less node's word was written here, as
+            // the document's bare NodeBase.)
             if (document_instance) |doc_instance| {
                 if (instance_bridge.getInstance(desc)) |desc_opaque| {
                     const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
@@ -2771,7 +2771,7 @@ fn adoptHeld(
                     // (Lane wb1: a second branch here recovered an
                     // ElementWithBase from an element no Instance owned and
                     // walked its attribute list. No such element exists.)
-                    const element: *runtime.Instance = @ptrCast(@alignCast(desc.ownerInstance().?));
+                    const element = desc.instance();
                     for (0..element_attributes.count(element)) |attr_idx| {
                         const attr = element_attributes.existingNodeAt(element, attr_idx) orelse continue;
                         node_document.set(attr, doc_instance) catch {};
@@ -2830,31 +2830,5 @@ fn adoptHeld(
     if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(node));
 }
 
-test "a callback registered twice runs once" {
-    const Counter = struct {
-        var calls: usize = 0;
-        fn childrenChanged(_: *NodeBase, _: ChildrenChange) void {
-            calls += 1;
-        }
-    };
-    interfaces.process_hooks.startHooksForTest();
-    const override = children_changed_callbacks.overrideForTest(.empty);
-    defer override.restore();
-
-    try registerChildrenChangedCallback(&Counter.childrenChanged);
-    try registerChildrenChangedCallback(&Counter.childrenChanged);
-    // A real DocumentFragment of a Browser scope of the test's own (lane
-    // wb1: it was a NodeBase value on the stack).
-    var scope = runtime.BrowserScope.init(std.testing.allocator);
-    var ctx = try runtime.ContextData.init(std.testing.allocator, .{});
-    ctx.browser_scope = &scope;
-    defer {
-        @import("teardown_sweeps.zig").runAll(&scope);
-        scope.deinit();
-        ctx.deinit();
-    }
-    const fragment = try interfaces.DocumentFragment.init(std.testing.allocator, &ctx);
-    const parent = instance_bridge.getNodeBase(fragment).?;
-    runChildrenChangedSteps(parent, .inserted);
-    try std.testing.expectEqual(@as(usize, 1), Counter.calls);
-}
+// "a callback registered twice runs once": tests/dom/wb1_moved_from_src_test.zig
+// (it needs a real node, which this module's own test executable cannot make).

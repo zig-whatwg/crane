@@ -65,10 +65,9 @@ pub const NodeRef = struct {
     instance: *runtime.Instance,
     generation: u64,
 
-    /// A reference to `node`; null for a node no Instance owns.
+    /// A reference to `node`; null for a node already released.
     pub fn to(node: *NodeBase) ?NodeRef {
-        const opaque_instance = node.ownerInstance() orelse return null;
-        const instance: *runtime.Instance = @ptrCast(@alignCast(opaque_instance));
+        const instance = node.registeredInstance() orelse return null;
         return .{ .node = node, .instance = instance, .generation = runtime.SlabAllocator.generationOf(instance) };
     }
 
@@ -193,8 +192,7 @@ pub fn install(impl: Implementation) void {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const opaque_instance = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(opaque_instance));
+    return node.registeredInstance();
 }
 
 /// Whether `node` is an Element.

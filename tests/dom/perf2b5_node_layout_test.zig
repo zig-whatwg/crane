@@ -79,7 +79,8 @@ test "NodeBase keeps no child list: the sibling links are the children" {
     // (wrapper_cache.zig, `set`), as Blink keeps the main world's wrapper on the object
     // (ScriptWrappable::wrapper_). The per-node allocator (16) is the next
     // step: an owner-less NodeBase (the test-only WithBase types) still needs
-    // it, so it waits for those to carry their own (design 3.4, deferred).
+    // it, so it waits for those to carry their own (design 3.4, deferred;
+    // lane wb1 retired the owner-less NodeBases and the WithBase types).
     // Done in batch 6 (with last_child): 88 bytes, perf2b6_node_layout_test.zig;
     // 80 since the wrapper redesign's P6 (no holds chain). The size is
     // pinned in node_block_sizes_test.zig (one place: lane nm1).

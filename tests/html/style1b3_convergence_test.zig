@@ -50,7 +50,7 @@ fn rowStyles(page: helpers.Page, out: *std.ArrayList(*const ComputedStyle)) !voi
     var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
-        const element: *runtime.Instance = @ptrCast(@alignCast(c.ownerInstance() orelse continue));
+        const element: *runtime.Instance = c.registeredInstance() orelse continue;
         const state = dom.style.element_style.existingOf(element) orelse return error.NoStyleState;
         const cached = state.cached orelse return error.NoCachedStyle;
         try out.append(testing.allocator, cached.style);

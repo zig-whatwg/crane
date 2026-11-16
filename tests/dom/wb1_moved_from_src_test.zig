@@ -1,7 +1,10 @@
-//! Three tests that lived inside src/dom files and built a NodeBase by value
+//! Four tests that lived inside src/dom files and built a NodeBase by value
 //! (lane wb1: the WithBase retirement, node-memory plan v2 X3). They are
-//! here, on real nodes (real_nodes.zig), with the names they had:
+//! here, on real nodes (real_nodes.zig), with the names they had - a src
+//! module's own test executable links no engine and cannot make a node:
 //!
+//! - src/dom/mutation.zig "a callback registered twice runs once" (an
+//!   owner-less DocumentFragment NodeBase on the stack);
 //! - src/dom/refcount.zig "the parent bit and the count are independent"
 //!   (an undefined NodeBase on the stack, its `rc` set by hand);
 //! - src/dom/slot_helpers.zig "NodeRef equality compares instance and
@@ -63,4 +66,27 @@ test "a detached parentless element has sibling index and count one" {
         try testing.expectEqual(@as(usize, 1), counts.index);
         try testing.expectEqual(@as(usize, 1), counts.count);
     }
+}
+
+test "a callback registered twice runs once" {
+    const Counter = struct {
+        var calls: usize = 0;
+        fn childrenChanged(_: *NodeBase, _: dom.mutation.ChildrenChange) void {
+            calls += 1;
+        }
+    };
+    Counter.calls = 0;
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    // The process's registries as the start made them, restored after: the
+    // test's callback never stays registered for the process's later tests.
+    const registries = dom.mutation.overrideRegistriesForTest();
+    defer registries.restore();
+
+    try dom.mutation.registerChildrenChangedCallback(&Counter.childrenChanged);
+    try dom.mutation.registerChildrenChangedCallback(&Counter.childrenChanged);
+    const parent = try nodes.bare(.fragment);
+    dom.mutation.runChildrenChangedSteps(parent, .inserted);
+    try testing.expectEqual(@as(usize, 1), Counter.calls);
 }

@@ -52,7 +52,7 @@ fn append(parent: *runtime.Instance, child: *runtime.Instance) !void {
 /// HTML's rules, restated: does `node` have `key` as a `kind`?
 fn refHasKey(node: *NodeBase, kind: map.Kind, key: []const u8) bool {
     if (node.node_type != NodeBase.ELEMENT_NODE) return false;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return false));
+    const instance: *runtime.Instance = node.registeredInstance() orelse return false;
     const data = dom.element_data.of(instance) orelse return false;
     const id = data.idValue();
     const is_html = if (data.namespaceSlice()) |ns| std.mem.eql(u8, ns, html_ns) else false;
@@ -98,7 +98,7 @@ fn refElements(root: *runtime.Instance, kind: map.Kind, key: []const u8, out: *s
     const root_base = base(root);
     var at = root_base.firstChild();
     while (at) |node| : (at = refNext(node, root_base)) {
-        if (refHasKey(node, kind, key)) try out.append(testing.allocator, @ptrCast(@alignCast(node.ownerInstance().?)));
+        if (refHasKey(node, kind, key)) try out.append(testing.allocator, node.instance());
     }
 }
 
