@@ -65,9 +65,26 @@ pub fn settle(realm: runtime.Context, computation: anyerror!Result) !runtime.JSV
     return promise.take();
 }
 
+/// When a SubtleCrypto method's promise settles.
+///
+/// WebCrypto 14.3 gives every method one shape: return the promise, work "in
+/// parallel", settle from a task queued on the crypto task source. No browser
+/// does that for every method (golden rule 2, no newer spec involved - the
+/// table and its evidence are at `operations.Request.settles`): for the
+/// quick ones two of Chrome, Firefox and Safari do the work inside the call
+/// and return a promise that is ALREADY settled, so its reactions run in the
+/// microtask checkpoint that follows the calling script - ahead of every
+/// task and timer, the load event's included.
+pub const Settles = enum {
+    /// The work and the settlement happen before the method returns.
+    in_the_call,
+    /// The spec's shape: the work, then the settlement, each in a task.
+    from_a_task,
+};
+
 /// Own a copied native input on every path. T.run performs only native work;
 /// T.deinit erases/releases that input. No JS value belongs in T.
-pub fn submit(realm: runtime.Context, input: anytype) !runtime.JSValue {
+pub fn submit(realm: runtime.Context, input: anytype, settles: Settles) !runtime.JSValue {
     const job = try makeJob(realm.allocator, input);
     errdefer job.destroy(job.data, realm.allocator);
     var capability = try engine.createPromise(realm);
@@ -76,10 +93,13 @@ pub fn submit(realm: runtime.Context, input: anytype) !runtime.JSValue {
     errdefer promise.release();
     const task = try realm.allocator.create(Task);
     task.* = .{ .realm = realm, .capability = capability, .result = .none, .job = job };
-    // §14.3 "return promise, then in parallel". Until HTML's parallel-queue
-    // facility exists, PBKDF2/RSA and other long native operations occupy the
-    // realm's thread. The copied-input computation can move there unchanged.
-    task.queue(Task.compute);
+    switch (settles) {
+        .in_the_call => task.settleInCall(),
+        // §14.3 "return promise, then in parallel". Until HTML's parallel-queue
+        // facility exists, PBKDF2/RSA and other long native operations occupy the
+        // realm's thread. The copied-input computation can move there unchanged.
+        .from_a_task => task.queue(Task.compute),
+    }
     return promise.take();
 }
 
@@ -131,6 +151,24 @@ const Task = struct {
         // A bare realm with no event loop (a unit test's) must still settle,
         // as FileReader does.
         callback(self);
+    }
+
+    /// `Settles.in_the_call`: the native work and the realm's steps now, on
+    /// the method's own stack, and the promise is settled when the method
+    /// returns. The steps run in the promise's realm (`runInRealm`: the
+    /// method may have been called on another realm's object), with no
+    /// task's end - no microtask checkpoint, none of a worker's end-of-task
+    /// work: script is still running. unwrapKey's JWK leaves a second job
+    /// (`prepareJwk`): that one too, before returning. The task then frees
+    /// itself, as it does after its `run`.
+    fn settleInCall(self: *Task) void {
+        while (self.job) |job| {
+            self.result = job.compute(job.data, self.realm.allocator) catch |err| .{ .failure = err };
+            job.destroy(job.data, self.realm.allocator);
+            self.job = null;
+            engine.runInRealm(self.realm, realmSteps, self) catch {};
+        }
+        self.finish();
     }
 
     fn compute(data: ?*anyopaque) void {
