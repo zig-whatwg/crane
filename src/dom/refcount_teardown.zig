@@ -210,7 +210,7 @@ fn runGarbageTree(item: *DeferredTeardown.Item, budget: usize) DeferredTeardown.
     const freed = tree_teardown.freeDescendants(root, &item.position, budget);
     if (books) |b| b.freed_nodes += freed;
     // Children left, or the budget spent on them: the root next slice.
-    if (root.first_child != null or freed >= budget) return .{ .freed = freed, .done = false };
+    if (root.firstChild() != null or freed >= budget) return .{ .freed = freed, .done = false };
     root.rc_flags.garbage = false;
     runtime.gc.onObjectFreed(instance);
     if (books) |b| {

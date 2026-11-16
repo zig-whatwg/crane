@@ -69,7 +69,7 @@ fn account(page: helpers.Page) !Account {
     var seen: std.AutoHashMapUnmanaged(usize, void) = .empty;
     defer seen.deinit(testing.allocator);
     var a: Account = .{};
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(c.ownerInstance() orelse continue));
@@ -261,7 +261,7 @@ fn hover() !void {
     const document = page.browser.current_context.?.document_instance.?;
     const list = (try interfaces.Document.call_getElementById(document, str("list"))).?;
     const node = dom.instance_bridge.getNodeBase(list).?;
-    var child = node.first_child;
+    var child = node.firstChild();
     var index: usize = 0;
     var target: ?*runtime.Instance = null;
     while (child) |c| : (child = c.next_sibling) {

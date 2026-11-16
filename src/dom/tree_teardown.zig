@@ -124,7 +124,7 @@ pub fn countUpTo(root: *NodeBase, cap: usize) usize {
     var count: usize = 1;
     var at: *NodeBase = root;
     while (count < cap) {
-        if (at.first_child) |child| {
+        if (at.firstChild()) |child| {
             at = child;
         } else {
             while (at != root and at.next_sibling == null) at = at.parent_node orelse return count;
@@ -155,7 +155,7 @@ pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
     var measure: Measure = .{ .nodes = 1, .bytes = countedBytes(root) };
     var at: *NodeBase = root;
     while (measure.nodes < cap) {
-        if (at.first_child) |child| {
+        if (at.firstChild()) |child| {
             at = child;
         } else {
             while (at != root and at.next_sibling == null) at = at.parent_node orelse return measure;

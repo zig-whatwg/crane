@@ -621,7 +621,7 @@ const Walk = struct {
 /// The node after `node` in tree order within `root`'s inclusive
 /// descendants, or null.
 fn following(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -1229,7 +1229,7 @@ const Matcher = struct {
             switch (combinator) {
                 .Descendant, .Child => {
                     if (simple_chain and combinator == .Child) {
-                        var child = node.first_child;
+                        var child = node.firstChild();
                         while (child) |c| : (child = c.next_sibling) {
                             if (c.node_type == ELEMENT_NODE and anchored.matchesComplex(.{ .node = c }, relative)) return true;
                         }
@@ -1448,7 +1448,7 @@ const SubjectFilter = union(enum) {
 /// ... must be considered" content; comments and processing instructions
 /// are not).
 fn isEmpty(node: *NodeBase) bool {
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         switch (c.node_type) {
             ELEMENT_NODE, TEXT_NODE, CDATA_SECTION_NODE => return false,
@@ -1496,7 +1496,7 @@ const NthIndexCache = struct {
         var types: std.HashMapUnmanaged(TypeKey, i64, TypeKey.Context, std.hash_map.default_max_load_percentage) = .empty;
         defer types.deinit(self.allocator);
         var total: i64 = 0;
-        var child = parent.first_child;
+        var child = parent.firstChild();
         while (child) |c| : (child = c.next_sibling) {
             if (c.node_type != ELEMENT_NODE) continue;
             const key = TypeKey.of(c);
@@ -1506,7 +1506,7 @@ const NthIndexCache = struct {
             total += 1;
             try self.map.put(self.allocator, c, .{ .child = total, .last_child = 0, .of_type = seen.value_ptr.*, .last_of_type = 0 });
         }
-        child = parent.first_child;
+        child = parent.firstChild();
         while (child) |c| : (child = c.next_sibling) {
             if (c.node_type != ELEMENT_NODE) continue;
             const indices = self.map.getPtr(c).?;
@@ -1544,7 +1544,7 @@ const NthIndexCache = struct {
 /// that, counting siblings directly costs less than filling it.
 fn hasManyElementChildren(parent: *NodeBase) bool {
     var count: usize = 0;
-    var child = parent.first_child;
+    var child = parent.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != ELEMENT_NODE) continue;
         count += 1;

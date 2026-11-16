@@ -401,7 +401,7 @@ fn childCount(root: *runtime.Instance) u32 {
     const base = @import("dom").instance_bridge.getNodeBase(@ptrCast(root)) orelse return 0;
     const max_iterations: u32 = 1_000_000;
     var count: u32 = 0;
-    var child = base.first_child;
+    var child = base.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         count += 1;
         if (count >= max_iterations) return count;

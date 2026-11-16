@@ -11,6 +11,7 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-node
 
 const std = @import("std");
+const builtin = @import("builtin");
 const infra = @import("infra");
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -60,7 +61,7 @@ pub const NodeBase = extern struct {
     // Parent pointer. Written only through `setParent`.
     parent_node: ?*NodeBase = null,
 
-    // The tree links. `first_child` and `next_sibling` are what they say;
+    // The tree links. The first child and `next_sibling` are what they say;
     // there is no `last_child` (lane perf2 batch 6): a node's previous link
     // holds its previous sibling, or - for a first child - its parent's LAST
     // child, as Gecko's nsIContent::mPreviousOrLastSibling does
@@ -69,7 +70,17 @@ pub const NodeBase = extern struct {
     // sibling, which only the last child lacks). 8 bytes a node. Read
     // through `previousSibling()` and `lastChild()`, written only by
     // `linkChildBefore` and `unlinkChild`.
-    first_child: ?*NodeBase = null,
+    //
+    // The first-child word is shared (lane nm2, the design's N9): a node
+    // that can have children keeps its first child in it; a LEAF - a
+    // CharacterData node, which DOM lets have none - keeps a word of its own
+    // data there (`leaf`, `claimLeafWord`). So nothing reads it as a child
+    // but `firstChild()`, which answers null for a leaf; the field's name
+    // says so, and `zig build lint-refcount` holds that no file but this
+    // one names it. Blink and WebKit keep the pointer in ContainerNode only
+    // (ContainerNode::first_child_, m_firstChild) and their
+    // Node::firstChild() answers null for any other node.
+    child_or_leaf: ChildOrLeaf = .{ .first_child = null },
     next_sibling: ?*NodeBase = null,
 
     // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
@@ -115,9 +126,16 @@ pub const NodeBase = extern struct {
     /// WebKit an element's state flags in Node (Node::ElementStateFlag).
     element: ElementBits = .{},
 
-    /// Not used. Named, so the struct has no padding and a pin fails when
-    /// something takes it (tests/dom/nm1_node_layout_pins_test.zig).
-    spare: u8 = 0,
+    /// Whether this node is a LEAF: its first-child word (`child_or_leaf`)
+    /// holds a word of the node's own data, not a child. Set once, by the
+    /// node type that takes the word (`claimLeafWord`: CharacterData, at its
+    /// construction), and never cleared - a node's type is fixed. False on
+    /// every node that can have children, and on a NodeBase no Instance owns
+    /// (the tests' fixtures and the WithBase types, whatever their node
+    /// type: their word is a child pointer, null on a Text). It took the
+    /// spare byte: the struct still has no padding (tests/dom/
+    /// nm1_node_layout_pins_test.zig).
+    leaf: bool = false,
 
     // ========================================================================
     // +32: links, document, rare data, wrapper
@@ -222,6 +240,43 @@ pub const NodeBase = extern struct {
         // computes with.
         std.debug.assert(@sizeOf(NodeBase) == 88);
         std.debug.assert(@alignOf(NodeBase) == 8);
+    }
+
+    /// The first-child word: a container's first child, or a leaf's own
+    /// word. `extern`, so it has no hidden tag in safe builds: 8 bytes.
+    pub const ChildOrLeaf = extern union {
+        first_child: ?*NodeBase,
+        leaf_word: usize,
+    };
+
+    /// DOM: the node's first child, or null - for a node with no children,
+    /// and for a leaf, whose word is its own data. The one read of the word
+    /// as a child (Blink's Node::firstChild(): "DynamicTo<ContainerNode>",
+    /// else nullptr; WebKit's the same).
+    pub inline fn firstChild(self: *const NodeBase) ?*NodeBase {
+        if (self.leaf) return null;
+        return self.child_or_leaf.first_child;
+    }
+
+    /// The node type that owns this node's leaf word takes it, once, at the
+    /// node's construction - before the node can be linked anywhere, so the
+    /// word is still null: from here `firstChild()` answers null and the
+    /// word is the caller's (CharacterData keeps its data's word in it:
+    /// dom.character_data.Data). Zeroed.
+    pub fn claimLeafWord(self: *NodeBase) *usize {
+        std.debug.assert(!self.leaf and self.child_or_leaf.first_child == null);
+        self.leaf = true;
+        self.child_or_leaf = .{ .leaf_word = 0 };
+        return &self.child_or_leaf.leaf_word;
+    }
+
+    /// A leaf's own word, for the node type that claimed it. The check is
+    /// Debug only (`builtin.mode`, never std.debug.assert, which ReleaseSafe
+    /// keeps: the deep review's Z3): every read of a text node's data
+    /// passes here.
+    pub inline fn leafWord(self: *NodeBase) *usize {
+        if (builtin.mode == .debug and !self.leaf) @panic("NodeBase.leafWord on a node that claimed no leaf word");
+        return &self.child_or_leaf.leaf_word;
     }
 
     /// An element's flags, in NodeBase's `element` byte. Zero is an element
@@ -611,7 +666,7 @@ pub const NodeBase = extern struct {
     /// DOM: the node's last child, or null: its first child's previous link
     /// (Gecko's nsINode::GetLastChild).
     pub inline fn lastChild(self: *const NodeBase) ?*NodeBase {
-        const first = self.first_child orelse return null;
+        const first = self.firstChild() orelse return null;
         return first.previous_or_last;
     }
 
@@ -620,6 +675,10 @@ pub const NodeBase = extern struct {
     /// the parent pointer and its holds are the caller's (`setParent`,
     /// refcount.linkChild). Constant time.
     pub fn linkChildBefore(self: *NodeBase, child: *NodeBase, before: ?*NodeBase) void {
+        // In every build: a link written under a leaf would overwrite its
+        // data's word. DOM refuses the insert long before (4.2.3 "ensure
+        // pre-insert validity" step 1), so this is one predictable test.
+        if (self.leaf) @panic("a child linked under a leaf node (a CharacterData node has no children)");
         std.debug.assert(child.previous_or_last == null and child.next_sibling == null);
         if (before) |next| {
             std.debug.assert(next.parent_node == self);
@@ -631,19 +690,19 @@ pub const NodeBase = extern struct {
                 // `child` becomes the first child: its previous link holds
                 // the last child, which `next`'s held until now.
                 child.previous_or_last = next.previous_or_last;
-                self.first_child = child;
+                self.child_or_leaf.first_child = child;
             }
             next.previous_or_last = child;
             return;
         }
-        if (self.first_child) |first| {
+        if (self.child_or_leaf.first_child) |first| {
             const last = first.previous_or_last.?;
             last.next_sibling = child;
             child.previous_or_last = last;
             first.previous_or_last = child;
         } else {
             // The only child is its own last child.
-            self.first_child = child;
+            self.child_or_leaf.first_child = child;
             child.previous_or_last = child;
         }
     }
@@ -651,10 +710,11 @@ pub const NodeBase = extern struct {
     /// Unlink `child` - one of this node's children - from its siblings. The
     /// links only: the parent pointer is the caller's. Constant time.
     pub fn unlinkChild(self: *NodeBase, child: *NodeBase) void {
-        const first = self.first_child.?;
+        // A leaf has no child to unlink (`linkChildBefore` refuses one).
+        const first = self.firstChild().?;
         const next = child.next_sibling;
         if (child == first) {
-            self.first_child = next;
+            self.child_or_leaf.first_child = next;
             // The new first child holds the last child (null if none left).
             if (next) |n| n.previous_or_last = child.previous_or_last;
         } else {
@@ -675,7 +735,7 @@ pub const NodeBase = extern struct {
     /// is read before the current one is yielded, so a walk may remove or
     /// move the child it is at - not a later one.
     pub fn children(self: *const NodeBase) ChildIterator {
-        return .{ .next_child = self.first_child };
+        return .{ .next_child = self.firstChild() };
     }
 
     /// The node's children in reverse tree order; the previous child is read
@@ -687,7 +747,7 @@ pub const NodeBase = extern struct {
     /// DOM 4.2.1: how many children the node has - a walk of its links.
     pub fn childCount(self: *const NodeBase) usize {
         var count: usize = 0;
-        var child = self.first_child;
+        var child = self.firstChild();
         while (child) |c| : (child = c.next_sibling) count += 1;
         return count;
     }
@@ -696,7 +756,7 @@ pub const NodeBase = extern struct {
     /// a walk of its links.
     pub fn childAt(self: *const NodeBase, index_wanted: usize) ?*NodeBase {
         var at: usize = 0;
-        var child = self.first_child;
+        var child = self.firstChild();
         while (child) |c| : (child = c.next_sibling) {
             if (at == index_wanted) return c;
             at += 1;

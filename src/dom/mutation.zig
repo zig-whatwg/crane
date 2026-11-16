@@ -294,7 +294,7 @@ fn runInsertionStepsRecursive(node: anytype) void {
 
 /// The node after `node` in `root`'s light subtree, in tree order.
 fn nextLightInTree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -1438,7 +1438,7 @@ pub fn replaceAll(
     // it (prerequisite (b2)): the record takes its removed nodes on a tree
     // that never counted zero. The holds end at the end, error or not.
     defer for (removed_nodes) |removed| refcount.endRemovalHold(removed);
-    while (parent.first_child) |child_to_remove| {
+    while (parent.firstChild()) |child_to_remove| {
         try removeHeld(child_to_remove, true);
     }
 
@@ -1794,7 +1794,7 @@ pub fn convertNodesIntoNode(nodes: anytype, document: *runtime.Instance) !*runti
 pub fn dropConvertedNode(node: *runtime.Instance, count: usize) void {
     if (count == 1) return;
     const base = instance_bridge.getNodeBase(node) orelse return;
-    if (base.first_child == null and base.parent_node == null) {
+    if (base.firstChild() == null and base.parent_node == null) {
         @import("node_creation.zig").releaseIfUnwrapped(node, runtime.SlabAllocator.generationOf(node));
     } else refcount.releaseCreatorReference(base);
 }
@@ -2037,7 +2037,7 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     // one node at a time cost O(nodes x depth) (lane crash1 batch 3). WebKit's
     // Node::isDescendantOf returns false at `!other.hasChildNodes()`, Blink's
     // Node::IsShadowIncludingAncestorOf at `!has_children && !has_shadow`.
-    if (ancestor.first_child == null and !ancestor.is_shadow_host and !hostsTemplateContents(ancestor)) return ancestor == current;
+    if (ancestor.firstChild() == null and !ancestor.is_shadow_host and !hostsTemplateContents(ancestor)) return ancestor == current;
     // DOM host-including inclusive ancestor: follow every fragment host.
     // A fixed depth would permit a cycle through valid, deeply nested templates.
     while (true) {
@@ -2560,7 +2560,7 @@ fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase, new_parent_conn
         // No room for the list: the same steps over the light tree, without
         // its shadow trees, rather than none.
         runMovingStepsOn(node, old_parent, new_parent_connected);
-        var current = node.first_child;
+        var current = node.firstChild();
         while (current) |descendant| {
             runMovingStepsOn(descendant, null, new_parent_connected);
             current = nextInSubtree(descendant, node);
@@ -2575,7 +2575,7 @@ fn runMovingStepsForTree(node: *NodeBase, old_parent: *NodeBase, new_parent_conn
 
 /// The node after `current` in `root`'s light subtree, in tree order.
 fn nextInSubtree(current: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (current.first_child) |first| return first;
+    if (current.firstChild()) |first| return first;
     var at = current;
     while (at != root) {
         if (at.next_sibling) |next| return next;

@@ -99,7 +99,7 @@ fn isManual(shadow: *NodeBase) bool {
 /// The next node after `node` in tree order, staying inside `root`'s
 /// inclusive descendants (never crossing into a shadow tree).
 fn nextInTree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -196,7 +196,7 @@ pub fn findSlottables(allocator: Allocator, slot: *NodeBase, result: *std.ArrayL
     // child's name is that name. Testing slot once, then each child's name,
     // is the same result without a tree walk per child.
     if (firstSlotNamed(root, state.name) != slot) return;
-    var child = host.first_child;
+    var child = host.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (!slot_helpers.isSlottable(c)) continue;
         const slottable = slot_helpers.slottable(c) orelse continue;
@@ -222,7 +222,7 @@ pub fn findFlattenedSlottables(allocator: Allocator, slot: *NodeBase, result: *s
     // Step 4: "If slottables is the empty list, then append each slottable
     // child of slot, in tree order, to slottables."
     if (slottables.items.len == 0) {
-        var child = slot.first_child;
+        var child = slot.firstChild();
         while (child) |c| : (child = c.next_sibling) {
             if (!slot_helpers.isSlottable(c)) continue;
             const ref = NodeRef.to(c) orelse continue;
@@ -403,7 +403,7 @@ pub fn runInsertionSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Nod
     // a slot once its root is known to be a shadow root, as before, unless
     // node is a leaf, whose answer costs nothing.
     const parent_is_slot = slot_helpers.isSlot(parent);
-    const leaf_brings_slot: ?bool = if (node.first_child == null) slot_helpers.isSlot(node) else null;
+    const leaf_brings_slot: ?bool = if (node.firstChild() == null) slot_helpers.isSlot(node) else null;
     if (!parent_is_slot and leaf_brings_slot == false) return;
     const root = rootOf(parent);
     if (!isShadowRoot(root)) return;
@@ -443,7 +443,7 @@ pub fn runRemovingSlotSteps(allocator: Allocator, node: *NodeBase, parent: *Node
     // slot (9) or node takes one out (10): the root is found only then, as
     // in runInsertionSlotSteps.
     const parent_is_slot = slot_helpers.isSlot(parent);
-    const leaf_takes_slot: ?bool = if (node.first_child == null) slot_helpers.isSlot(node) else null;
+    const leaf_takes_slot: ?bool = if (node.firstChild() == null) slot_helpers.isSlot(node) else null;
     if (!parent_is_slot and leaf_takes_slot == false) return;
     const root = rootOf(parent);
     if (!isShadowRoot(root)) return;

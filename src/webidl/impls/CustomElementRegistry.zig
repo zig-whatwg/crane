@@ -568,7 +568,7 @@ pub fn call_initialize(instance: *runtime.Instance, root: *runtime.Instance) any
                 if (try interfaces.Element.get_customElementRegistry(element) == instance) dom.custom_elements.tryUpgrade(element);
             }
         }
-        current = if (node.first_child) |child| child else next: {
+        current = if (node.firstChild()) |child| child else next: {
             var ancestor = node;
             while (ancestor != base) {
                 if (ancestor.next_sibling) |sibling| break :next sibling;

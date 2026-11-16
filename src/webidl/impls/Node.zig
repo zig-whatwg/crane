@@ -223,7 +223,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .base = .{
             .node_type = node_type,
             .parent_node = null,
-            .first_child = null,
             .previous_or_last = null,
             .next_sibling = null,
             .is_connected = false,
@@ -737,7 +736,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    const first = node_base.first_child orelse return null;
+    const first = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -817,7 +816,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
 
     // Otherwise, recursively collect from children using NodeBase
     const node_base = &node_internal.base;
-    var child_base = node_base.first_child;
+    var child_base = node_base.firstChild();
     while (child_base) |c| {
         const child_opaque = instance_bridge.getInstance(c) orelse {
             child_base = c.next_sibling;
@@ -975,7 +974,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
 pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Operation: getRootNode
@@ -1131,12 +1130,12 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
     var a: *NodeBase = self_root;
     var b: *NodeBase = other_root;
     while (true) {
-        if (a.first_child) |a_child| {
+        if (a.firstChild()) |a_child| {
             // Both have children: compare the first ones next.
             a = a_child;
-            b = b.first_child orelse return false;
+            b = b.firstChild() orelse return false;
         } else {
-            if (b.first_child != null) return false;
+            if (b.firstChild() != null) return false;
             // A leaf pair: on to the next sibling pair, climbing while both
             // lists end at once - the same shape so far, so `b` climbs back
             // to its root as `a` does.
@@ -1288,7 +1287,7 @@ pub fn cloneANode(
     if (subtree) {
         const children_document = if (node_internal.base.node_type == NodeType.DOCUMENT_NODE) copy else document;
         const node_base = &node_internal.base;
-        var child_base = node_base.first_child;
+        var child_base = node_base.firstChild();
         while (child_base) |c| : (child_base = c.next_sibling) {
             const child_opaque = instance_bridge.getInstance(c) orelse continue;
             const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
@@ -1962,7 +1961,7 @@ pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = &internal.base;
-    const first_base = node_base.first_child orelse return null;
+    const first_base = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first_base) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -2002,7 +2001,7 @@ pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn hasChildren(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Get the number of child nodes
@@ -2011,7 +2010,7 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
     const node_base = &internal.base;
     var count: u32 = 0;
-    var child = node_base.first_child;
+    var child = node_base.firstChild();
     // Safety limit to prevent infinite loops from corrupted DOM trees
     // A typical DOM tree shouldn't have more than 1M direct children
     const max_iterations: u32 = 1_000_000;
