@@ -161,7 +161,7 @@ test "every node reached by a tree link from a live node names a live Instance" 
     const div = page.all[1];
     const host = try page.nodes.element(page.document, "section");
     try page.nodes.append(div, host);
-    const shadow = try interfaces.Element.call_attachShadow(host, .{ .mode = .open });
+    const shadow = try interfaces.Element.call_attachShadow(host, .{ .mode = ._open_ });
     const inner = try page.nodes.element(page.document, "span");
     try page.nodes.append(shadow, inner);
 
