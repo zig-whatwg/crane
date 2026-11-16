@@ -232,6 +232,120 @@ pub fn importsAsFile(source: []const u8, rel: []const u8) bool {
 }
 
 // ============================================================================
+// Suite rows: the launcher's settings per suite (build.zig `suite_configs`,
+// and an engine adapter's own test directory's row, which its build file
+// declares - src/runtime/engine_build_protocol.zig `Tests`)
+// ============================================================================
+
+/// One suite's launcher settings. Batch size per the measurements
+/// (tmp/plans/test-launcher-design.md section 0, and this lane's merge
+/// report): a process per test where the suite starts a Browser or the
+/// engine and that costs little (Chromium: 1 for browser tests), 10
+/// otherwise (Chromium's unit tests).
+pub const SuiteConfig = struct {
+    batch: u32 = 10,
+    /// Null: the build-wide default (-Dlaunch-jobs, else the CPU count).
+    jobs: ?u32 = null,
+    shuffle: bool = true,
+    /// Tests (full names) known to be slow: their timeout is 4x (Chromium's
+    /// SLOW, as the engines' own test runners have it). Each needs a reason,
+    /// and a bug when it should not be.
+    slow: []const []const u8 = &.{},
+    /// The Crane test runner's process-state check after each test
+    /// (`useCraneTestRunner`): `.fail` fails a test that leaves state behind,
+    /// by the field's name; `.report` only logs it, for a suite whose
+    /// findings are not fixed yet - each such row is TEMPORARY and says why.
+    state_checks: StateChecks = .fail,
+    /// The many-Browsers variant (-Dmany-browsers) for this suite: `.fail`
+    /// fails what fails beside the busy Browser; `.report` runs it and
+    /// reports every non-pass without failing the step (the launcher's
+    /// --report-only), for a suite whose findings are not fixed yet - each
+    /// such row is TEMPORARY and names its findings file. Suites with no
+    /// Browser to run (no engine) never start one.
+    many_browsers: VariantMode = .fail,
+    /// ThreadSanitizer (-Dsanitize-thread) for this suite, the same way: a
+    /// race, a TSAN-only failure, fails the step unless the row is a
+    /// TEMPORARY `.report` naming its findings file.
+    sanitize_thread: VariantMode = .fail,
+    /// Tests that need their process to themselves, so the many-Browsers
+    /// variant runs each in a process of its own with no busy Browser
+    /// beside it (the launcher's --alone, which names each with its reason
+    /// when it runs): a test that makes its process's FIRST isolate, or
+    /// whose subject is a count the whole process shares. Declared, never a
+    /// silent skip; each entry gives a reason a reader can check. A test
+    /// that merely reads a process-wide counter as its instrument is
+    /// converted to a per-agent one instead (docs/lessons/testing-a-test-
+    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md). A name
+    /// ending in ".test." declares every test of that file.
+    alone: []const DeclaredTest = &.{},
+    /// Tests NOT run under ThreadSanitizer (-Dsanitize-thread; the
+    /// launcher's --tsan-skip, which names each with its reason): only a test
+    /// whose subject is real time itself, which the instrumentation's
+    /// slowdown changes - an engine's own test status files SKIP such tests
+    /// under tsan. A test that merely waits on a time budget is fixed to
+    /// wait on its condition instead. Keep it to one or two.
+    tsan_skip: []const DeclaredTest = &.{},
+    /// Who makes the standalone runtime (runtime.initializeRuntime), the
+    /// Crane test runner's `runtime.standalone_runtime`.
+    standalone_runtime: StandaloneRuntime = .per_test,
+};
+
+/// Who makes a suite's standalone runtime. `.per_test`: each test that
+/// needs one makes and ends its own, so none runs between tests and a test
+/// that leaves one fails by the field's name - a later test that makes and
+/// ends its own would replace it and end with none (lane testfix3: two
+/// tests/html files left one, and 8 later tests failed ORDER-DEPENDENT with
+/// `runtime.standalone_runtime: 1 -> 0`). `.process_start`: the suite's test
+/// start makes it once for the process (the engine adapter's own tests: their
+/// test_process.zig `start`), so it may appear once, as everything the
+/// process start makes may.
+pub const StandaloneRuntime = enum { per_test, process_start };
+
+/// A test declared by its full name, with why (`SuiteConfig.alone`,
+/// `SuiteConfig.tsan_skip`).
+pub const DeclaredTest = struct { name: []const u8, reason: []const u8 };
+
+/// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
+/// suite's results: `.fail` as any run; `.report` prints and records every
+/// verdict and passes the step (lane tsan1: report first, fail once clean,
+/// as the state checks went - lane tstate1).
+pub const VariantMode = enum { report, fail };
+
+/// What the Crane test runner does with a change a test leaves in the
+/// process (tests/test_runner/state.zig). CRANE_TEST_STATE=fail|report|off
+/// in the environment overrides it for a run (a survey of every suite in
+/// report mode, with CRANE_TEST_STATE_REPORT_DIR=<dir> collecting what it
+/// finds), without rebuilding a test executable.
+pub const StateChecks = enum { off, report, fail };
+
+/// Whether `name` is the suite name build.zig gives the tests/<dir>/ at
+/// `dir_path` (`addTestFilesFromDir`): its path with '/' as '-'
+/// ("tests/html" -> "tests-html"). A trailing "/" does not count.
+pub fn isSuiteOf(name: []const u8, dir_path: []const u8) bool {
+    const dir = trimSlash(dir_path);
+    if (name.len != dir.len) return false;
+    for (name, dir) |n, d| {
+        if (n != (if (d == '/') '-' else d)) return false;
+    }
+    return true;
+}
+
+/// Whether `prefix` is the name prefix the tests of the tests/<dir>/ at
+/// `dir_path` carry in the one executable (`memberPrefix`: "tests/html" ->
+/// "html.").
+pub fn isMemberOf(prefix: []const u8, dir_path: []const u8) bool {
+    const under = "tests/";
+    const rel = trimSlash(dir_path);
+    if (!std.mem.startsWith(u8, rel, under) or rel.len == under.len) return false;
+    const tail = rel[under.len..];
+    if (prefix.len != tail.len + 1 or prefix[tail.len] != '.') return false;
+    for (prefix[0..tail.len], tail) |p, t| {
+        if (p != (if (t == '/') '.' else t)) return false;
+    }
+    return true;
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -428,4 +542,37 @@ test "a root that imports another module's root as a file is found; a module imp
     try testing.expect(!importsAsFile(webidl_root, "odegen/root.zig"));
     try testing.expect(!importsAsFile("const c = @import(\"codegen/root.zig.bak\");", "codegen/root.zig"));
     try testing.expect(!importsAsFile("", "codegen/root.zig"));
+}
+
+test "a suite's name is its directory's path with '/' as '-'; another directory's is not" {
+    try testing.expect(isSuiteOf("tests-html", "tests/html"));
+    try testing.expect(isSuiteOf("tests-html", "tests/html/"));
+    try testing.expect(isSuiteOf("tests-html-navigation", "tests/html/navigation"));
+    // A -Dtest-file executable is named after its file, not its directory.
+    try testing.expect(!isSuiteOf("mutation_test", "tests/dom"));
+    // One character more or less, or a '/' kept, is another name.
+    try testing.expect(!isSuiteOf("tests-htm", "tests/html"));
+    try testing.expect(!isSuiteOf("tests-htmlx", "tests/html"));
+    try testing.expect(!isSuiteOf("tests/html", "tests/html"));
+    try testing.expect(!isSuiteOf("", "tests/html"));
+}
+
+test "a member's prefix belongs to its directory alone: memberPrefix's answer, and nothing else" {
+    try testing.expect(isMemberOf("html.", "tests/html"));
+    try testing.expect(isMemberOf("html.", "tests/html/"));
+    try testing.expect(isMemberOf("a.b.", "tests/a/b"));
+    // Agrees with memberPrefix for the directories it answers.
+    for ([_][]const u8{ "tests/dom", "tests/wpt_runner/", "tests/a/b" }) |dir| {
+        const prefix = try memberPrefix(testing.allocator, dir);
+        defer testing.allocator.free(prefix);
+        try testing.expect(isMemberOf(prefix, dir));
+    }
+    // Without its dot, with another's name, or nested one level off: not it.
+    try testing.expect(!isMemberOf("html", "tests/html"));
+    try testing.expect(!isMemberOf("htm.", "tests/html"));
+    try testing.expect(!isMemberOf("html.x.", "tests/html"));
+    try testing.expect(!isMemberOf("a-b.", "tests/a/b"));
+    // A directory that is no tests/<dir>/ has no prefix.
+    try testing.expect(!isMemberOf("dom.", "src/dom"));
+    try testing.expect(!isMemberOf(".", "tests/"));
 }

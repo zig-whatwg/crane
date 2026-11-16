@@ -400,10 +400,126 @@ fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
     for (resolved.system_libs) |library| module.linkSystemLibrary(library, .{});
 }
 
+/// The adapter's own tests: tests/v8, the one directory whose tests import
+/// the adapter's module itself (`tests` in `facts`).
+///
+/// tests-v8 ran as one index-order process until lane v8order1 (2026-11-01)
+/// made its tests hermetic (tests/v8/test_process.zig; the order findings it
+/// fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv). Its
+/// process-state checks fail a test that leaves state behind, as every
+/// suite's do: the findings that kept them report-only (lane tstate1) are
+/// classified and fixed, each with its commit, in
+/// docs/testing/test-state-findings-2026-11-02.tsv (lanes engown1, fixes1,
+/// v8state1). Beside the busy Browser (-Dmany-browsers) it fails like any run
+/// (lane tsanfix1); the tests that need their process to themselves run
+/// alone, each with its reason (`alone`). Its test start makes the
+/// standalone runtime for the process (test_process.start).
+///
+/// The platform start tests run once more with the engine started late
+/// (`late_start`): V8 then starts on a later thread beside threads that
+/// already exist, and its platform must give it no thread-isolated allocator
+/// - the fallback of every host that skips
+/// engine.initializeBeforeThreadCreation, which would otherwise fault on
+/// x86-64 Linux (lane linux1; the integrator's ruling, 2026-11-08).
+const tests: engine_build.Tests = .{
+    .dir = "tests/v8",
+    .suite = .{ .batch = 1, .alone = &alone, .standalone_runtime = .process_start },
+    .late_start = "*platform_start_once_test.*",
+};
+
+/// tests/v8's tests that need their process to themselves under the
+/// many-Browsers variant (`SuiteConfig.alone`; lane tsanfix1).
+const alone = snapshot_first ++ [_]engine_build.DeclaredTest{
+    // The subject is a count the whole process shares.
+    .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
+    .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
+    .{ .name = "agents_concurrent_engine_state_test.test.two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once", .reason = "TEMPORARY: it compares the process's live weak callback records over its two agents' rounds; per isolate, each round's for await makes a stream, and wrapper_cache.isStreamsGraphObject holds a streams object's wrapper strongly until its realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
+    .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
+} ++ ledger_tests ++ process_count_subjects;
+
+/// object_global_ledger_test: the subject of each is the adapter's
+/// process-wide live_object_globals ledger itself.
+const ledger_reason = "the subject is the adapter's process-wide live_object_globals ledger, which every Browser of the process moves (V8's per-isolate global handle bytes are its cross-check, not its subject)";
+const ledger_tests = [_]engine_build.DeclaredTest{
+    .{ .name = "object_global_ledger_test.test.v8_Object_New is counted when made and when released by v8_Object_Dispose", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.v8_Object_New released as a Value (the binding's release) leaves the ledger where it started", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.the other object constructors are counted the same way", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.a counted entry point released through a generic dispose leaves nothing counted", .reason = ledger_reason },
+    .{ .name = "object_global_ledger_test.test.a binding call that makes and releases objects leaves the ledger where it started", .reason = ledger_reason },
+};
+
+/// The many-Browsers variant's reason for a test that restores agents from
+/// Crane's snapshot.
+const snapshot_first_reason = "restores agents from Crane's snapshot, so it must make its process's first isolate: V8 keeps one read-only heap per process, made by the first live isolate (v8_wrapper.cpp g_read_only_heap), and beside the busy Browser's snapshotless isolate the restore is refused";
+
+/// Tests that restore agents from Crane's snapshot (each skips, saying so,
+/// when it does not make its process's first isolate).
+const snapshot_first = [_]engine_build.DeclaredTest{
+    .{ .name = "agents_concurrent_engine_state_test.test.two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once", .reason = snapshot_first_reason },
+    .{ .name = "bf1_engine_task_initialization_test.test.snapshot initialization runner wakes a later sink and closes safely", .reason = snapshot_first_reason },
+    .{ .name = "cpp_heap_test.test.an agent restored from the snapshot has a C++ heap", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal parses in a new global, not the page's", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal, again and again, each in a global of its own", .reason = snapshot_first_reason },
+    .{ .name = "new_global_snapshot_test.test.snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a plain global", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: a pattern matches the whole value, compiled standalone with the v flag", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: what the page did to RegExp does not matter", .reason = snapshot_first_reason },
+    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: the page's legacy RegExp statics do not see the value", .reason = snapshot_first_reason },
+    .{ .name = "snapshot_blob_in_place_test.test.agents restored from the snapshot read the engine's blob in place, and all end before it does", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.an agent asked for the snapshot while a snapshotless isolate is the process's first is made without it, and works", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshotless agent made while a snapshot agent is the process's first: each is what it asked for", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a dedicated worker's agent started while a snapshot window agent lives: both work, the window restored", .reason = snapshot_first_reason },
+    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshot window agent made while a worker's agent is the process's first is made without the snapshot, and works", .reason = snapshot_first_reason },
+    .{ .name = "wh_wasm_address_descriptor_test.test.snapshot realm: a Window realm restored from Crane's snapshot takes address i64", .reason = snapshot_first_reason },
+    .{ .name = "wj1_wasm_constructor_test.test.snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics", .reason = snapshot_first_reason },
+    .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
+};
+
+/// context_counter_test: the subject of each is the balance of the adapter's
+/// process-wide live_context_globals count itself. The file's other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const context_count_reason = "the subject is the adapter's process-wide live_context_globals count - every Global<Context> made is counted and every dispose uncounts it - which the busy Browser's realms move too (V8's per-isolate global handle bytes see a leaked context, not a miscounted one)";
+
+/// Tests whose subject is that a binding path makes NO Global for its
+/// receiver: a handle made and disposed leaves the isolate's global handle
+/// bytes as they were, so only the adapter's process-wide creation count per
+/// entry point (object_globals_from.*) sees one (lane testfix2).
+const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
+
+/// weak_callback_ownership_test: the subject of each is the adapter's
+/// process-wide ledger of live weak callback records itself - "returns to
+/// baseline" is the assertion, and a record freed late or never is invisible
+/// to the isolate's global handle bytes once its handle is reset (lane
+/// testfix2, with the integrator's ruling).
+const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
+
+/// cpp_heap_test: the subject is cppgc's process-wide registry of live C++
+/// heaps, the one measure of an agent's end freeing its heap (lane wr2).
+const cpp_heap_registry_reason = "the subject is cppgc's process-wide registry of live C++ heaps - an agent's end must give its count back - which the busy Browser's agents move too";
+
+/// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
+/// subject is a count the whole process shares; their files' other tests
+/// read their own isolate's global handle bytes (lane testfix2).
+const process_count_subjects = [_]engine_build.DeclaredTest{
+    .{ .name = "cpp_heap_test.test.an agent's end frees its C++ heap: cppgc's heap registry is back where it was", .reason = cpp_heap_registry_reason },
+    .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
+    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
+    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
+    .{ .name = "weak_callback_ownership_test.test.disarming a handle frees the record V8 hands back", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an armed handle ends the arm - the record cannot outlive the Global", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.re-arming the same handle replaces the record rather than stacking one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a handle that was never armed is unaffected by disarm and dispose", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.v8_Value_ToWeakGlobal arms the handle it returns, not a null one", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
+    .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
+};
+
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
     .build_tests = &.{"src/runtime/engines/v8/build/archives.zig"},
+    .tests = tests,
     // The adapter's Zig module. Its root re-exports protocol.zig, so in a V8
     // build the facade's `engine_impl` IS this module: the protocol functions
     // live beside the adapter files they call, and a file of another module

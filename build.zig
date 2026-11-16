@@ -1143,84 +1143,15 @@ const TestVerify = struct {
     asked: bool = false,
 };
 
-/// One suite's launcher settings. Batch size per the measurements
-/// (tmp/plans/test-launcher-design.md section 0, and this lane's merge
-/// report): a process per test where the suite starts a Browser or V8 and
-/// that costs little (Chromium: 1 for browser tests), 10 otherwise
-/// (Chromium's unit tests).
-const SuiteConfig = struct {
-    batch: u32 = 10,
-    /// Null: the build-wide default (-Dlaunch-jobs, else the CPU count).
-    jobs: ?u32 = null,
-    shuffle: bool = true,
-    /// Tests (full names) known to be slow: their timeout is 4x (Chromium's
-    /// and V8's SLOW). Each needs a reason, and a bug when it should not be.
-    slow: []const []const u8 = &.{},
-    /// The Crane test runner's process-state check after each test
-    /// (`useCraneTestRunner`): `.fail` fails a test that leaves state behind,
-    /// by the field's name; `.report` only logs it, for a suite whose
-    /// findings are not fixed yet - each such row is TEMPORARY and says why.
-    state_checks: StateChecks = .fail,
-    /// The many-Browsers variant (-Dmany-browsers) for this suite: `.fail`
-    /// fails what fails beside the busy Browser; `.report` runs it and
-    /// reports every non-pass without failing the step (the launcher's
-    /// --report-only), for a suite whose findings are not fixed yet - each
-    /// such row is TEMPORARY and names its findings file. Suites with no
-    /// Browser to run (no V8) never start one.
-    many_browsers: VariantMode = .fail,
-    /// ThreadSanitizer (-Dsanitize-thread) for this suite, the same way: a
-    /// race, a TSAN-only failure, fails the step unless the row is a
-    /// TEMPORARY `.report` naming its findings file.
-    sanitize_thread: VariantMode = .fail,
-    /// Tests that need their process to themselves, so the many-Browsers
-    /// variant runs each in a process of its own with no busy Browser
-    /// beside it (the launcher's --alone, which names each with its reason
-    /// when it runs): a test that makes its process's FIRST isolate, or
-    /// whose subject is a count the whole process shares. Declared, never a
-    /// silent skip; each entry gives a reason a reader can check. A test
-    /// that merely reads a process-wide counter as its instrument is
-    /// converted to a per-agent one instead (docs/lessons/testing-a-test-
-    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md). A name
-    /// ending in ".test." declares every test of that file.
-    alone: []const DeclaredTest = &.{},
-    /// Tests NOT run under ThreadSanitizer (-Dsanitize-thread; the
-    /// launcher's --tsan-skip, which names each with its reason): only a test
-    /// whose subject is real time itself, which the instrumentation's
-    /// slowdown changes - V8's status files SKIP such tests under tsan. A
-    /// test that merely waits on a time budget is fixed to wait on its
-    /// condition instead. Keep it to one or two.
-    tsan_skip: []const DeclaredTest = &.{},
-    /// Who makes the standalone runtime (runtime.initializeRuntime), the
-    /// Crane test runner's `runtime.standalone_runtime`.
-    standalone_runtime: StandaloneRuntime = .per_test,
-};
-
-/// Who makes a suite's standalone runtime. `.per_test`: each test that
-/// needs one makes and ends its own, so none runs between tests and a test
-/// that leaves one fails by the field's name - a later test that makes and
-/// ends its own would replace it and end with none (lane testfix3: two
-/// tests/html files left one, and 8 later tests failed ORDER-DEPENDENT with
-/// `runtime.standalone_runtime: 1 -> 0`). `.process_start`: the suite's test
-/// start makes it once for the process (tests/v8/test_process.zig `start`),
-/// so it may appear once, as everything the process start makes may.
-const StandaloneRuntime = enum { per_test, process_start };
-
-/// A test declared by its full name, with why (`SuiteConfig.alone`,
-/// `SuiteConfig.tsan_skip`).
-const DeclaredTest = struct { name: []const u8, reason: []const u8 };
-
-/// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
-/// suite's results: `.fail` as any run; `.report` prints and records every
-/// verdict and passes the step (lane tsan1: report first, fail once clean,
-/// as the state checks went - lane tstate1).
-const VariantMode = enum { report, fail };
-
-/// What the Crane test runner does with a change a test leaves in the
-/// process (tests/test_runner/state.zig). CRANE_TEST_STATE=fail|report|off
-/// in the environment overrides it for a run (a survey of every suite in
-/// report mode, with CRANE_TEST_STATE_REPORT_DIR=<dir> collecting what it
-/// finds), without rebuilding a test executable.
-const StateChecks = enum { off, report, fail };
+/// The launcher's settings per suite and the types of a row
+/// (tools/test_suites.zig, where an engine adapter's build file declares its
+/// own test directory's row too: src/runtime/engine_build_protocol.zig
+/// `Tests`).
+const SuiteConfig = test_suites.SuiteConfig;
+const StandaloneRuntime = test_suites.StandaloneRuntime;
+const DeclaredTest = test_suites.DeclaredTest;
+const VariantMode = test_suites.VariantMode;
+const StateChecks = test_suites.StateChecks;
 
 /// The per-suite table, by the name `addSuiteRun` is given. A suite not
 /// listed gets `SuiteConfig{}`.
@@ -1228,26 +1159,15 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // Wall-clock measurements: one process, index order, nothing beside them.
     .{ .name = "tests-benchmarks", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
-    // Suites that start V8 or a Browser: a process per test.
+    // Suites that start the engine or a Browser: a process per test. (The
+    // engine adapter's own test directory: its row is its build file's,
+    // `facts.tests`.)
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
     // Both test variants fail (lane tsanfix1 fixed lane tsan1's findings,
     // docs/testing/test-variant-findings-2026-11-02.tsv).
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .tsan_skip = &html_tsan_skip } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // tests-v8 ran as one index-order process until lane v8order1
-    // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
-    // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
-    // Its process-state checks fail a test that leaves state behind, as
-    // every suite's do: the findings that kept them report-only (lane
-    // tstate1) are classified and fixed, each with its commit, in
-    // docs/testing/test-state-findings-2026-11-02.tsv (lanes engown1,
-    // fixes1, v8state1).
-    // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
-    // tsanfix1); the tests that need their process to themselves run alone,
-    // each with its reason (`v8_alone`). Its test start makes the
-    // standalone runtime for the process (test_process.start).
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone, .standalone_runtime = .process_start } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     // The browser console (tools/repl.zig): every test starts a Browser
@@ -1255,94 +1175,6 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-repl", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
-};
-
-/// tests-v8's tests that need their process to themselves under the
-/// many-Browsers variant (`SuiteConfig.alone`; lane tsanfix1).
-const v8_alone = snapshot_first ++ [_]DeclaredTest{
-    // The subject is a count the whole process shares.
-    .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
-    .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
-    .{ .name = "agents_concurrent_engine_state_test.test.two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once", .reason = "TEMPORARY: it compares the process's live weak callback records over its two agents' rounds; per isolate, each round's for await makes a stream, and wrapper_cache.isStreamsGraphObject holds a streams object's wrapper strongly until its realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
-    .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
-} ++ ledger_tests ++ process_count_subjects;
-
-/// object_global_ledger_test: the subject of each is the adapter's
-/// process-wide live_object_globals ledger itself.
-const ledger_reason = "the subject is the adapter's process-wide live_object_globals ledger, which every Browser of the process moves (V8's per-isolate global handle bytes are its cross-check, not its subject)";
-const ledger_tests = [_]DeclaredTest{
-    .{ .name = "object_global_ledger_test.test.v8_Object_New is counted when made and when released by v8_Object_Dispose", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.v8_Object_New released as a Value (the binding's release) leaves the ledger where it started", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.the other object constructors are counted the same way", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.a counted entry point released through a generic dispose leaves nothing counted", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.a binding call that makes and releases objects leaves the ledger where it started", .reason = ledger_reason },
-};
-
-/// The many-Browsers variant's reason for a test that restores agents from
-/// Crane's snapshot.
-const snapshot_first_reason = "restores agents from Crane's snapshot, so it must make its process's first isolate: V8 keeps one read-only heap per process, made by the first live isolate (v8_wrapper.cpp g_read_only_heap), and beside the busy Browser's snapshotless isolate the restore is refused";
-
-/// Tests that restore agents from Crane's snapshot (each skips, saying so,
-/// when it does not make its process's first isolate).
-const snapshot_first = [_]DeclaredTest{
-    .{ .name = "agents_concurrent_engine_state_test.test.two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once", .reason = snapshot_first_reason },
-    .{ .name = "bf1_engine_task_initialization_test.test.snapshot initialization runner wakes a later sink and closes safely", .reason = snapshot_first_reason },
-    .{ .name = "cpp_heap_test.test.an agent restored from the snapshot has a C++ heap", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal parses in a new global, not the page's", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal, again and again, each in a global of its own", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a plain global", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: a pattern matches the whole value, compiled standalone with the v flag", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: what the page did to RegExp does not matter", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: the page's legacy RegExp statics do not see the value", .reason = snapshot_first_reason },
-    .{ .name = "snapshot_blob_in_place_test.test.agents restored from the snapshot read the engine's blob in place, and all end before it does", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.an agent asked for the snapshot while a snapshotless isolate is the process's first is made without it, and works", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshotless agent made while a snapshot agent is the process's first: each is what it asked for", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a dedicated worker's agent started while a snapshot window agent lives: both work, the window restored", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshot window agent made while a worker's agent is the process's first is made without the snapshot, and works", .reason = snapshot_first_reason },
-    .{ .name = "wh_wasm_address_descriptor_test.test.snapshot realm: a Window realm restored from Crane's snapshot takes address i64", .reason = snapshot_first_reason },
-    .{ .name = "wj1_wasm_constructor_test.test.snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics", .reason = snapshot_first_reason },
-    .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
-};
-
-/// context_counter_test: the subject of each is the balance of the adapter's
-/// process-wide live_context_globals count itself. The file's other tests
-/// read their own isolate's global handle bytes (lane testfix2).
-const context_count_reason = "the subject is the adapter's process-wide live_context_globals count - every Global<Context> made is counted and every dispose uncounts it - which the busy Browser's realms move too (V8's per-isolate global handle bytes see a leaked context, not a miscounted one)";
-
-/// Tests whose subject is that a binding path makes NO Global for its
-/// receiver: a handle made and disposed leaves the isolate's global handle
-/// bytes as they were, so only the adapter's process-wide creation count per
-/// entry point (object_globals_from.*) sees one (lane testfix2).
-const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
-
-/// weak_callback_ownership_test: the subject of each is the adapter's
-/// process-wide ledger of live weak callback records itself - "returns to
-/// baseline" is the assertion, and a record freed late or never is invisible
-/// to the isolate's global handle bytes once its handle is reset (lane
-/// testfix2, with the integrator's ruling).
-const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
-
-/// cpp_heap_test: the subject is cppgc's process-wide registry of live C++
-/// heaps, the one measure of an agent's end freeing its heap (lane wr2).
-const cpp_heap_registry_reason = "the subject is cppgc's process-wide registry of live C++ heaps - an agent's end must give its count back - which the busy Browser's agents move too";
-
-/// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
-/// subject is a count the whole process shares; their files' other tests
-/// read their own isolate's global handle bytes (lane testfix2).
-const process_count_subjects = [_]DeclaredTest{
-    .{ .name = "cpp_heap_test.test.an agent's end frees its C++ heap: cppgc's heap registry is back where it was", .reason = cpp_heap_registry_reason },
-    .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
-    .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
-    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
-    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
-    .{ .name = "weak_callback_ownership_test.test.disarming a handle frees the record V8 hands back", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing an armed handle ends the arm - the record cannot outlive the Global", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.re-arming the same handle replaces the record rather than stacking one", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.a handle that was never armed is unaffected by disarm and dispose", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.v8_Value_ToWeakGlobal arms the handle it returns, not a null one", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
@@ -1369,7 +1201,10 @@ const html_slow = [_][]const u8{
     "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
 };
 
-fn suiteConfig(name: []const u8) SuiteConfig {
+/// The row of the suite `name`: the engine adapter's own test directory's
+/// is its build file's (`facts.tests`), every other `suite_configs`'.
+fn suiteConfig(engine: *const engine_build.Engine, name: []const u8) SuiteConfig {
+    if (engine.facts.tests) |tests| if (test_suites.isSuiteOf(name, tests.dir)) return tests.suite;
     for (suite_configs) |entry| if (std.mem.eql(u8, entry.name, name)) return entry.config;
     return .{};
 }
@@ -1391,7 +1226,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// each of `groups` keeps its own row of suite_configs, keyed by its tests'
 /// name prefix (`addGroupArgs`).
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
-    const config = suiteConfig(config_name orelse name);
+    const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
     // Browser: -Dmany-browsers, and it links V8 and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
@@ -1728,7 +1563,7 @@ fn testVerifySelection(b: *std.Build) *TestVerify {
 /// Test names start with the file's path in the directory, '/' as '.', no
 /// `.zig`: "navigation.nav2h_indexes_test.test.<name>".
 fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8) void {
-    addTestVerifyIn(b, launch, test_exe, name, dir_path, files, .{ .prefix = "", .config = suiteConfig(name), .plain = false });
+    addTestVerifyIn(b, launch, test_exe, name, dir_path, files, .{ .prefix = "", .config = suiteConfig(launch.engine, name), .plain = false });
 }
 
 /// `addTestVerify` for one member suite of a one-binary executable
@@ -2004,7 +1839,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var joined: std.ArrayList(OneBinary.Member) = .empty;
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
-        const config = suiteConfig(m.name);
+        const config = suiteConfig(launch.engine, m.name);
         var fits = m.runs_engine and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
@@ -2040,7 +1875,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var runs_engine = false;
     for (joined.items) |m| {
         runs_engine = runs_engine or m.runs_engine;
-        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(m.name), .plain = !m.runs_engine });
+        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(launch.engine, m.name), .plain = !m.runs_engine });
     }
     // The table's names a joined member imports, with their modules.
     var imports: std.ArrayList(std.Build.Module.Import) = .empty;
@@ -2124,47 +1959,50 @@ fn addTestRootWith(
     step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
     // A -Dtest-file executable is named after its file and takes its
     // directory's row (`config_name`).
-    if (runs_engine and holdsTestsV8(config_name orelse name, groups)) {
+    if (runs_engine and holdsEngineTests(launch.engine, config_name orelse name, groups)) {
         if (addEngineLateRun(builder, launch, test_exe, name, groups)) |late| step.dependOn(&late.step);
     }
     return test_exe;
 }
 
 /// Whether the executable `name` (with `groups`, a joined one's members)
-/// holds tests/v8's tests.
-fn holdsTestsV8(name: []const u8, groups: []const SuiteGroup) bool {
-    if (std.mem.eql(u8, name, "tests-v8")) return true;
-    for (groups) |g| if (std.mem.eql(u8, g.prefix, "v8.")) return true;
+/// holds the engine adapter's own tests (`facts.tests`).
+fn holdsEngineTests(engine: *const engine_build.Engine, name: []const u8, groups: []const SuiteGroup) bool {
+    const tests = engine.facts.tests orelse return false;
+    if (test_suites.isSuiteOf(name, tests.dir)) return true;
+    for (groups) |g| if (test_suites.isMemberOf(g.prefix, tests.dir)) return true;
     return false;
 }
 
-/// tests/v8's platform start tests once more, each in a process whose start
-/// skipped engine.initializeBeforeThreadCreation (CRANE_TEST_ENGINE_EARLY=0,
-/// which the Crane test runner reads): there V8 starts on a later thread
-/// beside threads that already exist, and its platform must give it no
-/// thread-isolated allocator - the fallback of every host that skips the
-/// call, which would otherwise fault on x86-64 Linux (lane linux1; the
-/// integrator's ruling, 2026-11-08). The same executable, so nothing more
-/// is compiled; only the plain run has it (a variant or a -Dtest-filter run
-/// selects its own tests).
+/// The engine adapter's tests that it names for a late start
+/// (`Tests.late_start`, a test-name filter) run once more, each in a process
+/// whose start skipped engine.initializeBeforeThreadCreation
+/// (CRANE_TEST_ENGINE_EARLY=0, which the Crane test runner reads): there the
+/// engine starts on a later thread beside threads that already exist - the
+/// start of every host that skips the call (lane linux1; the integrator's
+/// ruling, 2026-11-08; the adapter's build file says what its tests check).
+/// The same executable, so nothing more is compiled; only the plain run has
+/// it (a variant or a -Dtest-filter run selects its own tests).
 fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, groups: []const SuiteGroup) ?*std.Build.Step.Run {
     if (launch.sanitize_thread or launch.many_browsers or launch.filters.len != 0) return null;
+    const late_start = (launch.engine.facts.tests orelse return null).late_start orelse return null;
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s} (engine started late)", .{name}));
     run.stdio = .zig_test;
     run.addArtifactArg(test_exe);
     run.addArg(b.fmt("--name={s}-engine-late", .{name}));
     // A process per test: each race needs a process where nothing has
-    // started V8 yet.
+    // started the engine yet.
     run.addArg("--batch=1");
     run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     addGroupArgs(b, run, launch, groups, false, false);
-    // The leading `*` takes the joined executable's "v8." prefix too: the
-    // launcher strips a group's prefix only for a group it is told of, and
-    // this run passes no batches (a bare "platform_start_once_test*" ran
-    // nothing in the joined "tests" on server1, lane linux1).
-    run.addArg("--filter=*platform_start_once_test.*");
+    // The filter must take the joined executable's member prefix too (the
+    // adapter's starts with `*`): the launcher strips a group's prefix only
+    // for a group it is told of, and this run passes no batches (a bare
+    // file pattern ran nothing in the joined "tests" on server1, lane
+    // linux1).
+    run.addArg(b.fmt("--filter={s}", .{late_start}));
     // Its results beside the suite's own, never over them; the order is the
     // plain run's (as a filtered run's is).
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));

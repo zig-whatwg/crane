@@ -38,6 +38,10 @@
 //! it is where the build side meets the adapters.)
 
 const std = @import("std");
+/// The launcher's row types, which an adapter's own test directory's row
+/// (`Tests.suite`) is made of: a std-only build file the root build.zig
+/// imports too.
+const test_suites = @import("../../tools/test_suites.zig");
 
 /// The engine adapters, by their `-Dengine` name: each one's build file. A
 /// new adapter is a directory, a build file and a line here; Zig imports by
@@ -94,8 +98,7 @@ pub const Link = struct {
     }
 };
 
-/// What the neutral build asks about an adapter. It grows with the
-/// migration: its test directory is next.
+/// What the neutral build asks about an adapter.
 pub const Facts = struct {
     /// The words that name this engine: what `zig build lint-build` looks for
     /// in the root build.zig and the neutral files it imports.
@@ -124,6 +127,32 @@ pub const Facts = struct {
     /// their own - its build file's helpers - relative to the build root.
     /// The test step runs each (`build_tests`).
     build_tests: []const []const u8 = &.{},
+    /// The adapter's own test directory, which only a build of this engine
+    /// runs; null when it has none.
+    tests: ?Tests = null,
+};
+
+/// A suite's launcher settings and the parts of a row
+/// (tools/test_suites.zig): what an adapter's `Tests.suite` is made of.
+pub const SuiteConfig = test_suites.SuiteConfig;
+pub const DeclaredTest = test_suites.DeclaredTest;
+
+/// An engine adapter's own test directory (`Facts.tests`): its tests reach
+/// the adapter's module itself, which nothing else of the test layout may.
+/// The root build makes it a suite like any tests/<dir>/ when the adapter is
+/// the build's engine, from these facts alone.
+pub const Tests = struct {
+    /// The directory, relative to the build root: "tests/<name>". Its suite
+    /// is named from it as every directory's is ("tests-<name>").
+    dir: []const u8,
+    /// The suite's row of launcher settings (as build.zig's `suite_configs`
+    /// rows are for the other directories).
+    suite: SuiteConfig,
+    /// The tests to run once more in processes that start the engine late -
+    /// on a later thread, beside threads that already exist, as a host that
+    /// skips the early start does - as a launcher test-name filter that also
+    /// matches inside a joined executable (so it begins with `*`). Null: none.
+    late_start: ?[]const u8 = null,
 };
 
 /// One std-only file of an adapter's build side whose tests the test step
