@@ -483,12 +483,79 @@ const kept_shapes = [_]KeptShape{
     .{ .name = "a div's DOMTokenList (indexed properties; a [SameObject] edge: a weak handle; with its div)", .make = "o.keep.push(doc2.createElement('div').classList)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 48.5 },
     .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
     .{ .name = "a div's HTMLCollection (a holder behind a proxy: a weak handle; with its div)", .make = "o.keep.push(doc2.createElement('div').children)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 48.5 },
-    // The two other holders lane wrap1's brief named (lane wrap2): each is ONE anchor and one record, as the two
-    // above. A MutationRecord comes from an observer's queue (its record and the node it names are the page's
-    // already); a computed style declaration holds its element.
+    // The two other holders lane wrap1's brief named (lane wrap2; figures of 2026-11-16, chat2.local: each 16.0 B
+    // of V8 handles, 24.0 B of CppHeap, one cache entry - a traced reference and ONE anchor, as a NodeList). A
+    // MutationRecord comes from an observer's queue. getComputedStyle answers a CSSStyleProperties (CSSOM 6.6.1;
+    // src/webidl/impls/Window.zig), which is a holder through the CSSStyleDeclaration level of its state and -
+    // unlike a CSSStyleDeclaration itself - has no proxy (template_registry.zig legacy_platform_objects names
+    // interfaces exactly), so its wrapper is an unmodified API object the cache holds by a traced reference.
     .{ .name = "a MutationRecord (a holder of nodes)", .make = "(doc2.body.firstChild.textContent = 'x' + i, o.keep.push(o.observer.takeRecords()[0]))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
-    .{ .name = "getComputedStyle's CSSStyleDeclaration (a holder behind a proxy: a weak handle)", .make = "o.keep.push(getComputedStyle(doc2.body.firstChild))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 32.5 },
+    .{ .name = "getComputedStyle's CSSStyleProperties (a holder of its element; no proxy)", .make = "o.keep.push(getComputedStyle(doc2.body.firstChild))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
 };
+
+test "the four holders the wrapper batches named are holders: each one's type traces the nodes it holds, and its wrapper's record is the cache's" {
+    // Lane wrap1's batch 3 moved every non-node wrapper to an anchor that names the cache's record, the holders
+    // of nodes included: a holder's anchor is a HolderAnchor - a PlatformAnchor of the same 16 bytes whose Trace
+    // also asks the holder's type for the nodes it holds (runtime.VTable.trace_held_nodes), reading the instance
+    // and its slab generation from the record (v8_wrapper.cpp HolderAnchor::Trace). The byte pins above cannot
+    // tell a HolderAnchor from a PlatformAnchor - they are the same size - so this asks each object itself:
+    // its type has the trace, the cache holds its wrapper by a record of its own, and a collection that keeps
+    // the wrapper runs the trace. A URLSearchParams is the control: no trace.
+    const WrapperCache = @import("v8").WrapperCache;
+    const page = try Page.open();
+    defer page.close();
+    const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+    try page.run(
+        \\globalThis.h = {};
+        \\h.doc = new Document().implementation.createHTMLDocument("");
+        \\h.div = h.doc.createElement("div");
+        \\h.div.appendChild(h.doc.createElement("p"));
+        \\h.doc.body.appendChild(h.div);
+        \\h.observer = new MutationObserver(() => {});
+        \\h.observer.observe(h.doc.body, { childList: true, subtree: true });
+        \\h.div.firstChild.textContent = "x";
+        \\h.list = h.doc.querySelectorAll("p");
+        \\h.children = h.div.children;
+        \\h.record = h.observer.takeRecords()[0];
+        \\h.style = getComputedStyle(h.div);
+        \\h.params = new URLSearchParams("a=b");
+        \\0
+    );
+    const shapes = [_]struct { read: []const u8, interface: []const u8, holder: bool }{
+        .{ .read = "h.list", .interface = "NodeList", .holder = true },
+        .{ .read = "h.children", .interface = "HTMLCollection", .holder = true },
+        .{ .read = "h.record", .interface = "MutationRecord", .holder = true },
+        .{ .read = "h.style", .interface = "CSSStyleProperties", .holder = true },
+        .{ .read = "h.params", .interface = "URLSearchParams", .holder = false },
+    };
+    var wrong: usize = 0;
+    for (shapes) |shape| {
+        const got = try page.evalOwned(shape.read);
+        defer got.release();
+        const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
+        const traces = instance.vtable.trace_held_nodes != null;
+        const cached = cache.get(instance) != null;
+        std.debug.print("{s}: a {s}; its type traces held nodes: {}; cached: {}\n", .{ shape.read, instance.vtable.name, traces, cached });
+        if (!std.mem.eql(u8, instance.vtable.name, shape.interface)) wrong += 1;
+        if (traces != shape.holder) wrong += 1;
+        if (!cached) wrong += 1;
+    }
+    try testing.expectEqual(@as(usize, 0), wrong);
+
+    // A full collection keeps the four (script holds them) and runs each one's trace: at least four more
+    // holder traces than before it, counted by the agent's walk.
+    const before = try page.counter("node_wrapper_holder_traces");
+    page.fullGC();
+    const traced = try page.counter("node_wrapper_holder_traces") - before;
+    std.debug.print("holder traces in the collections: {d}\n", .{traced});
+    try testing.expect(traced >= 4);
+    // And what they hold is still what script reads back.
+    try page.expectOk(
+        \\h.list[0] === h.div.firstChild && h.children[0] === h.div.firstChild && h.record.target === h.div.firstChild && h.style.length >= 0 ? "ok" : "a holder lost what it holds"
+    );
+    try page.run("globalThis.h = null; 0");
+    page.fullGC();
+}
 
 test "a kept non-node wrapper of every shape costs one handle in the cache's own record and one anchor on the C++ heap" {
     // Until lane wrap1's batch 3 the wrapper cache kept each non-node wrapper by a weak v8::Global with a
