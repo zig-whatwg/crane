@@ -1109,7 +1109,7 @@ const TestLaunch = struct {
     /// (`useCraneTestRunner`).
     engine: *const engine_build.Engine,
     /// The browser module, which the many-Browsers variant adds to every
-    /// test executable that links V8 and lacks it (`addTestRoot`).
+    /// test executable that links the engine and lacks it (`addTestRoot`).
     browser_module: ?*std.Build.Module = null,
     /// Every test executable `addSuiteRun` runs, for the instrumentation
     /// pass at the end of `build` (`instrumentForThreadSanitizer`).
@@ -1231,7 +1231,7 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
     const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
-    // Browser: -Dmany-browsers, and it links V8 and the browser module. The
+    // Browser: -Dmany-browsers, and it links the engine and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
     const many_browsers = useCraneTestRunner(b, test_exe, launch.engine, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers, launch.log_level);
     const run = b.addRunArtifact(launch.launcher);
@@ -1336,7 +1336,7 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// The runner reads only what the executable links: its directory is copied
 /// beside a generated `suite.zig` that names the root module's own imports
 /// it may read - every import whose root is a `src/<dir>/root.zig`, keyed by
-/// that directory - and the engine only where the root module links V8.
+/// that directory - and the engine only where the root module links it.
 /// Zig gives a custom test runner a copy of the root module's imports, so
 /// the runner's `@import("dom")` is the executable's own dom. And
 /// tools/global_state_baseline.txt, lint-global-state's inventory, from which
@@ -1344,7 +1344,7 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 ///
 /// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
-/// where the executable imports the browser module and links V8. Returns
+/// where the executable imports the browser module and links the engine. Returns
 /// whether it can. `standalone`: who makes the standalone runtime
 /// (`StandaloneRuntime`), which decides how the runner compares it.
 /// `members`: the member suites of a joined executable (`OneBinary`,
@@ -1436,10 +1436,10 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: 
         \\pub const mode: Mode = .{t};
         \\/// -Dtest-log-level, or null: the runner's log levels (runner.zig).
         \\pub const log_level_option: ?@import("std").log.Level = {s};
-        \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
+        \\/// Who makes the standalone runtime (tools/test_suites.zig StandaloneRuntime).
         \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
         \\pub const standalone_runtime: StandaloneRuntime = .{t};
-        \\/// A joined executable's member suites (build.zig -Dtest-binaries=v8):
+        \\/// A joined executable's member suites (build.zig -Dtest-binaries=engine):
         \\/// a test whose name starts with a member's prefix is judged by that
         \\/// member's own StandaloneRuntime - the longest prefix wins. Empty for an
         \\/// executable of one suite.
@@ -1486,9 +1486,9 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: 
     w.print("pub const dom: ?type = {s};\n", .{if (has_dom) "@import(\"dom\")" else "null"}) catch @panic("OOM");
     w.print("pub const runtime: ?type = {s};\n", .{if (has_runtime) "@import(\"runtime\")" else "null"}) catch @panic("OOM");
     const has_engine = root.import_table.get("engine") != null and engine.isLinkedInto(root);
-    w.print("/// The engine, where the executable links V8.\n{s}\n", .{if (has_engine) suite_engine_line else "pub const engine: ?type = null;"}) catch @panic("OOM");
+    w.print("/// The engine, where the executable links it.\n{s}\n", .{if (has_engine) suite_engine_line else "pub const engine: ?type = null;"}) catch @panic("OOM");
     const has_browser = many_browsers and root.import_table.get("browser") != null and engine.isLinkedInto(root);
-    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\n{s}\n", .{if (has_browser) suite_browser_line else "pub const browser: ?type = null;"}) catch @panic("OOM");
+    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links the engine).\n{s}\n", .{if (has_browser) suite_browser_line else "pub const browser: ?type = null;"}) catch @panic("OOM");
     _ = wf.add("suite.zig", suite.written());
 
     const runner = wf.getDirectory().path(b, "runner.zig");
