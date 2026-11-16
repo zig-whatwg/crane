@@ -1046,21 +1046,26 @@ test "a wrapper the cache holds by a weak handle costs no callback record: the h
     try testing.expectEqual(@as(usize, 0), wrong);
 }
 
-test "a wrapper held by a weak handle that the cache keeps survives both kinds of collection; released, a young collection takes it" {
+test "a wrapper held by a weak handle that the cache keeps survives both kinds of collection, and is collected once released: by a young collection while it is young, by a full one after it survived" {
     // Pending activity (engine.keepPlatformObjectAlive) makes a record's weak Global strong and its release arms
-    // it again (wrapper_cache.zig makeStrong, makeWeak) - with the anchor as the arm's parameter, each time.
+    // it again (wrapper_cache.zig makeStrong, makeWeak; v8_wrapper.cpp v8_WrapperCell_Disarm, v8_WrapperCell_ArmWeak)
+    // - with the wrapper's anchor as the arm's parameter, each time. A Global that stayed strong after the
+    // release would keep the wrapper and its instance until the realm's end.
     const WrapperCache = @import("v8").WrapperCache;
     const page = try Page.open();
     defer page.close();
     const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
     page.fullGC();
+    const records_before = try page.counter("live_weak_callback_data");
 
-    var attempt: usize = 0;
-    while (attempt < 4) : (attempt += 1) {
+    // KEPT THROUGH COLLECTIONS, THEN RELEASED. The wrapper survives a full collection while it is held, so V8
+    // has moved it to the old generation: from there only a full collection takes it, whatever holds it (a
+    // young collection processes the weak handles of young objects alone: 15.7.112.43
+    // src/handles/global-handles.cc ProcessWeakYoungObjects walks `young_nodes_`).
+    {
         const got = try page.evalOwned("new Event('x')");
         const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
         const generation = runtime.SlabAllocator.generationOf(instance);
-        const records_before = try page.counter("live_weak_callback_data");
         protocol.keepPlatformObjectAlive(instance);
         protocol.keepPlatformObjectAlive(instance);
         got.release();
@@ -1070,27 +1075,52 @@ test "a wrapper held by a weak handle that the cache keeps survives both kinds o
         page.fullGC();
         const handle = cache.get(instance) orelse return error.NotCached;
         try testing.expect(!ffi.v8_Global_IsEmpty(@ptrCast(handle)));
+        try testing.expect(!ffi.v8_Global_IsWeak(@ptrCast(handle)));
         try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
 
-        // One of two keeps ended: still held.
+        // One of two keeps ended: still held, through a full collection too.
         protocol.releasePlatformObject(instance);
-        try page.minorGC(4);
-        try testing.expect(cache.get(instance) != null);
+        try testing.expect(!ffi.v8_Global_IsWeak(@ptrCast(handle)));
+        page.fullGC();
+        try testing.expectEqual(handle, cache.get(instance) orelse return error.NotCached);
 
-        // The last keep ended: the cache's handle is weak again, and a young collection takes the wrapper (an
-        // Event's is no unmodified API object: only a weak Global's first pass finds it dead there).
-        const full_before = page.fullCollections();
+        // The last keep ended: the same handle is weak again, and a full collection takes the wrapper.
         protocol.releasePlatformObject(instance);
         try testing.expectEqual(handle, cache.get(instance) orelse return error.NotCached);
+        try testing.expect(ffi.v8_Global_IsWeak(@ptrCast(handle)));
+        page.fullGC();
+        try testing.expect(cache.get(instance) == null);
+        try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
+    }
+
+    // KEPT AND RELEASED WHILE YOUNG. No collection runs while it is held, so the wrapper is still in the young
+    // generation when the arm is made again: a young collection takes it (an Event's wrapper is no unmodified
+    // API object: only a weak Global's first pass finds it dead there).
+    var attempt: usize = 0;
+    while (attempt < 4) : (attempt += 1) {
+        const collections_before = page.fullCollections() + @as(u64, @intCast(try page.counter("minor_gc_count")));
+        const got = try page.evalOwned("new Event('x')");
+        const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
+        const generation = runtime.SlabAllocator.generationOf(instance);
+        protocol.keepPlatformObjectAlive(instance);
+        const handle = cache.get(instance) orelse return error.NotCached;
+        try testing.expect(!ffi.v8_Global_IsWeak(@ptrCast(handle)));
+        protocol.releasePlatformObject(instance);
+        try testing.expect(ffi.v8_Global_IsWeak(@ptrCast(handle)));
+        got.release();
+        // A collection V8 chose to run meanwhile may have promoted the wrapper: read again.
+        if (page.fullCollections() + @as(u64, @intCast(try page.counter("minor_gc_count"))) != collections_before) continue;
+
+        const full_before = page.fullCollections();
         try page.minorGC(4);
         if (page.fullCollections() != full_before) continue;
         try testing.expect(cache.get(instance) == null);
         try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
-        // Arming, disarming and the death left no callback record behind.
+        // Arming, disarming and both deaths left no callback record behind.
         try testing.expect(try page.counter("live_weak_callback_data") <= records_before);
         return;
     }
-    std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
+    std.debug.print("a collection ran inside each of {d} attempts: the young case was not read\n", .{attempt});
     return error.TestInconclusive;
 }
 
