@@ -311,9 +311,17 @@ pub const DispatchPath = struct {
                 if (related != previous_related) item.related_ref.take(related, instance_bridge.getNodeBase(@ptrCast(related)));
             }
             previous_related = item.related_target;
-            // TODO(refcount 5g): each item's touch target list - always empty
-            // until a TouchEvent fills the event's (Touch is a stub) - takes
-            // its references here when one can.
+            // TODO(refcount 5g): each item's touch target list takes its
+            // references here. It is no longer always empty: a TouchEvent's
+            // constructor fills the event's list (TouchEvent's impl), so a
+            // TouchEvent's path names retargeted touch targets - nodes that
+            // can be in other trees than the path's - with no count of the
+            // path's. Until then only "nothing is freed under a callback"
+            // keeps them for the dispatch (EventTarget's impl, `Listeners`:
+            // the first of the walk's two protections; lane lk1 found the
+            // gap on 2026-11-16 and queued it). WebKit's EventContext holds
+            // them (`RefPtr<TouchList> m_touches`), and Gecko's chain item
+            // (`mRetargetedTouchTargets`, an array of `RefPtr<EventTarget>`).
         }
     }
 

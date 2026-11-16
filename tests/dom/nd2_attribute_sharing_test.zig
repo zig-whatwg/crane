@@ -111,7 +111,8 @@ test "A3: each writer on one of two sharing elements copies and leaves the other
     for (std.enums.values(Writer)) |writer| {
         // classList's DOMTokenList is a same-object cache that only a
         // wrapper's collection frees: with no engine here it stays, so that
-        // case runs over an arena (as cg1_element_same_object_test does).
+        // case runs over an arena (as cg1_element_same_object_test did until
+        // lane lk1 moved its run-time tests to tests/html, on a real page).
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
         var page: Page = undefined;
