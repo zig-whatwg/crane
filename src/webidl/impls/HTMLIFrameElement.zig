@@ -3027,6 +3027,56 @@ fn followManualRedirect(record: *Navigation, f: *fetch_mod.algorithms.AsyncFetch
 /// it active, and load it.
 fn runCommit(context: ?*anyopaque) void {
     const task = Ticket.redeem(context) orelse return;
+    // This is the task "attempt to populate the history entry's document"
+    // step 5 queues, and its step 5.1 comes next: "If navigable's ongoing
+    // navigation no longer equals navigationId, then run completionSteps and
+    // abort these steps." What changes the ongoing navigation under a
+    // navigation is a traversal - "apply the history step" step 8.4, on the
+    // session history traversal queue, which the spec runs in parallel: a
+    // traversal appended before this task ran has set it by now. Crane runs
+    // that queue from service tasks on this loop, one item a task, and this
+    // task can be queued ahead of them (a response that needs no network -
+    // about:blank, srcdoc, blob: - has it queued inside navigate) or between
+    // two of them (lane nr1's trace: history.back() behind one fragment
+    // navigation's finalize steps; the response was read by the network
+    // step that followed the script's task, 0.4 ms after the navigation
+    // started, so its task was queued behind the finalize's service task
+    // and ahead of the traversal's; it marked the navigation committing
+    // before the traversal's steps began, and the navigation committed).
+    // So the queue catches up first; then the check reads what the spec's
+    // reads.
+    //
+    // Golden rule 2: Chrome and Safari stop the navigation in each of these
+    // cases, Firefox in none - html/browsers/browsing-the-web/
+    // overlapping-navigations-and-traversals/cross-document-nav-same-
+    // document-traversal.html, wpt.fyi fa649586f3: Chrome 157 1/1, Firefox
+    // 160 0/1, Safari 27.2 1/1; tests/wpt/crane/nr1-same-document-back-
+    // stops-cross-document-nav.html (the response made to arrive before the
+    // next task, back() behind two fragment navigations, a blob: URL), run
+    // in the three browsers on 2026-11-16: Chrome 4/4, Firefox 0/4, Safari
+    // 4/4. In Chromium the browser process takes the renderer's two messages
+    // in the order they were sent - the navigation's start, then
+    // history.back() - and the history navigation's request replaces the
+    // frame's request that is not yet ready to commit
+    // (content/browser/renderer_host/navigation_controller_impl.cc
+    // GoToOffsetFromRenderer -> GoToIndex -> NavigateToExistingPendingEntry,
+    // navigator.cc Navigator::Navigate, frame_tree_node.cc
+    // FrameTreeNode::TakeNavigationRequest, which resets the request the
+    // node held), whatever the network has answered meanwhile.
+    //
+    // Not "navigate to a javascript: URL", whose step 2 reads the ongoing
+    // navigation from a queued task the same way: there the browsers split,
+    // and two of three run the script after a history.back() that followed
+    // it (the same run, a fifth case: Chrome and Firefox ran it, Safari did
+    // not), as Crane does.
+    //
+    // The caught-up steps may run script (a traversal's beforeunload and
+    // navigate events) and end this navigation, its navigable or its
+    // traversable: nothing is held across them, and the record is looked up
+    // after.
+    if (navigationById(task.navigables, task.id)) |waiting| {
+        if (waiting.integration.browsing_context) |bc| html_core.navigation.apply_history_step.catchUp(bc);
+    }
     const record: *Navigation = @ptrCast(@alignCast(task.navigables.takeNavigation(task.id) orelse return));
     // Handed to the traversal queue below, it is the queue's job's to end.
     var handed_over = false;
