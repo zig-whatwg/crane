@@ -3212,6 +3212,11 @@ static constexpr uint32_t kWrapperCellWeakHandle = 1u << 29;
 /// anchor outlives this collection whatever becomes of the wrapper. The
 /// wrapper's first pass reads it (`dropDeadWrapperAnchor`).
 static constexpr uint32_t kWrapperCellAnchorTraced = 1u << 30;
+/// `generation`: the slab generation of the record's instance is its low 56
+/// bits (runtime.SlabAllocator stamps no more); the top byte is the cache's
+/// own - what the instance holds, for the collector's schedule
+/// (wrapper_cache.zig `Cell.stamp`).
+static constexpr uint64_t kWrapperCellGenerationMask = (uint64_t{1} << 56) - 1;
 static_assert(sizeof(CraneWrapperCell) == 32 && offsetof(CraneWrapperCell, instance) == 8 &&
                   offsetof(CraneWrapperCell, generation) == 16 && offsetof(CraneWrapperCell, bits) == 28,
               "CraneWrapperCell mirrors wrapper_cache.zig's Cell");
@@ -3326,7 +3331,7 @@ class HolderAnchor final : public PlatformAnchor {
         CraneWrapperCell* record = cell();
         if (!record || !record->instance) return;
         IsolateData* collecting = collectingRecord(this);
-        if (collecting) traceHolderNodes(collecting, record->instance, record->generation, visitor);
+        if (collecting) traceHolderNodes(collecting, record->instance, record->generation & kWrapperCellGenerationMask, visitor);
     }
     const char* GetHumanReadableName() const override { return "Crane HolderAnchor"; }
 };
@@ -3604,13 +3609,20 @@ struct IsolateData {
     ExternalMemoryAccounter table_accounter;
     size_t table_bytes_reported = 0;
     uint64_t table_dropped_base = 0;
-    /// What V8 was told the instances behind non-node wrappers hold
-    /// (`reportWrappedInstances`): the bytes noted since the last full
-    /// collection began (v8_Isolate_NoteWrappedInstance), how many of them V8
-    /// holds now, and the accounter.
+    /// What the instances behind LIVE non-node wrappers hold ("What the
+    /// instances behind non-node wrappers hold"): the bytes of every record a
+    /// wrapper cache holds whose wrapper no collection has found dead
+    /// (v8_Isolate_NoteWrappedInstance adds, v8_Isolate_NoteInstanceGone
+    /// takes away), how many of them V8 holds now
+    /// (`reportWrappedInstances`, `settleWrappedInstances`), and the
+    /// accounter.
     ExternalMemoryAccounter instance_accounter;
-    size_t instance_bytes_noted = 0;
+    size_t instance_bytes_live = 0;
     size_t instance_bytes_reported = 0;
+    /// What V8 is still told for instances whose wrapper died since the last
+    /// full collection's weak processing ("What the instances behind non-node
+    /// wrappers hold", WHEN V8 is told).
+    size_t instance_bytes_dead = 0;
 #ifndef NDEBUG
     /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
     /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
@@ -3693,8 +3705,6 @@ static void gcPauseEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
     pauses->record(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()));
 }
 
-static void wrappedInstancesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data);
-
 /// Record `isolate`'s full-collection pauses in its record from now on: right
 /// after Isolate::Initialize, by each function that makes an isolate with a
 /// record. The callbacks go with the isolate; the record outlives it
@@ -3708,9 +3718,6 @@ static void installGCPauseRecorder(Isolate* isolate) {
     isolate->AddGCEpilogueCallback(gcPauseEpilogue, &record->gc_pauses, kGCTypeMarkSweepCompact);
     isolate->AddGCPrologueCallback(gcMinorPrologue, &record->gc_pauses,
                                    static_cast<GCType>(kGCTypeScavenge | kGCTypeMinorMarkSweep));
-    // What V8 was told the instances behind non-node wrappers hold leaves
-    // its account as a full collection begins (`reportWrappedInstances`).
-    isolate->AddGCPrologueCallback(wrappedInstancesPrologue, record, kGCTypeMarkSweepCompact);
 #if CRANE_GC_PHASE_METRICS
     isolate->SetMetricsRecorder(std::make_shared<GCPhaseRecorder>(&record->gc_phases));
 #endif
@@ -3751,6 +3758,7 @@ extern "C" uint64_t v8_Debug_MinorGCCount(Isolate* isolate) {
 
 static void drainNodeWrappers(IsolateData* record);
 static void noteNodeWrappersCollected(IsolateData* record);
+static void forgetDeadWrappedInstances(IsolateData* record, Isolate* isolate);
 
 /// The first pass queued a finalizer, or a collection recorded a node
 /// wrapper's release: the agent's queue owes them to its next safe point - the
@@ -4317,6 +4325,11 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     // pause: the caches keep for it whether each such record's anchor was
     // traced, and the first passes are told this pause came first.
     if (record->platform_wrappers_weak) record->platform_wrappers_weak(record->platform_wrappers);
+    // What the instances behind the wrappers this collection found dead
+    // hold left the figure in that sweep, and what died since the collection
+    // before it is forgotten: V8 is told now, before it computes its next
+    // limits ("What the instances behind non-node wrappers hold").
+    if (Isolate* isolate = Isolate::TryGetCurrent()) forgetDeadWrappedInstances(record, isolate);
     record->gc_pauses.cpp_weak_processed = true;
 }
 
@@ -4732,119 +4745,226 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
     takeBackTableEntries(static_cast<IsolateData*>(data), isolate);
 }
 
-// ---- What the instances behind non-node wrappers hold (lane wrap1 b3) ----
+// ---- What the instances behind non-node wrappers hold (lanes wrap1 b3, dm3) ----
 //
-// A non-node platform object's wrapper is 16 bytes of V8's heap and 24 of
+// A non-node platform object's wrapper is 16 bytes of V8's heap and 16 of
 // the C++ heap, and keeps a Zig instance alive that V8 cannot see: a kept
 // Event holds about 610 bytes of resident memory (gc_bench, chat.local,
-// 2026-11-15; 1.2 KB until lane ev1 made its dispatch state 88 bytes, which
-// is the Event every measurement quoted below was made with), a
-// URLSearchParams 216 bytes by allocation site. V8 schedules a
-// young-generation collection by the bytes of its own young space, so a
-// script that makes and drops such objects holds the dead ones' instances
-// until V8's own allocation asks for a collection - and the smaller the
-// wrapper, the longer that is (650,000 dropped Events ended 12% to 21%
-// higher with the 16-byte wrapper than with the 24-byte one: lesson
+// 2026-11-15), a URLSearchParams 216 bytes by allocation site. V8 schedules
+// its collections by what it counts, so a script that makes and drops such
+// objects holds the dead ones' instances until V8's own allocation asks for
+// a collection - and the smaller the wrapper, the longer that is (lesson
 // architecture-a-smaller-wrapper-is-a-slower-scavenge.md).
 //
 // In Blink V8 sees those bytes, because the object behind the wrapper IS on
-// the C++ heap: a ScriptWrappable is freed by a full collection only, the
-// C++ heap's allocated bytes count toward V8's global limit
-// (src/heap/heap.cc:5356-5359 GlobalSizeOfObjects; cpp-heap.cc
-// ReportBufferedAllocationSizeIfPossible), and that growth is what asks for
-// the full collection. Crane's instances are Zig memory, so the adapter
-// tells V8 the same thing through a v8::ExternalMemoryAccounter of its own:
-// the bytes put behind non-node wrappers since the last full collection
-// began. WHAT: for each wrapper the realm's cache takes - of every shape:
-// one script never changed, which a young collection can drop, and the ones
-// that wait for a full collection and so lean on this most (a wrapper with
-// an expando, one with a traced child, a legacy platform object behind its
-// proxy) - its instance's slab slot, its generated State block (the size its
-// vtable carries), the cache's record, and the internal state block its
-// impl keeps for it when its State names one (interface_bindings.zig
-// `stateBlocksOf`: read from the generated State's types, counted while the
-// pointer is set): ONE function of the instance (wrapper_cache.zig
-// `instanceHeldBytes`, called from `noteWrapped`, the one call site). The
-// internal state block is what makes the figure honest for an Event: when
-// this was measured its dispatch state was about 1.1 KB of the 1.2 KB it
-// held (today the block is 88 bytes and V8 is told 200 bytes for an Event).
-// Told only the other three parts (112 bytes), V8 let 650,000 dropped Events
-// end at 99.1 MB on
-// server1 against main's 87.5; told the block too they end at 55.2 there
-// and at 31.1 against 87.2 on chat.local (gc_bench, 2026-11-15, three runs,
-// tmp/plans/wrap1-evidence/b3-meas8-*.out) - with 48 to 65 small full
-// collections where main runs 1 full and 15 young ones, the largest pause
-// 4.9 ms against 3.6 on server1. The account off, or for traced wrappers
-// only, ended higher than the 112-byte account (101 to 106 MB,
-// b3-meas6-*.out). NOT COUNTED - so the figure is still a floor: the
-// cache's map slot (about 22 bytes), and whatever the state allocates beyond
-// its block - a URLSearchParams' or Headers' list once it spills, a
-// Response's body and URL list, a stream's queue. The survivors' sum that
-// replaces this account (below) is where those are counted. WHERE AND WHEN:
-// noted at the wrap (a store, no V8 call), reported at the agent's drain once
-// 128 KB wait (V8's own step: kExternalAllocationLimitForInterrupt) - the
-// report may start a collection, so it is made at a safe point - and taken
-// back whole in the PROLOGUE of the next full collection, before V8
-// recomputes its limits (heap.cc:1604, the epilogue callbacks run at :1621:
-// the dropped table entries' rule, above). The collection it asks for finds
-// the dead wrappers and their finalizers free the instances.
+// the C++ heap: its allocation counts toward V8's global limit as it is made
+// (src/heap/cppgc-js/cpp-heap.cc ReportBufferedAllocationSizeIfPossible), and
+// after a full collection V8 reads that heap's MARKED bytes - what survived
+// (cpp-heap.cc:1016, heap.cc EmbedderSizeOfObjects). JavaScriptCore sums in
+// the other direction and reaches the same number: a full collection zeroes
+// its extra-memory sum and each wrapper it visits adds what it keeps (WebKit
+// 621b33b3b71 Source/JavaScriptCore/heap/Heap.cpp:1811-1817, :2254-2270).
+// Both give their collector what live wrappers keep. Crane's instances are
+// Zig memory, so the adapter keeps that number itself and tells V8 through a
+// v8::ExternalMemoryAccounter of its own (lane dm1's design,
+// tmp/plans/dom-memory-figure-design.md 3.6):
 //
-// It is an account of ALLOCATION, not of what is alive: what survives the
-// collection is not counted again. Lane dm1 designs the figure computed in
-// the collector's pause from what the surviving wrappers keep
-// (tmp/plans/dom-memory-figure-design.md); it replaces this - the call in
-// wrapper_cache.zig and the prologue callback below are all there is to
-// delete.
+//   instance_bytes_live = the sum, over every record a wrapper cache of this
+//   agent holds whose wrapper no collection has found dead, of what the
+//   record's instance held when the cache took the wrapper.
+//
+// WHAT a record adds: its instance's slab slot, its generated State block,
+// the cache's record, and the internal state block its impl keeps for it
+// when its State names one (wrapper_cache.zig `instanceHeldBytes`: ONE
+// function of the instance) - for a wrapper of every shape. The record keeps
+// the amount in a byte of its own (wrapper_cache.zig `Cell.Stamp.held`), so
+// what leaves the figure for it is exactly what entered, and nothing of the
+// instance is read when it leaves. NOT COUNTED - so the figure is a floor:
+// the cache's map slot (about 22 bytes), and whatever the state allocates
+// beyond its block (a URLSearchParams' or Headers' list once it spills, a
+// Response's body, a stream's queue).
+//
+// WHEN it grows: at the wrap (v8_Isolate_NoteWrappedInstance: an add, no V8
+// call). WHEN it falls: where a collection FINDS THE WRAPPER DEAD
+// (v8_Isolate_NoteWrapperDead, from wrapper_cache.zig `takeHeld`) -
+// - a full collection's weak processing, in its atomic pause
+//   (NodeWrapperRegistry::ProcessWeak -> the caches' sweep): every record
+//   whose anchor the marking did not reach;
+// - a young collection that dropped the wrapper (resetPlatformRoot, or a
+//   weak-handle record's first pass);
+// - a first pass of a full collection, for the rare record whose anchor a
+//   scan of the stack kept while its wrapper died, and for a record with no
+//   anchor (a realm's global);
+// and where a record is freed with its wrapper not found dead
+// (v8_Isolate_NoteInstanceGone: a remove, its realm's end). Never at the
+// instance's free: that is the finalizer's, after the collection.
+//
+// WHAT V8 IS TOLD is the figure PLUS what died since the last full
+// collection (instance_bytes_dead): the share of every record whose wrapper
+// a YOUNG collection found dead stays in V8's count until the next full
+// collection's weak processing, which forgets it. The user's ruling of
+// 2026-11-15, after the first form of this change - the share leaves V8's
+// count at the young drop - was measured: that form is the truer account of
+// Crane's memory (the instance is freed at the next safe point), and it is
+// not what V8 sees of a browser. In Blink a young collection that drops a
+// wrapper only clears the reference to it (BlinkRootsHandler::ResetRoot,
+// third_party/blink/renderer/platform/heap/thread_state.cc:38-66, Chromium
+// 157): the object stays on the C++ heap, counted in V8's global size
+// (cpp-heap.cc ReportBufferedAllocationSizeIfPossible), until a full
+// collection finds it dead - so a loop of short-lived objects asks V8 for
+// full collections at the rate of what it allocates, and each one sweeps
+// what the dropped wrappers left in V8 itself. Told the truer figure, V8 ran
+// 4 full collections on the perf suite's attributes page where it had run
+// 18 to 21, the dropped wrappers' pointer-table entries (8 bytes each, swept
+// only by a full collection: src/heap/mark-compact.cc:3419; "The pointer
+// table's account of dropped wrappers", above) waited for V8's own limit,
+// and four rows settled 11% to 19% higher for 3% to 8% less CPU (chat.local,
+// 2026-11-15: dom.event-ctor 68.4 MB against 61.6, the three rows after it
+// 73.4 against 61.6; lesson architecture-an-account-that-was-wrong-in-the-
+// useful-direction-was-also-doing-another-accounts-work.md). The user chose
+// the browsers' rate.
+//
+// WHEN V8 is told. Growth: at the agent's drain once 128 KB wait (V8's own
+// step, kExternalAllocationLimitForInterrupt) - a report of growth may start
+// a collection, so it is made at a safe point. What a FULL collection found
+// dead, and everything that died since the collection before it: with one
+// ExternalMemoryAccounter::Decrease in that collection, at the end of its
+// C++ weak processing (`settleWrappedInstances`), which is before V8 takes
+// its sizes and computes its next limits (15.7.112.43
+// src/heap/heap.cc:2595, :1604) - so the limit is set from what survived,
+// which is what V8 reads of Blink's heap there (cpp-heap.cc:1016, the
+// marked bytes). A decrease starts no collection (Heap::UpdateExternalMemory
+// returns at `delta <= 0`; V8's own collector threads call it for
+// ArrayBuffers). What a first pass found dead, and a freed record's share:
+// at the agent's drain after it, once 128 KB wait - no V8 API may be called
+// from a first pass.
+//
+// WHAT THIS REPLACED (lane wrap1 b3's account, a stopgap by its own word):
+// the bytes put behind wrappers since the last full collection BEGAN, taken
+// back whole in that collection's prologue. That was an account of
+// allocation: it told V8 nothing of what survived a collection (a page that
+// keeps 100,000 Events read as keeping none), and it left V8's count when
+// the prologue callbacks ran - for an incremental collection that is when
+// its marking starts, and again before its atomic pause - not where the dead
+// are known. What it had right is kept: a wrapper a young collection dropped
+// stays counted until the next full collection.
 
 /// What the adapter waits for before it tells V8 (ExternalMemory.report_step).
 static constexpr size_t kWrappedInstanceReportStep = 128 * 1024;
 
-/// The realm's cache took a wrapper whose instance holds `bytes`: noted, and
-/// owed to the agent's next safe point once a report's worth waits. One add
-/// and a compare; no V8 call.
+/// What V8 should hold: the figure, and what died since the last full
+/// collection.
+static size_t wrappedInstancesTold(const IsolateData* record) {
+    return record->instance_bytes_live + record->instance_bytes_dead;
+}
+
+/// The realm's cache took a wrapper whose instance holds `bytes`: they join
+/// the figure, and the report is owed to the agent's next safe point once a
+/// step's worth waits. One add and a compare; no V8 call.
 extern "C" void v8_Isolate_NoteWrappedInstance(Isolate* isolate, size_t bytes) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
-    record->instance_bytes_noted += bytes;
-    if (record->instance_bytes_noted - record->instance_bytes_reported >= kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
+    record->instance_bytes_live += bytes;
+    if (wrappedInstancesTold(record) >= record->instance_bytes_reported + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
 }
 
-/// V8 is told what was noted since the last report. At the agent's safe
-/// point, the isolate entered: the report may run a collection, whose
-/// prologue takes the whole figure back - so the figure is recorded before
-/// V8 is called.
+/// V8 is told what it should hold where that is LOWER than what it holds:
+/// with one decrease, which starts no collection - legal inside one, and in
+/// a GC callback.
+static void settleWrappedInstances(IsolateData* record, Isolate* isolate) {
+    const size_t told = wrappedInstancesTold(record);
+    if (record->instance_bytes_reported <= told) return;
+    const size_t fell = record->instance_bytes_reported - told;
+    record->instance_bytes_reported = told;
+    record->instance_accounter.Decrease(isolate, fell);
+}
+
+/// A full collection's weak processing is done (the caches' sweep took its
+/// dead out of the figure): what died since the collection before it is
+/// forgotten with them, and V8 is told once, before it computes its limits.
+static void forgetDeadWrappedInstances(IsolateData* record, Isolate* isolate) {
+    record->instance_bytes_dead = 0;
+    settleWrappedInstances(record, isolate);
+}
+
+/// A collection found dead the wrapper of a record that put `bytes` into the
+/// figure (wrapper_cache.zig `takeHeld`): they leave the figure. Found by a
+/// YOUNG collection - no mark-compact is between its prologue and its
+/// epilogue (GCPauses::depth: `dropDeadWrapperAnchor` tells the two apart the
+/// same way) - they stay in what V8 is told, as dead, until the next full
+/// collection (the user's ruling, above). A subtraction, an add and a
+/// compare, no V8 call: it runs in a collection's weak processing, in a
+/// young collection's roots handler and in first-pass weak callbacks, where
+/// no V8 API may be called (v8-weak-callback-info.h).
+extern "C" void v8_Isolate_NoteWrapperDead(Isolate* isolate, size_t bytes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    const size_t taken = bytes < record->instance_bytes_live ? bytes : record->instance_bytes_live;
+    record->instance_bytes_live -= taken;
+    if (record->gc_pauses.depth == 0) {
+        record->instance_bytes_dead += taken;
+    } else if (record->instance_bytes_reported >= wrappedInstancesTold(record) + kWrappedInstanceReportStep) {
+        noteNodeWrappersCollected(record);
+    }
+}
+
+/// A record that put `bytes` into the figure is freed with its wrapper not
+/// found dead (a remove, a replacement, its realm's end): they leave the
+/// figure and what V8 is told, at the agent's drain once a step's worth
+/// waits. No V8 call.
+extern "C" void v8_Isolate_NoteInstanceGone(Isolate* isolate, size_t bytes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    record->instance_bytes_live -= bytes < record->instance_bytes_live ? bytes : record->instance_bytes_live;
+    if (record->instance_bytes_reported >= wrappedInstancesTold(record) + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
+}
+
+/// V8 is told what it should hold once that moved a step from what it holds.
+/// At the agent's safe point, the isolate entered: a report of growth may
+/// run a collection, whose weak processing lowers both numbers - so what V8
+/// holds is recorded before V8 is called.
 static void reportWrappedInstances(IsolateData* record) {
-    if (record->instance_bytes_noted - record->instance_bytes_reported < kWrappedInstanceReportStep) return;
-    Isolate* isolate = Isolate::GetCurrent();
-    if (!isolate) return;
-    const size_t more = record->instance_bytes_noted - record->instance_bytes_reported;
-    record->instance_bytes_reported = record->instance_bytes_noted;
-    CollectingScope collecting(isolate);
-    record->instance_accounter.Increase(isolate, more);
+    const size_t told = wrappedInstancesTold(record);
+    const size_t reported = record->instance_bytes_reported;
+    if (told >= reported + kWrappedInstanceReportStep) {
+        Isolate* isolate = Isolate::GetCurrent();
+        if (!isolate) return;
+        record->instance_bytes_reported = told;
+        CollectingScope collecting(isolate);
+        record->instance_accounter.Increase(isolate, told - reported);
+    } else if (reported >= told + kWrappedInstanceReportStep) {
+        Isolate* isolate = Isolate::GetCurrent();
+        if (!isolate) return;
+        settleWrappedInstances(record, isolate);
+    }
 }
 
-/// The figure goes back to V8: a full collection begins (its prologue), or
-/// the agent ends. A decrease starts no collection.
-static void takeBackWrappedInstances(IsolateData* record, Isolate* isolate) {
+/// The agent ends: V8's count goes back to what it was before the agent
+/// reported anything, and the accounter ends holding nothing.
+static void endWrappedInstances(IsolateData* record, Isolate* isolate) {
     const size_t back = record->instance_bytes_reported;
     record->instance_bytes_reported = 0;
-    record->instance_bytes_noted = 0;
+    record->instance_bytes_live = 0;
+    record->instance_bytes_dead = 0;
     if (back) record->instance_accounter.Decrease(isolate, back);
 }
 
-/// Before every full collection (kGCTypeMarkSweepCompact).
-static void wrappedInstancesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data) {
-    takeBackWrappedInstances(static_cast<IsolateData*>(data), isolate);
-}
-
 /// The bytes V8 holds now as external memory for the instances behind
-/// non-node wrappers (`reportWrappedInstances`), and the bytes noted since
-/// the last full collection began. 0 for a null isolate or one the adapter
-/// did not make.
+/// non-node wrappers (`reported`), or the figure itself: what the instances
+/// behind this agent's live wrappers hold. 0 for a null isolate or one the
+/// adapter did not make.
 extern "C" uint64_t v8_Debug_WrappedInstanceBytes(Isolate* isolate, bool reported) {
     IsolateData* record = isolate ? isolateData(isolate) : nullptr;
     if (!record) return 0;
-    return reported ? record->instance_bytes_reported : record->instance_bytes_noted;
+    return reported ? record->instance_bytes_reported : record->instance_bytes_live;
+}
+
+/// What V8 is still told for the instances whose wrapper died since the
+/// agent's last full collection. 0 for a null isolate or one the adapter did
+/// not make.
+extern "C" uint64_t v8_Debug_WrappedInstanceDeadBytes(Isolate* isolate) {
+    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
+    return record ? record->instance_bytes_dead : 0;
 }
 
 /// The agent's drain, now: V8 is told of the table entries the dropped
@@ -6331,7 +6451,7 @@ void v8_Isolate_Dispose(Isolate* isolate) {
             // What V8 was told of dropped wrappers' table entries is taken
             // back: the accounter ends holding nothing.
             takeBackTableEntries(record, isolate);
-            takeBackWrappedInstances(record, isolate);
+            endWrappedInstances(record, isolate);
             // A wrapper cache that outlived its agent's realms left these.
             record->strong_wrappers.clear();
             // Its anchors' registry, unrooted while the heap lives: the

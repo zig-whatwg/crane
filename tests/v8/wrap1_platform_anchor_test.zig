@@ -942,14 +942,13 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
     }
 }
 
-test "what the instances behind non-node wrappers hold is noted for the collector, reported at a safe point, and forgotten as a full collection begins" {
+test "what the instances behind live non-node wrappers hold is in the figure V8 is told, by one function of the instance" {
     // A wrapper is 16 B of V8's heap and keeps an instance V8 cannot see; V8 schedules collections by what it
-    // sees. The adapter notes each wrapped non-node instance's slab slot, state block and cache record, tells
-    // V8 through its own ExternalMemoryAccounter once 128 KB wait (at the agent's safe point: a binding's
-    // return into script), and takes the whole figure back in the next full collection's prologue - the bytes
-    // put behind wrappers since the last full collection began, which is what Blink's C++ heap growth shows V8
-    // (v8_wrapper.cpp, "What the instances behind non-node wrappers hold"). The measure of what it buys is
-    // gc_bench's (650,000 dropped Events); this pins the mechanism.
+    // sees. The adapter keeps what the instances behind its LIVE non-node wrappers hold - each one's slab slot,
+    // state block, cache record and internal state block - and tells V8 through its own ExternalMemoryAccounter
+    // once 128 KB wait, at the agent's safe point (v8_wrapper.cpp, "What the instances behind non-node wrappers
+    // hold"). Until lane dm3 this was an account of allocation, forgotten as each full collection began; what it
+    // is now, and when it falls, is tests/v8/dm3_instance_figure_test.zig's subject. This pins the amount.
     const page = try Page.open();
     defer page.close();
     const n = 6000;
@@ -958,25 +957,27 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
     var attempt: usize = 0;
     while (attempt < 4) : (attempt += 1) {
         page.fullGC();
-        // A full collection forgets the figure.
-        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_noted"));
-        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_reported"));
+        const base = try page.counter("wrapped_instance_bytes_live");
         const full_before = page.fullCollections();
         var source: [160]u8 = undefined;
         try page.run(try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < {d}; i++) keep.push(new URLSearchParams('a=b')); 0", .{n}));
-        const noted = try page.counter("wrapped_instance_bytes_noted");
+        const live = try page.counter("wrapped_instance_bytes_live") - base;
         const reported = try page.counter("wrapped_instance_bytes_reported");
-        // A full collection V8 chose to run meanwhile forgot what this reads: read again.
+        // A full collection V8 chose to run meanwhile moved what this reads: read again.
         if (page.fullCollections() != full_before) continue;
-        std.debug.print("{d} wrapped URLSearchParams: {d} B noted ({d:.1} each), {d} B reported to V8\n", .{ n, noted, @as(f64, @floatFromInt(noted)) / @as(f64, n), reported });
+        std.debug.print("{d} wrapped URLSearchParams: {d} B in the figure ({d:.1} each), {d} B reported to V8\n", .{ n, live, @as(f64, @floatFromInt(live)) / @as(f64, n), reported });
         // At least the slab slot and the cache's record each (64 B), and no more than a page each.
-        try testing.expect(noted >= n * 64 and noted <= n * 4096);
-        // Reported in steps of 128 KB or more, never ahead of what was noted.
-        try testing.expect(reported >= 128 * 1024 and reported <= noted);
-        try testing.expect(noted - reported < 128 * 1024 + 4096);
+        try testing.expect(live >= n * 64 and live <= n * 4096);
+        // Reported in steps of 128 KB or more, never a step behind the figure - with what died since the last
+        // full collection, which V8 is still told (tests/v8/dm3_instance_figure_test.zig).
+        const dead = try page.counter("wrapped_instance_bytes_dead");
+        try testing.expect(reported >= 128 * 1024 and reported <= base + live + dead);
+        try testing.expect(base + live + dead - reported < 128 * 1024 + 4096);
         try page.run("globalThis.keep = null; 0");
         page.fullGC();
-        try testing.expectEqual(@as(i64, 0), try page.counter("wrapped_instance_bytes_reported"));
+        // Dropped and collected, they are out of it, and V8 holds no more than a step over the figure.
+        try testing.expect(try page.counter("wrapped_instance_bytes_live") < base + 4096);
+        try testing.expect(try page.counter("wrapped_instance_bytes_reported") < base + 4096 + 128 * 1024);
 
         // What V8 is told per object of three shapes (the merge report quotes these). The figure is ONE
         // function of the instance (wrapper_cache.instanceHeldBytes: its slab slot, its generated State block,
@@ -1001,8 +1002,9 @@ test "what the instances behind non-node wrappers hold is noted for the collecto
             try page.run("globalThis.one = null; 0");
             page.fullGC();
             const before_full = page.fullCollections();
+            const before = try page.counter("wrapped_instance_bytes_live");
             try page.run(try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < 1000; i++) keep.push({s}); 0", .{shape.make}));
-            const told = try page.counter("wrapped_instance_bytes_noted");
+            const told = try page.counter("wrapped_instance_bytes_live") - before;
             try page.run("globalThis.keep = null; 0");
             if (page.fullCollections() != before_full) continue;
             std.debug.print("V8 is told {d} B for {s}\n", .{ held, shape.name });
