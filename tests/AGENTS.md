@@ -97,8 +97,25 @@ free shows only if something changed the freed bytes:
   keeps its bytes, and every new block with 0xaa, so a read before a write
   reads 0xaa, not 0.
 
-`CRANE_POISON_FREES=0` turns all three off for one run - to see whether a
-failure depends on the poison, never to make a test pass. The launcher passes
+- A Browser's own state arena (lane uaf1, 2026-11-16): a platform object's
+  State block - a node's NodeBase is its first field - goes back to the
+  Browser's arena, not to the test's allocator, so none of the three above
+  sees it. In a Debug build the arena writes 0xdd over every freed State
+  block itself (`runtime.BrowserScope.poisonsFreedStateByDefault`), and a
+  liveness test of a FREED node block - `NodeBase.registeredInstance()` or
+  `stands()` reading a block whose owner word is all 0xdd - is a panic that
+  names the read ("a liveness test read a FREED node block"), never a quiet
+  "no Instance". A released node whose block is still its own reads 0 there
+  and answers "gone" without a panic. The block is reused by the next state
+  of its size, as in production, so the tests that measure reuse measure
+  the real thing; the bug-finding WPT runner also keeps freed blocks out of
+  reuse for a while (.claude/rules/wpt-workflow.md, "The two runs"). The
+  panic ends the process: tests/dom/uaf1_freed_block_read_test.zig pins the
+  question the accessors ask, not the panic.
+
+`CRANE_POISON_FREES=0` turns the first three off for one run - to see whether a
+failure depends on the poison, never to make a test pass. (The arena's poison
+is the build's: a Debug build has it either way.) The launcher passes
 it to its children; a cached run step does not rerun for it, so add
 `-Dlaunch-seed=random` (or run the test executable or the launcher by hand).
 tests/test_runner_fixture/poison_fixture.zig pins it: each of its reads after a

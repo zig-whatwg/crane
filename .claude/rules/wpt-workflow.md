@@ -149,7 +149,11 @@ tree (`tests/wpt_runner/build_mode.zig` `RunnerBuild`, pinned by its tests):
   double-free-detecting one with poison-on-free (`CRANE_POISON_FREES`,
   `CRANE_LEAK_FILES`, `CRANE_LEAK_TRACES` and `CRANE_REFCOUNT_*` live here
   only), and its children start with libc's own scribble (`MallocScribble=1`
-  on macOS, `MALLOC_PERTURB_=85` on glibc). It runs the same worklist and is
+  on macOS, `MALLOC_PERTURB_=85` on glibc). Its Browsers poison a freed
+  platform-object state block and hold it in a quarantine before reuse
+  (`BrowserConfig.poison_freed_state`; 1 MiB per Browser, lane uaf1), so a
+  liveness test of a freed node block and a write into a quarantined block
+  are panics there. It runs the same worklist and is
   **never published and never timed**: `tools/wpt_progress.py` refuses a
   journal whose records say `"build":"bug-finding"`. **Its gate:** no crash,
   no poison read, no leak, no bad free, no panic or failed assertion, no
