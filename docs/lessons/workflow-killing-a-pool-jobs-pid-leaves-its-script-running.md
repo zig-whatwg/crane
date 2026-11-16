@@ -1,6 +1,7 @@
 # Workflow: Killing a pool job's pid leaves its script running
 
 **Date**: 2026-11-03
+**Status** (2026-11-16, lane wrap2): the Fix's `pgrep -f '<script> <its args>'` is for FINDING the pids, on a host other lanes use: print what it matches, check each line is yours (its mirror's name or cache path in the command line), then signal those pids by number. Lane wrap2 piped such a pattern straight into kill on chat2.local and could not show afterwards what it had matched (nothing foreign, by the host's state - but that was luck plus a narrow label). An orphan whose command line does not carry the mirror's path is not yours to guess at.
 **Lesson**: The pid crane-remote.sh prints ("job pid N") is the subshell that evaluates the command; killing it stops nothing that command started as a process of its own - a measurement script went on to its next `zig build`.
 
 **Why**: The job is `( trap - PIPE; eval "$cmd" ) &`. When `$cmd` is `bash some-script.sh`, the script is a child process of that subshell, and SIGTERM to the subshell does not reach it: the script is orphaned and keeps running, and so does the `zig build` it is waiting on, its build runner and the test processes under it. Likewise a `crane-pool.sh on <mirror> 'until ...; do sleep; done'` wait keeps looping on the host after its local ssh is stopped.

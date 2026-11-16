@@ -223,7 +223,8 @@ static void forgetCountedHandle(Global<T>* handle);
 // again starts at 0 (tests/v8/perf3_dispose_marks_test.zig). Nothing else in
 // Crane assigns wrapper class ids. The low byte is the ledger's KIND (a counted
 // object or string handle, below); the top two bits say whether either of the
-// process-wide maps a release consults holds an entry for the handle:
+// process-wide maps a release consults holds an entry for the handle, and the
+// third is a wrapper cache record's own (kCellArmedFlag):
 //
 // - kArmedFlag: `armedWeakData` (a weak arm, or the record a `handle_survives`
 //   detach leaves): set by armWeakData in the critical section that inserts the
@@ -240,6 +241,14 @@ static void forgetCountedHandle(Global<T>* handle);
 static constexpr uint16_t kHandleKindMask = 0x00FF;
 static constexpr uint16_t kArmedFlag = 0x8000;
 static constexpr uint16_t kRealmTaggedFlag = 0x4000;
+/// On the in-place weak v8::Global of a wrapper cache record
+/// (v8_WrapperCell_ArmWeak): the handle is armed with its wrapper's anchor as
+/// the parameter. `armedWeakData` holds nothing for it and no generic release
+/// ever sees it; the flag is how the record's own functions tell a handle V8
+/// has found dead - no longer weak, its first pass queued, its node not to be
+/// read - from one the cache holds strongly, which is not weak either
+/// (v8_WrapperCell_Detach, v8_WrapperCell_Disarm). V8 clears it with the node.
+static constexpr uint16_t kCellArmedFlag = 0x2000;
 
 
 /// Whether `handle` (any Global<T>*: one slot pointer, as releaseWeakArmRaw
@@ -540,12 +549,11 @@ struct WeakCallbackData {
     // engine work is allowed - V8's first pass only queues it
     // (`queueFinalizer`). Null for a first-pass-only arm.
     ZigWeakCallbackFn finalize = nullptr;
-    // The platform anchor of the wrapper the handle holds, when the arm is a
-    // wrapper cache record's (v8_WrapperCell_ArmWeak): a first pass that runs
-    // in a young-generation collection severs it and frees it ahead of the
-    // collector (`dropDeadWrapperAnchor`). Null for every other arm.
-    void* anchor = nullptr;
 };
+// 40 bytes a weak arm (48 until lane wrap2: it carried the anchor of a wrapper
+// cache record's wrapper, whose arm has no record of this kind any more -
+// `platformAnchorFirstPass`).
+static_assert(sizeof(WeakCallbackData) == 5 * sizeof(void*), "a weak arm's callback record is five words");
 
 // ---------------------------------------------------------------------------
 // Ownership of a weak arm
@@ -820,7 +828,6 @@ static void armWeakData(void* handle, WeakCallbackData* data) {
 static void queueFinalizer(Isolate* isolate, WeakCallbackData* data);
 static bool runQueuedFinalizers(Isolate* isolate);
 static void oweWaitingAnchorFrees(Isolate* isolate);
-static void dropDeadWrapperAnchor(Isolate* isolate, void* anchor, void* cell);
 
 /// Internal weak callback wrapper - V8 calls this, which then calls the Zig callback
 template<typename T>
@@ -870,11 +877,6 @@ static void WeakCallbackWrapper(const WeakCallbackInfo<WeakCallbackData>& info) 
     // node, and V8 clears its class id, flags included.
     forgetCountedHandle(data->handle);
     data->handle->Reset();
-
-    // A wrapper cache record's wrapper died: its anchor goes ahead of the
-    // collector when a young-generation collection found it.
-    // (Such an arm's user data is the record: v8_WrapperCell_ArmWeak.)
-    if (data->anchor) dropDeadWrapperAnchor(info.GetIsolate(), data->anchor, data->user_data);
 
     // A `handle_survives` detach (v8_Global_ClearWeak on an already-queued
     // node) leaves the record HERE with its handle intact, precisely so the
@@ -3133,14 +3135,6 @@ struct GCPauses {
     /// 4.11, P8). For engine.diagnosticCounters' `minor_gc_count` and the
     /// tests that ask for scavenges (v8_test_Isolate_MinorGC).
     uint64_t minor_count = 0;
-    /// The collection under way is a full one whose C++-heap weak processing
-    /// has run (NodeWrapperRegistry::ProcessWeak sets it, in the atomic
-    /// pause): the weak Globals' first passes that follow are that
-    /// collection's, and each weak-handle record says whether THIS marking
-    /// traced its anchor (`dropDeadWrapperAnchor`). Cleared where a
-    /// collection ends or another begins (the callbacks below), so a first
-    /// pass of any other collection reads false.
-    bool cpp_weak_processed = false;
     /// The last kRecent pauses (us), a ring from `next`; reserved on the
     /// first pause, so an agent that never collects fully keeps none.
     std::vector<uint32_t> recent;
@@ -3547,12 +3541,13 @@ static constexpr uint32_t kWrapperCellMarked = 1u << 31;
 /// (wrapper_cache.zig `heldByWeakHandle`). Nothing here traces such a
 /// record's word, and its death comes through the Global's first pass.
 static constexpr uint32_t kWrapperCellWeakHandle = 1u << 29;
-/// `bits`, of a weak-handle record: the full collection under way traced the
-/// record's anchor (PlatformAnchor::Trace set kWrapperCellMarked; the cache's
-/// weak processing moved it here, wrapper_cache.zig `sweepUnmarked`), so the
-/// anchor outlives this collection whatever becomes of the wrapper. The
-/// wrapper's first pass reads it (`dropDeadWrapperAnchor`).
-static constexpr uint32_t kWrapperCellAnchorTraced = 1u << 30;
+/// `bits`: the cache holds the wrapper strongly now (wrapper_cache.zig
+/// `Bits.strong`, written there alone). Read in one place: a weak-handle
+/// record the cache made strong AFTER V8 found its wrapper dead and before
+/// that Global's first pass - V8 cannot take the death back - is left with
+/// its cache, its handle empty, as the callback record the arm had until lane
+/// wrap2 left it (`platformAnchorFirstPass`).
+static constexpr uint32_t kWrapperCellStrong = 1u << 22;
 /// `generation`: the slab generation of the record's instance is its low 56
 /// bits (runtime.SlabAllocator stamps no more); the top byte is the cache's
 /// own - what the instance holds, for the collector's schedule
@@ -3626,12 +3621,13 @@ class PlatformAnchor : public CraneWrappable {
     /// native stack conservatively, and a word that holds this anchor's
     /// address keeps it and calls this Trace (15.7.112.43
     /// src/heap/cppgc-internal/marker.cc:507 IteratePointersUntilMarker,
-    /// visitor.cc:96-130 ConservativeTracingVisitor). The record is marked
-    /// all the same, so that the wrapper's
-    /// first pass can tell an anchor that outlived its wrapper and sever it
-    /// (`dropDeadWrapperAnchor`): the record is freed at the agent's safe
+    /// visitor.cc:96-130 ConservativeTracingVisitor). The wrapper's first
+    /// pass severs the anchor whichever collection it runs in
+    /// (`platformAnchorFirstPass`): the record is freed at the agent's safe
     /// point, and an anchor that still named it would read freed memory here
-    /// in the next collection.
+    /// in the next collection. The record is marked all the same: the
+    /// cache's weak processing reads it for the figure of what live
+    /// wrappers' instances hold (wrapper_cache.zig `sweepUnmarked`).
     void Trace(cppgc::Visitor* visitor) const override {
         CraneWrappable::Trace(visitor);
         CraneWrapperCell* record = cell();
@@ -3916,6 +3912,16 @@ struct IsolateData {
     /// young-generation collection dropped (lane wrap1 b3): severed, their
     /// cache's record told, waiting for the same free.
     std::vector<PlatformAnchor*> dropped_platform_anchors;
+    /// Wrapper cache records the cache let go of while V8 had the first pass
+    /// of their weak Global queued (v8_WrapperCell_Detach on a handle found
+    /// dead): that pass compares its anchor's record with these and reads
+    /// nothing of a record listed here - it may be freed - then takes it off
+    /// the list (`platformAnchorFirstPass`). Addresses only, never read
+    /// through. Empty but inside one collection's first passes: no code of
+    /// the adapter's lets go of a record between a collection's weak
+    /// processing and its first passes today, and the next collection's
+    /// prologue forgets what is left (gcPausePrologue, gcMinorPrologue).
+    std::vector<const CraneWrapperCell*> cancelled_weak_cells;
     /// The wrapper caches' two steps inside a collection (wrapper_cache.zig,
     /// set once per isolate by v8_Isolate_SetPlatformWrapperHooks with
     /// `platform_wrappers`, the isolate itself, as their data): the weak
@@ -4018,26 +4024,33 @@ static IsolateData* isolateData(Isolate* isolate) {
     return isolate ? static_cast<IsolateData*>(isolate->GetData(kIsolateDataSlot)) : nullptr;
 }
 
+/// A collection begins: every first pass of the collections before it has run
+/// (V8 runs them inside the collection that queued them: 15.7.112.43
+/// src/heap/heap.cc:2344), so no pass is left to find a record on
+/// IsolateData::cancelled_weak_cells - and an address left there could be a
+/// new record's by the next one.
+static inline void forgetCancelledWeakCells(Isolate* isolate) {
+    IsolateData* record = isolateData(isolate);
+    if (record && !record->cancelled_weak_cells.empty()) record->cancelled_weak_cells.clear();
+}
+
 /// GCPauses' two callbacks, for mark-compacts only (kGCTypeMarkSweepCompact):
 /// the prologue starts a pause, the matching epilogue records it.
-static void gcPausePrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+static void gcPausePrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data) {
     GCPauses* pauses = static_cast<GCPauses*>(data);
-    pauses->cpp_weak_processed = false;
+    forgetCancelledWeakCells(isolate);
     if (pauses->depth++ == 0) pauses->started = std::chrono::steady_clock::now();
 }
 
 /// A young-generation collection starts (GCPauses::minor_count).
-static void gcMinorPrologue(Isolate*, GCType, GCCallbackFlags, void* data) {
+static void gcMinorPrologue(Isolate* isolate, GCType, GCCallbackFlags, void* data) {
     GCPauses* pauses = static_cast<GCPauses*>(data);
     pauses->minor_count += 1;
-    pauses->cpp_weak_processed = false;
+    forgetCancelledWeakCells(isolate);
 }
 
 static void gcPauseEpilogue(Isolate*, GCType, GCCallbackFlags, void* data) {
     GCPauses* pauses = static_cast<GCPauses*>(data);
-    // The collection's first passes have run (15.7.112.43 src/heap/heap.cc:
-    // :2344 inside the collection, :1621 these callbacks).
-    pauses->cpp_weak_processed = false;
     // An epilogue with no prologue of ours: a collection already running
     // when the callbacks were added.
     if (pauses->depth == 0) return;
@@ -4663,15 +4676,13 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     // its finalizer joins the agent's queue (v8_Isolate_QueueFinalizer). The
     // dead anchors go with the sweep; nothing here reads one. A weak-handle
     // record's wrapper is judged by its Global's first pass, after this
-    // pause: the caches keep for it whether each such record's anchor was
-    // traced, and the first passes are told this pause came first.
+    // pause and before that sweep (`platformAnchorFirstPass`).
     if (record->platform_wrappers_weak) record->platform_wrappers_weak(record->platform_wrappers);
     // What the instances behind the wrappers this collection found dead
     // hold left the figure in that sweep, and what died since the collection
     // before it is forgotten: V8 is told now, before it computes its next
     // limits ("What the instances behind non-node wrappers hold").
     if (Isolate* isolate = Isolate::TryGetCurrent()) forgetDeadWrappedInstances(record, isolate);
-    record->gc_pauses.cpp_weak_processed = true;
 }
 
 // ---- The young generation (design 4.11, P8) ----
@@ -5231,8 +5242,8 @@ static void forgetDeadWrappedInstances(IsolateData* record, Isolate* isolate) {
 /// A collection found dead the wrapper of a record that put `bytes` into the
 /// figure (wrapper_cache.zig `takeHeld`): they leave the figure. Found by a
 /// YOUNG collection - no mark-compact is between its prologue and its
-/// epilogue (GCPauses::depth: `dropDeadWrapperAnchor` tells the two apart the
-/// same way) - they stay in what V8 is told, as dead, until the next full
+/// epilogue (GCPauses::depth: `platformAnchorFirstPass` tells the two apart
+/// the same way) - they stay in what V8 is told, as dead, until the next full
 /// collection (the user's ruling, above). A subtraction, an add and a
 /// compare, no V8 call: it runs in a collection's weak processing, in a
 /// young collection's roots handler and in first-pass weak callbacks, where
@@ -5563,16 +5574,35 @@ static Global<Object>* weakHandleOf(CraneWrapperCell* cell) {
 /// instance itself again when `keep_link` (the wrapper lives on uncached:
 /// WrapperCache.remove), nothing otherwise (severed: the instance goes) - and
 /// the record's handle is Reset: its traced reference (V8 frees the
-/// TracedNode), or its in-place weak Global, whose weak arm ends with it (a
-/// finalizer still queued for it is cancelled). Nothing for a record whose
-/// handle is empty already (a collection took the wrapper, and severed or
-/// swept its anchor) but the end of a weak Global's arm. On `isolate`'s
-/// thread; it is entered for the call if it is not current
-/// (v8_NodeWrapper_End's rule).
+/// TracedNode), or its in-place weak Global, whose weak arm ends with it.
+/// Nothing for a record whose handle is empty already (a collection took the
+/// wrapper, and severed or swept its anchor). On `isolate`'s thread; it is
+/// entered for the call if it is not current (v8_NodeWrapper_End's rule).
+///
+/// A weak Global V8 has found dead and not yet passed to its first pass
+/// (armed, no longer weak: kCellArmedFlag) holds no object to read - its
+/// node holds V8's zap value - and its pass WILL run, with the anchor that
+/// still names this record: the record is listed for that pass
+/// (IsolateData::cancelled_weak_cells), which then reads nothing of it, and
+/// the node is Reset here, which is all V8 asks of the first pass
+/// (v8-weak-callback-info.h). Nothing of the adapter's lets go of a record
+/// in that window today; the branch is the answer if something ever does.
 extern "C" void v8_WrapperCell_Detach(Isolate* isolate, CraneWrapperCell* cell, bool keep_link) {
     const bool weak = (cell->bits & kWrapperCellWeakHandle) != 0;
-    const bool empty = weak ? weakHandleOf(cell)->IsEmpty() : cell->wrapper.IsEmpty();
-    if (!empty) {
+    if (weak) {
+        Global<Object>* handle = weakHandleOf(cell);
+        if (handle->IsEmpty()) return;
+        if (handle->IsWeak()) {
+            handle->ClearWeak<void>();
+        } else if (handleHasFlag(handle, kCellArmedFlag)) {
+            if (IsolateData* record = isolateData(isolate)) record->cancelled_weak_cells.push_back(cell);
+            handle->Reset();
+            return;
+        }
+    } else if (cell->wrapper.IsEmpty()) {
+        return;
+    }
+    {
         const bool enter = Isolate::TryGetCurrent() != isolate;
         if (enter) isolate->Enter();
         {
@@ -5593,9 +5623,7 @@ extern "C" void v8_WrapperCell_Detach(Isolate* isolate, CraneWrapperCell* cell, 
         if (enter) isolate->Exit();
     }
     if (weak) {
-        Global<Object>* handle = weakHandleOf(cell);
-        releaseWeakArm(handle);
-        handle->Reset();
+        weakHandleOf(cell)->Reset();
         return;
     }
     cell->wrapper.Reset();
@@ -5634,7 +5662,9 @@ extern "C" void v8_WrapperCell_Detach(Isolate* isolate, CraneWrapperCell* cell, 
 // when a record changes kind. The record keeps its anchor's link, so the
 // binding's reads and a holder's trace are the same for both kinds. A wrapper
 // script changes (an expando) is not known to the cache and waits for a full
-// collection, as in Blink.
+// collection, as in Blink. The Global's weak arm costs nothing of its own
+// (lane wrap2): its parameter is the wrapper's anchor
+// (`platformAnchorFirstPass`).
 //
 // A V8 upgrade re-reads the two citations before this compiles again: the
 // rule the cache's choice rests on is V8's, and tests/v8/
@@ -5643,12 +5673,124 @@ static_assert(V8_MAJOR_VERSION == 15 && V8_MINOR_VERSION == 7,
               "which wrappers V8 drops in a young collection was read from 15.7.112.43 "
               "(js-objects.cc IsUnmodifiedApiObject, api-natives.cc InstantiateObject): re-read both before upgrading");
 
+/// The first pass of a wrapper cache record's weak v8::Global
+/// (v8_WrapperCell_ArmWeak): the wrapper died. The parameter is the wrapper's
+/// ANCHOR, which names the record - so the arm needs no record of its own:
+/// until lane wrap2 it was a 48-byte callback record from malloc and a node
+/// in the process-wide armed-handle map, taken under that map's mutex at
+/// every arm and every death. Node arms a weak object the same way, the
+/// owner itself the parameter (nodejs/node src/base_object.cc
+/// BaseObject::MakeWeak, 2fb168f7), and V8 declares WeakCallbackInfo<T> for a
+/// T on the C++ heap (include/v8-weak-callback-info.h:
+/// cppgc::internal::ConditionalStackAllocatedBase<T>).
+///
+/// WHY THE ANCHOR CAN BE READ HERE, though its wrapper is dead:
+/// - a YOUNG-generation collection does not collect the C++ heap: the anchor
+///   is whole, as it is in ResetRoot;
+/// - a FULL collection has marked the C++ heap and has not swept it: V8 runs
+///   every first pass inside the collection that queued it and only then
+///   starts the C++ heap's sweep - 15.7.112.43 src/heap/heap.cc:2344
+///   `isolate_->global_handles()->InvokeFirstPassWeakCallbacks()`, then
+///   :2346-2355 `CppHeap::From(cpp_heap())->CompactAndSweep()`, under V8's own
+///   comment that the sweep's start "has to be called *after* all other
+///   operations that potentially touch and reset global handles". Marking
+///   itself frees nothing (src/heap/cppgc-js/cpp-heap.cc:986-1024
+///   FinishMarkingAndProcessWeakness), and the sweep of the collection
+///   before is finished before a marking starts. So a dead anchor reads as
+///   it was, exactly as a dead NodeAnchor's fields do in ProcessWeak.
+/// The static_assert below holds the reading to the V8 version it was made
+/// in; tests/v8/wrap1_platform_anchor_test.zig runs both collection kinds,
+/// with and without a stack scan that keeps the anchor.
+///
+/// What it does, in V8's first pass - so no V8 call but the Reset V8 asks
+/// for (v8-weak-callback-info.h), no allocation on either collected heap:
+/// 1. the record's Global is Reset;
+/// 2. the anchor is severed, whichever collection this is: its wrapper is
+///    gone, and an anchor a conservative scan of the stack kept past this
+///    collection must not name a record its finalizer frees (the dead
+///    anchor of a full collection is written too: it is unswept memory of
+///    the C++ heap's, and the sweep reads nothing of its fields);
+/// 3. in a YOUNG collection the anchor is listed for its free at the agent's
+///    drain and its pointer-table entry counted (freeDroppedAnchors,
+///    reportDroppedTableEntries), as resetPlatformRoot does for a traced
+///    record's. A full collection's sweep takes it. The two are told apart
+///    by the pause recorder's depth: V8 runs first passes between a
+///    mark-compact's prologue and epilogue callbacks (heap.cc:1514, :2344,
+///    :1621) and a scavenge calls neither. (A young collection nested in
+///    those callbacks reads as full and leaves its anchor to the next full
+///    collection.)
+/// 4. the record is handed to its cache (wrapper_cache.zig `dropped`: out of
+///    the map, its finalizer onto the agent's queue), as a traced record a
+///    young collection dropped is.
+static void platformAnchorFirstPass(const WeakCallbackInfo<PlatformAnchor>& info) {
+    PlatformAnchor* anchor = info.GetParameter();
+    if (!anchor) return;
+    CraneWrapperCell* cell = anchor->cell();
+    // Every path that stops an anchor naming its record Resets the record's
+    // handle with it, so there is no pass to run for it; nothing to do.
+    if (!cell) return;
+    IsolateData* record = isolateData(info.GetIsolate());
+    if (record && !record->cancelled_weak_cells.empty()) {
+        auto& cancelled = record->cancelled_weak_cells;
+        auto it = std::find(cancelled.begin(), cancelled.end(), cell);
+        if (it != cancelled.end()) {
+            // Let go of since V8 queued this pass (v8_WrapperCell_Detach):
+            // the record may be freed - not read - and its node was Reset.
+            cancelled.erase(it);
+            anchor->sever();
+            return;
+        }
+    }
+    weakHandleOf(cell)->Reset();
+    anchor->sever();
+    // An isolate whose disposal has begun has no record and no cache left to
+    // tell: the record's cache frees it at its own end.
+    if (!record) return;
+    if (record->gc_pauses.depth == 0) {
+        record->node_wrappers_dropped += 1;
+        record->dropped_platform_anchors.push_back(anchor);
+        noteNodeWrappersCollected(record);
+    }
+    // Made strong since V8 queued this pass (v8_WrapperCell_Disarm found the
+    // handle dead already): the cache was told its wrapper is held, and its
+    // owner ends that hold itself. The record stays the cache's, its handle
+    // empty - what a v8_Global_ClearWeak in that window has always left.
+    if (cell->bits & kWrapperCellStrong) return;
+    if (record->platform_wrapper_dropped) {
+        ++g_first_pass_depth;
+        record->platform_wrapper_dropped(record->platform_wrappers, cell);
+        --g_first_pass_depth;
+    }
+}
+
+// The order `platformAnchorFirstPass` rests on - first passes, then the C++
+// heap's sweep - is V8's internal one, read in 15.7.112.43
+// (src/heap/heap.cc:2344 and :2346-2355): a V8 update re-reads
+// Heap::PerformGarbageCollection before this compiles again. If the sweep
+// ever starts first, a full collection's dead anchor is freed memory in the
+// first pass, and the record must carry its anchor instead (lane wrap1's
+// first idea: the record as the parameter, 40 bytes).
+static_assert(V8_MAJOR_VERSION == 15 && V8_MINOR_VERSION == 7,
+              "a wrapper cache record's weak callback reads its dead wrapper's anchor: V8 15.7.112.43 runs first-pass "
+              "weak callbacks before CppHeap::CompactAndSweep (heap.cc Heap::PerformGarbageCollection): re-read it "
+              "before upgrading");
+
+/// Arm the in-place Global of `cell`, a record of the weak-handle kind, with
+/// `anchor` - its wrapper's - as the parameter (`platformAnchorFirstPass`).
+/// Arming an armed handle again only writes the same parameter.
+static void armWeakCell(CraneWrapperCell* cell, PlatformAnchor* anchor) {
+    Global<Object>* handle = weakHandleOf(cell);
+    handle->SetWeak(anchor, platformAnchorFirstPass, WeakCallbackType::kParameter);
+    setHandleFlag(handle, kCellArmedFlag);
+}
+
 /// The realm's cache takes the wrapper in `box` by a WEAK HANDLE: `cell`'s one
-/// word becomes a strong v8::Global of the wrapper, made in place
-/// (v8_WrapperCell_ArmWeak makes it weak), and the wrapper's anchor names the
-/// record. False - nothing changed - under v8_WrapperCell_Attach's
-/// conditions. The caller sets the record's kWrapperCellWeakHandle bit before
-/// anything can collect (nothing here does).
+/// word becomes a v8::Global of the wrapper, made in place and armed weak at
+/// once (`box` holds the wrapper until the cache's take is done), and the
+/// wrapper's anchor names the record. False - nothing changed - under
+/// v8_WrapperCell_Attach's conditions. The caller sets the record's
+/// kWrapperCellWeakHandle bit before anything can collect (nothing here
+/// does: a global-handle node is malloc'd).
 extern "C" bool v8_WrapperCell_AttachWeak(Isolate* isolate, Global<Object>* box, CraneWrapperCell* cell) {
     IsolateData* record = isolateData(isolate);
     if (!record || !record->node_anchors.Get() || !record->platform_wrappers_weak || !record->platform_wrapper_dropped) return false;
@@ -5660,79 +5802,54 @@ extern "C" bool v8_WrapperCell_AttachWeak(Isolate* isolate, Global<Object>* box,
     if (!anchor || anchor->cell() || anchor->instance() != cell->instance) return false;
     new (static_cast<void*>(&cell->wrapper)) Global<Object>(isolate, object);
     anchor->attach(cell);
+    armWeakCell(cell, anchor);
     return true;
 }
 
 /// `cell` holds its wrapper by a traced reference, and the binding has just
-/// changed the wrapper: the record's word becomes a strong v8::Global of the
-/// same wrapper, in place (the reference is Reset first - V8 frees its
-/// TracedNode). False for an empty reference. The caller sets the record's
-/// kWrapperCellWeakHandle bit before anything can collect, and arms it.
-extern "C" bool v8_WrapperCell_ToWeakHandle(Isolate* isolate, CraneWrapperCell* cell) {
+/// changed the wrapper: the record's word becomes a v8::Global of the same
+/// wrapper, in place (the reference is Reset first - V8 frees its
+/// TracedNode), armed weak at once when `arm` and strong otherwise (a wrapper
+/// the cache keeps). False for an empty reference. The caller sets the
+/// record's kWrapperCellWeakHandle bit before anything can collect.
+extern "C" bool v8_WrapperCell_ToWeakHandle(Isolate* isolate, CraneWrapperCell* cell, bool arm) {
     if (cell->wrapper.IsEmpty()) return false;
     HandleScope scope(isolate);
     Local<Object> object = cell->wrapper.Get(isolate);
     cell->wrapper.Reset();
     new (static_cast<void*>(&cell->wrapper)) Global<Object>(isolate, object);
+    if (arm) {
+        if (PlatformAnchor* anchor = platformAnchorOf(isolate, object)) armWeakCell(cell, anchor);
+    }
     return true;
 }
 
-/// Arm the in-place Global of `cell` (a record of the weak-handle kind) weak,
-/// as v8_Global_SetWeakFinalizer arms a box: `unlink(cell)` in V8's first
-/// pass, `finalize(cell)` at the agent's safe point - and the wrapper's
-/// anchor remembered with the arm, so that a first pass in a young-generation
-/// collection frees it ahead of the collector (`dropDeadWrapperAnchor`).
-extern "C" void v8_WrapperCell_ArmWeak(Isolate* isolate, CraneWrapperCell* cell, ZigWeakCallbackFn unlink, ZigWeakCallbackFn finalize) {
+/// Arm the in-place Global of `cell` (a record of the weak-handle kind the
+/// cache held strongly until now) weak: `platformAnchorFirstPass` when its
+/// wrapper dies. Nothing for an empty handle, and nothing for one V8 has
+/// already found dead (its first pass is queued).
+extern "C" void v8_WrapperCell_ArmWeak(Isolate* isolate, CraneWrapperCell* cell) {
     Global<Object>* handle = weakHandleOf(cell);
-    if (handle->IsEmpty() || !finalize) return;
-    void* anchor = nullptr;
-    {
-        HandleScope scope(isolate);
-        anchor = platformAnchorOf(isolate, handle->Get(isolate));
-    }
-    Global<Value>* global = reinterpret_cast<Global<Value>*>(handle);
-    WeakCallbackData* data = new WeakCallbackData{unlink, cell, global, isolate, finalize, anchor};
-    armWeakData(handle, data);
-    global->SetWeak(data, WeakCallbackWrapper<Value>, WeakCallbackType::kParameter);
+    if (handle->IsEmpty()) return;
+    if (!handle->IsWeak() && handleHasFlag(handle, kCellArmedFlag)) return;
+    HandleScope scope(isolate);
+    PlatformAnchor* anchor = platformAnchorOf(isolate, handle->Get(isolate));
+    // A wrapper with no anchor is never attached; one whose anchor names
+    // another record, or none, has no pass that could find this one.
+    if (!anchor || anchor->cell() != cell) return;
+    armWeakCell(cell, anchor);
 }
 
-/// A wrapper cache record's wrapper died and its weak Global's first pass is
-/// running: `raw` is the wrapper's anchor and `raw_cell` its record, which
-/// lives until its finalizer.
-///
-/// In a YOUNG-generation collection the C++ heap did not collect: the anchor
-/// is whole, nothing reaches it any more, and it is severed and listed for
-/// its free at the agent's drain, its pointer-table entry counted
-/// (freeDroppedAnchors, reportDroppedTableEntries) - what resetPlatformRoot
-/// does for a traced record's.
-///
-/// In a FULL collection the C++ heap's marking judged the anchor too. Not
-/// traced: it died with its wrapper, the sweep takes it - it may be swept
-/// already - and it is not touched. Traced: a word of the stack kept it
-/// though nothing keeps its wrapper (PlatformAnchor::Trace), so it outlives
-/// its record; it is severed here, so that no later Trace of it reads the
-/// record, and a later collection takes it. Which of the two is the record's
-/// kWrapperCellAnchorTraced, read only when this collection's own weak
-/// processing wrote it (GCPauses::cpp_weak_processed).
-///
-/// A full collection is told from a young one by the pause recorder's depth:
-/// V8 runs first-pass callbacks between a mark-compact's prologue and
-/// epilogue callbacks (15.7.112.43 src/heap/heap.cc:1514, :2344, :1621), and
-/// a scavenge calls neither. (A young collection nested in those callbacks
-/// reads as full and leaves its anchor to that collection's sweep.)
-static void dropDeadWrapperAnchor(Isolate* isolate, void* raw, void* raw_cell) {
-    IsolateData* record = isolateData(isolate);
-    if (!record) return;
-    PlatformAnchor* anchor = static_cast<PlatformAnchor*>(raw);
-    if (record->gc_pauses.depth != 0) {
-        const CraneWrapperCell* cell = static_cast<const CraneWrapperCell*>(raw_cell);
-        if (record->gc_pauses.cpp_weak_processed && cell && (cell->bits & kWrapperCellAnchorTraced)) anchor->sever();
-        return;
-    }
-    anchor->sever();
-    record->node_wrappers_dropped += 1;
-    record->dropped_platform_anchors.push_back(anchor);
-    noteNodeWrappersCollected(record);
+/// The cache holds `cell`'s wrapper strongly from here: its in-place Global
+/// (a record of the weak-handle kind) stops being weak. Nothing for an empty
+/// handle. One V8 has already found dead stays as it is - its wrapper is
+/// gone - and its first pass leaves the record with its cache
+/// (kWrapperCellStrong, which the caller sets).
+extern "C" void v8_WrapperCell_Disarm(CraneWrapperCell* cell) {
+    Global<Object>* handle = weakHandleOf(cell);
+    if (handle->IsEmpty() || !handle->IsWeak()) return;
+    handle->ClearWeak<void>();
+    clearHandleFlag(handle, kCellArmedFlag);
 }
 
 /// The binding changed `object` - a private property, its prototype, a
