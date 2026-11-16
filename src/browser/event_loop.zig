@@ -509,17 +509,26 @@ pub const EventLoop = struct {
         if (self.startIdlePeriod(now)) did_work = true;
 
         // Step 3: how long to wait - until the next timer or max_wait_ms.
+        // Whole milliseconds, a timer's rounded down: `timer_within_ms`
+        // says that the wait is nothing ONLY because a timer is due in
+        // under a millisecond, which step 4 waits for exactly.
+        var timer_within_ms = false;
         var wait_time = blk: {
             // A task left for the next turn is work waiting now: poll, but
             // do not block. So is one another thread posted meanwhile, and a
             // tree still waiting for its teardown.
             if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) break :blk 0;
             var wait = max_wait_ms;
-            if (self.timer_manager) |mgr| {
-                if (mgr.getNextTimerDeadline()) |deadline| wait = @min(deadline, wait);
-            }
             // A window waiting for an idle period: wake when one can start.
             if (self.idleWaitMs(now)) |idle_wait| wait = @min(idle_wait, wait);
+            if (wait > 0) {
+                if (self.timer_manager) |mgr| {
+                    if (mgr.getNextTimerDeadline()) |deadline| {
+                        timer_within_ms = deadline == 0;
+                        wait = @min(deadline, wait);
+                    }
+                }
+            }
             break :blk wait;
         };
 
@@ -533,7 +542,11 @@ pub const EventLoop = struct {
         // A real clock never moves: the turn waits, as it always did.
         if (!self.browser_clock.isReal() and
             !(self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) and
-            self.fastForwardToNextWakeUp(now)) wait_time = 0;
+            self.fastForwardToNextWakeUp(now))
+        {
+            wait_time = 0;
+            timer_within_ms = false;
+        }
 
         // Step 3b: what other threads - or this one's channels - posted while
         // this turn ran: a port's message posted by a task above runs before
@@ -554,6 +567,21 @@ pub const EventLoop = struct {
         // sleep was: the next timer's deadline, the caller's bound, and a
         // millisecond (native_timer.zig max_block_ms) - the fetches in
         // flight, which signal nothing, are moved on each turn.
+        //
+        // A timer due in under a millisecond is waited for too, to the
+        // nanosecond (`untilNextTimerNs`), as every browser's loop waits for
+        // its next delayed task: Chromium's pump sleeps on its event for the
+        // task's exact remaining delay (base/message_loop/
+        // message_pump_default.cc, MessagePumpDefault::Run:
+        // event_.TimedWait(next_work_info.remaining_delay()); read
+        // 2026-11-16). The whole-millisecond count rounds that wait down to
+        // nothing, and the loop then turned without a wait until the timer
+        // was due - 500 to 600 turns and 0.85 ms of this thread's CPU for
+        // every timer (server1, lane flk2). On a busy host that is a late
+        // wake, not only heat: the scheduler runs last the thread that has
+        // just burned a millisecond, so a task posted to this loop right
+        // after one of its timers waited for it while the poster's thread
+        // ran at once (tests/html/rep2_window_wake_test.zig).
         if (self.timer_manager) |mgr| {
             const after_each: TimerManager.AfterEach = .{ .context = self, .run = checkpointAfterTimer };
             var start = self.nowNs();
@@ -568,13 +596,26 @@ pub const EventLoop = struct {
             // change; tests/html/rep2_window_wake_test.zig).
             if (mgr.pollEach(after_each)) {
                 did_work = true;
-            } else if (wait_time > 0) {
-                const next = mgr.getNextTimerDeadline() orelse wait_time;
-                const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
-                if (wait_ms > 0) self.sink.waitForWork(wait_ms * std.time.ns_per_ms);
-                // The wait is no work; the callbacks after it are.
-                start = self.nowNs();
-                if (mgr.pollEach(after_each)) did_work = true;
+            } else {
+                var wait_ns: u64 = 0;
+                if (wait_time > 0) {
+                    const next = mgr.getNextTimerDeadline() orelse wait_time;
+                    const wait_ms: u64 = @min(@min(next, wait_time), TimerManager.max_block_ms);
+                    wait_ns = wait_ms * std.time.ns_per_ms;
+                    // Under a millisecond away since step 3 counted.
+                    if (wait_ms == 0) timer_within_ms = true;
+                }
+                // Not while a task step 3b's tasks queued waits for the
+                // next turn, and only on a real clock: on a virtual one a
+                // timer comes due when the clock is moved (step 3a).
+                if (wait_ns == 0 and timer_within_ms and self.browser_clock.isReal() and
+                    !(self.runnableQueued() or self.deferredPending())) wait_ns = untilNextTimerNs(mgr);
+                if (wait_ns > 0) {
+                    self.sink.waitForWork(wait_ns);
+                    // The wait is no work; the callbacks after it are.
+                    start = self.nowNs();
+                    if (mgr.pollEach(after_each)) did_work = true;
+                }
             }
             self.noteWork(start, self.nowNs());
         }
@@ -586,6 +627,16 @@ pub const EventLoop = struct {
         // callbacks - wait for the next one, which a non-empty queue makes
         // the caller start at once.
         return did_work or self.hasPendingWork();
+    }
+
+    /// How long until the next timer is due (ns), when that is under a
+    /// millisecond: what step 4 waits when the whole-millisecond count says
+    /// nothing. 0: no timer, or one that is due.
+    fn untilNextTimerNs(mgr: *TimerManager) u64 {
+        const deadline = mgr.nextDeadlineNs() orelse return 0;
+        const now = mgr.nowNs();
+        if (deadline <= now) return 0;
+        return @intCast(@min(deadline - now, std.time.ns_per_ms));
     }
 
     /// Move what other threads posted to the end of the task queue, in the
