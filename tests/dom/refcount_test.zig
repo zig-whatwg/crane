@@ -4,35 +4,27 @@
 //! these tests run it in `.log` mode where they provoke a violation, so the
 //! violation is counted instead of fatal) and the underflow checks.
 //!
-//! Nodes here are bare NodeBase values linked by hand: the count machinery
-//! needs no runtime and no engine. `std.testing.allocator` sees every
-//! allocation, the ledger's included.
+//! Nodes here are real nodes with no node document (real_nodes.zig `bare`;
+//! lane wb1), linked by hand: the count machinery needs no engine, and a
+//! node with no document moves no document's counts. They were NodeBase
+//! values made by the test's allocator. `std.testing.allocator` sees every
+//! allocation, the ledger's and the Browser scope's included.
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
 const runtime = @import("runtime");
+const real_nodes = @import("real_nodes.zig");
 const refcount = dom.refcount;
 const NodeBase = dom.NodeBase;
-
-/// An owner-less node made with `allocator` - the test's allocator, which its
-/// owner word names (NodeBase.ownerless).
-fn newNode(allocator: std.mem.Allocator) !*NodeBase {
-    std.debug.assert(allocator.ptr == std.testing.allocator.ptr);
-    const node = try allocator.create(NodeBase);
-    node.* = .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    };
-    return node;
-}
 
 /// A tree made of bare nodes and the ledger counting them.
 const Fixture = struct {
     ledger: refcount.Ledger,
-    nodes: std.ArrayList(*NodeBase) = .empty,
+    /// The Browser scope the nodes are made in; its end releases them.
+    nodes: real_nodes.Nodes,
     garbage: std.ArrayList(*NodeBase) = .empty,
 
-    fn init(fixture: *Fixture, mode: refcount.Mode) void {
+    fn init(fixture: *Fixture, mode: refcount.Mode) !void {
         fixture.* = .{
             .ledger = refcount.Ledger.init(testing.allocator, .{
                 .mode = mode,
@@ -41,14 +33,15 @@ const Fixture = struct {
                 // log would fail the test.
                 .report = quiet,
             }),
+            .nodes = undefined,
         };
+        try fixture.nodes.open(testing.allocator);
     }
 
     fn deinit(fixture: *Fixture) void {
         // Frees the ledger's books (leaks, if any, are reported by `finish`).
         _ = fixture.ledger.finish();
-        for (fixture.nodes.items) |node| testing.allocator.destroy(node);
-        fixture.nodes.deinit(testing.allocator);
+        fixture.nodes.close();
         fixture.garbage.deinit(testing.allocator);
     }
 
@@ -61,8 +54,7 @@ const Fixture = struct {
 
     /// A node and the reference it was born with, adopted.
     fn born(fixture: *Fixture) !refcount.Ref(NodeBase) {
-        const node = try newNode(testing.allocator);
-        try fixture.nodes.append(testing.allocator, node);
+        const node = try fixture.nodes.bare(.element);
         return refcount.Ref(NodeBase).adopt(&fixture.ledger, node);
     }
 
@@ -109,7 +101,7 @@ test "NodeBase keeps the counts in 8 bytes, and no `holds` chain (step 9b)" {
 
 test "a node is born with one reference and one hold" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
@@ -129,7 +121,7 @@ test "a node is born with one reference and one hold" {
 
 test "retain and release count; a hold appears at 0 to 1 and ends at 1 to 0" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var root_ref = try fixture.born();
     var child_ref = try fixture.born();
@@ -165,7 +157,7 @@ test "retain and release count; a hold appears at 0 to 1 and ends at 1 to 0" {
 
 test "D1: a held descendant keeps its whole tree, and the tree goes when the last hold does" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var a = try fixture.born();
     var b = try fixture.born();
@@ -196,7 +188,7 @@ test "D1: a held descendant keeps its whole tree, and the tree goes when the las
 
 test "removing a subtree moves its holds; a tree nothing holds is garbage at once, a held subtree stays" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var root_ref = try fixture.born();
     var branch_ref = try fixture.born();
@@ -229,7 +221,7 @@ test "removing a subtree moves its holds; a tree nothing holds is garbage at onc
 
 test "a held subtree moved between trees takes its holds with it" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var old_ref = try fixture.born();
     var new_ref = try fixture.born();
@@ -270,7 +262,7 @@ const HostTable = struct {
 
 test "the chain is host-including: a hold in a shadow tree keeps its host's tree" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     fixture.ledger.options.host_of = HostTable.hostOf;
     defer fixture.deinit();
     var host_ref = try fixture.born();
@@ -307,7 +299,7 @@ test "the chain is host-including: a hold in a shadow tree keeps its host's tree
 
 test "underflow: a deref at zero is a violation, and changes nothing" {
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
@@ -324,7 +316,7 @@ test "underflow: a deref at zero is a violation, and changes nothing" {
 test "a second release of one Ref is a violation and does not deref again" {
     if (!refcount.tracking) return error.SkipZigTest;
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     defer fixture.deinit();
     var first = try fixture.born();
     var second = first.clone(&fixture.ledger);
@@ -342,7 +334,7 @@ test "a second release of one Ref is a violation and does not deref again" {
 test "references outstanding at the end of the agent are leaks" {
     if (!refcount.tracking) return error.SkipZigTest;
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     defer fixture.deinit();
     var kept = try fixture.born();
     var released = try fixture.born();
@@ -356,7 +348,7 @@ test "references outstanding at the end of the agent are leaks" {
 test "leaks report their acquisition stack when tracing" {
     if (!refcount.tracking) return error.SkipZigTest;
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     fixture.ledger.options.trace = true;
     defer fixture.deinit();
     var kept = try fixture.born();
@@ -370,7 +362,7 @@ test "leaks report their acquisition stack when tracing" {
 
 test "a ref on the root of a garbage tree, or on a node being destroyed, is a violation and takes nothing" {
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
@@ -389,7 +381,7 @@ test "a ref on the root of a garbage tree, or on a node being destroyed, is a vi
 
 test "a garbage root that is held again fails its re-check; the flag is cleared" {
     var fixture: Fixture = undefined;
-    fixture.init(.log);
+    try fixture.init(.log);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
@@ -411,7 +403,7 @@ test "a garbage root that is held again fails its re-check; the flag is cleared"
 
 test "the parent bit is independent of the count" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
@@ -427,7 +419,7 @@ test "the parent bit is independent of the count" {
 
 test "GCReachableRef: a counted set the engine reads, and a Ref" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     const Observer = struct {
         var changes: u32 = 0;
@@ -461,25 +453,18 @@ test "GCReachableRef: a counted set the engine reads, and a Ref" {
     try testing.expectEqual(@as(usize, 0), fixture.ledger.finish());
 }
 
-var dummy_methods: u8 = 0;
-const dummy_vtable: runtime.VTable = .{ .name = "RcTest", .deinit = null, .methods_ptr = &dummy_methods };
-
 test "WeakRef: null once the node's slab slot is freed or reissued, and for a garbage tree" {
-    var slab_value = runtime.SlabAllocator.init(testing.allocator);
-    defer slab_value.deinit();
-    const slab = &slab_value;
-
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var creator = try fixture.born();
     const node = creator.get();
 
-    // A NodeBase with no owning Instance has no generation to compare.
-    try testing.expect(refcount.WeakRef(NodeBase).of(node) == null);
-
-    const instance = try slab.alloc(&dummy_vtable);
-    node.setOwnerInstance(instance);
+    // The node's own Instance and its slab generation (lane wb1: the test
+    // gave an owner-less NodeBase a slot of a slab of its own, and first
+    // pinned that a NodeBase with no Instance has no WeakRef - no node is
+    // without one any more).
+    const instance = real_nodes.instanceOf(node);
     const weak = refcount.WeakRef(NodeBase).of(node).?;
     try testing.expectEqual(node, weak.get(&fixture.ledger).?);
 
@@ -491,15 +476,14 @@ test "WeakRef: null once the node's slab slot is freed or reissued, and for a ga
     try testing.expect(node.rc_flags.garbage);
     try testing.expect(weak.get(&fixture.ledger) == null);
 
-    // Freed and reissued: the address is the same, the generation is not.
+    // Freed and reissued: the generation is not the one the WeakRef took.
     node.rc_flags.garbage = false;
     try testing.expectEqual(node, weak.get(&fixture.ledger).?);
-    slab.free(instance);
+    dom.node_creation.destroyUninserted(instance);
     try testing.expect(weak.get(&fixture.ledger) == null);
-    const reissued = try slab.alloc(&dummy_vtable);
+    _ = try fixture.nodes.bare(.element);
+    _ = try fixture.nodes.bare(.element);
     try testing.expect(weak.get(&fixture.ledger) == null);
-    slab.free(reissued);
-    node.setOwnerInstance(null);
 }
 
 /// What every concrete node type is: NodeBase first, state after it.
@@ -507,7 +491,7 @@ const Concrete = struct { base: NodeBase, extra: u32 };
 
 test "a Ref of a concrete node type counts through its NodeBase" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     const concrete = try testing.allocator.create(Concrete);
     defer testing.allocator.destroy(concrete);
@@ -528,7 +512,7 @@ test "a Ref of a concrete node type counts through its NodeBase" {
 
 test "take hands a reference to code that holds it without a Ref" {
     var fixture: Fixture = undefined;
-    fixture.init(.fatal);
+    try fixture.init(.fatal);
     defer fixture.deinit();
     var born = try fixture.born();
     const node = born.take(&fixture.ledger);

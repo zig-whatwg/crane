@@ -1589,19 +1589,5 @@ pub fn WeakRef(comptime T: type) type {
     };
 }
 
-// ============================================================================
-// Tests: the count word, holds, garbage. The types' own tests live in
-// tests/dom/refcount_test.zig (they need real nodes and the slab).
-// ============================================================================
-
-test "the parent bit and the count are independent" {
-    var node: NodeBase = undefined;
-    node.rc = NodeBase.rc_one;
-    try std.testing.expectEqual(@as(u32, 1), count(&node));
-    try std.testing.expect(!hasParentBit(&node));
-    setParentBit(&node, true);
-    try std.testing.expectEqual(@as(u32, 1), count(&node));
-    try std.testing.expect(hasParentBit(&node));
-    setParentBit(&node, false);
-    try std.testing.expectEqual(NodeBase.rc_one, node.rc);
-}
+// Tests: tests/dom/refcount_test.zig and its siblings (real nodes and the
+// slab; the count word's own test moved there with lane wb1).

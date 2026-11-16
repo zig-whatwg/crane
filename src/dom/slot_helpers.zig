@@ -269,14 +269,7 @@ pub fn slotState(node: *NodeBase) ?*SlotState {
     return f(instance);
 }
 
-test "NodeRef equality compares instance and generation" {
-    var a: NodeBase = undefined;
-    var instance: runtime.Instance = undefined;
-    const r1 = NodeRef{ .node = &a, .instance = &instance, .generation = 1 };
-    const r2 = NodeRef{ .node = &a, .instance = &instance, .generation = 2 };
-    try std.testing.expect(r1.eql(r1));
-    try std.testing.expect(!r1.eql(r2));
-}
+// NodeRef's test: tests/dom/wb1_moved_from_src_test.zig (a real node).
 
 test "slot state names are copied and freed" {
     var state = SlotState.init(std.testing.allocator);

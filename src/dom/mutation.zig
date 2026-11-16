@@ -2864,15 +2864,24 @@ test "a callback registered twice runs once" {
             calls += 1;
         }
     };
+    interfaces.process_hooks.startHooksForTest();
     const override = children_changed_callbacks.overrideForTest(.empty);
     defer override.restore();
 
     try registerChildrenChangedCallback(&Counter.childrenChanged);
     try registerChildrenChangedCallback(&Counter.childrenChanged);
-    var parent: NodeBase = .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-    };
-    runChildrenChangedSteps(&parent, .inserted);
+    // A real DocumentFragment of a Browser scope of the test's own (lane
+    // wb1: it was a NodeBase value on the stack).
+    var scope = runtime.BrowserScope.init(std.testing.allocator);
+    var ctx = try runtime.ContextData.init(std.testing.allocator, .{});
+    ctx.browser_scope = &scope;
+    defer {
+        @import("teardown_sweeps.zig").runAll(&scope);
+        scope.deinit();
+        ctx.deinit();
+    }
+    const fragment = try interfaces.DocumentFragment.init(std.testing.allocator, &ctx);
+    const parent = instance_bridge.getNodeBase(fragment).?;
+    runChildrenChangedSteps(parent, .inserted);
     try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }
