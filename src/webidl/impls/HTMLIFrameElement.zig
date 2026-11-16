@@ -3037,11 +3037,14 @@ fn runCommit(context: ?*anyopaque) void {
     // that queue from service tasks on this loop, one item a task, and this
     // task can be queued ahead of them (a response that needs no network -
     // about:blank, srcdoc, blob: - has it queued inside navigate) or between
-    // two of them (lane nr1: history.back() behind the finalize steps of two
-    // fragment navigations; the response, read by the loop's network step
-    // between their service tasks, was marked committing before the
-    // traversal's steps began, and committed). So the queue catches up
-    // first; then the check reads what the spec's reads.
+    // two of them (lane nr1's trace: history.back() behind one fragment
+    // navigation's finalize steps; the response was read by the network
+    // step that followed the script's task, 0.4 ms after the navigation
+    // started, so its task was queued behind the finalize's service task
+    // and ahead of the traversal's; it marked the navigation committing
+    // before the traversal's steps began, and the navigation committed).
+    // So the queue catches up first; then the check reads what the spec's
+    // reads.
     //
     // Golden rule 2: Chrome and Safari stop the navigation in each of these
     // cases, Firefox in none - html/browsers/browsing-the-web/
