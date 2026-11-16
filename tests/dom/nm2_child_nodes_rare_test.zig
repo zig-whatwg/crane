@@ -112,7 +112,8 @@ test "childNodes: no block until it is read, a 16-byte block after, the same lis
 
     // The lists are their wrappers' to free, and no engine wraps them here:
     // freed by hand, before their nodes (as cg1_element_same_object_test
-    // does). Each lets go of its node's cache as it goes.
+    // did until lane lk1 moved its run-time tests to tests/html, on a real
+    // page). Each lets go of its node's cache as it goes.
     for (lists) |list| runtime.Instance.deinit(list);
 }
 
