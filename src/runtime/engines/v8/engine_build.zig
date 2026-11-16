@@ -321,7 +321,20 @@ fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const
 ///     library of its own, uninstrumented (`addSource`) - so its source is
 ///     then not among the module's own, and nothing may take "this module
 ///     compiles v8_wrapper.cpp" for "this artifact links V8" (the protocol's
-///     `Engine.isLinkedInto` is the build's record of the call);
+///     `Engine.isLinkedInto` is the build's record of the call). What
+///     ThreadSanitizer then sees of V8 (moved from the root build.zig's
+///     tsan_suppressions_path, batch E5): V8 15.7's v8::base::Mutex is an
+///     absl::Mutex (src/base/platform/mutex.h), which synchronizes with
+///     futexes and atomics in uninstrumented code, so ThreadSanitizer sees
+///     none of V8's own locking - only V8's calls into the runtime's
+///     interceptors (memcpy, operator new/delete, free) - and reports
+///     V8-internal handoffs as races (the first -Dsanitize-thread run on
+///     15.7, server1, lane v8up b3e: 336 reports in the snapshot generator,
+///     all in V8's DefaultWorkerThreadsTaskRunner and heap). 13.1's
+///     base::Mutex was a pthread mutex, which TSAN intercepts. Those reports
+///     are suppressed by V8's own frames (tools/test_launcher/
+///     tsan_suppressions.txt, section 2), never by dropping the interceptors'
+///     accesses (`ignore_interceptors_accesses`, b3e's first answer);
 ///   - `request.handle_accounting`: the wrapper counts live Global<T> handles
 ///     (-DCRANE_TRACK_GLOBALS=1). It runs on every handle creation, so only
 ///     the binary that reports the count pays for it, never a browser;
