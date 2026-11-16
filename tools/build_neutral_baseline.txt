@@ -8,9 +8,8 @@ build.zig engine:javascriptcore comment 1
 build.zig engine:javascriptcore script 4
 build.zig engine:jsc script 3
 build.zig engine:quickjs script 6
-build.zig engine:v8 code 63
-build.zig engine:v8 comment 124
-build.zig engine:v8 script 81
+build.zig engine:v8 comment 71
+build.zig engine:v8 script 80
 build.zig library:brotli code 62
 build.zig library:brotli comment 14
 build.zig library:curl code 165
@@ -36,12 +35,12 @@ build.zig platform:homebrew code 5
 build.zig platform:homebrew comment 5
 build.zig platform:homebrew script 1
 build.zig platform:ios code 64
-build.zig platform:ios comment 44
+build.zig platform:ios comment 43
 build.zig platform:ios script 1
 build.zig platform:iphoneos code 4
 build.zig platform:iphoneos comment 7
 build.zig platform:linux code 30
-build.zig platform:linux comment 27
+build.zig platform:linux comment 26
 build.zig platform:linux script 1
 build.zig platform:macos code 7
 build.zig platform:macos comment 14
@@ -59,6 +58,3 @@ tests/wpt_runner/build_mode.zig library:nghttp2 comment 3
 tests/wpt_runner/build_mode.zig library:zlib comment 3
 tests/wpt_runner/build_mode.zig platform:darwin comment 1
 tests/wpt_runner/build_mode.zig platform:linux comment 1
-tools/snapshot_generator_mode.zig engine:v8 comment 4
-tools/test_suites.zig engine:v8 comment 1
-tools/test_suites.zig engine:v8 script 2
