@@ -12,7 +12,7 @@
 //! (tests/dom/perf3e1_slottable_test.zig); this moves a Text node's into
 //! its NodeBase's rare data, made by dom.slot_helpers' writers' path only -
 //! since lane nm2 the same field of the node's one sparse rare block as an
-//! element's (dom.element_rare_data's `slottable`, a block of its own).
+//! element's (dom.node_rare_data's `slottable`, a block of its own).
 //!
 //! The size pins and the rare-data checks are red until the text half
 //! lands; the behaviour tests hold before and after it.
@@ -52,7 +52,7 @@ fn expectSize(comptime T: type, expected: usize) !void {
 
 const TextState = @FieldType(interfaces.Text.State, "_embedded");
 /// A Text node's slottable state is a field of its node's rare data.
-const has_rare_slottable = @hasField(dom.element_rare_data.Field, "slottable") and @FieldType(dom.NodeBase, "rare") == dom.element_rare_data.Holder;
+const has_rare_slottable = @hasField(dom.node_rare_data.Field, "slottable") and @FieldType(dom.NodeBase, "rare") == dom.node_rare_data.Holder;
 
 // ============================================================================
 // Sizes (red until the text half)
@@ -75,7 +75,7 @@ test "a Text node's slottable state is a 64-byte block of its own, which its rar
     // It was 64 bytes of a fixed 104-byte NodeRareData (perf2 b4's
     // registered observer list 16, node name 16 and its flag, + this).
     try expectSize(dom.slot_helpers.SlottableState, 64);
-    try testing.expect(dom.element_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
+    try testing.expect(dom.node_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
 }
 
 // ============================================================================
@@ -128,7 +128,7 @@ const Page = struct {
 };
 
 /// `node`'s rare block, or null while it has none.
-fn nodeRareOf(node: *runtime.Instance) ?*dom.element_rare_data.Block {
+fn nodeRareOf(node: *runtime.Instance) ?*dom.node_rare_data.Block {
     const base = dom.instance_bridge.getNodeBase(node) orelse return null;
     return base.rare.block;
 }

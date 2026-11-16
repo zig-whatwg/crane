@@ -68,10 +68,10 @@ test "the list's head is made once and never moves; the list keeps registration 
     defer node.deinitRareData();
 
     const first = try node.appendRegisteredObserver(observers.registration(0, false));
-    const rare = dom.element_rare_data.get(node.rare, .registered_observers).?;
+    const rare = dom.node_rare_data.get(node.rare, .registered_observers).?;
     const second = try node.appendRegisteredObserver(observers.registration(1, true));
     const third = try node.appendRegisteredObserver(observers.registration(2, false));
-    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
+    try testing.expectEqual(rare, dom.node_rare_data.get(node.rare, .registered_observers).?);
     try observers.expectOrder(&node, &.{ 0, 1, 2 });
 
     // observe() step 7.2: the entry is updated where it is.
@@ -88,7 +88,7 @@ test "the list's head is made once and never moves; the list keeps registration 
     // Removing from the middle leaves the rest in order; the head stays.
     node.removeRegisteredObserver(second);
     try observers.expectOrder(&node, &.{ 0, 2, 0 });
-    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
+    try testing.expectEqual(rare, dom.node_rare_data.get(node.rare, .registered_observers).?);
 
     // A walk may remove the entry it was just given (disconnect(), the
     // transient removal of notify step 6.3, the node's teardown).
@@ -100,7 +100,7 @@ test "the list's head is made once and never moves; the list keeps registration 
     node.removeRegisteredObserver(third);
     node.removeRegisteredObserver(first);
     try testing.expect(!node.hasRegisteredObservers());
-    try testing.expectEqual(rare, dom.element_rare_data.get(node.rare, .registered_observers).?);
+    try testing.expectEqual(rare, dom.node_rare_data.get(node.rare, .registered_observers).?);
 }
 
 test "the node name lives in rare data, and an owned one is freed with it" {

@@ -79,6 +79,25 @@ pub const InternalState = struct {
     /// the wrapper slot (runtime.lifetime.countedOf reads this declaration).
     pub const counted_node = true;
 
+    /// A node's State does not nest EventTarget's (runtime.FlattenedState's
+    /// `absent_base`; lane nm3, node-memory plan v2 X2 and I1): that level
+    /// is the event listener list's address and the chain's live word, 16
+    /// bytes on every node, where nearly no node has a listener. A node
+    /// keeps its list in its rare block (NodeBase.eventListeners - Gecko's
+    /// nsINode keeps its listener manager in its slots, its rare data) and
+    /// its live bits in its NodeBase (`liveBits`). So the State block starts
+    /// with the NodeBase, and a node is still an EventTarget: its ancestry
+    /// lists EventTarget's State with no bytes behind it.
+    pub const omits_base_state = true;
+
+    /// The live bits of a node's State chain, a bit per level from Node's
+    /// own (runtime.OwnState): a byte of the NodeBase (`NodeBase.live`).
+    pub const LiveBits = u8;
+
+    pub inline fn liveBits(self: *InternalState) *LiveBits {
+        return &self.base.live;
+    }
+
     // No allocator copy (lane perf2 batch 6): what the node allocates comes
     // from its Browser's allocator, runtime.allocatorOf(instance) - the one it
     // was made with, asserted in initOwn.
@@ -114,7 +133,7 @@ pub const InternalState = struct {
     // is the one copy; this state kept a second pointer to the same list. 8
     // bytes a node. And the cache is not in the generated State either
     // (lane nm2): it is a field of the node's rare block
-    // (dom.element_rare_data's `child_nodes`), 8 more bytes a node.
+    // (dom.node_rare_data's `child_nodes`), 8 more bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
@@ -209,6 +228,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // builds).
     const internal = try Registry.create(instance);
     errdefer Registry.remove(instance);
+    // The chain's live bits are a byte of the NodeBase, which the write
+    // below replaces whole: carried over (Node's own bit, just set).
+    const live = internal.base.live;
     // Everything the node allocates later, and every free, goes through its
     // Browser's allocator, runtime.allocatorOf (its NodeBase's `allocator()`),
     // found from its address: so the allocator it is made with must BE that
@@ -222,6 +244,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     internal.* = .{
         .base = .{
             .node_type = node_type,
+            .live = live,
             .parent_node = null,
             .previous_or_last = null,
             .next_sibling = null,
@@ -459,11 +482,24 @@ pub fn deinitNodeByType(instance: *runtime.Instance) void {
             // but handle it for completeness
             interfaces.Document.deinit(instance);
         },
+        // An Attr's own teardown, like every other type's: Attr's part (its
+        // names, its value, its edge to its element), then Node's. It was
+        // the fallback below, which cleared Node's live bit and ran
+        // EventTarget's deinit only - so the NodeBase was never released
+        // (its rare block and what that owns stayed allocated, out of the
+        // final sweep's sight: the sweep walks by the bit), the bridge and
+        // the Browser's DOM memory still counted the node, and its teardown
+        // was never marked complete, so its slot never went back
+        // (tests/dom/nm3_attr_teardown_test.zig).
+        NodeType.ATTRIBUTE_NODE => interfaces.Attr.deinit(instance),
+        // No interface makes any other type (`nodeTypeOf` answers one of the
+        // nine above). The default is the safe answer all the same: the
+        // node's own deinit when its vtable names one, completed by Node's
+        // part - the one exit of a NodeBase (`releaseNodeBase`) - when that
+        // did not reach it.
         else => {
-            // For unknown types, do generic Node cleanup
-            // (this handles ATTRIBUTE_NODE and legacy types)
-            Registry.remove(instance);
-            interfaces.EventTarget.deinitChain(instance);
+            if (instance.vtable.deinit) |own_deinit| own_deinit(instance);
+            if (!runtime.instance_lifecycle.isCleanedUp(instance)) deinit(instance);
         },
     }
 }
@@ -710,7 +746,7 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
     const internal = Registry.get(node) orelse return;
     const rare = &internal.base.rare;
-    if (dom_module.element_rare_data.get(rare.*, .child_nodes) == list) dom_module.element_rare_data.clear(rare, .child_nodes);
+    if (dom_module.node_rare_data.get(rare.*, .child_nodes) == list) dom_module.node_rare_data.clear(rare, .child_nodes);
 }
 
 /// Getter for childNodes
@@ -2052,7 +2088,8 @@ const DocumentCounts = enum { with_document_counts, without_document_counts };
 /// (lane perf2 batch 4):
 /// 1. every registered observer is told and its entry freed
 ///    (dom.observer_registrations.releaseList), while the bridge still names
-///    the node;
+///    the node; its event listeners are released, if it has any
+///    (dom.event_handlers.releaseNodeListeners);
 /// 2. the rare data that held them goes, an owned node name with it;
 /// 3. its teardown is marked begun (instance_lifecycle.markCleanupStarted,
 ///    which Node.deinit made already; the final sweep's release makes it
@@ -2079,6 +2116,11 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts
     if (@import("builtin").optimize == .debug and !node_base.wrapper.isEmpty())
         std.debug.panic("Node: a {s} was released with its wrapper slot still bound - its wrapper must end first (engine.platformObjectDestroyed; at the Browser's end engine.releaseNodeWrappers, before the teardown sweeps)", .{instance.vtable.name});
     dom_module.observer_registrations.releaseList(instance, node_base);
+    // Its event listener list is a field of the rare block (lane nm3):
+    // EventTarget releases what the listeners own and the list's block,
+    // before the block that names them goes. A test of one word for nearly
+    // every node, which has no list.
+    if (node_base.hasEventListenerBlock()) dom_module.event_handlers.releaseNodeListeners(instance);
     node_base.deinitRareData();
     _ = runtime.instance_lifecycle.markCleanupStarted(instance);
     if (counts == .with_document_counts) releaseDocumentCounts(internal, node_base);
@@ -2089,8 +2131,14 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts
     // and a Browser that asked: runtime.BrowserScope.poisonsReleasedNodes), so
     // a read of a released NodeBase still faults the way a read of the freed
     // one did.
-    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes())
+    // The State chain's live bits are a byte of the NodeBase and outlive it:
+    // a level above Node's that this release finds still set (a sweep's
+    // order) is still its own teardown's to clear. Kept across the poison.
+    if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes()) {
+        const live = node_base.live;
         @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
+        node_base.live = live;
+    }
     // "The node has no NodeBase from here": this level's live bit, which
     // every reader of this state passes first (Registry.get). It was a null
     // `node_base` pointer; both of the callers cleared the bit right after.

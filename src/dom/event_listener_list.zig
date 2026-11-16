@@ -332,8 +332,10 @@ pub const RawHandler = extern struct {
 // The list
 // ============================================================================
 
-/// The block: this header, then `capacity` listeners.
-const Header = packed struct(u64) {
+/// The block: this header, then `capacity` listeners. Named outside this
+/// file only as the address a `List` is (a node keeps its list's in a slot
+/// of its rare block: dom.node_rare_data's `event_listeners`).
+pub const Header = packed struct(u64) {
     len: u32,
     capacity: u31,
     /// The target's owner hears every change of the list
@@ -402,6 +404,15 @@ pub const List = struct {
     pub fn watch(self: *List, allocator: std.mem.Allocator) error{OutOfMemory}!void {
         if (self.header == null) try self.grow(allocator, 0);
         self.header.?.watched = true;
+    }
+
+    /// Whether the block has room for `count` more listeners now: then
+    /// `ensureUnusedCapacity` would change nothing, and a holder that keeps
+    /// the list's address elsewhere (a node's rare block) has nothing to
+    /// write back.
+    pub fn hasUnusedCapacity(self: List, count: usize) bool {
+        const header = self.header orelse return false;
+        return @as(usize, header.len) + count <= header.capacity;
     }
 
     /// Room for `count` more listeners, so that the appends after it cannot

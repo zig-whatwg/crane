@@ -26,9 +26,9 @@ pub const ImplError = error{
 /// instances; what it keeps is its includer's (the element's rare data).
 pub const InternalState = struct {};
 
-/// The element's sparse rare block (dom.element_rare_data), which Element
+/// The element's sparse rare block (dom.node_rare_data), which Element
 /// installs the access to.
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 
 /// Getter for style: "a CSSStyleProperties object whose readonly flag is
 /// unset, whose parent CSS rule is null, and whose owner node is this" -

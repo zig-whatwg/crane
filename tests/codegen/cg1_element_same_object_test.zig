@@ -1,6 +1,6 @@
 //! N1 for elements (lane cg1 batch 1; node-memory plan v2, B7 then N1): the
 //! [SameObject] caches every element of a family carries leave the generated
-//! State for the element's sparse rare block (dom.element_rare_data, lane
+//! State for the element's sparse rare block (dom.node_rare_data, lane
 //! rare1), through dom.same_object_cache.
 //!
 //! A div's State carried 7 such pointers - Element's classList, attributes,
