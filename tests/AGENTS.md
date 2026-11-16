@@ -180,7 +180,7 @@ A suite with no matching test runs nothing and passes, and its launcher line
 says so (`test_launcher: tests-css: filter mutation_test*: no test of 1674
 matches, nothing run`); a suite with matches says how many (`test_launcher:
 tests-dom: filter mutation_test*: 14 of 642 tests; seed ...`), and the Build
-Summary counts only the selected tests (`14/14 tests passed`). Under `-Dtest-binaries=v8` a pattern also matches a name
+Summary counts only the selected tests (`14/14 tests passed`). Under `-Dtest-binaries=engine` a pattern also matches a name
 without its directory prefix, so the same pattern selects the same tests in
 both layouts. A filtered run's results go to `tmp/test-launch/<suite>.filtered.jsonl`,
 never over the full run's timings. The run step is cached like any other:
@@ -219,8 +219,8 @@ the user chose the hybrid, 2026-11-03):
 
 - **`dirs`, the default:** one executable per tests/<dir>/ (`addTestFilesFromDir`).
   A change to one test file rebuilds only its directory's executable.
-- **`v8`, for cold full gates** (main's gate, tmp/remote/gate-main.sh, and the
-  final checks): the directories that link V8 join ONE executable, "tests",
+- **`engine`, for cold full gates** (main's gate, tmp/remote/gate-main.sh, and the
+  final checks): the directories that link the engine join ONE executable, "tests",
   rooted at the generated tests/.all_tests.zig (`finishOneBinary`): each of their
   executables analyses and links the whole engine, so one does that work once;
   the rest keep their cheap executables. Test names carry the directory first
@@ -232,13 +232,13 @@ the user chose the hybrid, 2026-11-03):
   mode other than `.fail` - keeps its own executable, as do tests/runtime (the
   engine-less tier), tests/codegen (its module root is imported as a file), the
   src/ module roots and the tool tests. A third layout, every directory in one
-  (`one`), lost to `v8` on every row and was removed.
+  (`one`), lost to `engine` on every row and was removed.
 
 Measured on chat2.local (8 cores, 24 GB), fixed `-j2`, fresh local and global
 cache per cold run, 18 skipped in each (lane onebin1, tmp/plans/lane-onebin1-handoff.md);
 wall s / CPU s (user+sys) / peak RSS GB:
 
-| `zig build test` | `dirs` | `one` (removed) | `v8` |
+| `zig build test` | `dirs` | `one` (removed) | `engine` |
 |---|---|---|---|
 | cold | 2,176 / 7,074 / 15.6 | 1,860 / 6,424 / 14.7 | 1,560 / 7,008 / 14.5 |
 | nothing changed | 60 | 58 | 59 |
