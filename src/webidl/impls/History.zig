@@ -132,13 +132,14 @@ pub const construction_args = .{ "window", "browsing_context" };
 
 /// History's own construction steps (it has no parent interface).
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     const internal = try allocator.create(InternalState);
     internal.* = .{
         .allocator = allocator,
         .window = if (@hasField(@TypeOf(args), "window")) args.window else null,
         .browsing_context = if (@hasField(@TypeOf(args), "browsing_context")) args.browsing_context else null,
     };
-    instance.getState(StateType).own._internal = internal;
+    instance.getState(State).own._internal = internal;
 }
 
 /// The Window this History belongs to, or null: made for none, or not a

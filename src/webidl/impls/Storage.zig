@@ -66,6 +66,7 @@ pub const construction_args = .{ "storage", "owns_storage" };
 
 /// Storage's own construction steps (it has no parent interface).
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = StateType;
     if (!@hasField(@TypeOf(args), "storage")) return;
     const internal = try allocator.create(InternalState);
     internal.* = .{
@@ -73,7 +74,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .storage = args.storage,
         .owns_storage = if (@hasField(@TypeOf(args), "owns_storage")) args.owns_storage else false,
     };
-    instance.getState(StateType).own._internal = internal;
+    instance.getState(State).own._internal = internal;
 }
 
 /// Storage's own teardown - clean up owned resources only
