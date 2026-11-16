@@ -943,9 +943,9 @@ const TestSelection = struct {
     suite_dirs: *std.ArrayList([]const u8) = undefined,
     /// How every test executable that links the engine links it.
     engine_link: engine_build.Link,
-    /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
-    /// executable (`OneBinary`) instead of one each. Null: one executable per
-    /// directory.
+    /// -Dtest-binaries=engine: the directories `test` runs that link the
+    /// engine join ONE executable (`OneBinary`) instead of one each. Null:
+    /// one executable per directory.
     one: ?*OneBinary = null,
 };
 
@@ -956,19 +956,22 @@ const TestSelection = struct {
 const TestBinaries = enum {
     /// One executable per tests/<dir>/ (`addTestFilesFromDir`): the default,
     /// because a change to one test file rebuilds only its directory's
-    /// executable (245 s against 775 s for `v8`).
+    /// executable (245 s against 775 s for `engine`).
     dirs,
-    /// ONE executable for the tests/<dir>/ suites `test` runs that link V8
-    /// and whose imports agree (`OneBinary`): each of their executables is a
-    /// full analysis and V8 link of the engine, so one executable does that
-    /// work once (cold 1,560 s against 2,176 s for `dirs`). The rest keep
-    /// their cheap executables. For cold full gates (main's gate, final
-    /// checks). A third layout, every directory in one (`one`), lost to this
-    /// one on every row and was removed (lane onebin2).
-    v8,
+    /// ONE executable for the tests/<dir>/ suites `test` runs that link the
+    /// engine and whose imports agree (`OneBinary`): each of their
+    /// executables is a full analysis of the engine and a link of it, so one
+    /// executable does that work once (cold 1,560 s against 2,176 s for
+    /// `dirs`). The rest keep their cheap executables. For cold full gates
+    /// (main's gate, final checks). A third layout, every directory in one
+    /// (`one`), lost to this one on every row and was removed (lane onebin2).
+    /// (Until batch E4 of the build migration the value bore the engine's
+    /// own name; the directories that join are the engine's, whichever
+    /// engine the build binds.)
+    engine,
 };
 
-/// -Dtest-binaries=v8: the tests/<dir>/ suites `test` runs that link V8,
+/// -Dtest-binaries=engine: the tests/<dir>/ suites `test` runs that link the engine,
 /// compiled as ONE executable rooted at tests/.all_tests.zig (gitignored, generated like a
 /// directory's), which imports each member's `<dir>/.all_tests.zig`. Test
 /// names start with the member's directory under tests/ ("html.<file>.test.
@@ -1345,7 +1348,7 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// whether it can. `standalone`: who makes the standalone runtime
 /// (`StandaloneRuntime`), which decides how the runner compares it.
 /// `members`: the member suites of a joined executable (`OneBinary`,
-/// -Dtest-binaries=v8), each with its own row: the runner judges a test by
+/// -Dtest-binaries=engine), each with its own row: the runner judges a test by
 /// its member's StandaloneRuntime, found by the test's name prefix (lane
 /// onebin3: tests-v8's .process_start had no per-member path, so its tests
 /// read as leavers in the joined "tests" executable). Empty for an
@@ -1772,7 +1775,7 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    // -Dtest-binaries=v8: a directory `test` runs joins the one executable
+    // -Dtest-binaries=engine: a directory `test` runs joins the one executable
     // (`finishOneBinary` decides whether it can, at the end of the build).
     if (select.one) |one| if (step == one.step) {
         try one.members.append(allocator, .{
@@ -1789,7 +1792,7 @@ fn addTestFilesFromDir(
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
-/// -Dtest-binaries=v8, at the end of the build: the members that link V8,
+/// -Dtest-binaries=engine, at the end of the build: the members that link the engine,
 /// whose imports agree and whose rows allow it (`OneBinary`) become ONE
 /// executable, "tests", rooted at tests/.all_tests.zig; every other member
 /// gets its own executable, as with -Dtest-binaries=dirs.
@@ -3150,7 +3153,7 @@ pub fn build(b: *std.Build) void {
         });
         _ = useCraneTestRunner(b, state_fixture, &engine, "test_state_fixture", .fail, .per_test, &.{}, false, test_log_level);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
-        // A joined executable as -Dtest-binaries=v8 makes one (tests/
+        // A joined executable as -Dtest-binaries=engine makes one (tests/
         // test_runner_fixture/joined_fixture.zig): two members, "start."
         // (.process_start, as tests-v8) and "held." (the default .per_test),
         // each judged by its own row (lane onebin3).
@@ -3272,8 +3275,8 @@ pub fn build(b: *std.Build) void {
         break :launch l;
     };
     test_selection.launch = launch;
-    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
-    if (test_binaries == .v8 and test_selection.file == null) {
+    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or engine (ONE executable for the directories that link the engine: for cold full gates)") orelse .dirs;
+    if (test_binaries == .engine and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
         one.* = .{ .step = test_step, .engine_link = tests_engine_link };
         test_selection.one = one;
