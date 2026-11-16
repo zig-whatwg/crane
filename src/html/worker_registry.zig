@@ -203,6 +203,18 @@ pub const WorkerRegistry = struct {
         if (found) link.release();
     }
 
+    /// Whether a registered worker owned by `realm` has not ended. A
+    /// snapshot: a worker may start or end as soon as the lock drops.
+    pub fn ownsAny(self: *WorkerRegistry, realm: *const anyopaque) bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.links.items) |link| {
+            if (link.owner_realm != realm) continue;
+            if (link.state.load(.acquire) != .ended) return true;
+        }
+        return false;
+    }
+
     /// How many workers are registered.
     pub fn count(self: *WorkerRegistry) usize {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
