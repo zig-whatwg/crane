@@ -50,6 +50,20 @@ fn footprint() usize {
     return pages * std.heap.pageSize();
 }
 
+/// How far a step's rise or fall of the footprint may miss the 64 MiB it
+/// moves. Each step is read as a difference over the few milliseconds it
+/// takes, never against a reading from an earlier step: the rest of the
+/// process moves the footprint too - libc malloc gives large freed blocks
+/// back late, and a repeated run (verify mode) starts beside what the run
+/// before left to be released (seen: 10 MiB leaving in the middle of a run).
+/// With V8's default allocator the last step's rise is under 1 MiB.
+const slack = 16 * MiB;
+
+/// How many bytes the footprint rose from `from` to `to` (0 when it fell).
+fn counted(from: usize, to: usize) usize {
+    return to -| from;
+}
+
 const buffer_count = 64;
 const buffer_bytes = MiB;
 const total = buffer_count * buffer_bytes;
@@ -106,19 +120,20 @@ test "ArrayBuffer memory freed and allocated again is counted in the process foo
         if (@intFromPtr(ffi.v8_ArrayBuffer_Data(guard.*.?).?) > highest) break;
     }
     const fresh = footprint();
-    try testing.expect(fresh >= before + total - 4 * MiB);
+    try testing.expect(counted(before, fresh) >= total - slack);
 
     // Freed: the memory goes back to the OS (all of it but what the
     // allocator may keep for the next allocation, 1 MiB at most).
     freeBuffers(&buffers);
     const released = footprint();
-    try testing.expect(released + total - 8 * MiB <= fresh);
+    try testing.expect(counted(released, fresh) >= total - slack);
 
-    // Allocated and written again: within 4 MiB of the first time.
+    // Allocated and written again: the footprint rises by what was written,
+    // as it did the first time.
     try makeBuffers(isolate, &buffers, 2);
     const reused = footprint();
     freeBuffers(&buffers);
-    if (reused + 4 * MiB < fresh) {
+    if (counted(released, reused) < total - slack) {
         std.debug.print("footprint: before {d} MiB, 64 MiB written {d} MiB, freed {d} MiB, written again {d} MiB\n", .{ before / MiB, fresh / MiB, released / MiB, reused / MiB });
         return error.ReusedArrayBufferMemoryIsNotCounted;
     }
