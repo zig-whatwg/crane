@@ -17,9 +17,14 @@
 //!   referencing nodes, the foreign holds of its detached trees) would be
 //!   noise. Still a real node block.
 //!
-//! A test that links bare nodes by hand (`NodeBase.linkChildBefore`,
-//! `refcount.linkChild`) unlinks nothing before `close`: the Browser's end
-//! releases every node left, in no order, as Browser.deinit does.
+//! `close` ends the page as a Browser ends it: each document's teardown
+//! frees its tree (and what its nodes own: a classList, an attribute map),
+//! then the Browser's sweeps release every node still alive, in no order -
+//! bare nodes and nodes never inserted. The sweeps release a node, not the
+//! objects it made for script: a test that reads `classList` or `attributes`
+//! of an element puts that element in a document's tree, and a test that is
+//! handed an object of its own (a static NodeList) frees it
+//! (`runtime.gc.onObjectFreed`).
 
 const std = @import("std");
 const dom = @import("dom");
@@ -50,6 +55,11 @@ pub const Nodes = struct {
     allocator: std.mem.Allocator,
     scope: runtime.BrowserScope,
     ctx: runtime.ContextData,
+    /// The documents made here, torn down by `close`, newest first.
+    documents: [max_documents]*Instance = undefined,
+    document_count: usize = 0,
+
+    const max_documents = 4;
 
     /// In place: the scope must not move once it has made an object.
     pub fn open(self: *Nodes, allocator: std.mem.Allocator) !void {
@@ -62,9 +72,14 @@ pub const Nodes = struct {
         self.ctx.browser_scope = &self.scope;
     }
 
-    /// The Browser's end, as Browser.deinit runs it with no engine: every
-    /// node still alive is released by the teardown sweeps.
+    /// The page's end and the Browser's, as Browser.deinit runs it with no
+    /// engine: each document's tree, then every node still alive (the
+    /// teardown sweeps).
     pub fn close(self: *Nodes) void {
+        while (self.document_count != 0) {
+            self.document_count -= 1;
+            interfaces.Document.deinit(self.documents[self.document_count]);
+        }
         dom.teardown_sweeps.runAll(&self.scope);
         self.scope.deinit();
         self.ctx.deinit();
@@ -72,7 +87,10 @@ pub const Nodes = struct {
 
     /// An HTML document.
     pub fn document(self: *Nodes) !*Instance {
+        if (self.document_count == max_documents) return error.TooManyDocuments;
         const doc = try interfaces.Document.init(self.allocator, &self.ctx);
+        self.documents[self.document_count] = doc;
+        self.document_count += 1;
         try dom.document_internals.setContentType(doc, "text/html");
         try dom.document_internals.setDocumentType(doc, .html);
         return doc;

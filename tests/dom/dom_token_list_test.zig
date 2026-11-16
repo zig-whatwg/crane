@@ -30,7 +30,11 @@ const ClassList = struct {
         self.* = .{ .nodes = undefined };
         try self.nodes.open(std.testing.allocator);
         errdefer self.nodes.close();
-        self.element = try self.nodes.element(try self.nodes.document(), "div");
+        // In its document's tree: the document's teardown frees the element
+        // and the list it made for script.
+        const document = try self.nodes.document();
+        self.element = try self.nodes.element(document, "div");
+        try self.nodes.append(document, self.element);
         if (class) |value| try self.nodes.setAttribute(self.element, "class", value);
         self.list = try interfaces.Element.get_classList(self.element);
     }

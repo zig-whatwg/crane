@@ -478,6 +478,9 @@ test "WeakRef: null once the node's slab slot is freed or reissued, and for a ga
     // Freed and reissued: the generation is not the one the WeakRef took.
     node.rc_flags.garbage = false;
     try testing.expectEqual(node, weak.get(&fixture.ledger).?);
+    // The born reference went above (`creator.release`): the node's own
+    // teardown must not end it a second time.
+    node.rc_flags.creator = false;
     dom.node_creation.destroyUninserted(instance);
     try testing.expect(weak.get(&fixture.ledger) == null);
     _ = try fixture.nodes.bare(.element);

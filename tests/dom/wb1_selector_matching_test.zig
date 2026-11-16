@@ -18,6 +18,7 @@
 const std = @import("std");
 const testing = std.testing;
 const interfaces = @import("interfaces");
+const runtime = @import("runtime");
 const real_nodes = @import("real_nodes.zig");
 
 const Instance = real_nodes.Instance;
@@ -65,6 +66,8 @@ fn matches(element: *Instance, selector: []const u8) !bool {
 /// `root.querySelectorAll(selector)`, as the elements it holds.
 fn queryAll(root: *Instance, selector: []const u8, buffer: []*Instance) ![]*Instance {
     const list = try interfaces.Element.call_querySelectorAll(root, str(selector));
+    // A static NodeList is the caller's: freed as its collection would.
+    defer runtime.gc.onObjectFreed(list);
     const length = try interfaces.NodeList.get_length(list);
     for (0..length) |index| buffer[index] = (try interfaces.NodeList.call_item(list, @intCast(index))).?;
     return buffer[0..length];

@@ -28,7 +28,11 @@ test "Element - class membership follows the class attribute (was: bloom filter 
     var nodes: real_nodes.Nodes = undefined;
     try nodes.open(std.testing.allocator);
     defer nodes.close();
-    const elem = try nodes.element(try nodes.document(), "div");
+    // In its document's tree: the document's teardown frees the element and
+    // the classList it made for script.
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
+    try nodes.append(doc, elem);
 
     // Set class attribute
     try nodes.setAttribute(elem, "class", "container main active");
@@ -58,7 +62,11 @@ test "Element - class membership is updated on class change (was: bloom filter u
     var nodes: real_nodes.Nodes = undefined;
     try nodes.open(std.testing.allocator);
     defer nodes.close();
-    const elem = try nodes.element(try nodes.document(), "div");
+    // In its document's tree: the document's teardown frees the element and
+    // the classList it made for script.
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
+    try nodes.append(doc, elem);
 
     // Initially no classes
     try std.testing.expect(!try hasClass(elem, "test"));
