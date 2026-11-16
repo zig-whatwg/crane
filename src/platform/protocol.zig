@@ -554,43 +554,29 @@ pub inline fn residentMemory() ?MemoryReading {
 /// whatever it costs, as ReclaimAll and jemalloc_free_dirty_pages.
 pub const MemoryRelease = enum(u8) { idle, pressure };
 
-/// Told once, on the platform's own thread, when a release
-/// `releaseFreeMemory` accepted has ended: the bytes returned, as far as the
-/// platform can tell (0 when nothing was, or when it cannot tell), and how
-/// long the allocator worked. It runs on a thread that is no event loop's and
-/// no agent's: it touches atomics only - no loop state, no realm, no
-/// allocation of a Browser's - and does not block.
-pub const MemoryReleaseDone = extern struct {
-    context: ?*anyopaque,
-    call: *const fn (context: ?*anyopaque, returned_bytes: usize, duration_ns: u64) callconv(.c) void,
-};
-
-/// Ask the platform to return the system allocator's free memory to the OS -
-/// what the process freed and the allocator kept - on a thread of the
-/// platform's own. Never blocks the caller: the release itself can be
-/// neither interrupted nor given a time limit (glibc: about 8 ms for 275 MB
-/// returned), so no event loop's thread runs it - as Chrome bounds its
-/// foreground reclaim, Firefox's idle purge yields to a ready task, and
-/// WebKit moves the darwin call to a background queue. glibc: malloc_trim(0),
-/// which also reaches the free blocks between live ones that no malloc
-/// threshold returns. darwin: malloc_zone_pressure_relief(NULL, 0) - without
-/// effect on macOS 26 and later, whose allocator ignores it (its freed pages
-/// wait in a ring only the kernel drains). The calls WebKit makes
-/// (WebProcess::releaseSystemMallocMemory; MemoryPressureHandler::
+/// Return the system allocator's free memory to the OS - what the process
+/// freed and the allocator kept - on the calling thread. glibc:
+/// malloc_trim(0), which also reaches the free blocks between live ones that
+/// no malloc threshold returns. darwin: malloc_zone_pressure_relief(NULL, 0)
+/// - without effect on macOS 26 and later, whose allocator ignores it (its
+/// freed pages wait in a ring only the kernel drains). The calls WebKit
+/// makes (WebProcess::releaseSystemMallocMemory; MemoryPressureHandler::
 /// platformReleaseMemory). Both built-in implementations do the same at both
-/// levels; the level is for a platform with an allocator of its own.
+/// levels; the level is for a platform with an allocator of its own. The
+/// bytes returned, as far as the platform can tell: 0 when nothing was, or
+/// when it cannot tell.
 ///
-/// True: accepted, and `done` is called exactly once, on the platform's
-/// thread, when the release has ended - also when `deinitializePlatform`
-/// comes first, which serves it before it returns. False: not accepted - a
-/// release already waits or runs, the platform is ending, or it has no
-/// allocator to ask - and `done` is never called. The caller decides when
-/// to ask (browser/memory_release.zig holds the rule). What a release can
-/// still delay is an allocation: a thread that allocates from the arena the
-/// allocator is trimming at that moment waits for that arena's turn to end.
-/// Any thread.
-pub inline fn releaseFreeMemory(level: MemoryRelease, done: MemoryReleaseDone) bool {
-    return impl.releaseFreeMemory(level, done);
+/// It can be neither interrupted nor given a time limit, and its time grows
+/// with what it returns (glibc 2.43: about 8 ms for 275 MB). So it is never
+/// called on an event loop's thread - a task posted meanwhile would wait for
+/// it - but on a thread of its own, started for it and detached
+/// (`spawnThread`, `detachThread`: WebKit's shape on macOS, a block on a
+/// background queue); browser/memory_release.zig holds the rule for when.
+/// What it can still delay is an allocation: a thread that allocates from the
+/// arena the allocator is trimming at that moment waits for that arena's
+/// turn to end. Any thread.
+pub inline fn releaseFreeMemory(level: MemoryRelease) usize {
+    return impl.releaseFreeMemory(level);
 }
 
 // ============================================================================
@@ -771,6 +757,15 @@ pub inline fn spawnThread(options: ThreadOptions, entry: *const fn (?*anyopaque)
 /// Wait for `thread` to end and release it.
 pub inline fn joinThread(thread: Thread) void {
     return impl.joinThread(thread);
+}
+
+/// Let `thread` end by itself: it is released when its entry returns, and is
+/// never joined - for a thread whose end nobody waits for by its handle (a
+/// release of the allocator's free memory, `releaseFreeMemory`, which tells
+/// its owner through what it writes). The handle is the platform's from
+/// here on. Any thread.
+pub inline fn detachThread(thread: Thread) void {
+    return impl.detachThread(thread);
 }
 
 /// Give the calling thread an alternate signal stack: where the process's

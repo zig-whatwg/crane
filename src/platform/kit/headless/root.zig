@@ -204,11 +204,10 @@ pub fn residentMemory() ?platform.MemoryReading {
     return null;
 }
 
-/// No allocator of the platform's to ask: no request is accepted, and `done`
-/// is never called.
-pub fn releaseFreeMemory(level: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool {
-    _ = .{ level, done };
-    return false;
+/// No allocator of the platform's to ask: nothing is returned.
+pub fn releaseFreeMemory(level: platform.MemoryRelease) usize {
+    _ = level;
+    return 0;
 }
 
 // ---------------------------------------------------------------------------

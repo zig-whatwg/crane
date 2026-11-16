@@ -160,11 +160,12 @@ pub const EventLoop = struct {
     /// clock: what a release costs is real.
     memory_idle: memory_release.IdleWatch = .{},
 
-    /// The hold-off between releases the loop asks through: the process's
-    /// (BORROWED; memory_release.processGate), since the allocator is the
-    /// process's. A test gives its loop a gate of its own, which outlives
-    /// any release asked through it (Gate.settle).
-    memory_gate: *memory_release.Gate,
+    /// The gate the loop asks through: the process's
+    /// (memory_release.processGate, over the process's own record), since
+    /// the allocator is the process's. A test gives its loop a gate over a
+    /// record of its own, which outlives any release started through it
+    /// (Gate.settle).
+    memory_gate: memory_release.Gate,
 
     const Self = @This();
 
@@ -631,8 +632,8 @@ pub const EventLoop = struct {
     /// refuse (the hold-off after the last release, any Browser's, or a
     /// release still running): the loop then asks on a later idle turn.
     ///
-    /// The loop only posts the request: the release runs on the platform's
-    /// helper thread (platform.releaseFreeMemory), never on this one - the
+    /// The loop only starts the release: it runs on a detached thread of its
+    /// own (memory_release.Source.platform_source), never on this one - the
     /// allocator's call cannot be interrupted, and a task posted meanwhile
     /// (a worker's reply) must not wait for it. This thread can meet a
     /// release only where it allocates from the arena being trimmed at that

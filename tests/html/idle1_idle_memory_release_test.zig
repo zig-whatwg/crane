@@ -10,8 +10,8 @@
 //! MemoryReclaimer, Firefox's idle purge task, WebKit's
 //! releaseSystemMallocMemory). Crane's window event loop does the same
 //! (src/browser/event_loop.zig, the turn's last step;
-//! src/browser/memory_release.zig): it posts a request, and the platform's
-//! helper thread makes the allocator's call.
+//! src/browser/memory_release.zig): it starts a detached thread for the one
+//! release, and that thread makes the allocator's call.
 //!
 //! The rule's two halves are pinned without a Browser beside the code
 //! (memory_release.zig: IdleWatch - 200 ms, once per idle stretch; Gate -
@@ -21,11 +21,11 @@
 //! and - on glibc - the freed memory leaves the process.
 //!
 //! Each test runs a whole Browser on a thread of its own, and gives its loop
-//! a gate of its own (EventLoop.memory_gate): the process's gate holds the
-//! next release off for 5 to 30 seconds after any Browser's, which a test
-//! repeated in one process, or run beside another Browser, would meet. A
-//! test's gate waits for the release it asked for before it goes
-//! (Gate.settle): the platform's thread tells the gate when it has ended.
+//! a gate over a hold-off record of its own (EventLoop.memory_gate): the
+//! process's record holds the next release off for 5 to 30 seconds after any
+//! Browser's, which a test repeated in one process, or run beside another
+//! Browser, would meet. A test waits for the release it started before its
+//! record goes (Gate.settle): the release's thread writes to it.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -93,8 +93,9 @@ fn idleFor(page: helpers.Page, ms: i64) !void {
     while (clock.monotonicMillis() - start < ms) _ = loop.runOnceBlocking(5);
 }
 
-/// Turn the loop until `gate` has seen `releases` releases end, at most 20 s.
-fn idleUntilReleased(page: helpers.Page, gate: *const memory_release.Gate, releases: u64) !void {
+/// Turn the loop until `releases` releases started through `gate` have
+/// ended, at most 20 s.
+fn idleUntilReleased(page: helpers.Page, gate: memory_release.Gate, releases: u64) !void {
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
     const start = clock.monotonicMillis();
     while (gate.count() < releases) {
@@ -117,7 +118,7 @@ fn turnUntil(page: helpers.Page, done: []const u8) !void {
 }
 
 /// A page whose loop asks through `gate` instead of the process's.
-fn openWithGate(gate: *memory_release.Gate) !helpers.Page {
+fn openWithGate(gate: memory_release.Gate) !helpers.Page {
     const page = try helpers.Page.open();
     errdefer page.close();
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
@@ -126,18 +127,20 @@ fn openWithGate(gate: *memory_release.Gate) !helpers.Page {
 }
 
 fn idleLoopAsksAndAsksAgainAfterWork() !void {
-    var gate: memory_release.Gate = .{};
+    var hold: memory_release.HoldOff = .{};
+    const gate: memory_release.Gate = .{ .hold = &hold };
     defer gate.settle();
-    var second: memory_release.Gate = .{};
+    var second_hold: memory_release.HoldOff = .{};
+    const second: memory_release.Gate = .{ .hold = &second_hold };
     defer second.settle();
-    const page = try openWithGate(&gate);
+    const page = try openWithGate(gate);
     defer page.close();
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
 
     // The page was made and left alone: its loop asks, once it has been idle
     // for the delay - not at once.
     const made = clock.monotonicMillis();
-    try idleUntilReleased(page, &gate, 1);
+    try idleUntilReleased(page, gate, 1);
     // (Whole milliseconds, each rounded down: 199.)
     try testing.expect(clock.monotonicMillis() - made >= 199);
     try testing.expect(!loop.memory_idle.armed);
@@ -145,9 +148,9 @@ fn idleLoopAsksAndAsksAgainAfterWork() !void {
     // The page works again (a timer's callback), then nothing: a second
     // idle stretch. The first gate holds its next release off for at least 5
     // seconds, so the loop gets a fresh one - and asks it.
-    loop.memory_gate = &second;
+    loop.memory_gate = second;
     try page.run("globalThis.worked = 0; setTimeout(() => { worked = 1; }, 0);");
-    try idleUntilReleased(page, &second, 1);
+    try idleUntilReleased(page, second, 1);
     const worked = try page.evaluate("String(worked)");
     defer testing.allocator.free(worked);
     try testing.expectEqualStrings("1", worked);
@@ -159,9 +162,10 @@ test "an idle event loop asks for the allocator's free memory, and again after i
 }
 
 fn workingLoopDoesNotAsk() !void {
-    var gate: memory_release.Gate = .{};
+    var hold: memory_release.HoldOff = .{};
+    const gate: memory_release.Gate = .{ .hold = &hold };
     defer gate.settle();
-    const page = try openWithGate(&gate);
+    const page = try openWithGate(gate);
     defer page.close();
     // A callback every 20 ms: the loop is never without work for 200 ms.
     try page.run("globalThis.ticks = 0; globalThis.ticker = setInterval(() => { ticks++; }, 20);");
@@ -202,60 +206,60 @@ const round_trips =
     \\})();
 ;
 
-/// The platform's release, kept running: its `done` waits on the platform's
-/// own thread until the test lets it go, as an allocator with much to return
-/// keeps that thread. Records which thread it ran on.
+/// A release kept running: started as the platform's is - a thread of its
+/// own through platform.spawnThread, detached - it stays in its "allocator
+/// call" until the test lets it go, as an allocator with much to return
+/// would. Records which thread it ran on.
 const KeptRunning = struct {
-    inner: ?platform.MemoryReleaseDone = null,
-    asked: std.atomic.Value(u32) = .init(0),
+    hold: memory_release.HoldOff = .{},
+    started: std.atomic.Value(u32) = .init(0),
     running: std.atomic.Value(bool) = .init(false),
     let_go: std.atomic.Value(bool) = .init(false),
     ran_on: std.atomic.Value(u64) = .init(0),
 
-    fn source(self: *KeptRunning) memory_release.Source {
-        return .{ .context = self, .now = now, .request = request };
+    fn gate(self: *KeptRunning) memory_release.Gate {
+        return .{ .hold = &self.hold, .source = .{ .context = self, .now = now, .start = start } };
     }
 
     fn now(_: ?*anyopaque) i64 {
         return @intCast(platform.monotonicNow().ns);
     }
 
-    /// On the loop's thread: hand the request to the platform, with this
-    /// struct's `done` in front of the gate's.
-    fn request(context: ?*anyopaque, level: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool {
+    /// On the loop's thread.
+    fn start(context: ?*anyopaque, hold: *memory_release.HoldOff) bool {
         const self: *KeptRunning = @ptrCast(@alignCast(context.?));
-        self.inner = done;
-        if (!platform.releaseFreeMemory(level, .{ .context = self, .call = ended })) return false;
-        _ = self.asked.fetchAdd(1, .monotonic);
+        std.debug.assert(hold == &self.hold);
+        const thread = platform.spawnThread(.{ .name = .from("kept-release") }, run, self) catch return false;
+        platform.detachThread(thread);
+        _ = self.started.fetchAdd(1, .monotonic);
         return true;
     }
 
-    /// On the platform's thread, after the allocator's call.
-    fn ended(context: ?*anyopaque, returned_bytes: usize, duration_ns: u64) callconv(.c) void {
+    /// On the release's thread.
+    fn run(context: ?*anyopaque) callconv(.c) void {
         const self: *KeptRunning = @ptrCast(@alignCast(context.?));
         self.ran_on.store(std.Thread.getCurrentId(), .release);
         self.running.store(true, .release);
         while (!self.let_go.load(.acquire)) platform.sleepThread(100 * std.time.ns_per_us);
-        const inner = self.inner.?;
-        inner.call(inner.context, returned_bytes, duration_ns);
+        memory_release.ended(&self.hold, now(null), 0, 0);
     }
 };
 
 fn replyIsHandledWhileAReleaseRuns() !void {
     var kept: KeptRunning = .{};
-    // Whatever fails below, the platform's thread is let go and the gate
-    // waits for it before either goes.
-    var gate: memory_release.Gate = .{ .source = kept.source() };
+    const gate = kept.gate();
+    // Whatever fails below, the release's thread is let go and the test
+    // waits for it before the record goes.
     defer gate.settle();
     defer kept.let_go.store(true, .release);
-    const page = try openWithGate(&gate);
+    const page = try openWithGate(gate);
     defer page.close();
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
 
     try page.run(round_trips);
     try turnUntil(page, "String(phase)");
-    // The window is idle (it waits for `resume()`): its loop asks, and the
-    // release runs - and keeps running - on the platform's thread.
+    // The window is idle (it waits for `resume()`): its loop starts a
+    // release, which runs - and keeps running - on a thread of its own.
     const start = clock.monotonicMillis();
     while (!kept.running.load(.acquire)) {
         if (clock.monotonicMillis() - start > 20_000) return error.NeverAsked;
@@ -270,27 +274,29 @@ fn replyIsHandledWhileAReleaseRuns() !void {
     try turnUntil(page, "String(phase - 1)");
     try testing.expect(gate.isReleasing());
     try testing.expectEqual(@as(u64, 0), gate.count());
-    // One request: a loop does not ask again while its release runs,
-    // however often it works and idles meanwhile.
-    try testing.expectEqual(@as(u32, 1), kept.asked.load(.monotonic));
+    // One release: a loop starts no other while one runs, however often it
+    // works and idles meanwhile.
+    try testing.expectEqual(@as(u32, 1), kept.started.load(.monotonic));
 
-    // The release ends: the gate hears it from the platform's thread.
+    // The release ends: its thread writes the hold-off.
     kept.let_go.store(true, .release);
     gate.settle();
     try testing.expectEqual(@as(u64, 1), gate.count());
     try page.run("w.terminate(); clearTimeout(keepAlive);");
 }
 
-test "a worker's reply that arrives while a release runs is handled at once: the release is on the platform's thread, not the loop's" {
+test "a worker's reply that arrives while a release runs is handled at once: the release is on a detached thread, not the loop's" {
     try helpers.onFreshThread(replyIsHandledWhileAReleaseRuns);
 }
 
 fn noReleaseIsAskedForBetweenAPostAndItsReply() !void {
-    var gate: memory_release.Gate = .{};
+    var hold: memory_release.HoldOff = .{};
+    const gate: memory_release.Gate = .{ .hold = &hold };
     defer gate.settle();
-    var fresh: memory_release.Gate = .{};
+    var fresh_hold: memory_release.HoldOff = .{};
+    const fresh: memory_release.Gate = .{ .hold = &fresh_hold };
     defer fresh.settle();
-    const page = try openWithGate(&gate);
+    const page = try openWithGate(gate);
     defer page.close();
     try page.run(round_trips);
     // The worker starts on its own thread; the window may be idle long
@@ -299,7 +305,7 @@ fn noReleaseIsAskedForBetweenAPostAndItsReply() !void {
     // A gate that would not refuse: if the loop asked during the round
     // trips, it would be counted.
     const loop = page.browser.event_loop orelse return error.NoEventLoop;
-    loop.memory_gate = &fresh;
+    loop.memory_gate = fresh;
     try page.run("resume();");
     try turnUntil(page, "String(phase - 1)");
     try page.run("w.terminate(); clearTimeout(keepAlive);");
@@ -323,10 +329,66 @@ test "no release is asked for between a window's post to a worker and the reply:
     try helpers.onFreshThread(noReleaseIsAskedForBetweenAPostAndItsReply);
 }
 
+/// A release that outlives its test: the process's own record says one
+/// runs, and a detached thread keeps calling the allocator for 300 ms, then
+/// leaves the record as the test found it. In the C heap: the thread frees
+/// it at its end, and a process that exits first never does.
+const OutlivingRelease = struct {
+    found: i64,
+
+    fn run(context: ?*anyopaque) callconv(.c) void {
+        const self: *OutlivingRelease = @ptrCast(@alignCast(context.?));
+        const start = platform.monotonicNow().ns;
+        while (platform.monotonicNow().ns - start < 300 * std.time.ns_per_ms) {
+            _ = platform.releaseFreeMemory(.idle);
+        }
+        memory_release.processGate().hold.not_before_ns.store(self.found, .release);
+        std.heap.c_allocator.destroy(self);
+    }
+};
+
+test "a process that exits while a release runs, and never ends the process, exits cleanly" {
+    // The hosts that end the process (the repl, the WPT runner) wait for a
+    // release in flight (crane.Process.deinit: Gate.settle). A host that
+    // only makes Browsers does not - a test executable under the launcher,
+    // an embedder through the C API (src/lib_exports.zig) - and may exit
+    // while the release's detached thread is inside the allocator. This
+    // test's process is such a host: it returns with the release running.
+    // The launcher runs it in a process of its own (the suite's batch is 1),
+    // so its verdict is that process's exit: no hang, no crash, and under
+    // the thread sanitizer no thread reported as leaked (the thread is
+    // detached, and still running).
+    const hold = memory_release.processGate().hold;
+    // Claim the process's record as a release does. Another release may be
+    // running: an earlier repeat of this test in the same process (it ends
+    // within 300 ms), or a Browser's beside it.
+    var waited_us: u64 = 0;
+    const found = while (true) : (waited_us += 100) {
+        const seen = hold.not_before_ns.load(.acquire);
+        if (seen != memory_release.HoldOff.releasing and
+            hold.not_before_ns.cmpxchgStrong(seen, memory_release.HoldOff.releasing, .acq_rel, .acquire) == null) break seen;
+        if (waited_us > 20 * std.time.us_per_s) return error.RecordNeverFree;
+        platform.sleepThread(100 * std.time.ns_per_us);
+    };
+    const release = std.heap.c_allocator.create(OutlivingRelease) catch {
+        hold.not_before_ns.store(found, .release);
+        return error.OutOfMemory;
+    };
+    release.* = .{ .found = found };
+    const thread = platform.spawnThread(.{ .name = .from("crane-memory") }, OutlivingRelease.run, release) catch |err| {
+        hold.not_before_ns.store(found, .release);
+        std.heap.c_allocator.destroy(release);
+        return err;
+    };
+    platform.detachThread(thread);
+    try testing.expect(memory_release.processGate().isReleasing());
+}
+
 fn residentMemoryFallsWhenThePageGoesIdle() !void {
-    var gate: memory_release.Gate = .{};
+    var hold: memory_release.HoldOff = .{};
+    const gate: memory_release.Gate = .{ .hold = &hold };
     defer gate.settle();
-    const page = try openWithGate(&gate);
+    const page = try openWithGate(gate);
     defer page.close();
 
     const fragmented = try testing.allocator.create(Fragmented);
@@ -339,7 +401,7 @@ fn residentMemoryFallsWhenThePageGoesIdle() !void {
 
     // The page does a little work, then nothing.
     try page.run("setTimeout(() => { globalThis.worked = true; }, 0);");
-    try idleUntilReleased(page, &gate, 1);
+    try idleUntilReleased(page, gate, 1);
 
     const after = try residentBytes();
     // 246 MiB were freed; at least half of it has left the process. Without

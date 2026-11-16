@@ -40,18 +40,22 @@
 //!    interrupted nor given a time limit (about 8 ms for 275 MB returned),
 //!    and a page idle for 200 ms must not have its next wake - a worker's
 //!    reply - wait for one: Chrome keeps its foreground reclaim to about a
-//!    millisecond, Firefox's purge yields to a ready task, WebKit moves the
-//!    darwin call to a background queue. The loop only posts the request;
-//!    the platform's helper thread makes the call
-//!    (platform.releaseFreeMemory) and tells the gate when it has ended.
-//!    What a release can still delay is an allocation from the arena being
-//!    trimmed at that moment.
+//!    millisecond, Firefox's purge yields to a ready task, WebKit hands the
+//!    darwin call to a background queue (cocoa/WebProcessCocoa.mm,
+//!    releaseSystemMallocMemory: dispatch_async, no thread of its own). As
+//!    WebKit: the loop starts a thread for the one release and detaches it
+//!    (platform.spawnThread, detachThread); that thread makes the call
+//!    (platform.releaseFreeMemory) and writes the hold-off when it has
+//!    ended. No thread is kept between releases, and none is joined. What a
+//!    release can still delay is an allocation from the arena being trimmed
+//!    at that moment.
 //! 3. HOW MUCH. For the whole process - the allocator is the process's,
 //!    whichever Browser's loop asks - no release is asked for while one runs,
 //!    nor until `holdOff` has passed since the last one ended: WebKit's
 //!    three numbers, unchanged. Releases therefore take at most a twentieth
 //!    of one thread's time, and one that finds nothing to return is not
-//!    repeated for 30 seconds.
+//!    repeated for 30 seconds. The process's hold-off is in the process's
+//!    own record (process.start MemoryHoldOff); `Gate` is the rule over it.
 //!
 //! Not here yet: the OS's memory-pressure notification (no platform posts
 //! platform events yet; when they are delivered, a critical one is
@@ -60,6 +64,7 @@
 
 const std = @import("std");
 const platform = @import("platform");
+const process_start = @import("dom").process_start;
 
 /// How long a loop has had nothing to run before it asks: 200 ms.
 pub const idle_delay_ns: i64 = 200 * std.time.ns_per_ms;
@@ -125,106 +130,110 @@ pub const IdleWatch = struct {
     }
 };
 
-/// The clock and the allocator a gate works with: the platform's
-/// (`Source.platform_source`), or a test's.
+/// The record a gate reads and writes: the time before which no release is
+/// asked for, whether one runs, how many have ended. The process has one, in
+/// its own record (process.start); a test makes its own.
+pub const HoldOff = process_start.MemoryHoldOff;
+
+/// The clock a gate reads and the way its releases are started: the
+/// platform's (`Source.platform_source`), or a test's.
 pub const Source = struct {
     context: ?*anyopaque = null,
-    /// Real monotonic time, ns. Called on the asking thread and on the
-    /// platform's (from `done`).
+    /// Real monotonic time, ns.
     now: *const fn (context: ?*anyopaque) i64,
-    /// platform.releaseFreeMemory: true when the request was accepted, and
-    /// `done` will be called exactly once.
-    request: *const fn (context: ?*anyopaque, level: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool,
+    /// Start the release `hold` was just claimed for (its level is
+    /// `hold.level`), off the calling thread, and return at once. True: it
+    /// was started, and `ended(hold, ...)` will be called exactly once when
+    /// it is over. False: it could not be started; `ended` is not called.
+    start: *const fn (context: ?*anyopaque, hold: *HoldOff) bool,
 
-    pub const platform_source: Source = .{ .now = platformNow, .request = platformRequest };
+    pub const platform_source: Source = .{ .now = platformNow, .start = platformStart };
 
     fn platformNow(_: ?*anyopaque) i64 {
         return @intCast(platform.monotonicNow().ns);
     }
 
-    fn platformRequest(_: ?*anyopaque, level: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool {
-        return platform.releaseFreeMemory(level, done);
+    /// A thread for this one release, detached: it ends by itself, and
+    /// nobody joins it (WebKit hands the same call to a background queue).
+    fn platformStart(_: ?*anyopaque, hold: *HoldOff) bool {
+        const thread = platform.spawnThread(.{ .name = .from("crane-memory") }, runRelease, hold) catch return false;
+        platform.detachThread(thread);
+        return true;
+    }
+
+    /// The release's thread: the allocator's call, then the hold-off. It
+    /// touches the hold-off's atomics and the platform's clock, nothing
+    /// else - no loop, no realm, no Browser.
+    fn runRelease(context: ?*anyopaque) callconv(.c) void {
+        const hold: *HoldOff = @ptrCast(@alignCast(context.?));
+        const level: platform.MemoryRelease = @fromBackingInt(@intCast(hold.level.load(.acquire)));
+        const start = platformNow(null);
+        const returned = platform.releaseFreeMemory(level);
+        const end = platformNow(null);
+        ended(hold, end, returned, end - start);
     }
 };
 
-/// The hold-off between releases, for everything that shares one allocator:
-/// the process has one (`processGate`); a test makes its own. Any thread.
-///
-/// A gate must outlive the release it asked for: the platform's thread tells
-/// it when the release has ended (`done`). The process's gate lives as long
-/// as the process; a test's waits (`settle`) before it goes.
+/// A release started for `hold` is over: at `end_ns` (real monotonic), after
+/// `duration_ns` of the allocator's work, with `returned_bytes` returned.
+/// Counts it and opens the record again after the hold-off - that store
+/// comes last: after it, a record that is not the process's may go. Atomics
+/// only; called on the release's thread.
+pub fn ended(hold: *HoldOff, end_ns: i64, returned_bytes: usize, duration_ns: i64) void {
+    _ = hold.releases.fetchAdd(1, .monotonic);
+    hold.not_before_ns.store(end_ns +| holdOff(duration_ns, returned_bytes), .release);
+}
+
+/// The rule between releases, over one hold-off record: everything that
+/// shares an allocator shares the record. A value - the record it points to
+/// is what must outlive a release (the process's does; a test's waits,
+/// `settle`). Any thread.
 pub const Gate = struct {
-    /// Real monotonic time (ns) before which no release is asked for;
-    /// `releasing` from a request's acceptance until its `done`. A release
-    /// claims the gate by swapping the value it read for `releasing`, so of
-    /// several loops that find the gate open at once exactly one asks.
-    not_before_ns: std.atomic.Value(i64) = .init(open),
-
-    /// How many releases have ended: a count that only rises.
-    releases: std.atomic.Value(u64) = .init(0),
-
-    /// The gate's clock and allocator. Never written after the gate is
-    /// made: `done` reads it on the platform's thread.
+    /// BORROWED: the process's (`processGate`), or a test's own.
+    hold: *HoldOff,
     source: Source = .platform_source,
 
-    const open: i64 = std.math.minInt(i64);
-    const releasing: i64 = std.math.maxInt(i64);
-
-    /// Ask the platform to release the allocator's free memory, unless the
-    /// hold-off after the last release - or a release still running -
-    /// refuses. Whether the request was posted; it never waits for the
-    /// release, whose end `done` hears on the platform's thread. When the
-    /// platform takes no request (it is releasing for another gate, it is
-    /// ending, or it has no allocator to ask) the gate asks again after
-    /// `min_hold_off_ns`.
-    pub fn release(self: *Gate, level: platform.MemoryRelease) bool {
+    /// Start a release of the allocator's free memory on a thread of its
+    /// own, unless the hold-off after the last release - or a release still
+    /// running - refuses. Whether one was started; it never waits for the
+    /// release, whose thread writes the hold-off when it is over. When no
+    /// thread could be started the gate asks again after `min_hold_off_ns`.
+    pub fn release(self: Gate, level: platform.MemoryRelease) bool {
         const now = self.source.now(self.source.context);
-        const not_before = self.not_before_ns.load(.acquire);
+        const not_before = self.hold.not_before_ns.load(.acquire);
         if (now < not_before) return false;
-        if (self.not_before_ns.cmpxchgStrong(not_before, releasing, .acq_rel, .acquire) != null) return false;
-        if (!self.source.request(self.source.context, level, .{ .context = self, .call = done })) {
-            self.not_before_ns.store(now +| min_hold_off_ns, .release);
+        if (self.hold.not_before_ns.cmpxchgStrong(not_before, HoldOff.releasing, .acq_rel, .acquire) != null) return false;
+        self.hold.level.store(@backingInt(level), .release);
+        if (!self.source.start(self.source.context, self.hold)) {
+            self.hold.not_before_ns.store(now +| min_hold_off_ns, .release);
             return false;
         }
         return true;
     }
 
-    /// platform.MemoryReleaseDone: the release this gate asked for has ended.
-    /// On the platform's thread: atomics only. The store that reopens the
-    /// gate comes last - after it, a gate that is not the process's may go.
-    fn done(context: ?*anyopaque, returned_bytes: usize, duration_ns: u64) callconv(.c) void {
-        const self: *Gate = @ptrCast(@alignCast(context.?));
-        const end = self.source.now(self.source.context);
-        const duration: i64 = @intCast(@min(duration_ns, std.math.maxInt(i64)));
-        _ = self.releases.fetchAdd(1, .monotonic);
-        self.not_before_ns.store(end +| holdOff(duration, returned_bytes), .release);
+    /// How many releases started through this gate's record have ended.
+    pub fn count(self: Gate) u64 {
+        return self.hold.releases.load(.monotonic);
     }
 
-    /// How many releases asked through this gate have ended.
-    pub fn count(self: *const Gate) u64 {
-        return self.releases.load(.monotonic);
+    /// Whether a release is running.
+    pub fn isReleasing(self: Gate) bool {
+        return self.hold.not_before_ns.load(.acquire) == HoldOff.releasing;
     }
 
-    /// Whether a release this gate asked for is still running.
-    pub fn isReleasing(self: *const Gate) bool {
-        return self.not_before_ns.load(.acquire) == releasing;
-    }
-
-    /// Wait until no release this gate asked for is running: before a gate
-    /// that is not the process's goes out of scope (tests). The caller has
-    /// stopped asking - its loop has ended, or has another gate.
-    pub fn settle(self: *const Gate) void {
+    /// Wait until no release is running: the process's end
+    /// (crane.Process.deinit, after its last Browser), and a test before its
+    /// own record goes out of scope. Nothing asks any more by then - the
+    /// loops have ended, or have another gate.
+    pub fn settle(self: Gate) void {
         while (self.isReleasing()) platform.sleepThread(100 * std.time.ns_per_us);
     }
 };
 
-// process-wide: the system allocator is one per process, so the time before which nobody asks it for its free memory again is too - whichever Browser's event loop asked last, on whichever thread; two atomics (std.atomic.Value): the deadline, claimed with a compare-and-swap so that of several loops finding it passed exactly one asks, and reopened by the platform's thread when the release has ended; and a count of releases that only rises
-var process_gate: Gate = .{};
-
-/// The process's gate: every event loop's, unless a test gives a loop its
-/// own (EventLoop.memory_gate).
-pub fn processGate() *Gate {
-    return &process_gate;
+/// The process's gate, over the process's record: every event loop's,
+/// unless a test gives a loop its own (EventLoop.memory_gate).
+pub fn processGate() Gate {
+    return .{ .hold = process_start.memoryHoldOff() };
 }
 
 // ============================================================================
@@ -233,24 +242,25 @@ pub fn processGate() *Gate {
 
 const testing = std.testing;
 
-/// A clock a test moves and an allocator that reports what the test says.
-/// Each release ends inside the request (`hold` false) or when the test
-/// says so (`finish`).
+/// A clock a test moves and releases that take and return what the test
+/// says. Each release ends inside the start (`hold_open` false) or when the
+/// test says so (`finish`).
 const Fake = struct {
     now_ns: i64 = 1_000 * std.time.ns_per_s,
     /// How long each release takes, and what it returns.
     release_takes_ns: i64 = 0,
     release_returns: usize = 0,
-    /// Whether the platform accepts requests.
-    accepts: bool = true,
+    /// Whether a release can be started.
+    starts: bool = true,
     /// Keep a release running until `finish`.
-    hold: bool = false,
-    held: ?platform.MemoryReleaseDone = null,
+    hold_open: bool = false,
+    running: ?*HoldOff = null,
     asked: u32 = 0,
     last_level: ?platform.MemoryRelease = null,
+    hold: HoldOff = .{},
 
-    fn source(self: *Fake) Source {
-        return .{ .context = self, .now = now, .request = request };
+    fn gate(self: *Fake) Gate {
+        return .{ .hold = &self.hold, .source = .{ .context = self, .now = now, .start = start } };
     }
 
     fn now(context: ?*anyopaque) i64 {
@@ -258,29 +268,30 @@ const Fake = struct {
         return self.now_ns;
     }
 
-    fn request(context: ?*anyopaque, level: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool {
+    fn start(context: ?*anyopaque, hold: *HoldOff) bool {
         const self: *Fake = @ptrCast(@alignCast(context.?));
         self.asked += 1;
+        const level: platform.MemoryRelease = @fromBackingInt(@intCast(hold.level.load(.acquire)));
         self.last_level = level;
-        if (!self.accepts) return false;
-        if (self.hold) {
-            self.held = done;
+        if (!self.starts) return false;
+        if (self.hold_open) {
+            self.running = hold;
             return true;
         }
-        self.end(done);
+        self.end(hold);
         return true;
     }
 
-    fn end(self: *Fake, done: platform.MemoryReleaseDone) void {
+    fn end(self: *Fake, hold: *HoldOff) void {
         self.now_ns += self.release_takes_ns;
-        done.call(done.context, self.release_returns, @intCast(self.release_takes_ns));
+        ended(hold, self.now_ns, self.release_returns, self.release_takes_ns);
     }
 
     /// End the release that was kept running.
     fn finish(self: *Fake) void {
-        const done = self.held.?;
-        self.held = null;
-        self.end(done);
+        const hold = self.running.?;
+        self.running = null;
+        self.end(hold);
     }
 };
 
@@ -357,9 +368,9 @@ test "holdOff: 20 times the release's duration, at least 5 seconds; 30 seconds w
     try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, small_release_bytes));
 }
 
-test "Gate: the first release is asked for, at the level asked" {
+test "Gate: the first release is started, at the level asked" {
     var fake: Fake = .{ .release_returns = 64 * 1024 * 1024 };
-    var gate: Gate = .{ .source = fake.source() };
+    const gate = fake.gate();
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 1), fake.asked);
     try testing.expectEqual(platform.MemoryRelease.idle, fake.last_level.?);
@@ -370,24 +381,24 @@ test "Gate: the first release is asked for, at the level asked" {
 test "Gate: after a release that returned memory the next is refused for 20 times its duration, at least 5 seconds" {
     const ms = std.time.ns_per_ms;
     var fake: Fake = .{ .release_takes_ns = 8 * ms, .release_returns = 275 * 1024 * 1024 };
-    var gate: Gate = .{ .source = fake.source() };
+    const gate = fake.gate();
     try testing.expect(gate.release(.idle));
-    const ended = fake.now_ns;
+    const end = fake.now_ns;
 
     // 20 x 8 ms is under the floor: 5 seconds from the release's end.
-    fake.now_ns = ended + 5 * std.time.ns_per_s - 1;
+    fake.now_ns = end + 5 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
     try testing.expectEqual(@as(u32, 1), fake.asked);
-    fake.now_ns = ended + 5 * std.time.ns_per_s;
+    fake.now_ns = end + 5 * std.time.ns_per_s;
     fake.release_takes_ns = 400 * ms;
     try testing.expect(gate.release(.pressure));
     try testing.expectEqual(platform.MemoryRelease.pressure, fake.last_level.?);
-    const second_ended = fake.now_ns;
+    const second_end = fake.now_ns;
 
     // 20 x 400 ms = 8 seconds from the second one's end.
-    fake.now_ns = second_ended + 8 * std.time.ns_per_s - 1;
+    fake.now_ns = second_end + 8 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
-    fake.now_ns = second_ended + 8 * std.time.ns_per_s;
+    fake.now_ns = second_end + 8 * std.time.ns_per_s;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 3), fake.asked);
     try testing.expectEqual(@as(u64, 3), gate.count());
@@ -395,48 +406,49 @@ test "Gate: after a release that returned memory the next is refused for 20 time
 
 test "Gate: a release that returned under 1 MiB is not repeated for 30 seconds" {
     var fake: Fake = .{ .release_takes_ns = 20 * std.time.ns_per_us, .release_returns = 4096 };
-    var gate: Gate = .{ .source = fake.source() };
+    const gate = fake.gate();
     try testing.expect(gate.release(.idle));
-    const ended = fake.now_ns;
-    fake.now_ns = ended + 30 * std.time.ns_per_s - 1;
+    const end = fake.now_ns;
+    fake.now_ns = end + 30 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
-    fake.now_ns = ended + 30 * std.time.ns_per_s;
+    fake.now_ns = end + 30 * std.time.ns_per_s;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 2), fake.asked);
 }
 
-test "Gate: asking does not wait for the release - while it runs nothing more is asked, and its end sets the hold-off" {
+test "Gate: starting does not wait for the release - while it runs none is started, and its end sets the hold-off" {
     const ms = std.time.ns_per_ms;
-    var fake: Fake = .{ .hold = true, .release_takes_ns = 400 * ms, .release_returns = 300 * 1024 * 1024 };
-    var gate: Gate = .{ .source = fake.source() };
-    // The request is posted and the caller goes on: the release has not
-    // ended, and nothing is counted yet.
+    var fake: Fake = .{ .hold_open = true, .release_takes_ns = 400 * ms, .release_returns = 300 * 1024 * 1024 };
+    const gate = fake.gate();
+    // The release is started and the caller goes on: it has not ended, and
+    // nothing is counted yet.
     try testing.expect(gate.release(.idle));
     try testing.expect(gate.isReleasing());
     try testing.expectEqual(@as(u64, 0), gate.count());
-    // However long it runs, the platform is not asked a second time.
+    // However long it runs, no second one is started - by this gate or by
+    // another over the same record (another Browser's loop).
     fake.now_ns += 60 * std.time.ns_per_s;
     try testing.expect(!gate.release(.idle));
     try testing.expect(!gate.release(.pressure));
+    try testing.expect(!fake.gate().release(.idle));
     try testing.expectEqual(@as(u32, 1), fake.asked);
 
-    // It ends (on the platform's thread, in the engine): 20 x 400 ms from
-    // its end.
+    // It ends (on its own thread, in the engine): 20 x 400 ms from its end.
     fake.finish();
-    const ended = fake.now_ns;
+    const end = fake.now_ns;
     try testing.expect(!gate.isReleasing());
     try testing.expectEqual(@as(u64, 1), gate.count());
-    fake.now_ns = ended + 8 * std.time.ns_per_s - 1;
+    fake.now_ns = end + 8 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
-    fake.now_ns = ended + 8 * std.time.ns_per_s;
-    fake.hold = false;
+    fake.now_ns = end + 8 * std.time.ns_per_s;
+    fake.hold_open = false;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 2), fake.asked);
 }
 
-test "Gate: a platform that takes no request is asked again after 5 seconds, and nothing is counted" {
-    var fake: Fake = .{ .accepts = false };
-    var gate: Gate = .{ .source = fake.source() };
+test "Gate: when no thread can be started the gate asks again after 5 seconds, and nothing is counted" {
+    var fake: Fake = .{ .starts = false };
+    const gate = fake.gate();
     const asked_at = fake.now_ns;
     try testing.expect(!gate.release(.idle));
     try testing.expect(!gate.isReleasing());
@@ -446,15 +458,15 @@ test "Gate: a platform that takes no request is asked again after 5 seconds, and
     try testing.expect(!gate.release(.idle));
     try testing.expectEqual(@as(u32, 1), fake.asked);
     fake.now_ns = asked_at + 5 * std.time.ns_per_s;
-    fake.accepts = true;
+    fake.starts = true;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 2), fake.asked);
     try testing.expectEqual(@as(u64, 1), gate.count());
 }
 
-test "Gate: of several threads that find it open at once, exactly one asks" {
+test "Gate: of several threads that find the record open at once, exactly one starts a release" {
     const Race = struct {
-        gate: Gate,
+        hold: HoldOff = .{},
         asked: std.atomic.Value(u32) = .init(0),
         go: std.atomic.Value(bool) = .init(false),
 
@@ -462,31 +474,86 @@ test "Gate: of several threads that find it open at once, exactly one asks" {
             return 0;
         }
 
-        fn request(context: ?*anyopaque, _: platform.MemoryRelease, done: platform.MemoryReleaseDone) bool {
+        fn start(context: ?*anyopaque, hold: *HoldOff) bool {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             _ = self.asked.fetchAdd(1, .monotonic);
-            done.call(done.context, 0, 0);
+            ended(hold, 0, 0, 0);
             return true;
         }
 
         fn thread(self: *@This()) void {
             while (!self.go.load(.acquire)) std.atomic.spinLoopHint();
-            _ = self.gate.release(.idle);
+            const gate: Gate = .{ .hold = &self.hold, .source = .{ .context = self, .now = now, .start = start } };
+            _ = gate.release(.idle);
         }
     };
-    var race: Race = .{ .gate = undefined };
-    race.gate = .{ .source = .{ .context = &race, .now = Race.now, .request = Race.request } };
+    var race: Race = .{};
     var threads: [8]std.Thread = undefined;
     for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Race.thread, .{&race});
     race.go.store(true, .release);
     for (threads) |t| t.join();
     // The clock stands at 0 and the first release's hold-off ends at 30 s:
-    // every thread after the first finds the gate claimed or held.
+    // every thread after the first finds the record claimed or held.
     try testing.expectEqual(@as(u32, 1), race.asked.load(.monotonic));
-    try testing.expectEqual(@as(u64, 1), race.gate.count());
+    try testing.expectEqual(@as(u64, 1), race.hold.releases.load(.monotonic));
 }
 
-test "the process has one gate, on the platform's clock and allocator" {
-    try testing.expect(processGate() == processGate());
-    try testing.expect(processGate().source.request == Source.platform_source.request);
+test "Gate: the platform's release runs on a detached thread of its own, and settle waits for its end" {
+    // The real clock, thread and allocator: whatever the allocator returns
+    // here, the release ran once, off this thread, and the record is open
+    // again - held off for at least 5 seconds.
+    var hold: HoldOff = .{};
+    const gate: Gate = .{ .hold = &hold };
+    try testing.expect(gate.release(.idle));
+    gate.settle();
+    try testing.expectEqual(@as(u64, 1), gate.count());
+    try testing.expect(!gate.isReleasing());
+    try testing.expect(!gate.release(.idle));
+}
+
+test "Gate.settle - what the process's end waits with - returns only once the release in flight has ended" {
+    // crane.Process.deinit calls settle on the process's gate after its last
+    // Browser. Here, a record of the test's own and a release kept running
+    // on a detached thread: settle returns after the thread's last write,
+    // and nothing is left behind (the thread is detached; no join, no
+    // allocation).
+    const Slow = struct {
+        hold: HoldOff = .{},
+        finished: std.atomic.Value(bool) = .init(false),
+
+        fn now(_: ?*anyopaque) i64 {
+            return @intCast(platform.monotonicNow().ns);
+        }
+
+        fn start(context: ?*anyopaque, hold: *HoldOff) bool {
+            _ = hold;
+            const thread = platform.spawnThread(.{ .name = .from("slow-release") }, run, context) catch return false;
+            platform.detachThread(thread);
+            return true;
+        }
+
+        fn run(context: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            platform.sleepThread(50 * std.time.ns_per_ms);
+            self.finished.store(true, .release);
+            ended(&self.hold, now(null), 2 * small_release_bytes, 50 * std.time.ns_per_ms);
+        }
+    };
+    var slow: Slow = .{};
+    const gate: Gate = .{ .hold = &slow.hold, .source = .{ .context = &slow, .now = Slow.now, .start = Slow.start } };
+    try testing.expect(gate.release(.idle));
+    // Started, not waited for.
+    try testing.expect(gate.isReleasing() or slow.finished.load(.acquire));
+    gate.settle();
+    try testing.expect(slow.finished.load(.acquire));
+    try testing.expect(!gate.isReleasing());
+    try testing.expectEqual(@as(u64, 1), gate.count());
+    // Settled twice is settled.
+    gate.settle();
+}
+
+test "the process has one gate, over the process's record, on the platform's clock and threads" {
+    try testing.expect(processGate().hold == processGate().hold);
+    try testing.expect(processGate().hold == process_start.memoryHoldOff());
+    try testing.expect(processGate().source.start == Source.platform_source.start);
 }

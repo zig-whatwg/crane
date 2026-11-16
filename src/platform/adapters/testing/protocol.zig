@@ -199,6 +199,7 @@ pub const protocol = struct {
     }
     pub const spawnThread = posix.spawnThread;
     pub const joinThread = posix.joinThread;
+    pub const detachThread = posix.detachThread;
     pub const attachSignalStack = posix.attachSignalStack;
     pub const detachSignalStack = posix.detachSignalStack;
     // 6.11 Address space: kit/posix's, which takes this OS's own path

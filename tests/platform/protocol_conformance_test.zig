@@ -80,9 +80,9 @@ test "conformance: the bound platform matches every operation" {
     // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
     // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
-    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder); 236
-    // since lane idle1 added releaseFreeMemory (6.1).
-    try testing.expectEqual(@as(usize, 236), count);
+    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder); 237
+    // since lane idle1 added releaseFreeMemory (6.1) and detachThread (6.4).
+    try testing.expectEqual(@as(usize, 237), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
@@ -538,162 +538,70 @@ test "every built-in platform answers layout as headless does: no renderer, no b
 }
 
 // ---------------------------------------------------------------------------
-// 6.1 releaseFreeMemory: the allocator's free memory goes back to the OS, on
-// a thread of the platform's own (lane idle1)
+// 6.1 releaseFreeMemory and 6.4 detachThread: the allocator's free memory
+// goes back to the OS, on a thread started for it (lane idle1)
 // ---------------------------------------------------------------------------
-//
-// Every built-in platform shares kit/posix's helper thread (free_memory.zig).
-// Each test ends the platform (deinitializePlatform joins the thread), so it
-// leaves the process without one, as it found it.
 
-/// What a test's `done` records, on the platform's thread: atomics only.
-const ReleaseEnd = struct {
-    calls: std.atomic.Value(u32) = .init(0),
-    returned: std.atomic.Value(usize) = .init(0),
-    thread: std.atomic.Value(u64) = .init(0),
-    /// Set by the test to keep `done` - and so the platform's thread - busy.
-    hold: std.atomic.Value(bool) = .init(false),
-    entered: std.atomic.Value(bool) = .init(false),
-
-    fn done(self: *ReleaseEnd) platform.MemoryReleaseDone {
-        return .{ .context = self, .call = call };
-    }
-
-    fn call(context: ?*anyopaque, returned_bytes: usize, duration_ns: u64) callconv(.c) void {
-        _ = duration_ns;
-        const self: *ReleaseEnd = @ptrCast(@alignCast(context.?));
-        self.entered.store(true, .release);
-        while (self.hold.load(.acquire)) platform.sleepThread(100 * std.time.ns_per_us);
-        self.returned.store(returned_bytes, .release);
-        self.thread.store(std.Thread.getCurrentId(), .release);
-        _ = self.calls.fetchAdd(1, .release);
-    }
-
-    /// Wait (at most 20 s) until `done` has been called `n` times.
-    fn wait(self: *ReleaseEnd, n: u32) !void {
-        var waited_us: u64 = 0;
-        while (self.calls.load(.acquire) < n) : (waited_us += 100) {
-            if (waited_us > 20 * std.time.us_per_s) return error.ReleaseNeverEnded;
-            platform.sleepThread(100 * std.time.ns_per_us);
+test "releaseFreeMemory answers at both levels on every platform" {
+    // What it returns depends on the allocator and on what the process
+    // freed; that it can be asked, from any thread and with nothing to
+    // return, does not.
+    _ = platform.releaseFreeMemory(.idle);
+    _ = platform.releaseFreeMemory(.pressure);
+    const Other = struct {
+        fn ask(returned: *usize) void {
+            returned.* = platform.releaseFreeMemory(.idle);
         }
-    }
-};
-
-/// Ask until the platform accepts (the thread is between two requests for a
-/// moment after a `done` returns), at most 20 s.
-fn requestRelease(level: platform.MemoryRelease, end: *ReleaseEnd) !void {
-    var waited_us: u64 = 0;
-    while (!platform.releaseFreeMemory(level, end.done())) : (waited_us += 100) {
-        if (waited_us > 20 * std.time.us_per_s) return error.ReleaseNeverAccepted;
-        platform.sleepThread(100 * std.time.ns_per_us);
-    }
+    };
+    var returned: usize = std.math.maxInt(usize);
+    const thread = try std.Thread.spawn(.{}, Other.ask, .{&returned});
+    thread.join();
+    try testing.expect(returned != std.math.maxInt(usize));
 }
 
-test "releaseFreeMemory: a request is served once, on a thread of the platform's own, at both levels" {
-    defer platform.deinitializePlatform();
-    var idle: ReleaseEnd = .{};
-    try requestRelease(.idle, &idle);
-    try idle.wait(1);
-    var pressure: ReleaseEnd = .{};
-    try requestRelease(.pressure, &pressure);
-    try pressure.wait(1);
-    try testing.expect(idle.thread.load(.acquire) != std.Thread.getCurrentId());
-    // One helper thread for the process: both ran on it.
-    try testing.expectEqual(idle.thread.load(.acquire), pressure.thread.load(.acquire));
-    // Exactly once each, however long one waits.
-    platform.sleepThread(5 * std.time.ns_per_ms);
-    try testing.expectEqual(@as(u32, 1), idle.calls.load(.acquire));
-    try testing.expectEqual(@as(u32, 1), pressure.calls.load(.acquire));
-}
-
-test "releaseFreeMemory: the caller is not kept while a release runs, and a second request meanwhile is not accepted" {
-    defer platform.deinitializePlatform();
-    var first: ReleaseEnd = .{};
-    // Whatever fails below, the platform's thread is let go before it is
-    // joined.
-    defer first.hold.store(false, .release);
-    first.hold.store(true, .release);
-    try requestRelease(.idle, &first);
-    // The request returned while the release - here, its `done` - still
-    // runs on the platform's thread.
-    var waited_us: u64 = 0;
-    while (!first.entered.load(.acquire)) : (waited_us += 100) {
-        if (waited_us > 20 * std.time.us_per_s) return error.ReleaseNeverStarted;
-        platform.sleepThread(100 * std.time.ns_per_us);
-    }
-    try testing.expectEqual(@as(u32, 0), first.calls.load(.acquire));
-    // One at a time: nothing more is accepted, and its `done` never runs.
-    var second: ReleaseEnd = .{};
-    try testing.expect(!platform.releaseFreeMemory(.idle, second.done()));
-    try testing.expect(!platform.releaseFreeMemory(.pressure, second.done()));
-    first.hold.store(false, .release);
-    try first.wait(1);
-    // The thread is free again: the next request is accepted.
-    var third: ReleaseEnd = .{};
-    try requestRelease(.idle, &third);
-    try third.wait(1);
-    try testing.expectEqual(@as(u32, 0), second.calls.load(.acquire));
-    try testing.expect(!second.entered.load(.acquire));
-}
-
-test "deinitializePlatform serves a release in flight, joins the thread, and a later request starts a new one" {
-    // A request made and the platform ended at once: the request may still
-    // wait, or run. Either way its `done` has run when the end returns.
-    var in_flight: ReleaseEnd = .{};
-    try requestRelease(.idle, &in_flight);
-    platform.deinitializePlatform();
-    try testing.expectEqual(@as(u32, 1), in_flight.calls.load(.acquire));
-
-    // Kept busy in its `done`, with the end waiting on another thread: the
-    // end returns only once the release has ended.
-    var busy: ReleaseEnd = .{};
-    defer busy.hold.store(false, .release);
-    busy.hold.store(true, .release);
-    try requestRelease(.idle, &busy);
-    const Ender = struct {
+test "detachThread: a detached thread runs to its end by itself, on a thread of its own, and is never joined" {
+    // As the engine starts a release of the allocator's free memory: spawn,
+    // detach, and hear of the end through what the thread writes.
+    const Run = struct {
         ended: std.atomic.Value(bool) = .init(false),
-        fn run(self: *@This()) void {
-            platform.deinitializePlatform();
+        ran_on: std.atomic.Value(u64) = .init(0),
+        returned: std.atomic.Value(usize) = .init(std.math.maxInt(usize)),
+
+        fn entry(context: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.returned.store(platform.releaseFreeMemory(.idle), .release);
+            self.ran_on.store(std.Thread.getCurrentId(), .release);
+            // Last: after it the test's frame may go.
             self.ended.store(true, .release);
         }
     };
-    var ender: Ender = .{};
-    const thread = try std.Thread.spawn(.{}, Ender.run, .{&ender});
-    var waited_us: u64 = 0;
-    while (!busy.entered.load(.acquire)) : (waited_us += 100) {
-        if (waited_us > 20 * std.time.us_per_s) break;
-        platform.sleepThread(100 * std.time.ns_per_us);
+    // Several, one after another and two at once: each ends by itself.
+    var runs: [4]Run = @splat(.{});
+    for (&runs, 0..) |*run, i| {
+        const thread = try platform.spawnThread(.{ .name = .from("detached") }, Run.entry, run);
+        platform.detachThread(thread);
+        if (i % 2 == 0) continue;
+        for (runs[i - 1 .. i + 1]) |*pair| {
+            var waited_us: u64 = 0;
+            while (!pair.ended.load(.acquire)) : (waited_us += 100) {
+                if (waited_us > 20 * std.time.us_per_s) return error.DetachedThreadNeverEnded;
+                platform.sleepThread(100 * std.time.ns_per_us);
+            }
+        }
     }
-    platform.sleepThread(20 * std.time.ns_per_ms);
-    const ended_early = ender.ended.load(.acquire);
-    // While the platform ends, nothing is accepted.
-    var refused: ReleaseEnd = .{};
-    const accepted_while_ending = platform.releaseFreeMemory(.idle, refused.done());
-    busy.hold.store(false, .release);
-    thread.join();
-    try testing.expect(busy.entered.load(.acquire));
-    try testing.expect(!ended_early);
-    try testing.expect(!accepted_while_ending);
-    try testing.expectEqual(@as(u32, 1), busy.calls.load(.acquire));
-    try testing.expectEqual(@as(u32, 0), refused.calls.load(.acquire));
-
-    // After the end the platform is as a process finds it: a request starts
-    // a new thread, and a second end joins that one. An end with no thread
-    // does nothing.
-    var again: ReleaseEnd = .{};
-    try requestRelease(.idle, &again);
-    try again.wait(1);
-    try testing.expect(again.thread.load(.acquire) != std.Thread.getCurrentId());
-    platform.deinitializePlatform();
-    platform.deinitializePlatform();
+    for (&runs) |*run| {
+        try testing.expect(run.ended.load(.acquire));
+        try testing.expect(run.ran_on.load(.acquire) != std.Thread.getCurrentId());
+        try testing.expect(run.returned.load(.acquire) != std.math.maxInt(usize));
+    }
 }
 
 test "releaseFreeMemory on glibc returns the free blocks between live ones, which no malloc threshold reaches" {
     const builtin = @import("builtin");
-    // Not under ThreadSanitizer, whose own allocator serves malloc there.
+    // The built-in platforms share kit/posix's implementation. Not under
+    // ThreadSanitizer, whose own allocator serves malloc there.
     if (comptime !(builtin.os.tag == .linux and builtin.abi.isGnu()) or builtin.sanitize_thread) return error.SkipZigTest;
     if (comptime platform.capabilities.resident_memory == .unsupported) return error.SkipZigTest;
-    defer platform.deinitializePlatform();
 
     // 4,000 blocks of 64 KiB - below any mmap threshold glibc can have (its
     // floor is 128 KiB), so each is cut from a heap - written, so that their
@@ -721,18 +629,13 @@ test "releaseFreeMemory on glibc returns the free blocks between live ones, whic
     }
     const before = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
 
-    var end: ReleaseEnd = .{};
-    try requestRelease(.idle, &end);
-    try end.wait(1);
+    const returned = platform.releaseFreeMemory(.idle);
 
     const after = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
     // 246 MiB were freed: at least half of it left the process, and the
     // operation says so.
     try testing.expect(before >= after + freed / 2);
-    try testing.expect(end.returned.load(.acquire) >= freed / 2);
-    // Nothing more to return: a second release returns (next to) nothing.
-    var second: ReleaseEnd = .{};
-    try requestRelease(.idle, &second);
-    try second.wait(1);
-    try testing.expect(second.returned.load(.acquire) < freed / 8);
+    try testing.expect(returned >= freed / 2);
+    // Nothing more to return: a second call returns (next to) nothing.
+    try testing.expect(platform.releaseFreeMemory(.idle) < freed / 8);
 }
