@@ -204,6 +204,12 @@ pub fn residentMemory() ?platform.MemoryReading {
     return null;
 }
 
+/// No allocator of the platform's to ask: nothing is returned.
+pub fn releaseFreeMemory(level: platform.MemoryRelease) usize {
+    _ = level;
+    return 0;
+}
+
 // ---------------------------------------------------------------------------
 // 6.10.1 Permissions: no OS permission system
 // ---------------------------------------------------------------------------

@@ -190,6 +190,24 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   2026-11-15: 1 to 4 of them alive at every end mark and gone 1 to 5 ms later, the footprint then
   the settled mark's), and the last step of a chain reads wherever the collector's sawtooth is. A
   pair's memory is judged on the steady footprint and the peak.
+- **A page that goes idle gives the allocator's free memory back** (lane idle1, 2026-11-16;
+  `src/browser/memory_release.zig`): once a window's event loop has had nothing to run for 200 ms
+  it starts a release of the system allocator's free memory on a detached thread - once per idle
+  stretch, and for the whole process not again until 20 times the release's duration has passed,
+  at least 5 seconds, and 30 seconds after a release that returned under 1 MiB (WebKit's numbers).
+  The settle time is 500 ms, so a `settled` mark reads after the release where the hold-off let
+  one start. On Linux (glibc `malloc_trim(0)`) that lowers the rows that follow a large free:
+  server1, the tip against main ca7726f6964, 7 launches a side - settled resident memory x0.943
+  over 51 rows with no row above x0.995 (`streams.transform-chain` and `streams.blob-stream` 517
+  -> 366 MB; the `dom.*` attribute rows 92.6 -> 81.9 MB; the page peaks x0.955 to x0.995), time
+  x0.985 over 50 rows with no row outside the base's own spread. The first three streams rows stay
+  near 510 MB: the process's first release, at the page's first idle stretch, returns under 1 MiB,
+  and the next is held off for 30 seconds. On macOS nothing is returned: since macOS 26 the system
+  allocator ignores `malloc_zone_pressure_relief`, the one public call (chat.local, 27.0.1: time
+  x0.999, footprint x1.004 on the default pass and x0.992 with `MallocLargeCache=0`; three
+  `events.*` rows read 1.5 MB higher on the default pass in every launch and the same, 31 MB,
+  with the ring off - the reclaim ring's phase, not bytes held). A row timed while a release
+  runs does not wait for it; an allocation from the arena glibc is trimming at that moment does.
 - Chrome: `--headless=new` with puppeteer's quiet-profile flags; Firefox: `--headless` with a
   profile whose `user.js` turns off first-run pages, telemetry and updates; Lightpanda: `serve`,
   then CDP (browser context, target, flat session, `Page.navigate`); Safari: `safaridriver`, a

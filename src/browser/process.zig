@@ -112,6 +112,10 @@ pub const Process = struct {
         @import("fetch").network.globalCleanup();
         @import("dom").style.ua_sheet.release();
         engine.deinitializeEngine();
+        // A release of the allocator's free memory still running on its
+        // detached thread ends first (memory_release.zig): nothing of the
+        // process's is written after its end.
+        @import("memory_release.zig").processGate().settle();
         if (self.snapshot) |bytes| allocator.free(bytes);
         self.snapshot = null;
         process_start.end();
