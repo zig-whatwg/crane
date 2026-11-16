@@ -491,7 +491,7 @@ fn ownerChanged(form: *runtime.Instance, change: @import("dom").form_submission.
     if (change == .subtree) {
         moved = dom.instance_bridge.getNodeBase(@ptrCast(change.subtree));
         if (moved) |node| {
-            leaf = node.first_child == null and dom.custom_elements.shadowRootOf(change.subtree) == null;
+            leaf = node.firstChild() == null and dom.custom_elements.shadowRootOf(change.subtree) == null;
             if (!leaf) if (dom.instance_bridge.getNodeBase(@ptrCast(form))) |form_base| {
                 form_moved = dom.node_holds.isUnderRoot(form_base, node, null);
             };
@@ -557,7 +557,7 @@ fn subtreeHasId(root: *dom.NodeBase) bool {
 
 /// The node after `node` in tree order within `root`'s subtree.
 fn nextInSubtree(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;

@@ -34,6 +34,7 @@ const std = @import("std");
 const runtime = @import("runtime");
 const node_base = @import("node_base.zig");
 const NodeBase = node_base.NodeBase;
+const element_rare_data = @import("element_rare_data.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const node_creation = @import("node_creation.zig");
 const refcount = @import("refcount.zig");
@@ -123,7 +124,7 @@ pub fn countUpTo(root: *NodeBase, cap: usize) usize {
     var count: usize = 1;
     var at: *NodeBase = root;
     while (count < cap) {
-        if (at.first_child) |child| {
+        if (at.firstChild()) |child| {
             at = child;
         } else {
             while (at != root and at.next_sibling == null) at = at.parent_node orelse return count;
@@ -154,7 +155,7 @@ pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
     var measure: Measure = .{ .nodes = 1, .bytes = countedBytes(root) };
     var at: *NodeBase = root;
     while (measure.nodes < cap) {
-        if (at.first_child) |child| {
+        if (at.firstChild()) |child| {
             at = child;
         } else {
             while (at != root and at.next_sibling == null) at = at.parent_node orelse return measure;
@@ -169,10 +170,13 @@ pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
 
 /// What `node` holds of its Browser's DOM memory, as far as its NodeBase and
 /// its Instance say without a call into its type: its slab slot and state
-/// block (instance_bridge.storageBytes, what its registration counted), its
-/// rare data block and its registered observer records (NodeBase's own
-/// counts). NOT summed: what the node's type counts beside them - an
-/// element's rare block (dom.element_rare_data), a Document's rare data, a
+/// block (instance_bridge.storageBytes, what its registration counted), the
+/// blocks of their own its node-level rare fields hold (the registered
+/// observer list's head, the node name's record) and its registered observer
+/// records (NodeBase's own counts). NOT summed: the node's sparse rare block
+/// itself (dom.element_rare_data: an element's fields share it since lane
+/// nm2, and an element's rare block was never summed) and what the node's
+/// type counts beside them - an element's rare fields' own blocks, a Document's rare data, a
 /// state block an InstanceRegistry made - and what a node owns outside its
 /// child list (a host's shadow tree, a template's contents). Those stay in
 /// the figure until the node is freed: the sum is a floor, never more than
@@ -182,8 +186,8 @@ fn countedBytes(node: *const NodeBase) usize {
     const raw = node.ownerInstance() orelse return 0;
     const instance: *const runtime.Instance = @ptrCast(@alignCast(raw));
     var bytes = instance_bridge.storageBytes(instance);
-    if (node.rareData() != null) {
-        bytes += @sizeOf(node_base.NodeRareData);
+    if (node.rare.block != null) {
+        bytes += element_rare_data.nodeFieldsOwnBytes(node.rare);
         var observers = node.registeredObservers();
         while (observers.next()) |_| bytes += @sizeOf(node_base.ObserverRegistration);
     }

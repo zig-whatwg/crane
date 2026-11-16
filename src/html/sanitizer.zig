@@ -1061,7 +1061,7 @@ pub fn sanitize(node: *runtime.Instance, config: *const Config, safe: bool) !voi
 /// step. Chrome 154 coalesces them and Firefox 157 does not (basic-filtering
 /// comments/1 and sethtml-safety); the shipping-browser tie follows the spec.
 fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |current| {
         child = current.next_sibling;
         switch (current.node_type) {
@@ -1087,7 +1087,7 @@ fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
                     const fragment = try interfaces.Document.call_createDocumentFragment(document);
                     defer dom.node_creation.destroyUninserted(fragment);
                     const fragment_base = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
-                    while (current.first_child) |inner| _ = try dom.mutation.append(inner, fragment_base);
+                    while (current.firstChild()) |inner| _ = try dom.mutation.append(inner, fragment_base);
                     _ = try dom.mutation.replace(current, fragment_base, node);
                     continue;
                 }

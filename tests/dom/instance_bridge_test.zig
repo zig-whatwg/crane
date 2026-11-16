@@ -66,8 +66,8 @@ test "a node's NodeBase is its own, names it back, and is the tree's" {
     try testing.expectEqual(@as(?*anyopaque, div), div_base.ownerInstance());
     try testing.expectEqual(@as(?*anyopaque, text), text_base.ownerInstance());
     try testing.expectEqual(@as(?*anyopaque, page.document), document_base.ownerInstance());
-    try testing.expectEqual(text_base, div_base.first_child.?);
-    try testing.expectEqual(div_base, document_base.first_child.?);
+    try testing.expectEqual(text_base, div_base.firstChild().?);
+    try testing.expectEqual(div_base, document_base.firstChild().?);
     try testing.expectEqual(div_base, bridge.getNodeBase(div).?);
     // Typed and untyped agree.
     try testing.expectEqual(div_base, bridge.getNodeBaseTyped(runtime.Instance, div).?);

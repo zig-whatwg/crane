@@ -47,7 +47,7 @@ fn rowStyles(page: helpers.Page, out: *std.ArrayList(*const ComputedStyle)) !voi
     const document = page.browser.current_context.?.document_instance.?;
     const list = (try interfaces.Document.call_getElementById(document, str("list"))) orelse return error.NoList;
     const node = dom.instance_bridge.getNodeBase(list) orelse return error.NoList;
-    var child = node.first_child;
+    var child = node.firstChild();
     while (child) |c| : (child = c.next_sibling) {
         if (c.node_type != NodeBase.ELEMENT_NODE) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(c.ownerInstance() orelse continue));

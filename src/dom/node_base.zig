@@ -11,12 +11,14 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-node
 
 const std = @import("std");
+const builtin = @import("builtin");
 const infra = @import("infra");
 const runtime = @import("runtime");
 const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 const custom_elements = @import("custom_elements.zig");
+const rare_data = @import("element_rare_data.zig");
 
 // Forward declarations at file scope
 const DocumentType = interfaces.Document;
@@ -59,7 +61,7 @@ pub const NodeBase = extern struct {
     // Parent pointer. Written only through `setParent`.
     parent_node: ?*NodeBase = null,
 
-    // The tree links. `first_child` and `next_sibling` are what they say;
+    // The tree links. The first child and `next_sibling` are what they say;
     // there is no `last_child` (lane perf2 batch 6): a node's previous link
     // holds its previous sibling, or - for a first child - its parent's LAST
     // child, as Gecko's nsIContent::mPreviousOrLastSibling does
@@ -68,7 +70,17 @@ pub const NodeBase = extern struct {
     // sibling, which only the last child lacks). 8 bytes a node. Read
     // through `previousSibling()` and `lastChild()`, written only by
     // `linkChildBefore` and `unlinkChild`.
-    first_child: ?*NodeBase = null,
+    //
+    // The first-child word is shared (lane nm2, the design's N9): a node
+    // that can have children keeps its first child in it; a LEAF - a
+    // CharacterData node, which DOM lets have none - keeps a word of its own
+    // data there (`leaf`, `claimLeafWord`). So nothing reads it as a child
+    // but `firstChild()`, which answers null for a leaf; the field's name
+    // says so, and `zig build lint-refcount` holds that no file but this
+    // one names it. Blink and WebKit keep the pointer in ContainerNode only
+    // (ContainerNode::first_child_, m_firstChild) and their
+    // Node::firstChild() answers null for any other node.
+    child_or_leaf: ChildOrLeaf = .{ .first_child = null },
     next_sibling: ?*NodeBase = null,
 
     // No child list (lane perf2 batch 5, R6 part 2): the links above ARE the
@@ -114,9 +126,16 @@ pub const NodeBase = extern struct {
     /// WebKit an element's state flags in Node (Node::ElementStateFlag).
     element: ElementBits = .{},
 
-    /// Not used. Named, so the struct has no padding and a pin fails when
-    /// something takes it (tests/dom/nm1_node_layout_pins_test.zig).
-    spare: u8 = 0,
+    /// Whether this node is a LEAF: its first-child word (`child_or_leaf`)
+    /// holds a word of the node's own data, not a child. Set once, by the
+    /// node type that takes the word (`claimLeafWord`: CharacterData, at its
+    /// construction), and never cleared - a node's type is fixed. False on
+    /// every node that can have children, and on a NodeBase no Instance owns
+    /// (the tests' fixtures and the WithBase types, whatever their node
+    /// type: their word is a child pointer, null on a Text). It took the
+    /// spare byte: the struct still has no padding (tests/dom/
+    /// nm1_node_layout_pins_test.zig).
+    leaf: bool = false,
 
     // ========================================================================
     // +32: links, document, rare data, wrapper
@@ -145,9 +164,16 @@ pub const NodeBase = extern struct {
     /// (Node::tree_scope_, Node::m_treeScope), Gecko one (the NodeInfo's).
     document_word: usize = 0,
 
-    /// The fields few nodes use - the registered observer list, the node
-    /// name - or null while none has been needed (NodeRareData).
-    rare: ?*NodeRareData = null,
+    /// The node's ONE rare word (lane nm2): the fields few nodes use, in one
+    /// sparse block (dom.element_rare_data) - the node's own (the registered
+    /// observer list, the node name, a Text's slottable state) and, on an
+    /// element, Element's and HTMLElement's - or empty while none has been
+    /// needed. The block MOVES when it grows: read it by value, write it
+    /// through this field's address, never keep a pointer into it. It was a
+    /// pointer to a fixed 104-byte NodeRareData, beside a second rare word
+    /// in every element's state. Blink keeps one (Node::data_), WebKit one
+    /// (Node::m_rareDataWithBitfields).
+    rare: rare_data.Holder = .{},
 
     /// The node's one wrapper per agent, whatever realm asks for it (DOM
     /// identity: `===` across realms, a MutationObserver's addedNodes[0] the
@@ -214,6 +240,43 @@ pub const NodeBase = extern struct {
         // computes with.
         std.debug.assert(@sizeOf(NodeBase) == 88);
         std.debug.assert(@alignOf(NodeBase) == 8);
+    }
+
+    /// The first-child word: a container's first child, or a leaf's own
+    /// word. `extern`, so it has no hidden tag in safe builds: 8 bytes.
+    pub const ChildOrLeaf = extern union {
+        first_child: ?*NodeBase,
+        leaf_word: usize,
+    };
+
+    /// DOM: the node's first child, or null - for a node with no children,
+    /// and for a leaf, whose word is its own data. The one read of the word
+    /// as a child (Blink's Node::firstChild(): "DynamicTo<ContainerNode>",
+    /// else nullptr; WebKit's the same).
+    pub inline fn firstChild(self: *const NodeBase) ?*NodeBase {
+        if (self.leaf) return null;
+        return self.child_or_leaf.first_child;
+    }
+
+    /// The node type that owns this node's leaf word takes it, once, at the
+    /// node's construction - before the node can be linked anywhere, so the
+    /// word is still null: from here `firstChild()` answers null and the
+    /// word is the caller's (CharacterData keeps its data's word in it:
+    /// dom.character_data.Data). Zeroed.
+    pub fn claimLeafWord(self: *NodeBase) *usize {
+        std.debug.assert(!self.leaf and self.child_or_leaf.first_child == null);
+        self.leaf = true;
+        self.child_or_leaf = .{ .leaf_word = 0 };
+        return &self.child_or_leaf.leaf_word;
+    }
+
+    /// A leaf's own word, for the node type that claimed it. The check is
+    /// Debug only (`builtin.mode`, never std.debug.assert, which ReleaseSafe
+    /// keeps: the deep review's Z3): every read of a text node's data
+    /// passes here.
+    pub inline fn leafWord(self: *NodeBase) *usize {
+        if (builtin.mode == .debug and !self.leaf) @panic("NodeBase.leafWord on a node that claimed no leaf word");
+        return &self.child_or_leaf.leaf_word;
     }
 
     /// An element's flags, in NodeBase's `element` byte. Zero is an element
@@ -475,25 +538,14 @@ pub const NodeBase = extern struct {
     const ownerless_tag: usize = 1;
 
     // ========================================================================
-    // Rare data (lane perf2 batch 4, R6 part 1)
+    // Rare data (lane perf2 batch 4, R6 part 1; one sparse block since lane nm2)
     // ========================================================================
 
-    /// The node's rare data, or null when none was ever needed.
-    pub fn rareData(self: *const NodeBase) ?*NodeRareData {
-        return self.rare;
-    }
-
-    /// The node's rare data, made on first use (WebKit `ensureRareData`) and
-    /// kept, never moved, until the node's teardown (`deinitRareData`).
-    /// Public for dom.slot_helpers' writers' path (a Text node's slottable
-    /// state, lane perf3 E1); every other field has its writer here.
-    pub fn ensureRareData(self: *NodeBase) error{OutOfMemory}!*NodeRareData {
-        if (self.rare) |rare| return rare;
-        const rare = try self.allocator().create(NodeRareData);
-        rare.* = .{};
-        self.rare = rare;
-        if (self.domMemory()) |memory| memory.add(@sizeOf(NodeRareData));
-        return rare;
+    /// The allocator the node's rare data comes from and the DOM memory it
+    /// is counted in: what dom.element_rare_data's writers take. Never
+    /// called on a node with no owner (`allocator`).
+    pub fn rareContext(self: *const NodeBase) rare_data.Context {
+        return .{ .allocator = self.allocator(), .memory = self.domMemory() };
     }
 
     /// The DOM memory of this node's Browser (runtime.BrowserScope.dom_memory),
@@ -509,15 +561,14 @@ pub const NodeBase = extern struct {
     }
 
     /// The node's teardown, after its registered observers were released
-    /// (dom.observer_registrations.releaseList): frees an owned node name and
-    /// the block. Nothing may be registered on the node any more.
+    /// (dom.observer_registrations.releaseList): frees the rare block and
+    /// what its fields still own - the registered observer list's head, an
+    /// owned node name, a Text's slottable state (an element's own fields
+    /// went with Element's part of the teardown, before this). Nothing may
+    /// be registered on the node any more.
     pub fn deinitRareData(self: *NodeBase) void {
-        const rare = self.rare orelse return;
-        std.debug.assert(rare.registered_observers.first == null);
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        self.allocator().destroy(rare);
-        self.rare = null;
-        if (self.domMemory()) |memory| memory.sub(@sizeOf(NodeRareData));
+        if (self.rare.block == null) return;
+        rare_data.destroy(self.rareContext(), &self.rare);
     }
 
     /// The node name a node type gave its NodeBase, or "" - every node but
@@ -526,55 +577,55 @@ pub const NodeBase = extern struct {
     /// insertion, removing and post-connection steps dispatch on. Read only
     /// through here, so a tag of its own (Z4/R12) changes only this.
     pub fn nodeName(self: *const NodeBase) []const u8 {
-        const rare = self.rare orelse return "";
-        return rare.node_name;
+        const record = rare_data.get(self.rare, .node_name) orelse return "";
+        return record.name;
     }
 
     /// Whether the node owns its name (`setOwnedNodeName`).
     pub fn hasOwnedNodeName(self: *const NodeBase) bool {
-        const rare = self.rare orelse return false;
-        return rare.node_name_allocated;
+        const record = rare_data.get(self.rare, .node_name) orelse return false;
+        return record.allocated;
     }
 
     /// Name the node with `name`, which outlives it (a literal).
     pub fn setStaticNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
-        const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        rare.node_name = name;
-        rare.node_name_allocated = false;
+        const record = try rare_data.ensureOwn(self.rareContext(), &self.rare, .node_name);
+        if (record.allocated) self.allocator().free(record.name);
+        record.* = .{ .name = name, .allocated = false };
     }
 
     /// Name the node with `name`, allocated from the node's allocator: the
     /// node owns it from here and frees it with its rare data. On failure
     /// the caller still owns it.
     pub fn setOwnedNodeName(self: *NodeBase, name: []const u8) error{OutOfMemory}!void {
-        const rare = try self.ensureRareData();
-        if (rare.node_name_allocated) self.allocator().free(rare.node_name);
-        rare.node_name = name;
-        rare.node_name_allocated = true;
+        const record = try rare_data.ensureOwn(self.rareContext(), &self.rare, .node_name);
+        if (record.allocated) self.allocator().free(record.name);
+        record.* = .{ .name = name, .allocated = true };
     }
 
     /// DOM 4.3: the node's registered observer list, in order - registration
     /// order, transient registered observers appended like any other.
     pub fn registeredObservers(self: *const NodeBase) RegisteredObserverIterator {
-        const rare = self.rare orelse return .{ .next_link = null };
-        return .{ .next_link = rare.registered_observers.first };
+        const list = rare_data.get(self.rare, .registered_observers) orelse return .{ .next_link = null };
+        return .{ .next_link = list.first };
     }
 
     /// Whether anything is registered on the node.
     pub fn hasRegisteredObservers(self: *const NodeBase) bool {
-        const rare = self.rare orelse return false;
-        return rare.registered_observers.first != null;
+        const list = rare_data.get(self.rare, .registered_observers) orelse return false;
+        return list.first != null;
     }
 
     /// Append `registered` to the node's registered observer list (observe()
     /// step 8, "remove" step 15): one record, allocated from the node's
-    /// allocator, that stays where it is until it is removed.
+    /// allocator, that stays where it is until it is removed. The list's
+    /// head is a block of its own that the rare block points at, made with
+    /// the node's first registration and kept until its teardown.
     pub fn appendRegisteredObserver(self: *NodeBase, registered: RegisteredObserverType) error{OutOfMemory}!*RegisteredObserverType {
-        const rare = try self.ensureRareData();
+        const list = try rare_data.ensureOwn(self.rareContext(), &self.rare, .registered_observers);
         const record = try self.allocator().create(ObserverRegistration);
         record.* = .{ .registered = registered };
-        rare.registered_observers.append(&record.link);
+        list.append(&record.link);
         if (self.domMemory()) |memory| memory.add(@sizeOf(ObserverRegistration));
         return &record.registered;
     }
@@ -582,9 +633,9 @@ pub const NodeBase = extern struct {
     /// Remove `registered` - one of this node's - from its registered
     /// observer list and free its record. Constant time.
     pub fn removeRegisteredObserver(self: *NodeBase, registered: *RegisteredObserverType) void {
-        const rare = self.rare.?;
+        const list = rare_data.get(self.rare, .registered_observers).?;
         const record: *ObserverRegistration = @fieldParentPtr("registered", registered);
-        rare.registered_observers.remove(&record.link);
+        list.remove(&record.link);
         self.allocator().destroy(record);
         if (self.domMemory()) |memory| memory.sub(@sizeOf(ObserverRegistration));
     }
@@ -615,7 +666,7 @@ pub const NodeBase = extern struct {
     /// DOM: the node's last child, or null: its first child's previous link
     /// (Gecko's nsINode::GetLastChild).
     pub inline fn lastChild(self: *const NodeBase) ?*NodeBase {
-        const first = self.first_child orelse return null;
+        const first = self.firstChild() orelse return null;
         return first.previous_or_last;
     }
 
@@ -624,6 +675,10 @@ pub const NodeBase = extern struct {
     /// the parent pointer and its holds are the caller's (`setParent`,
     /// refcount.linkChild). Constant time.
     pub fn linkChildBefore(self: *NodeBase, child: *NodeBase, before: ?*NodeBase) void {
+        // In every build: a link written under a leaf would overwrite its
+        // data's word. DOM refuses the insert long before (4.2.3 "ensure
+        // pre-insert validity" step 1), so this is one predictable test.
+        if (self.leaf) @panic("a child linked under a leaf node (a CharacterData node has no children)");
         std.debug.assert(child.previous_or_last == null and child.next_sibling == null);
         if (before) |next| {
             std.debug.assert(next.parent_node == self);
@@ -635,19 +690,19 @@ pub const NodeBase = extern struct {
                 // `child` becomes the first child: its previous link holds
                 // the last child, which `next`'s held until now.
                 child.previous_or_last = next.previous_or_last;
-                self.first_child = child;
+                self.child_or_leaf.first_child = child;
             }
             next.previous_or_last = child;
             return;
         }
-        if (self.first_child) |first| {
+        if (self.child_or_leaf.first_child) |first| {
             const last = first.previous_or_last.?;
             last.next_sibling = child;
             child.previous_or_last = last;
             first.previous_or_last = child;
         } else {
             // The only child is its own last child.
-            self.first_child = child;
+            self.child_or_leaf.first_child = child;
             child.previous_or_last = child;
         }
     }
@@ -655,10 +710,11 @@ pub const NodeBase = extern struct {
     /// Unlink `child` - one of this node's children - from its siblings. The
     /// links only: the parent pointer is the caller's. Constant time.
     pub fn unlinkChild(self: *NodeBase, child: *NodeBase) void {
-        const first = self.first_child.?;
+        // A leaf has no child to unlink (`linkChildBefore` refuses one).
+        const first = self.firstChild().?;
         const next = child.next_sibling;
         if (child == first) {
-            self.first_child = next;
+            self.child_or_leaf.first_child = next;
             // The new first child holds the last child (null if none left).
             if (next) |n| n.previous_or_last = child.previous_or_last;
         } else {
@@ -679,7 +735,7 @@ pub const NodeBase = extern struct {
     /// is read before the current one is yielded, so a walk may remove or
     /// move the child it is at - not a later one.
     pub fn children(self: *const NodeBase) ChildIterator {
-        return .{ .next_child = self.first_child };
+        return .{ .next_child = self.firstChild() };
     }
 
     /// The node's children in reverse tree order; the previous child is read
@@ -691,7 +747,7 @@ pub const NodeBase = extern struct {
     /// DOM 4.2.1: how many children the node has - a walk of its links.
     pub fn childCount(self: *const NodeBase) usize {
         var count: usize = 0;
-        var child = self.first_child;
+        var child = self.firstChild();
         while (child) |c| : (child = c.next_sibling) count += 1;
         return count;
     }
@@ -700,7 +756,7 @@ pub const NodeBase = extern struct {
     /// a walk of its links.
     pub fn childAt(self: *const NodeBase, index_wanted: usize) ?*NodeBase {
         var at: usize = 0;
-        var child = self.first_child;
+        var child = self.firstChild();
         while (child) |c| : (child = c.next_sibling) {
             if (at == index_wanted) return c;
             at += 1;
@@ -902,31 +958,6 @@ pub const offset_in_state: usize = @offsetOf(interfaces.Node.State, "_embedded")
 pub inline fn ofState(state: *const anyopaque) *NodeBase {
     return @ptrFromInt(@intFromPtr(state) + offset_in_state);
 }
-
-/// The fields few nodes ever use, kept out of every NodeBase (WebKit
-/// NodeRareData, Blink NodeRareData, Gecko nsINode::nsSlots): allocated once,
-/// on first use, from the node's allocator, and never moved or reallocated -
-/// Blink 601c5205e1d5 fixed a corruption from rare data that reallocated
-/// while a caller held a pointer into it. Freed by the node's own teardown
-/// (NodeBase.deinitRareData).
-pub const NodeRareData = struct {
-    /// DOM 4.3: "Each node has a registered observer list (a list of zero or
-    /// more registered observers), which is initially empty." Intrusive:
-    /// one ObserverRegistration per entry, appended at the tail, removed in
-    /// constant time - the order is the list's.
-    registered_observers: std.DoublyLinkedList = .{},
-    /// NodeBase.nodeName's, and whether the node owns it.
-    node_name: []const u8 = "",
-    node_name_allocated: bool = false,
-    /// DOM 4.2.2.2: a Text node as a slottable - its assigned slot and its
-    /// manual slot assignment (an Element's are in its ElementRareData).
-    /// Written only through dom.slot_helpers.ensureSlottable, for a node a
-    /// slot assigns; readers of a node with no rare data read
-    /// dom.slot_helpers.unassigned (lane perf3 E1; Blink's FlatTreeNodeData,
-    /// kFlatTreeNodeData in NodeRareData; WebKit's m_manuallyAssignedSlot in
-    /// NodeRareData). Owns nothing.
-    slottable: @import("slot_helpers.zig").SlottableState = .{},
-};
 
 /// One entry of a node's registered observer list: its link and the
 /// registered observer (or transient registered observer). A separate

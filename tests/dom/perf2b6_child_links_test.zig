@@ -24,11 +24,11 @@ fn node(node_type: u16) NodeBase {
 fn expectLinks(parent: *NodeBase, model: []const *NodeBase) !void {
     try testing.expectEqual(model.len, parent.childCount());
     if (model.len == 0) {
-        try testing.expect(parent.first_child == null);
+        try testing.expect(parent.firstChild() == null);
         try testing.expect(parent.lastChild() == null);
         return;
     }
-    try testing.expectEqual(model[0], parent.first_child.?);
+    try testing.expectEqual(model[0], parent.firstChild().?);
     try testing.expectEqual(model[model.len - 1], parent.lastChild().?);
     for (model, 0..) |child, i| {
         try testing.expectEqual(i, child.index());

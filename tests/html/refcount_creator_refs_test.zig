@@ -22,7 +22,7 @@ const dom = h.dom;
 const runtime = h.runtime;
 
 fn firstChild(node: *dom.NodeBase) !*dom.NodeBase {
-    return node.first_child orelse error.NoChild;
+    return node.firstChild() orelse error.NoChild;
 }
 
 fn lastChild(node: *dom.NodeBase) !*dom.NodeBase {
@@ -31,7 +31,7 @@ fn lastChild(node: *dom.NodeBase) !*dom.NodeBase {
 
 /// The first element child of a document (its doctype skipped).
 fn documentElement(document: *dom.NodeBase) !*dom.NodeBase {
-    var child = document.first_child;
+    var child = document.firstChild();
     while (child) |node| : (child = node.next_sibling) {
         if (node.node_type == dom.NodeBase.ELEMENT_NODE) return node;
     }

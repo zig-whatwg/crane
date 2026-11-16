@@ -111,8 +111,10 @@ pub const InternalState = struct {
     // NodeBase: two pointers to one document, 8 bytes a node.
 
     // No childNodes list here (lane nm1): the interface's [SameObject] cache
-    // (the generated State's `cached_childNodes`) is the one copy; this
-    // state kept a second pointer to the same list. 8 bytes a node.
+    // is the one copy; this state kept a second pointer to the same list. 8
+    // bytes a node. And the cache is not in the generated State either
+    // (lane nm2): it is a field of the node's rare block
+    // (dom.element_rare_data's `child_nodes`), 8 more bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
@@ -221,7 +223,6 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
         .base = .{
             .node_type = node_type,
             .parent_node = null,
-            .first_child = null,
             .previous_or_last = null,
             .next_sibling = null,
             .is_connected = false,
@@ -315,12 +316,13 @@ pub fn deinit(instance: *runtime.Instance) void {
     // that path (deinitNodeByType's markCleanupStarted), as before.
     if (Registry.get(instance)) |internal| {
         _ = dom_module.tree_teardown.freeAllDescendants(&internal.base, &deinitNodeByType);
-        // Releases the NodeBase and clears this level's live bit.
+        // Releases the NodeBase and clears this level's live bit - the whole
+        // of this state's teardown: no second `Registry.remove` follows (it
+        // re-read the slab generation and the State to clear a bit that is
+        // clear either way: `releaseNodeBase` cleared it, and when `get`
+        // answered null there is no bit to clear).
         releaseNodeBase(instance, internal, .with_document_counts);
     }
-
-    // Clean up its internal state
-    Registry.remove(instance);
 
     // Record that cleanup is complete - and keep recording it. While the
     // wrapper cache is tearing down, platformObjectDestroyed cannot flag the
@@ -706,15 +708,16 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 /// raw (the list holds the node, never the reverse: refcount design section
 /// 3), and lets it go: the next read makes a new list.
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
-    const state = node.getState(State);
-    if (state.own.cached_childNodes == list) state.own.cached_childNodes = null;
+    const internal = Registry.get(node) orelse return;
+    const rare = &internal.base.rare;
+    if (dom_module.element_rare_data.get(rare.*, .child_nodes) == list) dom_module.element_rare_data.clear(rare, .child_nodes);
 }
 
 /// Getter for childNodes
 /// https://dom.spec.whatwg.org/#dom-node-childnodes
 /// Returns a live NodeList of child nodes.
-/// [SameObject]: the generated interface caches what this makes
-/// (`cached_childNodes`, the one copy; `childNodesFreed` clears it) and calls
+/// [SameObject]: the generated interface caches what this makes (in the
+/// node's rare block, the one copy; `childNodesFreed` clears it) and calls
 /// here only while it holds none - so this makes the list and keeps nothing.
 pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = getInternal(instance) orelse return error.InvalidStateError;
@@ -733,7 +736,7 @@ pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
 pub fn get_firstChild(instance: *runtime.Instance) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    const first = node_base.first_child orelse return null;
+    const first = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -813,7 +816,7 @@ fn collectTextContent(node: *runtime.Instance, allocator: std.mem.Allocator, res
 
     // Otherwise, recursively collect from children using NodeBase
     const node_base = &node_internal.base;
-    var child_base = node_base.first_child;
+    var child_base = node_base.firstChild();
     while (child_base) |c| {
         const child_opaque = instance_bridge.getInstance(c) orelse {
             child_base = c.next_sibling;
@@ -971,7 +974,7 @@ pub fn set_textContent(instance: *runtime.Instance, value: ?runtime.DOMString) a
 pub fn call_hasChildNodes(instance: *runtime.Instance) anyerror!bool {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Operation: getRootNode
@@ -1127,12 +1130,12 @@ pub fn call_isEqualNode(instance: *runtime.Instance, otherNode: ?*runtime.Instan
     var a: *NodeBase = self_root;
     var b: *NodeBase = other_root;
     while (true) {
-        if (a.first_child) |a_child| {
+        if (a.firstChild()) |a_child| {
             // Both have children: compare the first ones next.
             a = a_child;
-            b = b.first_child orelse return false;
+            b = b.firstChild() orelse return false;
         } else {
-            if (b.first_child != null) return false;
+            if (b.firstChild() != null) return false;
             // A leaf pair: on to the next sibling pair, climbing while both
             // lists end at once - the same shape so far, so `b` climbs back
             // to its root as `a` does.
@@ -1284,7 +1287,7 @@ pub fn cloneANode(
     if (subtree) {
         const children_document = if (node_internal.base.node_type == NodeType.DOCUMENT_NODE) copy else document;
         const node_base = &node_internal.base;
-        var child_base = node_base.first_child;
+        var child_base = node_base.firstChild();
         while (child_base) |c| : (child_base = c.next_sibling) {
             const child_opaque = instance_bridge.getInstance(c) orelse continue;
             const child_instance: *runtime.Instance = @ptrCast(@alignCast(child_opaque));
@@ -1958,7 +1961,7 @@ pub fn getParent(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn getFirstChild(instance: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
     const node_base = &internal.base;
-    const first_base = node_base.first_child orelse return null;
+    const first_base = node_base.firstChild() orelse return null;
     const first_opaque = instance_bridge.getInstance(first_base) orelse return null;
     return @ptrCast(@alignCast(first_opaque));
 }
@@ -1998,7 +2001,7 @@ pub fn getLastChild(instance: *runtime.Instance) ?*runtime.Instance {
 pub fn hasChildren(instance: *runtime.Instance) bool {
     const internal = getInternal(instance) orelse return false;
     const node_base = &internal.base;
-    return node_base.first_child != null;
+    return node_base.firstChild() != null;
 }
 
 /// Get the number of child nodes
@@ -2007,7 +2010,7 @@ pub fn getChildCount(instance: *runtime.Instance) u32 {
     const internal = getInternal(instance) orelse return 0;
     const node_base = &internal.base;
     var count: u32 = 0;
-    var child = node_base.first_child;
+    var child = node_base.firstChild();
     // Safety limit to prevent infinite loops from corrupted DOM trees
     // A typical DOM tree shouldn't have more than 1M direct children
     const max_iterations: u32 = 1_000_000;

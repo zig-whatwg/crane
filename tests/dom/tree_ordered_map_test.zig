@@ -83,7 +83,7 @@ fn refHasKey(node: *NodeBase, kind: map.Kind, key: []const u8) bool {
 }
 
 fn refNext(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var at = node;
     while (at != root) {
         if (at.next_sibling) |sibling| return sibling;
@@ -96,7 +96,7 @@ fn refNext(node: *NodeBase, root: *NodeBase) ?*NodeBase {
 fn refElements(root: *runtime.Instance, kind: map.Kind, key: []const u8, out: *std.ArrayList(*runtime.Instance)) !void {
     out.clearRetainingCapacity();
     const root_base = base(root);
-    var at = root_base.first_child;
+    var at = root_base.firstChild();
     while (at) |node| : (at = refNext(node, root_base)) {
         if (refHasKey(node, kind, key)) try out.append(testing.allocator, @ptrCast(@alignCast(node.ownerInstance().?)));
     }

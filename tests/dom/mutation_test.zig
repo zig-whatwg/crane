@@ -30,7 +30,6 @@ test "NodeBase.getNodeDocument - Document node returns itself" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -50,7 +49,6 @@ test "NodeBase.getNodeDocument - Element node returns owner_document" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -98,7 +96,6 @@ test "adopt - changes node_document for entire subtree" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -107,7 +104,6 @@ test "adopt - changes node_document for entire subtree" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -149,7 +145,6 @@ test "adopt - updates attribute node documents for elements" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -158,7 +153,6 @@ test "adopt - updates attribute node documents for elements" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -198,7 +192,6 @@ test "adopt - same document is a no-op" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };
@@ -231,7 +224,6 @@ test "mutation - insert calls adopt before inserting" {
         .owner = NodeBase.ownerless(&std.testing.allocator),
         .node_type = NodeBase.DOCUMENT_NODE,
         .parent_node = null,
-        .first_child = null,
         .next_sibling = null,
         .is_connected = true,
     };

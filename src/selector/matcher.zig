@@ -913,7 +913,7 @@ fn matchesOnlyOfType(element: *Element) bool {
 /// Match :empty
 fn matchesEmpty(element: *Element) bool {
     // Element is empty if it has no child nodes
-    return element.base.first_child == null;
+    return element.base.firstChild() == null;
 }
 
 /// Match :root
