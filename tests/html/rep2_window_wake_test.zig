@@ -10,10 +10,15 @@
 //! owner (lane rep2, cost pairs #2 and #3). A worker's own loop already
 //! waits on its sink (worker_event_loop.zig, TaskSink.waitForWork). The
 //! window loop now waits there too, with the same bound, and then fires the
-//! timers that came due. Pinned here: a reply reaches an idle window at once;
-//! a timer still fires at its deadline when nothing is posted; a timer armed by a
-//! timer's callback waits for the next turn, behind the tasks that callback
-//! queued; and a burst of posts does not leave the loop spinning.
+//! timers that came due. Pinned here: a reply reaches an idle window through
+//! that wait, and never waits for the window's next timer; a timer still
+//! fires at its deadline when nothing is posted; the loop waits through a
+//! timer's last sub-millisecond instead of turning until it is due; a timer
+//! armed by a timer's callback waits for the next turn, behind the tasks that
+//! callback queued; and a burst of posts does not leave the loop spinning.
+//! Counts and order, never a bound in milliseconds on a wake: how soon a
+//! woken thread runs is the host's (docs/lessons/
+//! testing-a-lateness-bound-in-milliseconds-measures-the-hosts-scheduler.md).
 //!
 //! Each test runs a whole Browser on a thread of its own, on
 //! std.testing.allocator.
@@ -50,55 +55,81 @@ fn runUntil(browser: *browser_mod.Browser, done: []const u8) !void {
     return error.NeverDone;
 }
 
+/// How far away the timer is that a reply must not wait for.
+const later_timer_ms = 10_000;
+
 fn replyReachesIdleWindow() !void {
     const browser = try openPage();
     defer browser.deinit();
     const page = browser.current_context orelse return error.NoPage;
+    const loop = browser.event_loop orelse return error.NoLoop;
     // An echo worker; each ping waits for the window loop to go idle first
-    // (a 3 ms timer), so the reply lands while the window waits.
-    try page.runScript(
-        \\globalThis.rtts = [];
-        \\globalThis.legs = [];
+    // (a 3 ms timer), so the reply lands while the window waits. With each
+    // ping the page arms a timer ten seconds away: the window's next timer
+    // while it waits for the reply.
+    try page.runScript(std.fmt.comptimePrint(
+        \\globalThis.replies = 0;
+        \\globalThis.waitedForATimer = 0;
         \\globalThis.done = 0;
-        \\const keepAlive = setTimeout(() => {}, 60000);
-        \\const w = new Worker('data:text/javascript,onmessage%20%3D%20e%20%3D%3E%20postMessage(%5Be.data%2C%20performance.timeOrigin%20%2B%20performance.now()%5D)');
-        \\(async () => {
-        \\  await new Promise(r => { w.onmessage = r; w.postMessage(-1); });
-        \\  for (let i = 0; i < 40; i++) {
+        \\const w = new Worker('data:text/javascript,onmessage%20%3D%20e%20%3D%3E%20postMessage(e.data)');
+        \\(async () => {{
+        \\  await new Promise(r => {{ w.onmessage = r; w.postMessage(-1); }});
+        \\  for (let i = 0; i < 40; i++) {{
         \\    await new Promise(r => setTimeout(r, 3));
-        \\    const t0 = performance.now();
-        \\    const sent = performance.timeOrigin + t0;
-        \\    const e = await new Promise(r => { w.onmessage = r; w.postMessage(sent); });
-        \\    const now = performance.now();
-        \\    rtts.push(now - t0);
-        \\    legs.push([e.data[1] - sent, performance.timeOrigin + now - e.data[1]]);
-        \\  }
-        \\  clearTimeout(keepAlive);
+        \\    const e = await new Promise(r => {{
+        \\      const later = setTimeout(() => {{ waitedForATimer++; }}, {d});
+        \\      w.onmessage = e => {{ clearTimeout(later); r(e); }};
+        \\      w.postMessage(i);
+        \\    }});
+        \\    if (e.data === i) replies++;
+        \\  }}
+        \\  w.terminate();
         \\  done = 1;
-        \\})();
-    );
+        \\}})();
+    , .{later_timer_ms}));
+    const waits_before = loop.sink.probe.waits;
     // One long run: the test's own checks between turns stay out of the
-    // round trips (the keep-alive timer holds the loop until the end).
-    _ = try browser.runEventLoopBlocking(5000);
+    // round trips. It ends when the worker has ended and no timer is left.
+    _ = try browser.runEventLoopBlocking(4 * later_timer_ms);
     try runUntil(browser, "done");
-    // The third quartiles. The leg back to the window is the window loop's
-    // wake plus one message's way across threads; the leg to the worker is
-    // the same way into a loop that already waits on its sink, so the two
-    // match once the window waits on its sink too (chat2: 0.625 ms each; the
-    // window leg was 9.1 ms against 0.5 ms to the worker with the timer
-    // backend's sleep, the round trip 9.75 ms).
-    const p75 = try evalNumber(browser, "rtts.slice().sort((a, b) => a - b)[Math.floor(rtts.length * 3 / 4)]");
-    const to_worker = try evalNumber(browser, "legs.map(l => l[0]).sort((a, b) => a - b)[30]");
-    const to_window = try evalNumber(browser, "legs.map(l => l[1]).sort((a, b) => a - b)[30]");
-    // Compared with each other, not with a fixed time: a loaded host slows
-    // both legs alike (1.6 ms each with the whole tests-html suite running).
-    if (!(to_window <= to_worker * 2 + 0.25)) {
-        std.log.warn("round trip p75 {d:.3} ms (to the worker {d:.3}, back to the window {d:.3})", .{ p75, to_worker, to_window });
-        return error.ReplyLate;
+    const waits = loop.sink.probe.waits - waits_before;
+    const replies = try evalNumber(browser, "replies");
+    const waited_for_a_timer = try evalNumber(browser, "waitedForATimer");
+    // What the loop decides, not what the host's scheduler does:
+    // - every reply is handled, as a task of the window's loop;
+    // - none waits for the window's next timer: the loop wakes for a post,
+    //   and the timer it would otherwise have slept to is ten seconds away
+    //   (forty of them would be 400 s; the run's bound is 40 s);
+    // - the idle window WAITS ON ITS SINK (TaskSink.waitForWork, which a post
+    //   ends: tests/runtime/task_sink_test.zig "a post wakes a loop waiting
+    //   with no timeout") - at least once for each of the forty round trips.
+    //   The timer backend's sleep, which no post wakes, made none.
+    //
+    // This test compared times: the third quartile of the leg back to the
+    // window against twice the leg to the worker plus 0.25 ms. That held on
+    // a quiet host (0.125 ms each way on server1) and failed in four lanes'
+    // gates in one day (to the worker 0.375 ms, back 1.6 to 1.75 ms), and 33
+    // runs of 50 on server1 at nice 10 on four CPUs beside four nice-0 busy
+    // loops (to the worker 1 ms, back 8). Two causes, measured apart with
+    // the sink's wait instrumented (lane flk2, 2026-11-16). The first was the
+    // loop's own: it turned without a wait through the last sub-millisecond
+    // before each round's 3 ms timer, and the scheduler ran the window
+    // thread late for it (the test below, which now pins that it waits). The
+    // second is nobody's: with that gone the comparison still failed 1 run
+    // of 3 at that load, on the scheduler's tails alone (the medians 0.125 ms
+    // each way, the window's third quartile 2.75 ms). Each leg is the time
+    // the kernel takes to run a thread it has woken - the wait returned 2 to
+    // 22 us after the post on the quiet host and whole milliseconds after it
+    // on the loaded one - and no bound on that holds on every host.
+    try testing.expectEqual(@as(f64, 40), replies);
+    try testing.expectEqual(@as(f64, 0), waited_for_a_timer);
+    if (waits < 40) {
+        std.log.warn("the window's loop waited on its sink {d} times over forty round trips", .{waits});
+        return error.LoopDidNotWaitOnItsSink;
     }
 }
 
-test "a worker's reply reaches an idle window at once: the window's loop waits on its task sink" {
+test "a worker's reply reaches an idle window without waiting for its next timer: the window's loop waits on its task sink" {
     try helpers.onFreshThread(replyReachesIdleWindow);
 }
 
