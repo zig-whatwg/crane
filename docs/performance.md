@@ -388,7 +388,7 @@ on main, four launches each. What these rows hold at their mark is garbage V8 ha
 and how much is left differs from launch to launch on either allocator - on the gzip row 36 to
 39 of its 1 MiB bodies and none to 41 of the stream row's 176 KiB pieces, 36 to 46 MiB - so the
 gzip row's launches spread over about 10 MB (113-122 with the reclamation off) and
-`fetch.loopback-stream` reads about 80 MB in three launches of four and about 122 in the fourth:
+`fetch.loopback-stream` reads about 80 MB in 15 launches of 20 and about 122 in the other 5:
 two states of the collector, both counted, not one level under-read (lesson
 testing-footprint-levels-of-uncollected-garbage-hold-different-live-sets.md). A round measured
 before that merge is low on these rows by what was reused, up to about 42 MB. Every published ratio - Crane against a browser,
