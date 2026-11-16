@@ -152,6 +152,12 @@ pub const protocol = struct {
         // layout: headless's, unsupported - no renderer plugs in here, and
         // Crane never computes a box itself (D3, the user 2026-11-09 22:21
         // UTC: geometry is a read on the compiled-in platform's renderer).
+        // HTML's PDF viewer supported (the user, 2026-11-14: on in Crane's
+        // default platforms, as in Chrome, Firefox and Safari): a PDF in a
+        // navigable is the inline PDF viewer document Crane makes; drawing it
+        // is the renderer's (6.9), and an embedder without one builds with
+        // -Dplatform-without=pdf_viewer.
+        c.pdf_viewer = .native;
         break :blk c;
     };
 

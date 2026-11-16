@@ -154,6 +154,12 @@ pub const protocol = struct {
         if (media_decoding_built_in) c.media_decoding = .native;
         // CoreText, after kit/sfnt's sanitizing (fonts.zig).
         if (font_decoding) c.font_decoding = .native;
+        // HTML's PDF viewer supported (the user, 2026-11-14: on in Crane's
+        // default platforms, as in Chrome, Firefox and Safari): a PDF in a
+        // navigable is the inline PDF viewer document Crane makes; drawing it
+        // is the renderer's (6.9), and an embedder without one builds with
+        // -Dplatform-without=pdf_viewer.
+        c.pdf_viewer = .native;
         break :blk c;
     };
 

@@ -266,19 +266,43 @@ pub const KeptPage = struct {
     /// restore that takes it.
     data: *anyopaque,
     steps: *const PageSteps,
+    /// The page's frames (bfcache phase C): every descendant navigable's
+    /// document, kept with the page, its Window and realm with it - parents
+    /// before children. BORROWED from `data`, which the navigation code owns,
+    /// until `steps.evict` or the restore that takes the page.
+    frames: []const KeptFrame = &.{},
 
-    /// Whether `object` - a Window or a Document - is this page's: the same
-    /// address, and its slot not reissued since the page was kept (lane
-    /// winslot1, kind 8) - a kept page whose realm ended with its opener's
-    /// gives its Window's slot back, and a Window made later in that slot is
-    /// no page of this cache. Compares only.
+    /// Whether `object` - a Window or a Document - is this page's or one of
+    /// its frames': the same address, and its slot not reissued since the
+    /// page was kept (lane winslot1, kind 8) - a kept page whose realm ended
+    /// with its opener's gives its Window's slot back, and a Window made later
+    /// in that slot is no page of this cache. Compares only.
     pub fn has(self: *const KeptPage, object: *const anyopaque) bool {
-        if (object == @as(*const anyopaque, @ptrCast(self.window)))
-            return runtime.SlabAllocator.generationOf(self.window) == self.window_generation;
-        if (object == @as(*const anyopaque, @ptrCast(self.document)))
-            return runtime.SlabAllocator.generationOf(self.document) == self.document_generation;
+        if (sameObject(object, self.window, self.window_generation)) return true;
+        if (sameObject(object, self.document, self.document_generation)) return true;
+        for (self.frames) |frame| {
+            if (sameObject(object, frame.window, frame.window_generation)) return true;
+            if (sameObject(object, frame.document, frame.document_generation)) return true;
+        }
         return false;
     }
+
+    fn sameObject(object: *const anyopaque, instance: *runtime.Instance, generation: u64) bool {
+        if (object != @as(*const anyopaque, @ptrCast(instance))) return false;
+        return runtime.SlabAllocator.generationOf(instance) == generation;
+    }
+};
+
+/// A frame of a kept page: a descendant navigable's active document when the
+/// page was kept, its Window and its realm, each with its slab generation
+/// then. The frame's navigable lives on with it (its container is in the kept
+/// page's DOM); its realm is never detached.
+pub const KeptFrame = struct {
+    document: *runtime.Instance,
+    document_generation: u64,
+    window: *runtime.Instance,
+    window_generation: u64,
+    realm: runtime.Context,
 };
 
 /// What the navigation code does for a page leaving the cache.
@@ -356,7 +380,19 @@ pub fn take(traversable: *anyopaque, document: *const anyopaque) ?KeptPage {
 pub fn reactivate(page: *const KeptPage) void {
     if (cache.get()) |impl| impl.resume_page(page);
     runRestoreSteps(page.realm);
-    if (implementation.get()) |impl| impl.reactivate(page.document);
+    for (page.frames) |frame| {
+        if (frame.realm.hasEngine()) runRestoreSteps(frame.realm);
+    }
+    // HTML "reactivate" for each document of the page, the top-level one
+    // first and then its frames, parents before children - the order Blink
+    // shows a restored page's frames in (frame tree order). Each fires its
+    // pageshow (persisted) and asks to be revealed (pagereveal).
+    const impl = implementation.get() orelse return;
+    impl.reactivate(page.document);
+    for (page.frames) |frame| {
+        if (runtime.SlabAllocator.generationOf(frame.document) != frame.document_generation) continue;
+        impl.reactivate(frame.document);
+    }
 }
 
 /// Evict a page `take` handed out that will not be shown.

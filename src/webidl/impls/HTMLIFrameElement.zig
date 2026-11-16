@@ -3181,7 +3181,9 @@ fn runCommit(context: ?*anyopaque) void {
             };
         }
     }
-    record.final_sandboxing_flags = if (response.is_network_error) .empty else record.target_sandboxing_flags.unionWith(
+    // The inline PDF viewer document's navigationParams have "an empty set"
+    // too (HTML 7.5.7 step 4).
+    record.final_sandboxing_flags = if (response.is_network_error or integration.responseIsPdfViewer(response)) .empty else record.target_sandboxing_flags.unionWith(
         if (params_container) |*container| sandboxing.cspDerivedSandboxingFlags(&container.csp_list) else .empty,
     );
     // Step 21.12.2 for a top-level traversable's last response: whether its
@@ -3568,6 +3570,9 @@ fn reservedEnvironmentIsSecure(browsing_context: *html_core.BrowsingContext, url
 fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Navigation, response: *const navigation_fetch.NavigationFetchResult) !fetch_mod.internal.PolicyContainer {
     const allocator = integration.allocator;
     const PolicyContainer = fetch_mod.internal.PolicyContainer;
+    // The inline PDF viewer document's policy container is "a new policy
+    // container" (HTML 7.5.7 step 4): the PDF response's headers make none.
+    if (integration.responseIsPdfViewer(response)) return PolicyContainer.init(allocator);
     const response_url = if (response.final_url.len > 0) response.final_url else record.url;
     // 1. "If historyPolicyContainer is not null": assert that responseURL
     // requires storing the policy container in history, and return a clone
@@ -4867,6 +4872,9 @@ fn navigationParamsOriginRecord(
 ) ?*OriginRecord {
     const allocator = integration.allocator;
     if (response.is_network_error) return OriginRecord.create(allocator, "null") catch null;
+    // The inline PDF viewer document: "Let origin be a new opaque origin"
+    // (HTML 7.5.7 step 1).
+    if (integration.responseIsPdfViewer(response)) return OriginRecord.create(allocator, "null") catch null;
     // "Determining the origin" step 1, given navigationParams's final
     // sandboxing flag set - the target's sandboxing flags united with the
     // policy container's CSP-derived ones (CSP 4.3 "sandbox"): "If
@@ -5004,13 +5012,16 @@ fn unloadDocumentAndDescendantsSwapping(document: *runtime.Instance, integration
 /// a Document object" step 6; commitAfterFinalize decides it before this
 /// unload), discarded otherwise.
 fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegration, page_swap: ?*const PageSwapStep, kept: ?*?KeptDocument, window_fate: WindowFate) bool {
-    var documents = dom_module.navigables.inclusiveDescendantDocuments(document, integration.allocator);
-    defer documents.deinit(integration.allocator);
+    const allocator = integration.allocator;
+    var documents = dom_module.navigables.inclusiveDescendantDocuments(document, allocator);
+    defer documents.deinit(allocator);
     // Unload step 5, before any of the tree's handlers run: the user agent
     // intends to keep `document` - the navigable's part, then its features'
     // and its own (dom.bfcache.mayKeep, which records the reasons of what
-    // keeps it out, so pagehide reports persisted false).
-    const offer = kept != null and mayKeepInBfcache(integration, document, documents.items.len) and dom_module.bfcache.mayKeep(document);
+    // keeps it out, so pagehide reports persisted false) - and, since bfcache
+    // phase C, each of its frames' documents the same way: a page is kept
+    // with all of its frames or not at all.
+    const offer = kept != null and mayKeepInBfcache(integration, document) and mayKeepTree(documents.items);
     const generation = runtime.SlabAllocator.generationOf(document);
     // "Unload" step 19 for a top-level traversable's document: "build not
     // restored reasons for a top-level traversable and its descendants",
@@ -5020,10 +5031,53 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
     // .Builder), into the document state of the entry that showed it.
     var reasons = NotRestoredReasonsStep.begin(document, integration);
     defer reasons.deinit();
-    // Children first: the list is parents-first, so walk it backwards.
-    var i = documents.items.len;
-    while (i > 0) {
-        i -= 1;
+    // The order: a document first, then its child navigables' documents, in
+    // tree order, each unloaded while its parent's unload counter is still
+    // raised - so a child's pagehide or unload handler that calls
+    // parent.document.open() finds the parent unloading, and the open is
+    // ignored. Stated deviation from HTML "unload a document and its
+    // descendants" (7.5.9), which since the 2022 navigation rewrite unloads
+    // the child navigables' documents first (step 4) and the document after
+    // them (step 6), each in its own task. Golden rule 2: the spec text
+    // changed, but neither the lag case (WPT never updated to the new order;
+    // no implementation bugs filed) nor the all-three-declined case (no
+    // statement of intent) can be shown, and Chrome 157, Firefox 160 and
+    // Safari 27.2 all unload the parent first with its children inside it
+    // (wpt.fyi stable at 2358bd4835, unloading-documents/001.html: Firefox
+    // passes "0123456789", Chrome and Safari give "01238" - the parent's
+    // pagehide before the child's, no unload events for that popup -
+    // 003.html and 005.html likewise; Blink's FrameLoader::DetachDocument
+    // fires the document's unload events, then LocalFrame::DetachChildren).
+    // The integrator's ruling, 2026-11-14 7:08 PM ET; whatwg/html issue draft
+    // tmp/orchestration/data/nav4-unload-order-issue.md.
+    //
+    // And so a document is destroyed (unload step 20, not salvageable) only
+    // after its descendants have unloaded - below, children first - not at
+    // the end of its own unload: a child's unload handlers still find the
+    // parent's realm and document, so a listener the parent's script added
+    // to the child's window runs and reaches the frame through
+    // iframe.contentWindow, as in all three browsers (Blink's
+    // FrameLoader::DetachDocument: the document's unload events, then
+    // LocalFrame::DetachChildren, then Document::Shutdown;
+    // fetch/api/redirect/redirect-keepalive.any.js, whose keepalive fetch
+    // such a listener sends from a window its opener closes: Chrome 157,
+    // Firefox 160 and Safari 27.2 pass 12/12 on wpt.fyi stable at
+    // 2358bd4835).
+    // Tree order from the list (parents first, breadth first); out of memory
+    // the list's own order, still every parent before its children.
+    const order: ?[]usize = preorder(documents.items, allocator) catch null;
+    defer if (order) |o| allocator.free(o);
+    // The documents whose unload counter this walk raised after their own
+    // unload, lowered once the whole tree is unloaded.
+    var raised: std.ArrayListUnmanaged(dom_module.navigables.DocumentEntry) = .empty;
+    defer {
+        for (raised.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) == entry.generation) dom_module.document_internals.decrementUnloadCounter(entry.document);
+        }
+        raised.deinit(allocator);
+    }
+    for (0..documents.items.len) |k| {
+        const i = if (order) |o| o[k] else k;
         const entry = documents.items[i];
         if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
         if (entry.browsing_context) |child_bc| {
@@ -5035,8 +5089,9 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
             if (!firePageSwapAt(entry.document, entry.generation, integration, step)) return false;
         };
         // The intent is given right before the unload that consumes it -
-        // after pageswap, whose listeners may end this unload early.
-        if (i == 0 and offer) dom_module.bfcache.intendToKeep(entry.document);
+        // after pageswap, whose listeners may end this unload early - for
+        // every document of a page that may be kept.
+        if (offer) dom_module.bfcache.intendToKeep(entry.document);
         // A document whose load event never ran - its navigable navigated
         // while it loaded - is destroyed with no pagehide and no unload, as
         // the browsers do it: Blink's Document::DispatchUnloadEvents returns
@@ -5046,17 +5101,33 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
         // any document that is not salvageable; golden rule 2 - two of
         // three - follows Chrome and Safari, for every navigable alike (the
         // embedder's page did so alone before lane loadpath1 gave it this
-        // path).
-        if (document_lifecycle.isCompletelyLoaded(entry.document)) {
-            document_lifecycle.unload(entry.document);
-        } else document_lifecycle.destroy(entry.document);
+        // path). Either way it is destroyed after its descendants (below).
+        if (document_lifecycle.isCompletelyLoaded(entry.document)) document_lifecycle.unloadLeavingDestroy(entry.document);
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        // Its children unload while it is still unloading (above).
+        dom_module.document_internals.incrementUnloadCounter(entry.document);
+        raised.append(allocator, entry) catch dom_module.document_internals.decrementUnloadCounter(entry.document);
         // A document the back/forward cache keeps stays its entry's; any
         // other is not kept for traversal: an entry that held it will be
         // repopulated by a navigation.
-        if (i == 0 and offer and dom_module.bfcache.isKept(entry.document)) continue;
+        if (offer and dom_module.bfcache.isKept(entry.document)) continue;
         if (integration.browsing_context) |bc| {
             if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(entry.document));
         }
+    }
+    // Step 20 for each document the back/forward cache did not keep, now that
+    // the whole tree has unloaded: destroyed, children first (the walk's
+    // order backwards), as "destroy a document and its descendants" orders
+    // it. A document a handler already destroyed - its frame removed while
+    // it unloaded - is not destroyed again.
+    var back = documents.items.len;
+    while (back > 0) {
+        back -= 1;
+        const entry = documents.items[if (order) |o| o[back] else back];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        if (offer and dom_module.bfcache.isKept(entry.document)) continue;
+        if (document_lifecycle.isDestroyed(entry.document)) continue;
+        document_lifecycle.destroy(entry.document);
     }
     // Step 18 for each document: the unloading document cleanup steps - or,
     // for a kept one, only the store steps (dom.navigables). A window the
@@ -5065,16 +5136,109 @@ fn unloadDocumentTree(document: *runtime.Instance, integration: *IFrameIntegrati
     // keep) waits for that global's end.
     if (integration.browsing_context) |bc| dom_module.navigables.destroyWindowDocuments(bc, window_fate);
     reasons.finish(integration);
+    // Kept: the page, with every one of its frames (a store step's reason,
+    // recorded by destroyWindowDocuments, can still have made a document
+    // unsalvageable: then nothing of it is kept).
+    if (kept) |out| if (offer and runtime.SlabAllocator.generationOf(document) == generation and treeKept(documents.items)) {
+        if (keptPageOf(integration, documents.items)) |page| {
+            out.* = page;
+            return true;
+        } else |_| {}
+    };
+    // Not kept: what the unloads kept goes now, and so do the navigables of
+    // its iframes.
+    if (offer) destroyKeptTree(integration, documents.items);
     destroyChildNavigables(integration);
-    if (kept) |out| {
-        if (offer and runtime.SlabAllocator.generationOf(document) == generation and dom_module.bfcache.isKept(document)) {
-            const window: ?*runtime.Instance = if (integration.browsing_context) |bc| (if (bc.getActiveWindow()) |w| @as(*runtime.Instance, @ptrCast(@alignCast(w))) else null) else null;
-            const page: KeptDocument = .{ .document = document, .generation = generation, .window = window orelse document, .window_generation = if (window) |w| runtime.SlabAllocator.generationOf(w) else 0 };
-            // No window to keep it with: destroyed as it would have been.
-            if (window == null) destroyKeptDocument(integration, page) else out.* = page;
-        }
+    return true;
+}
+
+/// Unload step 5's part for the frames (bfcache phase C): each descendant
+/// navigable's document may be kept too - its features' and its own part
+/// (dom.bfcache.mayKeep, which records the reasons of what keeps it out, so
+/// not restored reasons name the frame) - every one asked, none skipped.
+fn mayKeepTree(documents: []const dom_module.navigables.DocumentEntry) bool {
+    var all = true;
+    for (documents) |entry| {
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) return false;
+        if (!dom_module.bfcache.mayKeep(entry.document)) all = false;
+    }
+    return all;
+}
+
+/// Whether every document of the tree is still there and its unload kept it.
+fn treeKept(documents: []const dom_module.navigables.DocumentEntry) bool {
+    for (documents) |entry| {
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) return false;
+        if (!dom_module.bfcache.isKept(entry.document)) return false;
     }
     return true;
+}
+
+/// `documents` - a page's tree, parents first - in tree order: a document,
+/// then each of its child navigables' documents with their own descendants,
+/// in the order its containers come in its tree (the list's order among
+/// siblings). Indices into `documents`, OWNED by the caller.
+fn preorder(documents: []const dom_module.navigables.DocumentEntry, allocator: std.mem.Allocator) error{OutOfMemory}![]usize {
+    const n = documents.len;
+    const out = try allocator.alloc(usize, n);
+    errdefer allocator.free(out);
+    // Each entry's parent: the entry whose document is its navigable's
+    // parent's active document.
+    const parents = try allocator.alloc(?usize, n);
+    defer allocator.free(parents);
+    for (documents, 0..) |entry, i| {
+        parents[i] = null;
+        const bc = entry.browsing_context orelse continue;
+        const parent_bc = bc.parent orelse continue;
+        const parent_document = parent_bc.getActiveDocument() orelse continue;
+        for (documents[0..i], 0..) |candidate, j| {
+            if (@as(*anyopaque, @ptrCast(candidate.document)) == parent_document) {
+                parents[i] = j;
+                break;
+            }
+        }
+    }
+    // Depth first from the root, with an explicit stack of entries whose
+    // children are still to be visited.
+    var stack: std.ArrayListUnmanaged(usize) = .empty;
+    defer stack.deinit(allocator);
+    var emitted: usize = 0;
+    if (n == 0) return out;
+    out[0] = 0;
+    emitted = 1;
+    try stack.append(allocator, 0);
+    // The next child of each entry still to visit.
+    const next_child = try allocator.alloc(usize, n);
+    defer allocator.free(next_child);
+    @memset(next_child, 0);
+    while (stack.items.len > 0) {
+        const top = stack.items[stack.items.len - 1];
+        var found: ?usize = null;
+        var c = @max(next_child[top], top + 1);
+        while (c < n) : (c += 1) {
+            if (parents[c] == top) {
+                found = c;
+                break;
+            }
+        }
+        if (found) |child| {
+            next_child[top] = child + 1;
+            out[emitted] = child;
+            emitted += 1;
+            try stack.append(allocator, child);
+        } else _ = stack.pop();
+    }
+    // Entries no parent was found for (a navigable that left the tree while
+    // the list was made) come last, in the list's order.
+    if (emitted < n) {
+        for (0..n) |i| {
+            if (std.mem.indexOfScalar(usize, out[0..emitted], i) == null) {
+                out[emitted] = i;
+                emitted += 1;
+            }
+        }
+    }
+    return out;
 }
 
 /// "Unload" step 19, for a top-level traversable (a popup: Crane's top-level
@@ -7327,6 +7491,21 @@ const KeptDocument = struct {
     generation: u64,
     window: *runtime.Instance,
     window_generation: u64,
+    /// Its frames (bfcache phase C): every descendant navigable's document
+    /// the unload kept, parents first. OWNED (the integration's allocator)
+    /// until `storeKeptPage` hands it to the page's record or a destroy step
+    /// frees it.
+    frames: std.ArrayListUnmanaged(dom_module.bfcache.KeptFrame) = .empty,
+    /// The navigables of its iframes, off its navigable's children list while
+    /// the page is kept (a navigable's children are its active document's) -
+    /// each still names its parent - and back on it when the page is shown
+    /// again. OWNED as `frames`.
+    parked: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty,
+
+    fn freeLists(self: *KeptDocument, allocator: std.mem.Allocator) void {
+        self.frames.deinit(allocator);
+        self.parked.deinit(allocator);
+    }
 };
 
 /// The navigable's part of unload step 5's intendToKeepInBfcache (the rest
@@ -7340,7 +7519,11 @@ const KeptDocument = struct {
 ///   top-level browsing context in its group (Blink's browsing instance
 ///   swap with no "related active contents"). Nothing outside the page can
 ///   then hold its WindowProxy, so the new document's new one is unseen.
-/// - No child navigables: frames inside a kept page are phase C's.
+/// - Child navigables are no bar (bfcache phase C): each frame's document
+///   must pass dom.bfcache.mayKeep too (`mayKeepTree`), and is kept with
+///   the page. Chrome 157 and Safari 27.2 keep a page with a cross-origin
+///   frame (pagereveal/order-in-bfcache-restore-iframe.html, wpt.fyi stable
+///   at 2358bd4835).
 /// - Its document came from a GET of an HTTP(S) URL answered 200
 ///   (`keepableResponse`, recorded at its commit).
 /// - Its Browser's cache keeps pages (BrowserConfig.back_forward_cache_size).
@@ -7350,14 +7533,13 @@ const KeptDocument = struct {
 /// events.html "unload": PASS in Chrome 155 and Safari 27, PRECONDITION_FAILED
 /// in Firefox 158 and Edge 155, wpt.fyi 23b0b89b1a) - its unload event never
 /// fires (step 12: salvageable).
-fn mayKeepInBfcache(integration: *IFrameIntegration, document: *runtime.Instance, tree_size: usize) bool {
+fn mayKeepInBfcache(integration: *IFrameIntegration, document: *runtime.Instance) bool {
     if (integration.iframe_element != null) return false;
     // Not the host page's traversable (stated): keeping it needs its
     // Context's realms to outlive the page that leaves - bfcache phase C/D.
     if (integration.host_realms != null) return false;
     const bc = integration.browsing_context orelse return false;
     if (bc.parent != null or bc.is_closed or bc.orphaned) return false;
-    if (tree_size != 1 or bc.children.items.len != 0) return false;
     if (bc.opener != null and !bc.disowned) return false;
     if (!aloneInGroup(bc)) return false;
     const realm = navigableContext(integration) orelse return false;
@@ -7403,6 +7585,10 @@ const KeptRecord = struct {
     /// The last commit's URL and content type.
     loaded_url: ?[]u8 = null,
     loaded_content_type: ?[]u8 = null,
+    /// The page's frames and its parked iframe navigables (KeptDocument's),
+    /// handed over by `storeKeptPage`: KeptPage.frames borrows `frames`.
+    frames: std.ArrayListUnmanaged(dom_module.bfcache.KeptFrame) = .empty,
+    parked: std.ArrayListUnmanaged(*html_core.BrowsingContext) = .empty,
 
     /// The integration's record as it is now, copied; null out of memory.
     fn capture(integration: *IFrameIntegration) ?*KeptRecord {
@@ -7443,6 +7629,8 @@ const KeptRecord = struct {
     }
 
     fn destroy(self: *KeptRecord) void {
+        self.frames.deinit(self.allocator);
+        self.parked.deinit(self.allocator);
         if (self.window_origin) |o| self.allocator.free(o);
         if (self.document_origin_host) |h| self.allocator.free(h);
         if (self.loaded_url) |u| self.allocator.free(u);
@@ -7462,11 +7650,17 @@ const kept_page_steps: dom_module.bfcache.PageSteps = .{ .evict = &evictKeptPage
 /// The realm stays a child of its opener's realm (WindowRealmOptions.parent),
 /// so that page's end would end it: Browser.navigate and Browser.deinit evict
 /// every cached page first.
-fn storeKeptPage(integration: *IFrameIntegration, kept: KeptDocument, realm: runtime.Context, record: *KeptRecord) void {
+fn storeKeptPage(integration: *IFrameIntegration, kept_in: KeptDocument, realm: runtime.Context, record: *KeptRecord) void {
+    var kept = kept_in;
     const bc = integration.browsing_context orelse {
         record.destroy();
         return destroyKeptDocumentAndRealm(kept, realm);
     };
+    // The record owns the frames and the parked navigables from here.
+    record.frames = kept.frames;
+    record.parked = kept.parked;
+    kept.frames = .empty;
+    kept.parked = .empty;
     const history = bc.joint_history;
     const state = if (history) |h| h.documentStateOf(@ptrCast(kept.document)) else null;
     const page: dom_module.bfcache.KeptPage = .{
@@ -7479,6 +7673,7 @@ fn storeKeptPage(integration: *IFrameIntegration, kept: KeptDocument, realm: run
         .realm = realm,
         .data = record,
         .steps = &kept_page_steps,
+        .frames = record.frames.items,
     };
     if (state == null or !dom_module.bfcache.store(page)) evictKeptPage(&page);
 }
@@ -7535,21 +7730,132 @@ fn keepAndReplaceRealm(integration: *IFrameIntegration, kept: KeptDocument, new_
 /// "destroy" - unload step 20, which its unload skipped), its history entry
 /// let go of it, and its window's cleanup steps run. Its realm is still the
 /// integration's: a later replacement ends it as usual.
-fn destroyKeptDocument(integration: *IFrameIntegration, kept: KeptDocument) void {
+fn destroyKeptDocument(integration: *IFrameIntegration, kept_in: KeptDocument) void {
+    var kept = kept_in;
+    defer kept.freeLists(integration.allocator);
+    const history: ?*html_core.navigation.joint_history.JointHistory = if (integration.browsing_context) |bc| bc.getTop().joint_history else null;
+    destroyKeptFrames(kept.frames.items, kept.parked.items, history);
     if (runtime.SlabAllocator.generationOf(kept.document) != kept.generation) return;
-    if (integration.browsing_context) |bc| {
-        if (bc.getTop().joint_history) |history| history.forgetDocument(@ptrCast(kept.document));
-    }
+    if (history) |h| h.forgetDocument(@ptrCast(kept.document));
     document_lifecycle.destroy(kept.document);
     dom_module.window_documents.destroyed(kept.document.ctx);
 }
 
 /// A kept document whose realm left the integration and will not be
 /// cached: destroyed, and its realm ended (`evictKeptPage` without a page).
-fn destroyKeptDocumentAndRealm(kept: KeptDocument, realm: runtime.Context) void {
-    if (!realm.hasEngine()) return;
+fn destroyKeptDocumentAndRealm(kept_in: KeptDocument, realm: runtime.Context) void {
+    var kept = kept_in;
+    defer kept.freeLists(kept.document.ctx.allocator);
+    if (!realm.hasEngine()) return destroyParkedNavigables(kept.parked.items);
+    destroyKeptFrames(kept.frames.items, kept.parked.items, null);
     if (runtime.SlabAllocator.generationOf(kept.document) == kept.generation) document_lifecycle.destroy(kept.document);
     engine.destroyWindowRealm(realm, .global_detached);
+}
+
+/// The frames of a kept page that will not be shown again (bfcache phase C),
+/// before the page's own document: each frame's document is destroyed -
+/// deepest first, as HTML destroys a document's descendants before it - its
+/// history entry lets go of it, and its window's unloading document cleanup
+/// steps run (its unload ran only the store steps); then the navigables of
+/// the page's iframes are destroyed, as `destroyChildNavigables` destroys an
+/// unkept page's when it goes. Their realms end with the page's realm, whose
+/// children they are.
+fn destroyKeptFrames(frames: []const dom_module.bfcache.KeptFrame, parked: []const *html_core.BrowsingContext, history: ?*html_core.navigation.joint_history.JointHistory) void {
+    var i = frames.len;
+    while (i > 0) {
+        i -= 1;
+        const frame = frames[i];
+        if (runtime.SlabAllocator.generationOf(frame.document) != frame.document_generation) continue;
+        if (history) |h| h.forgetDocument(@ptrCast(frame.document));
+        if (!frame.realm.hasEngine()) continue;
+        dom_module.document_fetches.abortAll(frame.realm);
+        document_lifecycle.destroy(frame.document);
+        dom_module.window_documents.destroyed(frame.realm);
+    }
+    destroyParkedNavigables(parked);
+}
+
+/// The navigables of a kept page's iframes (parked off their navigable's
+/// children list) are destroyed: "destroy a child navigable", each through
+/// the integration that owns it.
+fn destroyParkedNavigables(parked: []const *html_core.BrowsingContext) void {
+    for (parked) |child| {
+        if (integrationOfBrowsingContext(child)) |owner| {
+            owner.onRemovedFromDocument();
+        } else child.removeFromParent();
+    }
+}
+
+/// A page the unload did not keep after all (one of its documents was made
+/// unsalvageable by a store step, or it has no Window to keep it with): the
+/// documents its unload did keep are destroyed as unkept ones would have
+/// been - their history entries let go of them and their windows' cleanup
+/// steps run.
+fn destroyKeptTree(integration: *IFrameIntegration, documents: []const dom_module.navigables.DocumentEntry) void {
+    const history: ?*html_core.navigation.joint_history.JointHistory = if (integration.browsing_context) |bc| bc.getTop().joint_history else null;
+    var i = documents.len;
+    while (i > 0) {
+        i -= 1;
+        const entry = documents[i];
+        if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+        if (!dom_module.bfcache.isKept(entry.document)) continue;
+        if (history) |h| h.forgetDocument(@ptrCast(entry.document));
+        document_lifecycle.destroy(entry.document);
+        dom_module.window_documents.destroyed(entry.document.ctx);
+    }
+}
+
+/// The kept page `documents` - `integration`'s active document's tree, every
+/// document of it kept - as the navigation code holds it until the cache
+/// does: the page's document and Window, each frame's document, Window and
+/// realm in tree order, and the navigables of its iframes taken off the
+/// navigable's children list (parked: a navigable's children are its active
+/// document's, and the next document has none of these). Fails with no
+/// Window to keep the page with, or out of memory: nothing is parked then.
+fn keptPageOf(integration: *IFrameIntegration, documents: []const dom_module.navigables.DocumentEntry) error{ NoWindow, OutOfMemory }!KeptDocument {
+    const allocator = integration.allocator;
+    const bc = integration.browsing_context orelse return error.NoWindow;
+    const window: *runtime.Instance = @ptrCast(@alignCast(bc.getActiveWindow() orelse return error.NoWindow));
+    const root = documents[0];
+    var page: KeptDocument = .{
+        .document = root.document,
+        .generation = root.generation,
+        .window = window,
+        .window_generation = runtime.SlabAllocator.generationOf(window),
+    };
+    errdefer page.freeLists(allocator);
+    const order = try preorder(documents, allocator);
+    defer allocator.free(order);
+    for (order) |i| {
+        if (i == 0) continue;
+        const entry = documents[i];
+        const frame_bc = entry.browsing_context orelse continue;
+        const frame_window: *runtime.Instance = @ptrCast(@alignCast(frame_bc.getActiveWindow() orelse continue));
+        try page.frames.append(allocator, .{
+            .document = entry.document,
+            .document_generation = entry.generation,
+            .window = frame_window,
+            .window_generation = runtime.SlabAllocator.generationOf(frame_window),
+            .realm = frame_window.ctx,
+        });
+    }
+    try page.parked.appendSlice(allocator, bc.children.items);
+    // Parked: off the list, each still naming `bc` as its parent, so that
+    // it reads as a frame (never as another top-level browsing context of
+    // the group) and comes back where it was.
+    bc.children.clearRetainingCapacity();
+    return page;
+}
+
+/// The parked navigables of a page shown again go back on its navigable's
+/// children list, in their order. One that left meanwhile (its own end
+/// unlinked it) stays off.
+fn unparkNavigables(bc: *html_core.BrowsingContext, parked: []const *html_core.BrowsingContext) void {
+    for (parked) |child| {
+        if (child.parent != bc) continue;
+        if (std.mem.indexOfScalar(*html_core.BrowsingContext, bc.children.items, child) != null) continue;
+        bc.children.append(bc.allocator, child) catch {};
+    }
 }
 
 /// dom.bfcache.PageSteps.evict: a cached page leaves the back/forward cache
@@ -7565,16 +7871,17 @@ fn destroyKeptDocumentAndRealm(kept: KeptDocument, realm: runtime.Context) void 
 fn evictKeptPage(page: *const dom_module.bfcache.KeptPage) void {
     const record: *KeptRecord = @ptrCast(@alignCast(page.data));
     const integration = record.integration;
-    record.destroy();
-    if (!page.realm.hasEngine()) return;
+    defer record.destroy();
+    // The traversable is still this integration's (its close evicts its
+    // pages before it goes): its history lets go of the documents.
+    const history: ?*html_core.navigation.joint_history.JointHistory = if (integration.browsing_context) |bc|
+        (if (@as(*anyopaque, @ptrCast(bc)) == page.traversable) bc.joint_history else null)
+    else
+        null;
+    if (!page.realm.hasEngine()) return destroyParkedNavigables(record.parked.items);
+    destroyKeptFrames(page.frames, record.parked.items, history);
     if (runtime.SlabAllocator.generationOf(page.document) == page.document_generation) {
-        // The traversable is still this integration's (its close evicts its
-        // pages before it goes): its history lets go of the document.
-        if (integration.browsing_context) |bc| {
-            if (@as(*anyopaque, @ptrCast(bc)) == page.traversable) {
-                if (bc.joint_history) |history| history.forgetDocument(@ptrCast(page.document));
-            }
-        }
+        if (history) |h| h.forgetDocument(@ptrCast(page.document));
         document_lifecycle.destroy(page.document);
     }
     engine.destroyWindowRealm(page.realm, .global_detached);
@@ -7611,8 +7918,10 @@ fn historyHasState(context: *anyopaque, document_state: u64) bool {
 /// the cache does not hold the entry's document: the caller fetches it.
 ///
 /// The navigation API's part of the reactivation (its activation, its
-/// entries, dispose) is its Navigation object's (dom.navigation_api.reactivate);
-/// pagereveal is phase C's.
+/// entries, dispose) is its Navigation object's (dom.navigation_api.reactivate).
+/// Since bfcache phase C the page's frames come back with it: their navigables
+/// are its navigable's children again, and each frame document is reactivated
+/// after the page's (dom.bfcache.reactivate: pageshow persisted, pagereveal).
 fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingContext, entry_id: u64, from_entry_id: u64) bool {
     if (integration.iframe_element != null) return false;
     const history = bc.joint_history orelse return false;
@@ -7660,6 +7969,9 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     );
     record.apply();
     bc.setActiveDocument(@ptrCast(page.document), @ptrCast(page.window));
+    // Its frames' navigables are its navigable's children again (bfcache
+    // phase C): a navigable's children are its active document's.
+    unparkNavigables(bc, record.parked.items);
     // Its view of the history is the traversable's again, before pageshow
     // (JointHistory.holdView).
     if (bc.getTop().joint_history) |joint| joint.releaseView(bc.id);

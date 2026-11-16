@@ -49,7 +49,7 @@ const routes = [_]http.Route{
     .{ .path = "/channel.html", .content_type = "text/html", .body = page("channel", "var heard = 0; new BroadcastChannel('bfb').onmessage = () => { heard++; };") },
     // A page that holds a Web Lock until it is destroyed.
     .{ .path = "/lock.html", .content_type = "text/html", .body = page("lock", "navigator.locks.request('bfb-lock', () => new Promise(() => {}));") },
-    // A page with a frame: phase B keeps no page with child navigables.
+    // A page with a frame (srcdoc): kept with its frame since phase C.
     .{ .path = "/frame.html", .content_type = "text/html", .body = page("frame", "") ++ "<iframe srcdoc='<p>child'></iframe>" },
     // A page with an RTCPeerConnection (Chromium's "rtc").
     .{ .path = "/rtc.html", .content_type = "text/html", .body = page("rtc", "var pc = new RTCPeerConnection();") },
@@ -392,12 +392,14 @@ fn keptAfterLeavingAt(comptime origin: []const u8, comptime path: []const u8, co
     return fixture.cached() > 0;
 }
 
-test "the eligibility matrix: a page that holds a lock, has a frame, a worker or a shared worker is not kept" {
+test "the eligibility matrix: a page that holds a lock, has a worker or a shared worker is not kept; one with a frame is kept (phase C)" {
     try testing.expect(try keptAfterLeaving("/a.html", "/b.html"));
     // Web Locks are [SecureContext]: the page holds its lock on localhost.
     try testing.expect(try keptAfterLeavingAt("http://localhost", "/a.html", "/b.html"));
     try testing.expect(!try keptAfterLeavingAt("http://localhost", "/lock.html", "/b.html"));
-    try testing.expect(!try keptAfterLeaving("/frame.html", "/b.html"));
+    // Bfcache phase C (lane nav4): a page is kept with its frames
+    // (tests/html/nav4_bfcache_frames_test.zig has the rest).
+    try testing.expect(try keptAfterLeaving("/frame.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/worker.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/shared.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/rtc.html", "/b.html"));

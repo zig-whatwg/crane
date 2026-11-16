@@ -131,6 +131,9 @@ pub fn installHooks() void {
         .abort = &abortDocumentFetches,
         .prepare_navigation_document_abort = &prepareNavigationDocumentAbort,
     });
+    // A page the back/forward cache keeps: its requests in flight end, and
+    // fail as network errors once it is shown again (`storeInCache`).
+    @import("dom").bfcache.installStoreStep(&storeInCache);
 }
 
 /// XMLHttpRequest's own construction steps: the generated chain runs XMLHttpRequestEventTarget's first.
@@ -1209,6 +1212,37 @@ fn abortFetchesIn(realm: runtime.Context) void {
     }
 }
 
+/// dom.bfcache store step, for the realm of a document the back/forward cache
+/// keeps (unload step 18): each request of that document still in flight ends
+/// now and fails as a network error once the page is shown again
+/// (`PendingFetch.failForCache`). Nothing of it runs while the page is cached:
+/// its transport is cancelled, its queued deliveries find it cancelled, and
+/// the error's task waits with the page.
+///
+/// An XMLHttpRequest in flight does not keep its page out of the cache: the
+/// navigation's "abort a document" leaves it (prepareNavigationDocumentAbort),
+/// as Blink and WebKit do. Golden rule 2, mechanism by mechanism, as for
+/// fetch() (WindowOrWorkerGlobalScope FetchCall.storeInCache): Chrome keeps
+/// the page and lets the request go on; Safari keeps it and ends the
+/// request - WebKit's XMLHttpRequest::suspend(ReasonForSuspension::
+/// BackForwardCache) calls internalAbort() with a loading activity and sets
+/// m_dispatchErrorOnResuming, and resume() dispatches networkError() from a
+/// timer; Firefox does not keep the page (its document abort cancels the
+/// request). The page is kept (Chrome, Safari) and the request ends (Safari,
+/// Firefox): Safari's behaviour.
+fn storeInCache(realm: runtime.Context) void {
+    var i = pendingIn(realm).len;
+    while (i > 0) {
+        i -= 1;
+        if (i >= pendingIn(realm).len) continue;
+        const pending = pendingIn(realm)[i];
+        if (pending.context != realm or pending.cancelled or pending.complete) continue;
+        if (pending.document == null) continue;
+        if (!pending.nativeOwnerLive() or !getXHRState(pending.instance).send_flag) continue;
+        pending.failForCache();
+    }
+}
+
 /// HTML "abort a document" step 2: snapshot requests before any owner's
 /// cancellation dispatches script. A new send from an abort listener is not
 /// part of the old request's cancellation.
@@ -1321,6 +1355,9 @@ const PendingFetch = struct {
     /// delivery, but its run/drop releases the hold.
     abort_task_queued: bool = false,
     abort_delivery_pending: bool = false,
+    /// The queued cancellation is the back/forward cache's (`failForCache`):
+    /// it delivers a network error, not an abort.
+    abort_delivers_network_error: bool = false,
     /// Timer-only hosts use an owned zero-delay timer as their task queue.
     /// Keep its own interface: a later call may enter a different realm.
     abort_timer: ?runtime.TimerInterface = null,
@@ -1617,7 +1654,37 @@ const PendingFetch = struct {
         internal.releaseResponseValue(self.instance);
         var processor = xhr.response.ResponseProcessor.init(&internal.xhr_state);
         processor.continuation = .{ .context = self, .is_live = alive };
-        processor.handleAbort();
+        if (self.abort_delivers_network_error) processor.handleNetworkError() else processor.handleAbort();
+    }
+
+    /// `storeInCache` for this request: it ends now, and fails as a network
+    /// error once its page is shown again - "handle errors" step 4, the
+    /// request error steps for `error` - in a networking task queued on the
+    /// request's document, which the event loop holds while the back/forward
+    /// cache keeps the page, and drops if the page is evicted instead. As
+    /// `abortForDocument` does, the request stays the XMLHttpRequest's until
+    /// that task runs, so an open() or abort() after the restore suppresses
+    /// it. A host with no event loop keeps no page: nothing is delivered.
+    fn failForCache(self: *PendingFetch) void {
+        self.document_abort_pending = false;
+        const was_running = self.running;
+        self.running = true;
+        self.cancel();
+        const document = self.document.?;
+        if (self.context.getOptionalEventLoop()) |loop| {
+            self.abort_delivery_pending = true;
+            self.abort_delivers_network_error = true;
+            self.abort_task_queued = true;
+            loop.queueTask(.{
+                .callback = runDocumentAbort,
+                .context = self,
+                .drop = dropDocumentAbort,
+                .document = document.instance,
+                .document_generation = document.generation,
+            });
+        } else self.detach();
+        self.running = was_running;
+        self.maybeFree();
     }
 
     /// Stop listening to the body; the pipe itself is the response's.
