@@ -6078,48 +6078,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, wpt_upload_package_tests, "tools-wpt_upload_package", null).step);
 
     // ========================================================================
-    // HELP: Available JavaScript Engines
-    // ========================================================================
-
-    const help_engines_step = b.step("help-engines", "Show available JavaScript engines");
-    const help_engines_cmd = b.addSystemCommand(&[_][]const u8{
-        "sh",
-        "-c",
-        \\echo "Available JavaScript Engines"
-        \\echo "============================"
-        \\echo ""
-        \\echo "  v8       Google V8 (default)"
-        \\echo "           - Best performance and feature support"
-        \\echo "           - Supports heap snapshots for fast startup"
-        \\echo "           - Isolate-per-thread threading model"
-        \\echo "           - Status: FULLY IMPLEMENTED"
-        \\echo "           - Requires: Homebrew V8 (brew install v8)"
-        \\echo ""
-        \\echo "  jsc      JavaScriptCore (WebKit)"
-        \\echo "           - Native on macOS/iOS"
-        \\echo "           - Good performance, stable C API"
-        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
-        \\echo "           - Requires: JavaScriptCore.framework (macOS)"
-        \\echo "                       javascriptcoregtk-4.0 (Linux)"
-        \\echo ""
-        \\echo "  quickjs  QuickJS"
-        \\echo "           - Lightweight, embeddable"
-        \\echo "           - Good for resource-constrained environments"
-        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
-        \\echo "           - Requires: libquickjs.a"
-        \\echo ""
-        \\echo "Usage:"
-        \\echo "  zig build -Dengine=v8      # Build with V8 (default)"
-        \\echo "  zig build -Dengine=jsc     # Build with JavaScriptCore"
-        \\echo "  zig build -Dengine=quickjs # Build with QuickJS"
-        \\echo ""
-        \\echo "Note: Currently only V8 is fully implemented."
-        \\echo "JSC and QuickJS backends are tracked in issue whatwg-qfv3a."
-        ,
-    });
-    help_engines_step.dependOn(&help_engines_cmd.step);
-
-    // ========================================================================
     // CLDR DATA PIPELINE TOOLS
     // ========================================================================
 
@@ -6517,108 +6475,6 @@ pub fn build(b: *std.Build) void {
         \\    fi
         \\fi
         \\
-        \\# ========================================
-        \\# V8 JavaScript Engine (13.1.x branch)
-        \\# ========================================
-        \\PROJECT_ROOT="$(pwd)"
-        \\V8_DEST="$PROJECT_ROOT/jsengines/v8"
-        \\V8_LIB="$V8_DEST/out/static/obj/libv8_monolith.a"
-        \\DEPOT_TOOLS_DIR="$PROJECT_ROOT/jsengines/depot_tools"
-        \\
-        \\if [ ! -f "$V8_LIB" ]; then
-        \\    echo "==> Building V8 13.1.x (this takes 30-60 minutes on first run)..."
-        \\    
-        \\    # Install depot_tools if not present
-        \\    if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
-        \\        echo "    Installing depot_tools..."
-        \\        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
-        \\    fi
-        \\    export PATH="$DEPOT_TOOLS_DIR:$PATH"
-        \\    
-        \\    # Bootstrap depot_tools (required before first use)
-        \\    echo "    Bootstrapping depot_tools..."
-        \\    gclient --version > /dev/null 2>&1 || true
-        \\    
-        \\    # Clone V8 to /tmp and checkout 13.1.x
-        \\    V8_BUILD_DIR="/tmp/v8-build"
-        \\    if [ ! -d "$V8_BUILD_DIR/v8" ]; then
-        \\        echo "    Cloning V8 repository..."
-        \\        rm -rf "$V8_BUILD_DIR"
-        \\        mkdir -p "$V8_BUILD_DIR"
-        \\        cd "$V8_BUILD_DIR"
-        \\        fetch v8
-        \\        cd v8
-        \\        git checkout branch-heads/13.1
-        \\        gclient sync
-        \\        cd - > /dev/null
-        \\    fi
-        \\    
-        \\    # Build V8 static library
-        \\    echo "    Building V8 static library..."
-        \\    cd "$V8_BUILD_DIR/v8"
-        \\    
-        \\    # Detect architecture
-        \\    ARCH=$(uname -m)
-        \\    if [ "$ARCH" = "arm64" ]; then
-        \\        V8_TARGET_CPU="arm64"
-        \\    else
-        \\        V8_TARGET_CPU="x64"
-        \\    fi
-        \\    
-        \\    # Generate build configuration
-        \\    mkdir -p out/static
-        \\    cat > out/static/args.gn << 'ARGS'
-        \\is_component_build = false
-        \\v8_monolithic = true
-        \\v8_use_external_startup_data = false
-        \\is_debug = false
-        \\symbol_level = 0
-        \\v8_enable_sandbox = true
-        \\v8_enable_pointer_compression = true
-        \\v8_enable_gdbjit = false
-        \\v8_enable_disassembler = false
-        \\v8_enable_object_print = false
-        \\v8_enable_verify_heap = false
-        \\v8_enable_trace_maps = false
-        \\v8_enable_test_features = false
-        \\v8_enable_v8_checks = false
-        \\v8_enable_i18n_support = false
-        \\clang_use_chrome_plugins = false
-        \\treat_warnings_as_errors = false
-        \\use_custom_libcxx = false
-        \\ARGS
-        \\    echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
-        \\    
-        \\    gn gen out/static
-        \\    ninja -C out/static v8_monolith v8_libplatform v8_libbase
-        \\    
-        \\    # Convert thin archives to fat archives (Zig can't parse thin archives)
-        \\    LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
-        \\    cd out/static
-        \\    echo "    Converting thin archives to fat archives..."
-        \\    $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
-        \\    $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
-        \\    $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
-        \\    $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
-        \\    cd ../..
-        \\    
-        \\    cd - > /dev/null
-        \\    
-        \\    # Copy to jsengines/v8
-        \\    echo "    Copying V8 to $V8_DEST..."
-        \\    mkdir -p "$V8_DEST"
-        \\    rm -rf "$V8_DEST/include" "$V8_DEST/out"
-        \\    cp -r "$V8_BUILD_DIR/v8/include" "$V8_DEST/include"
-        \\    mkdir -p "$V8_DEST/out/static/obj"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_monolith.a" "$V8_DEST/out/static/obj/"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libplatform_fat.a" "$V8_DEST/out/static/obj/"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libbase_fat.a" "$V8_DEST/out/static/obj/"
-        \\    
-        \\    echo "    V8 13.1.x built successfully"
-        \\else
-        \\    echo "==> V8 already present"
-        \\fi
-        \\
         \\echo ""
         \\echo "==> Setup complete!"
         \\echo ""
@@ -6634,10 +6490,6 @@ pub fn build(b: *std.Build) void {
         \\echo "  - idl/         W3C WebRef IDL definitions"
         \\echo "  - whatwg/      WHATWG specs (markdown)"
         \\echo "  - whatwg/html/ HTML multipage spec sections"
-        \\echo ""
-        \\echo "V8 engine is in: jsengines/v8/"
-        \\echo "  - include/     V8 headers"
-        \\echo "  - out/static/  Built static libraries"
         \\
     });
 
