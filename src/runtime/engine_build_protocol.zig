@@ -145,6 +145,14 @@ pub const Tests = struct {
     /// The directory, relative to the build root: "tests/<name>". Its suite
     /// is named from it as every directory's is ("tests-<name>").
     dir: []const u8,
+    /// The -Dspec value that selects it.
+    spec: []const u8,
+    /// What its test root imports, by import name, in the order the imports
+    /// are added - part of the compile, as `Facts.imports` is. Each name is
+    /// one the root build offers an adapter's tests: the testing graph's
+    /// modules, the adapter's own module (`Facts.module_name`) and this
+    /// build's startup data for tests.
+    imports: []const []const u8,
     /// The suite's row of launcher settings (as build.zig's `suite_configs`
     /// rows are for the other directories).
     suite: SuiteConfig,
@@ -203,6 +211,17 @@ fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u
     const Actual = @TypeOf(@field(A, decl));
     if (Actual != Expected) @compileError(who ++ ": `" ++ decl ++ "` is " ++ @typeName(Actual) ++ "; the build protocol's is " ++ @typeName(Expected));
 }
+
+/// Every listed adapter's own test directory (`Facts.tests`), whichever
+/// engine the build binds: the root build records another adapter's as a
+/// suite, which only a build of that engine runs.
+pub const test_dirs: []const []const u8 = dirs: {
+    var list: []const []const u8 = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (@field(adapters, name).facts.tests) |tests| list = list ++ &[_][]const u8{tests.dir};
+    }
+    break :dirs list;
+};
 
 /// A listed adapter the facade compiles against with no engine linked.
 pub const Engineless = struct {

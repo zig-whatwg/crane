@@ -1021,6 +1021,22 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
     select.suite_dirs.append(b.allocator, dir) catch @panic("OOM");
 }
 
+/// The imports `names` asks for, in its order, each the module of that name
+/// in `offered`: an adapter's build file names what its compile imports, and
+/// the order is part of that compile. A name nothing offers fails the
+/// configure, naming `who` asked for it.
+fn importsByName(b: *std.Build, names: []const []const u8, offered: []const std.Build.Module.Import, who: []const u8) []const std.Build.Module.Import {
+    const imports = b.allocator.alloc(std.Build.Module.Import, names.len) catch @panic("OOM");
+    next: for (names, imports) |name, *import| {
+        for (offered) |o| if (std.mem.eql(u8, o.name, name)) {
+            import.* = o;
+            continue :next;
+        };
+        std.debug.panic("{s} import \"{s}\", which is no module the build offers them", .{ who, name });
+    }
+    return imports;
+}
+
 /// Fail the configuration when a tests/<dir>/ holds `*_test.zig` files and no
 /// suite runs them: build.zig compiles a directory's tests only when it names
 /// the directory, so a directory it does not name is silently never compiled
@@ -2837,6 +2853,10 @@ pub fn build(b: *std.Build) void {
     // The "Valid specs:" message is derived from this array rather than spelled
     // out a second time. Three copies of one list is what let it rot: the array
     // named 25 of the 28 specs, the message 24, and no two agreed.
+    //
+    // And the engine adapter's own test directory's spec, which its build file
+    // names with the directory (`facts.tests`): valid in a build of that engine.
+    const engine_spec: ?[]const u8 = if (engine.facts.tests) |engine_tests| engine_tests.spec else null;
     const valid_specs = [_][]const u8{
         "all",
         "process",
@@ -2857,7 +2877,6 @@ pub fn build(b: *std.Build) void {
         "cookiestore",
         "runtime",
         "codegen",
-        "v8",
         "file",
         "fs",
         "fetch",
@@ -2875,7 +2894,7 @@ pub fn build(b: *std.Build) void {
         "wpt_runner",
     };
     if (spec_filter) |spec| {
-        var is_valid = false;
+        var is_valid = engine_spec != null and std.mem.eql(u8, spec, engine_spec.?);
         for (valid_specs) |valid_spec| {
             if (std.mem.eql(u8, spec, valid_spec)) {
                 is_valid = true;
@@ -2888,6 +2907,7 @@ pub fn build(b: *std.Build) void {
             for (valid_specs, 0..) |valid_spec, i| {
                 std.debug.print("{s} {s}", .{ if (i == 0) "" else ",", valid_spec });
             }
+            if (engine_spec) |engine_tests_spec| std.debug.print(", {s}", .{engine_tests_spec});
             std.debug.print("\n", .{});
             std.process.exit(1);
         }
@@ -4070,41 +4090,41 @@ pub fn build(b: *std.Build) void {
         };
     }
 
-    // V8 engine tests.
-    //
-    // Its own directory because it is the only one that needs the `v8` module
-    // itself. Test blocks living inside `src/runtime/engines/v8/*.zig` are NEVER
-    // run - `addTestFilesFromDir` only collects `tests/**/ *_test.zig` - so a test
-    // written next to the code it covers is a test that does not exist.
-    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
-        const v8_test_imports = [_]std.Build.Module.Import{
+    // The engine adapter's own tests (its build file's `facts.tests`): the one
+    // directory whose tests need the adapter's module itself. Test blocks
+    // living inside the adapter's sources are NEVER run - `addTestFilesFromDir`
+    // only collects `tests/**/ *_test.zig` - so a test written next to the code
+    // it covers is a test that does not exist. Another listed adapter's test
+    // directory is recorded as a suite (a build of that engine runs it), and
+    // nothing of it is built here.
+    for (engine_build.test_dirs) |dir| {
+        const own = if (engine.facts.tests) |engine_tests| std.mem.eql(u8, engine_tests.dir, dir) else false;
+        if (!own) recordSuiteDir(b, test_selection, dir);
+    }
+    if (engine.facts.tests) |engine_tests| if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, engine_tests.spec)) {
+        // What the adapter's tests may import, by name (`Tests.imports`
+        // takes them in its own order, which is part of their compile): the
+        // testing graph's modules, the adapter's own module and this build's
+        // snapshot (`test_snapshot_options`).
+        const offered_to_engine_tests = [_]std.Build.Module.Import{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "runtime", .module = testing_graph.runtime },
             .{ .name = engine.facts.module_name, .module = testing_graph.engine_impl },
             .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = testing_graph.engine },
-            // The generated interfaces, for a test host that makes platform
-            // objects - a Window for a realm (page_realm_operations_test.zig).
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            // The impl helpers a tests/v8 test reaches through an impl's
-            // re-export (Response.streams_js, for the Deferred lifetime test).
             .{ .name = "impls", .module = testing_graph.impls },
-            // DOM's hooks, for a test that fires a trusted event
-            // (dom.fire_event) - the one module already in this graph
-            // through impls, not a second binding of it.
             .{ .name = "dom", .module = testing_graph.dom },
-            // URLPattern's construction and matching, whose regexps run in
-            // the engine (urlpattern_*_test.zig), and URL for its corpus.
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
-            // This build's snapshot (`test_snapshot_options`).
             .{ .name = "test_snapshot", .module = test_snapshot_module },
         };
-        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
-            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
+        const engine_test_imports = importsByName(b, engine_tests.imports, &offered_to_engine_tests, "the engine adapter's tests (its build file's facts.tests.imports)");
+        addTestFilesFromDir(b, test_step, engine_tests.dir, target, engine_test_imports, true, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add the engine adapter's test files ({s}): {}\n", .{ engine_tests.dir, err });
         };
-    }
+    };
 
     // Codegen tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {

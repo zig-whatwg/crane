@@ -423,6 +423,34 @@ fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
 /// x86-64 Linux (lane linux1; the integrator's ruling, 2026-11-08).
 const tests: engine_build.Tests = .{
     .dir = "tests/v8",
+    .spec = "v8",
+    // What its test root imports, in the order the root build.zig added them
+    // while it wired the directory by hand (the order is part of the compile).
+    .imports = &.{
+        "clock",
+        "host",
+        "runtime",
+        // The adapter's own module (`facts.module_name`).
+        "v8",
+        "webidl",
+        "engine",
+        // The generated interfaces, for a test host that makes platform
+        // objects - a Window for a realm (page_realm_operations_test.zig).
+        "interfaces",
+        // The impl helpers a tests/v8 test reaches through an impl's
+        // re-export (Response.streams_js, for the Deferred lifetime test).
+        "impls",
+        // DOM's hooks, for a test that fires a trusted event
+        // (dom.fire_event) - the one module already in this graph through
+        // impls, not a second binding of it.
+        "dom",
+        // URLPattern's construction and matching, whose regexps run in the
+        // engine (urlpattern_*_test.zig), and URL for its corpus.
+        "urlpattern",
+        "url",
+        // This build's snapshot, which the snapshot tests restore.
+        "test_snapshot",
+    },
     .suite = .{ .batch = 1, .alone = &alone, .standalone_runtime = .process_start },
     .late_start = "*platform_start_once_test.*",
 };
