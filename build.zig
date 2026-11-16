@@ -2773,11 +2773,13 @@ pub fn build(b: *std.Build) void {
     ) orelse false;
 
     // Debug scope filter - only show debug output for specific scopes
-    // Example: -Ddebug-scope=v8,webidl will only show v8 and webidl debug output
+    // Example: -Ddebug-scope=webidl,dom will only show webidl and dom debug
+    // output. The engine adapter's own scope, first in the list, is its build
+    // file's (`facts.debug_scope`).
     const debug_scope = b.option(
         []const u8,
         "debug-scope",
-        "Filter debug output by scope (comma-separated: v8,webidl,dom,css,html,url,encoding,streams,fetch,runtime,gc,wpt,general)",
+        b.fmt("Filter debug output by scope (comma-separated: {s}webidl,dom,css,html,url,encoding,streams,fetch,runtime,gc,wpt,general)", .{if (engine.facts.debug_scope) |scope| b.fmt("{s},", .{scope}) else ""}),
     ) orelse "";
 
     // ========================================================================

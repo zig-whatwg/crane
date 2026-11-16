@@ -135,6 +135,10 @@ pub const Facts = struct {
     /// starts, made by this build (`addStartupData`); null when the engine
     /// needs nothing.
     startup: ?Startup = null,
+    /// The scope that -Ddebug-scope names to show the adapter's own debug
+    /// output (debug_options.debug_scope; its debug.zig reads it); null when
+    /// it prints none.
+    debug_scope: ?[]const u8 = null,
 };
 
 /// An engine's startup data (`Facts.startup`): a file this build makes that

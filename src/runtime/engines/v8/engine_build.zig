@@ -645,6 +645,8 @@ pub const facts: engine_build.Facts = .{
     .build_tests = &.{ "src/runtime/engines/v8/build/archives.zig", "src/runtime/engines/v8/build/snapshot_generator_mode.zig" },
     .tests = tests,
     .startup = .{ .test_import = "test_snapshot" },
+    // src/runtime/engines/v8/debug.zig: -Ddebug=true -Ddebug-scope=v8.
+    .debug_scope = "v8",
     // The adapter's Zig module. Its root re-exports protocol.zig, so in a V8
     // build the facade's `engine_impl` IS this module: the protocol functions
     // live beside the adapter files they call, and a file of another module
