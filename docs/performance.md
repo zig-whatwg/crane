@@ -368,7 +368,15 @@ against level where one Crane build is checked against another - the tip against
 and a drift control against the round it repeats: low with low and high with high, their
 geometric mean judged against the band, and a side with one level set against the level of the
 other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
-a row: read it with care, a side that truly moved by the whole gap looks the same). Every published ratio - Crane against a browser,
+a row: read it with care, a side that truly moved by the whole gap looks the same). The two
+levels of the rows that read ArrayBuffers - `fetch.loopback-stream`, `-gzip`, `-br` - have another
+cause, and there the HIGH level is the bytes Crane holds: V8's default in-sandbox allocator gives
+free 1 MiB chunks up with `MADV_FREE_REUSABLE` and hands them out again without `MADV_FREE_REUSE`,
+and macOS leaves such pages out of the footprint though they are written again (lane mem2,
+2026-11-16: `fetch.loopback-gzip` 100-103 MB in 14 launches of 20 and 139-141 MB in 6, the same
+119-121 MB of dirty pages in both by `vmmap`; turning libmalloc's deferred reclamation off does
+not join them; lesson testing-two-footprint-levels-with-equal-dirty-bytes-are-one-level-
+undercounted.md). Every published ratio - Crane against a browser,
 ReleaseFast against ReleaseSafe, a round against the first - stays the medians'. Before the tip's rows are set beside the browsers' last ones, the base must be within
 noise of its own earlier rows: compare the window's `crane_base` rows with the earlier round's
 Crane rows as the drift control above does, with both geometric means within 5% of 100%.
