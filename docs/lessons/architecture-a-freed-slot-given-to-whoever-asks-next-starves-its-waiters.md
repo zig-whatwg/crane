@@ -1,0 +1,19 @@
+# Architecture: A freed slot given to whoever asks next starves its waiters
+
+**Date**: 2026-11-15
+**Lesson**: A capped resource whose waiters are polled must record who waits and owe each freed unit to the oldest of them. If a newcomer may take whatever is free at the moment it asks, a client that starts its next request from the previous one's completion never lets a waiter in.
+
+**Why**: The Browser's six-connections-per-host gate (src/fetch/network/network_context.zig, `ConnectionSlots`) kept only the slots that were taken. A transfer that found none free waited in its scheduler's list, and `pump` asked again for each waiter at the start of every turn. But a transfer's end frees its slot inside `pump`, and the script that end runs (a promise reaction, then the page's next `fetch()`) starts the next transfer before the next `pump`. That transfer asked the gate, found a slot free, and took it. So six chains of requests passed the six slots among themselves, and a seventh transfer started only when the chains stopped.
+
+**What Happened**: html/cross-origin-embedder-policy/credentialless/fetch.https.window.js timed out (13 -> 1) once in about every third 32-runner production sweep, and never alone, on retry or in the slower bug-finding build. Its opener runs 24 `receive()` loops through common/dispatcher/dispatcher.js's `limiter(6)`; its two popups make their own requests to the same host. While a poll took under about 18 ms the opener kept fewer than six requests in flight (24 * t / (t + 55) < 6, with dispatcher.js's 55 ms average pause between polls) and the popups got connections. Under a sweep the server answered slower than that, the limiter always had a poll ready, and the popups' requests never started: no executor ran and all twelve subtests timed out.
+Two things nearly hid it:
+1. The first guess was the server's listen queue (dropped SYNs cost 1 s, 3 s, 7 s). server1's counters ruled it out in one command: `ss -ltn` showed a backlog of 2,000 and `nstat` showed `TcpExtListenOverflows` 0.
+2. The first page-level replica passed on the unfixed runner. It awaited each `send()` before `receive()`, so only a few polls ran at the start and the popups loaded before the six slots filled. The upstream file does not await `send()`. With that one line as upstream has it, the replica timed out 5 of 5 on the unfixed runner and passed 13 of 13 on the fix.
+
+**Fix**:
+1. `ConnectionSlots` keeps the transfers that were refused, oldest first, across the Browser's agents. A transfer takes a slot only when the destination has more free slots than waiters older than it. A waiter keeps its place until it takes a slot or lets go (a cancelled transfer releases both).
+2. "More free slots than older waiters", not "it is the oldest": the waiters are polled, each by its own agent's scheduler, so an agent busy in a long task holds back only the slots its own waiters are owed.
+3. The design is the browsers'. Chromium hands a released socket to its group's next pending request at once (net/socket/transport_client_socket_pool.cc: ReleaseSocket, OnAvailableSocketSlot, ProcessPendingRequest). Gecko dispatches from a pending queue kept in arrival order within a priority (netwerk/protocol/http/PendingTransactionQueue.cpp).
+4. Tests that assert order, not time: tests/fetch/network_scheduler_test.zig counts the transfers given a slot while an older waiter waited (60 before, 0 after); crane/flk1-connection-slot-order.html counts the chained requests that ended before the waiting one (60 before, under 18 after); crane/flk1-dispatcher-popups-slow-server.window.js is the upstream file's shape with every poll answered 100 ms late.
+
+**Takeaway**: **A wait queue that is only polled is not a queue: the gate itself must know who waits, and owe each freed unit to the oldest. To reproduce a starvation, copy the original's concurrency exactly - one extra `await` in the replica removed the load that caused it.**
