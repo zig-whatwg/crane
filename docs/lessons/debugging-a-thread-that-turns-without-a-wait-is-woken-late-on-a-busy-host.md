@@ -1,0 +1,27 @@
+# Debugging: A thread that turns without a wait is woken late on a busy host
+
+**Date**: 2026-11-16
+**Lesson**: A loop that polls instead of waiting, even for under a millisecond, pays for it at its NEXT wake: a busy host's scheduler runs last the thread that has just used the CPU. A test that compares two threads' wake times then fails on the thread that burned, and looks like a flake of the host. Measure the wait itself, and put a control with no engine beside it.
+
+**Why**: Measured, on Linux 7.0 (server1): of two threads woken the same way on the same loaded CPUs, the one that had just used about a millisecond of CPU ran 7 ms after its wake, the one that had only waited ran after 1 ms, and when neither had used the CPU both ran within microseconds. The likely mechanism, not checked in the kernel's source, is the fair scheduler's own rule (EEVDF): a thread that has just run is ahead of its share and is not eligible again until the others have caught up, and at nice 10 beside nice-0 work a millisecond of running counts as about nine. With nothing else runnable the difference does not show. So the cost of a busy turn appears only under load, and only at the wake AFTER it.
+
+**What Happened**: tests/html/rep2_window_wake_test.zig "a worker's reply reaches an idle window at once" compared the leg back to the window with the leg to the worker. It failed in four lanes' Linux gates in one day (to the worker 0.375 ms, back 1.6 to 1.75 ms), and passed alone every time. Lane flk1 had fixed its sibling the day before by showing that a millisecond bound measures the host's scheduler, so "the host again" was the ready answer. It was half of it.
+The window's event loop counted the time to its next timer in whole milliseconds, rounded down. A timer due in under a millisecond read as "nothing to wait for", and the loop turned without a wait until it was due. The test's page starts each round trip with a 3 ms timer: two waits of a millisecond, then 0.9 ms of turns - 510 turns and 0.85 ms of the window thread's CPU before every ping. A worker's loop had the same count.
+Lane flk2 instrumented the task sink's wait (when each post was made, when the wait it ended returned, the waiting thread's own CPU time) and ran, on server1 at nice 10 on four CPUs beside four nice-0 busy loops:
+- the committed page: the window's wait returned 7.9 ms (median) after the worker's post, the worker's 0.85 ms after the window's; the test's legs read the same (8 and 1 ms); 33 first runs of 50 failed;
+- the same page with the loop waiting to the timer's exact deadline: 0.02 to 0.5 ms;
+- a control with no Browser and no engine - two plain threads passing a task over two sinks: the thread that turned without a wait before each round had its wait returned 7.0 ms after the post, the other 1.0 ms; when the first waited to the exact moment instead, 1 to 11 microseconds.
+Without the load every wake took 2 to 22 microseconds in every shape.
+Three things that cost time on the way:
+1. The first red test used ten 20 ms timers and PASSED on main's loop on Linux. A 1 ms wait there takes about 1.055 ms, so nineteen of them pass a 20 ms deadline and nothing is left to turn through; after two of them 0.89 ms of a 3 ms timer is left. On macOS a 1 ms wait takes about 1.25 ms and the same test was red one run in three. Whether a rounding bug shows depends on the phase between the wait's real length and the deadline: compute what is left before choosing the test's numbers (forty 3 ms timers: 16,903 polls on Linux and 3,300 on macOS against a bound of 800).
+2. With the turns gone, the old comparison still failed 1 run of 3 at that load, on the scheduler's tails alone. Fixing the loop did not make the millisecond comparison sound: the test had two causes, and each needed its own answer.
+3. A failing run costs three (the launcher re-runs it alone twice), and a test at nice 10 beside nice-0 loops gets a tenth of a CPU: the "x50 before" series took 19 minutes, not 4. Budget a load series from the failing case.
+
+**Fix**:
+1. Instrument the wait, not the test: the post's time, the wait's return, the waiting thread's CPU since its last wake (CLOCK_THREAD_CPUTIME_ID). If the leg IS the kernel's wake latency, the question becomes why the kernel is slow for this thread - compare its CPU use with the other thread's.
+2. Put a control beside it that has none of the product in it (two threads, two sinks), in two variants that differ only in the suspected cause. It decides between "our loop" and "the host" in one run.
+3. Fix the loop: wait to the timer's exact deadline in nanoseconds (src/browser/event_loop.zig step 4, `untilNextTimerNs`; src/html/worker_event_loop.zig `waitBound`), as browsers' loops do (Chromium's MessagePumpDefault::Run waits on its event for the next delayed task's exact remaining delay).
+4. Pin it with a count, not a time: the timer manager's test probe counts polls; a waiting loop makes a handful for each timer, a turning one hundreds.
+5. Rewrite the comparison test to what the loop decides: every reply handled, none waiting for a timer placed ten seconds away, and the loop waited on its sink (a test-build counter in TaskSink).
+
+**Takeaway**: **A busy turn is paid for at the next wake, and only on a loaded host: when one thread of a pair wakes late under load, compare what each did BEFORE it slept. Prove it with a control that has no product code, pin the fix with a count, and do not let "the host's scheduler" - true of the test's bound - hide a cause in the loop.**

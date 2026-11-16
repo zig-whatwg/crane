@@ -29,6 +29,7 @@
 //! instructions and never across a task's `run` or `drop`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
 const log = std.log.scoped(.task_sink);
@@ -41,6 +42,20 @@ pub const CrossThreadTask = struct {
     drop: *const fn (data: ?*anyopaque) void,
     data: ?*anyopaque,
 };
+
+/// What a test build counts, for the tests that pin how a loop waits
+/// (tests/html/rep2_window_wake_test.zig): nothing outside one, as the
+/// timer manager's (native_timer.zig Probe).
+pub const Probe = if (builtin.is_test) struct {
+    /// The waits of `waitForWork` that blocked: no task was posted and the
+    /// sink was open when the loop asked. Written by the loop's thread only.
+    waits: u64 = 0,
+} else struct {};
+
+comptime {
+    // No byte of a sink outside a test build.
+    if (!builtin.is_test) std.debug.assert(@sizeOf(Probe) == 0);
+}
 
 pub const TaskSink = struct {
     /// Thread-safe: a task's data is often freed on another thread than the
@@ -59,6 +74,7 @@ pub const TaskSink = struct {
     /// owner's loop this is. A loop with a source left is not idle: a worker
     /// that is running may post at any time (`hasPendingWork`).
     sources: std.atomic.Value(u32) = .init(0),
+    probe: Probe = .{},
 
     /// A new sink, its one reference the caller's (the loop's).
     pub fn create(allocator: Allocator) Allocator.Error!*TaskSink {
@@ -157,6 +173,7 @@ pub const TaskSink = struct {
         // the look has bumped it, and the wait below returns at once.
         const seen = self.wake.load(.acquire);
         if (self.hasPosted() or self.isClosed()) return;
+        if (builtin.is_test) self.probe.waits += 1;
         const timeout: std.Io.Timeout = if (timeout_ns) |ns| .{ .duration = .{
             .raw = .fromNanoseconds(ns),
             .clock = .awake,

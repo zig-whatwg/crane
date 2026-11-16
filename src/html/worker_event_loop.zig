@@ -221,7 +221,14 @@ pub const WorkerEventLoop = struct {
         // A tree still waiting for its teardown: the next turn frees more.
         if (self.deferred_teardown) |queue| if (!queue.isEmpty()) return 0;
         var bound: ?u64 = null;
-        if (self.timers.getNextTimerDeadline()) |ms| bound = ms *| std.time.ns_per_ms;
+        // To the nanosecond: whole milliseconds, rounded down, read a timer
+        // due in under one as "do not wait", and the loop then turned
+        // without a wait until it was due (the window's loop did the same:
+        // src/browser/event_loop.zig step 4).
+        if (self.timers.nextDeadlineNs()) |deadline| {
+            const now = self.timers.nowNs();
+            bound = if (deadline > now) @intCast(@min(deadline - now, std.math.maxInt(u64))) else 0;
+        }
         if (self.agent) |agent| if (engine.nextEngineTaskDelay(agent)) |ns| {
             bound = @min(bound orelse ns, ns);
         };
