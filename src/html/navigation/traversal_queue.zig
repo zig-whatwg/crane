@@ -35,6 +35,11 @@
 //!   nested item never waits and never runs script (lane nav2 E: "finalize a
 //!   same-document navigation" applies its push/replace step inline,
 //!   apply_history_step.zig says why); it is finished when it returns.
+//! - A task that reads what the queue's steps write, and that the spec has
+//!   run after them, first lets the queue catch up (`catchUp`): the steps
+//!   appended before now run, as far as they go without waiting. The spec's
+//!   queue never waits for the event loop to start an item; Crane's service
+//!   task does, behind every task queued before it.
 //! - The service task and every waiter carry the traversable's ID - and a
 //!   waiter its item's token - never a pointer to the queue or its context:
 //!   both are looked up again (`Navigables.byId`), so a traversable freed
@@ -287,6 +292,62 @@ pub const TraversalQueue = struct {
             // It waits: the synchronous navigation steps it lets through jump
             // it now, from this task (step 14.1).
             self.jumpAhead(item);
+        }
+    }
+
+    /// Run now the steps of `traversable_id`'s queue that were appended
+    /// before this call, as far as they go without waiting: each queued
+    /// item in order until one waits, the running item's proceed steps once
+    /// its waits have ended, and the synchronous navigation steps a waiting
+    /// traversal lets through. Nothing runs when the queue asked for no
+    /// service task - it is empty, or its running item still waits - or
+    /// when the call comes from inside one of the queue's own steps.
+    ///
+    /// For a task that reads what these steps write and that the spec has
+    /// run after them. HTML starts the session history traversal queue "in
+    /// parallel" ("start a new session history traversal parallel queue"
+    /// step 2): its steps begin when they are appended and wait for an
+    /// event loop only where they queue a task on one. Crane runs them from
+    /// a service task of the traversable's loop, so a task queued on that
+    /// loop before the service task - or between two of an item's service
+    /// tasks - runs first, and would read the state from before steps that
+    /// the spec has finished by then. The caller is such a task: the one
+    /// "attempt to populate the history entry's document" step 5 queues for
+    /// a navigation's response, whose step 5.1 asks whether the navigation
+    /// is still its navigable's ongoing navigation, which "apply the
+    /// history step" step 8.4 sets to "traversal"
+    /// (apply_history_step.catchUp).
+    ///
+    /// The caught-up steps are the ones the service task would have run,
+    /// in the same order and from a task of the same loop; the service
+    /// tasks already queued then find what is left, or nothing. A step may
+    /// run script (a traversal's beforeunload and navigate events, step 5)
+    /// and end the traversable: it is looked up again after each one. An
+    /// item appended during the call waits for a service task of its own.
+    ///
+    /// Not a way to run other work from a task: it models one fact - the
+    /// parallel queue is never behind the loop's tasks - for a caller that
+    /// is itself a task of the loop, with none of the queue's steps on the
+    /// stack. From inside a step (an item's run or proceed steps, or nested
+    /// synchronous navigation steps) it does nothing: that step's service
+    /// goes on when it returns, and a queue never re-enters itself.
+    pub fn catchUp(navigables: *Navigables, traversable_id: u64) void {
+        const first = queueOf(navigables, traversable_id) orelse return;
+        // What is appended from here on is not caught up.
+        const limit = first.next_token;
+        while (true) {
+            const self = queueOf(navigables, traversable_id) orelse return;
+            // No service task is asked for: nothing can run now.
+            if (!self.service_queued) return;
+            // No re-entrancy: one of the queue's steps is on the stack.
+            if (self.running_nested_apply) return;
+            if (self.running) |running| {
+                if (running.in_run) return;
+            } else {
+                if (self.items.items.len == 0) return;
+                if (self.items.items[0].token >= limit) return;
+            }
+            service(navigables, traversable_id);
         }
     }
 
