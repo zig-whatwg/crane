@@ -44,6 +44,10 @@ pub const BrowserConfig = @import("Browser.zig").BrowserConfig;
 pub const process = @import("process.zig");
 pub const Process = process.Process;
 
+/// When the allocator's free memory goes back to the OS: the idle rule and
+/// the process's hold-off between releases.
+pub const memory_release = @import("memory_release.zig");
+
 pub const Context = @import("Context.zig").Context;
 pub const back_forward_cache = @import("back_forward_cache.zig");
 pub const ContextType = @import("Context.zig").ContextType;
@@ -58,5 +62,6 @@ test {
     _ = @import("process.zig");
     _ = @import("Context.zig");
     _ = @import("rendering.zig");
+    _ = @import("memory_release.zig");
     _ = @import("storage/Storage.zig");
 }
