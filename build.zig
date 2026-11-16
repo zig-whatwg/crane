@@ -1021,22 +1021,6 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
     select.suite_dirs.append(b.allocator, dir) catch @panic("OOM");
 }
 
-/// The imports `names` asks for, in its order, each the module of that name
-/// in `offered`: an adapter's build file names what its compile imports, and
-/// the order is part of that compile. A name nothing offers fails the
-/// configure, naming `who` asked for it.
-fn importsByName(b: *std.Build, names: []const []const u8, offered: []const std.Build.Module.Import, who: []const u8) []const std.Build.Module.Import {
-    const imports = b.allocator.alloc(std.Build.Module.Import, names.len) catch @panic("OOM");
-    next: for (names, imports) |name, *import| {
-        for (offered) |o| if (std.mem.eql(u8, o.name, name)) {
-            import.* = o;
-            continue :next;
-        };
-        std.debug.panic("{s} import \"{s}\", which is no module the build offers them", .{ who, name });
-    }
-    return imports;
-}
-
 /// Fail the configuration when a tests/<dir>/ holds `*_test.zig` files and no
 /// suite runs them: build.zig compiles a directory's tests only when it names
 /// the directory, so a directory it does not name is silently never compiled
@@ -3338,14 +3322,14 @@ pub fn build(b: *std.Build) void {
         b.top_level_steps.get("test-launcher").?.step.dependOn(&run_poisoning_tests.step);
     }
 
-    // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
-    // made by a cached run of the snapshot generator (filled in where the
-    // generator is defined, below) and passed by path, so the tests depend on
-    // it. Never a file found from the current directory: a stale
-    // zig-out/bin/whatwg_snapshot.bin there made three of them fail and,
-    // where there was none, all of them skip (feature queue, 2026-11-01).
-    const test_snapshot_options = b.addOptions();
-    const test_snapshot_module = test_snapshot_options.createModule();
+    // The engine's startup data for its own tests (its build file's
+    // `facts.startup`): THIS build's, made by the adapter where it makes the
+    // rest of its startup data (below, `addStartupData`) and passed by path,
+    // so the tests depend on it. Never a file found from the current
+    // directory: a stale one there made three snapshot tests fail and, where
+    // there was none, all of them skip (feature queue, 2026-11-01).
+    const engine_startup_tests = engine.startupTestOptions(b);
+    const engine_startup_test_module: ?*std.Build.Module = if (engine_startup_tests) |startup_tests| startup_tests.createModule() else null;
 
     // What -Dtarget can build without running anything there: the artifacts
     // that link no V8 are built (libwhatwg, the image codecs, the platform
@@ -4105,8 +4089,9 @@ pub fn build(b: *std.Build) void {
         // What the adapter's tests may import, by name (`Tests.imports`
         // takes them in its own order, which is part of their compile): the
         // testing graph's modules, the adapter's own module and this build's
-        // snapshot (`test_snapshot_options`).
-        const offered_to_engine_tests = [_]std.Build.Module.Import{
+        // startup data for tests (`engine_startup_tests`).
+        var offered_to_engine_tests: std.ArrayList(std.Build.Module.Import) = .empty;
+        offered_to_engine_tests.appendSlice(b.allocator, &.{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "runtime", .module = testing_graph.runtime },
@@ -4118,9 +4103,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = testing_graph.dom },
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
-            .{ .name = "test_snapshot", .module = test_snapshot_module },
-        };
-        const engine_test_imports = importsByName(b, engine_tests.imports, &offered_to_engine_tests, "the engine adapter's tests (its build file's facts.tests.imports)");
+        }) catch @panic("OOM");
+        if (engine.facts.startup) |startup| offered_to_engine_tests.append(b.allocator, .{ .name = startup.test_import, .module = engine_startup_test_module.? }) catch @panic("OOM");
+        const engine_test_imports = engine_build.importsByName(b, engine_tests.imports, offered_to_engine_tests.items, "the engine adapter's tests (its build file's facts.tests.imports)");
         addTestFilesFromDir(b, test_step, engine_tests.dir, target, engine_test_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add the engine adapter's test files ({s}): {}\n", .{ engine_tests.dir, err });
         };
@@ -4801,59 +4786,8 @@ pub fn build(b: *std.Build) void {
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
     // ========================================================================
-    // SNAPSHOT GENERATOR (must be defined before REPL and WPT runner)
+    // THE ENGINE'S STARTUP DATA (must be defined before REPL and WPT runner)
     // ========================================================================
-
-    // The generator's mode is fixed - Debug, whatever -Doptimize says
-    // (tools/snapshot_generator_mode.zig): the blob it writes is a function
-    // of the source, not of the optimizer, and every artifact restores it
-    // whatever its own mode. Built with -Doptimize, a release build paid a
-    // second optimized compile of Crane before its snapshot could run.
-    // -Dsnapshot-generator-optimize builds another for a diagnosis.
-    const snapshot_generator_mode = @import("tools/snapshot_generator_mode.zig");
-    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(b.option(
-        std.builtin.OptimizeMode,
-        "snapshot-generator-optimize",
-        "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
-    ));
-
-    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
-    const snapshot_gen_exe = b.addExecutable(.{
-        .name = "snapshot_generator",
-        .root_module = b.createModule(.{
-            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
-            // so the generator lives inside the V8 adapter.
-            .root_source_file = b.path("src/runtime/engines/v8/snapshot_generator.zig"),
-            // Build-time tool: must run on the HOST. It is executed via
-            // `b.addRunArtifact` below, so building it for `target` means
-            // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
-            // tries to run it here. The same fix landed for codegen, the IDL
-            // scanner and the three cldr tools; this one was missed, and it would
-            // have been the next failure after the V8 blocker is lifted.
-            .target = b.graph.host,
-            .optimize = snapshot_generator_optimize,
-            .imports = &.{
-                .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = engine.facts.module_name, .module = engine_impl_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
-            },
-        }),
-    });
-
-    // The engine, linked as the test executables link it.
-    tests_engine_link.into(b, snapshot_gen_exe.root_module);
-
-    // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
-    // Debug-built C libraries links the full UBSan runtime they call into.
-    if (snapshot_generator_mode.sanitizeC(snapshot_generator_optimize)) |sanitizer| snapshot_gen_exe.root_module.sanitize_c = sanitizer;
-
-    // Add run step for Snapshot Generator (manual use)
-    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
-    run_snapshot_gen.addPassthruArgs();
-
-    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
-    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
 
     // tools/snapshot_generator_mode.zig: the generator's fixed mode, std-only.
     const snapshot_generator_mode_tests = b.addTest(.{ .root_module = b.createModule(.{
@@ -4863,38 +4797,24 @@ pub fn build(b: *std.Build) void {
     }) });
     test_step.dependOn(&addSuiteRun(b, launch, snapshot_generator_mode_tests, "tools-snapshot_generator_mode", null).step);
 
-    // ========================================================================
-    // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
-    // ========================================================================
-
-    // The generator writes into the cache (an output file argument, so the
-    // run is cached on the generator's hash) and the install step copies the
-    // blob to the install prefix's bin/ - zig-out/bin/whatwg_snapshot.bin,
-    // where the runner, the console and gc_bench look for it - making that
-    // directory. The generator was handed "zig-out/bin/whatwg_snapshot.bin"
-    // to write itself, and a fresh checkout has no zig-out/bin: `zig build
-    // snapshot` failed with FileNotFound there (server1's first native run,
-    // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
-    // pool's hosts.
-    const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
-
-    // Create a build step for manual snapshot generation
-    const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
-    snapshot_step.dependOn(&install_snapshot.step);
-
-    // The tests' snapshot: the same generator, into the cache (an output
-    // file argument, so the run is cached on the generator's hash), passed
-    // to tests/v8 by path (`test_snapshot_options` above).
-    const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    // Under -Dsanitize-thread the generator shares instrumented modules with
-    // the tests: it runs with their suppressions (useTsanSuppressions).
-    if (sanitize_thread_option) {
-        useTsanSuppressions(b, gen_test_snapshot);
-        useTsanSuppressions(b, gen_snapshot);
-        useTsanSuppressions(b, run_snapshot_gen);
-    }
-    test_snapshot_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
+    // What a program that runs the engine reads beside itself when it starts
+    // - the adapter's programs and steps make it (its build file's
+    // `addStartupData`) - and this build's copy for its tests. The install
+    // every engine-running program below waits for; null when the engine
+    // has none. Its programs share the test executables' modules, so they
+    // link the engine as the tests do, and under -Dsanitize-thread run with
+    // the tests' suppressions (useTsanSuppressions).
+    const engine_startup_install: ?*std.Build.Step = if (engine_startup_tests) |startup_tests| engine.addStartupData(b, .{
+        .modules = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = engine.facts.module_name, .module = engine_impl_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "namespaces", .module = namespaces_mod },
+        },
+        .link = tests_engine_link,
+        .test_options = startup_tests,
+        .prepare_run = if (sanitize_thread_option) &useTsanSuppressions else null,
+    }) else null;
 
     // ========================================================================
     // REPL TOOL
@@ -4965,7 +4885,7 @@ pub fn build(b: *std.Build) void {
     // waits for the generator, its compile does not, so the console's
     // compile and the generator's build and run go side by side.
     const install_repl = b.addInstallArtifact(repl_exe, .{});
-    install_repl.step.dependOn(&install_snapshot.step);
+    if (engine_startup_install) |startup_install| install_repl.step.dependOn(startup_install);
     b.getInstallStep().dependOn(&install_repl.step);
     // A release console names its build beside itself (zig-out/bin/
     // repl.modes, build_mode.zig `writeModesFile`): its modes and the CPU
@@ -5122,7 +5042,7 @@ pub fn build(b: *std.Build) void {
     // sanitizer (the shared graph's: -Doptimize's mode; see addWptRunner).
     if (gc_bench_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
     if (shared_c.compilesFull()) gc_bench_exe.bundle_ubsan_rt = true;
-    gc_bench_exe.step.dependOn(&install_snapshot.step);
+    if (engine_startup_install) |startup_install| gc_bench_exe.step.dependOn(startup_install);
 
     b.installArtifact(gc_bench_exe);
 
@@ -5276,7 +5196,7 @@ pub fn build(b: *std.Build) void {
     const wpt_runner_exe = addWptRunner(b, .production, production_build, production_graph, production_c, .{
         .target = target,
         .poisoning = poisoning_module,
-        .install_snapshot = &install_snapshot.step,
+        .engine_startup = engine_startup_install,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
         .engine = &engine,
@@ -5297,7 +5217,7 @@ pub fn build(b: *std.Build) void {
     const bug_finding_runner = addWptRunner(b, .bug_finding, bug_finding_build, bug_finding_graph, bug_finding_c, .{
         .target = target,
         .poisoning = poisoning_module,
-        .install_snapshot = &install_snapshot.step,
+        .engine_startup = engine_startup_install,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
         .engine = &engine,
@@ -6961,8 +6881,9 @@ const WptRunnerContext = struct {
     target: std.Build.ResolvedTarget,
     /// runner_allocator.zig's poisoning front (tests/test_runner/poisoning.zig).
     poisoning: *std.Build.Module,
-    /// The snapshot's install: the runner reads zig-out/bin/whatwg_snapshot.bin.
-    install_snapshot: *std.Build.Step,
+    /// The install of the engine's startup data, which the runner reads
+    /// beside itself (`Engine.addStartupData`); null when it has none.
+    engine_startup: ?*std.Build.Step,
     /// -Dwpt-debug.
     wpt_debug: bool,
     check_target: *std.Build.Step,
@@ -7048,8 +6969,8 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     // libraries are `.trap`, which calls no handler, so it links no runtime -
     // as the release console links none (build_mode.zig needsUbsanRuntimeFor).
     if (c_libraries.compilesFull()) exe.bundle_ubsan_rt = true;
-    // The runner reads the snapshot beside it.
-    exe.step.dependOn(ctx.install_snapshot);
+    // The runner reads the engine's startup data beside it.
+    if (ctx.engine_startup) |startup_install| exe.step.dependOn(startup_install);
     const install = b.addInstallArtifact(exe, .{});
     b.getInstallStep().dependOn(&install.step);
 

@@ -48,6 +48,8 @@ const std = @import("std");
 const engine_build = @import("../../engine_build_protocol.zig");
 /// Which archives -Dv8, -Dv8-build and the target select.
 const archives = @import("build/archives.zig");
+/// The snapshot generator's fixed mode (`addStartupData`).
+const snapshot_generator_mode = @import("../../../../tools/snapshot_generator_mode.zig");
 
 /// What the command line gave the adapter's options.
 pub const Options = struct {
@@ -400,6 +402,100 @@ fn addArchives(module: *std.Build.Module, resolved: *const Resolved) void {
     for (resolved.system_libs) |library| module.linkSystemLibrary(library, .{});
 }
 
+/// The adapter's V8-facing generator of Crane's heap snapshot, relative to
+/// the build root.
+const snapshot_generator_source = "src/runtime/engines/v8/snapshot_generator.zig";
+
+/// V8's startup data: Crane's heap snapshot, `whatwg_snapshot.bin`, which
+/// every program that runs V8 restores its isolates from (snapshot_loader.zig)
+/// - written by this build's snapshot generator (snapshot_generator.zig, an
+/// executable of its own) and installed to the install prefix's bin/, where
+/// the runner, the console and gc_bench read it beside themselves; and the
+/// same blob for tests/v8, by path. Steps `snapshot-generator` (the generator
+/// run by hand: -- passes its output path) and `snapshot` (the install).
+///
+/// `options`: TRANSITIONAL (this batch's next commit) - the generator's mode
+/// is declared here, at the place the root build.zig declared it, and moves
+/// to `declareOptions` with the next commit.
+pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.StartupRequest) ?*std.Build.Step {
+    _ = options;
+    // The generator's mode is fixed - Debug, whatever -Doptimize says
+    // (tools/snapshot_generator_mode.zig): the blob it writes is a function
+    // of the source, not of the optimizer, and every artifact restores it
+    // whatever its own mode. Built with -Doptimize, a release build paid a
+    // second optimized compile of Crane before its snapshot could run.
+    // -Dsnapshot-generator-optimize builds another for a diagnosis.
+    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(b.option(
+        std.builtin.OptimizeMode,
+        "snapshot-generator-optimize",
+        "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
+    ));
+
+    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
+    const snapshot_gen_exe = b.addExecutable(.{
+        .name = "snapshot_generator",
+        .root_module = b.createModule(.{
+            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
+            // so the generator lives inside the V8 adapter.
+            .root_source_file = b.path(snapshot_generator_source),
+            // Build-time tool: must run on the HOST. It is executed via
+            // `b.addRunArtifact` below, so building it for `target` means
+            // a build for an aarch64-ios target produces a phone binary and then
+            // tries to run it here. The same fix landed for codegen, the IDL
+            // scanner and the three cldr tools; this one was missed, and it would
+            // have been the next failure after the V8 blocker is lifted.
+            .target = b.graph.host,
+            .optimize = snapshot_generator_optimize,
+            .imports = engine_build.importsByName(b, &.{ "runtime", facts.module_name, "interfaces", "namespaces" }, request.modules, "the V8 snapshot generator's module (engine_build.zig addStartupData)"),
+        }),
+    });
+
+    // The engine, linked as the test executables link it.
+    request.link.into(b, snapshot_gen_exe.root_module);
+
+    // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
+    // Debug-built C libraries links the full UBSan runtime they call into.
+    if (snapshot_generator_mode.sanitizeC(snapshot_generator_optimize)) |sanitizer| snapshot_gen_exe.root_module.sanitize_c = sanitizer;
+
+    // Add run step for Snapshot Generator (manual use)
+    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
+    run_snapshot_gen.addPassthruArgs();
+
+    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
+    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
+
+    // The generator writes into the cache (an output file argument, so the
+    // run is cached on the generator's hash) and the install step copies the
+    // blob to the install prefix's bin/ - zig-out/bin/whatwg_snapshot.bin,
+    // where the runner, the console and gc_bench look for it - making that
+    // directory. The generator was handed "zig-out/bin/whatwg_snapshot.bin"
+    // to write itself, and a fresh checkout has no zig-out/bin: the snapshot
+    // step failed with FileNotFound there (server1's first native run,
+    // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
+    // pool's hosts.
+    const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
+
+    // Create a build step for manual snapshot generation
+    const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
+    snapshot_step.dependOn(&install_snapshot.step);
+
+    // The tests' snapshot: the same generator, into the cache (an output
+    // file argument, so the run is cached on the generator's hash), passed
+    // to tests/v8 by path (`request.test_options`, which tests/v8 imports as
+    // `facts.startup.test_import`).
+    const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    // Under -Dsanitize-thread the generator shares instrumented modules with
+    // the tests: it runs with their suppressions (`request.prepare_run`).
+    if (request.prepare_run) |prepare_run| {
+        prepare_run(b, gen_test_snapshot);
+        prepare_run(b, gen_snapshot);
+        prepare_run(b, run_snapshot_gen);
+    }
+    request.test_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
+    return &install_snapshot.step;
+}
+
 /// The adapter's own tests: tests/v8, the one directory whose tests import
 /// the adapter's module itself (`tests` in `facts`).
 ///
@@ -548,6 +644,7 @@ pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
     .build_tests = &.{"src/runtime/engines/v8/build/archives.zig"},
     .tests = tests,
+    .startup = .{ .test_import = "test_snapshot" },
     // The adapter's Zig module. Its root re-exports protocol.zig, so in a V8
     // build the facade's `engine_impl` IS this module: the protocol functions
     // live beside the adapter files they call, and a file of another module
