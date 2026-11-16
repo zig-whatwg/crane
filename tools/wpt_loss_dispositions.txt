@@ -2213,3 +2213,11 @@ why = A bug, owned and fixed by lane nr1; the file's second flip (first: generat
 commit = 88abb01067d
 test = tests/html/nr1_back_stops_navigation_browser_test.zig
 repro = before 11/160; after 0/160
+
+[fetch/metadata/generated/svg-image.https.sub.html]
+generation = 226
+kind = flake
+why = Not a code change: generation 225's sweep read 19 because two crossorigin subtests ("sec-fetch-mode attributes: crossorigin", "... crossorigin=use-credentials") pass only under 32-runner sweep load; the file alone reads 17 on every runner (lane flk1 x10, lane quick2 x10, and the pairs below), as generation 224 did. Its first disposition; the load-dependent pass is queued as a bug (feature-queue.md, from generation 225's build compare). Isolated pairs, the file alone, server1 2026-11-16 about 3:09 AM ET: BASE ~/crane-frozen/main-86a8281a83 (generation 225's production runner), TIP ~/crane-frozen/main-4d4cedb50d (generation 226's).
+pair.1 = base 17/23; tip 17/23
+pair.2 = base 17/23; tip 17/23
+pair.3 = base 17/23; tip 17/23
