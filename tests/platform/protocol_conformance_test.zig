@@ -535,3 +535,102 @@ test "every built-in platform answers layout as headless does: no renderer, no b
     try testing.expect(!platform.adapter.isRendered(browser, document, node));
     try testing.expect((try platform.adapter.renderedText(browser, document, node, allocator)) == null);
 }
+
+// ---------------------------------------------------------------------------
+// The linux platform on glibc: malloc gives freed memory back (lane mem2)
+// ---------------------------------------------------------------------------
+//
+// glibc's malloc starts with two thresholds of 128 KiB - a block from the
+// mmap threshold up is its own mapping, unmapped when freed, and free memory
+// at the top of a heap goes back to the system once it passes the trim
+// threshold - and MOVES both: freeing a mapped block larger than the mmap
+// threshold (and at most 32 MiB) sets the mmap threshold to that block's size
+// and the trim threshold to twice it (glibc 2.43 malloc/malloc.c, free(),
+// "See if the dynamic brk/mmap threshold needs adjusting"). After one freed
+// 8 MiB buffer, nothing below 8 MiB is unmapped at its free and up to 16 MiB
+// of free memory stays resident at each heap's top. The linux platform's
+// start gives malloc fixed thresholds (adapters/linux/malloc_policy.zig),
+// which also ends the moving.
+//
+// Both tests free an 8 MiB block first - the free that moves the thresholds
+// where they still move - and then look at what a smaller block does. The
+// setting cannot be taken back (glibc has no way to turn the moving on
+// again), so these tests leave the process as every Crane process is after
+// its start, not as a process that never started the platform.
+
+const builtin = @import("builtin");
+
+/// The linux platform, built for glibc: where its start sets malloc's
+/// thresholds.
+const linux_on_glibc = builtin.os.tag == .linux and builtin.abi.isGnu() and std.mem.eql(u8, platform.name, "linux");
+
+const mib = 1024 * 1024;
+
+/// Allocate and free one block of `size` bytes from malloc, written to so
+/// that no compiler drops the pair.
+fn mallocAndFree(size: usize) !void {
+    const block: [*]u8 = @ptrCast(std.c.malloc(size) orelse return error.OutOfMemory);
+    block[0] = 1;
+    block[size - 1] = 1;
+    std.mem.doNotOptimizeAway(block);
+    std.c.free(block);
+}
+
+/// Whether glibc made this malloc block its own mapping: bit 1 (IS_MMAPPED)
+/// of the chunk's size field, the word before the block (glibc
+/// malloc/malloc.c, "Bits to mask off when extracting size").
+fn isOwnMapping(block: *anyopaque) bool {
+    const words: [*]const usize = @ptrCast(@alignCast(block));
+    return ((words - 1)[0] & 2) != 0;
+}
+
+test "linux on glibc: after the platform's start a freed 8 MiB block does not stop a 1 MiB block from being its own mapping" {
+    if (comptime !linux_on_glibc) return error.SkipZigTest;
+    try platform.initializePlatform(&.{});
+
+    try mallocAndFree(8 * mib);
+
+    const block = std.c.malloc(mib) orelse return error.OutOfMemory;
+    defer std.c.free(block);
+    @as([*]u8, @ptrCast(block))[0] = 1;
+    // With moving thresholds the mmap threshold is 8 MiB by now and this
+    // block is cut from a heap, where its free returns nothing.
+    try testing.expect(isOwnMapping(block));
+}
+
+test "linux on glibc: after the platform's start 8 MiB freed at the top of malloc's heap leave the process" {
+    if (comptime !linux_on_glibc) return error.SkipZigTest;
+    try platform.initializePlatform(&.{});
+
+    try mallocAndFree(8 * mib);
+
+    // 128 blocks of 64 KiB - below any mmap threshold glibc can have (its
+    // floor is 128 KiB), so each comes from a heap - written, so that their
+    // pages are resident.
+    const block_size = 64 * 1024;
+    var blocks: [128][*]u8 = undefined;
+    var made: usize = 0;
+    defer for (blocks[0..made]) |block| std.c.free(block);
+    for (&blocks) |*slot| {
+        const block: [*]u8 = @ptrCast(std.c.malloc(block_size) orelse return error.OutOfMemory);
+        @memset(block[0..block_size], 0xA5);
+        slot.* = block;
+        made += 1;
+    }
+    std.mem.doNotOptimizeAway(&blocks);
+    const held = platform.residentMemory() orelse return error.SkipZigTest;
+
+    // The newest first: each free joins the free memory at the heap's top.
+    while (made > 0) {
+        made -= 1;
+        std.c.free(blocks[made]);
+    }
+    const after = platform.residentMemory() orelse return error.SkipZigTest;
+
+    // 8 MiB were written and freed. With moving thresholds the trim
+    // threshold is 16 MiB by now and all of it stays resident; with fixed
+    // ones the heap's top is trimmed. At least half must have left: a block
+    // that filled a hole inside the heap stays, and so does what other
+    // threads allocated meanwhile.
+    try testing.expect(held.resident_bytes >= after.resident_bytes + 4 * mib);
+}
