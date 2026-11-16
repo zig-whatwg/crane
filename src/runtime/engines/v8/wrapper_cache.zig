@@ -1656,6 +1656,39 @@ pub const WrapperCache = struct {
         chunk.live -= 1;
         if (was_full) self.listPartial(chunk);
         if (chunk.live == 0) self.releaseIfSpare(chunk);
+        self.shrinkMapIfSparse();
+    }
+
+    /// The map's slots follow the live wrappers down, as the pool's chunks
+    /// do (`releaseIfSpare`): std's map only grows, so a page that held
+    /// 200,000 streams at once - each with its reader and its controller -
+    /// kept a million slots, 17.8 MB, for the realm's life once they were
+    /// collected (lane wrap1 b3's reading of the perf suite's streams page;
+    /// tmp/plans/lane-wrap1-handoff.md). When an eighth or less of the slots
+    /// is in use, the entries move to a map with room for twice as many.
+    /// WebKit's WTF::HashTable has the same policy: after a removal it
+    /// shrinks a table whose keys take under a sixth of it (Source/WTF/wtf/
+    /// HashTable.h `shouldShrink`, minLoad = 6, WebKit aa0d9480a516; an LGPL
+    /// file - the policy was read, no code taken). Each rebuild at least
+    /// halves the slots, so a free pays a constant share. Called where a
+    /// record is freed: the agent's safe point or a remove, never inside the
+    /// collector (`died` only takes an entry out) - and it does nothing
+    /// while a walk reads the slots or the cache is torn down. With no
+    /// memory for the smaller map, the map stays.
+    fn shrinkMapIfSparse(self: *Self) void {
+        const capacity = self.cache.capacity();
+        if (capacity <= map_shrink_floor) return;
+        const count = self.cache.count();
+        if (count > capacity / 8) return;
+        if (self.walks != 0 or self.is_tearing_down) return;
+        var smaller = @TypeOf(self.cache).init(self.allocator);
+        smaller.ensureTotalCapacity(@max(count * 2, map_shrink_floor / 4)) catch return;
+        var entries = self.cache.iterator();
+        while (entries.next()) |kv| smaller.putAssumeCapacityNoClobber(kv.key_ptr.*, kv.value_ptr.*);
+        self.cache.deinit();
+        self.cache = smaller;
+        // A new table has no tombstones.
+        self.guard.reset();
     }
 
     /// At or below this many slots the map is never rebuilt smaller
