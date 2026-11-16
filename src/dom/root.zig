@@ -333,15 +333,14 @@ pub const CommentWithBase = text_with_base.CommentWithBase;
 pub const attr_with_base = @import("attr_with_base.zig");
 pub const AttrWithBase = attr_with_base.AttrWithBase;
 
-// XPath 1.0 implementation
+// XPath 1.0: the grammar's types. Evaluation over platform nodes is the
+// XPathExpression interface's impl (its own parser and evaluator); the old
+// evaluator here, over NodeBase and the WithBase types, had no caller and
+// went with those types (lane wb1).
 pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
     pub const parser = @import("xpath/parser.zig");
-    pub const value = @import("xpath/value.zig");
-    pub const context = @import("xpath/context.zig");
-    pub const functions = @import("xpath/functions.zig");
-    pub const evaluator = @import("xpath/evaluator.zig");
 };
 
 pub const boundary_points = @import("boundary_points.zig");
