@@ -12,13 +12,24 @@
 //! (src/browser/event_loop.zig, the turn's last step;
 //! src/browser/memory_release.zig).
 //!
-//! Each test runs a whole Browser on a thread of its own.
+//! The rule's two halves are pinned without a Browser beside the code
+//! (memory_release.zig: IdleWatch - 200 ms, once per idle stretch; Gate -
+//! the process's hold-off). Here, a whole Browser: its loop asks once it has
+//! been idle, asks again after it has worked again, does not ask while it
+//! keeps working, and - on glibc - the freed memory leaves the process.
+//!
+//! Each test runs a whole Browser on a thread of its own, and gives its loop
+//! a gate of its own (EventLoop.memory_gate): the process's gate holds the
+//! next release off for 5 to 30 seconds after any Browser's, which a test
+//! repeated in one process, or run beside another Browser, would meet.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const testing = std.testing;
 const platform = @import("platform");
 const clock = @import("clock");
+const browser_mod = @import("browser");
+const memory_release = browser_mod.memory_release;
 const helpers = @import("edges_node_holders_helpers.zig");
 
 const mib = 1024 * 1024;
@@ -78,8 +89,77 @@ fn idleFor(page: helpers.Page, ms: i64) !void {
     while (clock.monotonicMillis() - start < ms) _ = loop.runOnceBlocking(5);
 }
 
-fn residentMemoryFallsWhenThePageGoesIdle() !void {
+/// Turn the loop until `gate` has run `releases` releases, at most 10 s.
+fn idleUntilReleased(page: helpers.Page, gate: *const memory_release.Gate, releases: u64) !void {
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    const start = clock.monotonicMillis();
+    while (gate.count() < releases) {
+        if (clock.monotonicMillis() - start > 10_000) return error.NeverReleased;
+        _ = loop.runOnceBlocking(5);
+    }
+}
+
+/// A page whose loop asks through `gate` instead of the process's.
+fn openWithGate(gate: *memory_release.Gate) !helpers.Page {
     const page = try helpers.Page.open();
+    errdefer page.close();
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    loop.memory_gate = gate;
+    return page;
+}
+
+fn idleLoopAsksAndAsksAgainAfterWork() !void {
+    var gate: memory_release.Gate = .{};
+    const page = try openWithGate(&gate);
+    defer page.close();
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+
+    // The page was made and left alone: its loop asks, once it has been idle
+    // for the delay - not at once.
+    const made = clock.monotonicMillis();
+    try idleUntilReleased(page, &gate, 1);
+    // (Whole milliseconds, each rounded down: 199.)
+    try testing.expect(clock.monotonicMillis() - made >= 199);
+    try testing.expect(!loop.memory_idle.armed);
+
+    // The page works again (a timer's callback), then nothing: a second
+    // idle stretch. The first gate holds its next release off for 30 seconds
+    // (nothing came back), so the loop gets a fresh one - and asks it.
+    var second: memory_release.Gate = .{};
+    loop.memory_gate = &second;
+    try page.run("globalThis.worked = 0; setTimeout(() => { worked = 1; }, 0);");
+    try idleUntilReleased(page, &second, 1);
+    const worked = try page.evaluate("String(worked)");
+    defer testing.allocator.free(worked);
+    try testing.expectEqualStrings("1", worked);
+    try testing.expectEqual(@as(u64, 1), gate.count());
+}
+
+test "an idle event loop asks for the allocator's free memory, and again after it has worked again" {
+    try helpers.onFreshThread(idleLoopAsksAndAsksAgainAfterWork);
+}
+
+fn workingLoopDoesNotAsk() !void {
+    var gate: memory_release.Gate = .{};
+    const page = try openWithGate(&gate);
+    defer page.close();
+    // A callback every 20 ms: the loop is never without work for 200 ms.
+    try page.run("globalThis.ticks = 0; globalThis.ticker = setInterval(() => { ticks++; }, 20);");
+    try idleFor(page, 600);
+    try page.run("clearInterval(ticker);");
+    const ticks_text = try page.evaluate("String(ticks)");
+    defer testing.allocator.free(ticks_text);
+    try testing.expect(try std.fmt.parseInt(u32, ticks_text, 10) >= 5);
+    try testing.expectEqual(@as(u64, 0), gate.count());
+}
+
+test "an event loop that keeps working does not ask for the allocator's free memory" {
+    try helpers.onFreshThread(workingLoopDoesNotAsk);
+}
+
+fn residentMemoryFallsWhenThePageGoesIdle() !void {
+    var gate: memory_release.Gate = .{};
+    const page = try openWithGate(&gate);
     defer page.close();
 
     const fragmented = try testing.allocator.create(Fragmented);
@@ -90,17 +170,16 @@ fn residentMemoryFallsWhenThePageGoesIdle() !void {
     const before = try residentBytes();
     fragmented.freeMost();
 
-    // The page does a little work, then nothing: 400 ms is twice the idle
-    // delay.
+    // The page does a little work, then nothing.
     try page.run("setTimeout(() => { globalThis.worked = true; }, 0);");
-    try idleFor(page, 400);
+    try idleUntilReleased(page, &gate, 1);
 
     const after = try residentBytes();
     // 246 MiB were freed; at least half of it has left the process. Without
     // the release the frees return nothing (each freed block lies between
     // two kept ones), and resident memory does not fall at all.
     if (before < after + Fragmented.freed_bytes / 2) {
-        std.debug.print("resident {d} MiB before the frees, {d} MiB after 400 ms idle; {d} MiB were freed\n", .{ before / mib, after / mib, Fragmented.freed_bytes / mib });
+        std.debug.print("resident {d} MiB before the frees, {d} MiB after the idle loop's release; {d} MiB were freed\n", .{ before / mib, after / mib, Fragmented.freed_bytes / mib });
         return error.FreedMemoryStayedResident;
     }
 }
