@@ -27,13 +27,16 @@
 //!
 //! ## Named Property Lookup (HTML §7.4.3.3)
 //!
-//! Delegated to Window implementation which performs the actual DOM lookup.
+//! Window's named getter and supported property names are IDL (`getter
+//! object (DOMString name)`): the interceptors ask Window's generated
+//! interface, `interfaces.Window.call_getter` and `isSupportedPropertyName`,
+//! as any caller reaches a type (src/webidl/AGENTS.md, the impls boundary).
 
 const std = @import("std");
 const v8 = @import("ffi.zig");
 const helpers = @import("helpers.zig");
 const runtime = @import("runtime");
-const WindowImpl = @import("impls").Window;
+const Window = @import("interfaces").Window;
 const context_manager = @import("context_manager.zig");
 const conv = @import("conversions.zig");
 
@@ -322,8 +325,9 @@ fn namedPropertyGetter(
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
-    const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
-    if (result) |js_val| {
+    // Undefined: no supported property name (Window.call_getter).
+    const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
+    if (js_val != .undefined) {
         // HTML 7.1.3.3's access report check for a name the named getter
         // answers (Chromium reports "named"; access-reporting/
         // property-named-getter: an iframe's name and an element's id, never
@@ -369,7 +373,7 @@ fn namedPropertyQuery(
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
-    if (WindowImpl.hasNamedProperty(window, name)) {
+    if (Window.isSupportedPropertyName(window, runtime.DOMString.initInterned(name)) catch false) {
         const attributes = v8.v8_Integer_New(isolate, 2); // DontEnum
         defer v8.v8_Value_Dispose(@ptrCast(attributes));
         info.setReturnValue(@ptrCast(attributes));
@@ -448,8 +452,8 @@ fn namedPropertyDescriptor(
     var name_buf: [256]u8 = undefined;
     const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
-    const result = WindowImpl.getNamedProperty(window, name) catch return .kNo;
-    if (result) |js_val| {
+    const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
+    if (js_val != .undefined) {
         const context = getContextFromHolder(info) orelse return .kNo;
         defer v8.v8_Context_Dispose(context);
         // Not released - see namedPropertyGetter.

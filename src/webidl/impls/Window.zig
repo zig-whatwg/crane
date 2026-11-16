@@ -4408,14 +4408,36 @@ fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, ch
     return null;
 }
 
-/// Get a named property by name.
-/// This is called by window_properties.zig for the WindowProperties named property getter.
+/// HTML 7.2.2.3 "Named access on the Window object": Window's named getter,
+/// `getter object (DOMString name)` - "to determine the value of a named
+/// property name in a Window window". Bound through Meta.special_operations;
+/// for a [Global] interface only its named properties object asks it
+/// (WebIDL 3.7.4: the engine's WindowProperties object, through the
+/// generated interface), and the binding installs no named handler on the
+/// Window itself. WebIDL asks the getter only for a supported property name
+/// (`isSupportedPropertyName`); for any other name it answers undefined -
+/// no named property is undefined - so the named properties object asks once
+/// rather than twice.
+pub fn call_getter(instance: *runtime.Instance, name: runtime.DOMString) anyerror!runtime.JSValue {
+    return (try namedPropertyValue(instance, name.asSlice())) orelse runtime.JSValue.jsUndefined;
+}
+
+/// Whether `name` is one of this Window's supported property names (WebIDL
+/// 3.9.7 step 1 asked for one name, HTML 7.2.2.3): a document-tree child
+/// navigable's target name, or a named object's name or ID. Answered without
+/// building the list (`getSupportedPropertyNames`).
+pub fn isSupportedPropertyName(instance: *runtime.Instance, name: runtime.DOMString) anyerror!bool {
+    return hasNamedProperty(instance, name.asSlice());
+}
+
+/// The value of the named property `name` (`call_getter`), or null when
+/// `name` is no supported property name.
 /// Named properties on Window include:
 /// - Named elements (elements with id or name attributes)
 /// - Child browsing context names (iframe names)
 ///
 /// Per HTML spec §7.4 "Named access on the Window object"
-pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
+fn namedPropertyValue(instance: *runtime.Instance, name: []const u8) anyerror!?runtime.JSValue {
     const internal = getInternal(instance) orelse return null;
 
     // Steps 1-2: a document-tree child navigable named so - its WindowProxy.
@@ -4446,9 +4468,8 @@ pub fn getNamedProperty(instance: *runtime.Instance, name: []const u8) anyerror!
     return null;
 }
 
-/// Check if a named property exists.
-/// This is called by window_properties.zig for the WindowProperties named property query.
-pub fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
+/// Check if a named property exists (`isSupportedPropertyName`).
+fn hasNamedProperty(instance: *runtime.Instance, name: []const u8) bool {
     const internal = getInternal(instance) orelse return false;
 
     // The child navigables' target names this window exposes.
