@@ -160,7 +160,6 @@ pub const Node = struct {
         Meta.BaseType,
         Meta.MixinTypes,
         struct {
-            cached_childNodes: ?*runtime.Instance = null,
             _internal: ?*NodeImpl.InternalState = null,
         },
     );
@@ -388,7 +387,7 @@ pub const Node = struct {
     /// defines `deinit` chains by hand.
     pub inline fn deinitChain(instance: *runtime.Instance) void {
         if (comptime @hasDecl(NodeImpl, "deinit") and @hasDecl(NodeImpl, "deinitOwn")) @compileError("NodeImpl defines both deinit and deinitOwn");
-        @import("dom").same_object_cache.end(State, instance);
+        @import("dom").same_object_cache.endNode(instance, &.{.{ .field = .child_nodes, .attribute = "childNodes" }});
         if (comptime @hasDecl(NodeImpl, "deinit")) return NodeImpl.deinit(instance);
         if (comptime @hasDecl(NodeImpl, "deinitOwn")) NodeImpl.deinitOwn(instance);
         Meta.ParentInterface.deinitChain(instance);
@@ -433,14 +432,13 @@ pub const Node = struct {
 
     /// Extended attributes: [SameObject]
     pub fn get_childNodes(instance: *runtime.Instance) anyerror!*runtime.Instance {
-        const state = instance.getState(State);
-        // [SameObject] - Return cached instance
-        if (state.own.cached_childNodes) |cached| {
+        // [SameObject] - Return the instance the node's rare data keeps
+        if (@import("dom").same_object_cache.nodeGet(instance, .child_nodes)) |cached| {
             return cached;
         }
+        try @import("dom").same_object_cache.nodeReserve(instance, .child_nodes);
         const value = try NodeImpl.get_childNodes(instance);
-        state.own.cached_childNodes = value;
-        @import("dom").same_object_cache.made(instance, value, "childNodes");
+        @import("dom").same_object_cache.nodeMade(instance, .child_nodes, value, "childNodes");
         return value;
     }
 

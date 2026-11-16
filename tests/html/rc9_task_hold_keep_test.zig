@@ -45,7 +45,7 @@ fn unwrappedChild(browser: *browser_mod.Browser) !*runtime.Instance {
     const realm = browser.getRealm() orelse return error.NoRealm;
     const body_instance = engine.convertToPlatformObject(realm, held.borrow()) orelse return error.NotAPlatformObject;
     const body = dom.instance_bridge.getNodeBase(@ptrCast(body_instance)) orelse return error.NotANode;
-    const p = try instanceOf(body.first_child orelse return error.NoChild);
+    const p = try instanceOf(body.firstChild() orelse return error.NoChild);
     if (engine.hasWrapper(p)) return error.AlreadyWrapped;
     return p;
 }

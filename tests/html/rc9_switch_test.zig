@@ -44,8 +44,8 @@ fn aRemovedTreeNothingHoldsIsQueuedThenFreed() !void {
     defer page.close();
     try page.run("globalThis.host = document.createElement('div'); host.innerHTML = '<p><b>x</b></p>';");
     const host = try page.node("host");
-    const p = host.first_child orelse return error.NoChild;
-    const b = p.first_child orelse return error.NoChild;
+    const p = host.firstChild() orelse return error.NoChild;
+    const b = p.firstChild() orelse return error.NoChild;
     const p_slot = try Watch.of(p);
     const b_slot = try Watch.of(b);
     // Never wrapped: the removal leaves a tree no count holds.
@@ -69,8 +69,8 @@ fn aCountedHolderKeepsItsTreeUntilItLetsGo() !void {
     defer page.close();
     try page.run("globalThis.host = document.createElement('div'); host.innerHTML = '<p><b>x</b></p>';");
     const host = try page.node("host");
-    const p = host.first_child orelse return error.NoChild;
-    const b = p.first_child orelse return error.NoChild;
+    const p = host.firstChild() orelse return error.NoChild;
+    const b = p.firstChild() orelse return error.NoChild;
     const p_slot = try Watch.of(p);
     // A holder of the descendant keeps the whole tree (decision D1).
     dom.refcount.holderRef(b);
@@ -97,7 +97,7 @@ fn aTreeLinkedAgainBeforeItsSliceIsKept() !void {
     defer page.close();
     try page.run("globalThis.host = document.createElement('div'); host.innerHTML = '<p><b>x</b></p>';");
     const host = try page.node("host");
-    const p = host.first_child orelse return error.NoChild;
+    const p = host.firstChild() orelse return error.NoChild;
     const p_slot = try Watch.of(p);
     try page.run("host.innerHTML = '';");
     try testing.expect(p.rc_flags.garbage);
@@ -120,7 +120,7 @@ fn aWrappedDetachedTreeGoesWithItsLastWrapper() !void {
     defer page.close();
     try page.run("globalThis.d = document.createElement('div'); d.appendChild(document.createElement('span'));");
     const d = try page.node("d");
-    const span = d.first_child orelse return error.NoChild;
+    const span = d.firstChild() orelse return error.NoChild;
     const d_slot = try Watch.of(d);
     const span_slot = try Watch.of(span);
     try page.run("globalThis.d = null;");

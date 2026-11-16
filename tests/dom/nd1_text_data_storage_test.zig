@@ -35,7 +35,7 @@ fn str(text: []const u8) runtime.DOMString {
     return runtime.DOMString.initInterned(text);
 }
 
-fn expectData(data: *const Data, storage: Data.Storage, bytes: []const u8, units: u32) !void {
+fn expectData(data: Data, storage: Data.Storage, bytes: []const u8, units: u32) !void {
     try testing.expectEqualStrings(bytes, data.getData());
     try testing.expectEqual(@as(u32, @intCast(bytes.len)), data.byteLength());
     try testing.expectEqual(units, data.getLength());
@@ -51,53 +51,57 @@ const newlines: [8]u8 = @splat('\n');
 // ============================================================================
 
 test "empty data is in the word" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
-    try expectData(&data, .in_word, "", 0);
+    try expectData(data, .in_word, "", 0);
 }
 
 test "up to 8 bytes live in the word; the 9th byte takes an exact block" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     try data.setData(testing.allocator, "x");
-    try expectData(&data, .in_word, "x", 1);
+    try expectData(data, .in_word, "x", 1);
     try data.setData(testing.allocator, "12345678");
-    try expectData(&data, .in_word, "12345678", 8);
+    try expectData(data, .in_word, "12345678", 8);
     try data.setData(testing.allocator, "123456789");
-    try expectData(&data, .heap, "123456789", 9);
+    try expectData(data, .heap, "123456789", 9);
     try data.setData(testing.allocator, "Hi");
-    try expectData(&data, .in_word, "Hi", 2);
+    try expectData(data, .in_word, "Hi", 2);
 }
 
 test "an astral character on the word's edge keeps both lengths exact" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     // U+1F600: 4 bytes, 2 code units.
     try data.setData(testing.allocator, "abcd\u{1F600}");
-    try expectData(&data, .in_word, "abcd\u{1F600}", 6);
+    try expectData(data, .in_word, "abcd\u{1F600}", 6);
     // Inserting between its surrogates splits the pair (DOM offsets are code
     // units): 4 + 3 + 1 + 3 = 11 bytes, off the word.
     try data.replaceData(testing.allocator, 5, 0, "x");
-    try expectData(&data, .heap, "abcd\xED\xA0\xBDx\xED\xB8\x80", 7);
+    try expectData(data, .heap, "abcd\xED\xA0\xBDx\xED\xB8\x80", 7);
     // Removing it lets the halves meet again: the pair, back in the word.
     try data.replaceData(testing.allocator, 5, 1, "");
-    try expectData(&data, .in_word, "abcd\u{1F600}", 6);
+    try expectData(data, .in_word, "abcd\u{1F600}", 6);
     try data.replaceData(testing.allocator, 4, 0, "e");
-    try expectData(&data, .heap, "abcde\u{1F600}", 7);
+    try expectData(data, .heap, "abcde\u{1F600}", 7);
 }
 
 test "a lone surrogate in the word is its three WTF-8 bytes, one code unit" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     try data.setData(testing.allocator, "\xED\xA0\x80abcde");
-    try expectData(&data, .in_word, "\xED\xA0\x80abcde", 6);
+    try expectData(data, .in_word, "\xED\xA0\x80abcde", 6);
     var sub = try data.substring(testing.allocator, 0, 2);
     defer testing.allocator.free(sub);
     try testing.expectEqualStrings("\xED\xA0\x80a", sub);
     try data.replaceData(testing.allocator, 1, 5, "\xED\xB0\x80");
     // A lead and a trail that meet are one pair (WTF-8 never keeps a
     // surrogate pair as two three-byte sequences).
-    try expectData(&data, .in_word, "\u{10000}", 2);
+    try expectData(data, .in_word, "\u{10000}", 2);
     testing.allocator.free(sub);
     sub = try data.substring(testing.allocator, 1, 1);
     try testing.expectEqualStrings("\xED\xB0\x80", sub);
@@ -119,14 +123,16 @@ test "whitespace of Gecko's shared shape is a slice of the static blob" {
         " " ++ newlines[0..3] ++ spaces[0..20],
     };
     for (shapes) |shape| {
-        var a: Data = .empty;
+        var a_cell: dom.character_data.Cell = .{};
+        const a = a_cell.data();
         defer a.deinit(testing.allocator);
-        var b: Data = .empty;
+        var b_cell: dom.character_data.Cell = .{};
+        const b = b_cell.data();
         defer b.deinit(testing.allocator);
         try a.setData(testing.allocator, shape);
         try b.setData(testing.allocator, shape);
-        try expectData(&a, .shared, shape, @intCast(shape.len));
-        try expectData(&b, .shared, shape, @intCast(shape.len));
+        try expectData(a, .shared, shape, @intCast(shape.len));
+        try expectData(b, .shared, shape, @intCast(shape.len));
         // One copy for every node with the same text.
         try testing.expectEqual(a.getData().ptr, b.getData().ptr);
     }
@@ -145,66 +151,73 @@ test "whitespace outside the shared shape takes a block" {
         spaces[0..10] ++ "x",
     };
     for (others) |other| {
-        var data: Data = .empty;
+        var data_cell: dom.character_data.Cell = .{};
+        const data = data_cell.data();
         defer data.deinit(testing.allocator);
         try data.setData(testing.allocator, other);
-        try expectData(&data, .heap, other, @intCast(other.len));
+        try expectData(data, .heap, other, @intCast(other.len));
     }
 }
 
 test "short whitespace stays in the word" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     try data.setData(testing.allocator, "\n    ");
-    try expectData(&data, .in_word, "\n    ", 5);
+    try expectData(data, .in_word, "\n    ", 5);
     try data.setData(testing.allocator, " ");
-    try expectData(&data, .in_word, " ", 1);
+    try expectData(data, .in_word, " ", 1);
 }
 
 test "a change to shared data writes a copy; the blob is untouched" {
     const shape = "\n" ++ spaces[0..10];
-    var a: Data = .empty;
+    var a_cell: dom.character_data.Cell = .{};
+    const a = a_cell.data();
     defer a.deinit(testing.allocator);
-    var b: Data = .empty;
+    var b_cell: dom.character_data.Cell = .{};
+    const b = b_cell.data();
     defer b.deinit(testing.allocator);
     try a.setData(testing.allocator, shape);
     try b.setData(testing.allocator, shape);
 
     try a.replaceData(testing.allocator, 1, 0, "x"); // insertData
-    try expectData(&a, .heap, "\nx" ++ spaces[0..10], 12);
-    try expectData(&b, .shared, shape, 11);
+    try expectData(a, .heap, "\nx" ++ spaces[0..10], 12);
+    try expectData(b, .shared, shape, 11);
 
     try b.replaceData(testing.allocator, 11, 0, "y"); // appendData
-    try expectData(&b, .heap, shape ++ "y", 12);
+    try expectData(b, .heap, shape ++ "y", 12);
     try b.replaceData(testing.allocator, 0, 11, ""); // deleteData into the word
-    try expectData(&b, .in_word, "y", 1);
+    try expectData(b, .in_word, "y", 1);
 
     // A fresh node with the shape still reads the blob's whitespace.
-    var c: Data = .empty;
+    var c_cell: dom.character_data.Cell = .{};
+    const c = c_cell.data();
     defer c.deinit(testing.allocator);
     try c.setData(testing.allocator, shape);
-    try expectData(&c, .shared, shape, 11);
+    try expectData(c, .shared, shape, 11);
 }
 
 test "replace data whose result has the shape shares the blob and frees the block" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     try data.setData(testing.allocator, "x\n" ++ spaces[0..10]);
-    try expectData(&data, .heap, "x\n" ++ spaces[0..10], 12);
+    try expectData(data, .heap, "x\n" ++ spaces[0..10], 12);
     try data.replaceData(testing.allocator, 0, 1, ""); // deleteData(0, 1)
-    try expectData(&data, .shared, "\n" ++ spaces[0..10], 11);
+    try expectData(data, .shared, "\n" ++ spaces[0..10], 11);
     // And the other way: a heap text the data setter turns to whitespace.
     try data.setData(testing.allocator, "a long text that lives on the heap");
-    try expectData(&data, .heap, "a long text that lives on the heap", 34);
+    try expectData(data, .heap, "a long text that lives on the heap", 34);
     try data.replaceData(testing.allocator, 0, 34, tabs[0..20]);
-    try expectData(&data, .shared, tabs[0..20], 20);
+    try expectData(data, .shared, tabs[0..20], 20);
     // Shared to shared: no block either way.
     try data.replaceData(testing.allocator, 20, 0, tabs[0..5]);
-    try expectData(&data, .shared, tabs[0..25], 25);
+    try expectData(data, .shared, tabs[0..25], 25);
 }
 
 test "substring reads every storage" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     const cases = [_]struct { bytes: []const u8, storage: Data.Storage }{
         .{ .bytes = "abcdefgh", .storage = .in_word },
@@ -225,19 +238,20 @@ test "substring reads every storage" {
 // ============================================================================
 
 test "the data setter given the data's own bytes copies before it frees" {
-    var data: Data = .empty;
+    var data_cell: dom.character_data.Cell = .{};
+    const data = data_cell.data();
     defer data.deinit(testing.allocator);
     try data.setData(testing.allocator, "0123456789abcdefghij");
     try data.setData(testing.allocator, data.getData()[2..6]); // heap -> word
-    try expectData(&data, .in_word, "2345", 4);
+    try expectData(data, .in_word, "2345", 4);
     try data.setData(testing.allocator, data.getData()[1..3]); // word -> word
-    try expectData(&data, .in_word, "34", 2);
+    try expectData(data, .in_word, "34", 2);
     try data.setData(testing.allocator, "0123456789abcdefghij");
     try data.setData(testing.allocator, data.getData()[1..15]); // heap -> heap
-    try expectData(&data, .heap, "123456789abcde", 14);
+    try expectData(data, .heap, "123456789abcde", 14);
     try data.setData(testing.allocator, "\n" ++ spaces[0..20]);
     try data.setData(testing.allocator, data.getData()[0..15]); // shared -> shared
-    try expectData(&data, .shared, "\n" ++ spaces[0..14], 15);
+    try expectData(data, .shared, "\n" ++ spaces[0..14], 15);
 }
 
 // ============================================================================
@@ -270,8 +284,8 @@ const Page = struct {
     }
 };
 
-fn dataOf(node: *runtime.Instance) *const Data {
-    return &node.stateAs(interfaces.CharacterData.State).?._embedded;
+fn dataOf(node: *runtime.Instance) Data {
+    return Data.ofHead(&node.stateAs(interfaces.CharacterData.State).?._embedded);
 }
 
 fn child(parent: *runtime.Instance, index: usize) !*runtime.Instance {

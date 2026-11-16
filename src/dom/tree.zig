@@ -125,7 +125,7 @@ pub fn isInclusiveSibling(node_a: *const Node, node_b: *const Node) bool {
 /// Complexity: O(1) - Direct pointer access via sibling pointers
 pub fn firstChild(node: *const Node) ?*Node {
     // Use direct pointer for O(1) access (Phase 1 optimization)
-    return node.first_child;
+    return node.firstChild();
 }
 
 /// Get the last child of a node

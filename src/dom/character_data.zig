@@ -21,6 +21,8 @@
 const std = @import("std");
 const infra = @import("infra");
 const runtime = @import("runtime");
+const interfaces = @import("interfaces");
+const node_base = @import("node_base.zig");
 const Hook = @import("hook.zig").Hook;
 
 pub const Steps = struct {
@@ -65,9 +67,9 @@ pub fn processingInstructionDataChanged(node: *runtime.Instance) void {
     s.data_changed(node);
 }
 
-/// A CharacterData node's data, as CharacterData keeps it in its state: the
-/// type is here so that what it is - the small-string storage and the
-/// code-unit splice of "replace data" - is shared, while the state stays
+/// A CharacterData node's data, where CharacterData keeps it: the type is
+/// here so that what it is - the small-string storage and the code-unit
+/// splice of "replace data" - is shared, while the state stays
 /// CharacterData's, with its lifetime (lesson
 /// architecture-move-the-states-type-out-of-the-impl-not-the-state).
 ///
@@ -83,9 +85,17 @@ pub fn processingInstructionDataChanged(node: *runtime.Instance) void {
 /// (lane nd1 batch 1, N8 of tmp/redesign/nodedata-design.md; it was 48: a
 /// heap pointer, the two lengths and a 31-byte inline buffer that every node
 /// paid for, while 32-99.8% of a page's texts are 1-8 code units and 11-76%
-/// whitespace only - tmp/redesign/nodedata/crane-layout.md P8). The bytes
-/// live in one of three places (`Storage`):
-/// - up to `inline_capacity` (8) bytes in the Data's own `word` - the shape of
+/// whitespace only - tmp/redesign/nodedata/crane-layout.md P8) - and only 8
+/// of them are the node's own since lane nm2 (N9): the two lengths (`Head`)
+/// are CharacterData's state, and the word is the one a container node keeps
+/// its first child in (NodeBase.leafWord), which a node that can have no
+/// children does not need. Blink's Text has no first-child pointer at all
+/// (only ContainerNode has `first_child_`: core/dom/container_node.h),
+/// WebKit's likewise (ContainerNode::m_firstChild). This type is the pair -
+/// where the two parts of one node's data are - passed by value.
+///
+/// The bytes live in one of three places (`Storage`):
+/// - up to `inline_capacity` (8) bytes in the word itself - the shape of
 ///   Lightpanda's 16-byte German string (src/string.zig at c6d54d8f7c10: a
 ///   length, then an 8-byte extern union of inline bytes and a pointer);
 /// - whitespace of the shape Gecko shares (`sharedWhitespace`) as a slice of
@@ -100,29 +110,22 @@ pub fn processingInstructionDataChanged(node: *runtime.Instance) void {
 /// Which is told by the length and the `shared` bit, never by an address
 /// range (lesson
 /// debugging-a-heuristic-over-pointer-ranges-breaks-when-the-allocators-layout-moves),
-/// and every free goes through `freeBytes`, which frees a block only.
+/// and every free goes through `Stored.free`, which frees a block only.
 ///
 /// The bytes are never written in place: every change builds the new data
 /// in new storage and then lets the old go, so a node never writes into the
 /// blob or into bytes a reader borrowed (Gecko's Append copies a shared
 /// buffer out before it grows it; CharacterDataBuffer.cpp, `!mInHeap`).
 pub const Data = struct {
-    /// Kept by value in CharacterData's own State (runtime.OwnState, the
-    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
-    pub const embedded_in_state = true;
+    /// The two lengths: CharacterData's own state.
+    head: *Head,
+    /// The bytes themselves (`in_word`), or where they are: the node's leaf
+    /// word, in its NodeBase.
+    word: *Word,
 
     // No allocator copy (lane perf2 batch 6): a block is allocated and freed
     // with the allocator the caller passes - the node's Browser's,
     // runtime.allocatorOf, the one the node was made with.
-
-    /// The data's length in bytes, and whether its bytes are the shared blob's.
-    size: Size,
-
-    /// The data's length in UTF-16 code units: the node's length (DOM 4.2).
-    units: u32,
-
-    /// The bytes themselves (`in_word`), or where they are.
-    word: Word,
 
     /// Bytes kept in the word itself.
     pub const inline_capacity = 8;
@@ -144,14 +147,17 @@ pub const Data = struct {
 
     /// `extern`, so it has no hidden safety tag in safe builds (lesson
     /// testing-a-std-safety-field-moves-size-pins-in-safe-builds): 8 bytes
-    /// in every mode.
+    /// in every mode - the size and alignment of the NodeBase word it is
+    /// kept in (`ofHead`).
     pub const Word = extern union {
         bytes: [inline_capacity]u8,
         ptr: [*]const u8,
+
+        pub const zero: Word = .{ .bytes = @splat(0) };
     };
 
     pub const Storage = enum {
-        /// In `word.bytes`: up to `inline_capacity` bytes.
+        /// In the word: up to `inline_capacity` bytes.
         in_word,
         /// A slice of the static whitespace blob (`sharedWhitespace`).
         shared,
@@ -159,96 +165,133 @@ pub const Data = struct {
         heap,
     };
 
-    /// Empty data. Every call below that can allocate or free takes the
-    /// allocator the data's block lives in: the same one, every time.
-    pub const empty: Data = .{
-        .size = .{ .bytes = 0, .shared = false },
-        .units = 0,
-        .word = .{ .bytes = @splat(0) },
-    };
+    /// The data of the node whose CharacterData state is `head`: the head,
+    /// and the leaf word of the NodeBase in the same State block
+    /// (dom.node_base.ofState). Only for the state of a live CharacterData
+    /// node - what CharacterData's impl holds between its init and its
+    /// teardown, both of which run while the node's NodeBase is there (the
+    /// construction chain makes Node's level first and ends it last).
+    pub fn ofHead(head: *Head) Data {
+        const state: *interfaces.CharacterData.State = @alignCast(@fieldParentPtr("_embedded", head));
+        return .{ .head = head, .word = @ptrCast(node_base.ofState(state).leafWord()) };
+    }
 
-    pub fn deinit(self: *Data, allocator: std.mem.Allocator) void {
-        self.freeBytes(allocator);
-        self.* = .empty;
+    /// A CharacterData node's construction: take the node's first-child word
+    /// as its data's word - the node is a leaf from here, with no first
+    /// child whatever the word holds (NodeBase.claimLeafWord) - and make
+    /// the data empty. Once per node, before it can be linked anywhere.
+    pub fn claim(head: *Head) Data {
+        const state: *interfaces.CharacterData.State = @alignCast(@fieldParentPtr("_embedded", head));
+        const data: Data = .{ .head = head, .word = @ptrCast(node_base.ofState(state).claimLeafWord()) };
+        data.reset();
+        return data;
+    }
+
+    /// Make the data empty without freeing anything.
+    pub fn reset(self: Data) void {
+        self.head.* = .empty;
+        self.word.* = .zero;
+    }
+
+    /// Every call below that can allocate or free takes the allocator the
+    /// data's block lives in: the same one, every time.
+    pub fn deinit(self: Data, allocator: std.mem.Allocator) void {
+        self.stored().free(allocator);
+        self.reset();
     }
 
     /// Where the bytes are.
-    pub fn storage(self: *const Data) Storage {
-        if (self.size.bytes <= inline_capacity) return .in_word;
-        return if (self.size.shared) .shared else .heap;
+    pub fn storage(self: Data) Storage {
+        return self.stored().storage();
     }
 
-    /// Let the storage of `self` - a copy of what the node held - go: the
-    /// one free path, so neither the blob nor the word is ever freed.
-    fn freeBytes(self: *const Data, allocator: std.mem.Allocator) void {
-        switch (self.storage()) {
-            .in_word, .shared => {},
-            .heap => allocator.free(self.word.ptr[0..self.size.bytes]),
+    /// What the node held at one moment, by value: the storage a change lets
+    /// go of once the new data is in place.
+    const Stored = struct {
+        size: Size,
+        word: Word,
+
+        fn storage(self: Stored) Storage {
+            if (self.size.bytes <= inline_capacity) return .in_word;
+            return if (self.size.shared) .shared else .heap;
         }
+
+        /// The one free path, so neither the blob nor the word is ever freed.
+        fn free(self: Stored, allocator: std.mem.Allocator) void {
+            switch (self.storage()) {
+                .in_word, .shared => {},
+                .heap => allocator.free(self.word.ptr[0..self.size.bytes]),
+            }
+        }
+    };
+
+    fn stored(self: Data) Stored {
+        return .{ .size = self.head.size, .word = self.word.* };
     }
 
     /// The data's bytes (WTF-8), borrowed until the next change.
-    pub fn getData(self: *const Data) []const u8 {
-        const len = self.size.bytes;
+    pub fn getData(self: Data) []const u8 {
+        const len = self.head.size.bytes;
         if (len <= inline_capacity) return self.word.bytes[0..len];
         return self.word.ptr[0..len];
     }
 
     /// The node's length: the data's length in UTF-16 code units.
-    pub fn getLength(self: *const Data) u32 {
-        return self.units;
+    pub fn getLength(self: Data) u32 {
+        return self.head.units;
     }
 
     /// The data's length in bytes.
-    pub fn byteLength(self: *const Data) u32 {
-        return self.size.bytes;
+    pub fn byteLength(self: Data) u32 {
+        return self.head.size.bytes;
     }
 
     /// Where code unit `unit` (at most the length) falls in the bytes.
-    pub fn position(self: *const Data, unit: u32) infra.wtf8.Position {
-        const byte_len = self.size.bytes;
+    pub fn position(self: Data, unit: u32) infra.wtf8.Position {
+        const byte_len = self.head.size.bytes;
         // ASCII: every code unit is one byte.
-        if (self.units == byte_len) return .{ .byte = unit };
+        if (self.head.units == byte_len) return .{ .byte = unit };
         if (unit == 0) return .{ .byte = 0 };
-        if (unit >= self.units) return .{ .byte = byte_len };
+        if (unit >= self.head.units) return .{ .byte = byte_len };
         return infra.wtf8.positionOfCodeUnit(self.getData(), unit);
     }
 
     /// Set data: in the word for small text, the shared blob for its
     /// whitespace, a block for the rest.
-    pub fn setData(self: *Data, allocator: std.mem.Allocator, data: []const u8) !void {
+    pub fn setData(self: Data, allocator: std.mem.Allocator, data: []const u8) !void {
         if (data.len > max_bytes) return error.OutOfMemory;
         const units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
         // The storage given up, let go once the new data is in place: `data`
-        // may be this node's own bytes.
-        const old = self.*;
+        // may be this node's own bytes - the word's included, so the new
+        // word is built whole before it is written.
+        const old = self.stored();
         if (data.len <= inline_capacity) {
             var bytes: [inline_capacity]u8 = @splat(0);
             @memcpy(bytes[0..data.len], data);
-            self.word = .{ .bytes = bytes };
-            self.size = .{ .bytes = @intCast(data.len), .shared = false };
+            self.word.* = .{ .bytes = bytes };
+            self.head.size = .{ .bytes = @intCast(data.len), .shared = false };
         } else if (sharedWhitespace(data)) |shared| {
-            self.word = .{ .ptr = shared };
-            self.size = .{ .bytes = @intCast(data.len), .shared = true };
+            self.word.* = .{ .ptr = shared };
+            self.head.size = .{ .bytes = @intCast(data.len), .shared = true };
         } else {
             const block = try allocator.dupe(u8, data);
-            self.word = .{ .ptr = block.ptr };
-            self.size = .{ .bytes = @intCast(data.len), .shared = false };
+            self.word.* = .{ .ptr = block.ptr };
+            self.head.size = .{ .bytes = @intCast(data.len), .shared = false };
         }
-        self.units = units;
-        old.freeBytes(allocator);
+        self.head.units = units;
+        old.free(allocator);
     }
 
     /// Replace `count_param` code units at `offset` with `data` (DOM replace
     /// data steps 2-3 and 5-7) - the core of replaceData, insertData,
     /// deleteData and appendData. Offsets are code units.
-    pub fn replaceData(self: *Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8) !void {
+    pub fn replaceData(self: Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8) !void {
         try self.replaceDataUnits(allocator, offset, count_param, data, @intCast(infra.wtf8.codeUnitLength(data)));
     }
 
     /// replaceData with `data`'s length in code units already counted.
-    pub fn replaceDataUnits(self: *Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8, data_units: u32) !void {
-        const length = self.units;
+    pub fn replaceDataUnits(self: Data, allocator: std.mem.Allocator, offset: u32, count_param: u32, data: []const u8, data_units: u32) !void {
+        const length = self.head.units;
         if (offset > length) return error.IndexSizeError;
 
         // Clamp count to available length. Compared as a difference: offset
@@ -264,40 +307,41 @@ pub const Data = struct {
         const new_len = pieces.joinedLength();
         if (new_len > max_bytes) return error.OutOfMemory;
 
-        // The pieces read the current bytes, wherever they are: the new data
-        // is written to new storage before the old is let go.
-        const old = self.*;
+        // The pieces read the current bytes, wherever they are - in the word
+        // itself for small data: the new data is written to new storage (a
+        // word built on the stack) before the old is let go.
+        const old = self.stored();
         if (new_len <= inline_capacity) {
             var bytes: [inline_capacity]u8 = @splat(0);
             pieces.writeJoined(bytes[0..new_len]);
-            self.word = .{ .bytes = bytes };
-            self.size = .{ .bytes = @intCast(new_len), .shared = false };
+            self.word.* = .{ .bytes = bytes };
+            self.head.size = .{ .bytes = @intCast(new_len), .shared = false };
         } else if (new_len <= shared_max_bytes) {
             // Short enough to have the shared shape: joined on the stack
             // first, so whitespace takes no block.
             var joined: [shared_max_bytes]u8 = undefined;
             pieces.writeJoined(joined[0..new_len]);
             if (sharedWhitespace(joined[0..new_len])) |shared| {
-                self.word = .{ .ptr = shared };
-                self.size = .{ .bytes = @intCast(new_len), .shared = true };
+                self.word.* = .{ .ptr = shared };
+                self.head.size = .{ .bytes = @intCast(new_len), .shared = true };
             } else {
                 const block = try allocator.dupe(u8, joined[0..new_len]);
-                self.word = .{ .ptr = block.ptr };
-                self.size = .{ .bytes = @intCast(new_len), .shared = false };
+                self.word.* = .{ .ptr = block.ptr };
+                self.head.size = .{ .bytes = @intCast(new_len), .shared = false };
             }
         } else {
             const block = try allocator.alloc(u8, new_len);
             pieces.writeJoined(block);
-            self.word = .{ .ptr = block.ptr };
-            self.size = .{ .bytes = @intCast(new_len), .shared = false };
+            self.word.* = .{ .ptr = block.ptr };
+            self.head.size = .{ .bytes = @intCast(new_len), .shared = false };
         }
-        self.units = length - count + data_units;
-        old.freeBytes(allocator);
+        self.head.units = length - count + data_units;
+        old.free(allocator);
     }
 
     /// The code units from `offset` to `offset + count` (count already
     /// clamped to the length), in a new allocation. OWNED.
-    pub fn substring(self: *const Data, allocator: std.mem.Allocator, offset: u32, count: u32) ![]u8 {
+    pub fn substring(self: Data, allocator: std.mem.Allocator, offset: u32, count: u32) ![]u8 {
         const start = self.position(offset);
         const end = if (count == 0) start else self.position(offset + count);
         var pieces: infra.wtf8.Pieces = .{};
@@ -306,10 +350,40 @@ pub const Data = struct {
     }
 };
 
-// The data is 16 bytes in every build mode: two u32 lengths and one word.
+/// The part of a CharacterData node's data that is CharacterData's own state
+/// (`Data.head`): the two lengths, 8 bytes. The word they describe is the
+/// node's leaf word (`Data.ofHead`).
+pub const Head = extern struct {
+    /// Kept by value in CharacterData's own State (runtime.OwnState, the
+    /// State's `_embedded`; lane perf2 batch 5, Z7): a node is one block.
+    pub const embedded_in_state = true;
+
+    /// The data's length in bytes, and whether its bytes are the shared blob's.
+    size: Data.Size,
+
+    /// The data's length in UTF-16 code units: the node's length (DOM 4.2).
+    units: u32,
+
+    /// Empty data's head (its word is `Data.Word.zero`).
+    pub const empty: Head = .{ .size = .{ .bytes = 0, .shared = false }, .units = 0 };
+};
+
+/// A data with a head and a word of its own, for a caller with no node: the
+/// storage's own unit tests. A node's data is never one of these.
+pub const Cell = struct {
+    head: Head = .empty,
+    word: Data.Word = .zero,
+
+    pub fn data(self: *Cell) Data {
+        return .{ .head = &self.head, .word = &self.word };
+    }
+};
+
+// The head is 8 bytes and the word 8 in every build mode, and the word fits
+// the NodeBase word it is kept in.
 comptime {
-    std.debug.assert(@sizeOf(Data) == 16);
-    std.debug.assert(@alignOf(Data) == 8);
+    std.debug.assert(@sizeOf(Head) == 8);
+    std.debug.assert(@sizeOf(Data.Word) == @sizeOf(usize) and @alignOf(Data.Word) == @alignOf(usize));
 }
 
 // ============================================================================

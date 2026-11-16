@@ -159,12 +159,12 @@ fn respondToBaseUrlChanges(_: *runtime.Instance) void {
 
 fn firstBaseHref(document: *runtime.Instance) !?runtime.DOMString {
     const root = dom.instance_bridge.getNodeBase(document) orelse return error.InvalidStateError;
-    var next = root.first_child;
+    var next = root.firstChild();
     while (next) |node| {
         if (baseInstance(node)) |base| {
             if (try interfaces.Element.call_getAttribute(base, .initInterned("href"))) |href| return href;
         }
-        if (node.first_child) |child| {
+        if (node.firstChild()) |child| {
             next = child;
             continue;
         }

@@ -431,7 +431,7 @@ pub const Maps = struct {
         if (!self.degraded) return true;
         if (self.ended) return false;
         self.degraded = false;
-        var at = root.first_child;
+        var at = root.firstChild();
         while (at) |node| : (at = nextInTree(node, root)) {
             const facts = factsOf(node) orelse continue;
             if (!facts.hasKeys()) continue;
@@ -504,7 +504,7 @@ fn rootOf(node: *NodeBase) *NodeBase {
 /// The node after `node` in `root`'s light tree, in tree order (preorder);
 /// null past the end.
 fn nextInTree(node: *NodeBase, root: *NodeBase) ?*NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var at = node;
     while (at != root) {
         if (at.next_sibling) |sibling| return sibling;
@@ -652,7 +652,7 @@ fn readableMaps(scope_root: *runtime.Instance) ?struct { maps: *Maps, root: *Nod
 /// The first element of `root`'s light tree, in tree order, with `key` as a
 /// `kind`; with `after` set, the first one after `after` instead.
 fn findFrom(root: *NodeBase, start: ?*NodeBase, kind: Kind, key: []const u8) ?*NodeBase {
-    var at = if (start) |node| nextInTree(node, root) else root.first_child;
+    var at = if (start) |node| nextInTree(node, root) else root.firstChild();
     while (at) |node| : (at = nextInTree(node, root)) {
         const facts = factsOf(node) orelse continue;
         if (hasKey(facts, kind, key)) return node;
@@ -838,7 +838,7 @@ pub fn supportedNames(document: *runtime.Instance, kind: NamedKind, allocator: s
     }
     var seen: std.StringHashMapUnmanaged(void) = .empty;
     defer seen.deinit(allocator);
-    var at = root.first_child;
+    var at = root.firstChild();
     while (at) |node| : (at = nextInTree(node, root)) {
         const facts = factsOf(node) orelse continue;
         for (keysOf(facts, kind.kind())) |key| {

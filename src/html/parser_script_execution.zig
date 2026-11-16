@@ -538,7 +538,7 @@ const Markers = struct { start: ?*runtime.Instance = null, end: ?*runtime.Instan
 /// are no descendants).
 fn findMarkers(allocator: Allocator, scope: *runtime.Instance, name: []const u8) !Markers {
     const scope_base = dom.instance_bridge.getNodeBase(scope) orelse return .{};
-    var node = scope_base.first_child;
+    var node = scope_base.firstChild();
     while (node) |descendant| : (node = nextDescendant(descendant, scope_base)) {
         // Step 1.1.
         if (descendant.node_type != interfaces.Node.get_PROCESSING_INSTRUCTION_NODE()) continue;
@@ -594,7 +594,7 @@ fn piNameIs(allocator: Allocator, pi: *runtime.Instance, name: []const u8) !bool
 
 /// The node after `node` in tree order within `scope`.
 fn nextDescendant(node: *dom.NodeBase, scope: *dom.NodeBase) ?*dom.NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != scope) {
         if (current.next_sibling) |sibling| return sibling;

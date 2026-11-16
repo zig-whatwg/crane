@@ -139,7 +139,7 @@ fn refillDocumentElements(collection: *runtime.Instance, document: *runtime.Inst
     // By the tree's own links, each element's names read in place
     // (dom.element_data), not copied out through Element's getters.
     const root_base = dom.instance_bridge.getNodeBase(@ptrCast(document)) orelse return false;
-    var current = root_base.first_child;
+    var current = root_base.firstChild();
     while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element = instanceOfBase(node) orelse continue;
@@ -296,7 +296,7 @@ fn refillFormControls(collection: *runtime.Instance, owner: *runtime.Instance) b
 /// state-table lookup each (lane perf2's profile).
 fn refillElementChildren(collection: *runtime.Instance, root: *runtime.Instance) bool {
     const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
-    var child = root_base.first_child;
+    var child = root_base.firstChild();
     while (child) |node| : (child = node.next_sibling) {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         addElement(collection, instanceOfBase(node) orelse continue) catch return false;
@@ -454,7 +454,7 @@ fn inHtmlDocument(root: *runtime.Instance) bool {
 fn refillNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
     const internal = getInternal(collection) orelse return false;
     const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
-    var current = root_base.first_child;
+    var current = root_base.firstChild();
     while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse continue));
@@ -467,7 +467,7 @@ fn refillNames(collection: *runtime.Instance, root: *runtime.Instance) bool {
 
 /// The tree node after `node` in tree order within `root`'s descendants.
 fn nextBaseInTreeOrder(node: *dom.NodeBase, root: *dom.NodeBase) ?*dom.NodeBase {
-    if (node.first_child) |child| return child;
+    if (node.firstChild()) |child| return child;
     var current = node;
     while (current != root) {
         if (current.next_sibling) |sibling| return sibling;
@@ -514,7 +514,7 @@ fn refillClassNames(collection: *runtime.Instance, root: *runtime.Instance) bool
 
     // Tree order over root's descendants (root itself is not one).
     const root_base = dom.instance_bridge.getNodeBase(@ptrCast(root)) orelse return false;
-    var current = root_base.first_child;
+    var current = root_base.firstChild();
     while (current) |node| : (current = nextBaseInTreeOrder(node, root_base)) {
         if (node.node_type != dom.NodeBase.ELEMENT_NODE) continue;
         const element = instanceOfBase(node) orelse continue;

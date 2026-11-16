@@ -589,7 +589,7 @@ fn keptUnwrappedNodeKeepsTree(mode: Mode) !bool {
     // The parser's <u>, never wrapped: its NodeBase from the root's.
     const root_instance = try page.instance("root");
     const root_node = dom.instance_bridge.getNodeBase(@ptrCast(root_instance)) orelse return error.NotANode;
-    const u_node = root_node.first_child orelse return error.NoChild;
+    const u_node = root_node.firstChild() orelse return error.NoChild;
     try testing.expect(u_node.wrapper.isEmpty());
     const u: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(u_node) orelse return error.NoInstance));
     // The keep's owner holds its node natively, as pending activity does.

@@ -61,7 +61,7 @@ pub fn getRenderedText(common: *runtime.Instance, bounds: ?dom.range_boundaries.
         try collector.frames.append(collector.allocator, .{
             .node = context.node,
             .style = style,
-            .next_child = if (style.skips_contents) null else context.node.first_child,
+            .next_child = if (style.skips_contents) null else context.node.firstChild(),
             .language = ownLanguage(element) orelse inheritedLanguage(context.style_node),
             .used_user_select = usedUserSelect(element, style.user_select, try inheritedUserSelect(context.style_node)),
         });
@@ -149,7 +149,7 @@ fn selectionContext(common: *runtime.Instance) !?struct { node: *NodeBase, style
             if (style.display.box == .none or style.display.isBlockLevel() or node.parent_node == null)
                 return .{ .node = node, .style_node = node };
         } else if (node.node_type == NodeBase.DOCUMENT_NODE) {
-            var child = node.first_child;
+            var child = node.firstChild();
             while (child) |element| : (child = element.next_sibling) {
                 if (element.node_type == NodeBase.ELEMENT_NODE) return .{ .node = node, .style_node = element };
             }
@@ -254,7 +254,7 @@ fn inheritedUserSelect(node: *NodeBase) !Keyword {
 }
 
 fn firstSummary(details: *NodeBase) ?*NodeBase {
-    var child = details.first_child;
+    var child = details.firstChild();
     while (child) |node| : (child = node.next_sibling) {
         if (instanceOf(node)) |element| if (isHtml(element, "summary")) return node;
     }
@@ -487,7 +487,7 @@ const Collector = struct {
         const parent: ?Frame = if (parent_index) |index| self.frames.items[index] else null;
         const names = dom.node_creation.elementNames(element) orelse return;
         const is_svg = std.mem.eql(u8, names.namespace orelse "", svg_namespace);
-        var frame = Frame{ .node = node, .style = style, .next_child = node.first_child };
+        var frame = Frame{ .node = node, .style = style, .next_child = node.firstChild() };
         if (bounded) {
             const inherited = if (parent != null and parentElement(node) == parent.?.node)
                 parent.?.used_user_select
@@ -629,7 +629,7 @@ const Collector = struct {
         // node of each run so partial ranges can use UTF-16 DOM offsets.
         // The shared TextResult performs stripping/collapsing. Form feed is
         // ASCII whitespace here although CSS Text ordinarily preserves it.
-        var current = root.first_child;
+        var current = root.firstChild();
         while (current) |node| {
             var skip_children = false;
             if (instanceOf(node)) |instance| {
@@ -661,7 +661,7 @@ const Collector = struct {
                         (std.mem.eql(u8, ns, html_namespace) or std.mem.eql(u8, ns, svg_namespace))) or isHtml(instance, "img");
                 }
             }
-            if (!skip_children) if (node.first_child) |child| {
+            if (!skip_children) if (node.firstChild()) |child| {
                 current = child;
                 continue;
             };
@@ -1149,7 +1149,7 @@ pub fn setOuterText(element: *runtime.Instance, value: runtime.DOMString) !void 
     defer dom.node_creation.destroyUninserted(fragment);
     const contents = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
     // Step 5: unlike innerText, an empty outerText creates an empty Text.
-    if (contents.first_child == null) {
+    if (contents.firstChild() == null) {
         try appendCreated(contents, try interfaces.Document.call_createTextNode(document, .empty));
     }
     // Step 6: replace this within its parent. The generated setter holds the
