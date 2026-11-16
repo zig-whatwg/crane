@@ -80,8 +80,9 @@ test "conformance: the bound platform matches every operation" {
     // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
     // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
-    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder).
-    try testing.expectEqual(@as(usize, 235), count);
+    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder); 236
+    // since lane idle1 added releaseFreeMemory (6.1).
+    try testing.expectEqual(@as(usize, 236), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {

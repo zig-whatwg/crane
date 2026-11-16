@@ -7,6 +7,7 @@
 # After removing variables, lower it with `zig build lint-global-state -- --update`,
 # which keeps each surviving key's class. Rename a variable in place with
 # `-- --rename '<old key>' '<new key>'`. Never raise it by hand.
+src/browser/memory_release.zig process_gate 1 G P-res decl:e53e712c9acdd9b7
 src/dom/abort_algorithms.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/activation.zig behaviors 1 G H decl:1522b2ba8cf8a95d
 src/dom/adopting_steps.zig entries 1 G H decl:568c911d6676a93d
