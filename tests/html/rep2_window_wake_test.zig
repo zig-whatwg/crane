@@ -177,6 +177,63 @@ test "a timer fires at its deadline - never before it, earliest first, and not a
     try helpers.onFreshThread(timerFiresAtItsDeadline);
 }
 
+fn loopWaitsThroughATimersLastMillisecond() !void {
+    const browser = try openPage();
+    defer browser.deinit();
+    const page = browser.current_context orelse return error.NoPage;
+    const loop = browser.event_loop orelse return error.NoLoop;
+    const timers = loop.timer_manager orelse return error.NoTimers;
+    // Forty 3 ms timers, one after the other, and nothing else to do.
+    try page.runScript(
+        \\globalThis.done = 0;
+        \\(async () => {
+        \\  for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 3));
+        \\  done = 1;
+        \\})();
+    );
+    const polls_before = timers.probe.polls;
+    // One long run: it ends when the last timer has fired and nothing is
+    // left pending.
+    _ = try browser.runEventLoopBlocking(timer_run_bound_ms);
+    const polls = timers.probe.polls - polls_before;
+    try runUntil(browser, "done");
+    // A count, not a time. Every turn of the loop polls its timers once, and
+    // a second time after a wait (event_loop.zig step 4). A loop that WAITS
+    // for a 3 ms timer makes at most three waits of a millisecond and one
+    // shorter wait to the deadline itself: four turns, eight polls, for each
+    // timer, and a turn or two more for the callback's task. `poll_bound`
+    // allows ten turns a timer.
+    //
+    // The loop used to count the time to the next timer in whole
+    // milliseconds, rounded down, and take "under a millisecond" for
+    // "nothing to wait for": it waited 2 of a timer's 3 ms and turned without
+    // a wait through the rest - 510 turns and 0.85 ms of the window thread's
+    // CPU for each timer on server1 (25,194 turns over forty timers against
+    // 4,791 with the wait), 3,300 polls for this test on macOS.
+    //
+    // That is not only heat: a thread that has just burned a millisecond is
+    // the one a busy host's scheduler runs last. Measured on server1 (lane
+    // flk2, 2026-11-16; at nice 10 on four CPUs beside four nice-0 busy
+    // loops). Two plain threads passed a task back and forth over two sinks.
+    // The one that turned without a wait before each round, as the loop did,
+    // had its wait returned 7.0 ms (median) after the post that ended it;
+    // the other's returned after 1.0 ms. When the first waited to the exact
+    // moment instead, its wait returned 1 to 11 us after the post. In the
+    // window's loop the same: a worker's reply to a message that a timer's
+    // callback had sent ended the window's wait 7.9 ms late (0.02 to 0.5 ms
+    // with the loop waiting for the timer), which is what failed the first
+    // test of this file in four lanes' gates in one day.
+    const poll_bound = 40 * 10 * 2;
+    if (polls > poll_bound) {
+        std.log.warn("{d} timer polls for forty 3 ms timers (at most {d} when the loop waits for each)", .{ polls, poll_bound });
+        return error.LoopTurnsWithoutWaiting;
+    }
+}
+
+test "the window's loop waits through a timer's last sub-millisecond: it does not turn without a wait until the timer is due" {
+    try helpers.onFreshThread(loopWaitsThroughATimersLastMillisecond);
+}
+
 fn timerArmedByATimerWaitsForTheNextTurn() !void {
     const browser = try openPage();
     defer browser.deinit();
