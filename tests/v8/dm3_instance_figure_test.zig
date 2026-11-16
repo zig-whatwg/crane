@@ -3,8 +3,8 @@
 //!
 //! A non-node platform object's wrapper is 16 B of V8's heap and keeps a Zig instance V8 cannot see. Until this
 //! batch the adapter told V8 an account of ALLOCATION (lane wrap1 b3): the bytes put behind wrappers since the last
-//! full collection began, taken back whole in the next one's prologue. Three things were wrong with what V8 then
-//! believed, and each test here is one of them:
+//! full collection began, taken back whole in the next one's prologue. Two things were wrong with what V8 then
+//! believed, a third was right and is kept, and each of the first three tests here is one of them:
 //!
 //! 1. What survives a full collection was not counted again: a page that keeps 6,000 URLSearchParams read as
 //!    keeping none, and V8 set its next limit as if they did not exist. Both browsers give their collector what
@@ -15,8 +15,11 @@
 //! 2. What a full collection found dead left V8's count in its PROLOGUE - for an incremental collection that is
 //!    when marking starts - not where the dead are known. The figure falls now at the end of marking, in the
 //!    collection's atomic pause, before V8 computes its next limits and before any finalizer runs.
-//! 3. A wrapper a young collection dropped stayed in the account until the next full collection, so a loop of
-//!    short-lived objects asked V8 for full collections it did not need. It leaves the figure with the drop.
+//! 3. What a young collection dropped was right to stay counted, and still does (the user's ruling of 2026-11-15,
+//!    after the first form of this batch took it out at the drop and four perf rows read 11% to 19% higher): in
+//!    Blink the object behind a dropped wrapper stays on the C++ heap until a full collection, and V8 counts it.
+//!    The record's share leaves the figure at the drop and is told to V8 as "dead since the last full collection"
+//!    until the next full collection forgets it.
 //!
 //! The figure is read through the adapter's own reads (v8_Debug_WrappedInstanceBytes: the figure, and what V8
 //! holds of it) and V8's total (v8_Isolate_GetExternalMemory). The collections are V8's own. The file shares
@@ -137,6 +140,11 @@ const Page = struct {
         return ffi.v8_Debug_WrappedInstanceBytes(self.isolate(), false);
     }
 
+    /// What V8 is still told for instances whose wrapper died since the last full collection.
+    fn deadCounted(self: Page) u64 {
+        return ffi.v8_Debug_WrappedInstanceDeadBytes(self.isolate());
+    }
+
     /// What V8 holds of the figure now.
     fn told(self: Page) u64 {
         return ffi.v8_Debug_WrappedInstanceBytes(self.isolate(), true);
@@ -249,7 +257,17 @@ test "what a full collection finds dead leaves V8's count inside the collection,
     try testing.expect(page.told() <= told_after);
 }
 
-test "a wrapper a young collection drops leaves the figure without a full collection" {
+test "what a young collection drops stays in what V8 is told until the next full collection, and leaves it there" {
+    // The user's ruling of 2026-11-15, after the first form of this batch was measured: a dead instance stays
+    // counted until the next full collection, as Blink's heap looks to V8. In Blink a young collection that drops
+    // a wrapper only clears the reference to it (BlinkRootsHandler::ResetRoot, Chromium 157 platform/heap/
+    // thread_state.cc:38-66): the object stays on V8's C++ heap, counted, until a full collection finds it dead,
+    // so a loop of short-lived objects asks for full collections at the rate of what it allocates. Crane frees
+    // the instance at the young collection; if its bytes left V8's count there too, nothing would ask for the
+    // full collection that sweeps what a dropped wrapper leaves in V8 itself (its pointer-table entry): four
+    // rows of the attributes page read 11% to 19% higher that way. So the record's share leaves the FIGURE at the
+    // drop (it is no live wrapper's), and stays in what V8 is TOLD - as "dead since the last full collection" -
+    // until the next full collection's weak processing, which forgets it with its own dead.
     const page = try Page.open();
     defer page.close();
     const n = 20000;
@@ -259,6 +277,8 @@ test "a wrapper a young collection drops leaves the figure without a full collec
     while (attempt < 4) : (attempt += 1) {
         page.fullGC();
         const base = page.figure();
+        const told_base = page.told();
+        try testing.expect(told_base < base + step);
         const full_before = page.fullCollections();
         var source: [200]u8 = undefined;
         // Nothing keeps them: V8 drops each wrapper in a young collection (an unmodified API object).
@@ -269,13 +289,21 @@ test "a wrapper a young collection drops leaves the figure without a full collec
             ffi.v8_test_Isolate_MinorGC(page.isolate(), 2);
         }
         page.safePoint();
-        // A full collection V8 chose to run meanwhile would have taken them all: read again.
+        // A full collection V8 chose to run meanwhile would have forgotten them all: read again.
         if (page.fullCollections() != full_before) continue;
         const left = page.figure() -| base;
-        std.debug.print("{d} dropped URLSearchParams of {d} B, no full collection: {d} B of {d} are still in the figure, V8 holds {d} B\n", .{ n, held, left, n * held, page.told() });
-        // All but the last few (made after the last young collection of the loop began) have left.
+        const dead = page.deadCounted();
+        std.debug.print("{d} dropped URLSearchParams of {d} B, no full collection: {d} B of {d} are still in the figure, {d} B are counted as dead, V8 holds {d} B\n", .{ n, held, left, n * held, dead, page.told() });
+        // All but the last few (made after the last young collection of the loop began) have left the figure...
         try testing.expect(left < n * held / 10);
-        // And V8 was told: what it holds is within a step of the figure.
+        // ...and V8 still holds every one of them: the dropped ones as dead, the rest as live.
+        try testing.expect(dead >= n * held - n * held / 10);
+        try testing.expect(page.told() + step > base + n * held);
+
+        // The next full collection forgets the dead: V8 holds the figure again.
+        page.fullGC();
+        try testing.expectEqual(@as(u64, 0), page.deadCounted());
+        try testing.expect(page.figure() < base + 64 * 1024);
         try testing.expect(page.told() < page.figure() + step);
         return;
     }

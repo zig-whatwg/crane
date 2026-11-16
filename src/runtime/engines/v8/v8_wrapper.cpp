@@ -3619,6 +3619,10 @@ struct IsolateData {
     ExternalMemoryAccounter instance_accounter;
     size_t instance_bytes_live = 0;
     size_t instance_bytes_reported = 0;
+    /// What V8 is still told for instances whose wrapper died since the last
+    /// full collection's weak processing ("What the instances behind non-node
+    /// wrappers hold", WHEN V8 is told).
+    size_t instance_bytes_dead = 0;
 #ifndef NDEBUG
     /// Debug: the v8_wrapper.cpp frames holding a NodeAnchor* now
     /// (NODE_ANCHOR_IN_FRAME) - none may be live across a requested
@@ -4892,6 +4896,14 @@ extern "C" uint64_t v8_Debug_WrappedInstanceBytes(Isolate* isolate, bool reporte
     IsolateData* record = isolate ? isolateData(isolate) : nullptr;
     if (!record) return 0;
     return reported ? record->instance_bytes_reported : record->instance_bytes_live;
+}
+
+/// What V8 is still told for the instances whose wrapper died since the
+/// agent's last full collection. 0 for a null isolate or one the adapter did
+/// not make.
+extern "C" uint64_t v8_Debug_WrappedInstanceDeadBytes(Isolate* isolate) {
+    IsolateData* record = isolate ? isolateData(isolate) : nullptr;
+    return record ? record->instance_bytes_dead : 0;
 }
 
 /// The agent's drain, now: V8 is told of the table entries the dropped

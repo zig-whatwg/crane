@@ -1668,6 +1668,10 @@ pub extern fn v8_Isolate_NoteInstanceGone(isolate: *Isolate, bytes: usize) void;
 /// wrappers hold - or, with `reported`, what V8 holds of it now as external
 /// memory. Diagnostics and tests.
 pub extern fn v8_Debug_WrappedInstanceBytes(isolate: ?*Isolate, reported: bool) u64;
+/// What V8 is still told for the instances whose wrapper died since the
+/// agent's last full collection (they left the figure at their death).
+/// Diagnostics and tests.
+pub extern fn v8_Debug_WrappedInstanceDeadBytes(isolate: ?*Isolate) u64;
 pub extern fn v8_Object_Dispose(obj: *Object) void;
 pub extern fn v8_Object_DefineProperty(object: *Object, context: *Context, key: *Value, value: *Value, writable: bool, enumerable: bool, configurable: bool) bool;
 
