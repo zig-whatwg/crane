@@ -54,12 +54,12 @@ const State = sandbox_allocator.Allocator(SandboxPages);
 const meta = std.heap.c_allocator;
 
 /// The allocator's state over the reserved, inaccessible range `[base, base +
-/// size)` of `space`, whose pages `ops` works on, or null with no memory for
-/// it. The process's, never
+/// size)` of `space`, whose pages - of `page_size` bytes - `ops` works on, or
+/// null with no memory for it. The process's, never
 /// destroyed (v8_wrapper.cpp PlatformStart::sandbox_allocator).
-export fn crane_SandboxAllocator_create(space: *AddressSpace, ops: *const PageOps, base: usize, size: usize) ?*State {
+export fn crane_SandboxAllocator_create(space: *AddressSpace, ops: *const PageOps, base: usize, size: usize, page_size: usize) ?*State {
     const state = meta.create(State) catch return null;
-    state.* = State.init(meta, .{ .space = space, .ops = ops }, base, size) catch {
+    state.* = State.init(meta, .{ .space = space, .ops = ops }, base, size, page_size) catch {
         meta.destroy(state);
         return null;
     };

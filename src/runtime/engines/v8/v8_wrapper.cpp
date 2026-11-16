@@ -2597,7 +2597,7 @@ struct CraneSandboxPageOps {
 };
 
 // sandbox_allocator_exports.zig. Each is called with the allocator's lock held.
-CraneSandboxAllocatorState* crane_SandboxAllocator_create(VirtualAddressSpace* space, const CraneSandboxPageOps* ops, uintptr_t base, size_t size);
+CraneSandboxAllocatorState* crane_SandboxAllocator_create(VirtualAddressSpace* space, const CraneSandboxPageOps* ops, uintptr_t base, size_t size, size_t page_size);
 void* crane_SandboxAllocator_allocate(CraneSandboxAllocatorState* state, size_t size, bool* zeroed);
 void crane_SandboxAllocator_free(CraneSandboxAllocatorState* state, void* block);
 void crane_SandboxAllocator_releaseRetained(CraneSandboxAllocatorState* state);
@@ -2709,7 +2709,7 @@ class CraneInSandboxAllocator final : public v8::Allocator {
             size /= 2;
         }
         if (!base) return false;
-        state_ = crane_SandboxAllocator_create(space, &kSandboxPageOps, base, size);
+        state_ = crane_SandboxAllocator_create(space, &kSandboxPageOps, base, size, space->page_size());
         if (!state_) {
             space->FreePages(base, size);
             return false;

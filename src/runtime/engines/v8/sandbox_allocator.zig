@@ -41,14 +41,25 @@
 //!   class; a free takes no search and an allocation takes the lowest free
 //!   slot of one chunk.
 //! - **An emptied span waits before it is given back** (partition_page.cc
-//!   SlotSpanMetadata::RegisterEmpty: a ring of 16, "providing it a bit of
-//!   breathing room to get re-used before we really free it. This reduces
-//!   the number of system calls"): `ring`. PartitionAlloc caps the dirty
-//!   bytes that wait at 1/8 of the committed bytes; Crane caps them at
-//!   `retained_max` (1 MiB: one whole chunk), because its memory bar reads
-//!   the whole process. One chunk is what a loop needs that frees a block
-//!   and takes one of the same size again - a 1 MiB buffer included - to
-//!   make no system call per round.
+//!   SlotSpanMetadata::RegisterEmpty: "providing it a bit of breathing room
+//!   to get re-used before we really free it. This reduces the number of
+//!   system calls. Otherwise any free() from a single-slot slot span would
+//!   lead to a syscall"): `wait_head`. PartitionAlloc bounds what waits
+//!   twice: by a ring of 16 spans (128 in a foreground renderer and in d8's
+//!   allocator, partition_alloc_constants.h) and by dirty bytes, 1/8 of the
+//!   committed bytes. Crane bounds it by dirty bytes alone, `retained_max`
+//!   (1 MiB: one whole chunk), oldest first - by bytes because its memory
+//!   bar reads the whole process, and by no count because one operation of
+//!   the engine can empty chunks of more size classes than a small ring
+//!   holds, and then every operation sends chunks back to the OS and fetches
+//!   them again. Measured with 16 places (chat.local, 2026-11-16, 4,000
+//!   rounds, against V8's default): 40 sizes made and freed in turn - system
+//!   time 0.16 s against 0.06 s, instructions 4.6 to 4.9 G against 3.6 G;
+//!   12 sizes - 0.01 s against 0.02 s, 1.28 G against 1.85 G; a 19,600-bit
+//!   BigInt's decimal string, whose scratch blocks are of many sizes - 0.06 s
+//!   against 0.01 s. One chunk's worth is also what a loop needs that frees
+//!   a block and takes one of the same size again - a 1 MiB buffer included
+//!   - to make no system call per round.
 //! - **A large block is its own mapping, given back when freed**
 //!   (partition_root.cc, direct maps): a block over 1 MiB is a run of whole
 //!   chunks, discarded at its free.
@@ -110,11 +121,9 @@ pub const slot_max: usize = chunk_size;
 /// Every block's alignment (PartitionAlloc's on 64-bit; V8's default gives
 /// 128). Enough for the widest typed-array element and for malloc's users.
 pub const alignment: usize = 16;
-/// How many emptied slot chunks may wait before they go back to the OS
-/// (PartitionAlloc kDefaultEmptySlotSpanRingSize).
-pub const ring_len = 16;
-/// The dirty bytes that may wait in the ring, in total: one whole chunk, so
-/// any one emptied chunk can wait.
+/// The dirty bytes of emptied slot chunks that may wait before they go back
+/// to the OS, in total, counted in whole pages: one whole chunk, so any one
+/// emptied chunk can wait.
 pub const retained_max: usize = chunk_size;
 
 /// The number of size classes: multiples of 16 up to 128, then 8 to each
@@ -159,7 +168,7 @@ pub const Stats = extern struct {
     high_water_chunks: u64 = 0,
     /// Accessible chunks in the free pool (their memory given back).
     free_chunks: u64 = 0,
-    /// Emptied slot chunks waiting in the ring, and their dirty bytes.
+    /// Emptied slot chunks that wait, and their dirty bytes (whole pages).
     retained_chunks: u64 = 0,
     retained_bytes: u64 = 0,
     /// Live blocks and the bytes of their slots and runs.
@@ -187,7 +196,6 @@ pub const FreeError = error{
 };
 
 const none: u32 = std.math.maxInt(u32);
-const not_in_ring: u8 = std.math.maxInt(u8);
 
 const Kind = enum(u8) {
     /// In the free pool: accessible, its memory given back to the OS.
@@ -204,9 +212,8 @@ const Chunk = struct {
     kind: Kind = .free,
     /// slots: the size class.
     class: u8 = 0,
-    /// slots: its place in the ring, taken when it became empty and kept
-    /// while it is used again, until a newer chunk takes the place.
-    ring_slot: u8 = not_in_ring,
+    /// slots: empty, and waiting to be used again or to go back to the OS.
+    waiting: bool = false,
     /// slots: the slots at and above `touched` have read zero since the OS
     /// made the chunk's memory.
     fresh: bool = false,
@@ -221,6 +228,9 @@ const Chunk = struct {
     /// slots: the class's list of chunks with a free slot.
     next: u32 = none,
     prev: u32 = none,
+    /// slots: the list of waiting chunks, while `waiting`.
+    wait_next: u32 = none,
+    wait_prev: u32 = none,
     /// slots: one bit per slot, set while a touched slot is free. Words at
     /// and above `touched / 64` (rounded up) are not initialised yet.
     bits: []u64 = &.{},
@@ -259,10 +269,12 @@ pub fn Allocator(comptime Pages: type) type {
         /// Per class, the chunks with a free slot; empty ones last.
         heads: [class_count]u32 = @splat(none),
         tails: [class_count]u32 = @splat(none),
-        /// The slot chunks that were empty last, oldest at `ring_next`; the
-        /// empty ones among them wait (`retained_bytes`).
-        ring: [ring_len]u32 = @splat(none),
-        ring_next: u8 = 0,
+        /// The OS page size: what a chunk's dirty bytes are counted in.
+        page_size: usize,
+        /// The empty slot chunks that wait, the one that emptied first at
+        /// the head.
+        wait_head: u32 = none,
+        wait_tail: u32 = none,
         retained_bytes: usize = 0,
         retained_chunks: u32 = 0,
         live_blocks: u64 = 0,
@@ -274,14 +286,16 @@ pub fn Allocator(comptime Pages: type) type {
 
         /// An allocator over the reserved, inaccessible range `[base, base +
         /// size)`: `base` a multiple of `chunk_size`, `size` cut down to
-        /// whole chunks. The range stays the caller's; `deinit` frees the
+        /// whole chunks, `page_size` the OS page size (a power of two, at
+        /// most a chunk). The range stays the caller's; `deinit` frees the
         /// records only.
-        pub fn init(meta: std.mem.Allocator, pages: Pages, base: usize, size: usize) std.mem.Allocator.Error!Self {
+        pub fn init(meta: std.mem.Allocator, pages: Pages, base: usize, size: usize, page_size: usize) std.mem.Allocator.Error!Self {
             std.debug.assert(base % chunk_size == 0);
+            std.debug.assert(std.math.isPowerOfTwo(page_size) and page_size <= chunk_size);
             const max_chunks: u32 = @intCast(@min(size >> chunk_shift, @as(usize, none - 1)));
             const free_bits = try meta.alloc(u64, (max_chunks + 63) / 64);
             @memset(free_bits, 0);
-            return .{ .pages = pages, .meta = meta, .base = base, .max_chunks = max_chunks, .free_bits = free_bits };
+            return .{ .pages = pages, .meta = meta, .base = base, .max_chunks = max_chunks, .free_bits = free_bits, .page_size = page_size };
         }
 
         /// Free the records. No page operation: the range is the caller's.
@@ -340,7 +354,7 @@ pub fn Allocator(comptime Pages: type) type {
                         // chunks first and this one can go back to the OS.
                         if (!was_full) self.unlink(index);
                         self.linkLast(index);
-                        self.enterRing(index);
+                        self.startWaiting(index);
                     } else if (was_full) {
                         self.linkFirst(index);
                     }
@@ -356,11 +370,9 @@ pub fn Allocator(comptime Pages: type) type {
             }
         }
 
-        /// Give back every emptied chunk that waits in the ring.
+        /// Give back every emptied chunk that waits.
         pub fn releaseRetained(self: *Self) void {
-            for (self.ring) |index| {
-                if (index != none and self.chunks.items[index].used == 0) self.evict(index);
-            }
+            while (self.wait_head != none) self.evict(self.wait_head);
         }
 
         pub fn stats(self: *const Self) Stats {
@@ -387,9 +399,7 @@ pub fn Allocator(comptime Pages: type) type {
             var index = self.heads[class];
             if (index == none) index = self.assign(class) orelse return null;
             const chunk = &self.chunks.items[index];
-            // Empty and in the ring: it waited (a chunk just assigned is
-            // empty too, and is not in the ring yet).
-            if (chunk.used == 0 and chunk.ring_slot != not_in_ring) self.reuseWaiting(chunk);
+            if (chunk.waiting) self.stopWaiting(index);
             const size = class_sizes[class];
             var slot: u32 = undefined;
             var zeroed = false;
@@ -512,63 +522,49 @@ pub fn Allocator(comptime Pages: type) type {
             return true;
         }
 
-        /// The bytes of an empty slot chunk that may be dirty.
-        fn dirtyBytes(chunk: *const Chunk) usize {
-            return @min(chunk_size, @as(usize, chunk.touched) * class_sizes[chunk.class]);
+        /// The bytes of an empty slot chunk that may be dirty: the pages its
+        /// handed-out slots lie on.
+        fn dirtyBytes(self: *const Self, chunk: *const Chunk) usize {
+            const touched = @as(usize, chunk.touched) * class_sizes[chunk.class];
+            return @min(chunk_size, std.mem.alignForward(usize, touched, self.page_size));
         }
 
-        /// The chunk at `index` has just become empty: its dirty bytes wait.
-        /// A chunk that has a place in the ring keeps it - it took it when
-        /// it was empty before, and has been used again since: a chunk that
-        /// empties and fills in a loop must not push the others out
-        /// (PartitionAlloc RegisterEmpty: "If the slot span is already
-        /// registered as empty, don't do anything. This prevents continually
-        /// reusing a slot span from decommitting a bunch of other slot
-        /// spans"). A chunk new to the ring takes the oldest place: what was
-        /// there goes back to the OS if it is empty, and only loses its
-        /// place if it is in use. Then the oldest empty ones go back while
-        /// more than `retained_max` dirty bytes wait (never this one: a
-        /// chunk holds no more than that).
-        fn enterRing(self: *Self, index: u32) void {
-            if (self.chunks.items[index].ring_slot == not_in_ring) {
-                const before = self.ring[self.ring_next];
-                if (before != none) {
-                    if (self.chunks.items[before].used == 0) self.evict(before) else self.chunks.items[before].ring_slot = not_in_ring;
-                }
-                self.ring[self.ring_next] = index;
-                self.chunks.items[index].ring_slot = self.ring_next;
-                self.ring_next = (self.ring_next + 1) % ring_len;
-            }
-            self.retained_bytes += dirtyBytes(&self.chunks.items[index]);
-            self.retained_chunks += 1;
-            var at = self.ring_next;
-            var seen: usize = 0;
-            while (self.retained_bytes > retained_max and seen < ring_len) : ({
-                at = (at + 1) % ring_len;
-                seen += 1;
-            }) {
-                const oldest = self.ring[at];
-                if (oldest != none and oldest != index and self.chunks.items[oldest].used == 0) self.evict(oldest);
-            }
-        }
-
-        /// An empty chunk that waits is used again: its bytes wait no more.
-        /// It keeps its place in the ring.
-        fn reuseWaiting(self: *Self, chunk: *const Chunk) void {
-            self.retained_bytes -= dirtyBytes(chunk);
-            self.retained_chunks -= 1;
-        }
-
-        /// An empty slot chunk leaves the ring, its class and the used
-        /// memory: to the free pool.
-        fn evict(self: *Self, index: u32) void {
+        /// The chunk at `index` has just become empty: it waits, the newest
+        /// of those that do, and the oldest go back to the OS while more
+        /// than `retained_max` dirty bytes wait (never this one: a chunk
+        /// holds no more than that). A chunk that empties and fills in a
+        /// loop is always the newest, so it does not push itself out, and
+        /// what goes back first is what was idle longest.
+        fn startWaiting(self: *Self, index: u32) void {
             const chunk = &self.chunks.items[index];
-            std.debug.assert(chunk.used == 0);
-            self.ring[chunk.ring_slot] = none;
-            self.retained_bytes -= dirtyBytes(chunk);
+            chunk.waiting = true;
+            chunk.wait_next = none;
+            chunk.wait_prev = self.wait_tail;
+            if (self.wait_tail != none) self.chunks.items[self.wait_tail].wait_next = index else self.wait_head = index;
+            self.wait_tail = index;
+            self.retained_bytes += self.dirtyBytes(chunk);
+            self.retained_chunks += 1;
+            while (self.retained_bytes > retained_max and self.wait_head != index) self.evict(self.wait_head);
+        }
+
+        /// A waiting chunk is used again, or goes back: it waits no more.
+        fn stopWaiting(self: *Self, index: u32) void {
+            const chunk = &self.chunks.items[index];
+            if (chunk.wait_prev != none) self.chunks.items[chunk.wait_prev].wait_next = chunk.wait_next else self.wait_head = chunk.wait_next;
+            if (chunk.wait_next != none) self.chunks.items[chunk.wait_next].wait_prev = chunk.wait_prev else self.wait_tail = chunk.wait_prev;
+            chunk.wait_next = none;
+            chunk.wait_prev = none;
+            chunk.waiting = false;
+            self.retained_bytes -= self.dirtyBytes(chunk);
             self.retained_chunks -= 1;
+        }
+
+        /// A waiting chunk leaves its class and the used memory: to the free
+        /// pool.
+        fn evict(self: *Self, index: u32) void {
+            self.stopWaiting(index);
             self.unlink(index);
-            self.meta.free(chunk.bits);
+            self.meta.free(self.chunks.items[index].bits);
             self.releaseChunks(index, 1);
         }
 

@@ -20,6 +20,8 @@ const testing = std.testing;
 const chunk = sa.chunk_size;
 const granule = sa.alignment;
 const granules_per_chunk = chunk / granule;
+/// The model's page size: what a waiting chunk's dirty bytes are counted in.
+const model_page = 4096;
 
 /// What the OS holds for one chunk of the model.
 const PageState = enum {
@@ -181,7 +183,7 @@ const Fixture = struct {
         errdefer testing.allocator.destroy(model);
         model.* = try Model.init(chunks);
         errdefer model.deinit();
-        return .{ .model = model, .allocator = try Allocator.init(testing.allocator, model, model.base, chunks * chunk) };
+        return .{ .model = model, .allocator = try Allocator.init(testing.allocator, model, model.base, chunks * chunk, model_page) };
     }
 
     fn deinit(self: *Fixture) void {
@@ -308,7 +310,8 @@ test "an emptied chunk waits before it goes back, so a free and an allocation ma
     try testing.expectEqual(@as(usize, 0), f.model.discards + f.model.recommits + f.model.decommits);
     const stats = f.allocator.stats();
     try testing.expectEqual(@as(u64, 1), stats.retained_chunks);
-    try testing.expectEqual(@as(u64, 64), stats.retained_bytes);
+    // One 64-byte slot was ever handed out: one dirty page.
+    try testing.expectEqual(@as(u64, model_page), stats.retained_bytes);
     try testing.expectEqual(@as(u64, 0), stats.live_blocks);
 
     // Asked to, it gives the waiting chunk back: at the top, so decommitted.
@@ -394,44 +397,51 @@ test "a 1 MiB block freed and allocated again in a loop makes no system call per
     try f.give(top);
 }
 
-test "the ring holds 16 emptied chunks: a seventeenth sends the oldest back" {
+test "what waits is bounded by its dirty pages, not by a count: forty chunks wait, and the oldest go back when a megabyte is passed" {
     var f = try Fixture.init(64);
     defer f.deinit();
 
-    // One block in each of 17 classes (16 bytes each time larger), then one
-    // above them all that stays.
-    var blocks: [sa.ring_len + 1]sa.Block = undefined;
+    // One block in each of forty classes (16 bytes to 2,304), each its own
+    // chunk with one dirty page, and one block above them all that stays.
+    var blocks: [40]sa.Block = undefined;
     for (&blocks, 0..) |*block, class| block.* = try f.take(sa.class_sizes[class]);
-    const top = try f.take(sa.class_sizes[sa.ring_len + 1]);
-    for (blocks[0..sa.ring_len]) |block| try f.give(block);
-    try testing.expectEqual(@as(u64, sa.ring_len), f.allocator.stats().retained_chunks);
+    const top = try f.take(sa.class_sizes[40]);
+    for (blocks) |block| try f.give(block);
+    try testing.expectEqual(@as(u64, 40), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, 40 * model_page), f.allocator.stats().retained_bytes);
     try testing.expectEqual(@as(usize, 0), f.model.discards);
 
-    try f.give(blocks[sa.ring_len]);
-    try testing.expectEqual(@as(u64, sa.ring_len), f.allocator.stats().retained_chunks);
-    try testing.expectEqual(@as(usize, 1), f.model.discards);
-    try testing.expectEqual(PageState.discarded, f.model.states[0]);
-
-    // A chunk that waits is used again without any page operation, and
-    // leaves the ring.
-    const recommits = f.model.recommits;
-    const again = try f.take(sa.class_sizes[5]);
-    try testing.expectEqual(blocks[5].address, again.address);
+    // A chunk that waits is used again without any page operation; freed
+    // again, it is the newest of those that wait.
+    const again = try f.take(sa.class_sizes[0]);
+    try testing.expectEqual(blocks[0].address, again.address);
     try testing.expect(!again.zeroed);
-    try testing.expectEqual(recommits, f.model.recommits);
-    try testing.expectEqual(@as(u64, sa.ring_len - 1), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, 39), f.allocator.stats().retained_chunks);
     try f.give(again);
+    try testing.expectEqual(@as(usize, 0), f.model.discards + f.model.recommits);
+
+    // 896 KiB more: 160 + 896 KiB would wait, 32 KiB over a megabyte - the
+    // eight that have waited longest go back. Chunk 0 emptied last, so they
+    // are chunks 1 to 8.
+    const large = try f.take(880 * 1024);
+    try f.give(large);
+    try testing.expectEqual(@as(usize, 8), f.model.discards);
+    try testing.expectEqual(@as(u64, 33), f.allocator.stats().retained_chunks);
+    try testing.expectEqual(@as(u64, sa.retained_max), f.allocator.stats().retained_bytes);
+    try testing.expectEqual(PageState.committed, f.model.states[0]);
+    for (f.model.states[1..9]) |state| try testing.expectEqual(PageState.discarded, state);
+    try testing.expectEqual(PageState.committed, f.model.states[9]);
     try f.give(top);
 }
 
-test "chunks that empty and fill in turn keep their places in the ring: no system call, however often the others turn" {
+test "chunks that empty and fill in turn all wait: no system call, however many turns an operation takes" {
     var f = try Fixture.init(32);
     defer f.deinit();
 
     // One operation, as a BigInt product and its decimal string take their
     // scratch blocks: one large block once, and twenty smaller ones of four
-    // other sizes, each freed before the next is taken. Twenty-one chunks
-    // empty in every operation - more than the ring has places.
+    // other sizes, each freed before the next is taken: a chunk empties
+    // twenty-one times in every operation.
     const top = try f.take(48);
     const sizes = [_]usize{ 700, 1500, 3000, 6000 };
     var op: usize = 0;
@@ -454,22 +464,6 @@ test "chunks that empty and fill in turn keep their places in the ring: no syste
     try testing.expectEqual(after_first.grows, end.grows);
     try testing.expectEqual(@as(u64, 0), end.discards + end.recommits + end.decommits);
 
-    // Sixteen chunks empty while one of the five is in use (two of the
-    // sixteen are chunks that waited: the 3,072 and 6,144-byte classes).
-    // The fourteen new to the ring take the oldest places: the two empty
-    // chunks they find there go back to the OS, and the one in use only
-    // loses its place - it takes the oldest place when it empties, from
-    // another empty chunk.
-    const held = try f.take(700);
-    var fresh: [sa.ring_len]sa.Block = undefined;
-    for (&fresh, 0..) |*block, class| block.* = try f.take(sa.class_sizes[40 + class]);
-    for (fresh) |block| try f.give(block);
-    try testing.expectEqual(@as(usize, 2), f.model.discards);
-    try f.give(held);
-    try f.model.check();
-    try testing.expectEqual(@as(usize, 3), f.model.discards);
-    try testing.expectEqual(@as(u64, sa.ring_len), f.allocator.stats().retained_chunks);
-    try testing.expect(f.allocator.stats().retained_bytes <= sa.retained_max);
     try f.give(top);
 }
 
