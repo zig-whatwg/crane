@@ -29,9 +29,27 @@
 //! - **Recommit before reuse** (page_allocator_internals_posix.h
 //!   RecommitSystemPagesInternal: "On macOS, to update accounting, we need to
 //!   make another syscall" - MADV_FREE_REUSE; DiscardSystemPagesInternal is
-//!   MADV_FREE_REUSABLE on Apple, MADV_DONTNEED elsewhere). Every chunk taken
-//!   from the free pool is recommitted before a byte of it is handed out:
-//!   `takeChunks`.
+//!   MADV_FREE_REUSABLE on Apple, MADV_DONTNEED elsewhere). Memory taken from
+//!   the free pool is recommitted before a byte of it is handed out:
+//!   `takeChunks` for a run, `allocateSlot` for a slot.
+//! - **Only what a block uses is recommitted.** MADV_FREE_REUSE counts every
+//!   page of its range that still holds its old bytes - written again or not
+//!   - and the kernel takes a given-back page only when it needs one, so a
+//!   recommit wider than the block puts memory nobody uses back into the
+//!   footprint. PartitionAlloc recommits a slot span, which it sizes to its
+//!   slots (partition_bucket.cc: a few pages, or one large slot), and a
+//!   direct map of the size asked for in whole pages (partition_root.h
+//!   GetDirectMapSlotSize); where a span is committed piece by piece
+//!   (partition_bucket.cc ProvisionMoreSlotsAndAllocOne, its lazy commit) it
+//!   commits from the page after the last slot handed out to the end of the
+//!   page the new slot ends on. Crane's span is the 1 MiB chunk, far wider
+//!   than most slots, so it commits a chunk that way, slot by slot as
+//!   `touched` grows, and a run up to its block's last page. Measured before
+//!   this rule, with whole chunks recommitted (chat.local, 2026-11-16,
+//!   fetch.loopback-gzip's settled mark, vmmap): each body is one block of
+//!   1 MiB and 7 bytes, a run of two chunks; 24 of 39 lay on chunks the row
+//!   before had written 880 KiB of, and 20.2 MB that no block used were
+//!   counted - a footprint of 142 MB where V8's default held 116.5.
 //! - **Decommitted memory is not zero on Apple** (page_allocator.h
 //!   DecommittedMemoryIsAlwaysZeroed): a zeroed allocation is zero-filled by
 //!   hand unless its memory is known never to have been handed out since the
@@ -94,8 +112,8 @@
 //!   the chunk's bitmap of freed slots, lowest first, then by `touched`, the
 //!   count of slots handed out at least once.
 //! - **run head / run body**: a block of more than 1 MiB, whole chunks.
-//! - **free**: in the free pool, its memory given back to the OS. Recommitted
-//!   when taken.
+//! - **free**: in the free pool, its memory given back to the OS. What a
+//!   block uses of it is recommitted when the block is handed out.
 //!
 //! ## Threads
 //!
@@ -234,19 +252,25 @@ const Chunk = struct {
     /// slots: one bit per slot, set while a touched slot is free. Words at
     /// and above `touched / 64` (rounded up) are not initialised yet.
     bits: []u64 = &.{},
+    /// run_head: the bytes from the run's start its block may write - the
+    /// size asked for, in whole pages. What is accounted while the run is
+    /// live and what goes back to the OS when it is freed; the rest of its
+    /// last chunk is as the free pool left it.
+    extent: usize = 0,
 };
 
 /// The allocator over `Pages`, which gives its four page operations, each
-/// over a whole number of chunks and each answering whether the OS did it:
+/// answering whether the OS did it. The two that change what is accessible
+/// are over whole chunks, the two that do not over whole pages:
 ///
-/// - `setReadWrite(address, size) bool`: inaccessible pages become
+/// - `setReadWrite(address, size) bool`: inaccessible chunks become
 ///   accessible and read zero;
 /// - `discard(address, size) bool`: accessible pages give their memory back
 ///   and stay accessible; their contents are then unspecified;
-/// - `recommit(address, size) bool`: discarded pages are accounted again
-///   before they are used;
-/// - `decommit(address, size) bool`: accessible pages give their memory back
-///   and become inaccessible.
+/// - `recommit(address, size) bool`: accessible pages, given back or not,
+///   are accounted again before they are used;
+/// - `decommit(address, size) bool`: accessible chunks give their memory
+///   back and become inaccessible.
 pub fn Allocator(comptime Pages: type) type {
     return struct {
         const Self = @This();
@@ -316,9 +340,10 @@ pub fn Allocator(comptime Pages: type) type {
             if (bytes <= slot_max) return self.allocateSlot(classOf(bytes));
             if (bytes > @as(usize, self.max_chunks) << chunk_shift) return null;
             const count: u32 = @intCast((bytes + chunk_size - 1) >> chunk_shift);
-            const taken = self.takeChunks(count) orelse return null;
+            const extent = std.mem.alignForward(usize, bytes, self.page_size);
+            const taken = self.takeChunks(count, extent) orelse return null;
             const run = self.chunks.items[taken.first..][0..count];
-            run[0] = .{ .kind = .run_head, .used = count };
+            run[0] = .{ .kind = .run_head, .used = count, .extent = extent };
             for (run[1..]) |*body| body.* = .{ .kind = .run_body };
             self.live_blocks += 1;
             self.live_bytes += @as(u64, count) << chunk_shift;
@@ -364,7 +389,7 @@ pub fn Allocator(comptime Pages: type) type {
                     const count = chunk.used;
                     self.live_blocks -= 1;
                     self.live_bytes -= @as(u64, count) << chunk_shift;
-                    self.releaseChunks(index, count);
+                    self.releaseChunks(index, count, chunk.extent);
                 },
                 .run_body, .free => return error.InvalidFree,
             }
@@ -399,6 +424,8 @@ pub fn Allocator(comptime Pages: type) type {
             var index = self.heads[class];
             if (index == none) index = self.assign(class) orelse return null;
             const chunk = &self.chunks.items[index];
+            // A chunk that waits has a freed slot (it was used and emptied),
+            // so it takes no page operation below and cannot fail.
             if (chunk.waiting) self.stopWaiting(index);
             const size = class_sizes[class];
             var slot: u32 = undefined;
@@ -415,6 +442,23 @@ pub fn Allocator(comptime Pages: type) type {
                 slot = word * 64 + bit;
             } else {
                 slot = chunk.touched;
+                if (!chunk.fresh) {
+                    // THE RULE, for a slot: the chunk came from the free
+                    // pool, and the pages this slot adds to those of the
+                    // slots before it are recommitted before it is handed
+                    // out - no page past the one it ends on.
+                    const from = self.dirtyBytes(chunk);
+                    const to = @min(chunk_size, std.mem.alignForward(usize, (@as(usize, slot) + 1) * size, self.page_size));
+                    if (to > from) {
+                        if (!self.pages.recommit(self.addressOf(index) + from, to - from)) {
+                            // A chunk with no slot handed out yet was taken
+                            // for this block: back to the free pool.
+                            if (chunk.touched == 0) self.abandon(index);
+                            return null;
+                        }
+                        self.recommits += 1;
+                    }
+                }
                 if (slot % 64 == 0) chunk.bits[slot / 64] = 0;
                 chunk.touched += 1;
                 zeroed = chunk.fresh;
@@ -426,10 +470,12 @@ pub fn Allocator(comptime Pages: type) type {
             return .{ .address = self.addressOf(index) + @as(usize, slot) * size, .zeroed = zeroed };
         }
 
-        /// A chunk for `class`, first in its list.
+        /// A chunk for `class`, first in its list. From the free pool it is
+        /// not accounted yet: `allocateSlot` recommits the pages of each
+        /// slot it hands out.
         fn assign(self: *Self, class: u8) ?u32 {
             const bits = self.meta.alloc(u64, (slotsOf(class) + 63) / 64) catch return null;
-            const taken = self.takeChunks(1) orelse {
+            const taken = self.takeChunks(1, 0) orelse {
                 self.meta.free(bits);
                 return null;
             };
@@ -440,16 +486,21 @@ pub fn Allocator(comptime Pages: type) type {
 
         const Taken = struct { first: u32, fresh: bool };
 
-        /// `count` chunks in a row, accessible and accounted: the lowest run
-        /// of the free pool, recommitted - or, with none, new ones above
-        /// `high_water`, which read zero (`fresh`). Their records are the
-        /// caller's to write.
-        fn takeChunks(self: *Self, count: u32) ?Taken {
+        /// `count` chunks in a row, accessible, their first `account` bytes
+        /// (whole pages) accounted: the lowest run of the free pool, that
+        /// much of it recommitted - or, with none, new ones above
+        /// `high_water`, which read zero (`fresh`) and are accounted as they
+        /// are written. Their records are the caller's to write.
+        fn takeChunks(self: *Self, count: u32, account: usize) ?Taken {
             if (self.findFree(count)) |first| {
                 // THE RULE: what was given back is recommitted before a byte
-                // of it is used (macOS: MADV_FREE_REUSE; Linux: nothing).
-                if (!self.pages.recommit(self.addressOf(first), @as(usize, count) << chunk_shift)) return null;
-                self.recommits += 1;
+                // of it is used (macOS: MADV_FREE_REUSE; Linux: nothing) -
+                // and no more than is used: a recommitted page that still
+                // holds its old bytes is counted, written or not.
+                if (account > 0) {
+                    if (!self.pages.recommit(self.addressOf(first), account)) return null;
+                    self.recommits += 1;
+                }
                 for (first..first + count) |index| self.free_bits[index / 64] &= ~(@as(u64, 1) << @intCast(index % 64));
                 self.free_count -= count;
                 return .{ .first = first, .fresh = false };
@@ -491,9 +542,11 @@ pub fn Allocator(comptime Pages: type) type {
             return null;
         }
 
-        /// `count` chunks from `first` go to the free pool and their memory
-        /// to the OS; free chunks at the top leave the used range.
-        fn releaseChunks(self: *Self, first: u32, count: u32) void {
+        /// `count` chunks from `first` go to the free pool and their first
+        /// `dirty` bytes (whole pages: all a block could have written, and
+        /// all that is accounted) to the OS; free chunks at the top leave the
+        /// used range.
+        fn releaseChunks(self: *Self, first: u32, count: u32, dirty: usize) void {
             for (first..first + count) |index| {
                 self.chunks.items[index] = .{ .kind = .free };
                 self.free_bits[index / 64] |= @as(u64, 1) << @intCast(index % 64);
@@ -503,7 +556,7 @@ pub fn Allocator(comptime Pages: type) type {
             // At the top: decommitted with whatever free chunks lie under
             // them, in one operation, with no discard first.
             if (first + count == self.high_water and self.trimTop()) return;
-            if (self.pages.discard(self.addressOf(first), @as(usize, count) << chunk_shift)) self.discards += 1;
+            if (dirty > 0 and self.pages.discard(self.addressOf(first), dirty)) self.discards += 1;
         }
 
         /// Decommit the free chunks at the top of the used range and lower
@@ -522,8 +575,9 @@ pub fn Allocator(comptime Pages: type) type {
             return true;
         }
 
-        /// The bytes of an empty slot chunk that may be dirty: the pages its
-        /// handed-out slots lie on.
+        /// The bytes of a slot chunk that may be dirty: the pages its
+        /// handed-out slots lie on, from its start. In a chunk that came
+        /// from the free pool these are also the pages recommitted so far.
         fn dirtyBytes(self: *const Self, chunk: *const Chunk) usize {
             const touched = @as(usize, chunk.touched) * class_sizes[chunk.class];
             return @min(chunk_size, std.mem.alignForward(usize, touched, self.page_size));
@@ -564,8 +618,17 @@ pub fn Allocator(comptime Pages: type) type {
         fn evict(self: *Self, index: u32) void {
             self.stopWaiting(index);
             self.unlink(index);
+            const dirty = self.dirtyBytes(&self.chunks.items[index]);
             self.meta.free(self.chunks.items[index].bits);
-            self.releaseChunks(index, 1);
+            self.releaseChunks(index, 1, dirty);
+        }
+
+        /// A slot chunk no slot was handed out of leaves its class: to the
+        /// free pool, with no page of it to give back.
+        fn abandon(self: *Self, index: u32) void {
+            self.unlink(index);
+            self.meta.free(self.chunks.items[index].bits);
+            self.releaseChunks(index, 1, 0);
         }
 
         fn linkFirst(self: *Self, index: u32) void {

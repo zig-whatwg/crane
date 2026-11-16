@@ -2557,9 +2557,12 @@ struct CraneSandboxAllocatorStats {
 // The allocator's page operations (sandbox_allocator.zig `Pages`), on V8's
 // sandbox address space: V8's public v8::VirtualAddressSpace, which makes the
 // OS calls (V8 15.7 src/base/platform/platform-posix.cc). `address` and
-// `size` are whole 1 MiB chunks, so multiples of every page size. Handed to
-// the Zig side as a table (kSandboxPageOps): it names no symbol of this
-// file, so Zig code that is compiled without this file still links.
+// `size` are whole 1 MiB chunks where access changes (set_read_write,
+// decommit) and whole pages of the space's page_size() where it does not
+// (discard, recommit: the allocator recommits what a block uses, not its
+// chunks). Handed to the Zig side as a table (kSandboxPageOps): it names no
+// symbol of this file, so Zig code that is compiled without this file still
+// links.
 
 /// Inaccessible pages become readable and writable, and read zero.
 static bool sandboxPagesSetReadWrite(VirtualAddressSpace* space, uintptr_t address, size_t size) {
