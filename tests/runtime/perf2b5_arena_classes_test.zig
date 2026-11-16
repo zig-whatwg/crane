@@ -95,12 +95,17 @@ test "a freed block is poisoned when its Browser asked for it, and left as it wa
         const block = try arena.createRaw(96, 8);
         @memset(block[0..96], 0x11);
         arena.destroyRaw(block, 96, 8);
-        // The first word is the free list's link; the rest is the state's.
+        // The first word is the free list's link - the first two the
+        // quarantine's header, in an arena that poisons (lane uaf1) - and
+        // the rest is the state's.
         const expected: u8 = if (poison) ArenaAllocator.poison_byte else 0x11;
-        for (block[8..96]) |byte| try testing.expectEqual(expected, byte);
-        // A reuse zeroes the request, poisoned or not.
+        for (block[16..96]) |byte| try testing.expectEqual(expected, byte);
+        // A reuse zeroes the request, poisoned or not. An arena that
+        // poisons keeps the freed block out of reuse (its quarantine,
+        // tests/runtime/uaf1_arena_quarantine_test.zig): the request is
+        // served by another block.
         const again = try arena.createRaw(96, 8);
-        try testing.expectEqual(block, again);
+        try testing.expectEqual(!poison, block == again);
         for (again[0..96]) |byte| try testing.expectEqual(@as(u8, 0), byte);
         arena.destroyRaw(again, 96, 8);
     }

@@ -9,14 +9,17 @@ const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
 
-test "a Browser poisons freed state only when its config asks" {
+test "a Browser poisons freed state when its config asks, and in a Debug build either way" {
     for ([_]bool{ false, true }) |poison| {
         const browser = try browser_mod.Browser.init(testing.allocator, .{ .persist_storage = false, .snapshot_path = "", .poison_freed_state = poison });
         defer browser.deinit();
-        try testing.expectEqual(poison, browser.scope.arena.poison_freed);
-        // A Debug build poisons released NodeBases either way (the unit
-        // tests' poison-on-free); a release build only when asked.
-        try testing.expectEqual(@import("builtin").mode == .debug or poison, browser.scope.poisonsReleasedNodes());
+        // A Debug build poisons freed state blocks and released NodeBases
+        // either way (the unit tests' poison-on-free; the blocks since lane
+        // uaf1, so a read of a FREED node block finds the poison there); a
+        // release build only when asked. The config turns it on, never off.
+        const debug = @import("builtin").mode == .debug;
+        try testing.expectEqual(debug or poison, browser.scope.arena.poison_freed);
+        try testing.expectEqual(debug or poison, browser.scope.poisonsReleasedNodes());
     }
     // The default is off.
     const default_config: browser_mod.BrowserConfig = .{};
