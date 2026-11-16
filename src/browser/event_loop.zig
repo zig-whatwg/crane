@@ -162,7 +162,8 @@ pub const EventLoop = struct {
 
     /// The hold-off between releases the loop asks through: the process's
     /// (BORROWED; memory_release.processGate), since the allocator is the
-    /// process's. A test gives its loop a gate of its own.
+    /// process's. A test gives its loop a gate of its own, which outlives
+    /// any release asked through it (Gate.settle).
     memory_gate: *memory_release.Gate,
 
     const Self = @This();
@@ -604,8 +605,8 @@ pub const EventLoop = struct {
         // Step 5: the microtasks the timer callbacks queued.
         self.checkpoint();
 
-        // Step 6: a loop with nothing to run for a while gives the
-        // allocator's free memory back to the OS.
+        // Step 6: a loop with nothing to run for a while asks for the
+        // allocator's free memory to go back to the OS.
         self.releaseMemoryWhenIdle(did_work, turn_now);
 
         // Tasks queued during this turn - by the tasks above or by timer
@@ -627,15 +628,20 @@ pub const EventLoop = struct {
     /// calls malloc_trim(0) once its process has no visible page
     /// (Source/WebKit/WebProcess/WebProcess.cpp,
     /// nonVisibleProcessEarlyMemoryCleanupTimerFired). The process's gate may
-    /// refuse (the hold-off after the last release, any Browser's): the loop
-    /// then asks on a later idle turn.
+    /// refuse (the hold-off after the last release, any Browser's, or a
+    /// release still running): the loop then asks on a later idle turn.
+    ///
+    /// The loop only posts the request: the release runs on the platform's
+    /// helper thread (platform.releaseFreeMemory), never on this one - the
+    /// allocator's call cannot be interrupted, and a task posted meanwhile
+    /// (a worker's reply) must not wait for it. This thread can meet a
+    /// release only where it allocates from the arena being trimmed at that
+    /// moment.
     ///
     /// `turn_now` is the turn's latest reading of the Browser's clock, which
     /// is the real one unless the Browser's is virtual: the step reads no
     /// clock of its own on a real one, and none at all on a turn that
-    /// worked. A release is this thread's work for as long as the allocator
-    /// takes (glibc: about 8 ms for 275 MB returned), and a task posted
-    /// meanwhile waits that long.
+    /// worked.
     fn releaseMemoryWhenIdle(self: *Self, did_work: bool, turn_now: i64) void {
         if (did_work) return self.memory_idle.worked();
         if (!self.memory_idle.armed) return;

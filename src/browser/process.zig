@@ -112,6 +112,9 @@ pub const Process = struct {
         @import("fetch").network.globalCleanup();
         @import("dom").style.ua_sheet.release();
         engine.deinitializeEngine();
+        // The platform's process-wide end (its helper threads joined): after
+        // the last Browser and the engine.
+        @import("platform").deinitializePlatform();
         if (self.snapshot) |bytes| allocator.free(bytes);
         self.snapshot = null;
         process_start.end();
