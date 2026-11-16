@@ -616,6 +616,7 @@ pub fn isDefaultFor(target: std.Target) bool               // the engine of a bu
 pub const Resolved = struct { ... };                      // what this build links
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
 pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: LinkRequest) void
+pub fn addStartupData(b: *std.Build, options: Options, request: StartupRequest) ?*std.Build.Step   // what a program reads beside itself
 pub const facts: Facts = .{ ... };                        // what the neutral build asks about the adapter
 ```
 
@@ -631,8 +632,21 @@ adapter's Zig module - `module_root`, `module_name`, and `imports`, the
 modules it imports in the order they are added, which is part of every
 compile that takes the module - with `engineless` (the facade is compiled
 against the adapter with nothing linked), `build_tests` (the std-only files
-of its build side that hold tests: the V8 adapter's `build/archives.zig`)
-and `words` (what `lint-build` looks for in neutral files).
+of its build side that hold tests: the V8 adapter's `build/archives.zig` and
+`build/snapshot_generator_mode.zig`), `words` (what `lint-build` looks for in
+neutral files), `tests` (the adapter's own test directory - `dir`, the `-Dspec`
+value that selects it, what its test root `imports` by name and in order, its
+row of launcher settings, and `late_start`, the tests that run again with the
+engine started late: tests/v8's are the V8 adapter's), `startup` (the import
+name under which those tests reach this build's startup data) and
+`debug_scope` (the scope `-Ddebug-scope` names for the adapter's own debug
+output). `addStartupData` makes the startup data - what every program that
+runs the engine reads beside itself when it starts, made by this build: for
+V8, Crane's heap snapshot, with its generator and the steps `snapshot-generator`
+and `snapshot` - and returns its install, which the console, gc_bench and both
+WPT runners wait for; `engine.startupTestOptions(b)` makes, before the tests
+are wired, the options module through which the adapter's tests get their
+copy; an engine with no startup data answers null.
 
 The protocol's own build file, `src/runtime/engine_build_protocol.zig`, keeps
 the list of adapters (`adapters`: every adapter's build file, by `-Dengine`
@@ -687,6 +701,7 @@ The V8 adapter's build file declares:
 | `-Dv8-navigation-collection-mb=<n>` | After a main frame's navigation, collect the page that was left when V8's heap holds at least `n` MB. Below. |
 | `-Dv8-wrapper-trace-check` | A diagnosis build: the node wrapper walk's oracle (src/runtime/engines/v8/node_wrappers.zig `checkWalk`). In every major collection's weak processing it walks, unpruned, the trees every kept node wrapper and every keep holds and logs a `wrapper-trace-check` error for a wrapper in such a tree that the collection dropped, for a kept wrapper whose node the walk did not reach, and for a walked tree whose wrapper was dropped; `engine.diagnosticCounters`' `wrapper_trace_check_failures` counts them. Off by default: a walk of every live tree per collection. |
 | `-Dv8-memory-pool-timeout-s=<n>` | How many seconds V8's page pool keeps a page a collection freed before the operating system gets it back; 0 is no pool. Not given: V8's own, as Chrome ships. Below. |
+| `-Dsnapshot-generator-optimize=<mode>` | The snapshot generator's optimize mode, for a diagnosis. Not given: Debug, whatever `-Doptimize` says - the blob is a function of the source, not of the optimizer (src/runtime/engines/v8/build/snapshot_generator_mode.zig). |
 
 (Since the build migration's batch E2, `-Dv8` takes 15.7 alone: 13.1, which
 the adapter no longer compiles against, is not a value of the option any
