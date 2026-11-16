@@ -33,6 +33,7 @@ const testing = std.testing;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const real_nodes = @import("real_nodes.zig");
 
 const NodeBase = dom.NodeBase;
 
@@ -52,17 +53,26 @@ test "NodeBase has no field named first_child; CharacterData's own state is its 
 
 test "a container's firstChild is its first child; a leaf's is null whatever its word holds" {
     if (comptime !leaf_word) return error.NoLeafWord;
-    var parent: NodeBase = .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = NodeBase.ELEMENT_NODE };
-    var a: NodeBase = .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = NodeBase.ELEMENT_NODE };
-    var b: NodeBase = .{ .owner = NodeBase.ownerless(&std.testing.allocator), .node_type = NodeBase.TEXT_NODE, .leaf = true };
+    // Real nodes with no node document (real_nodes.zig; lane wb1), linked by
+    // hand: the word is the subject. They were NodeBase values on the stack,
+    // the Text marked a leaf by the test; a real Text is one by construction.
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const parent = try nodes.bare(.element);
+    const a = try nodes.bare(.element);
+    const b = try nodes.bare(.text);
+    try testing.expect(b.leaf and !a.leaf and !parent.leaf);
     try testing.expect(parent.firstChild() == null);
-    parent.linkChildBefore(&a, null);
-    parent.linkChildBefore(&b, null);
-    try testing.expect(parent.firstChild().? == &a);
-    try testing.expect(parent.lastChild().? == &b);
+    parent.linkChildBefore(a, null);
+    parent.linkChildBefore(b, null);
+    try testing.expect(parent.firstChild().? == a);
+    try testing.expect(parent.lastChild().? == b);
 
-    // The leaf's word is its own: any bits, never a child.
-    b.leafWord().* = @intFromPtr(&a);
+    // The leaf's word is its own: any bits, never a child. (The Text's data
+    // is empty and inline; the word is put back before its teardown reads it.)
+    const word = b.leafWord().*;
+    b.leafWord().* = @intFromPtr(a);
     try testing.expect(b.firstChild() == null);
     try testing.expect(b.lastChild() == null);
     try testing.expectEqual(@as(usize, 0), b.childCount());
@@ -70,9 +80,10 @@ test "a container's firstChild is its first child; a leaf's is null whatever its
     try testing.expect(children.next() == null);
     // And a walk of the parent's children passes over it.
     try testing.expectEqual(@as(usize, 2), parent.childCount());
+    b.leafWord().* = word;
 
-    parent.unlinkChild(&b);
-    parent.unlinkChild(&a);
+    parent.unlinkChild(b);
+    parent.unlinkChild(a);
     try testing.expect(parent.firstChild() == null);
 }
 

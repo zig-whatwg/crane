@@ -232,7 +232,6 @@ pub const event_dispatch = @import("event_dispatch.zig");
 /// trees (retargeting, the shadow-tree booleans, activationTarget,
 /// clearTargets).
 pub const event_path = @import("event_path.zig");
-pub const selectors = @import("selectors.zig");
 /// querySelector / matches / closest over platform objects.
 pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
@@ -240,9 +239,6 @@ pub const pointer_states = @import("pointer_states.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");
-pub const dom_token_list = @import("dom_token_list.zig");
-pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
-pub const range_mutations = @import("range_mutations.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
@@ -301,9 +297,6 @@ pub const drag_data_store = @import("drag_data_store.zig");
 pub const CookieChangeEvent = cookie_change_event.CookieChangeEvent;
 pub const CookieChangeEventInit = cookie_change_event.CookieChangeEventInit;
 
-// Re-export selector functions
-pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
-
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
 /// Reference counting for nodes: `Ref`, `GCReachableRef`, `WeakRef` and the
@@ -331,24 +324,14 @@ pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
-// Temporary bridge types with NodeBase pattern (until codegen is updated)
-pub const element_with_base = @import("element_with_base.zig");
-pub const ElementWithBase = element_with_base.ElementWithBase;
-pub const text_with_base = @import("text_with_base.zig");
-pub const TextWithBase = text_with_base.TextWithBase;
-pub const CommentWithBase = text_with_base.CommentWithBase;
-pub const attr_with_base = @import("attr_with_base.zig");
-pub const AttrWithBase = attr_with_base.AttrWithBase;
-
-// XPath 1.0 implementation
+// XPath 1.0: the grammar's types. Evaluation over platform nodes is the
+// XPathExpression interface's impl (its own parser and evaluator); the old
+// evaluator here, over NodeBase and the WithBase types, had no caller and
+// went with those types (lane wb1).
 pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
     pub const parser = @import("xpath/parser.zig");
-    pub const value = @import("xpath/value.zig");
-    pub const context = @import("xpath/context.zig");
-    pub const functions = @import("xpath/functions.zig");
-    pub const evaluator = @import("xpath/evaluator.zig");
 };
 
 pub const boundary_points = @import("boundary_points.zig");

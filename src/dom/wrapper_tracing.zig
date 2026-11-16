@@ -127,7 +127,7 @@ pub fn connectedDocument(node: *NodeBase) ?*NodeBase {
 /// `node` holds nodes for script itself (`NodeBase.traces_held`): its
 /// type's `trace_held_nodes` names them.
 fn traceHolderNode(node: *NodeBase, tracer: *engine.Tracer) void {
-    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
+    const instance = node.registeredInstance() orelse return;
     // A node whose teardown began holds nothing any more.
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     const trace = instance.vtable.trace_held_nodes orelse return;

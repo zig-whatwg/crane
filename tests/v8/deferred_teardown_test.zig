@@ -154,9 +154,9 @@ const Tree = struct {
         page.queue.drainAll();
         return .{
             .root = Watched.of(root),
-            .first_span = Watched.of(@ptrCast(@alignCast(first.ownerInstance().?))),
-            .first_text = Watched.of(@ptrCast(@alignCast(first.firstChild().?.ownerInstance().?))),
-            .last_span = Watched.of(@ptrCast(@alignCast(last.ownerInstance().?))),
+            .first_span = Watched.of(first.instance()),
+            .first_text = Watched.of(first.firstChild().?.instance()),
+            .last_span = Watched.of(last.instance()),
         };
     }
 
@@ -328,7 +328,7 @@ test "a Document root goes in one slice, whatever the budget" {
         \\d
     );
     const watched = Watched.of(document);
-    const html = Watched.of(@ptrCast(@alignCast(dom.instance_bridge.getNodeBase(@ptrCast(document)).?.firstChild().?.ownerInstance().?)));
+    const html = Watched.of(dom.instance_bridge.getNodeBase(@ptrCast(document)).?.firstChild().?.instance());
     // What making it left (innerHTML's parse fragment) goes first.
     queue.drainAll();
     try page.run("globalThis.d = null;");

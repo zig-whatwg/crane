@@ -258,8 +258,7 @@ fn documentUrlOf(node: *NodeBase) ?[]const u8 {
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const raw = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(raw));
+    return node.registeredInstance();
 }
 
 /// The AgentHost of `instance`'s realm's agent (a ShadowRealm's: its

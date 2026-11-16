@@ -968,7 +968,7 @@ fn ancestorChain(node: *NodeBase, out: *[256]*NodeBase) usize {
 // ============================================================================
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
+    return node.registeredInstance();
 }
 
 fn isShadowRoot(node: *NodeBase) bool {
@@ -1970,20 +1970,6 @@ pub fn treeCounts(context: *anyopaque) css.math_values.TreeCounts {
         }
     }
     return counts;
-}
-
-test "a detached parentless element has sibling index and count one" {
-    if (comptime !@hasDecl(@This(), "treeCounts")) return error.SiblingProviderNotImplemented;
-    const allocator = std.testing.allocator;
-    const node = try allocator.create(NodeBase);
-    defer allocator.destroy(node);
-    node.* = .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    };
-    const counts = @field(@This(), "treeCounts")(@ptrCast(node));
-    try std.testing.expectEqual(@as(usize, 1), counts.index);
-    try std.testing.expectEqual(@as(usize, 1), counts.count);
 }
 
 /// Values 5 §9.4: borrowed only while the cascade computes this element.

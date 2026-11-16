@@ -12,21 +12,18 @@
 //!   and a walk may remove the entry it was just given.
 //! - The node's teardown (NodeBase.deinitRareData) frees what it owns: an
 //!   owned node name and the block; std.testing.allocator sees the rest.
+//!
+//! The nodes are real ones with no node document (real_nodes.zig `bare`;
+//! lane wb1): an Element's node block, whose allocator is its Browser's. They
+//! were NodeBase values on the test's stack.
 
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
-const infra = @import("infra");
+const real_nodes = @import("real_nodes.zig");
 
 const NodeBase = dom.NodeBase;
 const RegisteredObserver = dom.node_base.RegisteredObserverType;
-
-fn bareNode() NodeBase {
-    return .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    };
-}
 
 /// Three distinct observers, never dereferenced: a registration names its
 /// observer by address only.
@@ -51,7 +48,10 @@ const Observers = struct {
 };
 
 test "a node that never needs rare data has none" {
-    var node = bareNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const node = try nodes.bare(.element);
     try testing.expect(node.rare.block == null);
     try testing.expectEqualStrings("", node.nodeName());
     try testing.expect(!node.hasOwnedNodeName());
@@ -64,30 +64,33 @@ test "a node that never needs rare data has none" {
 
 test "the list's head is made once and never moves; the list keeps registration order" {
     var observers: Observers = .{};
-    var node = bareNode();
-    defer node.deinitRareData();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    // The Browser's end releases the node, and its rare data with it.
+    defer nodes.close();
+    const node = try nodes.bare(.element);
 
     const first = try node.appendRegisteredObserver(observers.registration(0, false));
     const rare = dom.node_rare_data.get(node.rare, .registered_observers).?;
     const second = try node.appendRegisteredObserver(observers.registration(1, true));
     const third = try node.appendRegisteredObserver(observers.registration(2, false));
     try testing.expectEqual(rare, dom.node_rare_data.get(node.rare, .registered_observers).?);
-    try observers.expectOrder(&node, &.{ 0, 1, 2 });
+    try observers.expectOrder(node, &.{ 0, 1, 2 });
 
     // observe() step 7.2: the entry is updated where it is.
     first.options = .{ .child_list = true };
-    try observers.expectOrder(&node, &.{ 0, 1, 2 });
+    try observers.expectOrder(node, &.{ 0, 1, 2 });
     try testing.expect(first.options.child_list);
 
     // A transient copy is appended like any other entry.
     var transient = observers.registration(0, true);
     transient.transient_source = &observers.slots;
     _ = try node.appendRegisteredObserver(transient);
-    try observers.expectOrder(&node, &.{ 0, 1, 2, 0 });
+    try observers.expectOrder(node, &.{ 0, 1, 2, 0 });
 
     // Removing from the middle leaves the rest in order; the head stays.
     node.removeRegisteredObserver(second);
-    try observers.expectOrder(&node, &.{ 0, 2, 0 });
+    try observers.expectOrder(node, &.{ 0, 2, 0 });
     try testing.expectEqual(rare, dom.node_rare_data.get(node.rare, .registered_observers).?);
 
     // A walk may remove the entry it was just given (disconnect(), the
@@ -96,7 +99,7 @@ test "the list's head is made once and never moves; the list keeps registration 
     while (entries.next()) |registered| {
         if (registered.transient_source != null) node.removeRegisteredObserver(registered);
     }
-    try observers.expectOrder(&node, &.{ 0, 2 });
+    try observers.expectOrder(node, &.{ 0, 2 });
     node.removeRegisteredObserver(third);
     node.removeRegisteredObserver(first);
     try testing.expect(!node.hasRegisteredObservers());
@@ -104,20 +107,23 @@ test "the list's head is made once and never moves; the list keeps registration 
 }
 
 test "the node name lives in rare data, and an owned one is freed with it" {
-    var node = bareNode();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const node = try nodes.bare(.element);
 
     try node.setStaticNodeName("EMBED");
     try testing.expectEqualStrings("EMBED", node.nodeName());
     try testing.expect(!node.hasOwnedNodeName());
 
     // setLocalName's uppercase copy: owned by the node from here.
-    const owned = try testing.allocator.dupe(u8, "SCRIPT");
+    const owned = try node.allocator().dupe(u8, "SCRIPT");
     try node.setOwnedNodeName(owned);
     try testing.expectEqualStrings("SCRIPT", node.nodeName());
     try testing.expect(node.hasOwnedNodeName());
 
     // Renaming frees the owned name it replaces.
-    try node.setOwnedNodeName(try testing.allocator.dupe(u8, "IFRAME"));
+    try node.setOwnedNodeName(try node.allocator().dupe(u8, "IFRAME"));
     try testing.expectEqualStrings("IFRAME", node.nodeName());
 
     node.deinitRareData();

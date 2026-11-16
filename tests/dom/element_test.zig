@@ -1,58 +1,82 @@
+//! An element's class membership follows its class attribute.
+//!
+//! Lane wb1: these two tests held ElementWithBase's `class_bloom_filter`, a
+//! per-element filter that type rebuilt on every class change. Production
+//! keeps no such filter: an element's classes are a token list of its
+//! Browser's attribute values (dom.element_data's ClassSet, what `.class`
+//! selectors and getElementsByClassName ask). What the tests asserted of the
+//! filter - a class is found once set, and not found once replaced - is
+//! asserted of that membership test, on a real element (real_nodes.zig). The
+//! filter's own property (a false positive is possible, a false negative is
+//! not) has no production equivalent and is not asserted.
+
 const std = @import("std");
-const dom = @import("dom");
-const infra = @import("infra");
-const webidl = @import("webidl");
+const interfaces = @import("interfaces");
+const real_nodes = @import("real_nodes.zig");
 
-// Type aliases
-const Element = dom.ElementWithBase;
+const str = real_nodes.str;
 
-test "Element - bloom filter class optimization" {
-    const allocator = std.testing.allocator;
-    const ElementWithBase = dom.ElementWithBase;
-
-    var elem = ElementWithBase.init(&allocator, "div");
-    defer elem.deinit();
-
-    // Set class attribute
-    try elem.setAttribute("class", "container main active");
-
-    // Bloom filter should be populated
-    try std.testing.expect(elem.class_bloom_filter.contains("container"));
-    try std.testing.expect(elem.class_bloom_filter.contains("main"));
-    try std.testing.expect(elem.class_bloom_filter.contains("active"));
-
-    // Non-existent classes should (mostly) not be found
-    try std.testing.expect(!elem.class_bloom_filter.contains("nonexistent"));
-    try std.testing.expect(!elem.class_bloom_filter.contains("randomclass"));
-
-    // Update class attribute
-    try elem.setAttribute("class", "new-class different");
-
-    // Old classes should not be in bloom filter anymore
-    try std.testing.expect(!elem.class_bloom_filter.contains("container"));
-    try std.testing.expect(!elem.class_bloom_filter.contains("main"));
-
-    // New classes should be found
-    try std.testing.expect(elem.class_bloom_filter.contains("new-class"));
-    try std.testing.expect(elem.class_bloom_filter.contains("different"));
+/// Whether `element` has `class`: by a class selector and by classList.
+fn hasClass(element: *real_nodes.Instance, comptime class: []const u8) !bool {
+    const matched = try interfaces.Element.call_matches(element, str("." ++ class));
+    const listed = try interfaces.DOMTokenList.call_contains(try interfaces.Element.get_classList(element), str(class));
+    try std.testing.expectEqual(matched, listed);
+    return matched;
 }
 
-test "Element - bloom filter updated on class change" {
-    const allocator = std.testing.allocator;
-    const ElementWithBase = dom.ElementWithBase;
+test "Element - class membership follows the class attribute (was: bloom filter class optimization)" {
+    // Over an arena: the classList object is its wrapper's to end, and an
+    // engine-less realm has none (real_nodes.ArenaNodes).
+    var arena_nodes: real_nodes.ArenaNodes = undefined;
+    const nodes = try arena_nodes.open();
+    defer arena_nodes.close();
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
+    try nodes.append(doc, elem);
 
-    var elem = ElementWithBase.init(&allocator, "div");
-    defer elem.deinit();
+    // Set class attribute
+    try nodes.setAttribute(elem, "class", "container main active");
+
+    // Every class is found
+    try std.testing.expect(try hasClass(elem, "container"));
+    try std.testing.expect(try hasClass(elem, "main"));
+    try std.testing.expect(try hasClass(elem, "active"));
+
+    // Non-existent classes are not found
+    try std.testing.expect(!try hasClass(elem, "nonexistent"));
+    try std.testing.expect(!try hasClass(elem, "randomclass"));
+
+    // Update class attribute
+    try nodes.setAttribute(elem, "class", "new-class different");
+
+    // Old classes are not found any more
+    try std.testing.expect(!try hasClass(elem, "container"));
+    try std.testing.expect(!try hasClass(elem, "main"));
+
+    // New classes are found
+    try std.testing.expect(try hasClass(elem, "new-class"));
+    try std.testing.expect(try hasClass(elem, "different"));
+}
+
+test "Element - class membership is updated on class change (was: bloom filter updated on class change)" {
+    // Over an arena: the classList object is its wrapper's to end, and an
+    // engine-less realm has none (real_nodes.ArenaNodes).
+    var arena_nodes: real_nodes.ArenaNodes = undefined;
+    const nodes = try arena_nodes.open();
+    defer arena_nodes.close();
+    const doc = try nodes.document();
+    const elem = try nodes.element(doc, "div");
+    try nodes.append(doc, elem);
 
     // Initially no classes
-    try std.testing.expect(!elem.class_bloom_filter.contains("test"));
+    try std.testing.expect(!try hasClass(elem, "test"));
 
     // Add class
-    try elem.setAttribute("class", "test");
-    try std.testing.expect(elem.class_bloom_filter.contains("test"));
+    try nodes.setAttribute(elem, "class", "test");
+    try std.testing.expect(try hasClass(elem, "test"));
 
     // Modify class
-    try elem.setAttribute("class", "modified");
-    try std.testing.expect(!elem.class_bloom_filter.contains("test"));
-    try std.testing.expect(elem.class_bloom_filter.contains("modified"));
+    try nodes.setAttribute(elem, "class", "modified");
+    try std.testing.expect(!try hasClass(elem, "test"));
+    try std.testing.expect(try hasClass(elem, "modified"));
 }

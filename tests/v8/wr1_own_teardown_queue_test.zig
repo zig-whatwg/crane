@@ -140,7 +140,7 @@ test "a queue-less agent's garbage tree is freed at a requested collection" {
     defer page.close();
     // A detached tree script made and dropped, its document too.
     const div = Watched.of(try page.instance("globalThis.d = new Document(); globalThis.x = d.createElement('div'); x.innerHTML = '<span>a</span><span>b</span>'; x"));
-    const span: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getNodeBase(div.instance).?.firstChild().?.ownerInstance().?));
+    const span: *runtime.Instance = dom.instance_bridge.getNodeBase(div.instance).?.firstChild().?.instance();
     const first_span = Watched.of(span);
     const document = Watched.of(try page.instance("d"));
     try page.run("globalThis.x = null; globalThis.d = null;");
