@@ -215,11 +215,15 @@ a collection's own state) is not in the host's figure: the V8 adapter keeps
 that sum itself, one per agent - workers included - and by the same rule
 (lane dm3, batch C of lane dm1's design): each wrapper-cache record adds what
 its instance holds when the cache takes the wrapper and keeps the amount; it
-leaves where a collection finds the wrapper dead - in a full collection at
-the end of marking, with one decrease before V8 computes its limits, and in a
-young collection at the drop - never at the instance's free
-(v8_wrapper.cpp, "What the instances behind non-node wrappers hold";
-wrapper_cache.zig `noteWrapped`, `takeHeld`).
+leaves the figure where a collection finds the wrapper dead, never at the
+instance's free. What V8 is told is that figure plus what died since the last
+full collection: a wrapper a YOUNG collection dropped stays in V8's count
+until the next full collection's end of marking, where one decrease, before
+V8 computes its limits, takes away that collection's dead and everything
+that died since the one before (the user's ruling of 2026-11-15: as the
+object behind a dropped wrapper stays on Blink's heap until a full
+collection) (v8_wrapper.cpp, "What the instances behind non-node wrappers
+hold"; wrapper_cache.zig `noteWrapped`, `takeHeld`).
 
 **A native walk holds teardowns.** A teardown can run inside any engine call
 that allocates: V8 runs every pending second pass in the prologue of the next

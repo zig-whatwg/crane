@@ -496,19 +496,35 @@ fn noteWrapped(isolate: *v8.Isolate, entry: *Cell, facts: WrapperFacts) void {
     v8.v8_Isolate_NoteWrappedInstance(isolate, @as(usize, units) * held_unit);
 }
 
-/// `entry`'s share of its agent's figure leaves it: a collection found its
-/// wrapper dead (`WrapperCache.died`, `WrapperCache.sweepUnmarked`), or the
-/// record is freed while its wrapper may live (`WrapperCache.freeCell`: a
-/// remove, a replacement, its realm's end). Once: the record's amount reads 0
-/// after it. A store and an add, no V8 call here: inside a full collection
-/// V8 is told once for all its dead (v8_wrapper.cpp
-/// `settleWrappedInstances`), outside one at the agent's next safe point.
-/// Nothing of the instance is read - it may be freed, or another object.
-fn takeHeld(isolate: ?*v8.Isolate, entry: *Cell) void {
+/// How a record's share leaves its agent's figure (`takeHeld`).
+const Gone = enum {
+    /// A collection found the record's wrapper dead (`WrapperCache.died`,
+    /// `WrapperCache.sweepUnmarked`). When that collection is a young one
+    /// the share stays in what V8 is told until the next full collection
+    /// (v8_wrapper.cpp v8_Isolate_NoteWrapperDead: the user's ruling of
+    /// 2026-11-15, Blink's model).
+    dead,
+    /// The record is freed while its wrapper may live
+    /// (`WrapperCache.freeCell`: a remove, a replacement, its realm's end).
+    freed,
+};
+
+/// `entry`'s share of its agent's figure leaves it. Once: the record's
+/// amount reads 0 after it. A store and a call that only adds and compares,
+/// no V8 call here: inside a full collection V8 is told once for all its
+/// dead (v8_wrapper.cpp `forgetDeadWrappedInstances`), outside one at the
+/// agent's next safe point. Nothing of the instance is read - it may be
+/// freed, or another object.
+fn takeHeld(isolate: ?*v8.Isolate, entry: *Cell, how: Gone) void {
     const units = entry.stamp.held;
     if (units == 0) return;
     entry.stamp.held = 0;
-    if (isolate) |i| v8.v8_Isolate_NoteInstanceGone(i, @as(usize, units) * held_unit);
+    const i = isolate orelse return;
+    const bytes = @as(usize, units) * held_unit;
+    switch (how) {
+        .dead => v8.v8_Isolate_NoteWrapperDead(i, bytes),
+        .freed => v8.v8_Isolate_NoteInstanceGone(i, bytes),
+    }
 }
 
 /// True while something other than V8 holds `instance`: a node with a parent
@@ -1614,7 +1630,7 @@ pub const WrapperCache = struct {
         // A record freed with its wrapper not found dead (a remove, a
         // replacement, its realm's end): its share of the figure goes with
         // it.
-        takeHeld(self.isolate, entry);
+        takeHeld(self.isolate, entry, .freed);
         const chunk = Chunk.of(entry);
         const was_full = chunk.free == null;
         const free: *FreeCell = @ptrCast(entry);
@@ -1698,7 +1714,7 @@ pub const WrapperCache = struct {
         // What its instance holds is no live wrapper's any more: it leaves
         // the figure here, where the collector decided - not at the
         // finalizer, which runs after V8 has computed its next limits.
-        takeHeld(self.isolate, entry);
+        takeHeld(self.isolate, entry, .dead);
         self.pending += 1;
         self.deaths +%= 1;
         // Due to memory reuse (SlabAllocator/ArenaAllocator), the same
@@ -1750,10 +1766,10 @@ pub const WrapperCache = struct {
                     // is a dead wrapper's: what its instance holds leaves the
                     // figure in this pause, with the traced records' dead -
                     // V8 computes its next limits from what it is told here
-                    // (v8_wrapper.cpp `settleWrappedInstances`). The record
+                    // (v8_wrapper.cpp `forgetDeadWrappedInstances`). The record
                     // itself waits for its Global's first pass, as before.
                     if (!bits.marked) {
-                        takeHeld(self.isolate, entry);
+                        takeHeld(self.isolate, entry, .dead);
                     } else if (entry.stamp.held == 0) self.heldAgain(entry);
                     continue;
                 }
@@ -1792,7 +1808,7 @@ pub const WrapperCache = struct {
     /// `heldAgain` repairs at the next collection that does.
     pub fn forgetHeldForTest(self: *Self, instance: *runtime.Instance) bool {
         const entry = self.cache.get(instance) orelse return false;
-        takeHeld(self.isolate, entry);
+        takeHeld(self.isolate, entry, .freed);
         return true;
     }
 

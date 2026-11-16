@@ -968,9 +968,11 @@ test "what the instances behind live non-node wrappers hold is in the figure V8 
         std.debug.print("{d} wrapped URLSearchParams: {d} B in the figure ({d:.1} each), {d} B reported to V8\n", .{ n, live, @as(f64, @floatFromInt(live)) / @as(f64, n), reported });
         // At least the slab slot and the cache's record each (64 B), and no more than a page each.
         try testing.expect(live >= n * 64 and live <= n * 4096);
-        // Reported in steps of 128 KB or more, never a step behind the figure.
-        try testing.expect(reported >= 128 * 1024 and reported <= base + live);
-        try testing.expect(base + live - reported < 128 * 1024 + 4096);
+        // Reported in steps of 128 KB or more, never a step behind the figure - with what died since the last
+        // full collection, which V8 is still told (tests/v8/dm3_instance_figure_test.zig).
+        const dead = try page.counter("wrapped_instance_bytes_dead");
+        try testing.expect(reported >= 128 * 1024 and reported <= base + live + dead);
+        try testing.expect(base + live + dead - reported < 128 * 1024 + 4096);
         try page.run("globalThis.keep = null; 0");
         page.fullGC();
         // Dropped and collected, they are out of it, and V8 holds no more than a step over the figure.

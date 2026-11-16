@@ -1659,10 +1659,15 @@ pub extern fn v8_Isolate_TakeQueuedFinalizers(
 /// 128 KB wait (v8_wrapper.cpp, "What the instances behind non-node wrappers
 /// hold"). No V8 call here.
 pub extern fn v8_Isolate_NoteWrappedInstance(isolate: *Isolate, bytes: usize) void;
-/// A record that put `bytes` into that figure takes them out: a collection
-/// found its wrapper dead, or the record is freed. No V8 call here: a full
-/// collection tells V8 for all its dead at the end of its weak processing,
-/// the agent's next safe point for the rest.
+/// A collection found dead the wrapper of a record that put `bytes` into that
+/// figure: they leave it. Found by a young collection they stay in what V8
+/// is told, as dead, until the agent's next full collection (as the object
+/// behind a dropped wrapper stays on Blink's heap); a full collection tells
+/// V8 for all its dead at the end of its weak processing. No V8 call here.
+pub extern fn v8_Isolate_NoteWrapperDead(isolate: *Isolate, bytes: usize) void;
+/// A record that put `bytes` into that figure is freed with its wrapper not
+/// found dead (a remove, its realm's end): they leave the figure, and V8's
+/// count at the agent's next safe point. No V8 call here.
 pub extern fn v8_Isolate_NoteInstanceGone(isolate: *Isolate, bytes: usize) void;
 /// The figure itself - what the instances behind the agent's live non-node
 /// wrappers hold - or, with `reported`, what V8 holds of it now as external

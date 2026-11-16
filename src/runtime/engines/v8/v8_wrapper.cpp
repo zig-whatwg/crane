@@ -3758,7 +3758,7 @@ extern "C" uint64_t v8_Debug_MinorGCCount(Isolate* isolate) {
 
 static void drainNodeWrappers(IsolateData* record);
 static void noteNodeWrappersCollected(IsolateData* record);
-static void settleWrappedInstances(IsolateData* record, Isolate* isolate);
+static void forgetDeadWrappedInstances(IsolateData* record, Isolate* isolate);
 
 /// The first pass queued a finalizer, or a collection recorded a node
 /// wrapper's release: the agent's queue owes them to its next safe point - the
@@ -4326,9 +4326,10 @@ void NodeWrapperRegistry::ProcessWeak(const cppgc::LivenessBroker& broker) {
     // traced, and the first passes are told this pause came first.
     if (record->platform_wrappers_weak) record->platform_wrappers_weak(record->platform_wrappers);
     // What the instances behind the wrappers this collection found dead
-    // hold left the figure in that sweep: V8 is told now, before it computes
-    // its next limits ("What the instances behind non-node wrappers hold").
-    if (Isolate* isolate = Isolate::TryGetCurrent()) settleWrappedInstances(record, isolate);
+    // hold left the figure in that sweep, and what died since the collection
+    // before it is forgotten: V8 is told now, before it computes its next
+    // limits ("What the instances behind non-node wrappers hold").
+    if (Isolate* isolate = Isolate::TryGetCurrent()) forgetDeadWrappedInstances(record, isolate);
     record->gc_pauses.cpp_weak_processed = true;
 }
 
@@ -4784,8 +4785,8 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // Response's body, a stream's queue).
 //
 // WHEN it grows: at the wrap (v8_Isolate_NoteWrappedInstance: an add, no V8
-// call). WHEN it falls (v8_Isolate_NoteInstanceGone, from wrapper_cache.zig
-// `takeHeld`): where a collection FINDS THE WRAPPER DEAD -
+// call). WHEN it falls: where a collection FINDS THE WRAPPER DEAD
+// (v8_Isolate_NoteWrapperDead, from wrapper_cache.zig `takeHeld`) -
 // - a full collection's weak processing, in its atomic pause
 //   (NodeWrapperRegistry::ProcessWeak -> the caches' sweep): every record
 //   whose anchor the marking did not reach;
@@ -4794,35 +4795,68 @@ static void tableEntriesPrologue(Isolate* isolate, GCType, GCCallbackFlags, void
 // - a first pass of a full collection, for the rare record whose anchor a
 //   scan of the stack kept while its wrapper died, and for a record with no
 //   anchor (a realm's global);
-// and where a record is freed with its wrapper not found dead (a remove, its
-// realm's end). Never at the instance's free: that is the finalizer's, after
-// the collection.
+// and where a record is freed with its wrapper not found dead
+// (v8_Isolate_NoteInstanceGone: a remove, its realm's end). Never at the
+// instance's free: that is the finalizer's, after the collection.
+//
+// WHAT V8 IS TOLD is the figure PLUS what died since the last full
+// collection (instance_bytes_dead): the share of every record whose wrapper
+// a YOUNG collection found dead stays in V8's count until the next full
+// collection's weak processing, which forgets it. The user's ruling of
+// 2026-11-15, after the first form of this change - the share leaves V8's
+// count at the young drop - was measured: that form is the truer account of
+// Crane's memory (the instance is freed at the next safe point), and it is
+// not what V8 sees of a browser. In Blink a young collection that drops a
+// wrapper only clears the reference to it (BlinkRootsHandler::ResetRoot,
+// third_party/blink/renderer/platform/heap/thread_state.cc:38-66, Chromium
+// 157): the object stays on the C++ heap, counted in V8's global size
+// (cpp-heap.cc ReportBufferedAllocationSizeIfPossible), until a full
+// collection finds it dead - so a loop of short-lived objects asks V8 for
+// full collections at the rate of what it allocates, and each one sweeps
+// what the dropped wrappers left in V8 itself. Told the truer figure, V8 ran
+// 4 full collections on the perf suite's attributes page where it had run
+// 18 to 21, the dropped wrappers' pointer-table entries (8 bytes each, swept
+// only by a full collection: src/heap/mark-compact.cc:3419; "The pointer
+// table's account of dropped wrappers", above) waited for V8's own limit,
+// and four rows settled 11% to 19% higher for 3% to 8% less CPU (chat.local,
+// 2026-11-15: dom.event-ctor 68.4 MB against 61.6, the three rows after it
+// 73.4 against 61.6; lesson architecture-an-account-that-was-wrong-in-the-
+// useful-direction-was-also-doing-another-accounts-work.md). The user chose
+// the browsers' rate.
 //
 // WHEN V8 is told. Growth: at the agent's drain once 128 KB wait (V8's own
 // step, kExternalAllocationLimitForInterrupt) - a report of growth may start
 // a collection, so it is made at a safe point. What a FULL collection found
-// dead: with one ExternalMemoryAccounter::Decrease in that collection, at the
-// end of its C++ weak processing (`settleWrappedInstances`), which is before
-// V8 takes its sizes and computes its next limits (15.7.112.43
+// dead, and everything that died since the collection before it: with one
+// ExternalMemoryAccounter::Decrease in that collection, at the end of its
+// C++ weak processing (`settleWrappedInstances`), which is before V8 takes
+// its sizes and computes its next limits (15.7.112.43
 // src/heap/heap.cc:2595, :1604) - so the limit is set from what survived,
-// which is what V8 reads of Blink's heap there. A decrease starts no
-// collection (Heap::UpdateExternalMemory returns at `delta <= 0`; V8's own
-// collector threads call it for ArrayBuffers). What a young collection
-// dropped, and what a first pass found dead: at the agent's drain after it,
-// once 128 KB wait - no V8 API may be called from a first pass.
+// which is what V8 reads of Blink's heap there (cpp-heap.cc:1016, the
+// marked bytes). A decrease starts no collection (Heap::UpdateExternalMemory
+// returns at `delta <= 0`; V8's own collector threads call it for
+// ArrayBuffers). What a first pass found dead, and a freed record's share:
+// at the agent's drain after it, once 128 KB wait - no V8 API may be called
+// from a first pass.
 //
 // WHAT THIS REPLACED (lane wrap1 b3's account, a stopgap by its own word):
 // the bytes put behind wrappers since the last full collection BEGAN, taken
 // back whole in that collection's prologue. That was an account of
 // allocation: it told V8 nothing of what survived a collection (a page that
-// keeps 100,000 Events read as keeping none); it left V8's count when the
-// prologue callbacks ran - for an incremental collection that is when its
-// marking starts, and again before its atomic pause - not where the dead are
-// known; and what a young collection dropped stayed in it until the next
-// full collection.
+// keeps 100,000 Events read as keeping none), and it left V8's count when
+// the prologue callbacks ran - for an incremental collection that is when
+// its marking starts, and again before its atomic pause - not where the dead
+// are known. What it had right is kept: a wrapper a young collection dropped
+// stays counted until the next full collection.
 
 /// What the adapter waits for before it tells V8 (ExternalMemory.report_step).
 static constexpr size_t kWrappedInstanceReportStep = 128 * 1024;
+
+/// What V8 should hold: the figure, and what died since the last full
+/// collection.
+static size_t wrappedInstancesTold(const IsolateData* record) {
+    return record->instance_bytes_live + record->instance_bytes_dead;
+}
 
 /// The realm's cache took a wrapper whose instance holds `bytes`: they join
 /// the figure, and the report is owed to the agent's next safe point once a
@@ -4831,48 +4865,74 @@ extern "C" void v8_Isolate_NoteWrappedInstance(Isolate* isolate, size_t bytes) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
     record->instance_bytes_live += bytes;
-    if (record->instance_bytes_live >= record->instance_bytes_reported + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
+    if (wrappedInstancesTold(record) >= record->instance_bytes_reported + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
 }
 
-/// V8 is told the figure where it is LOWER than what V8 holds: with one
-/// decrease, which starts no collection - legal inside one, and in a GC
-/// callback.
+/// V8 is told what it should hold where that is LOWER than what it holds:
+/// with one decrease, which starts no collection - legal inside one, and in
+/// a GC callback.
 static void settleWrappedInstances(IsolateData* record, Isolate* isolate) {
-    if (record->instance_bytes_reported <= record->instance_bytes_live) return;
-    const size_t fell = record->instance_bytes_reported - record->instance_bytes_live;
-    record->instance_bytes_reported = record->instance_bytes_live;
+    const size_t told = wrappedInstancesTold(record);
+    if (record->instance_bytes_reported <= told) return;
+    const size_t fell = record->instance_bytes_reported - told;
+    record->instance_bytes_reported = told;
     record->instance_accounter.Decrease(isolate, fell);
 }
 
-/// A record that put `bytes` into the figure takes them out: its wrapper was
-/// found dead, or the record is freed (wrapper_cache.zig `takeHeld`). A
-/// subtraction and a compare, no V8 call: it runs in a collection's weak
-/// processing, in a young collection's roots handler and in first-pass weak
-/// callbacks, where no V8 API may be called (v8-weak-callback-info.h). A full
-/// collection's weak processing tells V8 once for all its dead when its sweep
-/// is done (NodeWrapperRegistry::ProcessWeak); everything else is owed to the
-/// agent's drain once a step's worth waits.
+/// A full collection's weak processing is done (the caches' sweep took its
+/// dead out of the figure): what died since the collection before it is
+/// forgotten with them, and V8 is told once, before it computes its limits.
+static void forgetDeadWrappedInstances(IsolateData* record, Isolate* isolate) {
+    record->instance_bytes_dead = 0;
+    settleWrappedInstances(record, isolate);
+}
+
+/// A collection found dead the wrapper of a record that put `bytes` into the
+/// figure (wrapper_cache.zig `takeHeld`): they leave the figure. Found by a
+/// YOUNG collection - no mark-compact is between its prologue and its
+/// epilogue (GCPauses::depth: `dropDeadWrapperAnchor` tells the two apart the
+/// same way) - they stay in what V8 is told, as dead, until the next full
+/// collection (the user's ruling, above). A subtraction, an add and a
+/// compare, no V8 call: it runs in a collection's weak processing, in a
+/// young collection's roots handler and in first-pass weak callbacks, where
+/// no V8 API may be called (v8-weak-callback-info.h).
+extern "C" void v8_Isolate_NoteWrapperDead(Isolate* isolate, size_t bytes) {
+    IsolateData* record = isolateData(isolate);
+    if (!record) return;
+    const size_t taken = bytes < record->instance_bytes_live ? bytes : record->instance_bytes_live;
+    record->instance_bytes_live -= taken;
+    if (record->gc_pauses.depth == 0) {
+        record->instance_bytes_dead += taken;
+    } else if (record->instance_bytes_reported >= wrappedInstancesTold(record) + kWrappedInstanceReportStep) {
+        noteNodeWrappersCollected(record);
+    }
+}
+
+/// A record that put `bytes` into the figure is freed with its wrapper not
+/// found dead (a remove, a replacement, its realm's end): they leave the
+/// figure and what V8 is told, at the agent's drain once a step's worth
+/// waits. No V8 call.
 extern "C" void v8_Isolate_NoteInstanceGone(Isolate* isolate, size_t bytes) {
     IsolateData* record = isolateData(isolate);
     if (!record) return;
     record->instance_bytes_live -= bytes < record->instance_bytes_live ? bytes : record->instance_bytes_live;
-    if (record->instance_bytes_reported >= record->instance_bytes_live + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
+    if (record->instance_bytes_reported >= wrappedInstancesTold(record) + kWrappedInstanceReportStep) noteNodeWrappersCollected(record);
 }
 
-/// V8 is told the figure once it moved a step from what V8 holds. At the
-/// agent's safe point, the isolate entered: a report of growth may run a
-/// collection, whose weak processing lowers both numbers - so what V8 holds
-/// is recorded before V8 is called.
+/// V8 is told what it should hold once that moved a step from what it holds.
+/// At the agent's safe point, the isolate entered: a report of growth may
+/// run a collection, whose weak processing lowers both numbers - so what V8
+/// holds is recorded before V8 is called.
 static void reportWrappedInstances(IsolateData* record) {
-    const size_t live = record->instance_bytes_live;
+    const size_t told = wrappedInstancesTold(record);
     const size_t reported = record->instance_bytes_reported;
-    if (live >= reported + kWrappedInstanceReportStep) {
+    if (told >= reported + kWrappedInstanceReportStep) {
         Isolate* isolate = Isolate::GetCurrent();
         if (!isolate) return;
-        record->instance_bytes_reported = live;
+        record->instance_bytes_reported = told;
         CollectingScope collecting(isolate);
-        record->instance_accounter.Increase(isolate, live - reported);
-    } else if (reported >= live + kWrappedInstanceReportStep) {
+        record->instance_accounter.Increase(isolate, told - reported);
+    } else if (reported >= told + kWrappedInstanceReportStep) {
         Isolate* isolate = Isolate::GetCurrent();
         if (!isolate) return;
         settleWrappedInstances(record, isolate);
@@ -4885,6 +4945,7 @@ static void endWrappedInstances(IsolateData* record, Isolate* isolate) {
     const size_t back = record->instance_bytes_reported;
     record->instance_bytes_reported = 0;
     record->instance_bytes_live = 0;
+    record->instance_bytes_dead = 0;
     if (back) record->instance_accounter.Decrease(isolate, back);
 }
 
