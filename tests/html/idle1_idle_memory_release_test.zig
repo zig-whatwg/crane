@@ -77,6 +77,74 @@ const Fragmented = struct {
     }
 };
 
+/// Turn the loop until the page expression `done` is "1", at most 20 s.
+fn turnUntil(page: helpers.Page, done: []const u8) !void {
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    const start = clock.monotonicMillis();
+    while (true) {
+        const text = try page.evaluate(done);
+        defer testing.allocator.free(text);
+        if (std.mem.eql(u8, text, "1")) return;
+        if (clock.monotonicMillis() - start > 20_000) return error.NeverDone;
+        _ = loop.runOnceBlocking(5);
+    }
+}
+
+fn noReleaseBetweenAPostAndItsReply() !void {
+    var gate: memory_release.Gate = .{};
+    const page = try openWithGate(&gate);
+    defer page.close();
+    // An echo worker, as tests/html/rep2_window_wake_test.zig's: after its
+    // first reply, 40 round trips, each begun by a 3 ms timer - the window
+    // waits, idle, for every reply. `longest` is the longest the window went
+    // without work: from a round trip's timer to its reply.
+    try page.run(
+        \\globalThis.phase = 0;
+        \\globalThis.longest = 0;
+        \\globalThis.keepAlive = setTimeout(() => {}, 60000);
+        \\globalThis.w = new Worker('data:text/javascript,onmessage%20%3D%20e%20%3D%3E%20postMessage(e.data)');
+        \\(async () => {
+        \\  await new Promise(r => { w.onmessage = r; w.postMessage(-1); });
+        \\  phase = 1;
+        \\  await new Promise(r => { globalThis.resume = r; });
+        \\  for (let i = 0; i < 40; i++) {
+        \\    const t0 = performance.now();
+        \\    await new Promise(r => setTimeout(r, 3));
+        \\    await new Promise(r => { w.onmessage = r; w.postMessage(i); });
+        \\    longest = Math.max(longest, performance.now() - t0);
+        \\  }
+        \\  phase = 2;
+        \\})();
+    );
+    // The worker starts on its own thread; the window may be idle long
+    // enough meanwhile to ask once. That is before the round trips.
+    try turnUntil(page, "String(phase)");
+    const before = gate.count();
+    // A gate that would not refuse: if the loop asked during the round
+    // trips, it would be counted.
+    var fresh: memory_release.Gate = .{};
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    loop.memory_gate = &fresh;
+    try page.run("resume();");
+    try turnUntil(page, "String(phase - 1)");
+    try page.run("w.terminate(); clearTimeout(keepAlive);");
+
+    const longest_text = try page.evaluate("String(Math.ceil(longest))");
+    defer testing.allocator.free(longest_text);
+    const longest_ms = try std.fmt.parseInt(u64, longest_text, 10);
+    // A release takes the loop's thread for as long as the allocator works,
+    // and a reply posted meanwhile waits for it. The loop asks only after
+    // 200 ms with nothing to run, so no release can fall between a post and
+    // its reply while a round trip is shorter than that. (A host that
+    // stalled this thread for 150 ms or more shows nothing either way.)
+    if (longest_ms < 150) try testing.expectEqual(@as(u64, 0), fresh.count());
+    try testing.expect(before <= 1);
+}
+
+test "no release falls between a window's post to a worker and the reply: the loop asks only after 200 ms with nothing to run" {
+    try helpers.onFreshThread(noReleaseBetweenAPostAndItsReply);
+}
+
 fn residentBytes() !u64 {
     const reading = platform.residentMemory() orelse return error.NoResidentMemoryReading;
     return reading.resident_bytes;
