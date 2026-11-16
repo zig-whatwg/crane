@@ -369,8 +369,9 @@ and a drift control against the round it repeats: low with low and high with hig
 geometric mean judged against the band, and a side with one level set against the level of the
 other it is within 3% of (at neither, the figures' ratio; the counts beside each figure show such
 a row: read it with care, a side that truly moved by the whole gap looks the same). The two
-levels of the rows that read ArrayBuffers - `fetch.loopback-stream`, `-gzip`, `-br` - have another
-cause, and there the HIGH level is the bytes Crane holds: V8's default in-sandbox allocator gives
+levels of `fetch.loopback-gzip` have another cause, and there the HIGH level is the bytes Crane
+holds (measured on that row only; any row read after many ArrayBuffers were freed can be low the
+same way): V8's default in-sandbox allocator gives
 free 1 MiB chunks up with `MADV_FREE_REUSABLE` and hands them out again without `MADV_FREE_REUSE`,
 and macOS leaves such pages out of the footprint though they are written again (lane mem2,
 2026-11-16: `fetch.loopback-gzip` 100-103 MB in 14 launches of 20 and 139-141 MB in 6, the same
