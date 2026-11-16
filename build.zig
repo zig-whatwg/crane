@@ -6030,6 +6030,28 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = code_size_module }), "tools-code_size_report", null).step);
 
     // ========================================================================
+    // Where two executables differ, section by section
+    // ========================================================================
+    // tools/section_diff.zig compares two Mach-O or ELF files region by
+    // region and says whether they are the same program, leaving out what
+    // names one link rather than the program (a UUID, a signature, a build
+    // id, the debug information): the cold check of the build migration's
+    // proof standard (tmp/plans/build-protocol-design.md 5.1a), where two
+    // cold builds of one tree differ by hash. `zig build section-diff --
+    // <a> <b>`; exit status 0 same, 1 differs, 2 not comparable.
+    const section_diff_module = b.createModule(.{
+        .root_source_file = b.path("tools/section_diff.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const section_diff_run = b.addRunArtifact(b.addExecutable(.{ .name = "section_diff", .root_module = section_diff_module }));
+    section_diff_run.has_side_effects = true;
+    section_diff_run.setCwd(b.path("."));
+    section_diff_run.addPassthruArgs();
+    b.step("section-diff", "Compare two executables region by region: the same program, or where they differ (-- <a> <b>)").dependOn(&section_diff_run.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = section_diff_module }), "tools-section_diff", null).step);
+
+    // ========================================================================
     // WPT: the wpt.fyi upload package
     // ========================================================================
     // tools/wpt_upload_package.zig turns a supervised sweep's reports, result
