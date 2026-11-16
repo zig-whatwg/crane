@@ -1,6 +1,7 @@
 # Workflow: A pool job builds the worktree as it is when the job STARTS, not as it was when you queued it
 
 **Date**: 2026-11-15
+**Status** (2026-11-16, lane wrap2): "when the job starts" is not an instant. The copy into a new mirror took minutes (the job started eleven minutes after it was placed), and commits made inside it gave the mirror a mixed tree: [the worktree must not change until the job prints its pid](workflow-the-first-copy-into-a-new-mirror-takes-minutes-the-worktree-must-not-change-until-the-job-prints-its-pid.md).
 **Lesson**: `crane-remote.sh` copies the worktree to the mirror at the moment a job gets its build slot. A job queued behind another - a chain of diagnosis builds, a job waiting for a full host - takes whatever the worktree holds then, so an edit made while the queue runs is in every build that had not started yet.
 
 **Why**: The sync is one way and happens once per job, right before the job's command runs (tmp/remote/crane-remote.sh). Nothing records which commit the mirror was synced from: the mirror has no `.git`, and a frozen directory's `BUILD_INFO` says what the script was TOLD the tree is. A chain that builds "main with patch 1", "main with patch 2", "main with patch 3" on a host with one free slot syncs three times, minutes apart.

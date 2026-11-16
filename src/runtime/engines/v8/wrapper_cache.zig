@@ -30,6 +30,12 @@
 //!   takes the record out of the map and puts its finalizer on the agent's
 //!   queue; the instance's teardown (`finalizeEntry`) runs at the agent's
 //!   safe point, never inside the collector.
+//! - **A wrapper V8 will not drop in a young collection** (an Event, a
+//!   legacy platform object's proxy, one the binding changed) is held by a
+//!   weak `v8::Global` made in the record's own word, whose parameter is the
+//!   wrapper's anchor: its first pass hands the record to `dropped` as a
+//!   young collection's drop does (lane wrap2: no callback record, no map
+//!   node, no lock for the arm).
 //! - **A wrapper with no platform anchor** - a realm's global, which has its
 //!   own GlobalAnchor - is held as every wrapper was before this design: by a
 //!   weak `v8::Global` with a first-pass callback and a finalizer (a `boxed`
@@ -72,9 +78,12 @@ const log = std.log.scoped(.wrapper_cache);
 /// - WEAK HANDLE (a non-node platform object's wrapper that V8 will NOT drop
 ///   in a young collection: `heldByWeakHandle`, `WrapperCache.changed`):
 ///   `wrapper` IS a `v8::Global<v8::Object>`, made in place in the same one
-///   word, weak with a first-pass callback (`unlinkCollected`) and a
-///   finalizer - what every entry's handle was until lane wrap1 b3, without
-///   its box. The wrapper's anchor names the record as a traced one's does.
+///   word, weak. Its parameter is the wrapper's anchor, which names the
+///   record as a traced one's does: V8's first pass for a dead wrapper
+///   reads the record through it and tells the cache (`dropped`), with
+///   nothing allocated for the arm (v8_wrapper.cpp
+///   `platformAnchorFirstPass`; lane wrap2 - until then the arm was a
+///   48-byte callback record and a node in the adapter's armed-handle map).
 /// - BOXED (an object with no platform anchor: a realm's global, which has
 ///   its GlobalAnchor; a test's plain object): `wrapper` is the
 ///   `Global<Object>*` the binding made, weak in the same way.
@@ -198,15 +207,10 @@ pub const Cell = extern struct {
         /// (see `Cell`; v8_wrapper.cpp kWrapperCellWeakHandle reads it).
         weak_handle: bool = false,
 
-        /// A weak-handle record's anchor was traced by the full collection
-        /// under way, or by the last one (`sweepUnmarked` writes it in every
-        /// full collection's atomic pause, from `marked`): the anchor
-        /// outlives that collection even if the wrapper does not - nothing
-        /// traces a weak Global, and a conservative scan of the stack can
-        /// keep the anchor alone. The wrapper's first pass reads it and
-        /// severs such an anchor (v8_wrapper.cpp kWrapperCellAnchorTraced,
-        /// `dropDeadWrapperAnchor`), so that it never names a freed record.
-        anchor_traced: bool = false,
+        /// Unused since lane wrap2 (it said whether a full collection traced
+        /// a weak-handle record's anchor; the wrapper's first pass severs
+        /// the anchor in every collection now).
+        _spare: bool = false,
 
         /// A full collection's marking reached the record's anchor
         /// (v8_wrapper.cpp PlatformAnchor::Trace, kWrapperCellMarked): written
@@ -256,7 +260,8 @@ comptime {
     // low 56 bits, which is all runtime.SlabAllocator stamps.
     std.debug.assert(@bitOffsetOf(Cell.Stamp, "generation") == 0 and @bitOffsetOf(Cell.Stamp, "held") == 56);
     std.debug.assert(@bitOffsetOf(Cell.Bits, "marked") == 31 and @bitOffsetOf(Cell.Bits, "weak_handle") == 29);
-    std.debug.assert(@bitOffsetOf(Cell.Bits, "anchor_traced") == 30);
+    // kWrapperCellStrong.
+    std.debug.assert(@bitOffsetOf(Cell.Bits, "strong") == 22);
 }
 
 /// One block of a cache's pool of records: `Chunk.bytes` at an address that
@@ -913,17 +918,26 @@ fn wrappedElsewhere(instance: *runtime.Instance, except: *const WrapperCache) bo
 /// first pass and its instance is torn down after the collection.
 fn armWeak(entry: *Cell) void {
     if (entry.bits.weak_handle) {
-        // With the wrapper's anchor, which a first pass in a young
-        // collection frees ahead of the collector.
-        v8.v8_WrapperCell_ArmWeak(entry.cache().isolate.?, entry.raw(), unlinkCollected, finalizeCollected);
+        // Its parameter is the wrapper's anchor: the first pass hands the
+        // record to `dropped`, and nothing is allocated for the arm.
+        v8.v8_WrapperCell_ArmWeak(entry.cache().isolate.?, entry.raw());
         return;
     }
     std.debug.assert(entry.bits.boxed);
     v8.v8_Global_SetWeakFinalizer(@ptrCast(entry.wrapper.?), @ptrCast(entry), unlinkCollected, finalizeCollected);
 }
 
-/// V8's FIRST pass for a record held by a v8::Global (boxed, or a weak
-/// handle): its wrapper was collected and its Global Reset. No V8 API may be called here (v8-weak-callback-info.h) -
+/// End the weak arm of a record's v8::Global, which stays: a boxed record's
+/// box, a weak-handle record's own word. Nothing for a traced record.
+fn disarm(entry: *Cell) void {
+    if (entry.bits.weak_handle) return v8.v8_WrapperCell_Disarm(entry.raw());
+    if (entry.bits.boxed) {
+        if (entry.wrapper) |box| v8.v8_Global_ClearWeak(box);
+    }
+}
+
+/// V8's FIRST pass for a BOXED record: its wrapper was collected and its
+/// Global Reset. (A weak-handle record's first pass is `dropped`.) No V8 API may be called here (v8-weak-callback-info.h) -
 /// other wrappers of this collection may still hold the 0xCA11 zap value - so
 /// this only makes the record unreachable, as Blink's firstWeakCallback reset
 /// the object's wrapper (`WrapperCache.died`). The finalizer is queued by the
@@ -944,11 +958,14 @@ fn processWeak(data: ?*anyopaque) callconv(.c) void {
     for (caches.items) |cache| cache.sweepUnmarked();
 }
 
-/// A young-generation collection dropped `raw`'s wrapper - an unmodified API
-/// object nothing reached (v8_wrapper.cpp NodeWrapperRootsHandler::
-/// resetPlatformRoot): its reference is Reset and its anchor severed already.
-/// The record leaves its cache's map and its finalizer joins the agent's
-/// queue, under the weak processing's rules.
+/// A collection took `raw`'s wrapper, and the record's handle is Reset and
+/// its anchor severed already: a young-generation collection dropped an
+/// unmodified API object nothing reached (v8_wrapper.cpp
+/// NodeWrapperRootsHandler::resetPlatformRoot), or - a weak-handle record -
+/// its Global's first pass ran, in a collection of either kind
+/// (`platformAnchorFirstPass`). The record leaves its cache's map and its
+/// finalizer joins the agent's queue, under the weak processing's rules: no
+/// V8 call but the queue's push.
 fn dropped(_: ?*anyopaque, raw: *v8.WrapperCell) callconv(.c) void {
     const entry: *Cell = @ptrCast(@alignCast(raw));
     entry.cache().died(entry);
@@ -1639,7 +1656,46 @@ pub const WrapperCache = struct {
         chunk.live -= 1;
         if (was_full) self.listPartial(chunk);
         if (chunk.live == 0) self.releaseIfSpare(chunk);
+        self.shrinkMapIfSparse();
     }
+
+    /// The map's slots follow the live wrappers down, as the pool's chunks
+    /// do (`releaseIfSpare`): std's map only grows, so a page that held
+    /// 200,000 streams at once - each with its reader and its controller -
+    /// kept a million slots, 17.8 MB, for the realm's life once they were
+    /// collected (lane wrap1 b3's reading of the perf suite's streams page;
+    /// tmp/plans/lane-wrap1-handoff.md). When an eighth or less of the slots
+    /// is in use, the entries move to a map with room for twice as many.
+    /// WebKit's WTF::HashTable has the same policy: after a removal it
+    /// shrinks a table whose keys take under a sixth of it (Source/WTF/wtf/
+    /// HashTable.h `shouldShrink`, minLoad = 6, WebKit aa0d9480a516; an LGPL
+    /// file - the policy was read, no code taken). Each rebuild at least
+    /// halves the slots, so a free pays a constant share. Called where a
+    /// record is freed: the agent's safe point or a remove, never inside the
+    /// collector (`died` only takes an entry out) - and it does nothing
+    /// while a walk reads the slots or the cache is torn down. With no
+    /// memory for the smaller map, the map stays.
+    fn shrinkMapIfSparse(self: *Self) void {
+        const capacity = self.cache.capacity();
+        if (capacity <= map_shrink_floor) return;
+        const count = self.cache.count();
+        if (count > capacity / 8) return;
+        if (self.walks != 0 or self.is_tearing_down) return;
+        var smaller = @TypeOf(self.cache).init(self.allocator);
+        smaller.ensureTotalCapacity(@max(count * 2, map_shrink_floor / 4)) catch return;
+        var entries = self.cache.iterator();
+        while (entries.next()) |kv| smaller.putAssumeCapacityNoClobber(kv.key_ptr.*, kv.value_ptr.*);
+        self.cache.deinit();
+        self.cache = smaller;
+        // A new table has no tombstones.
+        self.guard.reset();
+    }
+
+    /// At or below this many slots the map is never rebuilt smaller
+    /// (`shrinkMapIfSparse`): 17 bytes a slot, 1.1 MB - above what a page's
+    /// wrappers between two young collections take, so a make-and-drop loop
+    /// never rebuilds its map.
+    pub const map_shrink_floor = 1 << 16;
 
     /// The pool's memory, at the cache's end: every record was freed.
     fn freeChunks(self: *Self) void {
@@ -1661,10 +1717,12 @@ pub const WrapperCache = struct {
     /// no root in a young collection, and a traced one none in a full one).
     /// Few wrappers are held: most are only script's.
     fn makeStrong(self: *Self, entry: *Cell) void {
-        if (entry.global()) |handle| {
-            v8.v8_Global_ClearWeak(handle);
-        } else if (!entry.bits.boxed) v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), true);
+        // The bit first: a weak-handle record's first pass reads it
+        // (v8_wrapper.cpp kWrapperCellStrong).
         entry.bits.strong = true;
+        if (entry.bits.boxed or entry.bits.weak_handle) {
+            disarm(entry);
+        } else v8.v8_WrapperCell_SetStrong(self.isolate.?, entry.raw(), true);
     }
 
     /// End `makeStrong`'s hold: the wrapper is the collector's again.
@@ -1691,15 +1749,14 @@ pub const WrapperCache = struct {
         if (entry.bits.boxed or entry.bits.weak_handle or entry.bits.collected or !entry.bits.in_use) return;
         const was_strong = entry.bits.strong;
         self.dropStrongHandle(entry);
-        if (!v8.v8_WrapperCell_ToWeakHandle(self.isolate.?, entry.raw())) {
+        // Armed weak in the same call, unless the cache keeps the wrapper.
+        if (!v8.v8_WrapperCell_ToWeakHandle(self.isolate.?, entry.raw(), !was_strong)) {
             if (was_strong) self.makeStrong(entry);
             return;
         }
         entry.bits.weak_handle = true;
         entry.bits.marked = false;
-        if (was_strong) {
-            entry.bits.strong = true;
-        } else armWeak(entry);
+        if (was_strong) entry.bits.strong = true;
     }
 
     /// A collection took `entry`'s wrapper (its reference is empty): the
@@ -1749,9 +1806,9 @@ pub const WrapperCache = struct {
     /// map: a record is 32 bytes and a chunk's records are adjacent.
     ///
     /// A weak-handle record's wrapper is not judged here - its Global's
-    /// first pass does that, after this pause - but whether its ANCHOR was
-    /// traced is kept for that first pass (`Bits.anchor_traced`): an anchor
-    /// this collection keeps while the wrapper dies is severed there.
+    /// first pass does that, after this pause (`dropped`) - but what its
+    /// instance holds leaves the figure here when the marking did not reach
+    /// its anchor.
     fn sweepUnmarked(self: *Self) void {
         var at = self.chunks;
         while (at) |chunk| : (at = chunk.next) {
@@ -1759,7 +1816,6 @@ pub const WrapperCache = struct {
                 const bits = entry.bits;
                 if (!bits.in_use or bits.boxed or bits.collected) continue;
                 if (bits.weak_handle) {
-                    entry.bits.anchor_traced = bits.marked;
                     entry.bits.marked = false;
                     // A live wrapper's anchor is always traced (the wrapper
                     // points at it), so an anchor this marking did not reach
@@ -1825,6 +1881,38 @@ pub const WrapperCache = struct {
         } else letGo(entry, .sever);
         self.died(entry);
         return true;
+    }
+
+    /// Tests of the pool alone (tests/v8/wrapper_cache_pool_test.zig), with
+    /// no engine behind the records: how many records a chunk holds, a
+    /// record issued for `instance` and given back (never in the map, its
+    /// wrapper never set), a walk that frees records, and whether the pool
+    /// is down to one chunk that records are issued from.
+    pub const records_per_chunk = Chunk.count;
+
+    pub fn allocRecordForTest(self: *Self, instance: *runtime.Instance, stamp: u32) error{OutOfMemory}!*Cell {
+        return self.allocCell(instance, stamp);
+    }
+
+    pub fn freeRecordForTest(self: *Self, entry: *Cell) void {
+        self.freeCell(entry);
+    }
+
+    pub fn beginPoolWalkForTest(self: *Self) void {
+        self.beginPoolWalk();
+    }
+
+    pub fn endPoolWalkForTest(self: *Self) void {
+        self.endPoolWalk();
+    }
+
+    pub fn ownsRecordForTest(self: *const Self, entry: *const Cell) bool {
+        return entry.cache() == self;
+    }
+
+    pub fn poolIsOneOpenChunkForTest(self: *const Self) bool {
+        const only = self.chunks orelse return false;
+        return only.next == null and self.partial == only;
     }
 
     /// Tests of a wrap that runs out of memory: the pool's free records are
@@ -2149,10 +2237,7 @@ pub const WrapperCache = struct {
         // the sweep.)
         {
             var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                if (entry.global()) |handle| v8.v8_Global_ClearWeak(handle);
-            }
+            while (iter.next()) |entry_ptr| disarm(entry_ptr.*);
         }
 
         // PHASE 2: Now clean up all entries.
@@ -2492,6 +2577,8 @@ pub const WrapperCache = struct {
         // the caller's Global.
         const facts = wrapperFactsOf(instance);
         if (self.anchors and heldByWeakHandle(facts)) {
+            // Armed weak from here; `wrapper`, the caller's box, holds the
+            // object until this function's end.
             if (v8.v8_WrapperCell_AttachWeak(isolate, wrapper, entry.raw())) {
                 entry.bits.weak_handle = true;
                 entry.bits.boxed = false;
@@ -2514,12 +2601,13 @@ pub const WrapperCache = struct {
         // design 4.4 "Holders"; Blink's holders trace their Member<Node>s.)
         // (A node never gets here: its wrapper is its agent's, in its own
         // slot - `setNode` - a constructor's included, and the walk keeps it.)
-        // (The edges just drawn may have made a traced record a weak-handle
-        // one - `changed` - armed already; arming again replaces the arm.)
+        // (A weak-handle record is armed already: where it was attached,
+        // or where the edges just drawn made a traced record one -
+        // `changed`.)
         if (shouldBeStrong(entry) and self.detached_holder == null) {
             self.makeStrong(entry);
         } else {
-            if (entry.global() != null) armWeak(entry);
+            if (entry.bits.boxed) armWeak(entry);
             if (self.detached_holder != null) syncEntry(entry);
         }
 
@@ -2574,10 +2662,7 @@ pub const WrapperCache = struct {
         // PHASE 1: End every weak arm first, as `deinit` does.
         {
             var iter = self.cache.valueIterator();
-            while (iter.next()) |entry_ptr| {
-                const entry = entry_ptr.*;
-                if (entry.global()) |handle| v8.v8_Global_ClearWeak(handle);
-            }
+            while (iter.next()) |entry_ptr| disarm(entry_ptr.*);
         }
 
         // PHASE 2: Now clean up all entries. A walk: a teardown run here can
@@ -2681,67 +2766,8 @@ pub const WrapperCache = struct {
     }
 };
 
-// ============================================================================
-// Tests
-// ============================================================================
-//
-// The cache's behaviour with real wrappers is tests/v8's
-// (wrap1_platform_anchor_test.zig, engine_pending_activity_test.zig,
-// wrapper_cache_tombstones_test.zig, ...). Here: what needs no engine.
-
-const testing = std.testing;
-
-test "WrapperCache - init and deinit" {
-    // Mock V8 Context (just a dummy pointer for testing)
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    try testing.expectEqual(@as(usize, 0), cache.size());
-}
-
-test "WrapperCache - the pool issues 32-byte records that find their cache, and takes them back" {
-    var dummy_context: u32 = 42;
-    const context: *v8.Context = @ptrCast(&dummy_context);
-
-    var cache = try WrapperCache.init(testing.allocator, context);
-    defer cache.deinit();
-
-    // A slab slot's worth of memory to stand for instances: only the stamp
-    // word of each is read (SlabAllocator.generationOf).
-    var slots: [2 * Chunk.count + 1][4]u64 = undefined;
-    for (&slots) |*slot| slot.* = @splat(0);
-    var cells: [slots.len]*Cell = undefined;
-    for (&slots, &cells) |*slot, *cell| {
-        cell.* = try cache.allocCell(@ptrCast(slot), 7);
-        try testing.expect(cell.*.cache() == &cache);
-        try testing.expect(cell.*.bits.in_use and cell.*.bits.boxed);
-        try testing.expectEqual(@as(u32, 7), cell.*.fresh);
-    }
-    // Three chunks for 2 * count + 1 records.
-    var chunks: usize = 0;
-    var at = cache.chunks;
-    while (at) |chunk| : (at = chunk.next) chunks += 1;
-    try testing.expectEqual(@as(usize, 3), chunks);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    for (cells) |cell| cache.freeCell(cell);
-    // The chunks nothing uses went back to the allocator; one stays.
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-    try testing.expect(cache.chunks != null and cache.chunks.?.next == null and cache.partial == cache.chunks);
-    // A freed record is issued again before the pool grows.
-    const again = try cache.allocCell(@ptrCast(&slots[0]), 0);
-    try testing.expectEqual(cells[cells.len - 1], again);
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-    cache.freeCell(again);
-
-    // A walk that frees records gives no chunk back until it ends.
-    for (&slots, &cells) |*slot, *cell| cell.* = try cache.allocCell(@ptrCast(slot), 0);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    cache.beginPoolWalk();
-    for (cells) |cell| cache.freeCell(cell);
-    try testing.expectEqual(@as(usize, 3), cache.chunk_count);
-    cache.endPoolWalk();
-    try testing.expectEqual(@as(usize, 1), cache.chunk_count);
-}
+// No test lives in this file: a test block inside src/runtime/engines/v8/ is
+// never collected (build.zig, "V8 engine tests"). The pool's and the map's
+// tests are tests/v8/wrapper_cache_pool_test.zig and
+// wrap1_platform_anchor_test.zig; the cache with mock wrappers is
+// wrapper_cache_gc_test.zig.
