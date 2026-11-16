@@ -33,8 +33,6 @@ const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 const document_internals = @import("document_internals.zig");
-const element_with_base = @import("element_with_base.zig");
-const attr_with_base = @import("attr_with_base.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
 const wrapper_tracing = @import("wrapper_tracing.zig");
@@ -1681,7 +1679,7 @@ fn orphanRemoved(node: *NodeBase) void {
     if (engine.capabilities.wrap_tracking == .unsupported) return;
     if (node.parent_node != null or !node.wrapper.isEmpty()) return;
     if (wrapper_tracing.holdsWrapper(node)) return;
-    const instance: *runtime.Instance = @ptrCast(@alignCast(node.ownerInstance() orelse return));
+    const instance = node.registeredInstance() orelse return;
     if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
     runtime.orphan_roots.record(instance.ctx, instance);
 }
@@ -2725,12 +2723,12 @@ fn adoptHeld(
         for (0..descendants.len) |idx| {
             const desc = descendants.get(idx) orelse continue;
 
-            // Step 3.1.1: Set node document to document. A platform node's
-            // is set by the node_document hook below (the Node impl's setter,
-            // which also moves the node between the documents' counts and
-            // must see the OLD document still named: the word is one, since
-            // lane nm1); an owner-less node's is written here.
-            if (document_instance == null or instance_bridge.getInstance(desc) == null) desc.setDocumentBase(document);
+            // Step 3.1.1: Set node document to document: by the
+            // node_document hook below (the Node impl's setter, which also
+            // moves the node between the documents' counts and must see the
+            // OLD document still named: the word is one, since lane nm1).
+            // (Until lane wb1 an owner-less node's word was written here, as
+            // the document's bare NodeBase.)
             if (document_instance) |doc_instance| {
                 if (instance_bridge.getInstance(desc)) |desc_opaque| {
                     const desc_instance: *runtime.Instance = @ptrCast(@alignCast(desc_opaque));
@@ -2762,43 +2760,18 @@ fn adoptHeld(
 
             // Step 3.1.2: If element, update attribute node documents
             if (desc.node_type == ELEMENT_NODE) {
-                // Access element attributes via ElementWithBase.
-                //
-                // @fieldParentPtr, NOT @ptrCast. ElementWithBase is a plain struct,
-                // so Zig's auto layout does not guarantee `base` sits at offset 0 no
-                // matter what the "MUST be the first field" comment on it says - it
-                // orders by alignment. @fieldParentPtr computes the real offset.
-                // The bare cast read element.attributes from the wrong address, whose
-                // garbage length then drove List.get into out-of-bounds access
-                // (caught by UBSan at infra/list.zig:197 via this exact path).
-                // ONLY parser-created elements embed their NodeBase in an
-                // ElementWithBase (element_with_base.zig: `.base = NodeBase{...}`).
-                // WebIDL-created ones keep a STANDALONE NodeBase in Node's state
-                // (impls/Node.zig: `InternalState.base`) and keep their
-                // attributes elsewhere entirely, so there is no ElementWithBase to
-                // recover - @fieldParentPtr is as wrong as @ptrCast was, it just
-                // computes a different wrong address.
-                //
-                // node_type == ELEMENT_NODE does NOT distinguish them. ownerInstance()
-                // does: instance_bridge.register is called only on the WebIDL path,
-                // so a non-null owner means "standalone, not embedded". Reading
-                // `attributes` off a standalone NodeBase yielded a garbage length,
-                // which drove infra.List.get out of bounds (UBSan: list.zig:197).
-                if (desc.ownerInstance() == null) {
-                    const element: *element_with_base.ElementWithBase = @fieldParentPtr("base", desc);
-                    for (0..element.attributes.size()) |attr_idx| {
-                        if (element.attributes.get(attr_idx)) |attr| {
-                            attr.base.setDocumentBase(document);
-                        }
-                    }
-                } else if (document_instance) |doc_instance| {
+                if (document_instance) |doc_instance| {
                     // A platform element keeps its attributes in its own
                     // state and makes an Attr node only when script asks for
                     // one: each it made follows it (its document edge with
                     // it, so the old document is let go), and an attribute
                     // with none gets none - adopting a tree allocates nothing
                     // for attributes script never touched.
-                    const element: *runtime.Instance = @ptrCast(@alignCast(desc.ownerInstance().?));
+                    //
+                    // (Lane wb1: a second branch here recovered an
+                    // ElementWithBase from an element no Instance owned and
+                    // walked its attribute list. No such element exists.)
+                    const element = desc.instance();
                     for (0..element_attributes.count(element)) |attr_idx| {
                         const attr = element_attributes.existingNodeAt(element, attr_idx) orelse continue;
                         node_document.set(attr, doc_instance) catch {};
@@ -2857,22 +2830,5 @@ fn adoptHeld(
     if (refcount.treeChecksOn()) refcount.checkAround(@ptrCast(node));
 }
 
-test "a callback registered twice runs once" {
-    const Counter = struct {
-        var calls: usize = 0;
-        fn childrenChanged(_: *NodeBase, _: ChildrenChange) void {
-            calls += 1;
-        }
-    };
-    const override = children_changed_callbacks.overrideForTest(.empty);
-    defer override.restore();
-
-    try registerChildrenChangedCallback(&Counter.childrenChanged);
-    try registerChildrenChangedCallback(&Counter.childrenChanged);
-    var parent: NodeBase = .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.DOCUMENT_FRAGMENT_NODE,
-    };
-    runChildrenChangedSteps(&parent, .inserted);
-    try std.testing.expectEqual(@as(usize, 1), Counter.calls);
-}
+// "a callback registered twice runs once": tests/dom/wb1_moved_from_src_test.zig
+// (it needs a real node, which this module's own test executable cannot make).

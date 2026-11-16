@@ -19,8 +19,9 @@ fn parent(node: *Instance) ?*Instance {
     return interfaces.Node.get_parentNode(node) catch null;
 }
 
+/// `node`'s Instance; null once the node's teardown released it.
 fn instanceOf(node: *dom.NodeBase) ?*Instance {
-    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
+    return node.registeredInstance();
 }
 
 fn slotState(node: *Instance) ?*dom.slot_helpers.SlotState {

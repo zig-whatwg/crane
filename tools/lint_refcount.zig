@@ -634,8 +634,8 @@ test "parent-write: test declarations are not production code; tests/ and tools/
 }
 
 test "ref-in-node-state: a counted reference in a struct with a NodeBase field" {
-    try expectFindings("src/dom/element_with_base.zig",
-        \\pub const ElementWithBase = struct {
+    try expectFindings("src/dom/some_node.zig",
+        \\pub const SomeNode = struct {
         \\    base: NodeBase,
         \\    owner: Ref(NodeBase),
         \\    maybe: ?Ref(Foo),
@@ -645,10 +645,10 @@ test "ref-in-node-state: a counted reference in a struct with a NodeBase field" 
         \\    raw: ?*NodeBase,
         \\};
     , &.{
-        "3:ref-in-node-state.ElementWithBase.owner",
-        "4:ref-in-node-state.ElementWithBase.maybe",
-        "5:ref-in-node-state.ElementWithBase.kept",
-        "6:ref-in-node-state.ElementWithBase.list",
+        "3:ref-in-node-state.SomeNode.owner",
+        "4:ref-in-node-state.SomeNode.maybe",
+        "5:ref-in-node-state.SomeNode.kept",
+        "6:ref-in-node-state.SomeNode.list",
     });
 }
 

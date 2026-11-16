@@ -10,9 +10,7 @@ const CharacterData = dom.CharacterData;
 const Comment = dom.Comment;
 const DocumentFragment = dom.DocumentFragment;
 const DocumentType = dom.DocumentType;
-const Element = dom.ElementWithBase;
 const Node = dom.Node;
-const Text = dom.TextWithBase;
 
 const testing = std.testing;
 

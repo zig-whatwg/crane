@@ -2134,10 +2134,17 @@ fn releaseNodeBase(instance: *runtime.Instance, internal: *InternalState, counts
     // The State chain's live bits are a byte of the NodeBase and outlive it:
     // a level above Node's that this release finds still set (a sweep's
     // order) is still its own teardown's to clear. Kept across the poison.
+    // The owner word too (lane uaf1): the 0 the bridge just wrote says
+    // "released, the block still this node's own" in every build, so the
+    // poison in that word says one thing - the arena freed the block - and a
+    // liveness test that reads it panics in a Debug build
+    // (NodeBase.freed_owner_word). The poison's low bit used to read there
+    // as "no Instance": a read of a freed block answered "gone" by accident.
     if (runtime.BrowserScope.ofInstance(instance).poisonsReleasedNodes()) {
         const live = node_base.live;
         @memset(std.mem.asBytes(node_base), runtime.ArenaAllocator.poison_byte);
         node_base.live = live;
+        node_base.setOwnerInstance(null);
     }
     // "The node has no NodeBase from here": this level's live bit, which
     // every reader of this state passes first (Registry.get). It was a null
