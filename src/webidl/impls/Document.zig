@@ -300,10 +300,11 @@ pub fn installHooks() void {
     @import("dom").update_the_rendering.installStep(.reveal, &revealStep);
     // Step 12: Fullscreen "run the fullscreen steps"; the fullscreen
     // removing steps and its unloading document cleanup step ("fully exit
-    // fullscreen") - html.fullscreen's.
+    // fullscreen") - html.fullscreen's. A document's alone: a worker's end
+    // never runs it (dom.unloading_cleanup, lane crash1).
     @import("dom").update_the_rendering.installStep(.fullscreen, &fullscreenStep);
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").fullscreen.removingSteps) catch @panic("fullscreen removing steps allocation");
-    @import("dom").unloading_cleanup.install(&@import("html").fullscreen.unloadingCleanup);
+    @import("dom").unloading_cleanup.installDocumentOnly(&@import("html").fullscreen.unloadingCleanup);
     @import("dom").visibility_state.install(.{ .update = &updateVisibilityStateFromHook });
     // The selector matchers ask whether an element matches :focus,
     // :focus-within and :focus-visible through this one (html.focus, which
