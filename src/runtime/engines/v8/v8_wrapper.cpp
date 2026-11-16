@@ -2554,27 +2554,22 @@ struct CraneSandboxAllocatorStats {
     uint64_t decommits;
 };
 
-// sandbox_allocator_exports.zig. Each is called with the allocator's lock held.
-CraneSandboxAllocatorState* crane_SandboxAllocator_create(VirtualAddressSpace* space, uintptr_t base, size_t size);
-void* crane_SandboxAllocator_allocate(CraneSandboxAllocatorState* state, size_t size, bool* zeroed);
-void crane_SandboxAllocator_free(CraneSandboxAllocatorState* state, void* block);
-void crane_SandboxAllocator_releaseRetained(CraneSandboxAllocatorState* state);
-void crane_SandboxAllocator_stats(const CraneSandboxAllocatorState* state, CraneSandboxAllocatorStats* out);
-
 // The allocator's page operations (sandbox_allocator.zig `Pages`), on V8's
 // sandbox address space: V8's public v8::VirtualAddressSpace, which makes the
 // OS calls (V8 15.7 src/base/platform/platform-posix.cc). `address` and
-// `size` are whole 1 MiB chunks, so multiples of every page size.
+// `size` are whole 1 MiB chunks, so multiples of every page size. Handed to
+// the Zig side as a table (kSandboxPageOps): it names no symbol of this
+// file, so Zig code that is compiled without this file still links.
 
 /// Inaccessible pages become readable and writable, and read zero.
-bool v8_SandboxPages_SetReadWrite(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+static bool sandboxPagesSetReadWrite(VirtualAddressSpace* space, uintptr_t address, size_t size) {
     return space->SetPagePermissions(address, size, PagePermissions::kReadWrite);
 }
 
 /// Give the pages' memory back; they stay accessible. macOS:
 /// MADV_FREE_REUSABLE, which takes them out of the task's footprint until
-/// v8_SandboxPages_Recommit; Linux: MADV_DONTNEED.
-bool v8_SandboxPages_Discard(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+/// sandboxPagesRecommit; Linux: MADV_DONTNEED.
+static bool sandboxPagesDiscard(VirtualAddressSpace* space, uintptr_t address, size_t size) {
     return space->DiscardSystemPages(address, size);
 }
 
@@ -2583,17 +2578,40 @@ bool v8_SandboxPages_Discard(VirtualAddressSpace* space, uintptr_t address, size
 /// again", v8-platform.h): MADV_FREE_REUSE on macOS, nothing on Linux. V8's
 /// default allocator never calls it - the under-count this allocator exists
 /// to end.
-bool v8_SandboxPages_Recommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+static bool sandboxPagesRecommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
     return space->RecommitPages(address, size, PagePermissions::kReadWrite);
 }
 
 /// Give the pages' memory back and make them inaccessible; they read zero
 /// when made accessible again.
-bool v8_SandboxPages_Decommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
+static bool sandboxPagesDecommit(VirtualAddressSpace* space, uintptr_t address, size_t size) {
     return space->DecommitPages(address, size);
 }
 
+/// sandbox_allocator_exports.zig PageOps.
+struct CraneSandboxPageOps {
+    bool (*set_read_write)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*discard)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*recommit)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+    bool (*decommit)(VirtualAddressSpace* space, uintptr_t address, size_t size);
+};
+
+// sandbox_allocator_exports.zig. Each is called with the allocator's lock held.
+CraneSandboxAllocatorState* crane_SandboxAllocator_create(VirtualAddressSpace* space, const CraneSandboxPageOps* ops, uintptr_t base, size_t size);
+void* crane_SandboxAllocator_allocate(CraneSandboxAllocatorState* state, size_t size, bool* zeroed);
+void crane_SandboxAllocator_free(CraneSandboxAllocatorState* state, void* block);
+void crane_SandboxAllocator_releaseRetained(CraneSandboxAllocatorState* state);
+void crane_SandboxAllocator_stats(const CraneSandboxAllocatorState* state, CraneSandboxAllocatorStats* out);
+
 }  // extern "C"
+
+/// The page operations the Zig side calls: constant, alive for the process.
+static constexpr CraneSandboxPageOps kSandboxPageOps = {
+    sandboxPagesSetReadWrite,
+    sandboxPagesDiscard,
+    sandboxPagesRecommit,
+    sandboxPagesDecommit,
+};
 
 /// The process's in-sandbox allocator, as V8 calls it. Thread-safe ("V8 will
 /// invoke these methods concurrently from multiple threads", v8-platform.h):
@@ -2691,7 +2709,7 @@ class CraneInSandboxAllocator final : public v8::Allocator {
             size /= 2;
         }
         if (!base) return false;
-        state_ = crane_SandboxAllocator_create(space, base, size);
+        state_ = crane_SandboxAllocator_create(space, &kSandboxPageOps, base, size);
         if (!state_) {
             space->FreePages(base, size);
             return false;

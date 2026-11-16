@@ -17,25 +17,34 @@ const ffi = @import("ffi.zig");
 /// alive until V8::Dispose.
 const AddressSpace = opaque {};
 
-extern fn v8_SandboxPages_SetReadWrite(space: *AddressSpace, address: usize, size: usize) bool;
-extern fn v8_SandboxPages_Discard(space: *AddressSpace, address: usize, size: usize) bool;
-extern fn v8_SandboxPages_Recommit(space: *AddressSpace, address: usize, size: usize) bool;
-extern fn v8_SandboxPages_Decommit(space: *AddressSpace, address: usize, size: usize) bool;
+/// The four page operations on the sandbox's address space, as v8_wrapper.cpp
+/// gives them (CraneSandboxPageOps): functions of the C++ side, handed over
+/// when the state is made, so that this file names no symbol of the wrapper -
+/// a test executable that compiles the adapter's Zig without linking V8
+/// (src/dom's own tests) still links.
+const PageOps = extern struct {
+    set_read_write: *const fn (space: *AddressSpace, address: usize, size: usize) callconv(.c) bool,
+    discard: *const fn (space: *AddressSpace, address: usize, size: usize) callconv(.c) bool,
+    recommit: *const fn (space: *AddressSpace, address: usize, size: usize) callconv(.c) bool,
+    decommit: *const fn (space: *AddressSpace, address: usize, size: usize) callconv(.c) bool,
+};
 
 const SandboxPages = struct {
     space: *AddressSpace,
+    /// BORROWED: a constant of the wrapper, alive for the process.
+    ops: *const PageOps,
 
     pub fn setReadWrite(self: SandboxPages, address: usize, size: usize) bool {
-        return v8_SandboxPages_SetReadWrite(self.space, address, size);
+        return self.ops.set_read_write(self.space, address, size);
     }
     pub fn discard(self: SandboxPages, address: usize, size: usize) bool {
-        return v8_SandboxPages_Discard(self.space, address, size);
+        return self.ops.discard(self.space, address, size);
     }
     pub fn recommit(self: SandboxPages, address: usize, size: usize) bool {
-        return v8_SandboxPages_Recommit(self.space, address, size);
+        return self.ops.recommit(self.space, address, size);
     }
     pub fn decommit(self: SandboxPages, address: usize, size: usize) bool {
-        return v8_SandboxPages_Decommit(self.space, address, size);
+        return self.ops.decommit(self.space, address, size);
     }
 };
 
@@ -45,11 +54,12 @@ const State = sandbox_allocator.Allocator(SandboxPages);
 const meta = std.heap.c_allocator;
 
 /// The allocator's state over the reserved, inaccessible range `[base, base +
-/// size)` of `space`, or null with no memory for it. The process's, never
+/// size)` of `space`, whose pages `ops` works on, or null with no memory for
+/// it. The process's, never
 /// destroyed (v8_wrapper.cpp PlatformStart::sandbox_allocator).
-export fn crane_SandboxAllocator_create(space: *AddressSpace, base: usize, size: usize) ?*State {
+export fn crane_SandboxAllocator_create(space: *AddressSpace, ops: *const PageOps, base: usize, size: usize) ?*State {
     const state = meta.create(State) catch return null;
-    state.* = State.init(meta, .{ .space = space }, base, size) catch {
+    state.* = State.init(meta, .{ .space = space, .ops = ops }, base, size) catch {
         meta.destroy(state);
         return null;
     };
