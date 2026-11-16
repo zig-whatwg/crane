@@ -1,0 +1,15 @@
+# Workflow: Inside your own window the pool places your jobs at once, and a plain ssh copy is a job the pool never sees
+
+**Date**: 2026-11-15
+**Lesson**: A window's closing notice stops other lanes' jobs, not the owner's. A build you "queue for after the window" from the owner mirror starts now, beside the window's own steps. And a file copy made with plain `ssh` or `scp` is outside the pool altogether: nothing refuses it on a host that is closed for another lane's timed window.
+
+**Why**: `crane-remote.sh` places a build on a closed host when the mirror is the window's owner - that is what lets a window run its own steps (tmp/remote/pool-lib.sh). So "the host is closed, the pool will hold my job until it opens" is true only for the other lanes. In the other direction, the pool checks only what goes through `crane-remote.sh` and `crane-pool.sh`: a `tar | ssh` or an `scp -r` of a 300 MB console directory writes to the timed host's disk and runs a checksum there, and no script knows.
+
+**What Happened**: Lane dm3 did both in one evening. (1) At 9:13 PM ET it started copying its cost window's base console from chat2.local into chat.local, which was closed for lane nm2's timed window, two minutes after reading "do not touch chat.local before the GO" as being about builds. It stopped the copy after two minutes, deleted the partial directory, posted a note and a correction in held-files.md and told the integrator, so that nm2 could check its timed steps of those minutes. (2) At 10:56 PM ET it launched the Linux gate of its next tip for mirror dm3-l and posted "QUEUED until my window ends". The host was closed for dm3's OWN A/B window, so the job was placed in one second and ran for twenty minutes beside the window. Nothing was harmed only because the window's timing-sensitive step (timers x3) had ended two minutes earlier and what remained were byte counts; the held-files line said "queued" for a job that was running, and the correction came twenty minutes later, when the result arrived.
+
+**Fix**:
+1. Before any command that names a pool host - a job, a run, a copy, an `rm` - read the host's window line (`crane-pool.sh status`). If it is closed and you are not the owner: nothing, not even a copy. Do the copy in the first minute of your own window, host to host (`ssh hostB 'scp -r hostA:path .'`), which is also ten times faster than through the Mac.
+2. If it is closed and you ARE the owner: your job starts now. Launch it only when it may run beside the step the window is in, and post START, not "queued". To really wait, chain it after the window's command in the same shell.
+3. After launching anything for a host that you believed was closed to you, read the job's out-file for `placed on <host>` before writing a held-files line about it.
+
+**Takeaway**: **A closed host is closed to everything of the other lanes, a copy included, and to nothing of the owner's. Check the window line before every command that names a host, and say in held-files what the pool did, not what you expected it to do.**

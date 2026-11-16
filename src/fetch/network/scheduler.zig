@@ -211,10 +211,12 @@ pub const NetworkScheduler = struct {
         self.jobs.append(self.allocator, job) catch return NetworkError.OutOfMemory;
         errdefer _ = self.jobs.pop();
 
-        // Every slot of its destination is taken: it waits, in order, for
-        // `pump` to start it. Fetch "obtain a connection" has not begun, so
-        // none of its connection timing has either (step 4.1 sets the
-        // domain lookup start time when the lookup starts).
+        // Every slot of its destination is taken (network_context.
+        // ConnectionSlots: a freed slot is handed to the oldest waiter at
+        // once, so a transfer started later never finds it free): it waits,
+        // in order, for `pump` to start it. Fetch "obtain a connection" has
+        // not begun, so none of its connection timing has either (step 4.1
+        // sets the domain lookup start time when the lookup starts).
         if (!job.takeSlot()) {
             job.slot_wait = true;
             job.slot_wait_since_ns = monotonicNs();
@@ -332,9 +334,11 @@ pub const NetworkScheduler = struct {
         if (self.jobs.items.len == 0) return false;
 
         const now = monotonicNs();
-        // A transfer waiting for a connection slot starts once one is free -
-        // the jobs are in the order they were started, so each destination's
-        // wait in order; another agent of the Browser may have let one go.
+        // A transfer waiting for a connection slot starts once it holds one:
+        // a transfer that ended - this agent's, or another agent's of the
+        // Browser - handed its slot to its destination's oldest waiter, and
+        // a transfer started since (by the script a completion ran, before
+        // this pump) could not take it.
         // Its wait goes with its measurements (Transfer.queue_wait_ms): the
         // connection's times start after it, and Resource Timing shows it
         // between fetchStart and domainLookupStart, as a stalled request.
