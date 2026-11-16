@@ -1,6 +1,7 @@
 # Debugging: A memory excess on one host with equal collection counts is the allocator's - run the same binary with the allocator's own switches before changing the engine
 
 **Date**: 2026-11-15
+**Status** (2026-11-16, lane mem2): which glibc mechanism it is, is now measured - both, together: the moving thresholds leave free space at the top of every heap and the per-thread arenas multiply it (attributes page: 20.2 MB of free tops against a 19.0 MB resident gap). And the setting that removes it is NOT a fix: fixed low thresholds cost `fetch.loopback-stream` x1.47, because that free top is what serves large requests. No threshold pair passed; nothing landed. Lesson architecture-a-low-glibc-trim-threshold-returns-the-heaps-top-and-maps-every-large-buffer-afresh.md.
 **Lesson**: When a make-and-drop row is over the bar on Linux and at or under it on macOS, and the collector ran the same collections on both, the bytes are free memory the C library has not given back. Prove it with the same frozen binary and an environment variable, not with an engine change.
 
 **Why**: Crane's production build uses libc malloc. glibc keeps freed memory resident by rules of its own (per-thread arenas, a trim threshold and an mmap threshold that it raises by itself while the process runs); macOS's allocator follows other rules. A change that makes the engine free memory in different batches - here, 6 full collections instead of 1 - changes what glibc keeps without changing what the engine holds.

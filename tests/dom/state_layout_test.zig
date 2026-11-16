@@ -137,15 +137,21 @@ test "generated interfaces carry a correct ancestry table" {
                 try std.testing.expectEqual(@as(usize, 0), table[0].offset);
 
                 // Depth must equal the actual chain length, walked independently.
+                // A chain whose root leaves its base interface's State out
+                // (`absent_base`: a node's EventTarget, lane nm3) has one
+                // entry more: that State, with no bytes behind it.
                 comptime var depth: usize = 1;
+                comptime var absent: usize = 0;
                 comptime {
                     var Cur: type = Iface.State;
                     while (@hasField(Cur, "base") and @FieldType(Cur, "base") != void) {
                         depth += 1;
                         Cur = @FieldType(Cur, "base");
                     }
+                    if (@hasDecl(Cur, "absent_base") and Cur.absent_base != null) absent = 1;
                 }
-                try std.testing.expectEqual(depth, table.len);
+                try std.testing.expectEqual(depth + absent, table.len);
+                if (absent == 1) try std.testing.expectEqual(@as(usize, std.math.maxInt(usize)), table[depth].offset);
 
                 // And each offset must be the real one, accumulated down the chain.
                 comptime var expected: usize = 0;
@@ -181,7 +187,13 @@ test "a deep generated chain resolves an ancestor's state, not just its own" {
     for (table) |a| {
         if (a.id == want) {
             found = true;
-            // Whatever the offset is, it must land inside the derived state.
+            // A node implements EventTarget and nests no EventTarget State
+            // (lane nm3: its listener list is a field of its rare block), so
+            // the entry is there - the brand - with no bytes behind it, and
+            // stateAs answers null for it.
+            try std.testing.expectEqual(@as(usize, std.math.maxInt(usize)), a.offset);
+        } else {
+            // Every State the div does nest lands inside its own.
             try std.testing.expect(a.offset < @sizeOf(Div.State));
         }
     }

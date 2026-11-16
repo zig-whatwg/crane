@@ -53,7 +53,7 @@ const AttributeTables = dom.element_data.Tables;
 const AttributeEntryIds = dom.element_data.Entry;
 /// The fields few elements use (lane perf3 D2), in one sparse block made on
 /// first use and grown by reallocation (lane rare1).
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 const html_core = @import("html_core");
 
 /// The slot an Attr node is kept in: one per node, named by its address - an
@@ -100,7 +100,7 @@ pub const InternalState = struct {
     // value, element references, a registry that is not its node document's,
     // its slottable state and HTMLElement's (element.style, the nonce,
     // ElementInternals) - are fields of the NODE's one sparse block, whose
-    // word is its NodeBase's (`rareHolder`; dom.element_rare_data, lane
+    // word is its NodeBase's (`rareHolder`; dom.node_rare_data, lane
     // rare1). This state kept a second word for a block of its own, beside
     // NodeBase's pointer to a fixed NodeRareData: 8 bytes on every element.
     // Blink keeps one (Node::data_; its ElementRareDataVector IS the
@@ -272,7 +272,7 @@ pub fn installHooks() void {
     // the tree's own algorithms (the selector matcher, getElementById, the
     // HTML elements' reflection, the CSSOM).
     // And its rare data, which HTMLElement keeps its fields in
-    // (dom.element_rare_data), through the same slot.
+    // (dom.node_rare_data), through the same slot.
     dom.element_data.install(.{ .of = &dataOf, .rare_holder = &rareHolderHook });
     // The element's style state, which the style engine keeps in it.
     dom.style.hooks.install(.{ .element_style_slot = &styleSlotOf });
@@ -335,7 +335,7 @@ fn elementName(scope: *runtime.BrowserScope, namespace: ?[]const u8, prefix: ?[]
     return dom.element_name.intern(scope, namespace, prefix, local_name);
 }
 
-/// `dom.element_rare_data.access`: the addresses of the element's rare
+/// `dom.node_rare_data.access`: the addresses of the element's rare
 /// holder and of click()'s flag, both in its NodeBase - in its State block,
 /// which never moves - so good for the element's life.
 fn rareHolderHook(instance: *runtime.Instance) ?rare_data.Access {

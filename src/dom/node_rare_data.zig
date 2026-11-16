@@ -10,7 +10,7 @@
 //! own. Blink keeps one (`Node::data_`, whose sparse NodeRareData holds the
 //! mutation observer data and the element's fields alike), WebKit one
 //! (`m_rareDataWithBitfields`; ElementRareData extends NodeRareData). The
-//! module keeps its name until its users are renamed with it.
+//! module was dom.element_rare_data until lane nm3 renamed it with its users.
 //!
 //! An element's part of the story, as lane rare1 wrote it:
 //!
@@ -93,6 +93,7 @@
 //! element's style and nonce; this module's `destroy` frees any element's
 //! nonce bytes).
 const std = @import("std");
+const builtin = @import("builtin");
 const NodeBase = @import("node_base.zig").NodeBase;
 
 const runtime = @import("runtime");
@@ -102,6 +103,7 @@ const same_object = @import("same_object.zig");
 const custom_elements = @import("custom_elements.zig");
 const element_references = @import("element_references.zig");
 const slot_helpers = @import("slot_helpers.zig");
+const event_listener_list = @import("event_listener_list.zig");
 
 /// The fields, one presence bit each, in the order of their use.
 pub const Field = enum(u5) {
@@ -190,6 +192,26 @@ pub const Field = enum(u5) {
     /// Cleared when the list is freed before its node (dom.refcount's
     /// childNodesFreed), so the next read makes a new one.
     child_nodes,
+    /// DOM 2.7: the node's event listener list - its event handlers'
+    /// listeners among them - as the address of the list's one block
+    /// (dom.event_listener_list.List is that address; lane nm3, plan v2 X2).
+    /// It was a word of every node's State, null on nearly all of them.
+    /// The slot is read and written by value (`NodeBase.eventListeners`,
+    /// `setEventListeners`): the list's block moves when it grows, this
+    /// block moves when IT grows, and nothing keeps a pointer to either
+    /// across a call that can run script. What the listeners own (engine
+    /// values, type copies) is EventTarget's to release, before the node's
+    /// teardown frees this block (dom.event_handlers.releaseNodeListeners).
+    /// Gecko keeps a node's listener manager in the node's slots the same
+    /// way - its rare data: nsINode::nsSlots::mListenerManager, and directly
+    /// in the slots word, tagged, while the node has no slots
+    /// (nsINode::mSlotsOrListenerManager, dom/base/nsINode.h at
+    /// mozilla-firefox/firefox main, read 2026-11-15). Blink and WebKit pay
+    /// a word in every EventTarget instead: Blink a member
+    /// (EventTarget::data_, core/dom/events/event_target.h), WebKit the
+    /// weak-pointer control block the listener map lives in
+    /// (WeakPtrImplWithEventTargetData, dom/EventTarget.h).
+    event_listeners,
 };
 
 /// A node's name brand: borrowed bytes (a literal), or bytes the node owns.
@@ -212,6 +234,7 @@ pub fn Value(comptime field: Field) type {
         .slottable => *slot_helpers.SlottableState,
         .registered_observers => *std.DoublyLinkedList,
         .node_name => *NodeName,
+        .event_listeners => *event_listener_list.Header,
     };
 }
 
@@ -668,7 +691,7 @@ fn keptClear(holder: *Holder, comptime kept: Kept) void {
 /// block (`releaseElementFields`) for its NodeBase's (`destroy`).
 fn isNodeField(comptime field: Field) bool {
     return switch (field) {
-        .registered_observers, .node_name, .child_nodes => true,
+        .registered_observers, .node_name, .child_nodes, .event_listeners => true,
         else => false,
     };
 }
@@ -711,6 +734,16 @@ fn releaseField(ctx: Context, holder: *Holder, comptime field: Field) void {
         .node_name => {
             if (value.allocated) ctx.allocator.free(value.name);
             destroyOwn(ctx, field, value);
+        },
+        .event_listeners => {
+            // The node's teardown had EventTarget release the list first
+            // (dom.event_handlers.releaseNodeListeners): what a listener
+            // owns - an engine value - is not this module's to release. A
+            // list still here is that step skipped: a bug in every build's
+            // tests (Debug), and elsewhere the block at least goes back.
+            if (builtin.mode == .debug) @panic("a node's rare block is freed with its event listener list still in it (dom.event_handlers.releaseNodeListeners must run first)");
+            var list: event_listener_list.List = .{ .header = value };
+            list.deinit(ctx.allocator);
         },
         else => {},
     }

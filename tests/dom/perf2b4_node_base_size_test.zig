@@ -8,7 +8,7 @@
 //! (WebKit NodeRareData / NodeMutationObserverData, Blink NodeRareData, Gecko
 //! nsINode::nsSlots). Crane's was a fixed NodeRareData, allocated once and
 //! never moved; since lane nm2 it is fields of the node's one sparse rare
-//! block (dom.element_rare_data, Blink's shape since 2026-01), where the
+//! block (dom.node_rare_data, Blink's shape since 2026-01), where the
 //! registered observer list's head and the node name's record are blocks of
 //! their own, so neither moves when the block grows (Blink 601c5205e1d5
 //! fixed a corruption from a pointer held across such a grow).
@@ -73,7 +73,7 @@ test "a registration record is 64 bytes, the node name's record 24, and neither 
     // node's sparse rare block (tests/dom/nm2_one_rare_block_test.zig): a
     // registered observer costs the 16-byte block and this 16-byte head.
     try std.testing.expect(!@hasDecl(dom.node_base, "NodeRareData"));
-    try expectSize(dom.element_rare_data.NodeName, 24);
+    try expectSize(dom.node_rare_data.NodeName, 24);
     // The link (16) and the registered observer (48).
     try expectSize(ObserverRegistration, 64);
 }

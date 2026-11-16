@@ -32,7 +32,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 /// Whether this build has the sparse block.
 const sparse = @hasDecl(rare_data, "Holder");
 

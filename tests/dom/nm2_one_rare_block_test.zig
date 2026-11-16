@@ -4,7 +4,7 @@
 //! A node kept TWO rare pointers: NodeBase's, to a fixed 104-byte
 //! NodeRareData (the registered observer list, the node name brand, a Text's
 //! slottable state), and - on an element - Element's, to the sparse block of
-//! lane rare1 (dom.element_rare_data). 8 bytes on every element for a second
+//! lane rare1 (dom.node_rare_data). 8 bytes on every element for a second
 //! word that is null on nearly all of them, and a 104-byte block for one
 //! registered observer.
 //!
@@ -36,7 +36,7 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 
 const NodeBase = dom.NodeBase;
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 const RegisteredObserver = dom.node_base.RegisteredObserverType;
 
 /// Whether this build keeps one rare word per node.

@@ -53,7 +53,7 @@ fn expectSize(comptime T: type, expected: usize) !void {
 }
 
 const ElementState = @FieldType(interfaces.Element.State, "_embedded");
-const has_rare_slottable = @hasField(dom.element_rare_data.Field, "slottable");
+const has_rare_slottable = @hasField(dom.node_rare_data.Field, "slottable");
 
 // ============================================================================
 // Sizes (red until item 2)
@@ -80,7 +80,7 @@ test "the rare data keeps the slottable state in a block of its own" {
     // sparse block whose slot names the state's own block, so the writers'
     // `*SlottableState` (dom.slot_helpers.ensureSlottable) stays good when
     // the block grows (tests/dom/rare1_sparse_rare_data_test.zig).
-    try testing.expect(dom.element_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
+    try testing.expect(dom.node_rare_data.Value(.slottable) == *dom.slot_helpers.SlottableState);
 }
 
 // ============================================================================
@@ -144,8 +144,8 @@ const Host = struct {
 };
 
 /// `element`'s rare block, or null when it has none.
-fn rareOf(element: *runtime.Instance) ?*dom.element_rare_data.Block {
-    return dom.element_rare_data.of(element).block;
+fn rareOf(element: *runtime.Instance) ?*dom.node_rare_data.Block {
+    return dom.node_rare_data.of(element).block;
 }
 
 fn assignedSlotOf(node: *runtime.Instance) ?*runtime.Instance {
