@@ -483,6 +483,11 @@ const kept_shapes = [_]KeptShape{
     .{ .name = "a div's DOMTokenList (indexed properties; a [SameObject] edge: a weak handle; with its div)", .make = "o.keep.push(doc2.createElement('div').classList)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 48.5 },
     .{ .name = "querySelectorAll's NodeList (a holder of nodes)", .make = "o.keep.push(doc2.querySelectorAll('p'))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
     .{ .name = "a div's HTMLCollection (a holder behind a proxy: a weak handle; with its div)", .make = "o.keep.push(doc2.createElement('div').children)", .cpp_least = 48.0, .cpp_most = 60.0, .handles_most = 48.5 },
+    // The two other holders lane wrap1's brief named (lane wrap2): each is ONE anchor and one record, as the two
+    // above. A MutationRecord comes from an observer's queue (its record and the node it names are the page's
+    // already); a computed style declaration holds its element.
+    .{ .name = "a MutationRecord (a holder of nodes)", .make = "(doc2.body.firstChild.textContent = 'x' + i, o.keep.push(o.observer.takeRecords()[0]))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 16.5 },
+    .{ .name = "getComputedStyle's CSSStyleDeclaration (a holder behind a proxy: a weak handle)", .make = "o.keep.push(getComputedStyle(doc2.body.firstChild))", .cpp_least = 16.0, .cpp_most = 26.0, .handles_most = 32.5 },
 };
 
 test "a kept non-node wrapper of every shape costs one handle in the cache's own record and one anchor on the C++ heap" {
@@ -505,8 +510,8 @@ test "a kept non-node wrapper of every shape costs one handle in the cache's own
 
     var wrong: usize = 0;
     for (kept_shapes) |shape| {
-        try page.run("o.keep = []; globalThis.doc2 = new Document().implementation.createHTMLDocument(''); doc2.body.appendChild(doc2.createElement('p')); 0");
-        var source: [240]u8 = undefined;
+        try page.run("o.keep = []; globalThis.doc2 = new Document().implementation.createHTMLDocument(''); doc2.body.appendChild(doc2.createElement('p')); if (o.observer) o.observer.disconnect(); o.observer = new MutationObserver(() => {}); o.observer.observe(doc2.body, { childList: true, subtree: true }); 0");
+        var source: [320]u8 = undefined;
         // Once before the reading: whatever the shape makes once per realm (templates, prototypes).
         try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < 8; i++) {s}; o.keep.length", .{shape.make}));
         const cpp_before = page.cppHeapUsed();
@@ -873,11 +878,11 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
     const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
     page.fullGC();
 
-    const Kind = enum { traced, weak_handle };
-    for ([_]Kind{ .traced, .weak_handle }) |kind| {
+    const Kind = enum { traced, weak_handle, weak_handle_young };
+    for ([_]Kind{ .traced, .weak_handle, .weak_handle_young }) |kind| {
         const got = try page.evalOwned(switch (kind) {
             .traced => "globalThis.h = new URLSearchParams('a=b'); h",
-            .weak_handle => "globalThis.h = new Event('x'); h",
+            .weak_handle, .weak_handle_young => "globalThis.h = new Event('x'); h",
         });
         const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
         const handle = cache.get(instance) orelse return error.NotCached;
@@ -895,6 +900,25 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
         // scans the stack.
         var in_frame: usize = ffi.v8_test_PlatformAnchorWatch_Address(watch);
         try testing.expect(in_frame != 0);
+        if (kind == .weak_handle_young) {
+            // The wrapper dies in a YOUNG collection first, which does not collect the C++ heap: its Global's
+            // first pass severs the anchor there and lists it for its free at the agent's drain - which does
+            // not run here (no pump), so the anchor is still an object when the full collection below scans
+            // the stack and traces it.
+            const full_before = page.fullCollections();
+            ffi.v8_test_Isolate_MinorGC(page.isolate(), 4);
+            if (page.fullCollections() != full_before) {
+                std.debug.print("a full collection ran among the young ones: nothing was read\n", .{});
+                return error.TestInconclusive;
+            }
+            try testing.expect(cache.get(instance) == null);
+            try testing.expectEqual(pending_before + 1, cache.pendingFinalizerCount());
+            try testing.expectEqual(@as(c_int, 0), ffi.v8_test_PlatformAnchorWatch_Names(watch));
+            // The record is freed (its finalizer, run by its cache; the agent's drain, which would free the
+            // anchor ahead of the collector, has not run): the anchor outlives it.
+            cache.finalizePendingForTest();
+            try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
+        }
         collectScanningStack(page.isolate(), &in_frame);
         const names = ffi.v8_test_PlatformAnchorWatch_Names(watch);
         if (names == -1) {
@@ -928,6 +952,12 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
                     try testing.expectEqual(@as(c_int, 0), ffi.v8_test_PlatformAnchorWatch_Names(watch));
                 }
             },
+            .weak_handle_young => {
+                // The anchor was traced with its record gone: it names nothing, and does so again.
+                try testing.expectEqual(@as(c_int, 0), names);
+                collectScanningStack(page.isolate(), &in_frame);
+                try testing.expectEqual(@as(c_int, 0), ffi.v8_test_PlatformAnchorWatch_Names(watch));
+            },
         }
 
         // Out of the frame, the next collection takes the anchor (and the traced wrapper with it).
@@ -940,6 +970,95 @@ test "an anchor a scan of the stack keeps past its wrapper's death names no reco
         try testing.expect(cache.get(instance) == null);
         try testing.expectEqual(pending_before, cache.pendingFinalizerCount());
     }
+}
+
+test "a wrapper the cache holds by a weak handle costs no callback record: the handle's parameter is the wrapper's anchor" {
+    // Until lane wrap2 the weak v8::Global of such a record - an Event's, a legacy platform object's proxy's, a
+    // wrapper the binding changed - was armed as every weak Global of the adapter is: a 48-byte callback record
+    // from malloc and a node in the adapter's process-wide armed-handle map, taken under its mutex at every arm
+    // and every death (about 112 B per kept wrapper: gc_bench, tmp/plans/wrap1-evidence/b3-meas4-kept-l.out).
+    // Now the Global's parameter is the wrapper's anchor, which names the record: nothing is allocated for the
+    // arm. Node keeps a weak object the same way - the owner itself is the parameter (src/base_object.cc
+    // BaseObject::MakeWeak, nodejs/node 2fb168f7) - and V8's WeakCallbackInfo<T> is declared for a T on the C++
+    // heap (include/v8-weak-callback-info.h: ConditionalStackAllocatedBase<T>). The count is the process's:
+    // tests-v8 runs a test in a process of its own.
+    const page = try Page.open();
+    defer page.close();
+    try page.run(objects);
+    const n = 2000;
+    const shapes = [_]struct { name: []const u8, make: []const u8, weak_records: f64 }{
+        .{ .name = "an Event (born with an own property)", .make = "o.keep.push(new Event('x'))", .weak_records = 1 },
+        .{ .name = "a URL whose searchParams was read (the binding's edge: the URL and its URLSearchParams)", .make = "{ const u = new URL('https://wrap1.test/?a=1'); void u.searchParams; o.keep.push(u); }", .weak_records = 2 },
+        .{ .name = "a div's HTMLCollection (behind a proxy)", .make = "o.keep.push(doc2.createElement('div').children)", .weak_records = 1 },
+        .{ .name = "a URLSearchParams (a traced reference: never had one)", .make = "o.keep.push(new URLSearchParams('a=b'))", .weak_records = 0 },
+    };
+    var wrong: usize = 0;
+    for (shapes) |shape| {
+        try page.run("o.keep = []; globalThis.doc2 = new Document().implementation.createHTMLDocument(''); 0");
+        var source: [320]u8 = undefined;
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < 8; i++) {s}; o.keep.length", .{shape.make}));
+        page.fullGC();
+        const before = try page.counter("live_weak_callback_data");
+        const entries_before = try page.counter("wrapper_cache_entries");
+        try page.run(try std.fmt.bufPrint(&source, "for (let i = 0; i < {d}; i++) {s}; o.keep.length", .{ n, shape.make }));
+        const records = @as(f64, @floatFromInt(try page.counter("live_weak_callback_data") - before)) / @as(f64, n);
+        const entries = @as(f64, @floatFromInt(try page.counter("wrapper_cache_entries") - entries_before)) / @as(f64, n);
+        std.debug.print("{s}: {d:.2} callback records per kept object ({d:.2} cache entries; {d:.0} of them held by a weak handle)\n", .{ shape.name, records, entries, shape.weak_records });
+        // Every object is cached, and none has a callback record.
+        if (entries < shape.weak_records - 0.01) wrong += 1;
+        if (records > 0.01) wrong += 1;
+        try page.run("o.keep = null; 0");
+        page.fullGC();
+    }
+    try testing.expectEqual(@as(usize, 0), wrong);
+}
+
+test "a wrapper held by a weak handle that the cache keeps survives both kinds of collection; released, a young collection takes it" {
+    // Pending activity (engine.keepPlatformObjectAlive) makes a record's weak Global strong and its release arms
+    // it again (wrapper_cache.zig makeStrong, makeWeak) - with the anchor as the arm's parameter, each time.
+    const WrapperCache = @import("v8").WrapperCache;
+    const page = try Page.open();
+    defer page.close();
+    const cache: *WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+    page.fullGC();
+
+    var attempt: usize = 0;
+    while (attempt < 4) : (attempt += 1) {
+        const got = try page.evalOwned("new Event('x')");
+        const instance = protocol.convertToPlatformObject(page.realm, got.value) orelse return error.NoInstance;
+        const generation = runtime.SlabAllocator.generationOf(instance);
+        const records_before = try page.counter("live_weak_callback_data");
+        protocol.keepPlatformObjectAlive(instance);
+        protocol.keepPlatformObjectAlive(instance);
+        got.release();
+
+        // Nothing of script's holds it; the cache does.
+        try page.minorGC(4);
+        page.fullGC();
+        const handle = cache.get(instance) orelse return error.NotCached;
+        try testing.expect(!ffi.v8_Global_IsEmpty(@ptrCast(handle)));
+        try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
+
+        // One of two keeps ended: still held.
+        protocol.releasePlatformObject(instance);
+        try page.minorGC(4);
+        try testing.expect(cache.get(instance) != null);
+
+        // The last keep ended: the cache's handle is weak again, and a young collection takes the wrapper (an
+        // Event's is no unmodified API object: only a weak Global's first pass finds it dead there).
+        const full_before = page.fullCollections();
+        protocol.releasePlatformObject(instance);
+        try testing.expectEqual(handle, cache.get(instance) orelse return error.NotCached);
+        try page.minorGC(4);
+        if (page.fullCollections() != full_before) continue;
+        try testing.expect(cache.get(instance) == null);
+        try testing.expect(generation != runtime.SlabAllocator.generationOf(instance));
+        // Arming, disarming and the death left no callback record behind.
+        try testing.expect(try page.counter("live_weak_callback_data") <= records_before);
+        return;
+    }
+    std.debug.print("a full collection ran in each of {d} attempts: nothing was read\n", .{attempt});
+    return error.TestInconclusive;
 }
 
 test "what the instances behind live non-node wrappers hold is in the figure V8 is told, by one function of the instance" {
