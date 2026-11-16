@@ -4789,14 +4789,6 @@ pub fn build(b: *std.Build) void {
     // THE ENGINE'S STARTUP DATA (must be defined before REPL and WPT runner)
     // ========================================================================
 
-    // tools/snapshot_generator_mode.zig: the generator's fixed mode, std-only.
-    const snapshot_generator_mode_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("tools/snapshot_generator_mode.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    }) });
-    test_step.dependOn(&addSuiteRun(b, launch, snapshot_generator_mode_tests, "tools-snapshot_generator_mode", null).step);
-
     // What a program that runs the engine reads beside itself when it starts
     // - the adapter's programs and steps make it (its build file's
     // `addStartupData`) - and this build's copy for its tests. The install

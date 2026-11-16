@@ -49,7 +49,7 @@ const engine_build = @import("../../engine_build_protocol.zig");
 /// Which archives -Dv8, -Dv8-build and the target select.
 const archives = @import("build/archives.zig");
 /// The snapshot generator's fixed mode (`addStartupData`).
-const snapshot_generator_mode = @import("../../../../tools/snapshot_generator_mode.zig");
+const snapshot_generator_mode = @import("build/snapshot_generator_mode.zig");
 
 /// What the command line gave the adapter's options.
 pub const Options = struct {
@@ -87,6 +87,10 @@ pub const Options = struct {
     /// and no flag (memory_pool.zig, which has the values and what each
     /// measured).
     memory_pool_timeout_s: ?u32,
+    /// `-Dsnapshot-generator-optimize`: the snapshot generator's mode, for a
+    /// diagnosis; null, not given, is its fixed mode
+    /// (build/snapshot_generator_mode.zig, `addStartupData`).
+    snapshot_generator_optimize: ?std.builtin.OptimizeMode,
 };
 
 /// Declare the V8 adapter's build options. `target`: what the build is for -
@@ -183,6 +187,11 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
             u32,
             "v8-memory-pool-timeout-s",
             "V8: how many seconds its page pool keeps a page a collection freed before the operating system gets it back (default: not given = V8's own pool, 8 s, as Chrome ships - src/runtime/engines/v8/memory_pool.zig default_timeout_s); 0 = no pool: memory back at once, for a host of many short-lived pages",
+        ),
+        .snapshot_generator_optimize = b.option(
+            std.builtin.OptimizeMode,
+            "snapshot-generator-optimize",
+            "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
         ),
     };
 }
@@ -413,23 +422,14 @@ const snapshot_generator_source = "src/runtime/engines/v8/snapshot_generator.zig
 /// the runner, the console and gc_bench read it beside themselves; and the
 /// same blob for tests/v8, by path. Steps `snapshot-generator` (the generator
 /// run by hand: -- passes its output path) and `snapshot` (the install).
-///
-/// `options`: TRANSITIONAL (this batch's next commit) - the generator's mode
-/// is declared here, at the place the root build.zig declared it, and moves
-/// to `declareOptions` with the next commit.
 pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.StartupRequest) ?*std.Build.Step {
-    _ = options;
     // The generator's mode is fixed - Debug, whatever -Doptimize says
-    // (tools/snapshot_generator_mode.zig): the blob it writes is a function
+    // (build/snapshot_generator_mode.zig): the blob it writes is a function
     // of the source, not of the optimizer, and every artifact restores it
     // whatever its own mode. Built with -Doptimize, a release build paid a
     // second optimized compile of Crane before its snapshot could run.
     // -Dsnapshot-generator-optimize builds another for a diagnosis.
-    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(b.option(
-        std.builtin.OptimizeMode,
-        "snapshot-generator-optimize",
-        "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
-    ));
+    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(options.snapshot_generator_optimize);
 
     // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
     const snapshot_gen_exe = b.addExecutable(.{
@@ -642,7 +642,7 @@ const process_count_subjects = [_]engine_build.DeclaredTest{
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"v8"},
-    .build_tests = &.{"src/runtime/engines/v8/build/archives.zig"},
+    .build_tests = &.{ "src/runtime/engines/v8/build/archives.zig", "src/runtime/engines/v8/build/snapshot_generator_mode.zig" },
     .tests = tests,
     .startup = .{ .test_import = "test_snapshot" },
     // The adapter's Zig module. Its root re-exports protocol.zig, so in a V8
