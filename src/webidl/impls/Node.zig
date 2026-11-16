@@ -133,7 +133,7 @@ pub const InternalState = struct {
     // is the one copy; this state kept a second pointer to the same list. 8
     // bytes a node. And the cache is not in the generated State either
     // (lane nm2): it is a field of the node's rare block
-    // (dom.element_rare_data's `child_nodes`), 8 more bytes a node.
+    // (dom.node_rare_data's `child_nodes`), 8 more bytes a node.
 
     // isConnected reads NodeBase.is_connected, kept by the insertion and
     // removing steps; this state kept a copy nothing set.
@@ -746,7 +746,7 @@ pub fn get_parentElement(instance: *runtime.Instance) anyerror!?*runtime.Instanc
 fn childNodesFreed(node: *runtime.Instance, list: *runtime.Instance) void {
     const internal = Registry.get(node) orelse return;
     const rare = &internal.base.rare;
-    if (dom_module.element_rare_data.get(rare.*, .child_nodes) == list) dom_module.element_rare_data.clear(rare, .child_nodes);
+    if (dom_module.node_rare_data.get(rare.*, .child_nodes) == list) dom_module.node_rare_data.clear(rare, .child_nodes);
 }
 
 /// Getter for childNodes

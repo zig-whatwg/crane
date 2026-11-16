@@ -6,7 +6,7 @@
 //! nodes and its manually assigned nodes. That state lives with its owners -
 //! an Element's and a Text node's `SlottableState` in a field of the node's
 //! rare data (lane perf3 E1; one sparse block per node since lane nm2,
-//! dom.element_rare_data), HTMLSlotElement's `SlotState` in
+//! dom.node_rare_data), HTMLSlotElement's `SlotState` in
 //! its InternalState. Element and HTMLSlotElement install functions here,
 //! once, at process start, that hand the algorithms a pointer to theirs; a
 //! Text node's is read from its NodeBase, which this module is given. The
@@ -51,7 +51,7 @@ const process_start = @import("process_start.zig");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const NodeBase = @import("node_base.zig").NodeBase;
-const element_rare_data = @import("element_rare_data.zig");
+const node_rare_data = @import("node_rare_data.zig");
 const Hook = @import("hook.zig").Hook;
 
 pub const ELEMENT_NODE: u16 = NodeBase.ELEMENT_NODE;
@@ -233,7 +233,7 @@ pub fn slottable(node: *NodeBase) ?Slottable {
         // A Text node's state is a field of its NodeBase's rare data (lane
         // perf3 E1; the same field of the sparse block as an element's, lane nm2).
         TEXT_NODE => {
-            const state: *const SlottableState = element_rare_data.get(node.rare, .slottable) orelse &unassigned;
+            const state: *const SlottableState = node_rare_data.get(node.rare, .slottable) orelse &unassigned;
             return .{ .state = state, .name = "" };
         },
         else => return null,
@@ -255,7 +255,7 @@ pub fn ensureSlottable(node: *NodeBase) error{OutOfMemory}!?*SlottableState {
         },
         // A block of its own that the node's rare block points at: its
         // address stays good whatever the rare block does.
-        TEXT_NODE => return try element_rare_data.ensureOwn(node.rareContext(), &node.rare, .slottable),
+        TEXT_NODE => return try node_rare_data.ensureOwn(node.rareContext(), &node.rare, .slottable),
         else => return null,
     }
 }

@@ -1,6 +1,6 @@
 //! N1 for elements (lane cg1 batch 1; node-memory plan v2): an element's
 //! family-wide [SameObject] caches leave its generated State for its sparse
-//! rare block (dom.element_rare_data, lane rare1), through
+//! rare block (dom.node_rare_data, lane rare1), through
 //! dom.same_object_cache's element accessors.
 //!
 //! A div's State carried 7 pointers for them - Element's classList,
@@ -23,7 +23,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 /// Whether this build has N1's fields.
 const n1 = @hasField(rare_data.Field, "dataset");
 

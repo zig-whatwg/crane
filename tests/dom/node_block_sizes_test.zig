@@ -33,7 +33,7 @@
 //!   NodeBase beside it (tests/dom/nm1_node_document_word_test.zig). An exact
 //!   144-byte arena block: 48 bytes less than the 192-byte block of 184.
 //! - 136 after lane nm2's step b: a node has ONE rare word, NodeBase's, which
-//!   holds the sparse block (dom.element_rare_data); Element's state kept a
+//!   holds the sparse block (dom.node_rare_data); Element's state kept a
 //!   second (8). Still a 144-byte arena block (tests/dom/
 //!   nm2_one_rare_block_test.zig).
 //! - 128 after lane nm2's step a: Node's childNodes [SameObject] cache left

@@ -10,7 +10,7 @@
 //! own. Blink keeps one (`Node::data_`, whose sparse NodeRareData holds the
 //! mutation observer data and the element's fields alike), WebKit one
 //! (`m_rareDataWithBitfields`; ElementRareData extends NodeRareData). The
-//! module keeps its name until its users are renamed with it.
+//! module was dom.element_rare_data until lane nm3 renamed it with its users.
 //!
 //! An element's part of the story, as lane rare1 wrote it:
 //!

@@ -7,7 +7,7 @@
 //! live word (4, padded to 8). Now:
 //!
 //! - the list's address is a slot of the node's rare block
-//!   (dom.element_rare_data's `event_listeners`), there only once the node
+//!   (dom.node_rare_data's `event_listeners`), there only once the node
 //!   has a listener, an event handler or a watching owner - a 16-byte block
 //!   for a node with nothing else rare. Gecko keeps a node's listener
 //!   manager in its slots the same way (nsINode::mSlotsOrListenerManager,
@@ -37,7 +37,7 @@ const interfaces = @import("interfaces");
 const dom = @import("dom");
 
 const NodeBase = dom.NodeBase;
-const rare_data = dom.element_rare_data;
+const rare_data = dom.node_rare_data;
 
 /// Whether this build keeps a node's listener list in its rare block.
 const in_rare = @hasField(rare_data.Field, "event_listeners");

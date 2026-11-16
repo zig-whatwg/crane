@@ -1877,7 +1877,7 @@ pub const SameObjectOwner = struct {
 pub const SameObjectPlace = union(enum) {
     /// `cached_<name>` in the generated State: every instance pays 8 bytes.
     state,
-    /// The element's sparse rare block (dom.element_rare_data, lane rare1),
+    /// The element's sparse rare block (dom.node_rare_data, lane rare1),
     /// in this field, through dom.same_object_cache's element accessors: an
     /// element pays for it only once it is read (16 bytes for the first
     /// field), as Blink keeps these objects in its ElementRareDataVector.
@@ -1898,14 +1898,14 @@ pub const SameObjectPlace = union(enum) {
 
 /// The [SameObject] caches of a node of ANY kind that go to the node's rare
 /// block: `interface` declares the attribute, `field` is its
-/// dom.element_rare_data.Field.
+/// dom.node_rare_data.Field.
 const node_rare_caches = [_]struct { interface: []const u8, attribute: []const u8, field: []const u8 }{
     .{ .interface = "Node", .attribute = "childNodes", .field = "child_nodes" },
 };
 
 /// The [SameObject] caches every element of a family carries, which go to
 /// the element's rare data: `definer` is the interface or mixin that declares
-/// the attribute, `field` its dom.element_rare_data.Field. On the framework
+/// the attribute, `field` its dom.node_rare_data.Field. On the framework
 /// pages (tmp/redesign/nodedata/framework-pages.md, table E) only style and,
 /// in the grid, classList (58,137 reads in 20 screens) are read at all;
 /// classList is bit 0 and HTMLElement's style bit 1, so neither read needs

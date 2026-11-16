@@ -334,7 +334,7 @@ pub const RawHandler = extern struct {
 
 /// The block: this header, then `capacity` listeners. Named outside this
 /// file only as the address a `List` is (a node keeps its list's in a slot
-/// of its rare block: dom.element_rare_data's `event_listeners`).
+/// of its rare block: dom.node_rare_data's `event_listeners`).
 pub const Header = packed struct(u64) {
     len: u32,
     capacity: u31,

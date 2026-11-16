@@ -103,7 +103,7 @@ pub fn installRawCompiler(compiler: RawCompiler) void {
 
 /// A node is being torn down - its own deinit, or its Browser's final sweep:
 /// EventTarget's part of that for a node, whose event listener list is a
-/// field of its rare block (dom.element_rare_data's `event_listeners`; lane
+/// field of its rare block (dom.node_rare_data's `event_listeners`; lane
 /// nm3) and so must go BEFORE Node's teardown frees that block. Each
 /// listener's callback or event handler value is released, with its type's
 /// copy, then the list's block; the field reads empty after. Node's impl

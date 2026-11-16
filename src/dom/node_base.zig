@@ -18,7 +18,7 @@ const engine = @import("engine");
 const Allocator = std.mem.Allocator;
 const interfaces = @import("interfaces");
 const custom_elements = @import("custom_elements.zig");
-const rare_data = @import("element_rare_data.zig");
+const rare_data = @import("node_rare_data.zig");
 const event_listener_list = @import("event_listener_list.zig");
 
 // Forward declarations at file scope
@@ -182,7 +182,7 @@ pub const NodeBase = extern struct {
     document_word: usize = 0,
 
     /// The node's ONE rare word (lane nm2): the fields few nodes use, in one
-    /// sparse block (dom.element_rare_data) - the node's own (the registered
+    /// sparse block (dom.node_rare_data) - the node's own (the registered
     /// observer list, the node name, a Text's slottable state) and, on an
     /// element, Element's and HTMLElement's - or empty while none has been
     /// needed. The block MOVES when it grows: read it by value, write it
@@ -559,7 +559,7 @@ pub const NodeBase = extern struct {
     // ========================================================================
 
     /// The allocator the node's rare data comes from and the DOM memory it
-    /// is counted in: what dom.element_rare_data's writers take. Never
+    /// is counted in: what dom.node_rare_data's writers take. Never
     /// called on a node with no owner (`allocator`).
     pub fn rareContext(self: *const NodeBase) rare_data.Context {
         return .{ .allocator = self.allocator(), .memory = self.domMemory() };
