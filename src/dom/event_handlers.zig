@@ -11,7 +11,9 @@
 //! declare nothing per attribute.
 //!
 //! The map itself is EventTarget's state, reached through the steps it
-//! installs once, at process start (its installHooks).
+//! installs once, at process start (its installHooks). A node's is a field
+//! of its rare block, which Node's teardown frees: `releaseNodeListeners`
+//! is the step Node's impl runs first.
 //!
 //! An event handler content attribute makes an "internal raw uncompiled
 //! handler" (`setRaw`), which "getting the current value of the event
@@ -37,6 +39,10 @@ pub const Implementation = struct {
     /// Whether the target's event listener list holds a listener that is not
     /// removed - an activated event handler's included.
     has_listeners: *const fn (*runtime.Instance) bool,
+    /// A node's teardown: release its event listener list - what each
+    /// listener owns, then the list's block - while its NodeBase and its
+    /// rare block still stand (`releaseNodeListeners`).
+    release_node_listeners: ?*const fn (*runtime.Instance) void = null,
 };
 
 // process-wide: hook table written once at process start by EventTarget.installHooks (B0); comptime in B9
@@ -93,6 +99,21 @@ pub fn install(steps: Implementation) void {
 /// Install Element's raw-handler compiling step before any Browser exists.
 pub fn installRawCompiler(compiler: RawCompiler) void {
     raw_compiler.install(compiler);
+}
+
+/// A node is being torn down - its own deinit, or its Browser's final sweep:
+/// EventTarget's part of that for a node, whose event listener list is a
+/// field of its rare block (dom.element_rare_data's `event_listeners`; lane
+/// nm3) and so must go BEFORE Node's teardown frees that block. Each
+/// listener's callback or event handler value is released, with its type's
+/// copy, then the list's block; the field reads empty after. Node's impl
+/// calls this only for a node that has a list (`NodeBase.hasEventListenerBlock`):
+/// nearly none has. A non-node EventTarget's list is in its own State, and
+/// goes with EventTarget's own teardown.
+pub fn releaseNodeListeners(node: *runtime.Instance) void {
+    const steps = implementation.get() orelse return;
+    const release = steps.release_node_listeners orelse return;
+    release(node);
 }
 
 /// The event handler content attribute change steps 5.2-5.6 for an element

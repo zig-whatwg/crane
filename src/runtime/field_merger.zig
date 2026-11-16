@@ -41,10 +41,16 @@ pub fn FlattenedState(
 ) type {
     const kind = comptime internalKind(OwnFields);
     const Own = if (kind == .embedded or kind == .empty) WithoutInternal(OwnFields) else OwnFields;
-    const Live = if (BaseType == null and kind == .embedded) LiveWord else void;
+    // The State this one nests: its base interface's, unless its impl keeps
+    // what that level holds somewhere else (`omitsBaseState`) - then this
+    // level is the root of its State's chain.
+    const omits = comptime BaseType != null and omitsBaseState(OwnFields);
+    const Nested: ?type = if (omits) null else BaseType;
+    const Live = if (Nested == null and kind == .embedded and !hostsLiveBits(OwnFields)) LiveWord else void;
     return struct {
-        /// Base type state (if inherits from another interface)
-        base: if (BaseType) |B| B else void,
+        /// Base type state (if inherits from another interface and nests
+        /// its State: see `absent_base`)
+        base: if (Nested) |B| B else void,
 
         /// Mixin fields (flattened from all mixins)
         mixins: MixinFieldsStruct(MixinTypes),
@@ -78,6 +84,20 @@ pub fn FlattenedState(
         /// How this level keeps its impl's InternalState (`InternalKind`).
         pub const internal_kind: InternalKind = kind;
 
+        /// The base interface's State when this State does NOT nest it
+        /// (`omitsBaseState`), else null. An instance of this State still
+        /// implements that interface - its ancestry lists the State, with
+        /// no bytes behind it (runtime.ancestorsOf, `Instance.implements`) -
+        /// and `Instance.stateAs` answers null for it.
+        pub const absent_base: ?type = if (omits) BaseType else null;
+
+        /// Whether a derived State may leave this one out (`absent_base`):
+        /// this level's InternalState, kept by value, declares
+        /// `pub const may_be_absent = true` - its impl finds what the level
+        /// holds elsewhere for such an instance, and never reads this State
+        /// of it (`Instance.stateAs` answers null).
+        pub const may_be_absent: bool = allowsAbsence(OwnFields);
+
         /// Check if a field exists by name (compile-time only)
         /// This is used for reflection and code generation
         pub fn hasField(comptime name: []const u8) bool {
@@ -99,7 +119,7 @@ pub fn FlattenedState(
             }
 
             // Check base fields recursively
-            if (BaseType) |B| {
+            if (Nested) |B| {
                 if (@hasDecl(B, "hasField")) {
                     return B.hasField(name);
                 }
@@ -113,6 +133,46 @@ pub fn FlattenedState(
 /// The live word's type (`FlattenedState._live`): a bit per level of a chain,
 /// so a chain may be up to 32 levels deep (runtime.OwnState checks it).
 pub const LiveWord = u32;
+
+/// Whether the impl whose InternalState `OwnFields._internal` points at
+/// keeps what its base interface's State level holds somewhere else, so its
+/// own State does not nest that State: its InternalState, kept by value,
+/// declares `pub const omits_base_state = true`.
+///
+/// Node's does (lane nm3, node-memory plan v2 X2 and I1): an EventTarget's
+/// level is its event listener list and the chain's live word, 16 bytes on
+/// every node, and nearly no node has a listener. A node keeps its list in
+/// its rare block and its live bits in its NodeBase, so its State starts at
+/// Node's level. Gecko keeps a node's listener manager out of the node's own
+/// fields too (nsINode::mSlotsOrListenerManager, in the node's slots once it
+/// has any; dom/base/nsINode.h), where Blink and WebKit keep a word in
+/// every EventTarget (EventTarget::data_; WeakPtrImplWithEventTargetData).
+pub fn omitsBaseState(comptime OwnFields: type) bool {
+    if (internalKind(OwnFields) != .embedded) return false;
+    const T = InternalTarget(OwnFields).?;
+    return @hasDecl(T, "omits_base_state") and T.omits_base_state;
+}
+
+/// Whether the impl whose InternalState `OwnFields._internal` points at
+/// lets a derived State leave its State out: its InternalState, kept by
+/// value, declares `pub const may_be_absent = true`.
+pub fn allowsAbsence(comptime OwnFields: type) bool {
+    if (internalKind(OwnFields) != .embedded) return false;
+    const T = InternalTarget(OwnFields).?;
+    return @hasDecl(T, "may_be_absent") and T.may_be_absent;
+}
+
+/// Whether the root level's InternalState keeps the chain's live bits
+/// itself, so the State needs no live word of its own: it declares
+/// `pub const LiveBits` (an unsigned integer type, a bit per level) and
+/// `pub fn liveBits(self: *@This()) *LiveBits` (runtime.OwnState reads and
+/// writes them through it). Node's keeps them in a spare byte of its
+/// NodeBase's flags, as Blink keeps such facts in Node::node_flags_.
+pub fn hostsLiveBits(comptime OwnFields: type) bool {
+    if (internalKind(OwnFields) != .embedded) return false;
+    const T = InternalTarget(OwnFields).?;
+    return @hasDecl(T, "LiveBits");
+}
 
 /// How a level of a generated State keeps its impl's InternalState, read from
 /// the type its generated `own._internal: ?*T` points at - so the runtime

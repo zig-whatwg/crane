@@ -1640,7 +1640,9 @@ pub fn platformObjectOf(value: *v8.Value) ?*runtime.Instance {
 /// lacks it - it was accepted as everything, which is how a mock reached an
 /// impl as any interface.
 pub inline fn implements(instance: *const runtime.Instance, comptime I: type) bool {
-    return instance.stateAs(I.State) != null;
+    // The ancestry is the brand, not the State's bytes: a node implements
+    // EventTarget and nests no EventTarget State (runtime.Instance.implements).
+    return instance.implements(I.State);
 }
 
 /// Whether converting to `T` is an interface type conversion, or includes one
