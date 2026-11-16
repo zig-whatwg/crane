@@ -80,8 +80,9 @@ test "conformance: the bound platform matches every operation" {
     // signal stack (6.4: attachSignalStack, detachSignalStack); 232 since
     // lane quick1 added image encoding (imageEncodingMimeTypeSupported,
     // encodeImage); 235 since lane quick1 b3 added zlib's raw inflate
-    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder).
-    try testing.expectEqual(@as(usize, 235), count);
+    // (createDeflateDecoder, decompressDeflate, destroyDeflateDecoder); 237
+    // since lane idle1 added releaseFreeMemory (6.1) and detachThread (6.4).
+    try testing.expectEqual(@as(usize, 237), count);
 }
 
 test "address space (6.11): this platform reserves, commits, decommits and releases" {
@@ -534,4 +535,107 @@ test "every built-in platform answers layout as headless does: no renderer, no b
     try testing.expectEqual(@as(usize, 0), hits.len);
     try testing.expect(!platform.adapter.isRendered(browser, document, node));
     try testing.expect((try platform.adapter.renderedText(browser, document, node, allocator)) == null);
+}
+
+// ---------------------------------------------------------------------------
+// 6.1 releaseFreeMemory and 6.4 detachThread: the allocator's free memory
+// goes back to the OS, on a thread started for it (lane idle1)
+// ---------------------------------------------------------------------------
+
+test "releaseFreeMemory answers at both levels on every platform" {
+    // What it returns depends on the allocator and on what the process
+    // freed; that it can be asked, from any thread and with nothing to
+    // return, does not.
+    _ = platform.releaseFreeMemory(.idle);
+    _ = platform.releaseFreeMemory(.pressure);
+    const Other = struct {
+        fn ask(returned: *usize) void {
+            returned.* = platform.releaseFreeMemory(.idle);
+        }
+    };
+    var returned: usize = std.math.maxInt(usize);
+    const thread = try std.Thread.spawn(.{}, Other.ask, .{&returned});
+    thread.join();
+    try testing.expect(returned != std.math.maxInt(usize));
+}
+
+test "detachThread: a detached thread runs to its end by itself, on a thread of its own, and is never joined" {
+    // As the engine starts a release of the allocator's free memory: spawn,
+    // detach, and hear of the end through what the thread writes.
+    const Run = struct {
+        ended: std.atomic.Value(bool) = .init(false),
+        ran_on: std.atomic.Value(u64) = .init(0),
+        returned: std.atomic.Value(usize) = .init(std.math.maxInt(usize)),
+
+        fn entry(context: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.returned.store(platform.releaseFreeMemory(.idle), .release);
+            self.ran_on.store(std.Thread.getCurrentId(), .release);
+            // Last: after it the test's frame may go.
+            self.ended.store(true, .release);
+        }
+    };
+    // Several, one after another and two at once: each ends by itself.
+    var runs: [4]Run = @splat(.{});
+    for (&runs, 0..) |*run, i| {
+        const thread = try platform.spawnThread(.{ .name = .from("detached") }, Run.entry, run);
+        platform.detachThread(thread);
+        if (i % 2 == 0) continue;
+        for (runs[i - 1 .. i + 1]) |*pair| {
+            var waited_us: u64 = 0;
+            while (!pair.ended.load(.acquire)) : (waited_us += 100) {
+                if (waited_us > 20 * std.time.us_per_s) return error.DetachedThreadNeverEnded;
+                platform.sleepThread(100 * std.time.ns_per_us);
+            }
+        }
+    }
+    for (&runs) |*run| {
+        try testing.expect(run.ended.load(.acquire));
+        try testing.expect(run.ran_on.load(.acquire) != std.Thread.getCurrentId());
+        try testing.expect(run.returned.load(.acquire) != std.math.maxInt(usize));
+    }
+}
+
+test "releaseFreeMemory on glibc returns the free blocks between live ones, which no malloc threshold reaches" {
+    const builtin = @import("builtin");
+    // The built-in platforms share kit/posix's implementation. Not under
+    // ThreadSanitizer, whose own allocator serves malloc there.
+    if (comptime !(builtin.os.tag == .linux and builtin.abi.isGnu()) or builtin.sanitize_thread) return error.SkipZigTest;
+    if (comptime platform.capabilities.resident_memory == .unsupported) return error.SkipZigTest;
+
+    // 4,000 blocks of 64 KiB - below any mmap threshold glibc can have (its
+    // floor is 128 KiB), so each is cut from a heap - written, so that their
+    // pages are resident.
+    const block_size = 64 * 1024;
+    const count = 4000;
+    const keep_every = 64;
+    const blocks = try testing.allocator.alloc(?[*]u8, count);
+    defer testing.allocator.free(blocks);
+    @memset(blocks, null);
+    defer for (blocks) |block| std.c.free(block);
+    for (blocks) |*slot| {
+        const block: [*]u8 = @ptrCast(std.c.malloc(block_size) orelse return error.OutOfMemory);
+        @memset(block[0..block_size], 0x5a);
+        slot.* = block;
+    }
+    // All but every 64th freed: each freed run lies between two live blocks,
+    // nothing is at the heap's top, and the frees return nothing.
+    var freed: usize = 0;
+    for (blocks, 0..) |*slot, i| {
+        if (i % keep_every == 0) continue;
+        std.c.free(slot.*);
+        slot.* = null;
+        freed += block_size;
+    }
+    const before = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
+
+    const returned = platform.releaseFreeMemory(.idle);
+
+    const after = (platform.residentMemory() orelse return error.NoResidentMemoryReading).resident_bytes;
+    // 246 MiB were freed: at least half of it left the process, and the
+    // operation says so.
+    try testing.expect(before >= after + freed / 2);
+    try testing.expect(returned >= freed / 2);
+    // Nothing more to return: a second call returns (next to) nothing.
+    try testing.expect(platform.releaseFreeMemory(.idle) < freed / 8);
 }

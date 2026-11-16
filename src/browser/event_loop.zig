@@ -14,6 +14,10 @@
 //! timer, the deadline, or I/O; timer callbacks; a last checkpoint. A turn
 //! that finds no task queued starts an idle period for the windows that asked
 //! for one (HTML 8.1.7.3 step 5; requestIdleCallback).
+//! A loop that has had nothing to run for memory_release.idle_delay_ns asks
+//! the platform, once per idle stretch, to return the allocator's free
+//! memory to the OS (the turn's last step; memory_release.zig holds the rule
+//! and the browsers it follows).
 //!
 //! ## Tasks from other threads
 //!
@@ -41,6 +45,7 @@ const runtime = @import("runtime");
 const dom = @import("dom");
 const idle_periods = dom.idle_periods;
 const rendering = @import("rendering.zig");
+const memory_release = @import("memory_release.zig");
 
 const TimerManager = runtime.native_timer.NativeTimerManager;
 const Task = runtime.EventLoopTask;
@@ -147,6 +152,21 @@ pub const EventLoop = struct {
     /// platform state, which outlives the loop.
     browser_clock: platform.BrowserClock = .real,
 
+    /// How long the loop has had nothing to run - no task, no timer's
+    /// callback, none of the engine's tasks, no teardown slice, no fetch
+    /// moved on - and whether it has worked since it last had the
+    /// allocator's free memory released: it asks once per idle stretch (step
+    /// 6). In real time (platform.monotonicNow), whatever the Browser's
+    /// clock: what a release costs is real.
+    memory_idle: memory_release.IdleWatch = .{},
+
+    /// The gate the loop asks through: the process's
+    /// (memory_release.processGate, over the process's own record), since
+    /// the allocator is the process's. A test gives its loop a gate over a
+    /// record of its own, which outlives any release started through it
+    /// (Gate.settle).
+    memory_gate: memory_release.Gate,
+
     const Self = @This();
 
     /// Default maximum wait time when no explicit timeout is provided.
@@ -182,6 +202,7 @@ pub const EventLoop = struct {
             .owner_thread = std.Thread.getCurrentId(),
             .frames = rendering.Frames.initWithClock(allocator, browser_clock),
             .browser_clock = browser_clock,
+            .memory_gate = memory_release.processGate(),
         };
     }
 
@@ -502,6 +523,8 @@ pub const EventLoop = struct {
 
         const now = self.nowNs();
         self.noteWork(work_start, now);
+        // The turn's latest reading of the Browser's clock, for step 6.
+        var turn_now = now;
 
         // Step 2d (HTML 8.1.7.3 step 5): no runnable task, so an idle period
         // for the same-loop windows that asked for one. Each queues its
@@ -617,11 +640,16 @@ pub const EventLoop = struct {
                     if (mgr.pollEach(after_each)) did_work = true;
                 }
             }
-            self.noteWork(start, self.nowNs());
+            turn_now = self.nowNs();
+            self.noteWork(start, turn_now);
         }
 
         // Step 5: the microtasks the timer callbacks queued.
         self.checkpoint();
+
+        // Step 6: a loop with nothing to run for a while asks for the
+        // allocator's free memory to go back to the OS.
+        self.releaseMemoryWhenIdle(did_work, turn_now);
 
         // Tasks queued during this turn - by the tasks above or by timer
         // callbacks - wait for the next one, which a non-empty queue makes
@@ -637,6 +665,42 @@ pub const EventLoop = struct {
         const now = mgr.nowNs();
         if (deadline <= now) return 0;
         return @intCast(@min(deadline - now, std.time.ns_per_ms));
+    }
+
+    /// Step 6 of a turn: return the allocator's free memory to the OS once
+    /// the loop has had nothing to run for memory_release.idle_delay_ns, and
+    /// once per idle stretch - the loop asks again only after it has worked
+    /// again. Away from the allocation path, where no allocator setting
+    /// returns it without slowing every large allocation (lane mem2), and as
+    /// browsers return theirs when a page is idle: Chrome's MemoryReclaimer
+    /// runs in idle time (base/allocator/partition_alloc_support.cc,
+    /// MemoryReclaimerSupport), Firefox purges when the main thread has no
+    /// task left, 500 ms after the memory was last reused
+    /// (xpcom/threads/TaskController.cpp, MayScheduleMemoryCleanup), WebKit
+    /// calls malloc_trim(0) once its process has no visible page
+    /// (Source/WebKit/WebProcess/WebProcess.cpp,
+    /// nonVisibleProcessEarlyMemoryCleanupTimerFired). The process's gate may
+    /// refuse (the hold-off after the last release, any Browser's, or a
+    /// release still running): the loop then asks on a later idle turn.
+    ///
+    /// The loop only starts the release: it runs on a detached thread of its
+    /// own (memory_release.Source.platform_source), never on this one - the
+    /// allocator's call cannot be interrupted, and a task posted meanwhile
+    /// (a worker's reply) must not wait for it. This thread can meet a
+    /// release only where it allocates from the arena being trimmed at that
+    /// moment.
+    ///
+    /// `turn_now` is the turn's latest reading of the Browser's clock, which
+    /// is the real one unless the Browser's is virtual: the step reads no
+    /// clock of its own on a real one, and none at all on a turn that
+    /// worked.
+    fn releaseMemoryWhenIdle(self: *Self, did_work: bool, turn_now: i64) void {
+        if (did_work) return self.memory_idle.worked();
+        if (!self.memory_idle.armed) return;
+        // Work waiting for the next turn: not idle.
+        if (self.runnableQueued() or self.sink.hasPosted() or self.deferredPending()) return self.memory_idle.worked();
+        if (!self.memory_idle.idleTurn(if (self.browser_clock.isReal()) turn_now else realMonotonicNs())) return;
+        if (self.memory_gate.release(.idle)) self.memory_idle.released();
     }
 
     /// Move what other threads posted to the end of the task queue, in the
