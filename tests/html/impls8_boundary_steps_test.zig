@@ -56,6 +56,8 @@ fn namedGetter() !void {
     const one = try interfaces.Window.call_getter(window, str("impls8One"));
     try std.testing.expectEqualStrings("HTMLSpanElement", one.instance.vtable.name);
     const two = try interfaces.Window.call_getter(window, str("impls8Two"));
+    // Made for this call, unwrapped: the caller frees it (no wrapper will).
+    defer runtime.gc.onObjectFreed(two.instance);
     try std.testing.expectEqualStrings("HTMLCollection", two.instance.vtable.name);
     const frame = try interfaces.Window.call_getter(window, str("impls8Frame"));
     try std.testing.expectEqualStrings("Window", frame.instance.vtable.name);
