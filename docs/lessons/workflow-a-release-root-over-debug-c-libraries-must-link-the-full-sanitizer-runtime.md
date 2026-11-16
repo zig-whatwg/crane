@@ -7,7 +7,7 @@
 
 **What Happened**: lane console2 made the console ReleaseSafe by default (e46837f0dc1) and its first build stopped at the link: undefined `___ubsan_handle_mul_overflow` and seven more, from libbrotli. 8495b5a7b2a set the console root's `sanitize_c` from the runner's rule. The next batch (console3) fixed the snapshot generator's mode to Debug with a `-Dsnapshot-generator-optimize` override, and the first `=ReleaseSafe` build of it failed the same way, ten minutes into the compile.
 
-**Fix**: any root whose mode can differ from the C libraries' asks for the full sanitizer in the safe modes: the console through `runner_build_mode.runnerModes(...).sanitize_c`, the generator through `tools/snapshot_generator_mode.zig` `sanitizeC` (ReleaseSafe: `.full`; Debug: Zig's default, already full; the fast modes: none). Pinned by each file's tests.
+**Fix**: any root whose mode can differ from the C libraries' asks for the full sanitizer in the safe modes: the console through `runner_build_mode.runnerModes(...).sanitize_c`, the generator through `src/runtime/engines/v8/build/snapshot_generator_mode.zig` `sanitizeC` (tools/snapshot_generator_mode.zig until the build migration's batch E4 moved it into the V8 adapter's build side) (ReleaseSafe: `.full`; Debug: Zig's default, already full; the fast modes: none). Pinned by each file's tests.
 
 **Takeaway**: **Giving an artifact a root mode of its own is two decisions, not one: the optimizer, and which sanitizer runtime the root links for the C libraries it did not build. Make both from the same rule, and build each new mode once before relying on it.**
 

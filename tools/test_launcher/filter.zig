@@ -9,7 +9,7 @@
 //! one test. Several patterns select a test when any of them matches.
 //!
 //! In an executable that holds several suites (build.zig's
-//! -Dtest-binaries=v8), names carry their directory first
+//! -Dtest-binaries=engine), names carry their directory first
 //! ("dom.mutation_test.test.x"); a pattern there also matches the name
 //! without its suite's prefix (`--group`), so the same pattern selects the
 //! same tests in either layout.
@@ -142,7 +142,7 @@ test "filter: no pattern selects every test; several select a test when any matc
 
 test "filter: in an executable of several suites a pattern also matches the name without its suite's prefix" {
     const f: Filter = .{ .patterns = &.{"mutation_test*"} };
-    // -Dtest-binaries=v8: "dom." first; the dirs layout's pattern still selects it.
+    // -Dtest-binaries=engine: "dom." first; the dirs layout's pattern still selects it.
     try testing.expect(f.selects("dom.mutation_test.test.removes", "dom."));
     try testing.expect(!f.selects("html.parser_test.test.x", "html."));
     // The full name works too.

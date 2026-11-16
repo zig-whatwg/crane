@@ -1,5 +1,7 @@
 //! The optimize mode of the V8 snapshot generator: one fixed mode, whatever
-//! -Doptimize says.
+//! -Doptimize says. A helper of the V8 adapter's build side
+//! (../engine_build.zig `addStartupData`, which declares
+//! -Dsnapshot-generator-optimize).
 //!
 //! The generator (src/runtime/engines/v8/snapshot_generator.zig) is a
 //! build-time tool that runs once per build and writes
@@ -30,7 +32,8 @@
 //! callback by its own. `-Dsnapshot-generator-optimize` builds another for a
 //! diagnosis.
 //!
-//! std-only, so `zig build test` pins it (tools-snapshot_generator_mode).
+//! std-only, so the test step pins it (v8-build-snapshot_generator_mode:
+//! the adapter's `facts.build_tests`).
 
 const std = @import("std");
 

@@ -1,9 +1,9 @@
 //! THE BUILD SIDE OF THE ENGINE PROTOCOL (docs/engine-protocol.md, 7b).
 //!
 //! What is one engine's in the build - its `-D` options, its sources, its
-//! link inputs and its Zig module today; its startup data and tests as the
-//! migration goes (tmp/plans/build-protocol-design.md) - is declared by the
-//! engine's adapter, in a build file beside its code,
+//! link inputs, its Zig module, its startup data and its own tests
+//! (tmp/plans/build-protocol-design.md) - is declared by the engine's
+//! adapter, in a build file beside its code,
 //! `engines/<engine>/engine_build.zig`, and never by the root build.zig (the
 //! user, 2026-11-12: "I don't want any of the v8 code in build.zig, the valid
 //! flags should be in the js engine protocol"). This file is the protocol's
@@ -24,6 +24,7 @@
 //!   pub const Resolved = struct { ... };      // what this build links
 //!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
 //!   pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved, request: LinkRequest) void
+//!   pub fn addStartupData(b: *std.Build, options: Options, request: StartupRequest) ?*std.Build.Step
 //!   pub const facts: Facts = .{ ... };
 //!
 //! An adapter that is not the build's engine is never asked to declare its
@@ -38,6 +39,10 @@
 //! it is where the build side meets the adapters.)
 
 const std = @import("std");
+/// The launcher's row types, which an adapter's own test directory's row
+/// (`Tests.suite`) is made of: a std-only build file the root build.zig
+/// imports too.
+const test_suites = @import("../../tools/test_suites.zig");
 
 /// The engine adapters, by their `-Dengine` name: each one's build file. A
 /// new adapter is a directory, a build file and a line here; Zig imports by
@@ -94,8 +99,7 @@ pub const Link = struct {
     }
 };
 
-/// What the neutral build asks about an adapter. It grows with the
-/// migration: its test directory is next.
+/// What the neutral build asks about an adapter.
 pub const Facts = struct {
     /// The words that name this engine: what `zig build lint-build` looks for
     /// in the root build.zig and the neutral files it imports.
@@ -124,6 +128,94 @@ pub const Facts = struct {
     /// their own - its build file's helpers - relative to the build root.
     /// The test step runs each (`build_tests`).
     build_tests: []const []const u8 = &.{},
+    /// The adapter's own test directory, which only a build of this engine
+    /// runs; null when it has none.
+    tests: ?Tests = null,
+    /// What a program that runs the engine reads beside itself when it
+    /// starts, made by this build (`addStartupData`); null when the engine
+    /// needs nothing.
+    startup: ?Startup = null,
+    /// The scope that -Ddebug-scope names to show the adapter's own debug
+    /// output (debug_options.debug_scope; its debug.zig reads it); null when
+    /// it prints none.
+    debug_scope: ?[]const u8 = null,
+};
+
+/// An engine's startup data (`Facts.startup`): a file this build makes that
+/// every program running the engine reads beside itself when it starts, and
+/// a copy of it for the adapter's own tests. What it is, and the programs and
+/// steps that make it, are the adapter's (`addStartupData`).
+pub const Startup = struct {
+    /// The import name under which the adapter's own tests (`Tests.imports`)
+    /// reach this build's copy: an options module whose `path` is the file.
+    test_import: []const u8,
+};
+
+/// What the root build gives an adapter to make its startup data
+/// (`Engine.addStartupData`), in the build's own words.
+pub const StartupRequest = struct {
+    /// The modules a program the adapter builds for it may import, by name:
+    /// Crane's own (the products' graph) and the adapter's module, under
+    /// `Facts.module_name`. The adapter picks them in its own order
+    /// (`importsByName`).
+    modules: []const std.Build.Module.Import,
+    /// How such a program links the engine: as the test executables do,
+    /// since it shares their modules (under -Dsanitize-thread, instrumented
+    /// ones).
+    link: Link,
+    /// The tests' copy (`Startup.test_import`): the options module
+    /// `Engine.startupTestOptions` made, to which the adapter adds `path`.
+    test_options: *std.Build.Step.Options,
+    /// What every run of such a program needs for the modules it shares
+    /// with the tests (-Dsanitize-thread: their suppressions); null: none.
+    prepare_run: ?*const fn (*std.Build, *std.Build.Step.Run) void = null,
+};
+
+/// The imports `names` asks for, in its order, each the module of that name
+/// in `offered`: a build file names what a compile imports, and the order is
+/// part of that compile. A name nothing offers fails the configure, naming
+/// `who` asked for it.
+pub fn importsByName(b: *std.Build, names: []const []const u8, offered: []const std.Build.Module.Import, who: []const u8) []const std.Build.Module.Import {
+    const imports = b.allocator.alloc(std.Build.Module.Import, names.len) catch @panic("OOM");
+    next: for (names, imports) |name, *import| {
+        for (offered) |o| if (std.mem.eql(u8, o.name, name)) {
+            import.* = o;
+            continue :next;
+        };
+        std.debug.panic("{s} import \"{s}\", which is no module the build offers them", .{ who, name });
+    }
+    return imports;
+}
+
+/// A suite's launcher settings and the parts of a row
+/// (tools/test_suites.zig): what an adapter's `Tests.suite` is made of.
+pub const SuiteConfig = test_suites.SuiteConfig;
+pub const DeclaredTest = test_suites.DeclaredTest;
+
+/// An engine adapter's own test directory (`Facts.tests`): its tests reach
+/// the adapter's module itself, which nothing else of the test layout may.
+/// The root build makes it a suite like any tests/<dir>/ when the adapter is
+/// the build's engine, from these facts alone.
+pub const Tests = struct {
+    /// The directory, relative to the build root: "tests/<name>". Its suite
+    /// is named from it as every directory's is ("tests-<name>").
+    dir: []const u8,
+    /// The -Dspec value that selects it.
+    spec: []const u8,
+    /// What its test root imports, by import name, in the order the imports
+    /// are added - part of the compile, as `Facts.imports` is. Each name is
+    /// one the root build offers an adapter's tests: the testing graph's
+    /// modules, the adapter's own module (`Facts.module_name`) and this
+    /// build's startup data for tests.
+    imports: []const []const u8,
+    /// The suite's row of launcher settings (as build.zig's `suite_configs`
+    /// rows are for the other directories).
+    suite: SuiteConfig,
+    /// The tests to run once more in processes that start the engine late -
+    /// on a later thread, beside threads that already exist, as a host that
+    /// skips the early start does - as a launcher test-name filter that also
+    /// matches inside a joined executable (so it begins with `*`). Null: none.
+    late_start: ?[]const u8 = null,
 };
 
 /// One std-only file of an adapter's build side whose tests the test step
@@ -166,6 +258,7 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     conforms(who, A, "isDefaultFor", fn (std.Target) bool);
     conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options) Resolution(A.Resolved));
     conforms(who, A, "link", fn (*std.Build, *std.Build.Module, *const A.Resolved, LinkRequest) void);
+    conforms(who, A, "addStartupData", fn (*std.Build, A.Options, StartupRequest) ?*std.Build.Step);
     if (!@hasDecl(A, "facts") or @TypeOf(A.facts) != Facts) @compileError(who ++ " lacks `pub const facts: engine_build.Facts`");
 }
 
@@ -174,6 +267,17 @@ fn conforms(comptime who: []const u8, comptime A: type, comptime decl: []const u
     const Actual = @TypeOf(@field(A, decl));
     if (Actual != Expected) @compileError(who ++ ": `" ++ decl ++ "` is " ++ @typeName(Actual) ++ "; the build protocol's is " ++ @typeName(Expected));
 }
+
+/// Every listed adapter's own test directory (`Facts.tests`), whichever
+/// engine the build binds: the root build records another adapter's as a
+/// suite, which only a build of that engine runs.
+pub const test_dirs: []const []const u8 = dirs: {
+    var list: []const []const u8 = &.{};
+    for (std.meta.fieldNames(@TypeOf(adapters))) |name| {
+        if (@field(adapters, name).facts.tests) |tests| list = list ++ &[_][]const u8{tests.dir};
+    }
+    break :dirs list;
+};
 
 /// A listed adapter the facade compiles against with no engine linked.
 pub const Engineless = struct {
@@ -241,6 +345,7 @@ pub const Engine = struct {
         apply: *const fn (state: *const anyopaque, adapter_options: *std.Build.Step.Options) void,
         applyTransitional: *const fn (state: *const anyopaque, shared: *std.Build.Step.Options) void,
         link: *const fn (state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void,
+        addStartupData: *const fn (state: *const anyopaque, b: *std.Build, request: StartupRequest) ?*std.Build.Step,
     };
 
     /// The adapter's own options module: its compile-time values, which only
@@ -276,6 +381,26 @@ pub const Engine = struct {
         if (engine.unavailable != null) return engine.failModule(b, module);
         engine.vtable.link(engine.state, b, module, request);
         if (request.link) engine.linked.put(b.allocator, module, {}) catch @panic("OOM");
+    }
+
+    /// The options module through which the adapter's own tests reach this
+    /// build's startup data (`Startup.test_import`), made empty for
+    /// `addStartupData` to fill: null when the engine has none. Call it once,
+    /// before the adapter's tests are wired; they import its module.
+    pub fn startupTestOptions(engine: *const Engine, b: *std.Build) ?*std.Build.Step.Options {
+        if (engine.facts.startup == null) return null;
+        return b.addOptions();
+    }
+
+    /// The engine's startup data (`Facts.startup`): the adapter's programs and
+    /// steps that make it, its install where a program reads it, and the
+    /// tests' copy into `request.test_options`. Returns the install, which
+    /// every program that runs the engine depends on; null when the engine
+    /// has none. An engine that cannot be built still adds its steps: what
+    /// links it fails with the adapter's reason (`link`).
+    pub fn addStartupData(engine: *const Engine, b: *std.Build, request: StartupRequest) ?*std.Build.Step {
+        if (engine.facts.startup == null) return null;
+        return engine.vtable.addStartupData(engine.state, b, request);
     }
 
     /// Whether this build linked the engine into `module`: its own record of
@@ -351,7 +476,11 @@ fn vtableOf(comptime A: type) *const Engine.VTable {
                 .unavailable => unreachable,
             }
         }
-        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link };
+        fn addStartupData(state: *const anyopaque, b: *std.Build, request: StartupRequest) ?*std.Build.Step {
+            const typed: *const State = @ptrCast(@alignCast(state));
+            return A.addStartupData(b, typed.options, request);
+        }
+        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link, .addStartupData = addStartupData };
     };
     return &functions.table;
 }

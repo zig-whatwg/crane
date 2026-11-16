@@ -943,9 +943,9 @@ const TestSelection = struct {
     suite_dirs: *std.ArrayList([]const u8) = undefined,
     /// How every test executable that links the engine links it.
     engine_link: engine_build.Link,
-    /// -Dtest-binaries=v8: the directories `test` runs that link V8 join ONE
-    /// executable (`OneBinary`) instead of one each. Null: one executable per
-    /// directory.
+    /// -Dtest-binaries=engine: the directories `test` runs that link the
+    /// engine join ONE executable (`OneBinary`) instead of one each. Null:
+    /// one executable per directory.
     one: ?*OneBinary = null,
 };
 
@@ -956,19 +956,22 @@ const TestSelection = struct {
 const TestBinaries = enum {
     /// One executable per tests/<dir>/ (`addTestFilesFromDir`): the default,
     /// because a change to one test file rebuilds only its directory's
-    /// executable (245 s against 775 s for `v8`).
+    /// executable (245 s against 775 s for `engine`).
     dirs,
-    /// ONE executable for the tests/<dir>/ suites `test` runs that link V8
-    /// and whose imports agree (`OneBinary`): each of their executables is a
-    /// full analysis and V8 link of the engine, so one executable does that
-    /// work once (cold 1,560 s against 2,176 s for `dirs`). The rest keep
-    /// their cheap executables. For cold full gates (main's gate, final
-    /// checks). A third layout, every directory in one (`one`), lost to this
-    /// one on every row and was removed (lane onebin2).
-    v8,
+    /// ONE executable for the tests/<dir>/ suites `test` runs that link the
+    /// engine and whose imports agree (`OneBinary`): each of their
+    /// executables is a full analysis of the engine and a link of it, so one
+    /// executable does that work once (cold 1,560 s against 2,176 s for
+    /// `dirs`). The rest keep their cheap executables. For cold full gates
+    /// (main's gate, final checks). A third layout, every directory in one
+    /// (`one`), lost to this one on every row and was removed (lane onebin2).
+    /// (Until batch E4 of the build migration the value bore the engine's
+    /// own name; the directories that join are the engine's, whichever
+    /// engine the build binds.)
+    engine,
 };
 
-/// -Dtest-binaries=v8: the tests/<dir>/ suites `test` runs that link V8,
+/// -Dtest-binaries=engine: the tests/<dir>/ suites `test` runs that link the engine,
 /// compiled as ONE executable rooted at tests/.all_tests.zig (gitignored, generated like a
 /// directory's), which imports each member's `<dir>/.all_tests.zig`. Test
 /// names start with the member's directory under tests/ ("html.<file>.test.
@@ -1002,14 +1005,16 @@ const OneBinary = struct {
         /// Its test files, relative to `dir_path` (for test-verify).
         files: []const []const u8,
         imports: []const std.Build.Module.Import,
-        link_v8: bool,
+        /// Its tests run the engine: its executable links it
+        /// (`addTestFilesFromDir`'s `runs_engine`).
+        runs_engine: bool,
         target: std.Build.ResolvedTarget,
     };
 };
 
 /// A member suite of a one-binary executable, as the launcher runs it
 /// (`addSuiteRunWith`): its tests' name prefix, its suite_configs row, and
-/// whether its own executable linked V8 (`plain`: it did not, so the
+/// whether its own executable linked the engine (`plain`: it did not, so the
 /// many-Browsers variant never runs a busy Browser beside it).
 const SuiteGroup = struct { prefix: []const u8, config: SuiteConfig, plain: bool };
 
@@ -1104,7 +1109,7 @@ const TestLaunch = struct {
     /// (`useCraneTestRunner`).
     engine: *const engine_build.Engine,
     /// The browser module, which the many-Browsers variant adds to every
-    /// test executable that links V8 and lacks it (`addTestRoot`).
+    /// test executable that links the engine and lacks it (`addTestRoot`).
     browser_module: ?*std.Build.Module = null,
     /// Every test executable `addSuiteRun` runs, for the instrumentation
     /// pass at the end of `build` (`instrumentForThreadSanitizer`).
@@ -1141,84 +1146,15 @@ const TestVerify = struct {
     asked: bool = false,
 };
 
-/// One suite's launcher settings. Batch size per the measurements
-/// (tmp/plans/test-launcher-design.md section 0, and this lane's merge
-/// report): a process per test where the suite starts a Browser or V8 and
-/// that costs little (Chromium: 1 for browser tests), 10 otherwise
-/// (Chromium's unit tests).
-const SuiteConfig = struct {
-    batch: u32 = 10,
-    /// Null: the build-wide default (-Dlaunch-jobs, else the CPU count).
-    jobs: ?u32 = null,
-    shuffle: bool = true,
-    /// Tests (full names) known to be slow: their timeout is 4x (Chromium's
-    /// and V8's SLOW). Each needs a reason, and a bug when it should not be.
-    slow: []const []const u8 = &.{},
-    /// The Crane test runner's process-state check after each test
-    /// (`useCraneTestRunner`): `.fail` fails a test that leaves state behind,
-    /// by the field's name; `.report` only logs it, for a suite whose
-    /// findings are not fixed yet - each such row is TEMPORARY and says why.
-    state_checks: StateChecks = .fail,
-    /// The many-Browsers variant (-Dmany-browsers) for this suite: `.fail`
-    /// fails what fails beside the busy Browser; `.report` runs it and
-    /// reports every non-pass without failing the step (the launcher's
-    /// --report-only), for a suite whose findings are not fixed yet - each
-    /// such row is TEMPORARY and names its findings file. Suites with no
-    /// Browser to run (no V8) never start one.
-    many_browsers: VariantMode = .fail,
-    /// ThreadSanitizer (-Dsanitize-thread) for this suite, the same way: a
-    /// race, a TSAN-only failure, fails the step unless the row is a
-    /// TEMPORARY `.report` naming its findings file.
-    sanitize_thread: VariantMode = .fail,
-    /// Tests that need their process to themselves, so the many-Browsers
-    /// variant runs each in a process of its own with no busy Browser
-    /// beside it (the launcher's --alone, which names each with its reason
-    /// when it runs): a test that makes its process's FIRST isolate, or
-    /// whose subject is a count the whole process shares. Declared, never a
-    /// silent skip; each entry gives a reason a reader can check. A test
-    /// that merely reads a process-wide counter as its instrument is
-    /// converted to a per-agent one instead (docs/lessons/testing-a-test-
-    /// that-measures-a-process-wide-counter-assumes-it-is-alone.md). A name
-    /// ending in ".test." declares every test of that file.
-    alone: []const DeclaredTest = &.{},
-    /// Tests NOT run under ThreadSanitizer (-Dsanitize-thread; the
-    /// launcher's --tsan-skip, which names each with its reason): only a test
-    /// whose subject is real time itself, which the instrumentation's
-    /// slowdown changes - V8's status files SKIP such tests under tsan. A
-    /// test that merely waits on a time budget is fixed to wait on its
-    /// condition instead. Keep it to one or two.
-    tsan_skip: []const DeclaredTest = &.{},
-    /// Who makes the standalone runtime (runtime.initializeRuntime), the
-    /// Crane test runner's `runtime.standalone_runtime`.
-    standalone_runtime: StandaloneRuntime = .per_test,
-};
-
-/// Who makes a suite's standalone runtime. `.per_test`: each test that
-/// needs one makes and ends its own, so none runs between tests and a test
-/// that leaves one fails by the field's name - a later test that makes and
-/// ends its own would replace it and end with none (lane testfix3: two
-/// tests/html files left one, and 8 later tests failed ORDER-DEPENDENT with
-/// `runtime.standalone_runtime: 1 -> 0`). `.process_start`: the suite's test
-/// start makes it once for the process (tests/v8/test_process.zig `start`),
-/// so it may appear once, as everything the process start makes may.
-const StandaloneRuntime = enum { per_test, process_start };
-
-/// A test declared by its full name, with why (`SuiteConfig.alone`,
-/// `SuiteConfig.tsan_skip`).
-const DeclaredTest = struct { name: []const u8, reason: []const u8 };
-
-/// What a test variant (-Dmany-browsers, -Dsanitize-thread) does with a
-/// suite's results: `.fail` as any run; `.report` prints and records every
-/// verdict and passes the step (lane tsan1: report first, fail once clean,
-/// as the state checks went - lane tstate1).
-const VariantMode = enum { report, fail };
-
-/// What the Crane test runner does with a change a test leaves in the
-/// process (tests/test_runner/state.zig). CRANE_TEST_STATE=fail|report|off
-/// in the environment overrides it for a run (a survey of every suite in
-/// report mode, with CRANE_TEST_STATE_REPORT_DIR=<dir> collecting what it
-/// finds), without rebuilding a test executable.
-const StateChecks = enum { off, report, fail };
+/// The launcher's settings per suite and the types of a row
+/// (tools/test_suites.zig, where an engine adapter's build file declares its
+/// own test directory's row too: src/runtime/engine_build_protocol.zig
+/// `Tests`).
+const SuiteConfig = test_suites.SuiteConfig;
+const StandaloneRuntime = test_suites.StandaloneRuntime;
+const DeclaredTest = test_suites.DeclaredTest;
+const VariantMode = test_suites.VariantMode;
+const StateChecks = test_suites.StateChecks;
 
 /// The per-suite table, by the name `addSuiteRun` is given. A suite not
 /// listed gets `SuiteConfig{}`.
@@ -1226,26 +1162,15 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     // Wall-clock measurements: one process, index order, nothing beside them.
     .{ .name = "tests-benchmarks", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
     .{ .name = "tests-intl_bench", .config = .{ .batch = 0, .jobs = 1, .shuffle = false } },
-    // Suites that start V8 or a Browser: a process per test.
+    // Suites that start the engine or a Browser: a process per test. (The
+    // engine adapter's own test directory: its row is its build file's,
+    // `facts.tests`.)
     .{ .name = "tests-dom", .config = .{ .batch = 1 } },
     // Both test variants fail (lane tsanfix1 fixed lane tsan1's findings,
     // docs/testing/test-variant-findings-2026-11-02.tsv).
     .{ .name = "tests-html", .config = .{ .batch = 1, .slow = &html_slow, .tsan_skip = &html_tsan_skip } },
     .{ .name = "tests-service_worker", .config = .{ .batch = 1 } },
     .{ .name = "tests-websocket", .config = .{ .batch = 1 } },
-    // tests-v8 ran as one index-order process until lane v8order1
-    // (2026-11-01) made its tests hermetic (tests/v8/test_process.zig; the
-    // order findings it fixed: docs/testing/tests-v8-order-findings-2026-11-01.tsv).
-    // Its process-state checks fail a test that leaves state behind, as
-    // every suite's do: the findings that kept them report-only (lane
-    // tstate1) are classified and fixed, each with its commit, in
-    // docs/testing/test-state-findings-2026-11-02.tsv (lanes engown1,
-    // fixes1, v8state1).
-    // Beside the busy Browser (-Dmany-browsers) it fails like any run (lane
-    // tsanfix1); the tests that need their process to themselves run alone,
-    // each with its reason (`v8_alone`). Its test start makes the
-    // standalone runtime for the process (test_process.start).
-    .{ .name = "tests-v8", .config = .{ .batch = 1, .alone = &v8_alone, .standalone_runtime = .process_start } },
     .{ .name = "src-browser", .config = .{ .batch = 1 } },
     .{ .name = "tests-browser", .config = .{ .batch = 1 } },
     // The browser console (tools/repl.zig): every test starts a Browser
@@ -1253,94 +1178,6 @@ const suite_configs = [_]struct { name: []const u8, config: SuiteConfig }{
     .{ .name = "tests-repl", .config = .{ .batch = 1 } },
     .{ .name = "lib-exports", .config = .{ .batch = 1 } },
     .{ .name = "tests-codegen", .config = .{ .slow = &codegen_slow } },
-};
-
-/// tests-v8's tests that need their process to themselves under the
-/// many-Browsers variant (`SuiteConfig.alone`; lane tsanfix1).
-const v8_alone = snapshot_first ++ [_]DeclaredTest{
-    // The subject is a count the whole process shares.
-    .{ .name = "diagnostic_live_counters_test.test.live_agents counts an agent from createAgent to destroyAgent", .reason = "the subject is engine.live_agents, the process's count of live agents, which the busy Browser's agent is in" },
-    .{ .name = "worker_thread_state_test.test.worker threads that end leave no per-thread containers mapped", .reason = "the subject is the process's mapped memory over 32 worker threads, which the busy Browser's allocations grow" },
-    .{ .name = "agents_concurrent_engine_state_test.test.two fresh agents on two threads: for-await, Intl, JSON modules and ObservableArray 200 times at once", .reason = "TEMPORARY: it compares the process's live weak callback records over its two agents' rounds; per isolate, each round's for await makes a stream, and wrapper_cache.isStreamsGraphObject holds a streams object's wrapper strongly until its realm ends (lane leakcheck1's finding; the streams wrapper lifetime lane) - converted once that is settled" },
-    .{ .name = "test_process_test.test.a test's agent takes its realms down with it, their context handles too", .reason = "the subject is the process's live Global<Context> count after the agent's end - its isolate is gone, so nothing per isolate is left to read - which the busy Browser's realms move" },
-} ++ ledger_tests ++ process_count_subjects;
-
-/// object_global_ledger_test: the subject of each is the adapter's
-/// process-wide live_object_globals ledger itself.
-const ledger_reason = "the subject is the adapter's process-wide live_object_globals ledger, which every Browser of the process moves (V8's per-isolate global handle bytes are its cross-check, not its subject)";
-const ledger_tests = [_]DeclaredTest{
-    .{ .name = "object_global_ledger_test.test.v8_Object_New is counted when made and when released by v8_Object_Dispose", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.v8_Object_New released as a Value (the binding's release) leaves the ledger where it started", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.the other object constructors are counted the same way", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.a counted entry point released through a generic dispose leaves nothing counted", .reason = ledger_reason },
-    .{ .name = "object_global_ledger_test.test.a binding call that makes and releases objects leaves the ledger where it started", .reason = ledger_reason },
-};
-
-/// The many-Browsers variant's reason for a test that restores agents from
-/// Crane's snapshot.
-const snapshot_first_reason = "restores agents from Crane's snapshot, so it must make its process's first isolate: V8 keeps one read-only heap per process, made by the first live isolate (v8_wrapper.cpp g_read_only_heap), and beside the busy Browser's snapshotless isolate the restore is refused";
-
-/// Tests that restore agents from Crane's snapshot (each skips, saying so,
-/// when it does not make its process's first isolate).
-const snapshot_first = [_]DeclaredTest{
-    .{ .name = "agents_concurrent_engine_state_test.test.two agents restored from the snapshot, on two threads: for-await, Intl, ShadowRealm, JSON modules and ObservableArray 200 times at once", .reason = snapshot_first_reason },
-    .{ .name = "bf1_engine_task_initialization_test.test.snapshot initialization runner wakes a later sink and closes safely", .reason = snapshot_first_reason },
-    .{ .name = "cpp_heap_test.test.an agent restored from the snapshot has a C++ heap", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal parses in a new global, not the page's", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: parseJsonInNewGlobal, again and again, each in a global of its own", .reason = snapshot_first_reason },
-    .{ .name = "new_global_snapshot_test.test.snapshot agent: v8_Context_New and v8_Context_NewWithMicrotaskQueue make a plain global", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: a pattern matches the whole value, compiled standalone with the v flag", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: what the page did to RegExp does not matter", .reason = snapshot_first_reason },
-    .{ .name = "pattern_attribute_snapshot_test.test.snapshot agent: the page's legacy RegExp statics do not see the value", .reason = snapshot_first_reason },
-    .{ .name = "snapshot_blob_in_place_test.test.agents restored from the snapshot read the engine's blob in place, and all end before it does", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.an agent asked for the snapshot while a snapshotless isolate is the process's first is made without it, and works", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshotless agent made while a snapshot agent is the process's first: each is what it asked for", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a dedicated worker's agent started while a snapshot window agent lives: both work, the window restored", .reason = snapshot_first_reason },
-    .{ .name = "tsanfix1_read_only_heap_test.test.a snapshot window agent made while a worker's agent is the process's first is made without the snapshot, and works", .reason = snapshot_first_reason },
-    .{ .name = "wh_wasm_address_descriptor_test.test.snapshot realm: a Window realm restored from Crane's snapshot takes address i64", .reason = snapshot_first_reason },
-    .{ .name = "wj1_wasm_constructor_test.test.snapshot Window worklet and ShadowRealm use their own wasm adapter intrinsics", .reason = snapshot_first_reason },
-    .{ .name = "xw1_exposure_snapshot_test.test.xw1 snapshot Window keeps its scope while workers install their own exposed members", .reason = snapshot_first_reason },
-};
-
-/// context_counter_test: the subject of each is the balance of the adapter's
-/// process-wide live_context_globals count itself. The file's other tests
-/// read their own isolate's global handle bytes (lane testfix2).
-const context_count_reason = "the subject is the adapter's process-wide live_context_globals count - every Global<Context> made is counted and every dispose uncounts it - which the busy Browser's realms move too (V8's per-isolate global handle bytes see a leaked context, not a miscounted one)";
-
-/// Tests whose subject is that a binding path makes NO Global for its
-/// receiver: a handle made and disposed leaves the isolate's global handle
-/// bytes as they were, so only the adapter's process-wide creation count per
-/// entry point (object_globals_from.*) sees one (lane testfix2).
-const receiver_creation_reason = "the subject is that the path makes no Global for its receiver - a handle made and disposed leaves the isolate's global handle bytes as they were, so only the adapter's process-wide creation count object_globals_from.* sees it, which the busy Browser's bindings move too";
-
-/// weak_callback_ownership_test: the subject of each is the adapter's
-/// process-wide ledger of live weak callback records itself - "returns to
-/// baseline" is the assertion, and a record freed late or never is invisible
-/// to the isolate's global handle bytes once its handle is reset (lane
-/// testfix2, with the integrator's ruling).
-const weak_record_reason = "the process-wide weak-record ledger is the subject: v8_Debug_LiveWeakCallbackData returning to its baseline is the assertion, and the busy Browser's wrappers arm and free records too";
-
-/// cpp_heap_test: the subject is cppgc's process-wide registry of live C++
-/// heaps, the one measure of an agent's end freeing its heap (lane wr2).
-const cpp_heap_registry_reason = "the subject is cppgc's process-wide registry of live C++ heaps - an agent's end must give its count back - which the busy Browser's agents move too";
-
-/// The tests of lane tsanfix1's whole-file entries (2026-11-02) whose
-/// subject is a count the whole process shares; their files' other tests
-/// read their own isolate's global handle bytes (lane testfix2).
-const process_count_subjects = [_]DeclaredTest{
-    .{ .name = "cpp_heap_test.test.an agent's end frees its C++ heap: cppgc's heap registry is back where it was", .reason = cpp_heap_registry_reason },
-    .{ .name = "context_counter_test.test.binding getter and method calls leave live_context_globals unchanged", .reason = context_count_reason },
-    .{ .name = "context_counter_test.test.a context made with a global constructor and disposed leaves live_context_globals unchanged", .reason = context_count_reason },
-    .{ .name = "indexed_property_semantics_test.test.an indexed read and an `in` check make no handle for the list", .reason = receiver_creation_reason },
-    .{ .name = "indexed_property_semantics_test.test.an attribute read makes no handle for its receiver and leaves none", .reason = receiver_creation_reason },
-    .{ .name = "weak_callback_ownership_test.test.disarming a handle frees the record V8 hands back", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing an armed handle ends the arm - the record cannot outlive the Global", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.re-arming the same handle replaces the record rather than stacking one", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.a handle that was never armed is unaffected by disarm and dispose", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.v8_Value_ToWeakGlobal arms the handle it returns, not a null one", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing an isolate leaves another isolate's detached records alone", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.a finalizer runs in V8's second pass, after its first-pass unlink, and its record goes with it", .reason = weak_record_reason },
-    .{ .name = "weak_callback_ownership_test.test.disposing a handle before its second pass cancels the finalizer and frees its record", .reason = weak_record_reason },
 };
 
 // Slow tests: over 45 s alone on chat.local in Debug (lane tlaunch2,
@@ -1367,7 +1204,10 @@ const html_slow = [_][]const u8{
     "rc9_document_tasks_test.test.documents dropped inside one script stay bounded by the queue's high water, not by their number",
 };
 
-fn suiteConfig(name: []const u8) SuiteConfig {
+/// The row of the suite `name`: the engine adapter's own test directory's
+/// is its build file's (`facts.tests`), every other `suite_configs`'.
+fn suiteConfig(engine: *const engine_build.Engine, name: []const u8) SuiteConfig {
+    if (engine.facts.tests) |tests| if (test_suites.isSuiteOf(name, tests.dir)) return tests.suite;
     for (suite_configs) |entry| if (std.mem.eql(u8, entry.name, name)) return entry.config;
     return .{};
 }
@@ -1389,9 +1229,9 @@ fn addSuiteRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.St
 /// each of `groups` keeps its own row of suite_configs, keyed by its tests'
 /// name prefix (`addGroupArgs`).
 fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, config_name: ?[]const u8, groups: []const SuiteGroup) *std.Build.Step.Run {
-    const config = suiteConfig(config_name orelse name);
+    const config = suiteConfig(launch.engine, config_name orelse name);
     // Whether this executable can run the many-Browsers variant's busy
-    // Browser: -Dmany-browsers, and it links V8 and the browser module. The
+    // Browser: -Dmany-browsers, and it links the engine and the browser module. The
     // others run as usual under -Dmany-browsers, and say nothing about it.
     const many_browsers = useCraneTestRunner(b, test_exe, launch.engine, name, config.state_checks, config.standalone_runtime, groups, launch.many_browsers, launch.log_level);
     const run = b.addRunArtifact(launch.launcher);
@@ -1496,7 +1336,7 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// The runner reads only what the executable links: its directory is copied
 /// beside a generated `suite.zig` that names the root module's own imports
 /// it may read - every import whose root is a `src/<dir>/root.zig`, keyed by
-/// that directory - and the engine only where the root module links V8.
+/// that directory - and the engine only where the root module links it.
 /// Zig gives a custom test runner a copy of the root module's imports, so
 /// the runner's `@import("dom")` is the executable's own dom. And
 /// tools/global_state_baseline.txt, lint-global-state's inventory, from which
@@ -1504,11 +1344,11 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 ///
 /// `many_browsers` (-Dmany-browsers): the runner may run the busy Browser of
 /// the many-Browsers variant (tests/test_runner/neighbour.zig) - `browser`,
-/// where the executable imports the browser module and links V8. Returns
+/// where the executable imports the browser module and links the engine. Returns
 /// whether it can. `standalone`: who makes the standalone runtime
 /// (`StandaloneRuntime`), which decides how the runner compares it.
 /// `members`: the member suites of a joined executable (`OneBinary`,
-/// -Dtest-binaries=v8), each with its own row: the runner judges a test by
+/// -Dtest-binaries=engine), each with its own row: the runner judges a test by
 /// its member's StandaloneRuntime, found by the test's name prefix (lane
 /// onebin3: tests-v8's .process_start had no per-member path, so its tests
 /// read as leavers in the joined "tests" executable). Empty for an
@@ -1596,10 +1436,10 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: 
         \\pub const mode: Mode = .{t};
         \\/// -Dtest-log-level, or null: the runner's log levels (runner.zig).
         \\pub const log_level_option: ?@import("std").log.Level = {s};
-        \\/// Who makes the standalone runtime (build.zig's StandaloneRuntime).
+        \\/// Who makes the standalone runtime (tools/test_suites.zig StandaloneRuntime).
         \\pub const StandaloneRuntime = enum {{ per_test, process_start }};
         \\pub const standalone_runtime: StandaloneRuntime = .{t};
-        \\/// A joined executable's member suites (build.zig -Dtest-binaries=v8):
+        \\/// A joined executable's member suites (build.zig -Dtest-binaries=engine):
         \\/// a test whose name starts with a member's prefix is judged by that
         \\/// member's own StandaloneRuntime - the longest prefix wins. Empty for an
         \\/// executable of one suite.
@@ -1646,9 +1486,9 @@ fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: 
     w.print("pub const dom: ?type = {s};\n", .{if (has_dom) "@import(\"dom\")" else "null"}) catch @panic("OOM");
     w.print("pub const runtime: ?type = {s};\n", .{if (has_runtime) "@import(\"runtime\")" else "null"}) catch @panic("OOM");
     const has_engine = root.import_table.get("engine") != null and engine.isLinkedInto(root);
-    w.print("/// The engine, where the executable links V8.\n{s}\n", .{if (has_engine) suite_engine_line else "pub const engine: ?type = null;"}) catch @panic("OOM");
+    w.print("/// The engine, where the executable links it.\n{s}\n", .{if (has_engine) suite_engine_line else "pub const engine: ?type = null;"}) catch @panic("OOM");
     const has_browser = many_browsers and root.import_table.get("browser") != null and engine.isLinkedInto(root);
-    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links V8).\n{s}\n", .{if (has_browser) suite_browser_line else "pub const browser: ?type = null;"}) catch @panic("OOM");
+    w.print("/// The browser module, for the many-Browsers variant's busy Browser\n/// (-Dmany-browsers, where the executable links the engine).\n{s}\n", .{if (has_browser) suite_browser_line else "pub const browser: ?type = null;"}) catch @panic("OOM");
     _ = wf.add("suite.zig", suite.written());
 
     const runner = wf.getDirectory().path(b, "runner.zig");
@@ -1726,7 +1566,7 @@ fn testVerifySelection(b: *std.Build) *TestVerify {
 /// Test names start with the file's path in the directory, '/' as '.', no
 /// `.zig`: "navigation.nav2h_indexes_test.test.<name>".
 fn addTestVerify(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, dir_path: []const u8, files: []const []const u8) void {
-    addTestVerifyIn(b, launch, test_exe, name, dir_path, files, .{ .prefix = "", .config = suiteConfig(name), .plain = false });
+    addTestVerifyIn(b, launch, test_exe, name, dir_path, files, .{ .prefix = "", .config = suiteConfig(launch.engine, name), .plain = false });
 }
 
 /// `addTestVerify` for one member suite of a one-binary executable
@@ -1857,7 +1697,10 @@ fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
 /// so a test must not assume it is the first, or the only one, to start the
 /// engine.
 ///
-/// `select.file`, a path such as `tests/v8/foo_test.zig` (-Dtest-file), builds
+/// `runs_engine`: the directory's tests run the engine, so its executable
+/// links it (the build's engine, `select.engine_link`).
+///
+/// `select.file`, a path such as `tests/dom/foo_test.zig` (-Dtest-file), builds
 /// that one file as its own executable and skips every directory that does
 /// not hold it - the quick red/green loop for a single test file.
 ///
@@ -1870,7 +1713,7 @@ fn addTestFilesFromDir(
     dir_path: []const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     select: TestSelection,
 ) !void {
     const allocator = builder.allocator;
@@ -1881,7 +1724,7 @@ fn addTestFilesFromDir(
         if (!std.mem.startsWith(u8, file, dir_path) or file.len <= dir_path.len or file[dir_path.len] != '/') return;
         var dir_name: std.ArrayList(u8) = .empty;
         for (dir_path) |c| try dir_name.append(allocator, if (c == '/') '-' else c);
-        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, link_v8, select.launch, select.engine_link);
+        _ = addTestRoot(builder, step, file, builder.fmt("{s}", .{std.fs.path.stem(file)}), dir_name.items, target, modules, runs_engine, select.launch, select.engine_link);
         return;
     }
 
@@ -1932,7 +1775,7 @@ fn addTestFilesFromDir(
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
-    // -Dtest-binaries=v8: a directory `test` runs joins the one executable
+    // -Dtest-binaries=engine: a directory `test` runs joins the one executable
     // (`finishOneBinary` decides whether it can, at the end of the build).
     if (select.one) |one| if (step == one.step) {
         try one.members.append(allocator, .{
@@ -1940,16 +1783,16 @@ fn addTestFilesFromDir(
             .name = name.items,
             .files = files.items,
             .imports = try allocator.dupe(std.Build.Module.Import, modules),
-            .link_v8 = link_v8,
+            .runs_engine = runs_engine,
             .target = target,
         });
         return;
     };
-    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, link_v8, select.launch, select.engine_link);
+    const test_exe = addTestRoot(builder, step, root_path, name.items, null, target, modules, runs_engine, select.launch, select.engine_link);
     addTestVerify(builder, select.launch, test_exe, name.items, dir_path, files.items);
 }
 
-/// -Dtest-binaries=v8, at the end of the build: the members that link V8,
+/// -Dtest-binaries=engine, at the end of the build: the members that link the engine,
 /// whose imports agree and whose rows allow it (`OneBinary`) become ONE
 /// executable, "tests", rooted at tests/.all_tests.zig; every other member
 /// gets its own executable, as with -Dtest-binaries=dirs.
@@ -1999,8 +1842,8 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     var joined: std.ArrayList(OneBinary.Member) = .empty;
     var joined_dirs: std.ArrayList([]const u8) = .empty;
     for (members, keyed) |m, imports| {
-        const config = suiteConfig(m.name);
-        var fits = m.link_v8 and config.jobs == null and config.shuffle and config.state_checks == .fail and
+        const config = suiteConfig(launch.engine, m.name);
+        var fits = m.runs_engine and config.jobs == null and config.shuffle and config.state_checks == .fail and
             config.many_browsers == .fail and config.sanitize_thread == .fail and
             m.target.result.cpu.arch == members[0].target.result.cpu.arch and m.target.result.os.tag == members[0].target.result.os.tag;
         for (imports) |imp| {
@@ -2012,7 +1855,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             continue;
         }
         const root_path = b.fmt("{s}/{s}", .{ m.dir_path, test_root_name });
-        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.link_v8, launch, one.engine_link);
+        const exe = addTestRoot(b, one.step, root_path, m.name, null, m.target, m.imports, m.runs_engine, launch, one.engine_link);
         addTestVerify(b, launch, exe, m.name, m.dir_path, m.files);
     }
     if (joined.items.len == 0) return;
@@ -2032,10 +1875,10 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     }
 
     var groups: std.ArrayList(SuiteGroup) = .empty;
-    var link_v8 = false;
+    var runs_engine = false;
     for (joined.items) |m| {
-        link_v8 = link_v8 or m.link_v8;
-        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(m.name), .plain = !m.link_v8 });
+        runs_engine = runs_engine or m.runs_engine;
+        try groups.append(allocator, .{ .prefix = try test_suites.memberPrefix(allocator, m.dir_path), .config = suiteConfig(launch.engine, m.name), .plain = !m.runs_engine });
     }
     // The table's names a joined member imports, with their modules.
     var imports: std.ArrayList(std.Build.Module.Import) = .empty;
@@ -2044,7 +1887,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             if (std.mem.eql(u8, have.name, imp.name)) break;
         } else try imports.append(allocator, imp);
     };
-    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, link_v8, launch, one.engine_link, groups.items);
+    const exe = addTestRootWith(b, one.step, b.fmt("tests/{s}", .{test_root_name}), "tests", null, joined.items[0].target, imports.items, runs_engine, launch, one.engine_link, groups.items);
     for (joined.items, groups.items) |m, g| addTestVerifyIn(b, launch, exe, m.name, m.dir_path, m.files, g);
 }
 
@@ -2056,11 +1899,11 @@ fn addTestRoot(
     config_name: ?[]const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     launch: *const TestLaunch,
     engine_link: engine_build.Link,
 ) *std.Build.Step.Compile {
-    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, link_v8, launch, engine_link, &.{});
+    return addTestRootWith(builder, step, root_path, name, config_name, target, modules, runs_engine, launch, engine_link, &.{});
 }
 
 /// `addTestRoot` for an executable that holds several suites' tests
@@ -2073,7 +1916,7 @@ fn addTestRootWith(
     config_name: ?[]const u8,
     target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
-    link_v8: bool,
+    runs_engine: bool,
     launch: *const TestLaunch,
     engine_link: engine_build.Link,
     groups: []const SuiteGroup,
@@ -2097,19 +1940,20 @@ fn addTestRootWith(
     }));
 
     // Link the engine if requested (for the tests that run it)
-    if (link_v8) engine_link.into(builder, test_exe.root_module);
+    if (runs_engine) engine_link.into(builder, test_exe.root_module);
 
     // The many-Browsers variant's busy Browser needs the browser module: a
-    // suite that links V8 without it (tests/dom, tests/v8) gets the testing
-    // graph's, the one its own modules belong to.
-    if (link_v8 and launch.many_browsers and test_exe.root_module.import_table.get("browser") == null) {
+    // suite that links the engine without it (tests/dom, the engine
+    // adapter's own) gets the testing graph's, the one its own modules
+    // belong to.
+    if (runs_engine and launch.many_browsers and test_exe.root_module.import_table.get("browser") == null) {
         if (launch.browser_module) |browser_mod| test_exe.root_module.addImport("browser", browser_mod);
     }
 
     // The engine, for the Crane test runner's live counters (agents, Global
     // handles): the executable's own, the one its runtime is bound to - this
     // root is the executable's alone, so the import reaches nothing else.
-    if (link_v8 and test_exe.root_module.import_table.get("engine") == null) {
+    if (runs_engine and test_exe.root_module.import_table.get("engine") == null) {
         if (test_exe.root_module.import_table.get("runtime")) |runtime_mod| {
             if (runtime_mod.import_table.get("engine")) |engine_mod| test_exe.root_module.addImport("engine", engine_mod);
         }
@@ -2118,47 +1962,50 @@ fn addTestRootWith(
     step.dependOn(&addSuiteRunWith(builder, launch, test_exe, name, config_name, groups).step);
     // A -Dtest-file executable is named after its file and takes its
     // directory's row (`config_name`).
-    if (link_v8 and holdsTestsV8(config_name orelse name, groups)) {
+    if (runs_engine and holdsEngineTests(launch.engine, config_name orelse name, groups)) {
         if (addEngineLateRun(builder, launch, test_exe, name, groups)) |late| step.dependOn(&late.step);
     }
     return test_exe;
 }
 
 /// Whether the executable `name` (with `groups`, a joined one's members)
-/// holds tests/v8's tests.
-fn holdsTestsV8(name: []const u8, groups: []const SuiteGroup) bool {
-    if (std.mem.eql(u8, name, "tests-v8")) return true;
-    for (groups) |g| if (std.mem.eql(u8, g.prefix, "v8.")) return true;
+/// holds the engine adapter's own tests (`facts.tests`).
+fn holdsEngineTests(engine: *const engine_build.Engine, name: []const u8, groups: []const SuiteGroup) bool {
+    const tests = engine.facts.tests orelse return false;
+    if (test_suites.isSuiteOf(name, tests.dir)) return true;
+    for (groups) |g| if (test_suites.isMemberOf(g.prefix, tests.dir)) return true;
     return false;
 }
 
-/// tests/v8's platform start tests once more, each in a process whose start
-/// skipped engine.initializeBeforeThreadCreation (CRANE_TEST_ENGINE_EARLY=0,
-/// which the Crane test runner reads): there V8 starts on a later thread
-/// beside threads that already exist, and its platform must give it no
-/// thread-isolated allocator - the fallback of every host that skips the
-/// call, which would otherwise fault on x86-64 Linux (lane linux1; the
-/// integrator's ruling, 2026-11-08). The same executable, so nothing more
-/// is compiled; only the plain run has it (a variant or a -Dtest-filter run
-/// selects its own tests).
+/// The engine adapter's tests that it names for a late start
+/// (`Tests.late_start`, a test-name filter) run once more, each in a process
+/// whose start skipped engine.initializeBeforeThreadCreation
+/// (CRANE_TEST_ENGINE_EARLY=0, which the Crane test runner reads): there the
+/// engine starts on a later thread beside threads that already exist - the
+/// start of every host that skips the call (lane linux1; the integrator's
+/// ruling, 2026-11-08; the adapter's build file says what its tests check).
+/// The same executable, so nothing more is compiled; only the plain run has
+/// it (a variant or a -Dtest-filter run selects its own tests).
 fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Build.Step.Compile, name: []const u8, groups: []const SuiteGroup) ?*std.Build.Step.Run {
     if (launch.sanitize_thread or launch.many_browsers or launch.filters.len != 0) return null;
+    const late_start = (launch.engine.facts.tests orelse return null).late_start orelse return null;
     const run = b.addRunArtifact(launch.launcher);
     run.setName(b.fmt("test {s} (engine started late)", .{name}));
     run.stdio = .zig_test;
     run.addArtifactArg(test_exe);
     run.addArg(b.fmt("--name={s}-engine-late", .{name}));
     // A process per test: each race needs a process where nothing has
-    // started V8 yet.
+    // started the engine yet.
     run.addArg("--batch=1");
     run.addArg(b.fmt("--launch-seed={s}", .{launch.seed}));
     run.addArg(b.fmt("--timeout={d}", .{launch.timeout}));
     addGroupArgs(b, run, launch, groups, false, false);
-    // The leading `*` takes the joined executable's "v8." prefix too: the
-    // launcher strips a group's prefix only for a group it is told of, and
-    // this run passes no batches (a bare "platform_start_once_test*" ran
-    // nothing in the joined "tests" on server1, lane linux1).
-    run.addArg("--filter=*platform_start_once_test.*");
+    // The filter must take the joined executable's member prefix too (the
+    // adapter's starts with `*`): the launcher strips a group's prefix only
+    // for a group it is told of, and this run passes no batches (a bare
+    // file pattern ran nothing in the joined "tests" on server1, lane
+    // linux1).
+    run.addArg(b.fmt("--filter={s}", .{late_start}));
     // Its results beside the suite's own, never over them; the order is the
     // plain run's (as a filtered run's is).
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
@@ -2864,7 +2711,7 @@ pub fn build(b: *std.Build) void {
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
     // (engine_build.LinkRequest.thread_sanitized).
-    const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the V8 prebuilt or the V8 wrapper) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
+    const sanitize_thread_option = b.option(bool, "sanitize-thread", "Build every test executable with ThreadSanitizer (Crane's own modules; not the C libraries, the engine's prebuilt archives or the engine adapter's own C++) and run it so a race crashes its test (TSAN_OPTIONS=halt_on_error=1)") orelse false;
     // How the test executables and the snapshot generator link the engine:
     // the same engine as the products, linked as into a thread-sanitized
     // artifact under -Dsanitize-thread. Never the production artifacts' way
@@ -2929,11 +2776,13 @@ pub fn build(b: *std.Build) void {
     ) orelse false;
 
     // Debug scope filter - only show debug output for specific scopes
-    // Example: -Ddebug-scope=v8,webidl will only show v8 and webidl debug output
+    // Example: -Ddebug-scope=webidl,dom will only show webidl and dom debug
+    // output. The engine adapter's own scope, first in the list, is its build
+    // file's (`facts.debug_scope`).
     const debug_scope = b.option(
         []const u8,
         "debug-scope",
-        "Filter debug output by scope (comma-separated: v8,webidl,dom,css,html,url,encoding,streams,fetch,runtime,gc,wpt,general)",
+        b.fmt("Filter debug output by scope (comma-separated: {s}webidl,dom,css,html,url,encoding,streams,fetch,runtime,gc,wpt,general)", .{if (engine.facts.debug_scope) |scope| b.fmt("{s},", .{scope}) else ""}),
     ) orelse "";
 
     // ========================================================================
@@ -2993,6 +2842,10 @@ pub fn build(b: *std.Build) void {
     // The "Valid specs:" message is derived from this array rather than spelled
     // out a second time. Three copies of one list is what let it rot: the array
     // named 25 of the 28 specs, the message 24, and no two agreed.
+    //
+    // And the engine adapter's own test directory's spec, which its build file
+    // names with the directory (`facts.tests`): valid in a build of that engine.
+    const engine_spec: ?[]const u8 = if (engine.facts.tests) |engine_tests| engine_tests.spec else null;
     const valid_specs = [_][]const u8{
         "all",
         "process",
@@ -3013,7 +2866,6 @@ pub fn build(b: *std.Build) void {
         "cookiestore",
         "runtime",
         "codegen",
-        "v8",
         "file",
         "fs",
         "fetch",
@@ -3031,7 +2883,7 @@ pub fn build(b: *std.Build) void {
         "wpt_runner",
     };
     if (spec_filter) |spec| {
-        var is_valid = false;
+        var is_valid = engine_spec != null and std.mem.eql(u8, spec, engine_spec.?);
         for (valid_specs) |valid_spec| {
             if (std.mem.eql(u8, spec, valid_spec)) {
                 is_valid = true;
@@ -3044,6 +2896,7 @@ pub fn build(b: *std.Build) void {
             for (valid_specs, 0..) |valid_spec, i| {
                 std.debug.print("{s} {s}", .{ if (i == 0) "" else ",", valid_spec });
             }
+            if (engine_spec) |engine_tests_spec| std.debug.print(", {s}", .{engine_tests_spec});
             std.debug.print("\n", .{});
             std.process.exit(1);
         }
@@ -3248,7 +3101,7 @@ pub fn build(b: *std.Build) void {
     // `test-launch` runs the test executables alone, without the lints and
     // checks `test` adds; -Dspec and -Dtest-file select them for both.
     const launch: *const TestLaunch = launch: {
-        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link V8)") orelse false;
+        const many_browsers = b.option(bool, "many-browsers", "The many-Browsers variant: every test runs beside a second, busy Browser on another thread of its process (suites that link the engine)") orelse false;
         const test_log_level = b.option(std.log.Level, "test-log-level", "The test executables' log level: compiled and printed while a test runs (default: compiled at info, printed at warn; debug for a local diagnosis)");
         // The CRANE_POISON_FREES switch the launcher reads for libc's
         // scribbling in every test child (child.zig, `malloc_scribble`), as
@@ -3300,7 +3153,7 @@ pub fn build(b: *std.Build) void {
         });
         _ = useCraneTestRunner(b, state_fixture, &engine, "test_state_fixture", .fail, .per_test, &.{}, false, test_log_level);
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
-        // A joined executable as -Dtest-binaries=v8 makes one (tests/
+        // A joined executable as -Dtest-binaries=engine makes one (tests/
         // test_runner_fixture/joined_fixture.zig): two members, "start."
         // (.process_start, as tests-v8) and "held." (the default .per_test),
         // each judged by its own row (lane onebin3).
@@ -3422,8 +3275,8 @@ pub fn build(b: *std.Build) void {
         break :launch l;
     };
     test_selection.launch = launch;
-    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or v8 (ONE executable for the directories that link V8: for cold full gates)") orelse .dirs;
-    if (test_binaries == .v8 and test_selection.file == null) {
+    const test_binaries = b.option(TestBinaries, "test-binaries", "How `test` compiles tests/<dir>/: dirs (an executable each, the default: a test-file change rebuilds one directory) or engine (ONE executable for the directories that link the engine: for cold full gates)") orelse .dirs;
+    if (test_binaries == .engine and test_selection.file == null) {
         const one = b.allocator.create(OneBinary) catch @panic("OOM");
         one.* = .{ .step = test_step, .engine_link = tests_engine_link };
         test_selection.one = one;
@@ -3474,14 +3327,14 @@ pub fn build(b: *std.Build) void {
         b.top_level_steps.get("test-launcher").?.step.dependOn(&run_poisoning_tests.step);
     }
 
-    // The V8 snapshot the tests/v8 snapshot tests restore: THIS build's,
-    // made by a cached run of the snapshot generator (filled in where the
-    // generator is defined, below) and passed by path, so the tests depend on
-    // it. Never a file found from the current directory: a stale
-    // zig-out/bin/whatwg_snapshot.bin there made three of them fail and,
-    // where there was none, all of them skip (feature queue, 2026-11-01).
-    const test_snapshot_options = b.addOptions();
-    const test_snapshot_module = test_snapshot_options.createModule();
+    // The engine's startup data for its own tests (its build file's
+    // `facts.startup`): THIS build's, made by the adapter where it makes the
+    // rest of its startup data (below, `addStartupData`) and passed by path,
+    // so the tests depend on it. Never a file found from the current
+    // directory: a stale one there made three snapshot tests fail and, where
+    // there was none, all of them skip (feature queue, 2026-11-01).
+    const engine_startup_tests = engine.startupTestOptions(b);
+    const engine_startup_test_module: ?*std.Build.Module = if (engine_startup_tests) |startup_tests| startup_tests.createModule() else null;
 
     // What -Dtarget can build without running anything there: the artifacts
     // that link no V8 are built (libwhatwg, the image codecs, the platform
@@ -3620,7 +3473,7 @@ pub fn build(b: *std.Build) void {
             // tests/dom/hr_time_coarsen_exactness_test.zig: the coarsening grid's exact arithmetic.
             .{ .name = "hr_time", .module = testing_graph.hr_time },
         };
-        // link_v8 = true: tests/dom/mutation_test.zig calls dom.mutation.insert
+        // runs_engine = true: tests/dom/mutation_test.zig calls dom.mutation.insert
         // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
         // NodeIterator and interfaces.NodeList.vtable - i.e. the V8 FFI layer,
         // which also drags in libuv's event loop. With `false` this was the only
@@ -3837,7 +3690,7 @@ pub fn build(b: *std.Build) void {
         // only for as long as Zig's lazy analysis never walks from a test block
         // in `src/html/` into a `v8_*` extern. The day one does, this goes red
         // with ~238 `undefined symbol: _v8_*`. `tests/dom/` hit exactly that
-        // wall with 246 and was fixed by passing `link_v8 = true` for the files
+        // wall with 246 and was fixed by passing `runs_engine = true` for the files
         // under `tests/dom/`; the module-root target still is not linked, so
         // `testing_graph.dom`, `testing_graph.intl` and `testing_graph.platform` all carry the same latency.
         //
@@ -4226,41 +4079,42 @@ pub fn build(b: *std.Build) void {
         };
     }
 
-    // V8 engine tests.
-    //
-    // Its own directory because it is the only one that needs the `v8` module
-    // itself. Test blocks living inside `src/runtime/engines/v8/*.zig` are NEVER
-    // run - `addTestFilesFromDir` only collects `tests/**/ *_test.zig` - so a test
-    // written next to the code it covers is a test that does not exist.
-    if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "v8")) {
-        const v8_test_imports = [_]std.Build.Module.Import{
+    // The engine adapter's own tests (its build file's `facts.tests`): the one
+    // directory whose tests need the adapter's module itself. Test blocks
+    // living inside the adapter's sources are NEVER run - `addTestFilesFromDir`
+    // only collects `tests/**/ *_test.zig` - so a test written next to the code
+    // it covers is a test that does not exist. Another listed adapter's test
+    // directory is recorded as a suite (a build of that engine runs it), and
+    // nothing of it is built here.
+    for (engine_build.test_dirs) |dir| {
+        const own = if (engine.facts.tests) |engine_tests| std.mem.eql(u8, engine_tests.dir, dir) else false;
+        if (!own) recordSuiteDir(b, test_selection, dir);
+    }
+    if (engine.facts.tests) |engine_tests| if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, engine_tests.spec)) {
+        // What the adapter's tests may import, by name (`Tests.imports`
+        // takes them in its own order, which is part of their compile): the
+        // testing graph's modules, the adapter's own module and this build's
+        // startup data for tests (`engine_startup_tests`).
+        var offered_to_engine_tests: std.ArrayList(std.Build.Module.Import) = .empty;
+        offered_to_engine_tests.appendSlice(b.allocator, &.{
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "host", .module = testing_graph.host },
             .{ .name = "runtime", .module = testing_graph.runtime },
             .{ .name = engine.facts.module_name, .module = testing_graph.engine_impl },
             .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = testing_graph.engine },
-            // The generated interfaces, for a test host that makes platform
-            // objects - a Window for a realm (page_realm_operations_test.zig).
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            // The impl helpers a tests/v8 test reaches through an impl's
-            // re-export (Response.streams_js, for the Deferred lifetime test).
             .{ .name = "impls", .module = testing_graph.impls },
-            // DOM's hooks, for a test that fires a trusted event
-            // (dom.fire_event) - the one module already in this graph
-            // through impls, not a second binding of it.
             .{ .name = "dom", .module = testing_graph.dom },
-            // URLPattern's construction and matching, whose regexps run in
-            // the engine (urlpattern_*_test.zig), and URL for its corpus.
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
-            // This build's snapshot (`test_snapshot_options`).
-            .{ .name = "test_snapshot", .module = test_snapshot_module },
+        }) catch @panic("OOM");
+        if (engine.facts.startup) |startup| offered_to_engine_tests.append(b.allocator, .{ .name = startup.test_import, .module = engine_startup_test_module.? }) catch @panic("OOM");
+        const engine_test_imports = engine_build.importsByName(b, engine_tests.imports, offered_to_engine_tests.items, "the engine adapter's tests (its build file's facts.tests.imports)");
+        addTestFilesFromDir(b, test_step, engine_tests.dir, target, engine_test_imports, true, test_selection) catch |err| {
+            std.debug.print("Warning: Failed to add the engine adapter's test files ({s}): {}\n", .{ engine_tests.dir, err });
         };
-        addTestFilesFromDir(b, test_step, "tests/v8", target, &v8_test_imports, true, test_selection) catch |err| {
-            std.debug.print("Warning: Failed to add v8 test files: {}\n", .{err});
-        };
-    }
+    };
 
     // Codegen tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "codegen")) {
@@ -4769,7 +4623,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Build step
-    const browser_step = b.step("browser", "Build Crane browser (self-contained with static V8)");
+    const browser_step = b.step("browser", "Build Crane browser (self-contained: the engine linked in)");
 
     const install_crane_lib = b.addInstallArtifact(crane_lib, .{});
     const install_crane_exe = b.addInstallArtifact(crane_exe, .{});
@@ -4937,100 +4791,27 @@ pub fn build(b: *std.Build) void {
     interfaces_tool_step.dependOn(&run_interfaces_tool.step);
 
     // ========================================================================
-    // SNAPSHOT GENERATOR (must be defined before REPL and WPT runner)
+    // THE ENGINE'S STARTUP DATA (must be defined before REPL and WPT runner)
     // ========================================================================
 
-    // The generator's mode is fixed - Debug, whatever -Doptimize says
-    // (tools/snapshot_generator_mode.zig): the blob it writes is a function
-    // of the source, not of the optimizer, and every artifact restores it
-    // whatever its own mode. Built with -Doptimize, a release build paid a
-    // second optimized compile of Crane before its snapshot could run.
-    // -Dsnapshot-generator-optimize builds another for a diagnosis.
-    const snapshot_generator_mode = @import("tools/snapshot_generator_mode.zig");
-    const snapshot_generator_optimize = snapshot_generator_mode.snapshotGeneratorMode(b.option(
-        std.builtin.OptimizeMode,
-        "snapshot-generator-optimize",
-        "Optimize mode of the V8 snapshot generator (default: Debug, whatever -Doptimize says)",
-    ));
-
-    // Snapshot Generator tool for creating V8 heap snapshots with WebIDL interfaces
-    const snapshot_gen_exe = b.addExecutable(.{
-        .name = "snapshot_generator",
-        .root_module = b.createModule(.{
-            // Snapshots are V8's by nature (engine.capabilities.restores_snapshots),
-            // so the generator lives inside the V8 adapter.
-            .root_source_file = b.path("src/runtime/engines/v8/snapshot_generator.zig"),
-            // Build-time tool: must run on the HOST. It is executed via
-            // `b.addRunArtifact` below, so building it for `target` means
-            // `zig build -Dtarget=aarch64-ios` produces a phone binary and then
-            // tries to run it here. The same fix landed for codegen, the IDL
-            // scanner and the three cldr tools; this one was missed, and it would
-            // have been the next failure after the V8 blocker is lifted.
-            .target = b.graph.host,
-            .optimize = snapshot_generator_optimize,
-            .imports = &.{
-                .{ .name = "runtime", .module = runtime_mod },
-                .{ .name = engine.facts.module_name, .module = engine_impl_mod },
-                .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "namespaces", .module = namespaces_mod },
-            },
-        }),
-    });
-
-    // The engine, linked as the test executables link it.
-    tests_engine_link.into(b, snapshot_gen_exe.root_module);
-
-    // A ReleaseSafe generator (-Dsnapshot-generator-optimize) over the
-    // Debug-built C libraries links the full UBSan runtime they call into.
-    if (snapshot_generator_mode.sanitizeC(snapshot_generator_optimize)) |sanitizer| snapshot_gen_exe.root_module.sanitize_c = sanitizer;
-
-    // Add run step for Snapshot Generator (manual use)
-    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
-    run_snapshot_gen.addPassthruArgs();
-
-    const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
-    snapshot_gen_step.dependOn(&run_snapshot_gen.step);
-
-    // tools/snapshot_generator_mode.zig: the generator's fixed mode, std-only.
-    const snapshot_generator_mode_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("tools/snapshot_generator_mode.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    }) });
-    test_step.dependOn(&addSuiteRun(b, launch, snapshot_generator_mode_tests, "tools-snapshot_generator_mode", null).step);
-
-    // ========================================================================
-    // SNAPSHOT GENERATION (auto-generate snapshot for fast browser startup)
-    // ========================================================================
-
-    // The generator writes into the cache (an output file argument, so the
-    // run is cached on the generator's hash) and the install step copies the
-    // blob to the install prefix's bin/ - zig-out/bin/whatwg_snapshot.bin,
-    // where the runner, the console and gc_bench look for it - making that
-    // directory. The generator was handed "zig-out/bin/whatwg_snapshot.bin"
-    // to write itself, and a fresh checkout has no zig-out/bin: `zig build
-    // snapshot` failed with FileNotFound there (server1's first native run,
-    // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
-    // pool's hosts.
-    const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
-
-    // Create a build step for manual snapshot generation
-    const snapshot_step = b.step("snapshot", "Generate V8 heap snapshot with WebIDL interfaces");
-    snapshot_step.dependOn(&install_snapshot.step);
-
-    // The tests' snapshot: the same generator, into the cache (an output
-    // file argument, so the run is cached on the generator's hash), passed
-    // to tests/v8 by path (`test_snapshot_options` above).
-    const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
-    // Under -Dsanitize-thread the generator shares instrumented modules with
-    // the tests: it runs with their suppressions (useTsanSuppressions).
-    if (sanitize_thread_option) {
-        useTsanSuppressions(b, gen_test_snapshot);
-        useTsanSuppressions(b, gen_snapshot);
-        useTsanSuppressions(b, run_snapshot_gen);
-    }
-    test_snapshot_options.addOptionPath("path", gen_test_snapshot.addOutputFileArg("whatwg_snapshot.bin"));
+    // What a program that runs the engine reads beside itself when it starts
+    // - the adapter's programs and steps make it (its build file's
+    // `addStartupData`) - and this build's copy for its tests. The install
+    // every engine-running program below waits for; null when the engine
+    // has none. Its programs share the test executables' modules, so they
+    // link the engine as the tests do, and under -Dsanitize-thread run with
+    // the tests' suppressions (useTsanSuppressions).
+    const engine_startup_install: ?*std.Build.Step = if (engine_startup_tests) |startup_tests| engine.addStartupData(b, .{
+        .modules = &.{
+            .{ .name = "runtime", .module = runtime_mod },
+            .{ .name = engine.facts.module_name, .module = engine_impl_mod },
+            .{ .name = "interfaces", .module = interfaces_mod },
+            .{ .name = "namespaces", .module = namespaces_mod },
+        },
+        .link = tests_engine_link,
+        .test_options = startup_tests,
+        .prepare_run = if (sanitize_thread_option) &useTsanSuppressions else null,
+    }) else null;
 
     // ========================================================================
     // REPL TOOL
@@ -5101,7 +4882,7 @@ pub fn build(b: *std.Build) void {
     // waits for the generator, its compile does not, so the console's
     // compile and the generator's build and run go side by side.
     const install_repl = b.addInstallArtifact(repl_exe, .{});
-    install_repl.step.dependOn(&install_snapshot.step);
+    if (engine_startup_install) |startup_install| install_repl.step.dependOn(startup_install);
     b.getInstallStep().dependOn(&install_repl.step);
     // A release console names its build beside itself (zig-out/bin/
     // repl.modes, build_mode.zig `writeModesFile`): its modes and the CPU
@@ -5258,7 +5039,7 @@ pub fn build(b: *std.Build) void {
     // sanitizer (the shared graph's: -Doptimize's mode; see addWptRunner).
     if (gc_bench_modes.sanitize_c) |sanitizer| gc_bench_exe.root_module.sanitize_c = sanitizer;
     if (shared_c.compilesFull()) gc_bench_exe.bundle_ubsan_rt = true;
-    gc_bench_exe.step.dependOn(&install_snapshot.step);
+    if (engine_startup_install) |startup_install| gc_bench_exe.step.dependOn(startup_install);
 
     b.installArtifact(gc_bench_exe);
 
@@ -5412,7 +5193,7 @@ pub fn build(b: *std.Build) void {
     const wpt_runner_exe = addWptRunner(b, .production, production_build, production_graph, production_c, .{
         .target = target,
         .poisoning = poisoning_module,
-        .install_snapshot = &install_snapshot.step,
+        .engine_startup = engine_startup_install,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
         .engine = &engine,
@@ -5433,7 +5214,7 @@ pub fn build(b: *std.Build) void {
     const bug_finding_runner = addWptRunner(b, .bug_finding, bug_finding_build, bug_finding_graph, bug_finding_c, .{
         .target = target,
         .poisoning = poisoning_module,
-        .install_snapshot = &install_snapshot.step,
+        .engine_startup = engine_startup_install,
         .wpt_debug = wpt_debug,
         .check_target = check_target_step,
         .engine = &engine,
@@ -5880,7 +5661,7 @@ pub fn build(b: *std.Build) void {
         .root_module = lint_engine_module,
     });
 
-    const lint_engine_step = b.step("lint-engine", "Fail on new V8 references outside the V8 adapter (use -- --update after paying debt down)");
+    const lint_engine_step = b.step("lint-engine", "Fail on new references to the engine outside its adapter: the engine boundary (use -- --update after paying debt down)");
     const lint_engine = b.addRunArtifact(lint_engine_exe);
     // It reads src/, tests/, tools/ and the baseline, which the build graph does not track.
     lint_engine.has_side_effects = true;
@@ -7097,8 +6878,9 @@ const WptRunnerContext = struct {
     target: std.Build.ResolvedTarget,
     /// runner_allocator.zig's poisoning front (tests/test_runner/poisoning.zig).
     poisoning: *std.Build.Module,
-    /// The snapshot's install: the runner reads zig-out/bin/whatwg_snapshot.bin.
-    install_snapshot: *std.Build.Step,
+    /// The install of the engine's startup data, which the runner reads
+    /// beside itself (`Engine.addStartupData`); null when it has none.
+    engine_startup: ?*std.Build.Step,
     /// -Dwpt-debug.
     wpt_debug: bool,
     check_target: *std.Build.Step,
@@ -7184,8 +6966,8 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
     // libraries are `.trap`, which calls no handler, so it links no runtime -
     // as the release console links none (build_mode.zig needsUbsanRuntimeFor).
     if (c_libraries.compilesFull()) exe.bundle_ubsan_rt = true;
-    // The runner reads the snapshot beside it.
-    exe.step.dependOn(ctx.install_snapshot);
+    // The runner reads the engine's startup data beside it.
+    if (ctx.engine_startup) |startup_install| exe.step.dependOn(startup_install);
     const install = b.addInstallArtifact(exe, .{});
     b.getInstallStep().dependOn(&install.step);
 

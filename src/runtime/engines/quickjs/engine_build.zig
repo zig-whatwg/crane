@@ -63,6 +63,15 @@ pub fn link(b: *std.Build, module: *std.Build.Module, resolved: *const Resolved,
     _ = request;
 }
 
+/// No startup data: a program that runs this engine reads nothing beside
+/// itself (`facts.startup` is null, so the protocol never asks).
+pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.StartupRequest) ?*std.Build.Step {
+    _ = b;
+    _ = options;
+    _ = request;
+    return null;
+}
+
 /// What the neutral build asks about this adapter.
 pub const facts: engine_build.Facts = .{
     .words = &.{"quickjs"},

@@ -1253,7 +1253,7 @@ test "real processes: a read after a free fails its test by name - it reads the 
 
 test "real processes: in a joined executable each member's standalone runtime is judged by its own row" {
     // build.zig compiles tests/test_runner_fixture/joined_fixture.zig as
-    // -Dtest-binaries=v8 joins suites: member "start." with tests-v8's
+    // -Dtest-binaries=engine joins suites: member "start." with tests-v8's
     // .process_start (its test start makes the standalone runtime once, for
     // the process), member "held." with the default .per_test (lane onebin3:
     // the joined executable judged tests-v8's tests by its own default row,
