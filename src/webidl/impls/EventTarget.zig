@@ -169,6 +169,49 @@ fn callbackOf(listener: Listener) engine.CallbackInterface {
 ///   target's life: its own State (a chained target, `Own`) or its lazily
 ///   made entry (`LazyEntry`).
 ///
+/// WHAT KEEPS A NODE'S HANDLE GOOD ACROSS A CALLBACK (lane lk1, 2026-11-16).
+/// `place.node` is a NodeBase's address, and dispatch's walk keeps one
+/// across every listener it calls (`innerInvoke`); the items of the path
+/// are addresses too. Two things, each enough alone, keep them the nodes
+/// they were until the walk ends:
+///
+/// - NOTHING IS FREED UNDER A CALLBACK. The agent's teardown queue frees no
+///   tree and runs no collected wrapper's finalizer while a callback
+///   invocation is on its stack (runtime.gc.DeferredTeardown's algorithm
+///   depth; engine.callUserObjectOperation counts the invocation): a
+///   collection inside a listener only records what it found. The microtask
+///   checkpoint after a listener returns runs inside that same invocation
+///   (its "clean up after running script"), so a microtask frees nothing
+///   either, and between two listeners the walk is native code that queues
+///   nothing.
+/// - THE PATH HOLDS ITS NODES: one counted reference on every invocation
+///   target that is a node, and on every relatedTarget, from before the
+///   first listener to dispatch step 9 (dom.event_dispatch
+///   `DispatchPath.hold`) - as the three browsers hold every item of the
+///   path for the dispatch: WebKit's EventContext keeps `RefPtr<Node>
+///   m_node` and `RefPtr<EventTarget> m_currentTarget`
+///   (Source/WebCore/dom/EventContext.h), Blink's NodeEventContext
+///   `Member<Node> node_` and its WindowEventContext `Member<LocalDOMWindow>
+///   window_` (core/dom/events/node_event_context.h,
+///   window_event_context.h), Gecko's EventTargetChainItem
+///   `nsCOMPtr<EventTarget> mTarget` (dom/events/EventDispatcher.cpp; each
+///   read on its main branch, 2026-11-16). A tree with a counted node is
+///   never garbage, whenever the queue does run.
+///
+/// Measured (tests/html/lk1_dispatch_path_holds_test.zig, Debug, lane
+/// uaf1's freed-block instrument on): 10 of 10 as the code is; 10 of 10
+/// with the path's references taken out; 10 of 10 with the queue made to
+/// free at every binding exit; and with BOTH taken out the walk comes back
+/// to two freed path nodes whose slots new nodes have taken, and calls the
+/// new nodes' listeners. Keep both.
+///
+/// The one free made whatever the counts say is a realm's end, and that
+/// runs from a task of its own, never under a dispatch: a removed frame's
+/// realm is detached and ends once the collector has taken it. `stands`
+/// (below) is the net for that free; it is not what keeps the node. A path
+/// item that is not a node - the Window - has no count: only its realm's
+/// end, that same task, frees it.
+///
 /// 16 bytes, passed by value. `view` is BORROWED as the list's is: valid
 /// until the list next changes, so never across a call that can run script.
 const Listeners = struct {
