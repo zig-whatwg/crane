@@ -181,7 +181,13 @@ test "a deep generated chain resolves an ancestor's state, not just its own" {
     for (table) |a| {
         if (a.id == want) {
             found = true;
-            // Whatever the offset is, it must land inside the derived state.
+            // A node implements EventTarget and nests no EventTarget State
+            // (lane nm3: its listener list is a field of its rare block), so
+            // the entry is there - the brand - with no bytes behind it, and
+            // stateAs answers null for it.
+            try std.testing.expectEqual(@as(usize, std.math.maxInt(usize)), a.offset);
+        } else {
+            // Every State the div does nest lands inside its own.
             try std.testing.expect(a.offset < @sizeOf(Div.State));
         }
     }

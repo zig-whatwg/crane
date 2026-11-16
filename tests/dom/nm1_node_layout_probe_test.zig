@@ -530,8 +530,8 @@ test "nm1 probe: what each field of a real node holds" {
     print("  NodeBase.owner 0x{x} == the div's Instance 0x{x}: {}\n", .{ nb.owner, @intFromPtr(pdiv), nb.owner == @intFromPtr(pdiv) });
     print("  Instance.state 0x{x} == the State block 0x{x}: {}\n", .{ @intFromPtr(pdiv.state), @intFromPtr(s), @intFromPtr(pdiv.state) == @intFromPtr(s) });
     print("  each level's state, offset from the block (stateAs reads the vtable's ancestry table):\n", .{});
+    // EventTarget's State is not among them: a node nests none (lane nm3).
     inline for (.{
-        .{ "EventTarget.State", interfaces.EventTarget.State },
         .{ "Node.State", interfaces.Node.State },
         .{ "Element.State", interfaces.Element.State },
         .{ "HTMLElement.State", interfaces.HTMLElement.State },
