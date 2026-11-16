@@ -247,9 +247,17 @@ pub const Resolved = struct {
 /// Which V8 this build links, or why it can link none: the archives the
 /// options and the target's OS select, and the facts the archive keeps
 /// beside itself (scripts/build-v8-15.7.sh writes them from GN's own compile
-/// and d8's own link). A configure-time read the configuration cache cannot
-/// see change, so it is poisoned; a host without the archive gets the reason
-/// and how to get it as this build's answer.
+/// and d8's own link). A host without the archive gets the reason and how
+/// to get it as this build's answer.
+///
+/// The two files are read at configure time, so the configuration depends
+/// on them: each is a TRACKED input of the configure
+/// (`b.dependOnFileContents`, std/Build.zig - Zig re-runs the configure
+/// when its contents change), not a reason to poison the configuration
+/// cache, which would make every `zig build` configure afresh (batch E5 of
+/// tmp/plans/build-protocol-design.md; design 1.6). A file that cannot be
+/// read is the one case a contents dependency cannot hold - its absence,
+/// which the archive's arrival must undo - so that answer still poisons.
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) engine_build.Resolution(Resolved) {
     const selected = archives.select(options.version, options.build, target.result.os.tag) catch |err| return .{
         .unavailable = switch (err) {
@@ -258,10 +266,8 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
         },
     };
     const chromium = selected.chromium;
-    b.graph.poisonCache();
-    const dir = b.root.root_dir.handle;
-    const flags_text = dir.readFileAlloc(b.graph.io, chromium.libcxx_flags, b.allocator, .limited(1 << 16)) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
-    const libs_text = dir.readFileAlloc(b.graph.io, chromium.system_libs, b.allocator, .limited(1 << 16)) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
+    const flags_text = readTracked(b, chromium.libcxx_flags) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
+    const libs_text = readTracked(b, chromium.system_libs) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
     var flags: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
     while (lines.next()) |line| {
@@ -278,6 +284,19 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
         }
     }
     return .{ .ready = .{ .archives = selected, .libcxx_flags = flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items } };
+}
+
+/// `path` (relative to the build root) read at configure time as a tracked
+/// input of the configuration (`resolve` says why); a failed read poisons
+/// the configuration cache instead, since the file's absence is no content
+/// a dependency can record.
+fn readTracked(b: *std.Build, path: []const u8) ![]u8 {
+    const text = b.root.root_dir.handle.readFileAlloc(b.graph.io, path, b.allocator, .limited(1 << 16)) catch |err| {
+        b.graph.poisonCache();
+        return err;
+    };
+    b.dependOnFileContents(b.path(path));
+    return text;
 }
 
 /// Why a host that lacks `path`, a file the archive keeps beside itself, can
