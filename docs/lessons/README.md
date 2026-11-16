@@ -1547,3 +1547,4 @@ A lane brief now carries the lessons chosen for its batch.
 - [Read the engine today before citing it - a brief's citation is a claim](workflow-read-the-engine-today-before-citing-it-a-briefs-citation-is-a-claim.md) - fetch the engine's file, cite the name and the date read, and report where it contradicts the brief
 
 ||||||| b19bb7bc39d
+- [A diff against `main` names other lanes' work once main moves](workflow-a-diff-against-main-names-other-lanes-work-once-main-moves.md) - merge main first, then make the file list and the reverse patch; check a patch's file names before a job takes it
