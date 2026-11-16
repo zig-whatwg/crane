@@ -1176,7 +1176,14 @@ pub const Parser = struct {
                 const simples = try self.allocator.alloc(SimpleSelector, 1);
                 var owns_simples = true;
                 errdefer if (owns_simples) self.allocator.free(simples);
-                simples[0] = if (context_kind == .style) .Nesting else .{ .PseudoClass = .{ .kind = .Scope } };
+                // Cascade 6 3.5.3: a scoped style rule's selector is relative,
+                // "with the scoping root and descendant combinator implied at
+                // the start" - implied, so it adds no specificity
+                // (scope-specificity.html: `@scope (#main) { .b }` is
+                // (0,1,0) in all three browsers): :where(:scope), the anchor
+                // Blink also builds (CSSSelectorParser's implicit scope).
+                simples[0] = if (context_kind == .style) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
+                errdefer if (owns_simples) simples[0].deinit(self.allocator);
                 const old_len = result.combinators.len;
                 result.combinators = try self.allocator.realloc(result.combinators, old_len + 1);
                 result.combinators[old_len] = .{

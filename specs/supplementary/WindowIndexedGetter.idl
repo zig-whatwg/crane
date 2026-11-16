@@ -11,6 +11,13 @@
 //
 // See: https://html.spec.whatwg.org/multipage/nav-history-apis.html#the-window-object
 
+// The getter is anonymous: HTML's Window has no member named `item`, and a
+// named operation would put a `window.item()` method on every global, which
+// no browser has (typeof window.item is "undefined" in Chrome, Firefox and
+// Safari) and which hides an element with id "item" from the Window's named
+// properties (css/css-cascade/scope-proximity.html calls
+// getComputedStyle(item)).
+
 partial interface Window {
-  getter WindowProxy? item(unsigned long index);
+  getter WindowProxy? (unsigned long index);
 };

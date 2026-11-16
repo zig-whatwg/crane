@@ -65,6 +65,38 @@ pub const PendingEdits = struct {
     count: usize = 0,
 };
 
+/// A top-level traversable's active pointers (`BrowsingContext.
+/// active_pointers`; Pointer Events 4: an "active pointer" is any touch
+/// contact, pen or mouse that can produce events), with each one's pointer
+/// capture state. html.pointer_capture keeps it; it holds no heap memory.
+/// Every element or document is an identity with its slab generation, so one
+/// that was freed is never matched or read again.
+pub const ActivePointers = struct {
+    pub const capacity = 16;
+    pub const Ref = struct {
+        node: InstancePtr,
+        generation: u64,
+    };
+    pub const Entry = struct {
+        /// The pointerId.
+        id: i32,
+        /// html.pointer_capture.Kind.
+        kind: u8,
+        /// "Active buttons state": a mouse with a button down, a touch or
+        /// pen in contact.
+        buttons_active: bool = false,
+        /// The pointer's "active document": the node document of the last
+        /// pointerdown, pointermove or pointerup it fired.
+        active_document: ?Ref = null,
+        /// "Pending pointer capture target override" and "pointer capture
+        /// target override" (Pointer Events 4 section 8).
+        pending: ?Ref = null,
+        override: ?Ref = null,
+    };
+    items: [capacity]Entry = undefined,
+    count: usize = 0,
+};
+
 const joint_history = @import("../navigation/joint_history.zig");
 const JointHistory = joint_history.JointHistory;
 const traversal_queue = @import("../navigation/traversal_queue.zig");
@@ -520,6 +552,13 @@ pub const BrowsingContext = struct {
     /// step 2.1). A top-level context's; holds no heap memory. It was one
     /// table per thread, and another tab's edits pushed this tab's out.
     pending_edits: PendingEdits = .{},
+
+    /// The active pointers acting on this top-level traversable and their
+    /// pointer capture state (html.pointer_capture). A top-level context's,
+    /// as each tab of a browser has its own pointers: a touch in one tab is
+    /// no active pointer of another, and Element.setPointerCapture() in one
+    /// never captures another's. Holds no heap memory.
+    active_pointers: ActivePointers = .{},
 
     /// The type of `pending_edits`, for html.focus.
     pub const PendingEditsTable = PendingEdits;

@@ -2189,3 +2189,19 @@ pass_rate = 24/60
 condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 36-67 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
 measured_at = 5cbd6e69fd7
 paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[html/webappapis/dynamic-markup-insertion/html-unsafe-methods/Document-parseHTMLUnsafe-url.html]
+generation = 225
+kind = flake
+why = First flip, under the 32-runner sweep only: the production run's one ERROR "TypeError: window.resolveLoadPromise is not a function" - the page's iframe has onload="window.resolveLoadPromise()" and the function is defined by the NEXT, parser-blocking external script (resources/parseHTMLUnsafe-url-tests.js), so the iframe's load event ran before that script under load. The bug-finding sweep of the same tree ran it OK 6/6, and the file alone ran OK 6/6 in 40 of 40 runs (production and bug-finding, x20 each, server1 2026-11-15 about 9:05 PM ET). Owner: lane flk1's follow-up queue (whether Crane can fire a child navigable's load event while its parent's parser waits on a blocking script, against the three browsers). Isolated pairs, the file alone, server1 2026-11-15 about 9:07 PM ET: BASE ~/crane-frozen/main-9a0207b5b4 (generation 224's production runner), TIP ~/crane-frozen/main-86a8281a83 (generation 225's).
+pair.1 = base 6/6; tip 6/6
+pair.2 = base 6/6; tip 6/6
+pair.3 = base 6/6; tip 6/6
+
+[html/browsers/browsing-the-web/overlapping-navigations-and-traversals/cross-document-nav-same-document-traversal.html]
+generation = 225
+kind = flake
+why = First flip, under the 32-runner sweep only (production 1 -> 0); the file alone passes 1/1 on both runners in every pair. Its twin same-document-traversal-cross-document-nav.html is exempt for an upstream test bug (wpt#65240); this one's race is lane flk1's follow-up queue item. Isolated pairs, the file alone, server1 2026-11-15 about 9:08 PM ET: BASE ~/crane-frozen/main-9a0207b5b4 (generation 224's production runner), TIP ~/crane-frozen/main-86a8281a83 (generation 225's).
+pair.1 = base 1/1; tip 1/1
+pair.2 = base 1/1; tip 1/1
+pair.3 = base 1/1; tip 1/1
