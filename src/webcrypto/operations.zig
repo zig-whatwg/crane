@@ -51,6 +51,73 @@ pub const Request = struct {
         self.* = undefined;
     }
 
+    /// When this request's promise settles: inside the method's call, or
+    /// from a task (`tasks.Settles`). The spec says a task for every method
+    /// (WebCrypto 14.3: "return promise and perform the remaining steps in
+    /// parallel", then "queue a global task on the crypto task source"); the
+    /// browsers differ from it and from each other, no newer spec is
+    /// involved, so each row is what two of the three do (golden rule 2) -
+    /// and the rows together are exactly Safari's behaviour.
+    ///
+    /// Probed 2026-11-15 on Chrome 157, Firefox 159 and Safari 27 (a
+    /// reaction registered on the returned promise runs before a microtask
+    /// queued after it only if the promise was settled in the call;
+    /// tests/wpt/crane/wc1-subtle-settles-in-the-call.https.html is that
+    /// probe as a test: Safari 44 of 44, Chrome 30, Firefox 25, every row
+    /// passing in two) and read in the engines:
+    ///
+    ///                                  Chrome       Firefox       Safari
+    ///   importKey                      in the call  secret keys   in the call
+    ///                                               in the call,
+    ///                                               others later
+    ///   exportKey                      in the call  later         in the call
+    ///   generateKey, not RSA           in the call  later         in the call
+    ///   generateKey, RSA               later        later         later
+    ///   wrapKey / unwrapKey by AES-KW  in the call  later         in the call
+    ///   wrapKey / unwrapKey, others    in the call  later         later
+    ///   digest, encrypt, decrypt,      in the call  later         later
+    ///   sign, verify, deriveBits,      (PBKDF2
+    ///   deriveKey                      later)
+    ///
+    /// - Chromium, components/webcrypto/webcrypto_impl.cc: every WebCryptoImpl
+    ///   method computes on the calling thread and completes its result
+    ///   before returning, but GenerateKey for the three RSA algorithms and
+    ///   DeriveBits / DeriveKey for PBKDF2, which go to the crypto worker
+    ///   pool and reply with a task ("WebCrypto operations are generally
+    ///   fast, but a small handful can be slow").
+    /// - WebKit, Source/WebCore/crypto/SubtleCrypto.cpp: importKey, exportKey
+    ///   and an algorithm's own wrapKey / unwrapKey operation (AES-KW) are
+    ///   called with no work queue ("It is not beneficial for less time
+    ///   consuming operations. Therefore, we perform it synchronously."),
+    ///   and generateKey is "an async task only for RSA keys"; encrypt,
+    ///   decrypt, sign, verify, digest and deriveBits are handed the crypto
+    ///   work queue, and an algorithm with no wrapKey operation of its own
+    ///   wraps through that encrypt.
+    /// - Gecko, dom/crypto/WebCryptoTask.cpp (DispatchWithPromise): a task
+    ///   that completes early - a secret key's import - calls back at once;
+    ///   every other goes to a background thread and settles from a runnable
+    ///   on the calling thread.
+    ///
+    /// What depends on it: WPT's
+    /// WebCryptoAPI/derive_bits_keys/derive_key_and_encrypt.https.any.js
+    /// defines its tests in importKey()'s reaction, from a microtask of the
+    /// document's last script; with a document whose load event fires at the
+    /// end of the parse (Chrome and Safari; here since lane nav2 batch 12)
+    /// the harness is complete at load's 0 ms timer unless those keys were
+    /// imported in the call. Firefox imports them from a task and passes
+    /// because its load event is a later task still.
+    pub fn settles(self: *const Request) tasks.Settles {
+        return switch (self.operation) {
+            .import_key, .export_key => .in_the_call,
+            .generate_key => switch (self.algorithm.?.id) {
+                .rsa_pkcs1, .rsa_pss, .rsa_oaep => .from_a_task,
+                else => .in_the_call,
+            },
+            .wrap_key, .unwrap_key => if (self.algorithm.?.id == .aes_kw) .in_the_call else .from_a_task,
+            .encrypt, .decrypt, .sign, .verify, .derive_bits, .derive_key => .from_a_task,
+        };
+    }
+
     pub fn run(self: *Request, allocator: std.mem.Allocator) !tasks.Result {
         return switch (self.operation) {
             .generate_key => blk: {
@@ -255,6 +322,49 @@ test "export checks algorithm support before extractability and format" {
     try std.testing.expectError(error.InvalidAccessError, exportKey(a, &hmac, .spki));
     try std.testing.expectError(error.InvalidAccessError, access(&hmac, .hmac, .verify));
     try std.testing.expectError(error.InvalidAccessError, access(&hmac, .aes_gcm, .sign));
+}
+
+test "a request settles in the call or from a task as two of the three browsers do" {
+    const a = std.testing.allocator;
+    const Row = struct { operation: Operation, id: ?registry.Id, expected: tasks.Settles };
+    const rows = [_]Row{
+        // importKey and exportKey: Chrome and Safari, whatever the algorithm.
+        .{ .operation = .import_key, .id = .ecdh, .expected = .in_the_call },
+        .{ .operation = .import_key, .id = .rsa_oaep, .expected = .in_the_call },
+        .{ .operation = .import_key, .id = .pbkdf2, .expected = .in_the_call },
+        .{ .operation = .export_key, .id = null, .expected = .in_the_call },
+        // generateKey: only RSA is slow enough for any of the three to defer.
+        .{ .operation = .generate_key, .id = .aes_gcm, .expected = .in_the_call },
+        .{ .operation = .generate_key, .id = .hmac, .expected = .in_the_call },
+        .{ .operation = .generate_key, .id = .ecdsa, .expected = .in_the_call },
+        .{ .operation = .generate_key, .id = .ed25519, .expected = .in_the_call },
+        .{ .operation = .generate_key, .id = .x25519, .expected = .in_the_call },
+        .{ .operation = .generate_key, .id = .rsa_oaep, .expected = .from_a_task },
+        .{ .operation = .generate_key, .id = .rsa_pss, .expected = .from_a_task },
+        .{ .operation = .generate_key, .id = .rsa_pkcs1, .expected = .from_a_task },
+        // wrapKey / unwrapKey: AES-KW's own operation in the call; an
+        // algorithm that wraps by encrypting settles as encrypt does.
+        .{ .operation = .wrap_key, .id = .aes_kw, .expected = .in_the_call },
+        .{ .operation = .unwrap_key, .id = .aes_kw, .expected = .in_the_call },
+        .{ .operation = .wrap_key, .id = .aes_gcm, .expected = .from_a_task },
+        .{ .operation = .unwrap_key, .id = .rsa_oaep, .expected = .from_a_task },
+        // The rest: Firefox and Safari settle from a task.
+        .{ .operation = .encrypt, .id = .aes_gcm, .expected = .from_a_task },
+        .{ .operation = .decrypt, .id = .aes_cbc, .expected = .from_a_task },
+        .{ .operation = .sign, .id = .hmac, .expected = .from_a_task },
+        .{ .operation = .verify, .id = .ecdsa, .expected = .from_a_task },
+        .{ .operation = .derive_bits, .id = .ecdh, .expected = .from_a_task },
+        .{ .operation = .derive_bits, .id = .pbkdf2, .expected = .from_a_task },
+        .{ .operation = .derive_key, .id = .hkdf, .expected = .from_a_task },
+    };
+    for (rows) |row| {
+        const request: Request = .{
+            .operation = row.operation,
+            .io = std.testing.io,
+            .algorithm = if (row.id) |id| .{ .allocator = a, .id = id } else null,
+        };
+        try std.testing.expectEqual(row.expected, request.settles());
+    }
 }
 
 fn checkRequestFailures(allocator: std.mem.Allocator) anyerror!void {
