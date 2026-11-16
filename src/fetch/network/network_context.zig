@@ -330,27 +330,39 @@ pub const NetworkContext = struct {
 /// in order, for one to end; none fails.
 ///
 /// In order means the Browser's order, not a scheduler's: a slot that is
-/// given back is owed to the destination's OLDEST waiter, and a transfer
-/// started later does not take it first (`ConnectionSlots.tryTake`). The
-/// browsers hand a freed connection to the oldest pending request of its
-/// priority the moment it is free - Chromium's TransportClientSocketPool::
-/// ReleaseSocket -> OnAvailableSocketSlot -> ProcessPendingRequest takes the
-/// group's next unbound request (a queue by priority, then arrival:
-/// Group::InsertUnboundRequest), and Gecko's nsHttpConnectionMgr dispatches
-/// from its pending queue, kept in priority and then arrival order
-/// (PendingTransactionQueue::InsertTransactionSorted), when a connection is
-/// reclaimed; Safari's CFNetwork is not readable. Crane's transfers have no
-/// priorities among themselves, so the order is arrival. Without it a page
-/// that keeps six requests going - each one's end starting the next, as
+/// given back goes, at that moment, to the destination's OLDEST waiter, which
+/// holds it from then on (`ConnectionSlots.release`); a transfer started
+/// later never finds it free. The browsers do the same - Chromium's
+/// TransportClientSocketPool::ReleaseSocket -> OnAvailableSocketSlot ->
+/// ProcessPendingRequest binds the freed socket to the group's next unbound
+/// request (a queue by priority, then arrival: Group::InsertUnboundRequest),
+/// and Gecko's nsHttpConnectionMgr dispatches from its pending queue, kept
+/// in priority and then arrival order (PendingTransactionQueue::
+/// InsertTransactionSorted), when a connection is reclaimed; Safari's
+/// CFNetwork is not readable. Crane's transfers have no priorities among
+/// themselves, so the order is arrival. Without it a page that keeps six
+/// requests going - each one's end starting the next, as
 /// common/dispatcher/dispatcher.js's `limiter(6)` over its poll loop does -
 /// passed the six slots among its own requests for as long as it kept that
-/// up: the script that starts the next request runs before the next pump
-/// asks for the waiters, and took the slot just freed. A seventh transfer
-/// then never started: html/cross-origin-embedder-policy/credentialless/
-/// fetch.https.window.js's two popups (their documents' script, then their
-/// polls) waited behind the opener's twelve pollers whenever the server
-/// was slow enough to keep six of those in flight, and all twelve subtests
-/// timed out waiting for popups that never ran (lane flk1).
+/// up: a freed slot went to whoever asked next, and the script that starts
+/// the next request runs before the next pump asks for the waiters. A
+/// seventh transfer then never started: html/cross-origin-embedder-policy/
+/// credentialless/fetch.https.window.js's two popups (their documents'
+/// script, then their polls) waited behind the opener's 24 pollers whenever
+/// the server was slow enough to keep six of those in flight, and all twelve
+/// subtests timed out waiting for popups that never ran (lane flk1).
+///
+/// One thing is still not a browser's. There the request a socket is bound
+/// to runs in the network stack at once, whatever its renderer is doing;
+/// here a transfer moves only when its own agent's scheduler pumps (each
+/// agent drives its own curl multi handle, on its own thread), so a waiter
+/// that was handed a slot starts at its agent's next turn, and an agent
+/// that stops turning - a long task, a synchronous XMLHttpRequest,
+/// Atomics.wait - keeps what it holds meanwhile. That was already so for
+/// its transfers in flight; it is now so for the slots its waiters were
+/// handed, and it ends for both when networking has a thread of its own
+/// (async_fetch.zig, `AgentFetches.catchUp`: "networking that progresses
+/// while script runs").
 ///
 /// Two kinds of connection do not count, as in Chromium:
 /// - a WebSocket's: Chromium keeps them in a pool of their own
@@ -392,7 +404,7 @@ pub fn destinationOf(buffer: *[max_host_key]u8, url: []const u8) ?[]const u8 {
 pub const ConnectionSlots = struct {
     taken: std.ArrayListUnmanaged(Slot) = .empty,
     /// The transfers that asked for a slot and were refused, oldest first:
-    /// each destination's waiters are served in this order.
+    /// each destination's are handed its freed slots in this order.
     waiting: std.ArrayListUnmanaged(Slot) = .empty,
     /// Destinations that answered over HTTP/2.
     multiplexed: std.ArrayListUnmanaged(Key) = .empty,
@@ -417,15 +429,14 @@ pub const ConnectionSlots = struct {
         holder: *const anyopaque,
     };
 
-    /// A slot of `destination` for `holder` if one is free for it (or none
-    /// is needed); `holder` asking again keeps the one it has. A holder that
-    /// is refused waits, in the order it first asked: a free slot is for the
-    /// destination's oldest waiter, so `holder` gets one only when there are
-    /// more free slots than waiters older than it. (More, not "it is the
-    /// oldest": the waiters are polled, each by its own agent's scheduler,
-    /// and an agent busy in a long task must keep only the slots its own
-    /// waiters are owed, not every slot behind them.) A waiter keeps its
-    /// place until it takes a slot or lets go (`release`).
+    /// A slot of `destination` for `holder` if it holds one - taken before,
+    /// or handed to it by a `release` since it last asked - or one is free
+    /// for it, or none is needed. A holder that is refused waits, in the
+    /// order it first asked, until a `release` hands it a slot or it lets
+    /// go (`release`); asking again meanwhile changes nothing. A slot is
+    /// free for `holder` only when the destination has more free slots than
+    /// waiters older than it - with every release handing its slot on,
+    /// that is when it has no waiters at all.
     pub fn tryTake(self: *ConnectionSlots, allocator: Allocator, destination: []const u8, holder: *const anyopaque) Allocator.Error!bool {
         for (self.multiplexed.items) |*key| if (key.is(destination)) {
             self.stopWaiting(holder);
@@ -457,15 +468,33 @@ pub const ConnectionSlots = struct {
         return true;
     }
 
-    /// Give back `holder`'s slot, if it has one, and its place among the
+    /// Give back `holder`'s slot, if it has one - to its destination's
+    /// oldest waiter, if any waits, which holds it from this moment (and
+    /// hears so when it next asks) - and `holder`'s place among the
     /// waiters, if it has one (a transfer cancelled while it waited).
     pub fn release(self: *ConnectionSlots, holder: *const anyopaque) void {
         self.stopWaiting(holder);
-        for (self.taken.items, 0..) |slot, i| {
+        for (self.taken.items, 0..) |*slot, i| {
             if (slot.holder != holder) continue;
+            // The oldest waiter of the slot's destination takes its place
+            // (nothing is allocated: the slot is the same one).
+            for (self.waiting.items, 0..) |*waiter, w| {
+                if (!waiter.key.is(slot.key.bytes[0..slot.key.len])) continue;
+                slot.holder = waiter.holder;
+                _ = self.waiting.orderedRemove(w);
+                return;
+            }
             _ = self.taken.orderedRemove(i);
             return;
         }
+    }
+
+    /// Whether `holder` holds a slot now.
+    pub fn holds(self: *const ConnectionSlots, holder: *const anyopaque) bool {
+        for (self.taken.items) |slot| {
+            if (slot.holder == holder) return true;
+        }
+        return false;
     }
 
     fn stopWaiting(self: *ConnectionSlots, holder: *const anyopaque) void {
@@ -586,28 +615,72 @@ test "a freed connection slot goes to the destination's oldest waiter, not to a 
     try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[7]));
 }
 
-test "a waiter that gives up is owed nothing; two free slots serve the two oldest waiters in either order" {
+test "a release hands its slot to the oldest waiter at once: the waiter holds it before it asks again" {
+    var context = NetworkContext.init(std.testing.allocator);
+    defer context.deinit();
+    var holders: [10]u8 = undefined;
+    const a = "http://a.test:80";
+    for (0..max_connections_per_host) |i| try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[i]));
+    // Two waiters, oldest first, and one of another destination.
+    try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[6]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[7]));
+    try std.testing.expect(!context.slots.holds(&holders[6]));
+    // The release itself makes the oldest waiter the slot's holder (Chromium:
+    // ReleaseSocket -> OnAvailableSocketSlot -> ProcessPendingRequest) -
+    // nobody has asked again.
+    context.releaseConnectionSlot(&holders[0]);
+    try std.testing.expect(context.slots.holds(&holders[6]));
+    try std.testing.expect(!context.slots.holds(&holders[7]));
+    try std.testing.expectEqual(@as(usize, 1), context.slots.waiting.items.len);
+    try std.testing.expectEqual(@as(usize, max_connections_per_host), context.slots.taken.items.len);
+    // The next release hands on to the next waiter, though the first has
+    // still not asked.
+    context.releaseConnectionSlot(&holders[1]);
+    try std.testing.expect(context.slots.holds(&holders[7]));
+    try std.testing.expectEqual(@as(usize, 0), context.slots.waiting.items.len);
+    // Each hears of it when it asks, in whichever order.
+    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[7]));
+    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[6]));
+    // With nobody waiting, a release frees the slot.
+    context.releaseConnectionSlot(&holders[2]);
+    try std.testing.expectEqual(@as(usize, max_connections_per_host - 1), context.slots.taken.items.len);
+    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[8]));
+}
+
+test "a cancelled waiter is handed nothing; a waiter cancelled after it was handed a slot gives it to the next" {
     var context = NetworkContext.init(std.testing.allocator);
     defer context.deinit();
     var holders: [10]u8 = undefined;
     const a = "http://a.test:80";
     for (0..max_connections_per_host) |i| try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[i]));
     // A waiter cancelled while it waits (its transfer releases whatever it
-    // has of the gate) does not keep the slot from those behind it.
+    // has of the gate) is not handed the next slot: the one behind it is.
     try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[6]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[7]));
     context.releaseConnectionSlot(&holders[6]);
     context.releaseConnectionSlot(&holders[0]);
-    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[7]));
-    // Two waiters, two slots free: the younger may take the second before
-    // the older has asked again - the older's scheduler may be another
-    // agent's, busy in a long task, and only ONE slot is kept for it.
+    try std.testing.expect(!context.slots.holds(&holders[6]));
+    try std.testing.expect(context.slots.holds(&holders[7]));
+    // A waiter that was handed a slot and is cancelled before it ever
+    // started gives the slot back as any holder does: to the next waiter,
+    // at once.
     try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[8]));
     try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[9]));
     context.releaseConnectionSlot(&holders[1]);
-    try std.testing.expect(!try context.tryTakeConnectionSlot(a, &holders[9]));
+    try std.testing.expect(context.slots.holds(&holders[8]));
+    context.releaseConnectionSlot(&holders[8]);
+    try std.testing.expect(!context.slots.holds(&holders[8]));
+    try std.testing.expect(context.slots.holds(&holders[9]));
+    try std.testing.expectEqual(@as(usize, 0), context.slots.waiting.items.len);
+    // Another destination's waiter is not handed this destination's slot.
+    const b = "http://b.test:80";
+    var others: [7]u8 = undefined;
+    for (0..max_connections_per_host) |i| try std.testing.expect(try context.tryTakeConnectionSlot(b, &others[i]));
+    try std.testing.expect(!try context.tryTakeConnectionSlot(b, &others[6]));
     context.releaseConnectionSlot(&holders[2]);
-    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[9]));
-    try std.testing.expect(try context.tryTakeConnectionSlot(a, &holders[8]));
+    try std.testing.expect(!context.slots.holds(&others[6]));
+    context.releaseConnectionSlot(&others[0]);
+    try std.testing.expect(context.slots.holds(&others[6]));
 }
 
 test "a destination that multiplexes takes no connection slots" {
