@@ -834,6 +834,17 @@ pub fn livePendingCount() usize {
     return total;
 }
 
+/// How many times a collection of the current agent took a weak-handle
+/// record's share out of the figure while its wrapper lived
+/// (`WrapperCache.heldAgain`), over its live caches (diagnostics:
+/// `wrapped_instance_mispredictions`; expected 0).
+pub fn liveMispredictionCount() usize {
+    const caches = currentCaches() orelse return 0;
+    var total: usize = 0;
+    for (caches.items) |cache| total += cache.mispredicted;
+    return total;
+}
+
 /// The bytes of the record pools of the current agent's caches (diagnostics:
 /// `wrapper_cache_pool_bytes`): every chunk a cache holds, in use or not.
 pub fn livePoolBytes() usize {
@@ -1354,6 +1365,12 @@ pub const WrapperCache = struct {
     /// off the agent's queue the last time the cache emptied it of its own
     /// (`takePendingOffQueue`).
     deaths: usize = 0,
+
+    /// Weak-handle records whose share a collection took out of the agent's
+    /// figure while their wrapper lived (`heldAgain`): expected 0, logged at
+    /// the cache's end when it is not, and read by tests and diagnostics
+    /// (`liveMispredictionCount`).
+    mispredicted: usize = 0,
     deaths_taken: usize = 0,
 
     /// The realm's isolate, from the first `set`; null before.
@@ -1735,7 +1752,9 @@ pub const WrapperCache = struct {
                     // V8 computes its next limits from what it is told here
                     // (v8_wrapper.cpp `settleWrappedInstances`). The record
                     // itself waits for its Global's first pass, as before.
-                    if (!bits.marked) takeHeld(self.isolate, entry);
+                    if (!bits.marked) {
+                        takeHeld(self.isolate, entry);
+                    } else if (entry.stamp.held == 0) self.heldAgain(entry);
                     continue;
                 }
                 if (bits.marked) {
@@ -1747,6 +1766,34 @@ pub const WrapperCache = struct {
                 self.queueFinalizer(entry);
             }
         }
+    }
+
+    /// A weak-handle record whose share left the figure in an earlier
+    /// collection's weak processing - that marking had not reached its
+    /// anchor - and whose anchor THIS collection's marking reached: the
+    /// wrapper lived, so what its instance holds is counted again, and the
+    /// case is counted (`mispredicted`). It should not happen: a live
+    /// wrapper points at its anchor, V8's marker pushes the anchor of every
+    /// wrapper it marks or wraps while a cycle marks (v8_wrapper.cpp
+    /// collectingRecord), and every pushed anchor is traced in the pause.
+    /// The count is what says so on real pages (the bug-finding sweep reads
+    /// the line `endStorage` logs), and the figure does not stay low if it
+    /// ever does. An instance torn down under its live wrapper
+    /// (`markAsCleanedUp`) or gone is not read.
+    fn heldAgain(self: *Self, entry: *Cell) void {
+        if (!self.registered or entry.bits.instance_already_cleaned or slotReissued(entry)) return;
+        const isolate = self.isolate orelse return;
+        self.mispredicted += 1;
+        noteWrapped(isolate, entry, wrapperFactsOf(entry.instance));
+    }
+
+    /// Tests: `instance`'s live record loses its share of the figure, as in
+    /// a weak processing whose marking did not reach its anchor - what
+    /// `heldAgain` repairs at the next collection that does.
+    pub fn forgetHeldForTest(self: *Self, instance: *runtime.Instance) bool {
+        const entry = self.cache.get(instance) orelse return false;
+        takeHeld(self.isolate, entry);
+        return true;
     }
 
     /// Tests: stand in for the collection that takes `instance`'s wrapper -
@@ -2213,6 +2260,13 @@ pub const WrapperCache = struct {
     /// The cache's own memory, once every record is freed (`deinit`,
     /// `deinitWithoutCallbacks`).
     fn endStorage(self: *Self) void {
+        // The figure's one prediction, checked: logged when it was wrong,
+        // and for every cache that saw a wrapper die when a runner asked for
+        // the counts' diagnostics (CRANE_REFCOUNT_CHECK: the positive control
+        // that shows the line can reach a sweep's log at all, as the dying
+        // trees' line - dom.refcount_teardown).
+        if (self.mispredicted != 0 or (self.deaths != 0 and @import("dom").refcount.diagnosticsOn()))
+            log.warn("wrapped instances: {d} wrapper(s) found dead by this cache's collections, {d} weak-handle record(s) taken out of the figure while their wrapper lived", .{ self.deaths, self.mispredicted });
         self.unregister();
         self.cache.deinit();
         self.pending_before_wrap.deinit(self.allocator);

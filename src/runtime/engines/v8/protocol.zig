@@ -1138,6 +1138,13 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   external memory, of the pointer-table entries left by node wrappers
 ///   dropped since its last full collection began (v8_wrapper.cpp
 ///   `reportDroppedTableEntries`); 0 with no isolate current;
+/// - `wrapped_instance_bytes_live`, `wrapped_instance_bytes_reported`,
+///   `wrapped_instance_mispredictions`: what the instances behind the
+///   current isolate's live non-node wrappers hold (v8_wrapper.cpp, "What
+///   the instances behind non-node wrappers hold"), how much of it V8 holds
+///   now as external memory, and how many times a full collection took a
+///   record's share out while its wrapper lived (wrapper_cache.zig
+///   `heldAgain`; expected 0); 0 with no isolate current;
 /// - `node_anchors_registered`: the current isolate's node anchors in its
 ///   registry - those whose wrapper may still live - now;
 /// - `node_anchors_dropped_waiting`, `node_anchors_freed`,
@@ -1205,6 +1212,7 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "node_wrapper_table_bytes", .value = @intCast(ffi.v8_Debug_NodeWrapperTableBytes(ffi.v8_Isolate_GetCurrent())) },
         .{ .name = "wrapped_instance_bytes_live", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), false)) },
         .{ .name = "wrapped_instance_bytes_reported", .value = @intCast(ffi.v8_Debug_WrappedInstanceBytes(ffi.v8_Isolate_GetCurrent(), true)) },
+        .{ .name = "wrapped_instance_mispredictions", .value = @intCast(@import("wrapper_cache.zig").liveMispredictionCount()) },
         .{ .name = "wrapper_cache_pending", .value = @intCast(@import("wrapper_cache.zig").livePendingCount()) },
         .{ .name = "wrapper_cache_pool_bytes", .value = @intCast(@import("wrapper_cache.zig").livePoolBytes()) },
         .{ .name = "node_anchors_freed", .value = @intCast(anchors.freed) },

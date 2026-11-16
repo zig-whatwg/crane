@@ -64,7 +64,11 @@ const Page = struct {
         test_process.start();
         const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &test_process.no_hooks, .host = null });
         errdefer protocol.destroyAgent(agent);
-        const realm = try protocol.createWindowRealm(&.{
+        return .{ .agent = agent, .realm = try windowRealm(agent) };
+    }
+
+    fn windowRealm(agent: *protocol.Agent) !runtime.Context {
+        return protocol.createWindowRealm(&.{
             .agent = agent,
             .allocator = std.heap.c_allocator,
             .from_snapshot = false,
@@ -73,7 +77,6 @@ const Page = struct {
             .global_this = .new_window_proxy,
             .create_global_object = WindowHost.createGlobalObject,
         });
-        return .{ .agent = agent, .realm = realm };
     }
 
     fn close(self: Page) void {
@@ -97,10 +100,7 @@ const Page = struct {
     }
 
     fn evalOwned(self: Page, source: []const u8) !protocol.Owned {
-        var reports: Reports = .{};
-        const got = try protocol.evaluateClassicScript(self.realm, .{ .utf8 = source }, "", null, reports.reporter());
-        try testing.expectEqual(@as(usize, 0), reports.count);
-        return got;
+        return evalIn(self.realm, source);
     }
 
     fn run(self: Page, source: []const u8) !void {
@@ -165,6 +165,13 @@ const Page = struct {
         return held;
     }
 };
+
+fn evalIn(realm: runtime.Context, source: []const u8) !protocol.Owned {
+    var reports: Reports = .{};
+    const got = try protocol.evaluateClassicScript(realm, .{ .utf8 = source }, "", null, reports.reporter());
+    try testing.expectEqual(@as(usize, 0), reports.count);
+    return got;
+}
 
 /// An object whose wrapper its cache holds by a traced reference (V8 may drop it in a young collection), and one
 /// it holds by a weak handle (an Event is born with an own property).
@@ -313,4 +320,75 @@ test "a record takes out of the figure exactly what it put in" {
         // And V8 holds no more than the figure plus a step.
         try testing.expect(page.told() < base + step);
     }
+}
+
+test "a realm's end takes its live wrappers' share out of the figure" {
+    // A record freed with its wrapper alive - its realm ended - is the other way a share leaves the figure
+    // (wrapper_cache.zig `WrapperCache.freeCell`). The figure is the agent's, so a second realm's wrappers are in
+    // it while the realm lives and out of it, to the byte, when the realm is gone: nothing a realm's end skips
+    // may stay in what V8 is told for the rest of the agent's life.
+    const page = try Page.open();
+    defer page.close();
+    const n = 500;
+    const per_pair = try page.heldBy(traced_shape) + try page.heldBy(weak_shape);
+    page.fullGC();
+    const base = page.figure();
+
+    const other = try Page.windowRealm(page.agent);
+    var source: [240]u8 = undefined;
+    (try evalIn(other, try std.fmt.bufPrint(&source, "globalThis.keep = []; for (let i = 0; i < {d}; i++) keep.push({s}, {s}); 0", .{ n, traced_shape, weak_shape }))).release();
+    const with_realm = page.figure();
+    try testing.expect(with_realm >= base + n * per_pair);
+
+    protocol.destroyWindowRealm(other, .global_detached);
+    page.fullGC();
+    std.debug.print("a second realm with {d} kept pairs of {d} B: the figure went {d} -> {d} -> {d} B\n", .{ n, per_pair, base, with_realm, page.figure() });
+    try testing.expectEqual(base, page.figure());
+}
+
+test "a weak-handle record a collection took for dead while its wrapper lived is counted again by the next collection" {
+    // A wrapper its cache holds by a weak handle (an Event) is judged dead by its Global's first pass, AFTER V8
+    // has read the sizes its next limits come from. So the cache takes such a record's share out earlier, in the
+    // collection's weak processing, when the marking did not reach the record's anchor: a live wrapper points at
+    // its anchor, so an anchor nothing reached is a dead wrapper's. If that reasoning ever fails - a wrapper that
+    // lives though its anchor was not traced - the figure must not stay low for the wrapper's life, and the case
+    // must be visible: the next collection that reaches the anchor finds a live record with no share, counts the
+    // instance again and counts the misprediction (wrapper_cache.zig `heldAgain`). No real collection produces
+    // the case, so a hook stands in for the wrong prediction.
+    const page = try Page.open();
+    defer page.close();
+    const cache: *@import("v8").WrapperCache = @ptrCast(@alignCast(page.realm.getV8WrapperCacheStorage() orelse return error.NoCache));
+    const held = try page.heldBy(weak_shape);
+    page.fullGC();
+    const base = page.figure();
+
+    const kept = try page.evalOwned("globalThis.ev = " ++ weak_shape ++ "; ev");
+    const instance = protocol.convertToPlatformObject(page.realm, kept.value) orelse return error.NoInstance;
+    kept.release();
+    try testing.expectEqual(base + held, page.figure());
+    try testing.expectEqual(@as(usize, 0), cache.mispredicted);
+
+    // Kept and collected: nothing to repair, nothing counted.
+    page.fullGC();
+    try testing.expectEqual(base + held, page.figure());
+    try testing.expectEqual(@as(usize, 0), cache.mispredicted);
+
+    // The wrong prediction, then a collection that reaches the anchor.
+    try testing.expect(cache.forgetHeldForTest(instance));
+    try testing.expectEqual(base, page.figure());
+    {
+        const entered = page.enter();
+        defer page.leave(entered);
+        ffi.v8_test_Isolate_CollectWithoutDrain(page.isolate());
+    }
+    try testing.expectEqual(base + held, page.figure());
+    try testing.expectEqual(@as(usize, 1), cache.mispredicted);
+
+    // Its real death takes the share out once.
+    try page.run("globalThis.ev = null; 0");
+    page.fullGC();
+    try testing.expectEqual(base, page.figure());
+    try testing.expectEqual(@as(usize, 1), cache.mispredicted);
+    // The count is the cache's: its end would log it. The test owns this one, so it is cleared here.
+    cache.mispredicted = 0;
 }
