@@ -21,10 +21,12 @@
 //! frees its tree (and what its nodes own: a classList, an attribute map),
 //! then the Browser's sweeps release every node still alive, in no order -
 //! bare nodes and nodes never inserted. The sweeps release a node, not the
-//! objects it made for script: a test that reads `classList` or `attributes`
-//! of an element puts that element in a document's tree, and a test that is
-//! handed an object of its own (a static NodeList) frees it
-//! (`runtime.gc.onObjectFreed`).
+//! objects it made for script. A test that is handed an object of its own (a
+//! static NodeList) frees it (`runtime.gc.onObjectFreed`). An object an
+//! element keeps for script (`classList`) is its wrapper's to end, and an
+//! engine-less realm has no wrapper: a test that reads one opens `ArenaNodes`,
+//! whose allocator is an arena that goes with the test (the fixture of
+//! tests/dom/cg1_element_same_object_test.zig does the same).
 
 const std = @import("std");
 const dom = @import("dom");
@@ -148,5 +150,27 @@ pub const Nodes = struct {
     /// `bareInstance`, as its NodeBase.
     pub fn bare(self: *Nodes, kind: Kind) !*NodeBase {
         return baseOf(try self.bareInstance(kind));
+    }
+};
+
+/// `Nodes` over an arena of its own, for a test that reads an object an
+/// element keeps for script (`classList`): in an engine-less realm nothing
+/// ends such an object, so `std.testing.allocator` would report it. The
+/// test's assertions are about the object's behaviour, not its storage.
+pub const ArenaNodes = struct {
+    arena: std.heap.ArenaAllocator,
+    nodes: Nodes,
+
+    /// In place.
+    pub fn open(self: *ArenaNodes) !*Nodes {
+        self.arena = .init(std.heap.page_allocator);
+        errdefer self.arena.deinit();
+        try self.nodes.open(self.arena.allocator());
+        return &self.nodes;
+    }
+
+    pub fn close(self: *ArenaNodes) void {
+        self.nodes.close();
+        self.arena.deinit();
     }
 };

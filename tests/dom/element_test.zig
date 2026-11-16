@@ -25,11 +25,11 @@ fn hasClass(element: *real_nodes.Instance, comptime class: []const u8) !bool {
 }
 
 test "Element - class membership follows the class attribute (was: bloom filter class optimization)" {
-    var nodes: real_nodes.Nodes = undefined;
-    try nodes.open(std.testing.allocator);
-    defer nodes.close();
-    // In its document's tree: the document's teardown frees the element and
-    // the classList it made for script.
+    // Over an arena: the classList object is its wrapper's to end, and an
+    // engine-less realm has none (real_nodes.ArenaNodes).
+    var arena_nodes: real_nodes.ArenaNodes = undefined;
+    const nodes = try arena_nodes.open();
+    defer arena_nodes.close();
     const doc = try nodes.document();
     const elem = try nodes.element(doc, "div");
     try nodes.append(doc, elem);
@@ -59,11 +59,11 @@ test "Element - class membership follows the class attribute (was: bloom filter 
 }
 
 test "Element - class membership is updated on class change (was: bloom filter updated on class change)" {
-    var nodes: real_nodes.Nodes = undefined;
-    try nodes.open(std.testing.allocator);
-    defer nodes.close();
-    // In its document's tree: the document's teardown frees the element and
-    // the classList it made for script.
+    // Over an arena: the classList object is its wrapper's to end, and an
+    // engine-less realm has none (real_nodes.ArenaNodes).
+    var arena_nodes: real_nodes.ArenaNodes = undefined;
+    const nodes = try arena_nodes.open();
+    defer arena_nodes.close();
     const doc = try nodes.document();
     const elem = try nodes.element(doc, "div");
     try nodes.append(doc, elem);
