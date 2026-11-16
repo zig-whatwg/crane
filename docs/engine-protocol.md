@@ -610,8 +610,7 @@ module, in a build file beside its code,
 ```zig
 pub const Options = struct { ... };                       // what the command line gave
 pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options   // the adapter's b.option calls
-pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
-pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void   // what build_options still carries
+pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void   // the adapter's compile-time values
 pub fn isDefaultFor(target: std.Target) bool               // the engine of a build for `target` when -Dengine does not say
 pub const Resolved = struct { ... };                      // what this build links
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
@@ -708,18 +707,28 @@ the adapter no longer compiles against, is not a value of the option any
 more, so `zig build` itself refuses `-Dv8=13.1` as it refuses any value an
 option does not list; nothing answers `unavailable` for it.)
 
-`-Djitless`, `-Dv8-compilation-cache` and `-Dv8-extra-flags` still travel in
-the shared `build_options`, where the adapter reads them
-(snapshot_loader.zig): the adapter's build file writes them there itself
-(`applyTransitional`) with the names and in the order they always had, until
-the one commit of the build migration that may change an options module's
-text moves them to `adapter_options`. Behind this interface since batches E2
-and E3: the V8 link lines (the wrapper's flags and source, the archives, and
-the archive table itself, `engines/v8/build/archives.zig`) and the adapter's
-module wiring. Still in the root build.zig, and V8's alone - to move next
-(tmp/plans/build-protocol-design.md, batches E4 and E5): the snapshot and its
-generator, tests/v8's rows and tables, and the leftovers (the setup step's V8
-section, the engines help text, comments).
+Every value an engine's code reads at compile time is in its adapter's own
+`adapter_options` - for V8 the young generation, the navigation collection,
+the wrapper walk's oracle, the page pool, and since the build migration's
+batch E5 `-Djitless`, `-Dv8-compilation-cache` and `-Dv8-extra-flags`
+(snapshot_loader.zig reads them there). The shared `build_options` carries no
+engine value - its three engine facts (`engine_name`, `has_snapshot_support`,
+`has_isolate_per_thread`) had no reader and are gone; code asks `engine.name`
+and `engine.capabilities` - and only the module that reads it imports it.
+What an adapter's build reads from the machine at configure time is a tracked
+input of the configure, not a reason to re-run every configure: the V8
+adapter's `resolve` reads the archive's `libcxx/flags.txt` and
+`system-libs.txt` with `b.dependOnFileContents`, and poisons the
+configuration cache only when a file cannot be read.
+
+Since the build migration's engine half (tmp/plans/build-protocol-design.md,
+batches E1 to E5) the root build.zig names no engine - not in code, not in a
+comment, not in an embedded script (`zig build lint-build` holds it at zero):
+the V8 link lines and the archive table (`engines/v8/build/archives.zig`),
+the adapter's module wiring, the snapshot and its generator, and tests/v8's
+rows and tables are behind this interface; the setup step's V8 13.1 section
+and the stale engines help text were deleted (`zig build --help` lists
+`-Dengine`'s values).
 
 **The young generation's size is a V8 build option:
 `-Dv8-young-generation-mb=<n>`.** A generational collector allocates new

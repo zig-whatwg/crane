@@ -41,7 +41,7 @@
 //! external_references.zig module to provide these references.
 
 const std = @import("std");
-const build_options = @import("build_options");
+const adapter_options = @import("adapter_options");
 const ffi = @import("ffi.zig");
 const ext_refs = @import("external_references.zig");
 const host = @import("host");
@@ -164,7 +164,7 @@ const snapshot_only_flags = "--hash-seed=0 --predictable";
 pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
     (if (compilation_cache_measurement) "" else " --no-compilation-cache") ++
     " --no-handle-weak-ref-weakly-in-minor-gc" ++
-    (if (build_options.jitless) " --jitless" else "") ++
+    (if (adapter_options.jitless) " --jitless" else "") ++
     memory_pool.flag ++ // -Dv8-memory-pool-timeout-s (memory_pool.zig): empty unless the build gives it
     (if (measurement_v8_flags.len != 0) " " ++ measurement_v8_flags else "");
 
@@ -176,11 +176,11 @@ pub const RUNTIME_V8_FLAGS = "--harmony-shadow-realm" ++
 /// (--js-flags, applied in gin/v8_initializer.cc before V8 starts) - never an
 /// environment variable the product reads. V8::SetFlagsFromString stops at
 /// the first flag it does not know, so they come after the product's.
-pub const measurement_v8_flags: []const u8 = build_options.v8_extra_flags;
+pub const measurement_v8_flags: []const u8 = adapter_options.v8_extra_flags;
 
 /// Whether this is a measurement build that starts V8 WITH its compilation
 /// cache (-Dv8-compilation-cache; off by default).
-pub const compilation_cache_measurement = build_options.v8_compilation_cache;
+pub const compilation_cache_measurement = adapter_options.v8_compilation_cache;
 
 /// Initialize V8 platform with proper flags for snapshot support.
 /// This MUST be called instead of v8_Platform_Initialize() when using snapshots.

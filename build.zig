@@ -2794,7 +2794,7 @@ pub fn build(b: *std.Build) void {
     // unit tests always have them (builtin.is_test). The audit sweep's runner
     // is built with -Drefcount-audit=true (refcount8, H-RC8-BUILD-AUDIT).
     // Its own options module, as fetch's curl_options: build_options is
-    // imported by several modules already.
+    // imported by the engine adapter's module already.
     const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
     const dom_options = b.addOptions();
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
@@ -2822,11 +2822,10 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "interface_allowlist", interface_allowlist);
 
-    // What the shared module still carries of the engine, written by the
-    // adapter where this file used to write it (TRANSITIONAL: the design's
-    // batch E5 moves it to the adapter's own module), and the adapter's own
-    // options module, which the engine adapter's module alone imports.
-    engine.applyTransitional(build_options);
+    // The adapter's own options module, which the engine adapter's module
+    // alone imports: every engine value is there (since batch E5 of
+    // tmp/plans/build-protocol-design.md the shared build_options carries
+    // none).
     const engine_adapter_options = engine.adapterOptions(b);
 
     // Validate spec filter.
@@ -7032,7 +7031,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
-    runtime_mod.addOptions("build_options", build_options);
     runtime_mod.addOptions("debug_options", debug_options);
 
     // The engine adapter's module: the root file and the name its build file
@@ -7100,7 +7098,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     namespaces_mod.addImport("runtime", runtime_mod);
     namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
-    namespaces_mod.addOptions("build_options", build_options);
     namespaces_mod.addOptions("debug_options", debug_options);
 
     // ========================================================================
@@ -7160,7 +7157,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     eventsource_mod.addImport("infra", infra_mod);
     impls_mod.addImport("eventsource", eventsource_mod);
-    impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
     // ========================================================================
@@ -7915,7 +7911,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // tests that HTTP/2 is live when the build asked for it. Its own options
     // module: one options file imported as a module by two others in the same
     // compilation is an error ("file exists in modules"), and build_options
-    // already is, through runtime and impls.
+    // already is, by the engine adapter's module.
     const curl_options = b.addOptions();
     curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
     curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);

@@ -17,14 +17,8 @@
 //!   - `apply(options, adapter_options)` puts the values in the adapter's own
 //!     options module - `@import("adapter_options")`, which only the engine
 //!     adapter's module imports - never in the `build_options` every module
-//!     shares.
-//!   - `applyTransitional(options, shared)`: what the shared `build_options`
-//!     still carries of this adapter - the three values snapshot_loader.zig
-//!     reads there and three engine facts nothing reads - written with the
-//!     names and in the order they always had, so that moving their options
-//!     here changed no compile. It ends with the migration's one commit
-//!     that may change an options module's text
-//!     (tmp/plans/build-protocol-design.md, batch E5).
+//!     shares, which carries no engine value since batch E5 of
+//!     tmp/plans/build-protocol-design.md.
 //!   - `isDefaultFor(target)`: whether V8 is the engine of a build for
 //!     `target` when -Dengine does not say.
 //!   - `resolve(b, target, options)`: which V8 this build links - the
@@ -196,30 +190,21 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
     };
 }
 
-/// Put `options` in the adapter's own options module.
+/// Put `options` in the adapter's own options module. The last three - the
+/// values snapshot_loader.zig starts V8 with - travelled in the shared
+/// `build_options` until batch E5 of tmp/plans/build-protocol-design.md,
+/// under the names they keep here; the three engine facts written beside
+/// them there (`engine_name`, `has_snapshot_support`,
+/// `has_isolate_per_thread`) had no reader - code asks `engine.name` and
+/// `engine.capabilities` - and went with that batch.
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
     adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
     adapter_options.addOption(bool, "wrapper_trace_check", options.wrapper_trace_check);
     adapter_options.addOption(?u32, "memory_pool_timeout_s", options.memory_pool_timeout_s);
-}
-
-/// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the
-/// three values snapshot_loader.zig still reads from the shared
-/// `build_options`, and after them the three engine facts the root build.zig
-/// used to write there and nothing reads (code asks `engine.name` and
-/// `engine.capabilities`) - all six with the names, the values and the order
-/// they have always had, so the module's text, and with it every compile
-/// that imports it, is what it was. The first three move to `apply`, and the
-/// last three go, with the one commit of the migration that may change an
-/// options module's text.
-pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void {
-    shared.addOption(bool, "jitless", options.jitless);
-    shared.addOption(bool, "v8_compilation_cache", options.compilation_cache);
-    shared.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, options.extra_flags, " "));
-    shared.addOption([]const u8, "engine_name", "v8");
-    shared.addOption(bool, "has_snapshot_support", true);
-    shared.addOption(bool, "has_isolate_per_thread", true);
+    adapter_options.addOption(bool, "jitless", options.jitless);
+    adapter_options.addOption(bool, "v8_compilation_cache", options.compilation_cache);
+    adapter_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, options.extra_flags, " "));
 }
 
 /// V8 is the engine of every build but an iOS one: iOS is JavaScriptCore's
@@ -690,9 +675,7 @@ pub const facts: engine_build.Facts = .{
     // that takes the module: a new import goes at the end, or where its cost
     // is known.
     .imports = &.{
-        // interface_bindings consults build_options.interface_allowlist (and
-        // snapshot_loader the three values `applyTransitional` still writes
-        // there).
+        // interface_bindings consults build_options.interface_allowlist.
         "build_options",
         "clock",
         "process",
