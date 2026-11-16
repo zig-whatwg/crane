@@ -2205,3 +2205,11 @@ why = First flip, under the 32-runner sweep only (production 1 -> 0); the file a
 pair.1 = base 1/1; tip 1/1
 pair.2 = base 1/1; tip 1/1
 pair.3 = base 1/1; tip 1/1
+
+[WebCryptoAPI/derive_bits_keys/derive_key_and_encrypt.https.any.js]
+generation = 225
+kind = fixed
+why = A bug, owned and fixed by lane wc1. The file defines its 4 tests from importKey()'s reaction, called from a microtask of the document's last script; testharness completes at the load event's 0 ms timer. Crane settled every SubtleCrypto method two tasks after the call, and since lane nav2 batch 12 (load at the end of the parse) that timer ran between the two tasks, so the window variant kept its setup test alone (6 -> 2 with the worker variant). Chrome 157 and Safari 27 settle importKey inside the call; Firefox 159 from a task that runs before its load event (probe 2026-11-15; Chromium webcrypto_impl.cc, WebKit SubtleCrypto.cpp, Gecko WebCryptoTask.cpp). The fix settles importKey, exportKey, non-RSA generateKey and AES-KW wrapping in the call, as two of the three browsers do. Evidence: 20 isolated runs a side on server1, generation 225's runner 2 passed each, the fixed tip 6 passed each (lane wc1's merge report; src/webcrypto/operations.zig Request.settles).
+commit = 8e70fe5b657
+test = tests/html/wc1_subtle_settles_test.zig
+repro = before 20/20; after 0/20

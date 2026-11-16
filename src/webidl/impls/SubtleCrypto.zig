@@ -46,18 +46,18 @@ pub fn call_generateKey(instance: *runtime.Instance, algorithm: typedefs.Algorit
     request.usages = try webcrypto.inputs.usages(instance.ctx, keyUsages);
     request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .generate_key);
     request.extractable = extractable;
-    // Steps 4-12: copied native work and a later settlement task.
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    // Steps 4-12: copied native work; settled in this call unless RSA.
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: exportKey
 pub fn call_exportKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *runtime.Instance) anyerror!runtime.JSValue {
     var request = newRequest(.export_key);
     defer request.deinit(instance.ctx.allocator);
-    // §14.3.10 steps 1-4; support/extractability checks run in the task, in order.
+    // §14.3.10 steps 1-4; support/extractability checks run with the work, in order.
     request.format = keyFormat(format);
     request.key = try copyKey(instance.ctx.allocator, key);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: sign
@@ -93,7 +93,7 @@ pub fn call_deriveBits(instance: *runtime.Instance, algorithm: typedefs.Algorith
     request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), .derive_bits);
     request.length = if (length.was_passed) length.value else null;
     request.key = try copyKey(instance.ctx.allocator, baseKey);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: getPublicKey
@@ -115,7 +115,7 @@ pub fn call_deriveKey(instance: *runtime.Instance, algorithm: typedefs.Algorithm
     request.derived_length = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(derivedKeyType), .get_key_length);
     request.extractable = extractable;
     request.key = try copyKey(instance.ctx.allocator, baseKey);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: verify
@@ -127,7 +127,7 @@ pub fn call_verify(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
     request.signature = try copyTypedBufferSource(instance.ctx, signature);
     request.bytes = try copyTypedBufferSource(instance.ctx, data);
     request.key = try copyKey(instance.ctx.allocator, key);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: supports
@@ -147,8 +147,9 @@ pub fn call_digest(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIde
     defer normalized.deinit();
     // Step 4: read the live BufferSource AFTER normalization's getters run.
     const bytes = try copyTypedBufferSource(instance.ctx, data);
-    // Steps 5-12: digest in the relevant realm and settle from its crypto task.
-    return webcrypto.tasks.submit(instance.ctx, DigestInput{ .id = normalized.id, .bytes = bytes });
+    // Steps 5-12: digest in the relevant realm and settle from its crypto task
+    // (Firefox and Safari; Chrome digests in the call - Request.settles).
+    return webcrypto.tasks.submit(instance.ctx, DigestInput{ .id = normalized.id, .bytes = bytes }, .from_a_task);
 }
 
 fn algorithmInput(algorithm: typedefs.AlgorithmIdentifier) webcrypto.normalize.Input {
@@ -273,7 +274,7 @@ pub fn call_importKey(instance: *runtime.Instance, format: enums.KeyFormat, keyD
         if (keyData != .buffer_source) return error.TypeError;
         request.bytes = try copyBufferValue(realm, keyData.buffer_source.jsValue(runtime.JSValue) orelse return error.TypeError);
     }
-    return webcrypto.tasks.submit(realm, request.take());
+    return submit(realm, &request);
 }
 
 /// Operation: wrapKey
@@ -285,7 +286,7 @@ pub fn call_wrapKey(instance: *runtime.Instance, format: enums.KeyFormat, key: *
     request.format = keyFormat(format);
     request.key = try copyKey(instance.ctx.allocator, wrappingKey);
     request.other_key = try copyKey(instance.ctx.allocator, key);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: decapsulateBits
@@ -309,7 +310,7 @@ pub fn call_unwrapKey(instance: *runtime.Instance, format: enums.KeyFormat, wrap
     request.key = try copyKey(instance.ctx.allocator, unwrappingKey);
     request.format = keyFormat(format);
     request.extractable = extractable;
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 /// Operation: encapsulateKey
@@ -333,6 +334,13 @@ pub fn call_encrypt(instance: *runtime.Instance, algorithm: typedefs.AlgorithmId
     return dataOperation(instance, algorithm, key, data, .encrypt);
 }
 
+/// The method's remaining steps over its copied inputs: inside this call or
+/// from a task, as `Request.settles` says for the operation and algorithm.
+fn submit(realm: runtime.Context, request: *Request) !runtime.JSValue {
+    const settles = request.settles();
+    return webcrypto.tasks.submit(realm, request.take(), settles);
+}
+
 fn newRequest(operation: webcrypto.operations.Operation) Request {
     return .{ .operation = operation, .io = @import("host").io() };
 }
@@ -350,7 +358,7 @@ fn dataOperation(instance: *runtime.Instance, algorithm: typedefs.AlgorithmIdent
     request.algorithm = try webcrypto.normalize.algorithm(instance.ctx, algorithmInput(algorithm), operation_id);
     request.bytes = try copyTypedBufferSource(instance.ctx, data);
     request.key = try copyKey(instance.ctx.allocator, key);
-    return webcrypto.tasks.submit(instance.ctx, request.take());
+    return submit(instance.ctx, &request);
 }
 
 fn copyKey(allocator: std.mem.Allocator, instance: *runtime.Instance) !webcrypto.key.Slots {
