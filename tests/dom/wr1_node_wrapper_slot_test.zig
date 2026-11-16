@@ -12,6 +12,7 @@ const dom = @import("dom");
 const engine = @import("engine");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
+const real_nodes = @import("real_nodes.zig");
 const NodeBase = dom.NodeBase;
 
 test "NodeBase's wrapper is the engine's slot, and nothing else names the old alias" {
@@ -23,15 +24,24 @@ test "NodeBase's wrapper is the engine's slot, and nothing else names the old al
 }
 
 test "a new node's slot is empty" {
-    const node: NodeBase = .{ .node_type = NodeBase.ELEMENT_NODE };
+    // A real node (real_nodes.zig; lane wb1): it was a NodeBase value.
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const node = try nodes.bare(.element);
     try std.testing.expect(node.wrapper.isEmpty());
+    const in_document = real_nodes.baseOf(try nodes.element(try nodes.document(), "div"));
+    try std.testing.expect(in_document.wrapper.isEmpty());
 }
 
 test "runtime.lifetime.slotOf answers a node's own slot (dom.refcount installs it)" {
     // The process start installs it (refcount.install, from Document's and
     // Node's installHooks): the sanctioned test start runs it.
     interfaces.process_hooks.startHooksForTest();
-    var node: NodeBase = .{ .node_type = NodeBase.ELEMENT_NODE };
-    try std.testing.expect(runtime.lifetime.slotOf(&node) == &node.wrapper);
-    try std.testing.expect(runtime.lifetime.slotOf(&node).isEmpty());
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(std.testing.allocator);
+    defer nodes.close();
+    const node = try nodes.bare(.element);
+    try std.testing.expect(runtime.lifetime.slotOf(node) == &node.wrapper);
+    try std.testing.expect(runtime.lifetime.slotOf(node).isEmpty());
 }

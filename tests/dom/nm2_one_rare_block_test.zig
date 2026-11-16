@@ -34,6 +34,7 @@ const testing = std.testing;
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const real_nodes = @import("real_nodes.zig");
 
 const NodeBase = dom.NodeBase;
 const rare_data = dom.node_rare_data;
@@ -61,15 +62,9 @@ test "a node has one rare word: NodeBase's holds the sparse block, Element's sta
 }
 
 // ============================================================================
-// The node-level fields, on a bare NodeBase
+// The node-level fields, on a bare node: an Element with no node document
+// (real_nodes.zig; lane wb1 - it was a NodeBase value on the test's stack)
 // ============================================================================
-
-fn bareNode() NodeBase {
-    return .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    };
-}
 
 /// Distinct observers, never dereferenced: a registration names its observer
 /// by address only.
@@ -96,8 +91,11 @@ const Observers = struct {
 test "one registered observer costs a 16-byte block, and its entry stays where it is while the block grows" {
     if (comptime !one_word) return error.NodeBaseRareIsNotTheSparseBlock;
     var observers: Observers = .{};
-    var node = bareNode();
-    defer node.deinitRareData();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    // The Browser's end releases the node: Element's fields, then the block.
+    defer nodes.close();
+    const node = try nodes.bare(.element);
 
     try testing.expectEqual(@as(usize, 0), node.rare.blockBytes());
     const first = try node.appendRegisteredObserver(observers.registration(0));
@@ -114,13 +112,13 @@ test "one registered observer costs a 16-byte block, and its entry stays where i
     try testing.expectEqual(@as(usize, 32), node.rare.blockBytes());
 
     const second = try node.appendRegisteredObserver(observers.registration(1));
-    try observers.expectOrder(&node, &.{ 0, 1 });
+    try observers.expectOrder(node, &.{ 0, 1 });
     try testing.expectEqualStrings("EMBED", node.nodeName());
     first.options = .{ .child_list = true };
     try testing.expect(first.options.child_list);
 
     node.removeRegisteredObserver(first);
-    try observers.expectOrder(&node, &.{1});
+    try observers.expectOrder(node, &.{1});
     node.removeRegisteredObserver(second);
     try testing.expect(!node.hasRegisteredObservers());
     // The element-level field is cleared by its owner; the teardown frees
@@ -130,11 +128,13 @@ test "one registered observer costs a 16-byte block, and its entry stays where i
 
 test "an element's teardown part lets its fields go and leaves the node's: the block is the NodeBase's to free" {
     if (comptime !one_word) return error.NodeBaseRareIsNotTheSparseBlock;
-    var node = bareNode();
-    defer node.deinitRareData();
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const node = try nodes.bare(.element);
     const ctx = node.rareContext();
 
-    const owned = try testing.allocator.dupe(u8, "SCRIPT");
+    const owned = try node.allocator().dupe(u8, "SCRIPT");
     try node.setOwnedNodeName(owned);
     try rare_data.putBytes(ctx, &node.rare, .nonce, "n0nce");
     const slottable = try rare_data.ensureOwn(ctx, &node.rare, .slottable);

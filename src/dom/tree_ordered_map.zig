@@ -130,8 +130,7 @@ fn factsOfData(data: element_data.View) Facts {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    const raw = node.ownerInstance() orelse return null;
-    return @ptrCast(@alignCast(raw));
+    return node.registeredInstance();
 }
 
 fn factsOf(node: *NodeBase) ?Facts {
@@ -435,7 +434,7 @@ pub const Maps = struct {
         while (at) |node| : (at = nextInTree(node, root)) {
             const facts = factsOf(node) orelse continue;
             if (!facts.hasKeys()) continue;
-            self.register(facts, Link.to(instanceOf(node).?));
+            self.register(facts, Link.to(node.instance()));
             if (self.degraded) return false;
         }
         return true;
@@ -543,7 +542,7 @@ pub fn inserted(node: *NodeBase, parent: *NodeBase) void {
         const facts = factsOf(current) orelse continue;
         if (!facts.hasKeys()) continue;
         const maps = scope.get() orelse return;
-        maps.register(facts, Link.to(instanceOf(current).?));
+        maps.register(facts, Link.to(current.instance()));
     }
 }
 
@@ -556,7 +555,7 @@ pub fn removed(node: *NodeBase, old_parent: *NodeBase) void {
         const facts = factsOf(current) orelse continue;
         if (!facts.hasKeys()) continue;
         const maps = scope.get() orelse return;
-        maps.unregister(facts, Link.to(instanceOf(current).?));
+        maps.unregister(facts, Link.to(current.instance()));
     }
 }
 
@@ -573,7 +572,7 @@ pub fn moved(node: *NodeBase, old_parent: *NodeBase, new_parent: *NodeBase) void
     while (at) |current| : (at = nextInTree(current, node)) {
         const facts = factsOf(current) orelse continue;
         if (!facts.hasKeys()) continue;
-        const member = Link.to(instanceOf(current).?);
+        const member = Link.to(current.instance());
         if (old_scope.get()) |maps| maps.unregister(facts, member);
         if (new_scope.get()) |maps| maps.register(facts, member);
     }
@@ -685,7 +684,7 @@ fn answerFrom(maps: *Maps, root: *NodeBase, kind: Kind, key: []const u8, first_o
         maps.inexact("no element has a kept key", key);
         return null;
     };
-    const element = instanceOf(found).?;
+    const element = found.instance();
     entry.first = Link.to(element);
     return .{ .count = entry.count, .first = element };
 }
@@ -782,7 +781,7 @@ pub fn collectNamed(
         }
     }
     var at = findFrom(root, null, kind.kind(), name);
-    while (at) |node| : (at = findFrom(root, node, kind.kind(), name)) try add(context, instanceOf(node).?);
+    while (at) |node| : (at = findFrom(root, node, kind.kind(), name)) try add(context, node.instance());
 }
 
 /// The entry's elements in tree order (Blink GetAllElementsById): kept,
@@ -806,7 +805,7 @@ fn orderedFrom(maps: *Maps, root: *NodeBase, kind: Kind, key: []const u8) ?[]con
     var at = known_first orelse findFrom(root, null, kind, key);
     while (at) |node| : (at = findFrom(root, node, kind, key)) {
         if (filled == list.len) break;
-        list[filled] = Link.to(instanceOf(node).?);
+        list[filled] = Link.to(node.instance());
         filled += 1;
     }
     // Fewer elements than the count, or more (the loop stopped on one):
@@ -1169,7 +1168,7 @@ pub fn elementsFor(scope_root: *runtime.Instance, kind: Kind, key: []const u8, a
         }
     }
     var at = findFrom(root, null, kind, key);
-    while (at) |node| : (at = findFrom(root, node, kind, key)) try list.append(allocator, instanceOf(node).?);
+    while (at) |node| : (at = findFrom(root, node, kind, key)) try list.append(allocator, node.instance());
     return list.toOwnedSlice(allocator);
 }
 

@@ -4,35 +4,23 @@
 //! production with no ledger yet, so - like the tree links - they keep the
 //! count and `subtree_holds` and report a violation as an error log.
 //!
-//! Bare NodeBase values linked with step 3's own functions; no engine.
+//! Real nodes with no node document (real_nodes.zig `bare`; lane wb1), linked
+//! with step 3's own functions; no engine. They were NodeBase values made by
+//! the test's allocator.
 
 const std = @import("std");
 const testing = std.testing;
 const dom = @import("dom");
+const real_nodes = @import("real_nodes.zig");
 const refcount = dom.refcount;
 const NodeBase = dom.NodeBase;
 
-/// An owner-less node made with `allocator` - the test's allocator, which its
-/// owner word names (NodeBase.ownerless).
-fn newNode(allocator: std.mem.Allocator) !*NodeBase {
-    std.debug.assert(allocator.ptr == std.testing.allocator.ptr);
-    const node = try allocator.create(NodeBase);
-    node.* = .{
-        .owner = NodeBase.ownerless(&std.testing.allocator),
-        .node_type = NodeBase.ELEMENT_NODE,
-    };
-    return node;
-}
-
-fn freeNode(node: *NodeBase) void {
-    testing.allocator.destroy(node);
-}
-
 test "a wrapper's reference is one more on top of the born one: holds do not move" {
-    const parent = try newNode(testing.allocator);
-    defer freeNode(parent);
-    const child = try newNode(testing.allocator);
-    defer freeNode(child);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const parent = try nodes.bare(.element);
+    const child = try nodes.bare(.element);
     // Hand-linked: what step 3's insert leaves.
     child.setParent(parent);
     parent.subtree_holds += child.subtree_holds;
@@ -51,10 +39,11 @@ test "a wrapper's reference is one more on top of the born one: holds do not mov
 }
 
 test "a wrapper's reference on a node nothing else holds makes it a hold, and its release ends it" {
-    const parent = try newNode(testing.allocator);
-    defer freeNode(parent);
-    const child = try newNode(testing.allocator);
-    defer freeNode(child);
+    var nodes: real_nodes.Nodes = undefined;
+    try nodes.open(testing.allocator);
+    defer nodes.close();
+    const parent = try nodes.bare(.element);
+    const child = try nodes.bare(.element);
     // A node whose born reference went (what step 5 will do): count 0.
     child.rc = 0;
     child.subtree_holds = 0;

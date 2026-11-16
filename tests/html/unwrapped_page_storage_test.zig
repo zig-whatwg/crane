@@ -180,7 +180,7 @@ fn elementChild(node: *dom.NodeBase, comptime first: bool) ?*dom.NodeBase {
 }
 
 fn instanceOf(node: *dom.NodeBase) *runtime.Instance {
-    return @ptrCast(@alignCast(node.ownerInstance().?));
+    return node.instance();
 }
 
 fn customElementsMarked() !void {

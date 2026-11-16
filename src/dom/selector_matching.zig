@@ -773,7 +773,7 @@ fn following(node: *NodeBase, root: *NodeBase) ?*NodeBase {
 }
 
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
-    return @ptrCast(@alignCast(node.ownerInstance() orelse return null));
+    return node.registeredInstance();
 }
 
 fn dataOf(node: *NodeBase) ?ElementData {

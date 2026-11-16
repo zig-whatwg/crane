@@ -181,10 +181,9 @@ pub fn measureUpTo(root: *NodeBase, cap: usize) Measure {
 /// child list (a host's shadow tree, a template's contents). Those stay in
 /// the figure until the node is freed: the sum is a floor, never more than
 /// the tree's frees take out (pinned in tests/html/dm2_dying_figure_test.zig).
-/// 0 for a NodeBase no Instance owns.
+/// 0 for a node already released (its storage left the figure then).
 fn countedBytes(node: *const NodeBase) usize {
-    const raw = node.ownerInstance() orelse return 0;
-    const instance: *const runtime.Instance = @ptrCast(@alignCast(raw));
+    const instance: *const runtime.Instance = node.registeredInstance() orelse return 0;
     var bytes = instance_bridge.storageBytes(instance);
     if (node.rare.block != null) {
         bytes += node_rare_data.nodeFieldsOwnBytes(node.rare);
