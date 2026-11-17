@@ -1,5 +1,7 @@
-//! WorkerRegistry.ownsAny (lane bfcache-b): the back/forward cache keeps no
-//! page that owns a dedicated worker that has not ended.
+//! WorkerRegistry.ownsAny (lane bfcache-b): whether a realm owns a dedicated
+//! worker that has not ended. (Until lane nav4b2 the back/forward cache kept
+//! no page that did; now it keeps the page and suspends its workers -
+//! tests/html/nav4b2_worker_suspension_test.zig.)
 //!
 //! No thread runs here: the link is made and never spawned.
 const std = @import("std");

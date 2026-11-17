@@ -31,6 +31,15 @@
 //! dropped (each told it will never run), the sink is closed - what other
 //! threads post from then on is dropped by their post - and the timers end,
 //! an owned timer's data dropped.
+//!
+//! A suspended worker (HTML "run a worker" step 8, *suspending workers*:
+//! WorkerLink.suspended) runs nothing: at its next task boundary the loop
+//! parks - what other threads post joins the task queue unrun - until it is
+//! resumed or closing (`parkWhileSuspended`). Its timers' clock stands still
+//! meanwhile: HTML's timer initialization steps wait "until timeout
+//! milliseconds have passed with the worker not suspended (not necessarily
+//! consecutively)", and AbortSignal.timeout's "run steps after a timeout" the
+//! same (`SuspendClock`).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -65,6 +74,10 @@ pub const WorkerEventLoop = struct {
     /// The worker's inbox (the link's worker_sink). A reference.
     sink: *runtime.TaskSink,
     timers: *TimerManager,
+    /// The clock `timers` reads: the monotonic clock less the time the
+    /// worker spent suspended. Its own allocation: the loop is returned by
+    /// value, and the timer manager keeps a pointer to it.
+    suspend_clock: *SuspendClock,
     /// The task queue. Every task here is the worker's: no document.
     tasks: std.ArrayListUnmanaged(Task) = .empty,
     /// For promise allocation (the interface's promiseAllocator).
@@ -82,12 +95,16 @@ pub const WorkerEventLoop = struct {
     const busy_slice_ns: u64 = 1 * std.time.ns_per_ms;
 
     pub fn init(allocator: Allocator, link: *WorkerLink) Allocator.Error!WorkerEventLoop {
-        const timers = TimerManager.init(allocator) catch return error.OutOfMemory;
+        const suspend_clock = try allocator.create(SuspendClock);
+        errdefer allocator.destroy(suspend_clock);
+        suspend_clock.* = .{};
+        const timers = TimerManager.initWithClock(allocator, suspend_clock.clock()) catch return error.OutOfMemory;
         return .{
             .allocator = allocator,
             .link = link,
             .sink = link.worker_sink.retain(),
             .timers = timers,
+            .suspend_clock = suspend_clock,
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
         };
     }
@@ -102,6 +119,7 @@ pub const WorkerEventLoop = struct {
         self.dropTasks();
         self.sink.close();
         self.timers.deinit();
+        self.allocator.destroy(self.suspend_clock);
         self.tasks.deinit(self.allocator);
         self.sink.release();
         self.freeDroppedMicrotasks();
@@ -158,6 +176,10 @@ pub const WorkerEventLoop = struct {
         defer self.in_turn = false;
         var did_work = false;
 
+        // A suspended worker runs nothing until it is resumed or closing.
+        if (self.parkWhileSuspended()) did_work = true;
+        if (!self.link.runsTasks()) return did_work;
+
         // 1. What other threads posted joins the task queue.
         self.takePosted();
 
@@ -168,12 +190,16 @@ pub const WorkerEventLoop = struct {
             // A closing worker runs nothing more: the rest are discarded at
             // the loop's end.
             if (!self.link.runsTasks()) return true;
+            // Suspended meanwhile (a task boundary): the rest wait, and the
+            // next turn parks.
+            if (self.link.isSuspended()) return true;
             const task = self.tasks.orderedRemove(0);
             task.callback(task.context);
             self.checkpoint();
             did_work = true;
         }
         if (!self.link.runsTasks()) return did_work;
+        if (self.link.isSuspended()) return did_work;
 
         // 3. The engine's own posted tasks.
         if (self.agent) |agent| {
@@ -207,12 +233,43 @@ pub const WorkerEventLoop = struct {
         }
 
         // 6. The timers that came due - each a task, followed by a
-        // checkpoint (HTML 8.1.7.3) - then a checkpoint.
-        if (self.link.runsTasks()) {
+        // checkpoint (HTML 8.1.7.3) - then a checkpoint. Not while the
+        // worker is suspended: they come due on its clock, which stands
+        // still until it is resumed.
+        if (self.link.runsTasks() and !self.link.isSuspended()) {
             if (self.timers.pollEach(.{ .context = self, .run = checkpointAfterTimer })) did_work = true;
             self.checkpoint();
         }
         return did_work;
+    }
+
+    /// HTML "run a worker" step 8, *suspending workers*: "whenever worker
+    /// global scope's closing flag is false and it is suspendable, the user
+    /// agent suspends execution of script in worker global scope until such
+    /// time as either the closing flag switches to true or worker global
+    /// scope stops being suspendable." At a task boundary - nothing of the
+    /// worker's runs while it waits: no task, no timer, no engine task, no
+    /// fetch pumped. What other threads post meanwhile joins the task queue
+    /// in order, unrun (a lock granted to it, a message: they run once it is
+    /// resumed - web-locks: weblocks-worker.https.window.js). Its timers'
+    /// clock stops for as long (`SuspendClock`). Whether it parked.
+    ///
+    /// The wake: WorkerLink.resumeFromSuspension clears the flag before it
+    /// posts, and terminate sets the closing flag before it wakes, so a
+    /// check that finds the flag still set is followed by a wait that the
+    /// post ends (TaskSink.waitForWork returns at once when the post is
+    /// already there).
+    fn parkWhileSuspended(self: *WorkerEventLoop) bool {
+        if (!self.link.isSuspended() or !self.link.runsTasks()) return false;
+        self.suspend_clock.stop();
+        defer self.suspend_clock.start();
+        while (true) {
+            if (!self.link.isSuspended() or !self.link.runsTasks()) break;
+            self.takePosted();
+            if (!self.link.isSuspended() or !self.link.runsTasks()) break;
+            self.sink.waitForWork(null);
+        }
+        return true;
     }
 
     /// How long a turn may wait (ns): 0 not at all, null with no limit.
@@ -323,6 +380,51 @@ pub const WorkerEventLoop = struct {
     fn promiseAllocator(ptr: *anyopaque) Allocator {
         const self: *WorkerEventLoop = @ptrCast(@alignCast(ptr));
         return self.promise_arena.allocator();
+    }
+};
+
+/// The clock a worker's timers read: the platform's monotonic clock less the
+/// time the worker has spent suspended, so a timer waits its timeout "with
+/// the worker not suspended (not necessarily consecutively)" (HTML timer
+/// initialization steps, step 11's worker branch; "run steps after a
+/// timeout" for AbortSignal.timeout). While the worker is suspended it
+/// stands still. Read and moved only on the worker's thread.
+pub const SuspendClock = struct {
+    /// The time spent suspended before the current suspension (ns).
+    suspended_ns: u64 = 0,
+    /// When the current suspension began (the platform clock's ns), while
+    /// one lasts.
+    stopped_at: ?u64 = null,
+
+    pub fn clock(self: *SuspendClock) runtime.native_timer.Clock {
+        return .{ .context = self, .monotonic_now = now };
+    }
+
+    /// The worker is suspended from now on.
+    pub fn stop(self: *SuspendClock) void {
+        if (self.stopped_at == null) self.stopped_at = platformNow();
+    }
+
+    /// The worker runs again: the suspension's length no longer counts.
+    pub fn start(self: *SuspendClock) void {
+        const since = self.stopped_at orelse return;
+        self.stopped_at = null;
+        self.suspended_ns += platformNow() -| since;
+    }
+
+    /// The clock now (ns): stands at the suspension's start while one lasts.
+    pub fn read(self: *const SuspendClock) u64 {
+        const at = self.stopped_at orelse platformNow();
+        return at -| self.suspended_ns;
+    }
+
+    fn now(context: ?*anyopaque) callconv(.c) u64 {
+        const self: *const SuspendClock = @ptrCast(@alignCast(context.?));
+        return self.read();
+    }
+
+    fn platformNow() u64 {
+        return @import("platform").monotonicNow().ns;
     }
 };
 

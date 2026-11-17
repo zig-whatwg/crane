@@ -67,6 +67,22 @@ pub const WorkerLink = struct {
     /// dereferenced; set by the owner before the thread starts.
     owner_realm: ?*const anyopaque = null,
 
+    /// HTML "suspendable" (10.2.3): the worker is not actively needed - no
+    /// owner of it is a fully active Document or an actively needed worker -
+    /// but it is permissible, so "the user agent suspends execution of script"
+    /// in it ("run a worker" step 8, *suspending workers*) until it is
+    /// resumed or closing. Set and cleared by the side that knows its owners:
+    /// the back/forward cache's store and restore steps on the owner's
+    /// thread (`WorkerRegistry.suspendOwnedByRealm`), the shared worker
+    /// manager for a shared worker. The worker's loop reads it between
+    /// tasks and parks while it is set (WorkerEventLoop.parkWhileSuspended);
+    /// `resumeFromSuspension` wakes it.
+    suspended: std.atomic.Value(bool) = .init(false),
+    /// The WorkerRegistry's scratch: the number of its last subtree walk
+    /// that reached this link. Read and written only under the registry's
+    /// lock.
+    registry_walk: u64 = 0,
+
     /// Protects `thread`.
     thread_lock: std.Io.Mutex = .init,
     /// The worker's thread, until someone joins it (`join`): its owner, at
@@ -188,6 +204,34 @@ pub const WorkerLink = struct {
             }
             current = self.state.cmpxchgWeak(current, .closing, .acq_rel, .acquire) orelse return true;
         }
+    }
+
+    /// Whether the worker is suspended (see `suspended`). Any thread.
+    pub fn isSuspended(self: *const WorkerLink) bool {
+        return self.suspended.load(.acquire);
+    }
+
+    /// Suspend the worker: its loop runs no further task, timer or engine
+    /// task once it reaches its next task boundary, until it is resumed or
+    /// closing. A script running now runs to its end - Blink freezes a
+    /// worker's task queues (WorkerThread::Freeze, "pause or freeze" at a
+    /// task boundary), Gecko's WorkerPrivate::Freeze is a control runnable.
+    /// No wake: a loop waiting for work runs nothing, and parks at the post
+    /// that wakes it. Whether this call suspended it (false: it already was).
+    /// Any thread.
+    pub fn suspendExecution(self: *WorkerLink) bool {
+        return !self.suspended.swap(true, .acq_rel);
+    }
+
+    /// Resume a suspended worker: its loop, parked or not, runs again. The
+    /// flag is cleared before the wake is posted, so a loop that read it set
+    /// and is about to wait finds the post (TaskSink.waitForWork returns at
+    /// once for a post that landed before it waits). Whether this call
+    /// resumed it (false: it was not suspended). Any thread.
+    pub fn resumeFromSuspension(self: *WorkerLink) bool {
+        const was = self.suspended.swap(false, .acq_rel);
+        if (was) self.wake();
+        return was;
     }
 
     /// Wake the worker's loop if it waits for work: a post with nothing to

@@ -392,7 +392,7 @@ fn keptAfterLeavingAt(comptime origin: []const u8, comptime path: []const u8, co
     return fixture.cached() > 0;
 }
 
-test "the eligibility matrix: a page that holds a lock, has a worker or a shared worker is not kept; one with a frame is kept (phase C)" {
+test "the eligibility matrix: a page that holds a lock is not kept; one with a frame (phase C), a worker or a shared worker is kept" {
     try testing.expect(try keptAfterLeaving("/a.html", "/b.html"));
     // Web Locks are [SecureContext]: the page holds its lock on localhost.
     try testing.expect(try keptAfterLeavingAt("http://localhost", "/a.html", "/b.html"));
@@ -400,8 +400,12 @@ test "the eligibility matrix: a page that holds a lock, has a worker or a shared
     // Bfcache phase C (lane nav4): a page is kept with its frames
     // (tests/html/nav4_bfcache_frames_test.zig has the rest).
     try testing.expect(try keptAfterLeaving("/frame.html", "/b.html"));
-    try testing.expect(!try keptAfterLeaving("/worker.html", "/b.html"));
-    try testing.expect(!try keptAfterLeaving("/shared.html", "/b.html"));
+    // Lane nav4b2: a page with a dedicated or a shared worker is kept, its
+    // workers suspended while it is cached (HTML "run a worker" step 8;
+    // tests/html/nav4b2_worker_suspension_test.zig) - and the Browser's end
+    // here ends the cached page and its suspended worker.
+    try testing.expect(try keptAfterLeaving("/worker.html", "/b.html"));
+    try testing.expect(try keptAfterLeaving("/shared.html", "/b.html"));
     try testing.expect(!try keptAfterLeaving("/rtc.html", "/b.html"));
 }
 

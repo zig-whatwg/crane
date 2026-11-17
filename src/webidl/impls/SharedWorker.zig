@@ -86,18 +86,18 @@ pub fn installHooks() void {
     // "Destroy a document" step 8: the Document leaves every shared worker's
     // owner set, and a worker whose owner set empties is closed.
     @import("dom").unloading_cleanup.install(&worker_host.sharedWorkerOwnerGone);
-    @import("dom").bfcache.installBlocker(&blocksBfcache);
-}
-
-/// dom.bfcache: a page in a shared worker's owner set is not kept in the
-/// back/forward cache, with Chromium's reason "sharedworker"
-/// (BackForwardCacheImpl's blocklisted features, kSharedWorker; WebKit's
-/// BackForwardCache refuses one too). The worker outlives the page's leaving
-/// only while another owner keeps it, and HTML's owner set has no state for
-/// a cached owner.
-fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
-    const manager = worker_host.SharedWorkerManager.existingOf(realm) orelse return null;
-    return if (manager.hasOwner(realm)) .{ .reason = .sharedworker } else null;
+    // A page in a shared worker's owner set is kept by the back/forward
+    // cache, and stays in the owner set while it is cached - no longer fully
+    // active, so it no longer makes the worker actively needed: a worker with
+    // no fully active owner left is suspended until one is (HTML "run a
+    // worker" step 8; SharedWorkerManager, "Suspending workers"). Chrome
+    // (SharedWorkerHost::OnClientStateChanged, kFreezeSharedWorker), Firefox
+    // (SharedWorkerManager::UpdateFrozen) and Safari keep such a page:
+    // back-forward-cache/eligibility/shared-worker.html and
+    // shared-worker-active-client.window.js pass in all three on wpt.fyi
+    // (stable, 2026-11-15/16).
+    @import("dom").bfcache.installStoreStep(&worker_host.sharedWorkerOwnerStored);
+    @import("dom").bfcache.installRestoreStep(&worker_host.sharedWorkerOwnerRestored);
 }
 
 /// Deinitialize instance
