@@ -1904,15 +1904,21 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 const tsan_suppressions_path = "tools/test_launcher/tsan_suppressions.txt";
 
 /// A run of an instrumented program outside the launcher (the snapshot
-/// generator) reads the suppressions too: TSAN_OPTIONS names the file
-/// relative to the build root, which becomes the run's working directory
-/// (the runtime opens a relative path from there), and the file is an input
-/// of the run, so a changed file runs it again.
+/// generator) reads the suppressions too: TSAN_OPTIONS
+/// (`tsan_suppressions_environment`, which the engine adapter's startupRun
+/// sets through `env`) names the file relative to the build root, which
+/// becomes the run's working directory (the runtime opens a relative path
+/// from there), and the file is an input of the run, so a changed file runs
+/// it again.
 fn useTsanSuppressions(b: *std.Build, run: *std.Build.Step.Run) void {
     run.setCwd(b.path("."));
     run.addFileInput(b.path(tsan_suppressions_path));
-    run.setEnvironmentVariable("TSAN_OPTIONS", "suppressions=" ++ tsan_suppressions_path);
 }
+
+/// The variable `useTsanSuppressions`' runs get, through the adapter's
+/// `startupRun` (`env`), never Run.setEnvironmentVariable
+/// (checkNoEnvironmentCopies).
+const tsan_suppressions_environment = [_][2][]const u8{.{ "TSAN_OPTIONS", "suppressions=" ++ tsan_suppressions_path }};
 
 fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
     var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
@@ -5095,6 +5101,7 @@ pub fn build(b: *std.Build) void {
         .link = tests_engine_link,
         .test_options = startup_tests,
         .prepare_run = if (sanitize_thread_option) &useTsanSuppressions else null,
+        .run_environment = if (sanitize_thread_option) &tsan_suppressions_environment else &.{},
     }) else null;
 
     // ========================================================================

@@ -490,7 +490,7 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     if (snapshot_generator_mode.sanitizeC(snapshot_generator_optimize)) |sanitizer| snapshot_gen_exe.root_module.sanitize_c = sanitizer;
 
     // Add run step for Snapshot Generator (manual use)
-    const run_snapshot_gen = b.addRunArtifact(snapshot_gen_exe);
+    const run_snapshot_gen = engine_build.startupRun(b, snapshot_gen_exe, request);
     run_snapshot_gen.addPassthruArgs();
 
     const snapshot_gen_step = b.step("snapshot-generator", "Run snapshot generator (use -- to pass output path)");
@@ -505,7 +505,7 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     // step failed with FileNotFound there (server1's first native run,
     // 2026-11-07); crane-remote.sh's `mkdir -p zig-out/bin` hid it on the
     // pool's hosts.
-    const gen_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    const gen_snapshot = engine_build.startupRun(b, snapshot_gen_exe, request);
     const install_snapshot = b.addInstallBinFile(gen_snapshot.addOutputFileArg("whatwg_snapshot.bin"), "whatwg_snapshot.bin");
 
     // Create a build step for manual snapshot generation
@@ -516,9 +516,10 @@ pub fn addStartupData(b: *std.Build, options: Options, request: engine_build.Sta
     // file argument, so the run is cached on the generator's hash), passed
     // to tests/v8 by path (`request.test_options`, which tests/v8 imports as
     // `facts.startup.test_import`).
-    const gen_test_snapshot = b.addRunArtifact(snapshot_gen_exe);
+    const gen_test_snapshot = engine_build.startupRun(b, snapshot_gen_exe, request);
     // Under -Dsanitize-thread the generator shares instrumented modules with
-    // the tests: it runs with their suppressions (`request.prepare_run`).
+    // the tests: it runs with their suppressions (`request.prepare_run`, and
+    // TSAN_OPTIONS through `startupRun`).
     if (request.prepare_run) |prepare_run| {
         prepare_run(b, gen_test_snapshot);
         prepare_run(b, gen_snapshot);
