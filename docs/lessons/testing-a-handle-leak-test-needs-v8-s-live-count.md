@@ -1,6 +1,7 @@
 # Testing: A handle-leak test needs V8's live count, not the debug counter
 
 **Date**: 2026-09-26
+**Status** (2026-11-17, lane vm1): a red run can also be red because the test did not compile. A script printed "red rc=1" for a test whose build failed on a format string (script braces read as placeholders), and went on. A red run counts only when its log holds the test's own failure line (`^error: '.*' failed:`) and no compile error; lane vm1's scripts count the two kinds of line separately.
 **Lesson**: Assert "no handle leaked" with `v8_Isolate_GetGlobalHandleBytes`, V8's own live count; `v8_Debug_CreatedGlobals` is compiled out of every build but gc_bench and counts creations, not live handles.
 
 **Why**: The wrapper has two families of handle counters. The `v8_Debug_*`

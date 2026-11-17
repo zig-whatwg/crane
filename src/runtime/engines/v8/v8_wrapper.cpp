@@ -7602,6 +7602,20 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
     return stats.used_global_handles_size();
 }
 
+// Bytes of the BLOCKS V8's global handle table holds: every block it ever
+// made for this isolate, in use or not (GlobalHandles::TotalSize). V8 makes a
+// block of 256 nodes when its free list is empty and frees one only with the
+// table (15.7.112.43 src/handles/global-handles.cc NodeSpace::Allocate,
+// ~NodeSpace), so this never falls: it is the most Globals that were alive
+// at one moment since the isolate began, to the next block - what a burst of
+// objects leaves behind for the isolate's life (lane vm1: 40 MB after the
+// perf suite's streams page). Read from V8, no bookkeeping of ours.
+size_t v8_Isolate_GetGlobalHandleCapacityBytes(Isolate* isolate) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    return stats.total_global_handles_size();
+}
+
 /// A CONTEXT'S EMBEDDER-DATA SLOTS: ALL OF THEM, IN THIS ONE LIST. Each later
 /// enumerator takes the next index, so a new slot is a new line here and
 /// cannot take an index in use. They were constants beside their users, each
@@ -10773,6 +10787,104 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     Local<Object> proto_obj = proto_val.As<Object>();
 
     return trackHandle(new Global<Object>(isolate, proto_obj));
+}
+
+/// A new wrapper object for an instance of the interface whose constructor
+/// template is `tpl`: InstanceTemplate()->NewInstance(), with its
+/// [[Prototype]] set to `globalThis[constructor_name].prototype` - the
+/// prototype script sees, which `instanceof` needs (v8_GetGlobalPrototype
+/// says why the template's own is not it) - or, for an interface the global
+/// does not expose (and for a null name), to the prototype of the template's
+/// own function (v8_FunctionTemplate_GetPrototypeObject). The steps
+/// template_registry.zig's wrapInstanceAsV8Object ran as four calls, in ONE
+/// HandleScope: every intermediate is a Local, and the one Global made is
+/// the wrapper's, which the caller owns. As four calls each wrap made three
+/// Globals and disposed two - the instance template's and the prototype's -
+/// for every platform object a page wraps (lane vm1; the prototype's is
+/// counted: object_globals_from.GetGlobalPrototype rose once a wrapper).
+/// nullptr when the instance cannot be made.
+///
+/// Blink holds every intermediate of a wrap in a Local too
+/// (V8DOMWrapper::CreateWrapper, third_party/blink/renderer/platform/
+/// bindings/v8_dom_wrapper.cc at Chromium 157.0.8103.51, read 2026-11-17: a
+/// v8::Local<v8::Object> from V8PerContextData::CreateWrapperFromCache, or,
+/// for a detached context, GetV8ClassTemplate()->InstanceTemplate()->
+/// NewInstance). Its usual path does NOT look the prototype up by name: the
+/// wrapper comes from a per-context cache. Only the handle discipline is
+/// taken from it here.
+///
+/// KNOWN DEVIATION, older than this function and kept exactly as it was
+/// (v8_GetGlobalPrototype did the same lookups): Web IDL's "internally
+/// create a new object implementing the interface" step 2.1 gives a platform
+/// object made with no NewTarget "the interface prototype object for
+/// interface in realm" - the realm's own object. This reads
+/// `globalThis[constructor_name]` and its `prototype` with ordinary [[Get]]s
+/// when the wrapper is made, under no TryCatch (the context is entered for
+/// NewInstance alone): a page that has replaced the global property gives
+/// new wrappers that value's `prototype`, and an accessor it defined there
+/// runs inside the wrap. Not probed against the browsers; filed by lane vm1
+/// for a bindings lane (a per-realm cache of interface prototype objects,
+/// Blink's shape, would end both the deviation and the two lookups a wrap).
+Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context, const char* constructor_name) {
+    // The wrapper's Global is this entry point's now: gc_bench's "wrappers
+    // made per cycle" reads this count.
+    g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+
+    Local<Object> object;
+    {
+        Context::Scope context_scope(ctx);
+        if (!local_tpl->InstanceTemplate()->NewInstance(ctx).ToLocal(&object)) return nullptr;
+    }
+
+    Local<Value> prototype;
+    bool found = false;
+    if (constructor_name) {
+        Local<String> name;
+        Local<Value> constructor;
+        // The name is made exactly as main makes it (v8_GetGlobalPrototype):
+        // String::NewFromUtf8's default, a fresh string for every wrap.
+        //
+        // An INTERNALIZED name (NewStringType::kInternalized) is the right
+        // code - nothing allocated after an interface's first wrap - and it
+        // is HELD BACK, not rejected. Young collections are paced by the JS
+        // bytes a page allocates, and a wrapper's host side is 6-10 times its
+        // JS size. Measured with the internalized name (lane vm1, 2026-11-17,
+        // chat.local, three consoles, 9 launches a side, memory pass): a
+        // wrap allocates 34 B less in the young generation (67 -> 33 B a
+        // div), V8 runs half the young collections (65 -> 32 for 2,000,000
+        // divs), and the host memory of wrappers that are already dead
+        // stands twice as high between two of them - dom.create-element
+        // holds 38.9 -> 43.2 MB after a full collection (+11%), page.streams
+        // +10%, load.docs +11%, at instructions 0.926.
+        //
+        // The cause to fix is the pacing, not this string: host bytes must
+        // count toward young collections (queued by the integrator with
+        // these numbers). When that lands, internalize the name.
+        if (String::NewFromUtf8(isolate, constructor_name).ToLocal(&name) &&
+            ctx->Global()->Get(ctx, name).ToLocal(&constructor) && constructor->IsFunction()) {
+            found = constructor.As<Function>()->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
+                prototype->IsObject();
+        } else {
+            CRANE_PROTO_MISS("[v8_FunctionTemplate_NewWrapper] %s: no constructor on the global\n", constructor_name);
+        }
+    }
+    if (!found) {
+        // Not exposed on the global: the template's own function's prototype.
+        Local<Function> function;
+        found = local_tpl->GetFunction(ctx).ToLocal(&function) &&
+            function->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
+            prototype->IsObject();
+    }
+    // The object has no anchor yet (the caller binds it next), so no cache
+    // holds it and there is nothing to tell of the change
+    // (notePlatformWrapperChanged, which v8_Object_SetPrototype calls for a
+    // wrapper a cache may already hold).
+    if (found) (void)object->SetPrototype(ctx, prototype).FromMaybe(false);
+    return trackHandle(new Global<Object>(isolate, object));
 }
 
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {

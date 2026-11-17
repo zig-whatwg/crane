@@ -1,0 +1,16 @@
+# Architecture: Young collections are paced by JS bytes, so less JS garbage per wrapper means more host memory held
+
+**Date**: 2026-11-17
+**Lesson**: A change that allocates fewer young-generation bytes per wrapper makes V8 run fewer young collections, and the host memory of wrappers that are already dead then stands higher between them; a wrap-path change that "only saves an allocation" needs the memory pass of a cost pair before it is called a saving.
+
+**Why**: A wrapper's JS object is small (tens of bytes) and its host side - the node or instance, the cache record, the handle - is 6-10 times larger. V8 starts a young collection when the young generation fills with JS bytes; nothing of the host side counts toward that. The number of dead wrappers waiting for the next young collection is therefore `young space / JS bytes per wrapper`, and every structure sized by a peak (handle blocks, slab pages, malloc's dirty pages) keeps that peak after the collection.
+
+**What Happened**: Lane vm1 folded the wrap's four adapter calls into one (`v8_FunctionTemplate_NewWrapper`) to make three fewer Globals a wrapper. The new function also asked for the interface name as an internalized string (`NewStringType::kInternalized`), where main's `v8_GetGlobalPrototype` made a fresh string for every wrap. That looked like a second, free saving. The cost window read it otherwise (chat.local, three consoles, 9 ring-off launches a side): dom.create-element held 38.9 -> 43.2 MB after a forced full collection (+11%, every launch of one side above every launch of the other), page.streams +10%, load.docs +11%, for instructions 0.926 and time 0.847. The gc_bench byte rows and sixteen kept-object rows showed no difference at all: nothing more was held per object. A GC trace of 2,000,000 `document.createElement('div')` in one script gave the cause: 67 -> 33 B reclaimed a div, 68 -> 35 young collections. At the end of the attributes page `heap -s` showed what stayed: V8 traced-handle blocks 99 -> 167, 8 KB slab pages 512 -> 596, malloc dirty-but-free 1.7 -> 4.05 MB. With the name made as main makes it, the trace read 68 collections and 67 B again and the handle growth returned to main's 0.53 MB, with the Globals saving intact.
+
+**Fix**:
+1. Treat "bytes of young-generation allocation per wrapper" as a quantity a wrap-path change can move, and measure it (a `--trace-gc` run of one wrapper statement: bytes reclaimed by young collections divided by the count) before and after.
+2. Judge such a change on the memory pass of a cost pair, not on per-object rows: kept-object and gc_bench byte rows cannot see a peak between collections.
+3. When the cost shows, hold the allocation exactly as main makes it and say in a comment that the cheaper form is the right code, held back; the cause to fix is the pacing (host bytes must count toward young collections), not the allocation.
+4. Attribute with a third console (main + the one item): tip against main alone could not have said which of the lane's two items moved the rows.
+
+**Takeaway**: **On the wrap path, garbage is a clock. Before removing JS allocation per wrapper, measure what the slower clock leaves standing on the host side.**

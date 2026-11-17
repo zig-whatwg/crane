@@ -1,6 +1,7 @@
 # Workflow: A long sweep runs from its own copy, not a shared frozen baseline
 
 **Date**: 2026-10-01
+**Status** (2026-11-17, lane vm1): the same for a lane's pool job. A job script that ends with an `echo` of its last step's status exits 0 whatever its steps did: one job's out-file ended "rc=0" over its own line "redgreen rc=1", another's over a red run that had not compiled and a result table that was all "nan". A background poster then quoted "rc=0" into held-files.md as the job's END. Read each step's own verdict line, and write the END line from those.
 **Lesson**: `~/crane-frozen/main-<sha>/` lives only until a newer baseline replaces it and the old one is pruned. A sweep that runs for hours from it loses everything queued after the deletion, and the loss does not look like a failure.
 
 **Why**: Superseded frozen directories are pruned (here by hand, when main-ed3433c37's baseline was installed), and the prune takes the runner, its snapshot and its `tests/wpt` link with it. `crane-measure.sh sweep` starts each chunk with `cd` already done, so later chunks run `./zig-out/bin/wpt_runner` from a directory that no longer has one. Each chunk then records exit 127, and the sweep still "finishes", writes `sweep.done` and reports a record count.

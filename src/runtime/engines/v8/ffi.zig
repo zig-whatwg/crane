@@ -1039,6 +1039,12 @@ pub extern fn v8_Debug_NodeWrapperTableBytes(isolate: ?*Isolate) u64;
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
 pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
+
+/// The bytes of every block V8's global handle table holds for `isolate`, in
+/// use or not: it never falls while the isolate lives (V8 frees a block only
+/// with the table), so it is the most Globals alive at one moment so far, to
+/// the next block of 256.
+pub extern fn v8_Isolate_GetGlobalHandleCapacityBytes(isolate: *Isolate) usize;
 /// Whether `isolate` has a C++ heap (cppgc): every isolate v8_wrapper.cpp
 /// makes has one (the wrapper redesign's P3, IsolateData::cpp_heap).
 pub extern fn v8_Isolate_HasCppHeap(isolate: *Isolate) bool;
@@ -2411,6 +2417,17 @@ pub extern fn v8_FunctionTemplate_GetPrototypeObject(tpl: *FunctionTemplate, con
 /// This is necessary for `instanceof` to work correctly, because GetPrototypeObject creates a new
 /// function from the template which has a different prototype object.
 pub extern fn v8_GetGlobalPrototype(context: *Context, constructor_name: [*:0]const u8) ?*Object;
+/// A new wrapper object for an instance of the interface whose constructor
+/// template is `template`: its instance template's NewInstance with its
+/// prototype set to `globalThis[constructor_name].prototype`, or - a null
+/// name, or an interface the global does not expose - to the template's own
+/// function's prototype. One call and one Global, the wrapper's, OWNED
+/// (v8_Object_Dispose); null when the instance cannot be made. What
+/// wrapInstanceAsV8Object ran as v8_FunctionTemplate_InstanceTemplate,
+/// v8_ObjectTemplate_NewInstance, v8_GetGlobalPrototype (or
+/// v8_FunctionTemplate_GetPrototypeObject) and v8_Object_SetPrototype, each
+/// handing back a Global the caller disposed.
+pub extern fn v8_FunctionTemplate_NewWrapper(template: *FunctionTemplate, context: *Context, constructor_name: ?[*:0]const u8) ?*Object;
 
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;

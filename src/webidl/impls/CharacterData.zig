@@ -82,7 +82,26 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     if (@hasField(@TypeOf(args), "data")) {
         errdefer deinitOwn(instance);
         try internal.setData(runtime.allocatorOf(instance), args.data);
+        recount(instance, 0, internal);
     }
+}
+
+/// The node's data changed: its Browser's DOM memory
+/// (runtime.BrowserScope.dom_memory, what V8 schedules its collections by)
+/// moves by the difference between what the data held before - `before`, its
+/// `countedBytes` read ahead of the change - and what it holds now. A text's
+/// block is the node's as its State block is, and the figure counted only
+/// the latter: a Text of 4 KB was its 200-odd bytes to V8 (lane vm1; lane
+/// nm2 measured the figure falling 9.2% where a document's real bytes fell
+/// 6.3%). Every writer of the data is in this file and calls this: the
+/// construction, "replace data", the teardown - so what enters leaves.
+/// Nothing for data in the node's word or the shared whitespace, which is
+/// most text (dom.character_data: no block, both figures 0).
+fn recount(instance: *runtime.Instance, before: usize, internal: Data) void {
+    const after = internal.countedBytes();
+    if (after == before) return;
+    const memory = &runtime.BrowserScope.ofInstance(instance).dom_memory;
+    if (after > before) memory.add(after - before) else memory.sub(before - after);
 }
 
 /// Get CharacterData's data (`getInternal`).
@@ -96,7 +115,9 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // The chain runs this before Node's teardown: the NodeBase, and in it
     // the data's word, is still there.
     if (getInternal(instance)) |internal| {
+        const held = internal.countedBytes();
         internal.deinit(runtime.allocatorOf(instance));
+        recount(instance, held, internal);
     }
     Registry.remove(instance);
 }
@@ -248,7 +269,9 @@ fn replaceDataInternal(instance: *runtime.Instance, internal: Data, offset: u32,
     // completed at either seam.
     if (data.len > std.math.maxInt(u32)) return error.OutOfMemory;
     const data_units: u32 = @intCast(infra.wtf8.codeUnitLength(data));
+    const held = internal.countedBytes();
     try internal.replaceDataUnits(runtime.allocatorOf(instance), offset, count, data, data_units);
+    recount(instance, held, internal);
     // The node document's DOM tree version moves with the data, parent or
     // none (Blink CharacterData::SetDataAndUpdate, WebKit
     // CharacterData::notifyParentAfterChange): an XPath iterator over the
@@ -315,6 +338,7 @@ pub fn installHooks() void {
 fn sweepRemaining(scope: *runtime.BrowserScope) void {
     Registry.sweep(scope, {}, struct {
         fn visit(_: void, instance: *runtime.Instance, head: *InternalState) void {
+            // Not recounted: the Browser is ending, and its DOM memory with it.
             Data.ofHead(head).deinit(runtime.BrowserScope.ofInstance(instance).allocator);
         }
     }.visit);

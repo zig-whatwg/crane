@@ -334,6 +334,16 @@ pub const Table = struct {
     tombstones: Tombstones = .{},
     /// The bytes of the records alive (headers included): a measurement.
     bytes_held: usize = 0,
+    /// Its Browser's DOM memory (runtime.BrowserScope.dom_memory, what V8
+    /// schedules its collections by), which counts every record and every
+    /// ClassNames block from its making to its free, parked or not, each at
+    /// runtime.gc.ExternalMemory.blockBytes of its block (lane vm1: an
+    /// element with a 4 KB attribute was its State block alone to V8). A
+    /// record is shared by every attribute with its value, so it is counted
+    /// here, once, and no node's or tree's sum has it. Null for a table with
+    /// no Browser (a unit test's): nothing is counted. Set once, by the
+    /// scope's first value (`firstTable`).
+    memory: ?*runtime.gc.ExternalMemory = null,
     /// The PARKED records: their last reference went, and they wait here,
     /// still in the map, for a value that comes back (oldest first). See
     /// `Parking`.
@@ -461,6 +471,16 @@ pub const Table = struct {
         return .{ .allocator = allocator };
     }
 
+    /// A block of `bytes` was made: the Browser's DOM memory has it.
+    inline fn noteMade(self: *Table, bytes: usize) void {
+        if (self.memory) |memory| memory.add(runtime.gc.ExternalMemory.blockBytes(bytes));
+    }
+
+    /// A block of `bytes` that `noteMade` counted is about to be freed.
+    inline fn noteFreed(self: *Table, bytes: usize) void {
+        if (self.memory) |memory| memory.sub(runtime.gc.ExternalMemory.blockBytes(bytes));
+    }
+
     fn context(self: *const Table) SlotContext {
         return .{ .ids = &self.ids };
     }
@@ -555,6 +575,7 @@ pub const Table = struct {
         if (debug_checks and placed.found_existing) @panic("an attribute value record interned twice");
         placed.key_ptr.* = slot;
         self.bytes_held += value.blockSize();
+        self.noteMade(value.blockSize());
         return ValueId.of(slot, self.ids.generation(slot), value.flags());
     }
 
@@ -631,6 +652,7 @@ pub const Table = struct {
         if (debug_checks and !removed) @panic("a released attribute value record was not in its Browser's table");
         self.ids.give(slot);
         self.bytes_held -= value.blockSize();
+        self.noteFreed(value.blockSize());
         destroy(self.allocator, value);
         self.afterRemove();
         if (names) |n| self.releaseClassNames(n);
@@ -653,6 +675,8 @@ pub const Table = struct {
         self.class_names.items[slot] = null;
         self.class_lists -= 1;
         self.class_bytes -= ClassNames.blockSize(names.len);
+        // Its free follows at once (`free`, the one caller).
+        self.noteFreed(ClassNames.blockSize(names.len));
         return names;
     }
 
@@ -730,6 +754,7 @@ pub const Table = struct {
         self.class_names.items[slot] = names;
         self.class_lists += 1;
         self.class_bytes += size;
+        self.noteMade(size);
         return names;
     }
 
@@ -900,7 +925,10 @@ pub fn intern(scope: *runtime.BrowserScope, bytes: []const u8) error{OutOfMemory
 /// `scope`'s values table, made on its first value: out of line, as it runs
 /// once per Browser (`intern`).
 noinline fn firstTable(scope: *runtime.BrowserScope) error{OutOfMemory}!*Table {
-    return scope.table(.attribute_values, Table);
+    const table = try scope.table(.attribute_values, Table);
+    // Its records are the Browser's DOM memory from the first one.
+    table.memory = &scope.dom_memory;
+    return table;
 }
 
 /// One more reference to `id` in `scope`'s table.
