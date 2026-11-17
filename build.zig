@@ -1797,8 +1797,8 @@ fn testVerifySelection(b: *std.Build, build_probe: *std.Build.Step.Compile) *Tes
                 .map, .lazy_path, .lazy_path_list => std.debug.panic("build.zig: -D{s}: an option the command line cannot give", .{name}),
             }
         }
-        // The parent's local cache, as check-linux's sub-builds (the global
-        // one travels as ZIG_GLOBAL_CACHE_DIR in the environment).
+        // The parent's local cache, as this file's other sub-builds (the
+        // global one travels as ZIG_GLOBAL_CACHE_DIR in the environment).
         run.addArgs(&.{ "-j2", "--cache-dir" });
         run.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
         run.setCwd(b.path("."));
@@ -2424,38 +2424,40 @@ fn engineProtocolBinding(
     return facade;
 }
 
-/// The iPhoneOS SDK root of this build, as `recordIosSdk` recorded it, or
-/// null off iOS. Every caller here holds only `b`, so the root is kept by
-/// name on the build itself (`named_lazy_paths`), made once.
+/// The SDK root of this build's target, as `recordSdkRoot` recorded it, or
+/// null for a target that needs none. Every caller here holds only `b`, so
+/// the root is kept by name on the build itself (`named_lazy_paths`).
 fn iosSdkPath(b: *std.Build) ?std.Build.LazyPath {
-    return b.named_lazy_paths.get(ios_sdk_root_name);
+    return b.named_lazy_paths.get(sdk_root_name);
 }
 
-/// The name `recordIosSdk` keeps the SDK root under.
-const ios_sdk_root_name = "crane-ios-sdk-root";
+/// The name `recordSdkRoot` keeps the SDK root under.
+const sdk_root_name = "crane-sdk-root";
 
-/// Record the iPhoneOS SDK root for an iOS build: `-Dios-sdk=<path>` when
-/// given, else the root `xcrun` names, asked at make time (build_probe
-/// sdk-root links it into the cache): an answer the configure cache cannot
-/// track is never asked at configure time (`check-configure-cache`). No SDK
-/// fails that step, naming the option.
+/// Record the SDK root of a target whose libc Zig does not find: the path
+/// `option` (the build option `option_name`) gives, else the root the
+/// machine's SDK tools name for the target, asked at make time (build_probe
+/// sdk-root links it into the cache) - a program's answer is never asked at
+/// configure time (`check-configure-cache`). No SDK fails that step, naming
+/// the option.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
 /// path fails as missing libc headers rather than as a missing SDK. The option
 /// is for a machine whose xcode-select names the Command Line Tools, which
 /// have no iPhoneOS SDK: the pool hosts are set up that way and link their
 /// Xcode's SDK at ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
-fn recordIosSdk(b: *std.Build, option: ?[]const u8, build_probe: *std.Build.Step.Compile) std.Build.LazyPath {
+fn recordSdkRoot(b: *std.Build, target: std.Build.ResolvedTarget, option: ?[]const u8, option_name: []const u8, build_probe: *std.Build.Step.Compile) std.Build.LazyPath {
     const root: std.Build.LazyPath = if (option) |path| .{ .cwd_relative = path } else asked: {
         const run = b.addRunArtifact(build_probe);
-        run.setName("find the iPhoneOS SDK");
-        run.addArgs(&.{ "sdk-root", "--sdk=iphoneos", "--option=ios-sdk" });
+        run.setName("find the target's SDK");
+        const triple = target.result.zigTriple(b.allocator) catch @panic("OOM");
+        run.addArgs(&.{ "sdk-root", b.fmt("--target={s}", .{triple}), b.fmt("--option={s}", .{option_name}) });
         const out = run.addOutputDirectoryArg("sdk");
         // Its answer is the machine's: asked on every build.
         run.has_side_effects = true;
         break :asked out.path(b, "root");
     };
-    b.addNamedLazyPath(ios_sdk_root_name, root);
+    b.addNamedLazyPath(sdk_root_name, root);
     return root;
 }
 
@@ -2983,11 +2985,12 @@ pub fn build(b: *std.Build) void {
     //
     // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
     // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
-    // with Xcode - at make time (recordIosSdk).
+    // with Xcode - asked at make time (recordSdkRoot).
     // -Dios-sdk: the SDK root used instead of xcrun's (declared here once;
     // check-ios passes it to its sub-build).
-    const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
-    const ios_sdk: ?std.Build.LazyPath = if (target.result.os.tag == .ios) recordIosSdk(b, ios_sdk_option, build_probe) else null;
+    const sdk_option_name = "ios-sdk";
+    const ios_sdk_option = b.option([]const u8, sdk_option_name, "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
+    const ios_sdk: ?std.Build.LazyPath = if (target.result.os.tag == .ios) recordSdkRoot(b, target, ios_sdk_option, sdk_option_name, build_probe) else null;
 
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
@@ -6141,8 +6144,9 @@ pub fn build(b: *std.Build) void {
     // (`b.dependOnFileContents`, `b.dependOnDirectoryContents`). A configure
     // that reads anything else - a file or directory it did not declare, a
     // program's answer - has to poison the cache, and then every `zig build`
-    // configures afresh: 1.1 s on Linux and 1.6 s on macOS against 0.03 s and
-    // 0.085 s for a cached one (lanes impls9 and cfg1, 2026-11-17). So nothing
+    // configures afresh: 1.1 s and 1.6 s on the pool's two hosts against
+    // 0.03 s and 0.085 s for a cached one (lanes impls9 and cfg1,
+    // 2026-11-17). So nothing
     // here may poison it: what the configure reads of the checkout is a
     // tracked input, and what it would ask the machine is asked at make time.
     // Nor may a cached configuration replay the environment of the build
@@ -6155,8 +6159,10 @@ pub fn build(b: *std.Build) void {
     const configure_environment_step = b.step("check-configure-environment", "Fail on any Run step this configuration gives an environment of its own (check-configure-cache builds it under each flag set)");
     // The flag sets: the gates' own, and each one under which the configure
     // used to read the checkout or ask the machine (the one-binary layout's
-    // module roots, git, curl-config, xcrun). This build's engine for every
-    // set but the iOS target's, which takes its own default.
+    // module roots, git, the system libcurl's features), with this build's
+    // engine. (A cross target's SDK root is asked at make time as well -
+    // recordSdkRoot - and is held by the platform's build side when that
+    // moves out of this file.)
     const engine_flag = b.fmt("-Dengine={t}", .{engine.name});
     for ([_][]const []const u8{
         &.{engine_flag},
@@ -6164,7 +6170,6 @@ pub fn build(b: *std.Build) void {
         &.{ engine_flag, "-Dsanitize-thread" },
         &.{ engine_flag, "-Dverify-base=HEAD" },
         &.{ engine_flag, "-Dsystem-curl" },
-        &.{"-Dtarget=aarch64-ios"},
     }) |flags| {
         const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed" });
         sub_build.setName(b.fmt("configure this build with --cache-poison=disallowed {s}", .{std.mem.join(b.allocator, " ", flags) catch @panic("OOM")}));

@@ -15,10 +15,13 @@
 //!         -Dsystem-curl: warn when the system libcurl lacks WebSockets
 //!         (`curl-config --features`). A warning, never a failure: the
 //!         option is a legitimate shortcut for work that opens no WebSocket.
-//!     build_probe sdk-root --sdk=<name> --option=<build option> <out dir>
-//!         The root of the named SDK (`xcrun --sdk <name> --show-sdk-path`),
-//!         linked as <out dir>/root: the build hands modules paths under it.
-//!         No such SDK fails the step, saying which option names the root.
+//!     build_probe sdk-root --target=<zig triple> --option=<build option> <out dir>
+//!         The root of the Apple SDK for that target (`xcrun --sdk <name>
+//!         --show-sdk-path`, the name the target's OS and ABI give, as Zig's
+//!         std.zig.system.darwin.getSdk names it), linked as <out dir>/root:
+//!         the build hands modules paths under it. No such SDK fails the step,
+//!         saying which option names the root. The build names the target,
+//!         never the SDK: what an OS's SDK is called is this tool's to know.
 //!     build_probe verify-base --ref=<ref> --zig=<zig> -- <zig build arguments>
 //!         -Dverify-base: the *_test.zig files under tests/ that `git diff
 //!         <ref>...HEAD` adds or changes (the WPT checkout's excepted), then
@@ -48,19 +51,24 @@ pub fn main(init: std.process.Init) !void {
         return curlWebSockets(arena, io);
     }
     if (std.mem.eql(u8, mode, "sdk-root")) {
-        var sdk: ?[]const u8 = null;
+        var triple: ?[]const u8 = null;
         var option: ?[]const u8 = null;
         var out: ?[]const u8 = null;
         for (rest.items) |arg| {
-            if (std.mem.startsWith(u8, arg, "--sdk=")) {
-                sdk = arg["--sdk=".len..];
+            if (std.mem.startsWith(u8, arg, "--target=")) {
+                triple = arg["--target=".len..];
             } else if (std.mem.startsWith(u8, arg, "--option=")) {
                 option = arg["--option=".len..];
             } else if (out == null) {
                 out = arg;
             } else usage();
         }
-        return sdkRoot(arena, io, sdk orelse usage(), option orelse usage(), out orelse usage());
+        const parts = tripleParts(triple orelse usage());
+        const sdk = sdkName(parts.os, parts.abi) orelse {
+            say(io, "error: no Apple SDK for the target {s}\n", .{triple.?});
+            std.process.exit(2);
+        };
+        return sdkRoot(arena, io, sdk, option orelse usage(), out orelse usage());
     }
     if (std.mem.eql(u8, mode, "verify-base")) {
         var ref: ?[]const u8 = null;
@@ -84,7 +92,7 @@ pub fn main(init: std.process.Init) !void {
 fn usage() noreturn {
     std.debug.print(
         \\usage: build_probe curl-websockets
-        \\       build_probe sdk-root --sdk=<name> --option=<build option> <out dir>
+        \\       build_probe sdk-root --target=<zig triple> --option=<build option> <out dir>
         \\       build_probe verify-base --ref=<ref> --zig=<zig> -- <zig build arguments>
         \\
     , .{});
@@ -145,6 +153,37 @@ fn curlWebSockets(arena: std.mem.Allocator, io: std.Io) void {
 // ============================================================================
 // sdk-root
 // ============================================================================
+
+/// The OS and ABI tags of a Zig target triple, `<arch>-<os>[.<versions>][-<abi>[.<version>]]`
+/// (std.Target.zigTriple); the ABI is "none" when the triple names none.
+pub fn tripleParts(triple: []const u8) struct { os: []const u8, abi: []const u8 } {
+    var it = std.mem.splitScalar(u8, triple, '-');
+    _ = it.next();
+    const os = it.next() orelse "";
+    const abi = it.next() orelse "none";
+    return .{
+        .os = os[0 .. std.mem.indexOfScalar(u8, os, '.') orelse os.len],
+        .abi = abi[0 .. std.mem.indexOfScalar(u8, abi, '.') orelse abi.len],
+    };
+}
+
+/// The name xcrun knows the SDK of a target by, from its OS and ABI tags
+/// (Zig's `std.Target.Os.Tag` and `Abi` names), as Zig's
+/// std.zig.system.darwin.getSdk names it; null for an OS with no Apple SDK.
+pub fn sdkName(os: []const u8, abi: []const u8) ?[]const u8 {
+    const simulator = std.mem.eql(u8, abi, "simulator");
+    const names = [_]struct { os: []const u8, device: []const u8, simulator: []const u8 }{
+        .{ .os = "macos", .device = "macosx", .simulator = "macosx" },
+        .{ .os = "ios", .device = "iphoneos", .simulator = "iphonesimulator" },
+        .{ .os = "tvos", .device = "appletvos", .simulator = "appletvsimulator" },
+        .{ .os = "watchos", .device = "watchos", .simulator = "watchsimulator" },
+        .{ .os = "visionos", .device = "xros", .simulator = "xrsimulator" },
+    };
+    for (names) |n| {
+        if (std.mem.eql(u8, os, n.os)) return if (simulator) n.simulator else n.device;
+    }
+    return null;
+}
 
 /// The SDK root in `xcrun --show-sdk-path`'s output, or null when it names
 /// none.
@@ -248,6 +287,29 @@ test "a feature is a whole token of curl-config's list, case ignored" {
     // A token that merely contains the name is not it.
     try testing.expect(!hasFeature("WebSocketsX\nXWebSockets\n", "WebSockets"));
     try testing.expect(!hasFeature("", "WebSockets"));
+}
+
+test "a triple's OS and ABI tags, without their versions" {
+    const device = tripleParts("aarch64-ios.15.0...18.0-none");
+    try testing.expectEqualStrings("ios", device.os);
+    try testing.expectEqualStrings("none", device.abi);
+    const simulator = tripleParts("aarch64-ios-simulator");
+    try testing.expectEqualStrings("simulator", simulator.abi);
+    const glibc = tripleParts("x86_64-linux.6.1...6.12-gnu.2.39");
+    try testing.expectEqualStrings("linux", glibc.os);
+    try testing.expectEqualStrings("gnu", glibc.abi);
+    const bare = tripleParts("aarch64-macos");
+    try testing.expectEqualStrings("macos", bare.os);
+    try testing.expectEqualStrings("none", bare.abi);
+}
+
+test "the SDK a target's OS and ABI name, as Zig's getSdk names it; none for another OS" {
+    try testing.expectEqualStrings("iphoneos", sdkName("ios", "none").?);
+    try testing.expectEqualStrings("iphonesimulator", sdkName("ios", "simulator").?);
+    try testing.expectEqualStrings("macosx", sdkName("macos", "none").?);
+    try testing.expectEqualStrings("xros", sdkName("visionos", "none").?);
+    try testing.expectEqual(@as(?[]const u8, null), sdkName("linux", "gnu"));
+    try testing.expectEqual(@as(?[]const u8, null), sdkName("", "none"));
 }
 
 test "the SDK root is xcrun's output trimmed; an empty answer is none" {
