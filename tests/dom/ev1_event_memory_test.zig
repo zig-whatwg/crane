@@ -78,6 +78,9 @@ test "a dispatch keeps 32 path items of 72 bytes in its frame" {
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(dom.event_dispatch.PathItem));
     try std.testing.expectEqual(@as(usize, 32), DispatchPath.inline_capacity);
     // The header: the allocator, the length, the heap items, the touch
-    // targets and their count, the current target and its generation.
-    try std.testing.expectEqual(@as(usize, 32 * 72 + 96), @sizeOf(DispatchPath));
+    // targets and their count, the current target and its generation. 88
+    // bytes since the touch targets carry the path's references on them
+    // (lane ev2: a std.MultiArrayList is one word smaller than the plain
+    // list it replaced, 96 bytes then).
+    try std.testing.expectEqual(@as(usize, 32 * 72 + 88), @sizeOf(DispatchPath));
 }

@@ -110,7 +110,9 @@ pub const PathItem = struct {
     /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): on the
     /// invocation target, and on the item's relatedTarget when it differs
     /// from the previous item's. The shadow-adjusted targets and the items'
-    /// `target`s are always some item's invocation target, held there.
+    /// `target`s are always some item's invocation target, held there. The
+    /// items' touch targets are held beside the targets themselves
+    /// (`DispatchPath.TouchTarget`).
     /// Chainless (`node_holds.CountedRef`), so an item may move; taken by
     /// `DispatchPath.hold` once the path is built and let go by
     /// `DispatchPath.releaseHolds` when dispatch ends. SHADOW MODE: counted
@@ -213,6 +215,26 @@ pub const DispatchPath = struct {
     /// Source/WebCore/dom/EventPath.h).
     pub const inline_capacity = 32;
 
+    /// One retargeted touch target of one run of the path's touch targets,
+    /// with the path's counted reference on it while dispatch runs. A touch
+    /// target is retargeted against each tree the path enters, so it can be
+    /// a node on no item of the path - the host of a shadow tree the path
+    /// never enters - which nothing else holds once the touch's own target
+    /// has left that tree. WebKit's EventContext keeps its retargeted touch
+    /// lists counted (`RefPtr<TouchList> m_touches`, m_targetTouches,
+    /// m_changedTouches: Source/WebCore/dom/EventContext.h), and Gecko's
+    /// chain item an array of counted targets (EventTargetChainItem's
+    /// mRetargetedTouchTargets, dom/events/EventDispatcher.cpp). Two arrays
+    /// in one allocation (std.MultiArrayList): the targets stay one slice
+    /// (`touchTargetsOf`), and the path's header keeps its size.
+    pub const TouchTarget = struct {
+        target: *runtime.Instance,
+        /// Taken by `hold`, let go by `releaseHolds`, as an item's
+        /// `invocation_ref`. A touch target that is not a node (a Window)
+        /// is not counted (decision D3).
+        ref: node_holds.CountedRef = .{},
+    };
+
     /// Serves the items past `inline_capacity` and the touch targets.
     allocator: std.mem.Allocator,
     /// How many items the path has.
@@ -223,7 +245,7 @@ pub const DispatchPath = struct {
     /// Every item's touch targets, run after run (`PathItem.touch_start`),
     /// each `touch_count` long. Empty, and never allocated, for every event
     /// but a TouchEvent.
-    touch_targets: std.ArrayList(*runtime.Instance),
+    touch_targets: std.MultiArrayList(TouchTarget),
     /// How many touch targets the event has: the length of every item's
     /// touch target list.
     touch_count: u32,
@@ -297,12 +319,13 @@ pub const DispatchPath = struct {
     /// `item`'s touch target list.
     pub fn touchTargetsOf(self: *const DispatchPath, item: *const PathItem) []const *runtime.Instance {
         if (self.touch_count == 0) return &.{};
-        return self.touch_targets.items[item.touch_start..][0..self.touch_count];
+        return self.touch_targets.items(.target)[item.touch_start..][0..self.touch_count];
     }
 
     /// Take the path's counted references (each item's `invocation_ref`
-    /// and `related_ref`) once dom.event_path has built it; `releaseHolds`
-    /// lets them go when dispatch ends.
+    /// and `related_ref`, and one on every touch target of every run) once
+    /// dom.event_path has built it; `releaseHolds` lets them go when
+    /// dispatch ends.
     pub fn hold(self: *DispatchPath) void {
         var previous_related: ?*runtime.Instance = null;
         for (self.items()) |*item| {
@@ -311,17 +334,14 @@ pub const DispatchPath = struct {
                 if (related != previous_related) item.related_ref.take(related, instance_bridge.getNodeBase(@ptrCast(related)));
             }
             previous_related = item.related_target;
-            // TODO(refcount 5g): each item's touch target list takes its
-            // references here. It is no longer always empty: a TouchEvent's
-            // constructor fills the event's list (TouchEvent's impl), so a
-            // TouchEvent's path names retargeted touch targets - nodes that
-            // can be in other trees than the path's - with no count of the
-            // path's. Until then only "nothing is freed under a callback"
-            // keeps them for the dispatch (EventTarget's impl, `Listeners`:
-            // the first of the walk's two protections; lane lk1 found the
-            // gap on 2026-11-16 and queued it). WebKit's EventContext holds
-            // them (`RefPtr<TouchList> m_touches`), and Gecko's chain item
-            // (`mRetargetedTouchTargets`, an array of `RefPtr<EventTarget>`).
+        }
+        // The touch targets, once per run: the items of one tree share a
+        // run. Nothing is counted for an event that is not a TouchEvent -
+        // the list is empty and was never allocated.
+        if (self.touch_targets.len == 0) return;
+        const touch = self.touch_targets.slice();
+        for (touch.items(.target), touch.items(.ref)) |target, *ref| {
+            ref.take(target, instance_bridge.getNodeBase(@ptrCast(target)));
         }
     }
 
@@ -333,6 +353,9 @@ pub const DispatchPath = struct {
             item.invocation_ref.release(item.invocation_target);
             if (item.related_target) |related| item.related_ref.release(related);
         }
+        if (self.touch_targets.len == 0) return;
+        const touch = self.touch_targets.slice();
+        for (touch.items(.target), touch.items(.ref)) |target, *ref| ref.release(target);
     }
 };
 
@@ -766,8 +789,9 @@ test "a dispatch path keeps its first items inline, grows past them, and keeps e
     var start: u32 = 0;
     for (&targets, 0..) |*target, i| {
         if (i % 4 == 0) {
-            start = @intCast(path.touch_targets.items.len);
-            try path.touch_targets.appendSlice(std.testing.allocator, &.{ target, &targets[0] });
+            start = @intCast(path.touch_targets.len);
+            try path.touch_targets.append(std.testing.allocator, .{ .target = target });
+            try path.touch_targets.append(std.testing.allocator, .{ .target = &targets[0] });
         }
         try path.append(.{
             .invocation_target = target,
