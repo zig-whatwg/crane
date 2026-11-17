@@ -9,4 +9,6 @@
 
 **Fix**: In a new or wiped mirror: build the base, then capture and build the base AGAIN (prove.sh with `BASE=<label>` and the base commit as its first label), and prove the commits against that second capture. If a commit's B shows compiles, rebuild its tree once more before reading anything into them: a compile that is a hit on the second build was the cache settling, not the commit.
 
+**Status (2026-11-16, lane build5)**: confirmed on two new mirrors - the first rebuild of main's tree after their cold base recompiled 31 + 1 + 20 (chat.local) and 31 + 1 + 1 (server1) compiles - and narrowed: in those same mirrors, a WIPED cache rebuilt cold and then built again at once was all cache hits the second time on both OSes (97 of 97 compile steps, 11 of 11 artifacts hash-equal to the cold build). In both recompiling cases the mirror was new and the native test step ran between the cold build and the rebuild; which of the two matters is not known. The fix stands: prove against a base whose second build was all cache hits.
+
 **Takeaway**: **Warm means built twice. Prove against a base whose second build was all cache hits; a mirror's first rebuild after a cold build recompiles engine-linked executables once with no change at all, and on macOS changes their hashes.**
