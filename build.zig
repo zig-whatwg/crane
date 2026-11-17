@@ -1381,8 +1381,6 @@ const suite_browser_line = "pub const browser: ?type = @import(\"browser\");";
 const FlaggedConfiguration = struct {
     display: []const u8,
     path_file: std.Build.LazyPath,
-    /// The configure.
-    run: *std.Build.Step.Run,
 
     fn of(b: *std.Build, engine: *const engine_build.Engine, flags: []const []const u8) FlaggedConfiguration {
         const display = std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
@@ -1396,7 +1394,7 @@ const FlaggedConfiguration = struct {
         configure.setCwd(b.path("."));
         // The sub-configure decides; this step always asks it.
         configure.has_side_effects = true;
-        return .{ .display = display, .path_file = configure.captureStdOut(.{}), .run = configure };
+        return .{ .display = display, .path_file = configure.captureStdOut(.{}) };
     }
 };
 
@@ -1419,6 +1417,29 @@ fn addConfigurationsAgree(b: *std.Build, tool: *std.Build.Step.Compile, what: []
     // the build graph does not track.
     check.has_side_effects = true;
     return check;
+}
+
+/// Fail `check` for each Run step `top` reaches that carries an environment
+/// map of its own. `Run.setEnvironmentVariable` (and `getEnvMap`) copies the
+/// WHOLE configure-time environment into the configuration, and Zig 0.17's
+/// configure cache does not key on the environment: a cached configuration
+/// hands every later build the environment of the build that configured it
+/// (`CRANE_TEST_STATE=report` on a later run would not reach that step). A
+/// variable a program needs is passed as its argument instead - the test
+/// launcher's `--child-env=NAME=VALUE` sets it in the processes it starts
+/// (lane cfg1).
+fn checkNoEnvironmentCopies(b: *std.Build, check: *std.Build.Step) void {
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    for (b.top_level_steps.values()) |top| stack.append(b.allocator, &top.step) catch @panic("OOM");
+    while (stack.pop()) |step| {
+        if ((seen.getOrPut(b.allocator, step) catch @panic("OOM")).found_existing) continue;
+        if (step.cast(std.Build.Step.Run)) |run| if (run.environ_map != null) check.dependOn(&b.addFail(b.fmt(
+            "the Run step '{s}' carries the configure-time environment (Run.setEnvironmentVariable copies all of it, and a cached configuration replays it): pass the variable as an argument instead (the test launcher's --child-env=NAME=VALUE)",
+            .{step.name},
+        )).step);
+        for (step.dependencies.items) |dependency| stack.append(b.allocator, dependency) catch @panic("OOM");
+    }
 }
 
 fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: *const engine_build.Engine, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
@@ -2253,7 +2274,11 @@ fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Bui
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
     run.setCwd(b.path("."));
-    run.setEnvironmentVariable("CRANE_TEST_ENGINE_EARLY", "0");
+    // Through the launcher (--child-env), never the Run step's environment:
+    // Zig 0.17 copies the whole configure-time environment into a Run step
+    // that sets one variable, and a cached configuration would hand later
+    // builds that stale environment.
+    run.addArg("--child-env=CRANE_TEST_ENGINE_EARLY=0");
     if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
     return run;
 }
@@ -6109,19 +6134,31 @@ pub fn build(b: *std.Build) void {
     // 0.085 s for a cached one (lanes impls9 and cfg1, 2026-11-17). So nothing
     // here may poison it: what the configure reads of the checkout is a
     // tracked input, and what it would ask the machine is asked at make time.
-    // This check holds it: the build root configured
-    // with `--cache-poison=disallowed`, under which the configure panics at
-    // the first poisoning call, naming it - nothing is built.
-    const configure_cache_step = b.step("check-configure-cache", "Check that no configure of this build poisons Zig's configure cache: configures with --cache-poison=disallowed for the flag sets whose configure reads the checkout (nothing is built)");
-    for ([_][]const []const u8{
+    // Nor may a cached configuration replay the environment of the build
+    // that made it (checkNoEnvironmentCopies). This check holds both: for
+    // each flag set, a sub-build of this root with `--cache-poison=disallowed`
+    // - under which the configure panics at the first poisoning call, naming
+    // it - builds check-configure-environment, which fails on any Run step
+    // that carries an environment of its own. Nothing else is built.
+    const configure_cache_step = b.step("check-configure-cache", "Check that no configure of this build poisons Zig's configure cache or copies the configure-time environment into a Run step: a sub-build per flag set with --cache-poison=disallowed (nothing is compiled)");
+    const configure_environment_step = b.step("check-configure-environment", "Fail on any Run step this configuration gives an environment of its own (check-configure-cache builds it under each flag set)");
+    inline for ([_][]const []const u8{
         &.{},
         &.{"-Dtest-binaries=engine"},
+        &.{"-Dsanitize-thread"},
         &.{"-Dverify-base=HEAD"},
     }) |flags| {
-        var args: std.ArrayList([]const u8) = .empty;
-        args.append(b.allocator, "--cache-poison=disallowed") catch @panic("OOM");
-        args.appendSlice(b.allocator, flags) catch @panic("OOM");
-        configure_cache_step.dependOn(&FlaggedConfiguration.of(b, &engine, args.items).run.step);
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed", b.fmt("-Dengine={t}", .{engine.name}) });
+        sub_build.setName(b.fmt("configure this build with --cache-poison=disallowed {s}", .{std.mem.join(b.allocator, " ", flags) catch @panic("OOM")}));
+        sub_build.addArgs(flags);
+        // The parent's local cache; the global one travels in the
+        // environment (the build command takes no --global-cache-dir).
+        sub_build.addArgs(&.{ "-j2", "--cache-dir" });
+        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        sub_build.setCwd(b.path("."));
+        // The sub-build decides; this step always asks it.
+        sub_build.has_side_effects = true;
+        configure_cache_step.dependOn(&sub_build.step);
     }
 
     // ========================================================================
@@ -6887,6 +6924,10 @@ pub fn build(b: *std.Build) void {
         thread_local_check.expectExitCode(0);
         step.dependOn(&thread_local_check.step);
     };
+
+    // No Run step replays the configure-time environment from a cached
+    // configuration (checkNoEnvironmentCopies): part of check-configure-cache.
+    checkNoEnvironmentCopies(b, configure_environment_step);
 
     // -Dsystem-curl: whatever is built, the system libcurl's WebSocket check
     // runs with it, as the configure-time warning it replaces did.

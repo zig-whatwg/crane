@@ -143,6 +143,13 @@ const Args = struct {
     /// suite whose own executable links no V8, so the many-Browsers variant
     /// never ran one beside it there.
     plain: []const []const u8 = &.{},
+    /// Variables set in every process the launcher starts (`--child-env=
+    /// NAME=VALUE`, repeatable), over its own environment. A build sets a
+    /// child's variable this way rather than in the launcher's environment:
+    /// Zig 0.17 copies the whole configure-time environment into a Run step
+    /// that sets one variable, and a cached configuration then hands a later
+    /// build that stale environment (build.zig's engine-late run; lane cfg1).
+    child_env: []const [2][]const u8 = &.{},
 
     fn parse(arena: std.mem.Allocator, args: []const []const u8) !Args {
         var a: Args = .{};
@@ -153,6 +160,7 @@ const Args = struct {
         var groups: std.ArrayList(Group) = .empty;
         var plain: std.ArrayList([]const u8) = .empty;
         var filters: std.ArrayList([]const u8) = .empty;
+        var child_env: std.ArrayList([2][]const u8) = .empty;
         for (args) |arg| {
             if (value(arg, "--jobs=") orelse value(arg, "--parallel=")) |v| {
                 // --parallel= too: the pool's crane-measure.sh rewrites it to
@@ -220,6 +228,10 @@ const Args = struct {
             } else if (value(arg, "--plain=")) |v| {
                 if (v.len == 0) return error.EmptyPlainPrefix;
                 try plain.append(arena, v);
+            } else if (value(arg, "--child-env=")) |v| {
+                const eq = std.mem.indexOfScalar(u8, v, '=') orelse return error.BadChildEnv;
+                if (eq == 0) return error.BadChildEnv;
+                try child_env.append(arena, .{ v[0..eq], v[eq + 1 ..] });
             } else if (std.mem.eql(u8, arg, "--listen=-")) {
                 a.listen = true;
             } else if (std.mem.startsWith(u8, arg, "--")) {
@@ -239,6 +251,7 @@ const Args = struct {
         a.groups = groups.items;
         a.plain = plain.items;
         a.filters = filters.items;
+        a.child_env = child_env.items;
         // Verify mode is a run of its own, with its own report: never the
         // build runner's protocol.
         if (a.verify.len != 0 and a.listen) return error.VerifyInServerMode;
@@ -347,6 +360,7 @@ const usage =
     \\  --sanitize-thread the executable is built with ThreadSanitizer: TSAN_OPTIONS=halt_on_error=1 in
     \\                    every child, so a race crashes its process and is blamed on the running test
     \\  --tsan-suppressions=FILE  with --sanitize-thread: the suppression file (proven false positives only)
+    \\  --child-env=NAME=VALUE  set NAME in every process the launcher starts (repeatable)
     \\  --many-browsers   the many-Browsers variant: every test runs beside a busy Browser on another
     \\                    thread (CRANE_TEST_MANY_BROWSERS=1; the Crane test runner starts it)
     \\  --alone=NAME      with --many-browsers: a test (full name) that needs its process to itself runs in
@@ -403,6 +417,22 @@ test "args: options, defaults, and errors" {
     try std.testing.expectError(error.MissingExecutable, Args.parse(arena, &.{}));
     try std.testing.expectError(error.UnknownOption, Args.parse(arena, &.{ "x", "--bogus" }));
     try std.testing.expectError(error.UnexpectedArgument, Args.parse(arena, &.{ "x", "y" }));
+}
+
+test "args: --child-env repeats, each NAME=VALUE split at its first '='; no '=' or no name is refused" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const a = try Args.parse(arena, &.{ "x", "--child-env=CRANE_TEST_ENGINE_EARLY=0", "--child-env=OPTS=a=b", "--child-env=EMPTY=" });
+    try std.testing.expectEqual(@as(usize, 3), a.child_env.len);
+    try std.testing.expectEqualStrings("CRANE_TEST_ENGINE_EARLY", a.child_env[0][0]);
+    try std.testing.expectEqualStrings("0", a.child_env[0][1]);
+    try std.testing.expectEqualStrings("OPTS", a.child_env[1][0]);
+    try std.testing.expectEqualStrings("a=b", a.child_env[1][1]);
+    try std.testing.expectEqualStrings("", a.child_env[2][1]);
+    try std.testing.expectEqual(@as(usize, 0), (try Args.parse(arena, &.{"x"})).child_env.len);
+    try std.testing.expectError(error.BadChildEnv, Args.parse(arena, &.{ "x", "--child-env=NOVALUE" }));
+    try std.testing.expectError(error.BadChildEnv, Args.parse(arena, &.{ "x", "--child-env==1" }));
 }
 
 test "args: --filter repeats, each a pattern; an empty one is refused" {
@@ -613,7 +643,9 @@ pub fn main(init: std.process.Init) !void {
     };
 
     const started = Io.Clock.Timestamp.now(io, .awake);
-    const md = child_mod.queryMetadata(gpa, io, &child_argv) catch |err|
+    var listing_environ = try child_mod.listingEnvironment(gpa, init.environ_map, args.child_env);
+    defer if (listing_environ) |*env| env.deinit();
+    const md = child_mod.queryMetadataIn(gpa, io, &child_argv, if (listing_environ) |*env| env else null) catch |err|
         launcherFailure(out, "could not list the tests of {s}: {f}", .{ name, exe, child_mod.FmtError{ .err = err } });
     defer md.deinit(gpa);
 
@@ -744,6 +776,7 @@ pub fn main(init: std.process.Init) !void {
     var test_environ = try child_mod.testEnvironment(gpa, init.environ_map, .{
         .sanitize_thread = if (args.sanitize_thread) .{ .suppressions = args.tsan_suppressions } else null,
         .many_browsers = args.many_browsers,
+        .child_env = args.child_env,
     });
     defer test_environ.deinit();
     executor.environ_map = &test_environ;
@@ -752,6 +785,7 @@ pub fn main(init: std.process.Init) !void {
     var alone_environ = try child_mod.testEnvironment(gpa, init.environ_map, .{
         .sanitize_thread = if (args.sanitize_thread) .{ .suppressions = args.tsan_suppressions } else null,
         .many_browsers = false,
+        .child_env = args.child_env,
     });
     defer alone_environ.deinit();
     executor.alone_environ_map = &alone_environ;

@@ -493,6 +493,8 @@ pub const EnvironmentOptions = struct {
     sanitize_thread: ?SanitizeThread = null,
     /// The many-Browsers variant (`many_browsers_variable`).
     many_browsers: bool = false,
+    /// `--child-env` pairs: set last, so each wins.
+    child_env: []const [2][]const u8 = &.{},
 
     pub const SanitizeThread = struct {
         /// The suppression file: only proven false positives of the
@@ -533,12 +535,30 @@ pub fn testEnvironment(gpa: Allocator, base: *const std.process.Environ.Map, opt
         try env.put("TSAN_OPTIONS", value);
     }
     if (options.many_browsers) try env.put(many_browsers_variable, "1");
+    for (options.child_env) |pair| try env.put(pair[0], pair[1]);
+    return env;
+}
+
+/// The environment of the process `queryMetadata` lists the tests in: the
+/// launcher's own with the `--child-env` pairs, as the test children have
+/// them; null - the launcher's own, inherited - when there are none. The
+/// caller owns the result.
+pub fn listingEnvironment(gpa: Allocator, base: *const std.process.Environ.Map, child_env: []const [2][]const u8) Allocator.Error!?std.process.Environ.Map {
+    if (child_env.len == 0) return null;
+    var env = try base.clone(gpa);
+    errdefer env.deinit();
+    for (child_env) |pair| try env.put(pair[0], pair[1]);
     return env;
 }
 
 /// Lists the tests of `argv[0]` without running any.
 pub fn queryMetadata(gpa: Allocator, io: Io, argv: []const []const u8) !Metadata {
-    var child = try std.process.spawn(io, .{ .argv = argv, .stdin = .pipe, .stdout = .pipe, .stderr = .inherit });
+    return queryMetadataIn(gpa, io, argv, null);
+}
+
+/// `queryMetadata` in the environment `environ_map` (null: the launcher's).
+pub fn queryMetadataIn(gpa: Allocator, io: Io, argv: []const []const u8, environ_map: ?*const std.process.Environ.Map) !Metadata {
+    var child = try std.process.spawn(io, .{ .argv = argv, .stdin = .pipe, .stdout = .pipe, .stderr = .inherit, .environ_map = environ_map });
     var mr_buf: Io.File.MultiReader.Buffer(1) = undefined;
     var mr: Io.File.MultiReader = undefined;
     mr.init(gpa, io, mr_buf.toStreams(), &.{child.stdout.?});
@@ -851,6 +871,40 @@ test "the test environment: the launcher's own, with the time zone and locale fi
     try testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
     // The launcher's own map is not changed.
     try testing.expectEqualStrings("UTC", base.get("TZ").?);
+}
+
+test "the test environment: each --child-env pair is set last, over the launcher's own and the fixed ones" {
+    const gpa = testing.allocator;
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    try base.put("CRANE_TEST_ENGINE_EARLY", "1");
+    try base.put("PATH", "/usr/bin:/bin");
+    const pairs = [_][2][]const u8{ .{ "CRANE_TEST_ENGINE_EARLY", "0" }, .{ "TZ", "UTC" } };
+    var env = try testEnvironment(gpa, &base, .{ .child_env = &pairs });
+    defer env.deinit();
+    try testing.expectEqualStrings("0", env.get("CRANE_TEST_ENGINE_EARLY").?);
+    try testing.expectEqualStrings("UTC", env.get("TZ").?);
+    try testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
+    try testing.expectEqualStrings("1", base.get("CRANE_TEST_ENGINE_EARLY").?);
+    // None given: the test environment as it was.
+    var plain = try testEnvironment(gpa, &base, .{});
+    defer plain.deinit();
+    try testing.expectEqualStrings("1", plain.get("CRANE_TEST_ENGINE_EARLY").?);
+    try testing.expectEqualStrings("America/Los_Angeles", plain.get("TZ").?);
+}
+
+test "the listing process's environment: the launcher's own with the --child-env pairs, or the launcher's own untouched when there are none" {
+    const gpa = testing.allocator;
+    var base: std.process.Environ.Map = .init(gpa);
+    defer base.deinit();
+    try base.put("PATH", "/usr/bin:/bin");
+    try testing.expect((try listingEnvironment(gpa, &base, &.{})) == null);
+    const pairs = [_][2][]const u8{.{ "CRANE_TEST_ENGINE_EARLY", "0" }};
+    var env = (try listingEnvironment(gpa, &base, &pairs)).?;
+    defer env.deinit();
+    try testing.expectEqualStrings("0", env.get("CRANE_TEST_ENGINE_EARLY").?);
+    try testing.expectEqualStrings("/usr/bin:/bin", env.get("PATH").?);
+    try testing.expect(base.get("CRANE_TEST_ENGINE_EARLY") == null);
 }
 
 test "the test environment: libc scribbles what it frees, unless CRANE_POISON_FREES=0 turns all poisoning off" {
