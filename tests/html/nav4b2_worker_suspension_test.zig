@@ -412,18 +412,28 @@ test "ownersOf lists a shared worker's owner realms" {
 // Lock contention reaches the holder
 // ============================================================================
 
-/// A lock environment whose contention hook counts.
+/// A lock environment whose contention hook counts, and answers `doomed`:
+/// whether its page can never be restored (lane locks1: the registry then
+/// breaks its lock at once).
 const Holder = struct {
     contended: usize = 0,
     events: usize = 0,
+    granted: usize = 0,
+    not_granted: usize = 0,
+    doomed: bool = false,
 
     fn delivery(self: *Holder) web_locks.Delivery {
         return .{ .ctx = self, .post = post, .deinit = deinitCtx, .contention = contention };
     }
 
-    fn post(ctx: *anyopaque, _: web_locks.Event) void {
+    fn post(ctx: *anyopaque, event: web_locks.Event) void {
         const self: *Holder = @ptrCast(@alignCast(ctx));
         self.events += 1;
+        switch (event.kind) {
+            .granted => self.granted += 1,
+            .not_granted => self.not_granted += 1,
+            .stolen => {},
+        }
     }
 
     fn deinitCtx(_: *anyopaque) void {}
@@ -431,7 +441,7 @@ const Holder = struct {
     fn contention(ctx: *anyopaque) bool {
         const self: *Holder = @ptrCast(@alignCast(ctx));
         self.contended += 1;
-        return true;
+        return self.doomed;
     }
 };
 
@@ -470,6 +480,55 @@ test "a request that cannot be granted, or a query, tells the holders of the loc
     _ = try registry.request(client_asker, "shared", .{ .mode = .shared });
     try testing.expectEqual(@as(usize, 0), shared_holder.contended);
     registry.unregister(client_shared);
+    registry.unregister(client_asker);
+    registry.unregister(client_holder);
+}
+
+test "locks1: a doomed holder's lock breaks at once - a request, an ifAvailable one too, is granted; a query breaks nothing" {
+    var registry = web_locks.Registry.init(testing.allocator);
+    defer registry.deinit();
+    var holder: Holder = .{};
+    var asker: Holder = .{};
+    const client_holder = try registry.register(&realm_a, &realm_a, origin, holder.delivery());
+    const client_asker = try registry.register(&realm_b, &realm_b, origin, asker.delivery());
+
+    _ = try registry.request(client_holder, "res", .{});
+    _ = try registry.request(client_holder, "kept", .{});
+    try testing.expectEqual(@as(usize, 2), holder.granted);
+    // Not doomed: an ifAvailable request is refused, and nothing breaks.
+    _ = try registry.request(client_asker, "res", .{ .if_available = true });
+    try testing.expectEqual(@as(usize, 1), asker.not_granted);
+    try testing.expectEqual(@as(usize, 0), asker.granted);
+    // Doomed (its page can never be restored): a query tells it, and
+    // breaks nothing - the snapshot lists both of its locks.
+    holder.doomed = true;
+    var snapshot = try registry.snapshot(client_asker, testing.allocator);
+    try testing.expectEqual(@as(usize, 2), snapshot.held.len);
+    snapshot.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), holder.contended);
+    // An ifAvailable request: the doomed holder's lock breaks at once, and
+    // the request is granted - its other lock stays.
+    _ = try registry.request(client_asker, "res", .{ .if_available = true });
+    try testing.expectEqual(@as(usize, 1), asker.not_granted);
+    try testing.expectEqual(@as(usize, 1), asker.granted);
+    snapshot = try registry.snapshot(client_holder, testing.allocator);
+    try testing.expectEqual(@as(usize, 2), snapshot.held.len);
+    for (snapshot.held) |info| try testing.expect(std.mem.eql(u8, info.name, "res") == std.mem.eql(u8, &info.client_id, &client_asker.id));
+    snapshot.deinit(testing.allocator);
+    // A plain request breaks it too, and a request that waited behind the
+    // broken lock since before its holder was doomed is granted first, in
+    // queue order.
+    holder.doomed = false;
+    _ = try registry.request(client_asker, "kept", .{});
+    try testing.expectEqual(@as(usize, 1), asker.granted);
+    holder.doomed = true;
+    var third: Holder = .{};
+    var realm_c: u8 = 0;
+    const client_third = try registry.register(&realm_c, &realm_c, origin, third.delivery());
+    _ = try registry.request(client_third, "kept", .{});
+    try testing.expectEqual(@as(usize, 2), asker.granted);
+    try testing.expectEqual(@as(usize, 0), third.granted);
+    registry.unregister(client_third);
     registry.unregister(client_asker);
     registry.unregister(client_holder);
 }
