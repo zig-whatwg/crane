@@ -131,6 +131,7 @@ src/dom/template_contents.zig hooks 1 G H decl:25197d739fa0326e
 src/dom/token_lists.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/top_layer.zig access 1 G H decl:c19d41e6a86b16fe
 src/dom/top_level_traversables.zig implementation 1 G H decl:ff436fb405f84ffb
+src/dom/touch_points.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/traversal.zig node_iterator 1 G H decl:47df97f8ace79ab7
 src/dom/traversal.zig tree_walker 1 G H decl:76a8736caafa1390
 src/dom/tree_ordered_map.zig implementation 1 G H decl:3ff874087001da34
@@ -142,7 +143,7 @@ src/dom/url_patterns.zig implementation 1 G H decl:2ed8289caf50c1eb
 src/dom/user_activation_state.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/visibility_state.zig implementation 1 G H decl:ff436fb405f84ffb
 src/dom/window_documents.zig implementation 1 G H decl:ff436fb405f84ffb
-src/dom/window_globals.zig implementation 1 G H decl:ff436fb405f84ffb
+src/dom/window_globals.zig hooks 1 G H decl:25197d739fa0326e
 src/fetch/algorithms/scheme_fetch.zig blob_resolver 1 G H decl:485ae4e747cdbb77
 src/fetch/network/curl_backend.zig global_init_count 1 G P-res decl:3796f88280404836
 src/fetch/network/curl_backend.zig global_init_mutex 1 G P-res decl:ee0617868871b920
@@ -184,7 +185,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_live_globals 1 C++G D decl:8708a17b3f67e
 src/runtime/engines/v8/v8_wrapper.cpp g_live_object_globals 1 C++G D decl:a18531103135ac2e
 src/runtime/engines/v8/v8_wrapper.cpp g_live_string_globals 1 C++G D decl:a93d8e66ce89e7ad
 src/runtime/engines/v8/v8_wrapper.cpp g_live_weak_callback_data 1 C++G D decl:52ad3c53f48eabde
-src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:43ae14593f4c516f
+src/runtime/engines/v8/v8_wrapper.cpp g_next_context_id 1 C++G P-const decl:a5ebf2ebf05b930c
 src/runtime/engines/v8/v8_wrapper.cpp g_obj_src 1 C++G D decl:c1b7892f6b94e401
 src/runtime/engines/v8/v8_wrapper.cpp g_platform 1 C++G P-res decl:87e8989b4deeb11f
 src/runtime/engines/v8/v8_wrapper.cpp g_protocol_code_generation 1 C++G P-res decl:3939617ef7b5bc1b
@@ -198,7 +199,7 @@ src/runtime/engines/v8/v8_wrapper.cpp g_read_only_heap 1 C++G P-res decl:ef76fa6
 src/runtime/engines/v8/v8_wrapper.cpp g_shadow_realm_dispatch 1 C++G P-res decl:3e97a3febf0b56ed
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_handles 1 C++G P-res decl:77bf73695012c0f2
 src/runtime/engines/v8/v8_wrapper.cpp g_snapshot_mode 1 C++G P-res decl:3a7ea45af2c82bea
-src/runtime/engines/v8/v8_wrapper.cpp pendingFinalizers.map 1 C++TL P-res decl:426d74a7907711fc
+src/runtime/engines/v8/v8_wrapper.cpp pendingFinalizers.map 1 C++TL P-res decl:c03b6af3043f9819
 src/runtime/engines/v8/v8_wrapper.cpp realmTagCount.count 1 C++G P-res decl:574b275d85715643
 src/runtime/engines/v8/v8_wrapper.cpp realmTagLock.lock 1 C++G P-res decl:563f7b01234ab878
 src/runtime/engines/v8/v8_wrapper.cpp realmTaggedHandles.map 1 C++G I/engine decl:2aab0d876a6579e1

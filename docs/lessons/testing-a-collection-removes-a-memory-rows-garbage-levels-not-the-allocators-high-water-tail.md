@@ -1,0 +1,16 @@
+# Testing: A forced collection removes a memory row's garbage levels, not the allocator's high-water tail - measure a new figure on one binary against itself first
+
+**Date**: 2026-11-17
+**Lesson**: A new way to read a noisy figure is tested on a pair whose answer is known: the SAME binary as both sides. The spread of that pair's ratios is the method's own error, and the per-launch values show what the method still does not remove.
+
+**Why**: With macOS malloc's reclaim ring off, a perf row's steady memory still reads on two or three levels, because the figure is taken half a second after the work and counts garbage waiting for a collection. A median of 9 launches a side then moves by which side had more launches on a level. A footprint read after a collection the page asks for (`perf_bench run --collected`, `footprint_collected`) cannot be moved by the collector's schedule - but it is still the process's dirty pages, and those include pages the heap's largest size left in the system allocator, which macOS 26 and later never take back from a running process.
+
+**What Happened**: Lane tl2 built the collected mark, the levels of both sides together and `perf_bench cost`, and ran one console of main 4aa01442561 as both sides on the attributes and streams pages (chat.local, 9 launches a side, ring off). The steady figure of the plain pass read 1.000 to 1.016 over 15 rows for a true 1.000: the rows after `streams.reader` sat at 265-267, 270-272 or 276-281 MB by launch, and one side simply had more launches in the middle. The collected figure read 0.998 to 1.002 on the same rows. Its launches told the rest: on the attributes page one level, 42.5-43.0 MB in all 18; on the streams page 81.2-82.7 MB in 13 launches and 92-97 MB in 5, and a launch that was high after `streams.reader` stayed high on every later row. The row's peak varied from 389 to 403 MB between launches, and what a higher peak dirtied stayed. So the forced collection ended the levels that are garbage and left a tail that is the allocator's. Had the figure been taken to the user as "one level" on the strength of the design alone, the first lane with 5 launches of 9 in that tail would have read +12%.
+
+**Fix**:
+1. Before a new figure is used to judge anything, run it A against A: one binary, two pin names, the window's usual launch count. Report the range of the ratios (the method's error) beside the old figure's range from the same window.
+2. Print every launch's value for the rows the method was built for, not only the medians: a tail in 5 launches of 18 is invisible in a median and decides the next window.
+3. State what the figure still contains. Here: live memory plus what the allocator keeps of the launch's largest heap; a build that raises a row's peak can raise its collected figure in some launches without keeping one byte more.
+4. Read a real pair from an earlier lane's saved journals with the new tool as well (lane impls8's window: 1.116 by the medians; 1.004 and 0.995 level against level).
+
+**Takeaway**: **Test a measuring method on a pair with a known answer and read its launches, not its medians: the collected figure cut an A/A pair's error from 1.6% to 0.2%, and still has a tail the design did not predict.**

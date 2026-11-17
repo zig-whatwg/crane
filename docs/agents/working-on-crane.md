@@ -57,6 +57,15 @@ FFI boundary, build/codegen): there is no spec. Read the code, and prefer a
 measurement over an assumption — `gc_bench`, `leaks --atExit`, the live-handle
 counters. Guessing at ownership here has shipped use-after-frees twice.
 
+**A change's cost is a pair, read by one command** (docs/performance.md, "A lane's
+cost pair"): the tip against its base, both consoles built in the lane's own
+mirror, in a timed window on chat.local - a default pass for time and
+instructions, and a memory-only pass with `MallocLargeCache=0` on both sides and
+ALWAYS `--collected` (so that a memory row over the bar can be cleared by its
+collected figure as well as by its levels), then `perf_bench cost --default=<D>
+--memory=<M>`. Its verdict is AGENTS.md's 3% rule, and its table, with every
+launch of every row above the bar, goes into the merge report.
+
 ## Doing a task: batching the gates
 
 ### Batch the expensive gates (the user, 2026-11-01)
