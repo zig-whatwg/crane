@@ -332,14 +332,13 @@ pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
-// XPath 1.0: the grammar's types. Evaluation over platform nodes is the
-// XPathExpression interface's impl (its own parser and evaluator); the old
-// evaluator here, over NodeBase and the WithBase types, had no caller and
-// went with those types (lane wb1).
+// XPath 1.0: the grammar's types. Parsing and evaluation over platform nodes
+// are the XPathExpression interface's impl (its own parser and evaluator).
+// The old evaluator here, over NodeBase and the WithBase types, had no
+// caller and went with those types (lane wb1); the tokenizer and parser
+// that fed it had none either and went after it (lane mp1).
 pub const xpath = struct {
-    pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
-    pub const parser = @import("xpath/parser.zig");
 };
 
 pub const boundary_points = @import("boundary_points.zig");
