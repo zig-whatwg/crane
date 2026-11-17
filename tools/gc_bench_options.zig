@@ -83,6 +83,35 @@ pub const Bench = struct {
     /// (its `object_globals_from.ObjectTemplate_NewInstance` counter) between
     /// the first and last reading, over the cycles.
     wrappers_per_cycle: bool = false,
+    /// The row's shape, where its figure depends on it: how many node
+    /// wrappers BELOW its kept tree's root are alive at every collection
+    /// (`holdsShape`). Null: the row keeps no tree whose wrappers decide
+    /// what it measures.
+    kept_wrappers: ?usize = null,
+
+    /// The node wrappers a run may keep beyond `kept_wrappers`: the tree's
+    /// root, the document, and the last few a batch's loop still names when
+    /// the reading is taken.
+    pub const kept_wrappers_slack = 8;
+
+    /// Whether a run held the row's shape: `kept`, the node wrappers alive
+    /// at its last reading less those alive at its first (the engine's
+    /// `node_wrappers` counter), is the tree's `kept_wrappers` and at most
+    /// `kept_wrappers_slack` more. A row without a shape always holds it.
+    ///
+    /// Why a row has one (lane nm2's cost window, lesson
+    /// testing-a-cost-row-that-wraps-and-forgets-is-two-valued.md): a
+    /// wrapper script neither holds nor has added anything to may be dropped
+    /// by a young collection, but one still there at the next full
+    /// collection is promoted, and the walk over its tree keeps it from then
+    /// on. A row that wraps a kept tree's elements and forgets them
+    /// therefore ran with 2 wrappers or with about 6,000, by which
+    /// collection came first, and read two values on one binary.
+    pub fn holdsShape(self: *const Bench, kept: i64) bool {
+        const want = self.kept_wrappers orelse return true;
+        const least: i64 = @intCast(want);
+        return kept >= least and kept <= least + kept_wrappers_slack;
+    }
 
     /// Whether a run collects before each reading (gc_bench's `--gc`).
     pub const Gc = enum {
@@ -139,16 +168,37 @@ pub const benches = [_]Bench{
         .every = 10_000,
         .gc = .never,
     },
+    // The full-collection pause over a kept tree, in the two fixed forms a
+    // collector cannot change (lane tl2; lane nm2's finding): every element
+    // wrapped and its wrapper MODIFIED - a wrapper script has added a
+    // property to is never dropped by a young collection, so all 10,100 are
+    // walked in every collection - and no element wrapped below the root.
+    // Their difference is the walk's cost per wrapped node. Until
+    // 2026-11-17 `pause` wrapped each element and forgot it (`void e`): 2
+    // wrappers or about 6,000 survived, by which collection came first.
     .{
         .name = "pause",
-        .what = "a detached tree of 10,100 elements, every one wrapped and kept by script through its root, " ++
-            "and one element made and dropped per cycle: the full-collection pause",
+        .what = "a detached tree of 10,100 elements, every one wrapped, its wrapper given a property (so no collection " ++
+            "drops it) and kept by script through the root, and one element made and dropped per cycle: the full-collection pause",
         .body = "void (globalThis.pauseTree ??= (() => { const r = document.createElement('div'); " ++
             "r.innerHTML = ('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100); " ++
-            "for (const e of r.querySelectorAll('*')) void e; return r; })()); void document.createElement('span');",
+            "for (const e of r.querySelectorAll('*')) e.pauseKept = true; return r; })()); void document.createElement('span');",
         .cycles = 100_000,
         .every = 10_000,
         .gc = .forced,
+        .kept_wrappers = 10_100,
+    },
+    .{
+        .name = "pause-bare",
+        .what = "the same detached tree of 10,100 elements kept by script through its root, none of them wrapped, " ++
+            "and one element made and dropped per cycle: the full-collection pause over unwrapped nodes",
+        .body = "void (globalThis.pauseTree ??= (() => { const r = document.createElement('div'); " ++
+            "r.innerHTML = ('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100); " ++
+            "return r; })()); void document.createElement('span');",
+        .cycles = 100_000,
+        .every = 10_000,
+        .gc = .forced,
+        .kept_wrappers = 0,
     },
     .{
         .name = "div",
@@ -447,4 +497,54 @@ test "the counts default to the measurement's, and a count given wins" {
     try std.testing.expectEqual(@as(usize, 3000), countArg(&.{ "gc_bench", "3000", "1000", "--bench=wide" }, 1, wide.cycles));
     try std.testing.expectEqual(@as(usize, 1000), countArg(&.{ "gc_bench", "3000", "1000", "--bench=wide" }, 2, wide.every));
     try std.testing.expectEqual(@as(usize, 10_000), countArg(&.{"gc_bench"}, 1, 10_000));
+}
+
+test "the pause row holds its tree's wrappers whatever a collector does first: each is given a property" {
+    // Lane nm2's cost window: the row wrapped each element and forgot it
+    // (`void e`), so a young collection could drop the wrapper and a full
+    // one promoted whichever were left - 2 or about 6,000 by which came
+    // first, +9.7% instructions on one binary.
+    const pause = benchNamed("pause").?;
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "for (const e of r.querySelectorAll('*')) e.pauseKept = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "void e;") == null);
+    // 100 sections of 100 paragraphs: 10,100 elements below the root.
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100)") != null);
+    try std.testing.expectEqual(@as(?usize, 10_100), pause.kept_wrappers);
+    // The run checks it: all 10,100 and the few a reading may add (the
+    // root, the document, the batch's last elements).
+    try std.testing.expect(pause.holdsShape(10_100));
+    try std.testing.expect(pause.holdsShape(10_102));
+    try std.testing.expect(pause.holdsShape(10_100 + Bench.kept_wrappers_slack));
+    // The two values the old row read are neither of them its shape.
+    try std.testing.expect(!pause.holdsShape(2));
+    try std.testing.expect(!pause.holdsShape(5_908));
+    try std.testing.expect(!pause.holdsShape(6_101));
+    try std.testing.expect(!pause.holdsShape(10_099));
+    try std.testing.expect(!pause.holdsShape(10_100 + Bench.kept_wrappers_slack + 1));
+    try std.testing.expect(!pause.holdsShape(-1));
+}
+
+test "pause-bare is the same tree with no wrapper below its root, and says so" {
+    const pause = benchNamed("pause").?;
+    const bare = benchNamed("pause-bare").?;
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "querySelectorAll") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "void document.createElement('span');") != null);
+    try std.testing.expectEqual(pause.cycles, bare.cycles);
+    try std.testing.expectEqual(pause.every, bare.every);
+    try std.testing.expectEqual(Bench.Gc.forced, bare.gc);
+    try std.testing.expectEqual(@as(?usize, 0), bare.kept_wrappers);
+    try std.testing.expect(bare.holdsShape(0));
+    try std.testing.expect(bare.holdsShape(2));
+    try std.testing.expect(!bare.holdsShape(5_908));
+    try std.testing.expectEqualStrings(bare.body, cycleBody(&.{ "gc_bench", "--bench=pause-bare" }));
+}
+
+test "a row with no kept tree has no shape to hold" {
+    for ([_][]const u8{ "wide", "qsa-deep", "wrapper-churn-nogc", "div", "text", "clone-drop", "parse-drop" }) |name| {
+        const bench = benchNamed(name).?;
+        try std.testing.expectEqual(@as(?usize, null), bench.kept_wrappers);
+        try std.testing.expect(bench.holdsShape(0));
+        try std.testing.expect(bench.holdsShape(123_456));
+    }
 }

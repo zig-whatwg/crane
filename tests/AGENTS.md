@@ -345,3 +345,10 @@ result its A/B changed (newly passing, newly failing, newly blocking), repeated
 It exits 1, and its tally (`<dir>/repeat-tally.txt`) says `verify: UNSTABLE`,
 naming each file, harness status and subtest with the statuses it had, when any
 of them differed between the ten runs; a consistent failure is not a flake.
+A Crane test's subtests are in the tally by name (the result stream keeps
+`tests/wpt/crane/` since 2026-11-17, lane tl2; only the report for upload
+leaves it out), and every file is also held to its journal record's counts: a
+file whose passed, failed, timed-out or not-run counts differ between runs is
+UNSTABLE whether or not the stream names the subtest that moved - which also
+holds a frozen runner from before that date, used with `--repeat-with`, whose
+stream has no line for a Crane test.
