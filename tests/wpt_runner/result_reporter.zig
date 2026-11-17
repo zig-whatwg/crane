@@ -1039,18 +1039,55 @@ test "WptReport names each run by its manifest URL" {
     try testing.expectEqualStrings("/e/f.html?b", report.results.items[3].test_path);
 }
 
-test "WptReport leaves Crane's own tests out" {
+test "the result stream keeps Crane's own tests; the report for upload leaves them out" {
+    // Lane tl2 (lane flk2's finding): the repeat tally and the build
+    // comparison read subtests from the result stream, so a Crane test left
+    // out of it had no subtest anyone could see flip. Only the upload must
+    // not carry it (tests/wpt/crane/ is not WPT).
     const testing = std.testing;
     const allocator = testing.allocator;
 
     var report = WptReport.init(allocator);
     defer report.deinit();
 
+    var theirs = try test_harness.TestResult.init(allocator, "dom/thing.html");
+    defer theirs.deinit(allocator);
+    theirs.status = .ok;
+    try report.addResult(theirs);
+
     var res = try test_harness.TestResult.init(allocator, "crane/dom/thing.html");
     defer res.deinit(allocator);
     res.status = .ok;
+    try res.subtests.append(allocator, .{
+        .name = try allocator.dupe(u8, "ours"),
+        .status = .pass,
+        .message = null,
+    });
     try report.addResult(res);
-    try testing.expectEqual(@as(usize, 0), report.results.items.len);
+
+    // The stream's lines for the file: the Crane test, with its subtest.
+    const streamed = report.resultsSince(1);
+    try testing.expectEqual(@as(usize, 1), streamed.len);
+    try testing.expectEqualStrings("/crane/dom/thing.html", streamed[0].test_path);
+    try testing.expectEqual(@as(usize, 1), streamed[0].subtests.items.len);
+    var line: std.Io.Writer.Allocating = .init(allocator);
+    defer line.deinit();
+    try streamed[0].writeJsonLine(&line.writer, allocator);
+    try testing.expect(std.mem.indexOf(u8, line.written(), "\"test\": \"/crane/dom/thing.html\"") != null);
+    try testing.expect(std.mem.indexOf(u8, line.written(), "\"name\": \"ours\"") != null);
+
+    // The report written for upload: the WPT test, and nothing of Crane's.
+    var json: std.ArrayList(u8) = .empty;
+    defer json.deinit(allocator);
+    try report.writeJsonToArrayList(&json);
+    try testing.expect(std.mem.indexOf(u8, json.items, "/dom/thing.html") != null);
+    try testing.expect(std.mem.indexOf(u8, json.items, "crane/") == null);
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, json.items, .{});
+    defer parsed.deinit();
+    try testing.expectEqual(@as(usize, 1), parsed.value.object.get("results").?.array.items.len);
+    // Its summary counts what it uploads.
+    try testing.expectEqual(@as(usize, 1), report.getSummary().total_tests);
+    try testing.expectEqual(@as(usize, 0), report.getSummary().total_subtests);
 }
 
 test "RunInfo.detect: no .crane-upstream-revision means revision is empty" {

@@ -700,3 +700,83 @@ test "verify: the report names every unstable file and subtest with each status 
     try s.write(&quiet.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
     try testing.expect(std.mem.indexOf(u8, quiet.written(), "verify: STABLE over 2 runs") != null);
 }
+
+// ---------------------------------------------------------------------------
+// A file whose result stream has no line for it (lane tl2; lane flk2's
+// finding). A runner from before 2026-11-17 streamed no Crane test
+// (tests/wpt/crane/), so a Crane test's ten runs tallied as "0 subtests
+// passed in every run" and --verify could not see one of its subtests flip.
+// The journal has each run's counts for every file: the tally reads them.
+
+const crane_ok = "{\"index\":0,\"path\":\"crane/x.html\",\"context\":\"\",\"status\":\"OK\",\"passed\":3,\"failed\":0}\n";
+const crane_one_failed = "{\"index\":0,\"path\":\"crane/x.html\",\"context\":\"\",\"status\":\"OK\",\"passed\":2,\"failed\":1}\n";
+
+test "a file with no result-stream line is counted from its journal records, and the report says so" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    for (0..10) |_| try t.addRun(.this, crane_ok, "");
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    const text = out.written();
+    // Never the bare "0 subtests passed in every run" of a series whose
+    // every run passed three.
+    try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts: 3 subtests passed in every run") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "30 subtest results have no line in the result stream") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "verify: STABLE over 10 runs") != null);
+    try testing.expectEqual(@as(u8, 0), t.verifyExitCode());
+}
+
+test "verify: a file whose journal counts differ between runs is unstable, though no stream line names its subtests" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    for (0..9) |_| try t.addRun(.this, crane_ok, "");
+    try t.addRun(.this, crane_one_failed, "");
+    try testing.expectEqual(@as(usize, 1), t.unstable(.this));
+    try testing.expectEqual(@as(u8, 1), t.verifyExitCode());
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "verify: UNSTABLE - 1 with a status that differs between the 10 runs") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "file crane/x.html: OK 10; its subtest counts differ: 3 passed, 0 failed, 0 timed out, 0 not run in 9 runs; 2 passed, 1 failed, 0 timed out, 0 not run in 1 run") != null);
+    // Only the two that passed in all ten runs.
+    try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts: 2 subtests passed in every run") != null);
+}
+
+test "verify: a file with a flaky subtest is one unstable file and one unstable subtest when the stream names it" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    const pass3 = "{\"test\": \"/crane/x.html\", \"status\": \"OK\", \"message\": null, \"duration\": 1, \"subtests\": [{\"name\": \"a\", \"status\": \"PASS\", \"message\": null}, {\"name\": \"b\", \"status\": \"PASS\", \"message\": null}, {\"name\": \"c\", \"status\": \"PASS\", \"message\": null}]}\n";
+    const c_failed = "{\"test\": \"/crane/x.html\", \"status\": \"OK\", \"message\": null, \"duration\": 1, \"subtests\": [{\"name\": \"a\", \"status\": \"PASS\", \"message\": null}, {\"name\": \"b\", \"status\": \"PASS\", \"message\": null}, {\"name\": \"c\", \"status\": \"FAIL\", \"message\": \"late\"}]}\n";
+    for (0..9) |_| try t.addRun(.this, crane_ok, pass3);
+    try t.addRun(.this, crane_one_failed, c_failed);
+    // The subtest by name, and its file by its counts.
+    try testing.expectEqual(@as(usize, 2), t.unstable(.this));
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = null, .verify = true });
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "subtest /crane/x.html | c: PASS 9, FAIL 1") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "2 subtests passed in every run") != null);
+    // Every result was named: no note about the journals.
+    try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts") == null);
+}
+
+test "a file's journal counts that are the same in every run are stable, whatever they are" {
+    var t = Tally.init(testing.allocator);
+    defer t.deinit();
+    for (0..3) |_| try t.addRun(.this, crane_one_failed, "");
+    try testing.expectEqual(@as(usize, 0), t.unstable(.this));
+    // The other runner's runs are its own: a difference between the two
+    // runners is the comparison, not a flake of either.
+    for (0..3) |_| try t.addRun(.with, crane_ok, "");
+    try testing.expectEqual(@as(usize, 0), t.unstable(.this));
+    try testing.expectEqual(@as(usize, 0), t.unstable(.with));
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try t.write(&out.writer, .{ .this = "tip/wpt_runner", .with = "base/wpt_runner", .verify = true });
+    const text = out.written();
+    try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts (this): 2 subtests passed in every run") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "by the journals' counts (with): 3 subtests passed in every run") != null);
+}
