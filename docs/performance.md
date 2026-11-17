@@ -463,11 +463,19 @@ command reads them:
 perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<D> --round=<n> --runs=7 \
   --pin=crane.pin --pin=crane_base.pin
 # the memory pass: memory only, the allocator's deferred-reclamation ring off on BOTH sides, and
-# each timed workload's footprint read once more after a full collection
+# ALWAYS --collected: each timed workload's footprint read once more after a full collection
 MallocLargeCache=0 perf_bench run --suite=... --root=tests/perf --out=<M> --round=<n> --runs=9 \
   --pin=crane.pin --pin=crane_base.pin --collected
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
+
+**The memory pass is always run with `--collected`** (the integrator, 2026-11-17), so that
+clearing (b) below is available for every row: a row whose launches form no two tight groups -
+one stray launch far above a level is enough (lane impls8's window: one launch at 67.7 MB above a
+level of 62 to 63 MB) - cannot be cleared by its levels, and without a collected figure it goes
+to a ruling for nothing. In such a pass each row starts from a heap the row before it had
+collected, so its steady and peak figures are the row's own, without what earlier rows left
+uncollected; they are a pair's figures, compared only within the pass.
 
 **The rule `cost` applies** (AGENTS.md, "The 3% memory bar reads what Crane holds"; the user,
 2026-11-15 and 2026-11-17):
