@@ -171,6 +171,11 @@ fn shortValuesWaitBounded() !void {
     for (0..4) |_| try page.collect();
     const before = live(page);
 
+    // The elements alone, to take out of what follows: without it the
+    // elements' own slots and State blocks satisfy any lower bound, and the
+    // test passed on a tree that counted no value at all (lane vm1's first
+    // red run: 3 of the file's 5 tests failed, this one did not).
+    const plain = try added(page, "globalThis.p = []; for (let i = 0; i < 1000; i++) p.push(document.createElement('div')); 0;");
     // Short values, and the class names a class read splits a value into.
     const made = try added(page,
         \\globalThis.a = [];
@@ -183,11 +188,14 @@ fn shortValuesWaitBounded() !void {
         \\}
         \\0;
     );
-    // At least each title's record (8 + 14 bytes: a block of 32) and each
-    // class value's.
-    try testing.expect(made >= count * (32 + 32));
+    // Over the elements themselves: at least each title's record (8 + 14
+    // bytes: a block of 32) and each class value's.
+    if (made < plain + count * (32 + 32)) {
+        std.debug.print("1,000 elements with a title and a class value add {d} B to the figure, 1,000 plain ones {d} B: expected at least {d} B more in the figure\n", .{ made, plain, count * (32 + 32) });
+        return error.FigureDiffers;
+    }
 
-    try page.run("a = null; 0;");
+    try page.run("a = p = null; 0;");
     for (0..4) |_| try page.collect();
     // A record with no attribute left waits in its table's ring for the
     // next attribute with its value - at most 16 KB of them
