@@ -122,6 +122,39 @@ pub const ContextEntry = struct {
     /// of it can reach this entry again; the entry is retired, never freed,
     /// so the flag stays readable for the manager's lifetime.
     destroying: bool = false,
+
+    /// Whether a wrap in this realm must build its interface's interface
+    /// object first, and which it has (`InterfaceObjects`).
+    interface_objects: InterfaceObjects = .{},
+};
+
+/// [interface_prototypes] A wrapper's [[Prototype]] is the realm's interface
+/// prototype object as V8 instantiates the interface's template in the
+/// realm's context (v8_wrapper.cpp v8_FunctionTemplate_NewWrapper) - the same
+/// object as the realm's interface object's `prototype`. In a realm that
+/// built every interface object when it was made, that object already has
+/// everything WebIDL puts on it. A realm that builds them when script first
+/// reads them (`lazy`: interface_bindings.registerAllTemplatesOnly's
+/// .lazy_follows - a frame's realm, a hydrated worker's) builds one for a
+/// wrap too, the first time it wraps an object of the interface: script that
+/// never read the global - or replaced it before reading it - still gets the
+/// whole prototype. Blink's per-context constructor map is the same record
+/// (V8PerContextData::constructor_map_, ConstructorForType, Chromium
+/// 157.0.8103.51: an interface object is built on the first wrap or the
+/// first read, whichever comes first). Written and read on the agent's
+/// thread, as the entry is.
+pub const InterfaceObjects = struct {
+    /// The realm builds its interface objects on first read.
+    lazy: bool = false,
+    /// In a lazy realm: the templates whose interface object a wrap has
+    /// built, or found built. From the entry's allocator; freed when the
+    /// entry is retired (`deinit`).
+    built: std.AutoHashMapUnmanaged(*v8.FunctionTemplate, void) = .empty,
+
+    pub fn deinit(self: *InterfaceObjects, allocator: std.mem.Allocator) void {
+        self.built.deinit(allocator);
+        self.* = .{};
+    }
 };
 
 /// One agent's realms: the context manager's record of every context it
@@ -304,7 +337,10 @@ fn endRealms(state: *Realms, queue: ?*runtime.gc.DeferredTeardown) void {
     // (protocol_agents.removeAgent); until then it reads as an agent
     // with no realms. What a walk-out above left is freed unended.
     var left = state.contexts.valueIterator();
-    while (left.next()) |entry| state.alloc().destroy(entry.*);
+    while (left.next()) |entry| {
+        entry.*.interface_objects.deinit(entry.*.allocator);
+        state.alloc().destroy(entry.*);
+    }
     state.retired.deinit(state.alloc());
     state.contexts.deinit(state.alloc());
     state.* = .{ .allocator = state.allocator };
@@ -1092,6 +1128,7 @@ fn retireEntry(state: *Realms, entry: *ContextEntry) void {
         v8.v8_GlobalAnchor_Dispose(ref);
         entry.global_anchor = null;
     }
+    entry.interface_objects.deinit(entry.allocator);
     entry.runtime_ctx.clearV8WrapperCacheStorage();
     entry.runtime_ctx.engine_ctx = null;
     entry.runtime_ctx.engine_gone = true;
