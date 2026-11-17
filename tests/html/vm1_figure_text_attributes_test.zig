@@ -206,3 +206,70 @@ fn shortValuesWaitBounded() !void {
 test "short attribute values and their class names are counted, and at most the table's waiting ring stays after their elements" {
     try h.onFreshThread(shortValuesWaitBounded);
 }
+
+fn sharedAcrossDocumentsReturns() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    for (0..4) |_| try page.collect();
+    const before = live(page);
+    const dying_before = page.browser.scope.dom_memory.dying;
+
+    // Every value here is over 256 bytes - each class token too - so no
+    // record waits in the table's ring when its last attribute goes
+    // (dom.attribute_values Parking.max_record_bytes): the figure must come
+    // back to exactly where it began.
+    try page.run(
+        \\globalThis.long = (c) => c.repeat(300);
+        \\globalThis.d1 = document.implementation.createHTMLDocument('one');
+        \\globalThis.d2 = document.implementation.createHTMLDocument('two');
+        \\// Parsed in d1: 200 elements sharing one attribute list and its
+        \\// three value records, each with a text block of its own.
+        \\d1.body.innerHTML = ('<p class="' + long('k') + ' ' + long('m') + '" title="' + long('t') + '" data-n="' + long('n') + '">' + long('x') + '</p>').repeat(200);
+        \\if (!d1.body.firstChild.classList.contains(long('m'))) throw new Error('no class');
+        \\// Imported into d2: clones share their sources' lists and records.
+        \\for (const p of d1.body.children) d2.body.appendChild(d2.importNode(p, true));
+        \\// Cloned inside d2, comments beside them.
+        \\for (const p of [...d2.body.children]) { d2.body.appendChild(p.cloneNode(true)); d2.body.appendChild(d2.createComment(long('c'))); }
+        \\// Adopted into the page's document: the blocks move with their nodes.
+        \\globalThis.host = document.createElement('div');
+        \\for (const p of [...d1.body.children].slice(0, 100)) host.appendChild(document.adoptNode(p));
+        \\document.body.appendChild(host);
+        \\0;
+    );
+    if (live(page) <= before) return error.NothingCounted;
+    try page.run(
+        \\// Writers: each makes a shared list its element's own, and gives
+        \\// values back or takes new ones.
+        \\let i = 0;
+        \\for (const p of host.children) {
+        \\  if (i % 4 === 0) p.setAttribute('title', long('u') + i);
+        \\  if (i % 4 === 1) p.removeAttribute('data-n');
+        \\  if (i % 4 === 2) p.className = long('k') + ' ' + long('z') + i;
+        \\  if (i % 4 === 3) { p.firstChild.splitText(150); p.firstChild.appendData(long('y')); p.normalize(); }
+        \\  i++;
+        \\}
+        \\for (const p of [...d2.body.children].slice(0, 100)) { while (p.attributes && p.attributes.length) p.removeAttribute(p.attributes[0].name); }
+        \\for (const p of [...d2.body.childNodes].slice(100, 200)) p.textContent = '';
+        \\// Half of d1's rest goes at once, the other half with its document.
+        \\for (const p of [...d1.body.children].slice(0, 50)) p.remove();
+        \\0;
+    );
+    // Everything dropped, in three steps with collections between: the
+    // page's subtree, then one document, then the other.
+    try page.run("host.remove(); host = null; 0;");
+    for (0..3) |_| try page.collect();
+    try page.run("d1 = null; 0;");
+    for (0..3) |_| try page.collect();
+    try page.run("d2 = null; long = null; 0;");
+    for (0..6) |_| try page.collect();
+    try expectBytes("after two documents and an adopted subtree that shared text and attribute blocks went", before, live(page));
+    try testing.expectEqual(dying_before, page.browser.scope.dom_memory.dying);
+    // No record is left that an attribute holds.
+    if (dom.attribute_values.tableOf(page.browser.scope)) |table| {
+        try testing.expectEqual(@as(usize, 0), table.liveCount());
+    }
+}
+
+test "text and attribute blocks made in one document, shared by clones in a second and adopted into a third leave the figure where it began" {
+    try h.onFreshThread(sharedAcrossDocumentsReturns);
+}
