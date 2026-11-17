@@ -300,52 +300,30 @@ pub fn wrapInstanceAsV8Object(
         return error.TemplateNotRegistered;
     };
 
-    // Get the InstanceTemplate and create a new object
-    // IMPORTANT: Use InstanceTemplate()->NewInstance(), NOT Function::NewInstance()
-    // Function::NewInstance() calls the constructor callback, which throws "Illegal constructor"
-    // for non-constructible interfaces like HTMLCollection and Navigator.
-    // See AGENTS.md Golden Rule #16 for details.
-    const instance_template = v8.v8_FunctionTemplate_InstanceTemplate(template);
-    // Owned handle. This is the per-element wrapper path, so leaking it here is
-    // one leaked handle for every DOM object the page creates.
-    defer v8.v8_ObjectTemplate_Dispose(instance_template);
-    const v8_object = v8.v8_ObjectTemplate_NewInstance(instance_template, context) orelse {
-        return error.ObjectCreationFailed;
-    };
-
-    // CRITICAL: Set up the prototype chain for instanceof to work correctly!
-    // ObjectTemplate::NewInstance() doesn't automatically set the prototype chain.
-    // We need to manually set __proto__ to the SAME prototype that's on the global constructor.
+    // The wrapper: a new instance of the interface's instance template
+    // (InstanceTemplate()->NewInstance(), never Function::NewInstance(), which
+    // calls the constructor callback - "Illegal constructor" for an interface
+    // with none, HTMLCollection or Navigator), its prototype set to the one
+    // script sees, `globalThis[interface_name].prototype`: NewInstance does
+    // not link the prototype chain, and the template's own function is another
+    // function with another prototype, so `instanceof` needs the global's.
+    // An interface the global does not expose gets the template's own.
     //
-    // GetPrototypeObject calls GetFunction() which creates a NEW function with a DIFFERENT
-    // prototype. For instanceof to work, we need the prototype from globalThis.InterfaceName.
-    //
-    // Create null-terminated string for C function
+    // ONE call (v8_FunctionTemplate_NewWrapper), whose one Global is the
+    // wrapper's. This ran as four calls and made three Globals a wrapper - the
+    // instance template's and the prototype's disposed straight after - for
+    // every platform object a page wraps (lane vm1: 2 of the Globals a
+    // `new ReadableStream()` made were these, for each of its three objects).
     var name_buf: [256]u8 = undefined;
-    const name_z = blk: {
+    const name_z: ?[*:0]const u8 = blk: {
         if (interface_name.len >= name_buf.len) break :blk null;
         @memcpy(name_buf[0..interface_name.len], interface_name);
         name_buf[interface_name.len] = 0;
-        break :blk @as([*:0]const u8, @ptrCast(&name_buf));
+        break :blk @ptrCast(&name_buf);
     };
-
-    // Get the prototype from the global object - this is the SAME prototype that JavaScript sees
-    // Both prototype getters allocate a fresh Global<Object> - V8's own APIs return
-    // a borrowed Local - and this runs once per wrapped DOM object, so leaking them
-    // leaks per element. `SetPrototype` converts Global to Local and stores nothing
-    // (v8_wrapper.cpp:5984-5988), so releasing straight after is correct.
-    const global_proto = if (name_z) |nz| v8.v8_GetGlobalPrototype(context, nz) else null;
-    defer if (global_proto) |p| v8.v8_Object_Dispose(p);
-
-    if (global_proto) |prototype| {
-        _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
-    } else {
-        // Fall back to GetPrototypeObject for interfaces not exposed on global
-        if (v8.v8_FunctionTemplate_GetPrototypeObject(template, context)) |prototype| {
-            defer v8.v8_Object_Dispose(prototype);
-            _ = v8.v8_Object_SetPrototype(v8_object, context, @ptrCast(prototype));
-        }
-    }
+    const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context, name_z) orelse {
+        return error.ObjectCreationFailed;
+    };
 
     // The link: the wrapper reaches its instance through an anchor on the
     // agent's C++ heap (v8::Object::Wrap; platform_anchor.zig, Blink's
@@ -384,7 +362,7 @@ pub fn wrapInstanceAsV8Object(
         break :blk proxy;
     } else v8_object;
 
-    // Note: v8_ObjectTemplate_NewInstance already returns a Global<Object>* handle,
+    // Note: v8_FunctionTemplate_NewWrapper returns a Global<Object>* handle,
     // so final_object is already persistent across HandleScopes.
 
     // ========================================

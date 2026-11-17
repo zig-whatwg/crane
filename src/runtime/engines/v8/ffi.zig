@@ -2417,6 +2417,17 @@ pub extern fn v8_FunctionTemplate_GetPrototypeObject(tpl: *FunctionTemplate, con
 /// This is necessary for `instanceof` to work correctly, because GetPrototypeObject creates a new
 /// function from the template which has a different prototype object.
 pub extern fn v8_GetGlobalPrototype(context: *Context, constructor_name: [*:0]const u8) ?*Object;
+/// A new wrapper object for an instance of the interface whose constructor
+/// template is `template`: its instance template's NewInstance with its
+/// prototype set to `globalThis[constructor_name].prototype`, or - a null
+/// name, or an interface the global does not expose - to the template's own
+/// function's prototype. One call and one Global, the wrapper's, OWNED
+/// (v8_Object_Dispose); null when the instance cannot be made. What
+/// wrapInstanceAsV8Object ran as v8_FunctionTemplate_InstanceTemplate,
+/// v8_ObjectTemplate_NewInstance, v8_GetGlobalPrototype (or
+/// v8_FunctionTemplate_GetPrototypeObject) and v8_Object_SetPrototype, each
+/// handing back a Global the caller disposed.
+pub extern fn v8_FunctionTemplate_NewWrapper(template: *FunctionTemplate, context: *Context, constructor_name: ?[*:0]const u8) ?*Object;
 
 pub extern fn v8_FunctionTemplate_Inherit(tpl: *FunctionTemplate, parent: *FunctionTemplate) void;
 pub extern fn v8_FunctionTemplate_SetPrototypeProviderTemplate(self: *FunctionTemplate, provider: *FunctionTemplate) void;

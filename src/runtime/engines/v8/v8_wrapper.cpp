@@ -10789,6 +10789,68 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
     return trackHandle(new Global<Object>(isolate, proto_obj));
 }
 
+/// A new wrapper object for an instance of the interface whose constructor
+/// template is `tpl`: InstanceTemplate()->NewInstance(), with its
+/// [[Prototype]] set to `globalThis[constructor_name].prototype` - the
+/// prototype script sees, which `instanceof` needs (v8_GetGlobalPrototype
+/// says why the template's own is not it) - or, for an interface the global
+/// does not expose (and for a null name), to the prototype of the template's
+/// own function (v8_FunctionTemplate_GetPrototypeObject). The steps
+/// template_registry.zig's wrapInstanceAsV8Object ran as four calls, in ONE
+/// HandleScope: every intermediate is a Local, and the one Global made is
+/// the wrapper's, which the caller owns. As four calls each wrap made three
+/// Globals and disposed two - the instance template's and the prototype's -
+/// for every platform object a page wraps (lane vm1: Blink's
+/// V8DOMWrapper::CreateWrapper holds them in Locals the same way). nullptr
+/// when the instance cannot be made.
+///
+/// What the lookups can run is what they ran before: the Get of the
+/// constructor on the global and of its `prototype` are ordinary [[Get]]s
+/// (a page may have replaced either with an accessor), under no TryCatch,
+/// with the context entered for NewInstance alone.
+Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context, const char* constructor_name) {
+    // The wrapper's Global is this entry point's now: gc_bench's "wrappers
+    // made per cycle" reads this count.
+    g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
+    Local<Context> ctx = context->Get(isolate);
+
+    Local<Object> object;
+    {
+        Context::Scope context_scope(ctx);
+        if (!local_tpl->InstanceTemplate()->NewInstance(ctx).ToLocal(&object)) return nullptr;
+    }
+
+    Local<Value> prototype;
+    bool found = false;
+    if (constructor_name) {
+        Local<String> name;
+        Local<Value> constructor;
+        if (String::NewFromUtf8(isolate, constructor_name, NewStringType::kInternalized).ToLocal(&name) &&
+            ctx->Global()->Get(ctx, name).ToLocal(&constructor) && constructor->IsFunction()) {
+            found = constructor.As<Function>()->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
+                prototype->IsObject();
+        } else {
+            CRANE_PROTO_MISS("[v8_FunctionTemplate_NewWrapper] %s: no constructor on the global\n", constructor_name);
+        }
+    }
+    if (!found) {
+        // Not exposed on the global: the template's own function's prototype.
+        Local<Function> function;
+        found = local_tpl->GetFunction(ctx).ToLocal(&function) &&
+            function->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
+            prototype->IsObject();
+    }
+    // The object has no anchor yet (the caller binds it next), so no cache
+    // holds it and there is nothing to tell of the change
+    // (notePlatformWrapperChanged, which v8_Object_SetPrototype calls for a
+    // wrapper a cache may already hold).
+    if (found) (void)object->SetPrototype(ctx, prototype).FromMaybe(false);
+    return trackHandle(new Global<Object>(isolate, object));
+}
+
 void v8_FunctionTemplate_RemovePrototype(Global<FunctionTemplate>* tpl) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);

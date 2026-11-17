@@ -26,7 +26,10 @@ const Entered = support.Entered;
 
 /// `value` as an Object of the entered realm - a platform object as its
 /// wrapper - or TypeError: the ECMAScript operations here take an Object.
-/// OWNED.
+/// OWNED: a Global of this call's own, so the object stays whatever the
+/// operation allocates before it reaches V8 (a key string, the value's own
+/// Global, a platform object's wrapper) - a `.handle` may be a handle its
+/// holder keeps weakly.
 fn objectOf(entered: Entered, value: JSValue) Error!*ffi.Value {
     switch (value) {
         .handle, .instance => {},
@@ -40,12 +43,52 @@ fn objectOf(entered: Entered, value: JSValue) Error!*ffi.Value {
     return object;
 }
 
+/// `objectOf` for an operation that makes NOTHING on V8's heap between this
+/// and its one wrapper call - Get and HasProperty: a `.handle` is BORROWED
+/// as it is, the caller's Global (engine.JSValue: a parameter is borrowed
+/// for the call), with no Global of the operation's own. `release` ends it.
+///
+/// Why that is the same object the clone held: nothing runs between the
+/// borrow and the wrapper function, and that function reads the Global into
+/// a Local in its own HandleScope before anything else (v8_Object_GetCatching
+/// and v8_Object_Has each begin with `object->Get(isolate)`), so the script
+/// the Get runs - a getter, a proxy trap - meets a Local whatever becomes of
+/// the caller's Global meanwhile, as it met the clone's. Set,
+/// DefinePropertyOrThrow and HasOwnProperty make a key string and a value
+/// first, which can collect: they keep `objectOf`.
+///
+/// A Global made and disposed around each Get was one of the two that a
+/// dictionary member's read cost (lane vm1: the five members of an
+/// underlying source were ten Globals a `new ReadableStream`). A platform
+/// object's wrapper is still a Global of this call's own: its cache holds
+/// it weakly, and making it can allocate.
+const BorrowedObject = struct {
+    object: *ffi.Value,
+    owned: bool,
+
+    fn of(entered: Entered, value: JSValue) Error!BorrowedObject {
+        if (support.handleOf(value)) |object| {
+            // An emptied handle (a weak one whose object was collected) has
+            // no object: what the clone's failure answered.
+            if (ffi.v8_Global_IsEmpty(object)) return error.OperationFailed;
+            if (!ffi.v8_Value_IsObject(object)) return error.TypeError;
+            return .{ .object = object, .owned = false };
+        }
+        return .{ .object = try objectOf(entered, value), .owned = true };
+    }
+
+    fn release(self: BorrowedObject) void {
+        if (self.owned) ffi.v8_Global_Dispose(self.object);
+    }
+};
+
 /// ECMAScript Get(O, P).
 pub fn getProperty(realm: Context, object: JSValue, property: []const u8) Error!Owned {
     const entered = try support.enter(realm);
     defer entered.leave();
-    const target = try objectOf(entered, object);
-    defer ffi.v8_Global_Dispose(target);
+    const operand = try BorrowedObject.of(entered, object);
+    defer operand.release();
+    const target = operand.object;
     // 1. Return ? O.[[Get]](P, O).
     return support.owned(try support.get(entered, target, property));
 }
@@ -118,8 +161,9 @@ pub fn defineOwnProperty(realm: Context, object: JSValue, property: []const u8, 
 pub fn hasProperty(realm: Context, object: JSValue, property: []const u8) Error!bool {
     const entered = try support.enter(realm);
     defer entered.leave();
-    const target = try objectOf(entered, object);
-    defer ffi.v8_Global_Dispose(target);
+    const operand = try BorrowedObject.of(entered, object);
+    defer operand.release();
+    const target = operand.object;
     // The FFI takes the key NUL-terminated.
     const key = realm.allocator.dupeSentinel(u8, property, 0) catch return error.OutOfMemory;
     defer realm.allocator.free(key);
