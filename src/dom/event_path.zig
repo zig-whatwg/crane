@@ -185,10 +185,12 @@ const Walk = struct {
         // keep theirs.
         const targets = &self.path.touch_targets;
         try targets.ensureUnusedCapacity(self.path.allocator, touch.len);
-        self.touch_start = @intCast(targets.items.len);
+        self.touch_start = @intCast(targets.len);
         self.path.touch_count = @intCast(touch.len);
         for (touch) |touch_target| {
-            targets.appendAssumeCapacity(retarget.retargetAgainst(touch_target, parent).?);
+            // The path's reference on it is taken with the items' own, once
+            // the path is built (`DispatchPath.hold`).
+            targets.appendAssumeCapacity(.{ .target = retarget.retargetAgainst(touch_target, parent).? });
         }
     }
 
@@ -268,6 +270,10 @@ pub fn build(state: *EventState, path: *DispatchPath, target: *runtime.Instance,
         .related = null,
         .target = target,
     };
+
+    // The event's touch target list names no node freed under it (the
+    // list's teardown net; a list never appended to costs one test).
+    state.touch_target_list.forgetFreed();
 
     // Step 4: "Let relatedTarget be the result of retargeting event's
     // relatedTarget against target" - and steps 6.1-6.2's touchTargets,
