@@ -6122,6 +6122,10 @@ pub fn build(b: *std.Build) void {
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine", suite_engine_line, &.{ plain, sanitized }).step);
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine, in the many-Browsers variant", suite_engine_line, &.{ many, many_sanitized }).step);
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables that can run the many-Browsers variant's busy Browser", suite_browser_line, &.{ many, many_sanitized }).step);
+        // And under the sanitizer the engine's startup programs run with the
+        // tests' suppressions: the variable is an argument of their runs
+        // (`env`, the adapter's startupRun), never missing.
+        suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "the engine's startup programs run with the tests' TSAN suppressions", tsan_suppressions_environment[0][0] ++ "=" ++ tsan_suppressions_environment[0][1], &.{ sanitized, many_sanitized }).step);
     }
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
         test_step.dependOn(suite_facts_step);
