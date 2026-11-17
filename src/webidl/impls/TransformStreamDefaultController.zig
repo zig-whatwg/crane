@@ -8,8 +8,8 @@ const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const webidl = @import("webidl");
-const js = @import("streams_js.zig");
-const st = @import("streams_transform.zig");
+const js = @import("dom").streams_js;
+const st = @import("dom").streams_transform;
 
 pub const State = interfaces.TransformStreamDefaultController.State;
 pub const InternalState = st.Controller;

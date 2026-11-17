@@ -21,8 +21,8 @@ const encoding = @import("encoding");
 const webidl = @import("webidl");
 
 // The byte stream "get stream" returns.
-const js = @import("streams_js.zig");
-const srd = @import("streams_readable.zig");
+const js = @import("dom").streams_js;
+const srd = @import("dom").streams_readable;
 
 pub const State = Blob.State;
 

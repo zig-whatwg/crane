@@ -20,7 +20,7 @@ const js = @import("streams_js.zig");
 const engine = @import("engine");
 const sw = @import("streams_writable.zig");
 /// DOM § 3.3's hook: pipeTo adds an abort algorithm to its signal.
-const abort_algorithms = @import("dom").abort_algorithms;
+const abort_algorithms = @import("abort_algorithms.zig");
 
 const Value = js.Value;
 const Realm = js.Realm;

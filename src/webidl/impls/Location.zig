@@ -74,15 +74,11 @@ const dom = @import("dom");
 const origin_domain = @import("html").origin_domain;
 
 /// What "Location-object navigate" asks of the navigable's engine.
-pub const NavigateRequest = html_core.window.iframe_integration.NavigateRequest;
+const NavigateRequest = dom.window_globals.NavigateRequest;
 
-/// Navigation callback type for Location.assign/replace/href setter.
-/// Parameters: (context_ptr, url, request) -> whether a navigable took it.
-/// The context_ptr is an opaque pointer to implementation-specific data
-/// (e.g., IFrameIntegration* for iframe contexts). The engine behind it runs
-/// "Location-object navigate" step 3 - a relevant document that is not
-/// completely loaded makes the navigation a replace - and step 4, "navigate".
-pub const NavigateCallback = *const fn (ctx: ?*anyopaque, url: []const u8, request: NavigateRequest) bool;
+/// Navigation callback type for Location.assign/replace/href setter
+/// (dom.window_globals.NavigateCallback): the navigable's "navigate".
+const NavigateCallback = dom.window_globals.NavigateCallback;
 
 /// Internal state for Location implementation
 /// Contains private data not exposed via WebIDL attributes.
@@ -267,6 +263,20 @@ const TopLevelParams = struct {
 /// `NavigationHistoryBehavior`.
 const TopLevelHistoryBehavior = enum { auto, push, replace };
 
+/// The hooks this type owns (src/dom), installed once, at process start,
+/// by crane.Process through the generated interface (docs/instances.md).
+pub fn installHooks() void {
+    // A Location's Window, navigable and URL, which the code that makes a
+    // navigable's Window wires (HTMLIFrameElement) and the engine adapter's
+    // wrapper cache reads: steps no IDL member names.
+    dom.window_globals.installLocation(.{
+        .window = &windowOf,
+        .set_window = &setWindow,
+        .set_navigable = &setNavigateCallback,
+        .set_url = &setURLFromString,
+    });
+}
+
 /// Initialize instance (creates the instance)
 pub fn init(
     allocator: std.mem.Allocator,
@@ -320,7 +330,8 @@ fn relevantWindow(realm: runtime.Context) ?*runtime.Instance {
 
 /// Update the Location's URL from a URL string
 /// Called when navigating or when setting document URL
-pub fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) !void {
+/// (dom.window_globals.setLocationUrl).
+fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) anyerror!void {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     const allocator = internal.allocator;
 
@@ -348,15 +359,20 @@ pub fn setURLFromString(instance: *runtime.Instance, url_string: []const u8) !vo
     }
 }
 
-/// Get internal state (exposed for Window impl to set URL)
-pub fn getInternalState(instance: *runtime.Instance) ?*InternalState {
-    return getInternal(instance);
+/// The Window this Location belongs to, or null: made for none, or not a
+/// Location (dom.window_globals.locationWindow). The wrapper cache keeps a
+/// window's Location's wrapper with the window.
+fn windowOf(instance: *runtime.Instance) ?*runtime.Instance {
+    if (instance.stateAs(State) == null) return null;
+    const internal = getInternal(instance) orelse return null;
+    return internal.window;
 }
 
 /// Set the associated Window for this Location.
 /// Called by Window/context initialization to establish the bi-directional link.
-/// This enables Location.assign() to access the browsing context for navigation.
-pub fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
+/// This enables Location.assign() to access the browsing context for navigation
+/// (dom.window_globals.setLocationWindow).
+fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
     const internal = getInternal(instance) orelse return;
     internal.window = window;
 }
@@ -366,7 +382,8 @@ pub fn setWindow(instance: *runtime.Instance, window: *runtime.Instance) void {
 /// Parameters:
 /// - callback: Function to call for navigation, or null to disable
 /// - context: Opaque pointer passed to callback (e.g., IFrameIntegration*)
-pub fn setNavigateCallback(
+/// (dom.window_globals.setLocationNavigable).
+fn setNavigateCallback(
     instance: *runtime.Instance,
     callback: ?NavigateCallback,
     context: ?*anyopaque,

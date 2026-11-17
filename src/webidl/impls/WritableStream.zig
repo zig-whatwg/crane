@@ -12,8 +12,8 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const WritableStream = interfaces.WritableStream;
-const js = @import("streams_js.zig");
-const sw = @import("streams_writable.zig");
+const js = @import("dom").streams_js;
+const sw = @import("dom").streams_writable;
 
 pub const State = WritableStream.State;
 pub const InternalState = sw.Stream;

@@ -16,7 +16,7 @@ const runtime = @import("runtime");
 const v8 = @import("v8");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
-const js = @import("impls").Response.streams_js;
+const js = @import("dom").streams_js;
 
 /// The test's agent: made by `open`, ended at the test's end.
 var test_agent: test_process.TestAgent = .{};
