@@ -240,9 +240,10 @@ pub const Resolved = struct {
 /// (`b.dependOnFileContents`, std/Build.zig - Zig re-runs the configure
 /// when its contents change), not a reason to poison the configuration
 /// cache, which would make every `zig build` configure afresh (batch E5 of
-/// tmp/plans/build-protocol-design.md; design 1.6). A file that cannot be
-/// read is the one case a contents dependency cannot hold - its absence,
-/// which the archive's arrival must undo - so that answer still poisons.
+/// tmp/plans/build-protocol-design.md; design 1.6). A missing file cannot
+/// be a contents dependency, but its absence is tracked too: as the listing
+/// of its nearest existing directory, which the archive's arrival changes
+/// (lane cfg1). Only a file that is there and cannot be read still poisons.
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) engine_build.Resolution(Resolved) {
     const selected = archives.select(options.version, options.build, target.result.os.tag) catch |err| return .{
         .unavailable = switch (err) {
@@ -272,16 +273,30 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
 }
 
 /// `path` (relative to the build root) read at configure time as a tracked
-/// input of the configuration (`resolve` says why); a failed read poisons
-/// the configuration cache instead, since the file's absence is no content
-/// a dependency can record.
+/// input of the configuration (`resolve` says why). A missing file is
+/// tracked through `dependOnAbsence`; a file that is there and cannot be
+/// read is the one answer nothing can track - Zig's cache would fail on it
+/// too - so that alone poisons the configuration cache.
 fn readTracked(b: *std.Build, path: []const u8) ![]u8 {
     const text = b.root.root_dir.handle.readFileAlloc(b.graph.io, path, b.allocator, .limited(1 << 16)) catch |err| {
-        b.graph.poisonCache();
+        if (err == error.FileNotFound) dependOnAbsence(b, path) else b.graph.poisonCache();
         return err;
     };
     b.dependOnFileContents(b.path(path));
     return text;
+}
+
+/// The configure found nothing at `path`: the listing of its nearest
+/// existing directory - names and kinds, `dependOnDirectoryContents` - is
+/// what the path's arrival changes, so it is the configuration's input.
+fn dependOnAbsence(b: *std.Build, path: []const u8) void {
+    var dir = path;
+    while (std.fs.path.dirnamePosix(dir)) |parent| {
+        dir = parent;
+        const stat = b.root.root_dir.handle.statFile(b.graph.io, dir, .{}) catch continue;
+        if (stat.kind == .directory) return b.dependOnDirectoryContents(b.path(dir));
+    }
+    b.dependOnDirectoryContents(b.path("."));
 }
 
 /// Why a host that lacks `path`, a file the archive keeps beside itself, can
