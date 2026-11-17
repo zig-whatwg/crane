@@ -110,7 +110,9 @@ pub const PathItem = struct {
     /// m_relatedTarget` (Source/WebCore/dom/EventContext.h): on the
     /// invocation target, and on the item's relatedTarget when it differs
     /// from the previous item's. The shadow-adjusted targets and the items'
-    /// `target`s are always some item's invocation target, held there.
+    /// `target`s are always some item's invocation target, held there. The
+    /// items' touch targets are held beside the targets themselves
+    /// (`DispatchPath.TouchTarget`).
     /// Chainless (`node_holds.CountedRef`), so an item may move; taken by
     /// `DispatchPath.hold` once the path is built and let go by
     /// `DispatchPath.releaseHolds` when dispatch ends. SHADOW MODE: counted
@@ -147,49 +149,140 @@ pub const PathItem = struct {
 /// target is first appended. Blink and WebKit keep the touch lists on
 /// TouchEvent alone (TouchEvent::touches_, target_touches_,
 /// changed_touches_), Gecko on WidgetTouchEvent (`mTouches`).
+///
+/// THE LIST HOLDS ITS TARGETS: one counted reference on every target that is
+/// a node, from the moment it is listed until it leaves the list or the
+/// event goes. Dispatch leaves the event the last path item's list ("invoke"
+/// step 5; step 11 empties it only with clearTargets), and the next dispatch
+/// of the same event starts from it (step 6.1) - a retargeted target, the
+/// host of a shadow tree the touch's own target has since left, is then a
+/// node nothing else names: before the list counted it, a second dispatch
+/// read the freed host (tests/html/ev2_touch_targets_held_test.zig; lane
+/// ev2). WebKit's TouchEvent keeps counted TouchLists of Touches that each
+/// keep `RefPtr<EventTarget> m_target` (Source/WebCore/dom/TouchEvent.h,
+/// Touch.h); Blink's are traced members. A target that is not a node (a
+/// Window) is not counted (decision D3): it is always a touch's own target,
+/// which the touch keeps for the event.
+///
+/// THE NET (`forgetFreed`): one free is still made whatever the counts
+/// say - a FORCED realm end's coordinated teardown (a page's end, a removed
+/// iframe, a back/forward cache eviction, the Browser's end) frees the
+/// realm's nodes under every reference, and "the holders' nets (generation
+/// and teardown-begun checks, `node_holds.Hold`) stay for it" (dom.refcount's
+/// header; dom.node_holds' header: such a node's reference is FORGOTTEN,
+/// never released; refcount step 7a, tmp/plans/refcount9-design.md B4). The
+/// list can name a node of another realm than the event's and the touch's:
+/// the host of a frame's shadow tree, after the frame was removed. Its
+/// reference then holds a freed node, which each entry's generation tells -
+/// the same check `EventState.targetForScript` makes for the event's
+/// target. A dispatch asks before it reads the list, and a list that names
+/// a freed node is emptied: each touch's target then reads as its own,
+/// unadjusted target.
+///
+/// This is the net, not the behaviour browsers have: WebKit and Blink keep
+/// a node another realm still references past its frame's end (a Node holds
+/// its Document; Blink's LocalWindowProxy::DisposeContext clears only the
+/// global's native info). Crane gets there with refcount step 7b - a
+/// realm's end drops the realm's own references and lets the counts decide
+/// (queued: "REFCOUNT step 7b: realm end by counts") - and then the list's
+/// reference alone keeps the host, this net never fires, and
+/// tests/html/ev2_touch_targets_held_test.zig's third test expects the
+/// host again.
 pub const TouchTargetList = struct {
-    /// The targets, or null for a list nothing was ever appended to.
-    heap: ?*std.ArrayList(*runtime.Instance) = null,
+    /// The targets and the list's references on them, or null for a list
+    /// nothing was ever appended to.
+    heap: ?*Entries = null,
+
+    const Entries = std.MultiArrayList(Entry);
+
+    const Entry = struct {
+        target: *runtime.Instance,
+        ref: node_holds.CountedRef = .{},
+
+        fn of(target: *runtime.Instance) Entry {
+            var entry: Entry = .{ .target = target };
+            entry.ref.take(target, instance_bridge.getNodeBase(@ptrCast(target)));
+            return entry;
+        }
+    };
 
     /// The list's targets, in order. Good until the list next changes.
     pub fn toSlice(self: *const TouchTargetList) []const *runtime.Instance {
         const list = self.heap orelse return &.{};
-        return list.items;
+        return list.items(.target);
     }
 
     /// Append `target`. `allocator` is the event's Browser's
     /// (`runtime.allocatorOf(event)`), every time: `deinit` frees with it.
     pub fn append(self: *TouchTargetList, allocator: std.mem.Allocator, target: *runtime.Instance) error{OutOfMemory}!void {
         const list = try self.ensure(allocator);
-        try list.append(allocator, target);
+        try list.ensureUnusedCapacity(allocator, 1);
+        list.appendAssumeCapacity(.of(target));
     }
 
     /// Make the list `targets` ("invoke" step 5: "Set event's touch target
     /// list to pathItem's touch target list"). On failure the list is
-    /// empty.
+    /// empty. `targets` is not this list's own slice.
     pub fn assign(self: *TouchTargetList, allocator: std.mem.Allocator, targets: []const *runtime.Instance) error{OutOfMemory}!void {
-        self.clear();
-        if (targets.len == 0) return;
+        // The items of one tree share one run of the path's touch targets:
+        // the list names these targets already, and its references stand.
+        if (std.mem.eql(*runtime.Instance, self.toSlice(), targets)) return;
+        if (targets.len == 0) return self.clear();
+        errdefer self.clear();
         const list = try self.ensure(allocator);
-        try list.appendSlice(allocator, targets);
+        try list.ensureUnusedCapacity(allocator, targets.len);
+        // The new references first, then the old ones go: a target in both
+        // lists is never without one.
+        const old_len = list.len;
+        for (targets) |target| list.appendAssumeCapacity(.of(target));
+        const entries = list.slice();
+        const listed = entries.items(.target);
+        const refs = entries.items(.ref);
+        for (listed[0..old_len], refs[0..old_len]) |target, *ref| ref.release(target);
+        std.mem.copyForwards(*runtime.Instance, listed[0..targets.len], listed[old_len..]);
+        std.mem.copyForwards(node_holds.CountedRef, refs[0..targets.len], refs[old_len..]);
+        list.shrinkRetainingCapacity(targets.len);
     }
 
-    /// Make the list empty (dispatch step 11), keeping its storage.
+    /// The teardown net: empty the list if a node it names was freed under
+    /// its reference - its slab slot freed or reissued, or its teardown
+    /// begun. Before a dispatch reads the list (dom.event_path `build`);
+    /// nothing is freed that way while a dispatch runs.
+    pub fn forgetFreed(self: *TouchTargetList) void {
+        const list = self.heap orelse return;
+        const entries = list.slice();
+        for (entries.items(.target), entries.items(.ref)) |target, ref| {
+            // Not a node: not counted, and kept by its touch.
+            if (ref.base == null) continue;
+            if (runtime.SlabAllocator.generationOf(target) != ref.generation) break;
+            if (runtime.instance_lifecycle.isCleanupStarted(target)) break;
+        } else return;
+        // The freed nodes' references are forgotten, the others let go
+        // (`CountedRef.release`).
+        self.clear();
+    }
+
+    /// Make the list empty (dispatch step 11), keeping its storage. Its
+    /// references go.
     pub fn clear(self: *TouchTargetList) void {
-        if (self.heap) |list| list.clearRetainingCapacity();
+        const list = self.heap orelse return;
+        const entries = list.slice();
+        for (entries.items(.target), entries.items(.ref)) |target, *ref| ref.release(target);
+        list.clearRetainingCapacity();
     }
 
-    /// Free the list's storage.
+    /// Let the list's references go and free its storage.
     pub fn deinit(self: *TouchTargetList, allocator: std.mem.Allocator) void {
         const list = self.heap orelse return;
+        self.clear();
         list.deinit(allocator);
         allocator.destroy(list);
         self.heap = null;
     }
 
-    fn ensure(self: *TouchTargetList, allocator: std.mem.Allocator) error{OutOfMemory}!*std.ArrayList(*runtime.Instance) {
+    fn ensure(self: *TouchTargetList, allocator: std.mem.Allocator) error{OutOfMemory}!*Entries {
         if (self.heap) |list| return list;
-        const list = try allocator.create(std.ArrayList(*runtime.Instance));
+        const list = try allocator.create(Entries);
         list.* = .empty;
         self.heap = list;
         return list;
@@ -213,6 +306,28 @@ pub const DispatchPath = struct {
     /// Source/WebCore/dom/EventPath.h).
     pub const inline_capacity = 32;
 
+    /// One retargeted touch target of one run of the path's touch targets,
+    /// with the path's counted reference on it while dispatch runs. A touch
+    /// target is retargeted against each tree the path enters, so it can be
+    /// a node on no item of the path - the host of a shadow tree the path
+    /// never enters - which nothing else holds once the touch's own target
+    /// has left that tree. WebKit's EventContext keeps its retargeted touch
+    /// lists counted (`RefPtr<TouchList> m_touches`, m_targetTouches,
+    /// m_changedTouches: Source/WebCore/dom/EventContext.h), and Gecko's
+    /// chain item an array of counted targets (EventTargetChainItem's
+    /// mRetargetedTouchTargets, dom/events/EventDispatcher.cpp). Two arrays
+    /// in one allocation (std.MultiArrayList): the targets stay one slice
+    /// (`touchTargetsOf`), and the path's header is no larger - 88 bytes,
+    /// 8 fewer than with a plain list of targets (tests/dom/
+    /// ev1_event_memory_test.zig pins it).
+    pub const TouchTarget = struct {
+        target: *runtime.Instance,
+        /// Taken by `hold`, let go by `releaseHolds`, as an item's
+        /// `invocation_ref`. A touch target that is not a node (a Window)
+        /// is not counted (decision D3).
+        ref: node_holds.CountedRef = .{},
+    };
+
     /// Serves the items past `inline_capacity` and the touch targets.
     allocator: std.mem.Allocator,
     /// How many items the path has.
@@ -223,7 +338,7 @@ pub const DispatchPath = struct {
     /// Every item's touch targets, run after run (`PathItem.touch_start`),
     /// each `touch_count` long. Empty, and never allocated, for every event
     /// but a TouchEvent.
-    touch_targets: std.ArrayList(*runtime.Instance),
+    touch_targets: std.MultiArrayList(TouchTarget),
     /// How many touch targets the event has: the length of every item's
     /// touch target list.
     touch_count: u32,
@@ -297,12 +412,13 @@ pub const DispatchPath = struct {
     /// `item`'s touch target list.
     pub fn touchTargetsOf(self: *const DispatchPath, item: *const PathItem) []const *runtime.Instance {
         if (self.touch_count == 0) return &.{};
-        return self.touch_targets.items[item.touch_start..][0..self.touch_count];
+        return self.touch_targets.items(.target)[item.touch_start..][0..self.touch_count];
     }
 
     /// Take the path's counted references (each item's `invocation_ref`
-    /// and `related_ref`) once dom.event_path has built it; `releaseHolds`
-    /// lets them go when dispatch ends.
+    /// and `related_ref`, and one on every touch target of every run) once
+    /// dom.event_path has built it; `releaseHolds` lets them go when
+    /// dispatch ends.
     pub fn hold(self: *DispatchPath) void {
         var previous_related: ?*runtime.Instance = null;
         for (self.items()) |*item| {
@@ -311,17 +427,14 @@ pub const DispatchPath = struct {
                 if (related != previous_related) item.related_ref.take(related, instance_bridge.getNodeBase(@ptrCast(related)));
             }
             previous_related = item.related_target;
-            // TODO(refcount 5g): each item's touch target list takes its
-            // references here. It is no longer always empty: a TouchEvent's
-            // constructor fills the event's list (TouchEvent's impl), so a
-            // TouchEvent's path names retargeted touch targets - nodes that
-            // can be in other trees than the path's - with no count of the
-            // path's. Until then only "nothing is freed under a callback"
-            // keeps them for the dispatch (EventTarget's impl, `Listeners`:
-            // the first of the walk's two protections; lane lk1 found the
-            // gap on 2026-11-16 and queued it). WebKit's EventContext holds
-            // them (`RefPtr<TouchList> m_touches`), and Gecko's chain item
-            // (`mRetargetedTouchTargets`, an array of `RefPtr<EventTarget>`).
+        }
+        // The touch targets, once per run: the items of one tree share a
+        // run. Nothing is counted for an event that is not a TouchEvent -
+        // the list is empty and was never allocated.
+        if (self.touch_targets.len == 0) return;
+        const touch = self.touch_targets.slice();
+        for (touch.items(.target), touch.items(.ref)) |target, *ref| {
+            ref.take(target, instance_bridge.getNodeBase(@ptrCast(target)));
         }
     }
 
@@ -333,6 +446,9 @@ pub const DispatchPath = struct {
             item.invocation_ref.release(item.invocation_target);
             if (item.related_target) |related| item.related_ref.release(related);
         }
+        if (self.touch_targets.len == 0) return;
+        const touch = self.touch_targets.slice();
+        for (touch.items(.target), touch.items(.ref)) |target, *ref| ref.release(target);
     }
 };
 
@@ -766,8 +882,9 @@ test "a dispatch path keeps its first items inline, grows past them, and keeps e
     var start: u32 = 0;
     for (&targets, 0..) |*target, i| {
         if (i % 4 == 0) {
-            start = @intCast(path.touch_targets.items.len);
-            try path.touch_targets.appendSlice(std.testing.allocator, &.{ target, &targets[0] });
+            start = @intCast(path.touch_targets.len);
+            try path.touch_targets.append(std.testing.allocator, .{ .target = target });
+            try path.touch_targets.append(std.testing.allocator, .{ .target = &targets[0] });
         }
         try path.append(.{
             .invocation_target = target,
@@ -802,7 +919,7 @@ test "a dispatch path keeps its first items inline, grows past them, and keeps e
     try std.testing.expectEqual(@as(usize, 0), state.pathItems().len);
 }
 
-test "an event's touch target list is one pointer, empty until a target is appended" {
+test "an event's touch target list is one pointer, empty and never allocated until a target is appended" {
     try std.testing.expectEqual(@sizeOf(usize), @sizeOf(TouchTargetList));
     const allocator = std.testing.allocator;
     var list: TouchTargetList = .{};
@@ -811,19 +928,9 @@ test "an event's touch target list is one pointer, empty until a target is appen
     list.clear();
     try list.assign(allocator, &.{});
     try std.testing.expect(list.heap == null);
-
-    // Never dereferenced: the list only carries the addresses.
-    var targets: [3]runtime.Instance = undefined;
-    try list.append(allocator, &targets[0]);
-    try list.append(allocator, &targets[1]);
-    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &targets[0], &targets[1] }, list.toSlice());
-    // "Invoke" step 5 replaces the list; dispatch step 11 empties it.
-    try list.assign(allocator, &.{ &targets[2], &targets[0] });
-    try std.testing.expectEqualSlices(*runtime.Instance, &.{ &targets[2], &targets[0] }, list.toSlice());
-    list.clear();
-    try std.testing.expectEqual(@as(usize, 0), list.toSlice().len);
-    try list.append(allocator, &targets[1]);
-    try std.testing.expectEqualSlices(*runtime.Instance, &.{&targets[1]}, list.toSlice());
+    // Appending, replacing and emptying a list of real nodes, with the
+    // references it takes and lets go: tests/html/
+    // ev2_touch_targets_held_test.zig (a listed target is read as a node).
 }
 
 test "set the canceled flag honours cancelable and the in passive listener flag" {

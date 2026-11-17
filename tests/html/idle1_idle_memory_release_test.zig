@@ -22,7 +22,7 @@
 //!
 //! Each test runs a whole Browser on a thread of its own, and gives its loop
 //! a gate over a hold-off record of its own (EventLoop.memory_gate): the
-//! process's record holds the next release off for 5 to 30 seconds after any
+//! process's record holds the next release off for 5 seconds or more after any
 //! Browser's, which a test repeated in one process, or run beside another
 //! Browser, would meet. A test waits for the release it started before its
 //! record goes (Gate.settle): the release's thread writes to it.
