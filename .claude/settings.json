@@ -61,6 +61,7 @@
     "unreal-engine-cpp-pro": "off"
   },
   "enabledPlugins": {
-    "stripe@claude-plugins-official": false
+    "stripe@claude-plugins-official": false,
+    "zls-lsp@bcardarella-local": false
   }
 }
