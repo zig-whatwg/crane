@@ -169,9 +169,10 @@ fn pathZ(buf: []u8, comptime fmt: []const u8, args: anytype) ?[:0]u8 {
     return std.fmt.bufPrintSentinel(buf, fmt, args, 0) catch null;
 }
 
-/// A small /proc file, whole, into `buf`; null when it cannot be opened or
-/// read (the process ended).
-fn readFile(path: [*:0]const u8, buf: []u8) ?[]u8 {
+/// A /proc file, whole (or as much as `buf` holds), into `buf`; null when it
+/// cannot be opened or read (the process ended). Read until the end of the
+/// file, never by its size: a /proc file's size reads 0.
+pub fn readFile(path: [*:0]const u8, buf: []u8) ?[]u8 {
     const rc = linux.open(path, .{ .ACCMODE = .RDONLY, .CLOEXEC = true }, 0);
     if (linux.errno(rc) != .SUCCESS) return null;
     const fd: linux.fd_t = @intCast(rc);
@@ -306,6 +307,14 @@ pub fn nameOf(pid: i32, buf: []u8) error{NoSuchProcess}![]const u8 {
 }
 
 const testing = std.testing;
+
+test "a /proc file is read to its end, though its size reads 0" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var buf: [64 * 1024]u8 = undefined;
+    const meminfo = readFile("/proc/meminfo", &buf) orelse return error.TestUnexpectedResult;
+    try testing.expect(std.mem.startsWith(u8, meminfo, "MemTotal:"));
+    try testing.expectEqual(@as(?[]u8, null), readFile("/proc/no-such-file-perf", &buf));
+}
 
 test "a stat line: the fields are counted from the last parenthesis, whatever the name holds" {
     // A console of the pool, cut after its start time.

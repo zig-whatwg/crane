@@ -263,19 +263,19 @@ pub fn hostInfo(arena: Allocator, io: Io) !journal.Host {
     const name = capture(arena, io, &.{ "hostname", "-s" });
     if (builtin.os.tag == .linux) {
         const release = capture(arena, io, &.{ "uname", "-r" });
-        const read = struct {
-            fn f(a: Allocator, i: Io, path: []const u8) []const u8 {
-                return Io.Dir.cwd().readFileAlloc(i, path, a, .limited(4 << 20)) catch "";
-            }
-        }.f;
-        const cpuinfo = read(arena, io, "/proc/cpuinfo");
+        // /proc files are read to their end (their size reads 0, so a read
+        // sized by the file's length gets nothing: server1's first rows said
+        // "unknown", 0 cores, 0 bytes).
+        const cpuinfo = proc.linux.readFile("/proc/cpuinfo", try arena.alloc(u8, 1 << 20)) orelse "";
+        const meminfo = proc.linux.readFile("/proc/meminfo", try arena.alloc(u8, 64 << 10)) orelse "";
+        const os_release = Io.Dir.cwd().readFileAlloc(io, "/etc/os-release", arena, .limited(1 << 20)) catch "";
         return .{
             .name = if (name.len > 0) name else "unknown",
-            .os = try linuxOsName(arena, read(arena, io, "/etc/os-release"), release),
+            .os = try linuxOsName(arena, os_release, release),
             .arch = @tagName(builtin.cpu.arch),
             .cpu = linuxCpuName(cpuinfo) orelse "unknown",
             .cores = linuxCores(cpuinfo),
-            .memory_bytes = linuxMemoryBytes(read(arena, io, "/proc/meminfo")),
+            .memory_bytes = linuxMemoryBytes(meminfo),
         };
     }
     const product = capture(arena, io, &.{ "sw_vers", "-productVersion" });
@@ -346,6 +346,17 @@ fn linuxMemoryBytes(meminfo: []const u8) u64 {
         return kb * 1024;
     }
     return 0;
+}
+
+test "this host's description on Linux: a CPU, its cores and its memory, read from /proc" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const host = try hostInfo(arena.allocator(), std.testing.io);
+    try std.testing.expect(host.cores > 0);
+    try std.testing.expect(host.memory_bytes > 0);
+    try std.testing.expect(!std.mem.eql(u8, host.cpu, "unknown"));
+    try std.testing.expect(std.mem.indexOf(u8, host.os, "Linux") != null);
 }
 
 test "a Linux host's description: its distribution and kernel, CPU, cores and memory" {
