@@ -216,6 +216,22 @@ pub const protocol = struct {
         return posix.meminfo.levelOf(text);
     }
 
+    /// Test control: the level that observer reads for a process whose
+    /// machine's /proc/meminfo has this text and whose cgroup's memory files
+    /// have these (each null when the file is not there): the higher of the
+    /// machine's and the cgroup's, WebKit's rule (kit/posix/meminfo.zig).
+    /// Null when the meminfo does not say.
+    pub fn memoryPressureLevelOfMeminfoAndCgroup(text: []const u8, cgroup: posix.meminfo.CgroupFiles) ?platform.MemoryPressureLevel {
+        return posix.meminfo.levelWithCgroup(text, cgroup);
+    }
+
+    /// Test control: the path of the cgroup whose memory files that
+    /// observer reads, from the text of a /proc/self/cgroup (a slice of
+    /// it), or null when it names none.
+    pub fn memoryPressureCgroupPath(text: []const u8) ?[]const u8 {
+        return posix.meminfo.cgroupPath(text);
+    }
+
     /// The seeded Browser's stream, else none.
     pub fn fillBrowserRandom(browser: *platform.BrowserPlatform, bytes: []u8) bool {
         return State.of(browser).extra.random.fill(bytes);

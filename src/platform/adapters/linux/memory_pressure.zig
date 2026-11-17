@@ -1,7 +1,7 @@
 //! The linux platform's memory-pressure observer (docs/platform-protocol.md
-//! 3.3 and 7): one thread per Browser that reads /proc/meminfo and posts a
-//! `memory_pressure` event through the Browser's EventSink when the level
-//! changes.
+//! 3.3 and 7): one thread per Browser that reads /proc/meminfo and the
+//! memory files of the process's cgroup, and posts a `memory_pressure` event
+//! through the Browser's EventSink when the level changes.
 //!
 //! Linux gives a desktop process no notification, so the browsers that
 //! answer memory pressure there poll (kit/posix/meminfo.zig has the rule and
@@ -9,7 +9,9 @@
 //!
 //! - WebKit: a thread "MemoryPressureMonitor" in its UI process
 //!   (Source/WebKit/UIProcess/linux/MemoryPressureMonitor.cpp) polls every
-//!   5 s, faster as memory fills, down to 1 s.
+//!   5 s, faster as memory fills, down to 1 s. It judges a process inside a
+//!   cgroup with a memory limit against that limit too, and so does this
+//!   one (`meminfo.readLevel`).
 //! - Firefox: a thread "MemoryPoller" (xpcom/base/
 //!   AvailableMemoryWatcherLinux.cpp) polls every 5 s, every 1 s while
 //!   memory is low.
@@ -69,8 +71,7 @@ pub const Observer = struct {
         var last: platform.MemoryPressureLevel = .normal;
         while (self.stopping.load(.acquire) == 0) {
             var period = normal_period_ns;
-            if (posix.meminfo.read()) |reading| {
-                const level = reading.level();
+            if (posix.meminfo.readLevel()) |level| {
                 if (level != last) {
                     last = level;
                     const event: platform.PlatformEvent = .{ .kind = .memory_pressure, .memory_pressure = level };
