@@ -245,7 +245,6 @@ pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
 pub const pointer_states = @import("pointer_states.zig");
 pub const html_mock = @import("html_mock.zig");
-pub const attribute_algorithms = @import("attribute_algorithms.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
