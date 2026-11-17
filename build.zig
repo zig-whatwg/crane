@@ -1382,6 +1382,8 @@ const suite_browser_line = "pub const browser: ?type = @import(\"browser\");";
 const FlaggedConfiguration = struct {
     display: []const u8,
     path_file: std.Build.LazyPath,
+    /// The configure.
+    run: *std.Build.Step.Run,
 
     fn of(b: *std.Build, engine: *const engine_build.Engine, flags: []const []const u8) FlaggedConfiguration {
         const display = std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
@@ -1395,7 +1397,7 @@ const FlaggedConfiguration = struct {
         configure.setCwd(b.path("."));
         // The sub-configure decides; this step always asks it.
         configure.has_side_effects = true;
-        return .{ .display = display, .path_file = configure.captureStdOut(.{}) };
+        return .{ .display = display, .path_file = configure.captureStdOut(.{}), .run = configure };
     }
 };
 
@@ -6043,6 +6045,34 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(suite_facts_step);
     }
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = configurations_agree_module }), "tools-configurations_agree", null).step);
+
+    // ========================================================================
+    // CHECK: the configuration is cacheable
+    // ========================================================================
+    // Zig 0.17 caches this file's configuration and configures again only
+    // when an input it tracks changes - build.zig and what it imports, the
+    // command line, and the paths the configure declared it read
+    // (`b.dependOnFileContents`, `b.dependOnDirectoryContents`). A configure
+    // that reads anything else - a file or directory it did not declare, a
+    // program's answer - has to poison the cache, and then every `zig build`
+    // configures afresh: 1.1 s on Linux and 1.6 s on macOS against 0.03 s and
+    // 0.085 s for a cached one (lanes impls9 and cfg1, 2026-11-17). So nothing
+    // here may poison it: what the configure reads of the checkout is a
+    // tracked input, and what it would ask the machine is asked at make time.
+    // This check holds it: the build root configured
+    // with `--cache-poison=disallowed`, under which the configure panics at
+    // the first poisoning call, naming it - nothing is built.
+    const configure_cache_step = b.step("check-configure-cache", "Check that no configure of this build poisons Zig's configure cache: configures with --cache-poison=disallowed for the flag sets whose configure reads the checkout (nothing is built)");
+    for ([_][]const []const u8{
+        &.{},
+        &.{"-Dtest-binaries=engine"},
+        &.{"-Dverify-base=HEAD"},
+    }) |flags| {
+        var args: std.ArrayList([]const u8) = .empty;
+        args.append(b.allocator, "--cache-poison=disallowed") catch @panic("OOM");
+        args.appendSlice(b.allocator, flags) catch @panic("OOM");
+        configure_cache_step.dependOn(&FlaggedConfiguration.of(b, &engine, args.items).run.step);
+    }
 
     // ========================================================================
     // LINT: global state, as a ratchet
