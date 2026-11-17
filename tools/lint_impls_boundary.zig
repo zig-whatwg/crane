@@ -1,6 +1,13 @@
-//! The impls boundary, as a ratchet: `zig build lint-impls` (and so `zig build
-//! test`) fails when any file references an impl it may not, more often than
-//! tools/impls_boundary_baseline.txt records.
+//! The impls boundary: `zig build lint-impls` (and so `zig build test`) fails
+//! when any file references an impl it may not. There is no baseline (lane
+//! impls9): impls8 paid the last reference down, so every reference fails,
+//! and a tools/impls_boundary_baseline.txt that reappears is refused. The
+//! module graph holds the same rule for every module outside the generated
+//! layer (build.zig check-impls-boundary: only the interfaces, namespaces and
+//! mixins modules import the impls, so the compiler rejects any other
+//! import); this check also sees what the module graph cannot - an impl
+//! reaching another impl's file inside the impls module, and a path into
+//! src/webidl/impls/ from anywhere.
 //!
 //! AGENTS.md, "The impls boundary": impls are private. Another impl, and all
 //! code outside src/webidl/, reaches a type through its interface
@@ -17,10 +24,12 @@
 //!     modules (same_object.zig, node_filter.zig), not impls. Only a file's
 //!     references to ITSELF are exempt; a parent's `init` counts.
 //!   * everywhere else in src/ except the generated layers - and in tests/ and
-//!     tools/, which the module graph (B11) must cut off from `impls` too:
-//!     every reference through the `impls` module, `impls.<helper>` included,
-//!     plus one `impls.@import` for a file that imports the module and
-//!     reaches nothing in it.
+//!     tools/: every reference through the `impls` module, `impls.<helper>`
+//!     included, plus one `impls.@import` for a file that imports the module
+//!     and reaches nothing in it; and every path import that resolves into
+//!     src/webidl/impls/, helpers included.
+//!   * in both, an alias of an impl that nothing reaches through still counts
+//!     once, as `Impl.@import` where it is declared: the import is the edge.
 //!
 //! A use counts ONCE, however many times its name is declared in the file (an
 //! alias declared in several functions is one name), and a name inside a
@@ -36,14 +45,6 @@
 //! hook is what a descendant uses instead - and other code counts every use of
 //! the `impls` module.
 //!
-//! The baseline only goes down. After paying debt down:
-//!     zig build lint-impls -- --update
-//! which refuses to record an increase. The one exception is a change of what
-//! the rule counts, which moves every number at once:
-//!     zig build lint-impls -- --rebase-for-rule-change
-//! records the current counts whatever they are. Use it once, in the commit
-//! that changes the rule, and say so in the commit message.
-//!
 //! It also checks that impl names are the binding map (see "Names are the
 //! binding map" below): strictly for interfaces, namespaces and helpers, and as
 //! a ratchet over tools/impls_naming_baseline.txt for mixin impls.
@@ -51,12 +52,17 @@
 //! And it ratchets unchecked state reads (see "Unchecked state reads" below):
 //! `X.getState(State).own._internal` read outside an impl's own init/deinit,
 //! per file and function, over tools/impls_unchecked_state_baseline.txt.
+//!
+//! Those two are ratchets, which only go down: `-- --update` records a
+//! lowered baseline and refuses an increase.
 
 const std = @import("std");
 // stdout as a stream: Zig 0.17's positional File.writer overwrites a shared log.
 const stdout_stream = @import("stdout_stream.zig");
 
-const baseline_path = "tools/impls_boundary_baseline.txt";
+/// Deleted by lane impls9: the boundary has no baseline, and the file may not
+/// come back (`boundaryBaselineRefused`).
+const retired_baseline_path = "tools/impls_boundary_baseline.txt";
 const naming_baseline_path = "tools/impls_naming_baseline.txt";
 const impls_dir = "src/webidl/impls/";
 
@@ -110,13 +116,64 @@ fn constDecl(code: []const u8) ?Decl {
     return .{ .name = name, .rhs = std.mem.trim(u8, s[1..], " \t;") };
 }
 
-/// `@import("X.zig")`, exactly: "X".
-fn fileImport(rhs: []const u8) ?[]const u8 {
+/// `@import("<arg>")`, exactly: "<arg>".
+fn importArg(rhs: []const u8) ?[]const u8 {
     const open = "@import(\"";
-    const close = ".zig\")";
+    const close = "\")";
     if (!std.mem.startsWith(u8, rhs, open) or !std.mem.endsWith(u8, rhs, close)) return null;
     if (rhs.len < open.len + close.len + 1) return null;
-    return rhs[open.len .. rhs.len - close.len];
+    const arg = rhs[open.len .. rhs.len - close.len];
+    if (std.mem.indexOfScalar(u8, arg, '"') != null) return null;
+    return arg;
+}
+
+/// `rel` resolved against `dir`, both relative to the repository root, with
+/// `.` and `..` folded. Null when it climbs out of the root or does not fit.
+fn resolvePath(buf: []u8, dir: []const u8, rel: []const u8) ?[]const u8 {
+    var parts: [64][]const u8 = undefined;
+    var n: usize = 0;
+    for ([_][]const u8{ dir, rel }) |piece| {
+        var it = std.mem.tokenizeScalar(u8, piece, '/');
+        while (it.next()) |part| {
+            if (std.mem.eql(u8, part, ".")) continue;
+            if (std.mem.eql(u8, part, "..")) {
+                if (n == 0) return null;
+                n -= 1;
+                continue;
+            }
+            if (n == parts.len) return null;
+            parts[n] = part;
+            n += 1;
+        }
+    }
+    var len: usize = 0;
+    for (parts[0..n], 0..) |part, i| {
+        if (i > 0) {
+            if (len >= buf.len) return null;
+            buf[len] = '/';
+            len += 1;
+        }
+        if (len + part.len > buf.len) return null;
+        @memcpy(buf[len..][0..part.len], part);
+        len += part.len;
+    }
+    return buf[0..len];
+}
+
+/// The file of src/webidl/impls/ - an impl, or a helper - that the `@import`
+/// path `imported` names from a file in `from_dir`: its name without `.zig`.
+/// Null for a module import, a path anywhere else, or no `from_dir`.
+fn implFile(from_dir: []const u8, imported: []const u8) ?[]const u8 {
+    if (from_dir.len == 0 or !std.mem.endsWith(u8, imported, ".zig")) return null;
+    var buf: [1024]u8 = undefined;
+    const resolved = resolvePath(&buf, from_dir, imported) orelse return null;
+    if (!std.mem.startsWith(u8, resolved, impls_dir)) return null;
+    const rest = resolved[impls_dir.len..];
+    if (rest.len <= ".zig".len or std.mem.indexOfScalar(u8, rest, '/') != null) return null;
+    // The resolved path's last component is the import's own (it ends in
+    // `.zig`, so no `..` follows it): a slice of `imported` outlives `buf`.
+    const base = std.fs.path.basenamePosix(imported);
+    return base[0 .. base.len - ".zig".len];
 }
 
 /// `@import("impls").Name`, exactly: "Name".
@@ -139,7 +196,17 @@ fn moduleMember(rhs: []const u8, modules: []const []const u8) ?[]const u8 {
     return null;
 }
 
-const Alias = struct { name: []const u8, impl: []const u8 };
+const Alias = struct {
+    name: []const u8,
+    impl: []const u8,
+    /// Its first declaration: where an alias nothing reaches through counts.
+    line: u32,
+    code: []const u8,
+};
+
+fn referenceLineLessThan(_: void, a: Reference, b: Reference) bool {
+    return a.line < b.line;
+}
 
 /// Record every `needle.member` in `code` - `needle` on a whole identifier,
 /// not preceded by `.` - as a reference to `impl`. A null `impl` means
@@ -206,7 +273,7 @@ pub fn contains(items: []const []const u8, name: []const u8) bool {
 /// References an impl file (`own`.zig) makes into OTHER impls, counting only
 /// `own` itself as its own: an ancestor is another type.
 pub fn implReferences(gpa: std.mem.Allocator, own: []const u8, text: []const u8) !std.ArrayList(Reference) {
-    return references(gpa, &.{own}, text);
+    return references(gpa, &.{own}, impls_dir[0 .. impls_dir.len - 1], text);
 }
 
 /// The references one file makes into impls under the boundary rule: an impl
@@ -219,19 +286,20 @@ pub fn scanFile(gpa: std.mem.Allocator, path: []const u8, text: []const u8) !?st
     if (skipped(path)) return null;
     if (implName(path)) |own| return try implReferences(gpa, own, text);
     if (std.mem.indexOf(u8, text, "impls") == null) return .empty;
-    return try externalReferences(gpa, text);
+    return try references(gpa, &.{}, std.fs.path.dirnamePosix(path) orelse "", text);
 }
 
-/// References a file outside the impls makes through the `impls` module.
+/// References a file outside the impls makes through the `impls` module
+/// (where the file is unknown, so a path import is not resolved).
 pub fn externalReferences(gpa: std.mem.Allocator, text: []const u8) !std.ArrayList(Reference) {
-    return references(gpa, &.{}, text);
+    return references(gpa, &.{}, "", text);
 }
 
 /// The one scanner. `itself` holds the impl's own type only (its ancestors are
-/// other types); it is empty outside the impls. Only an impl may name other
-/// impls by file (`@import("X.zig")`), and a reference to `itself` is the file
-/// reaching its own state.
-fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const u8) !std.ArrayList(Reference) {
+/// other types); it is empty outside the impls. `from_dir` is the file's
+/// directory, against which a path import is resolved (empty: none is). A
+/// reference to `itself` is the file reaching its own state.
+fn references(gpa: std.mem.Allocator, itself: []const []const u8, from_dir: []const u8, text: []const u8) !std.ArrayList(Reference) {
     var modules: std.ArrayList([]const u8) = .empty;
     defer modules.deinit(gpa);
     var aliases: std.ArrayList(Alias) = .empty;
@@ -254,24 +322,31 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
             try declarations.append(gpa, number);
         }
     }
-    // Pass 2: aliases - `const NodeImpl = @import("Node.zig");` (an impl
-    // only), `= @import("impls").Node;`, `= impls.Node;`.
+    // Pass 2: aliases - `const NodeImpl = @import("Node.zig");` (any path
+    // into src/webidl/impls/), `= @import("impls").Node;`, `= impls.Node;`.
+    // Inside the impls a lower-case file is a helper of the same module;
+    // outside, any of them is an edge into the impls.
     lines = std.mem.splitScalar(u8, text, '\n');
     number = 0;
     while (lines.next()) |raw| {
         number += 1;
-        const decl = constDecl(codeOf(raw)) orelse continue;
-        const by_file = if (itself.len > 0) fileImport(decl.rhs) else null;
+        const code = codeOf(raw);
+        const decl = constDecl(code) orelse continue;
+        const by_file = if (importArg(decl.rhs)) |arg| implFile(from_dir, arg) else null;
         const target = by_file orelse implsMember(decl.rhs) orelse moduleMember(decl.rhs, modules.items) orelse continue;
         try declarations.append(gpa, number);
-        if (target.len == 0 or !std.ascii.isUpper(target[0])) continue;
+        if (target.len == 0) continue;
+        if (itself.len > 0 and !std.ascii.isUpper(target[0])) continue;
         for (aliases.items) |seen| {
             if (std.mem.eql(u8, seen.name, decl.name) and std.mem.eql(u8, seen.impl, target)) break;
-        } else try aliases.append(gpa, .{ .name = decl.name, .impl = target });
+        } else try aliases.append(gpa, .{ .name = decl.name, .impl = target, .line = number, .code = std.mem.trim(u8, code, " \t") });
     }
 
     var out: std.ArrayList(Reference) = .empty;
     errdefer out.deinit(gpa);
+    const uses = try gpa.alloc(u32, aliases.items.len);
+    defer gpa.free(uses);
+    @memset(uses, 0);
     lines = std.mem.splitScalar(u8, text, '\n');
     number = 0;
     while (lines.next()) |raw| {
@@ -279,9 +354,20 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
         if (std.mem.indexOfScalar(u32, declarations.items, number) != null) continue;
         const code = codeOf(raw);
         for (modules.items) |module| try collect(gpa, &out, number, code, module, null, itself);
-        for (aliases.items) |alias| try collect(gpa, &out, number, code, alias.name, alias.impl, itself);
-        try inlineImports(gpa, &out, number, code, itself);
+        for (aliases.items, uses) |alias, *used| {
+            const before = out.items.len;
+            try collect(gpa, &out, number, code, alias.name, alias.impl, itself);
+            used.* += @intCast(out.items.len - before);
+        }
+        try inlineImports(gpa, &out, number, code, itself, from_dir);
     }
+    // An alias of another impl that nothing reaches through is still the
+    // import - the edge - so it counts once, where it is first declared.
+    for (aliases.items, uses) |alias, used| {
+        if (used > 0 or contains(itself, alias.impl)) continue;
+        try out.append(gpa, .{ .line = alias.line, .impl = alias.impl, .member = "@import", .code = alias.code });
+    }
+    std.sort.insertion(Reference, out.items, {}, referenceLineLessThan);
     // Outside the impls, an import of the module that reaches no impl is
     // still an edge in the module graph - the final step (B11) removes
     // `impls` from that module's imports - so it counts, once.
@@ -291,8 +377,10 @@ fn references(gpa: std.mem.Allocator, itself: []const []const u8, text: []const 
     return out;
 }
 
-/// `@import("Other.zig").member` (in an impl) and `@import("impls").Name.member`.
-fn inlineImports(gpa: std.mem.Allocator, out: *std.ArrayList(Reference), line: u32, code: []const u8, itself: []const []const u8) !void {
+/// `@import("impls").Name.member`, and an inline path import of a file in
+/// src/webidl/impls/ (`@import("Other.zig").member` in an impl, any path into
+/// impls/ elsewhere): its member, or `@import` when nothing is reached.
+fn inlineImports(gpa: std.mem.Allocator, out: *std.ArrayList(Reference), line: u32, code: []const u8, itself: []const []const u8, from_dir: []const u8) !void {
     var pos: usize = 0;
     while (std.mem.indexOfPos(u8, code, pos, "@import(\"")) |at| {
         pos = at + "@import(\"".len;
@@ -300,17 +388,20 @@ fn inlineImports(gpa: std.mem.Allocator, out: *std.ArrayList(Reference), line: u
         const imported = code[pos..close];
         const after = close + 2;
         pos = after;
-        if (after >= code.len or code[after] != '.') continue;
+        const reached = after < code.len and code[after] == '.';
+        if (implFile(from_dir, imported)) |name| {
+            if (name.len == 0 or contains(itself, name)) continue;
+            if (itself.len > 0 and !std.ascii.isUpper(name[0])) continue;
+            try out.append(gpa, .{ .line = line, .impl = name, .member = if (reached) identAt(code, after + 1) else "@import", .code = std.mem.trim(u8, code, " \t") });
+            continue;
+        }
+        if (!reached) continue;
         if (std.mem.eql(u8, imported, "impls")) {
             const name = identAt(code, after + 1);
             if (name.len == 0 or !std.ascii.isUpper(name[0]) or contains(itself, name)) continue;
             const member_start = after + 1 + name.len;
             const member = if (member_start < code.len and code[member_start] == '.') identAt(code, member_start + 1) else "";
             try out.append(gpa, .{ .line = line, .impl = name, .member = member, .code = std.mem.trim(u8, code, " \t") });
-        } else if (itself.len > 0 and std.mem.endsWith(u8, imported, ".zig")) {
-            const name = imported[0 .. imported.len - 4];
-            if (name.len == 0 or !std.ascii.isUpper(name[0]) or contains(itself, name)) continue;
-            try out.append(gpa, .{ .line = line, .impl = name, .member = identAt(code, after + 1), .code = std.mem.trim(u8, code, " \t") });
         }
     }
 }
@@ -424,14 +515,6 @@ pub fn parseBaseline(gpa: std.mem.Allocator, text: []const u8) !Counts {
     return counts;
 }
 
-const boundary_header =
-    \\# References into impls from code that does not own them: path Impl.member count.
-    \\# A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
-    \\# count rises or a new pair appears. After paying debt down, lower it with
-    \\# `zig build lint-impls -- --update`. Never raise it by hand.
-    \\
-;
-
 const naming_header =
     \\# API-named functions in mixin impls that nothing calls: path function 1.
     \\# Every includer's generated interface binds the INCLUDER's impl, so these
@@ -441,9 +524,22 @@ const naming_header =
     \\
 ;
 
-/// Format counts as a baseline file, keys sorted.
+/// Format counts as a ratchet's baseline file, keys sorted.
 pub fn formatBaseline(gpa: std.mem.Allocator, counts: *const Counts) ![]u8 {
-    return formatBaselineWithHeader(gpa, boundary_header, counts);
+    return formatBaselineWithHeader(gpa, naming_header, counts);
+}
+
+/// The impls boundary has no baseline (lane impls9): every reference is a
+/// failure, sorted by key.
+pub fn boundaryFailures(gpa: std.mem.Allocator, current: *const Counts) !std.ArrayList(Violation) {
+    const none: Counts = .empty;
+    return violations(gpa, current, &none);
+}
+
+/// Whether a boundary baseline file - deleted when the last reference was
+/// paid down - stops the check: it would be debt recorded again.
+pub fn boundaryBaselineRefused(exists: bool) bool {
+    return exists;
 }
 
 fn formatBaselineWithHeader(gpa: std.mem.Allocator, header: []const u8, counts: *const Counts) ![]u8 {
@@ -798,7 +894,6 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     var update = false;
-    var rebase = false;
     var list_sites = false;
     var args = try init.minimal.args.iterateAllocator(arena);
     defer args.deinit();
@@ -806,12 +901,10 @@ pub fn main(init: std.process.Init) !void {
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--update")) {
             update = true;
-        } else if (std.mem.eql(u8, arg, "--rebase-for-rule-change")) {
-            rebase = true;
         } else if (std.mem.eql(u8, arg, "--list")) {
             list_sites = true;
         } else {
-            std.debug.print("usage: lint_impls_boundary [--update | --rebase-for-rule-change | --list]\n", .{});
+            std.debug.print("usage: lint_impls_boundary [--update | --list]\n  --update  record a lowered baseline of the naming and unchecked-state ratchets\n  --list    every reference into an impl, path:line Impl.member\n", .{});
             std.process.exit(2);
         }
     }
@@ -978,19 +1071,8 @@ pub fn main(init: std.process.Init) !void {
         std.process.exit(1);
     }
 
-    const boundary_ok = try ratchet(arena, io, out, update, rebase, .{
-        .label = "impls boundary",
-        .path = baseline_path,
-        .header = boundary_header,
-        .noun = "references",
-        .advice =
-        \\Impls are private (AGENTS.md, "The impls boundary"). Reach another type
-        \\through its interface - interfaces.X - or, for a spec step with no IDL
-        \\surface, through a hook module in src/dom/ that its impl installs.
-        \\
-        ,
-    }, &current, &sites);
-    const naming_ok = try ratchet(arena, io, out, update, false, .{
+    const boundary_ok = try boundary(arena, io, out, &current, &sites);
+    const naming_ok = try ratchet(arena, io, out, update, .{
         .label = "impl names",
         .path = naming_baseline_path,
         .header = naming_header,
@@ -1003,7 +1085,7 @@ pub fn main(init: std.process.Init) !void {
         \\
         ,
     }, &unrouted, null);
-    const unchecked_ok = try ratchet(arena, io, out, update, false, .{
+    const unchecked_ok = try ratchet(arena, io, out, update, .{
         .label = "unchecked state reads",
         .path = unchecked_baseline_path,
         .header = unchecked_header,
@@ -1021,11 +1103,59 @@ pub fn main(init: std.process.Init) !void {
     if (!boundary_ok or !naming_ok or !unchecked_ok) std.process.exit(1);
 }
 
-/// Whether a run may write the baseline. `--update` only when nothing is above
-/// it; a rebase always - the rule changed, so the old numbers count something else.
-pub fn mayRecord(update: bool, rebase: bool, above_baseline: usize) bool {
-    if (rebase) return true;
+/// Whether a run may write a ratchet's baseline: `--update`, and only when
+/// nothing is above it.
+pub fn mayRecord(update: bool, above_baseline: usize) bool {
     return update and above_baseline == 0;
+}
+
+/// The impls boundary, with no baseline: false when any file references an
+/// impl it may not, or when the retired baseline file is back.
+fn boundary(
+    arena: std.mem.Allocator,
+    io: std.Io,
+    out: *std.Io.Writer,
+    current: *const Counts,
+    sites: *const std.StringHashMapUnmanaged(std.ArrayList(Reference)),
+) !bool {
+    const exists = if (std.Io.Dir.cwd().access(io, retired_baseline_path, .{})) |_| true else |err| switch (err) {
+        error.FileNotFound => false,
+        else => return err,
+    };
+    if (boundaryBaselineRefused(exists)) {
+        try out.print(
+            \\impls boundary: {s} exists. The boundary has no baseline since lane impls9 -
+            \\every reference into an impl fails - so the file is refused, not read:
+            \\delete it, and convert the references it would record.
+            \\
+        , .{retired_baseline_path});
+        return false;
+    }
+    const found = try boundaryFailures(arena, current);
+    if (found.items.len == 0) {
+        try out.print("impls boundary: no reference into an impl outside its own generated file.\n", .{});
+        return true;
+    }
+    var total: usize = 0;
+    for (found.items) |v| total += v.found;
+    try out.print("impls boundary: {d} reference(s) into impls, {d} key(s). There is no baseline: each one fails.\n\n", .{ total, found.items.len });
+    for (found.items) |v| {
+        try out.print("  {s}: {d}\n", .{ v.key, v.found });
+        if (sites.get(v.key)) |list| {
+            const path_end = std.mem.indexOfScalar(u8, v.key, ' ') orelse v.key.len;
+            for (list.items) |ref| try out.print("      {s}:{d}: {s}\n", .{ v.key[0..path_end], ref.line, ref.code });
+        }
+    }
+    try out.print(
+        \\
+        \\Impls are private (src/webidl/AGENTS.md, "The impls boundary"). Reach
+        \\another type through its interface - interfaces.X - or, for a spec step
+        \\with no IDL surface, through a hook module in src/dom/ that its impl
+        \\installs. Outside the generated layer the module graph rejects the
+        \\import anyway (build.zig check-impls-boundary).
+        \\
+    , .{});
+    return false;
 }
 
 const RatchetSpec = struct {
@@ -1039,16 +1169,12 @@ const RatchetSpec = struct {
 
 /// One ratchet: compare `current` with the baseline at `spec.path` and report.
 /// `--update` records a first baseline, or a lowered one - never an increase.
-/// `--rebase-for-rule-change` records the current counts whatever they are: it
-/// exists for the one commit that changes what the rule counts (see
-/// `mayRecord`), and is used once per rule change.
 /// False when a key is above its baseline, or there is no baseline.
 fn ratchet(
     arena: std.mem.Allocator,
     io: std.Io,
     out: *std.Io.Writer,
     update: bool,
-    rebase: bool,
     spec: RatchetSpec,
     current: *const Counts,
     sites: ?*const std.StringHashMapUnmanaged(std.ArrayList(Reference)),
@@ -1073,11 +1199,6 @@ fn ratchet(
     const baseline = try parseBaseline(arena, text.?);
 
     const found = try violations(arena, current, &baseline);
-    if (mayRecord(false, rebase, found.items.len)) {
-        try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = spec.path, .data = try formatBaselineWithHeader(arena, spec.header, current) });
-        try out.print("{s}: baseline REBASED for a rule change - {d} {s}, {d} keys ({d} above the old baseline).\n", .{ spec.label, total, spec.noun, current.count(), found.items.len });
-        return true;
-    }
     if (found.items.len > 0) {
         try out.print("{s}: {d} key(s) above the baseline.\n\n", .{ spec.label, found.items.len });
         for (found.items) |v| {
@@ -1097,7 +1218,7 @@ fn ratchet(
     while (base_it.next()) |entry| {
         if ((current.get(entry.key_ptr.*) orelse 0) < entry.value_ptr.*) lowered += 1;
     }
-    if (update) {
+    if (mayRecord(update, found.items.len)) {
         try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = spec.path, .data = try formatBaselineWithHeader(arena, spec.header, current) });
         try out.print("{s}: baseline lowered - {d} {s}, {d} keys.\n", .{ spec.label, total, spec.noun, current.count() });
     } else if (lowered > 0) {
@@ -1167,7 +1288,8 @@ test "comments do not count, and an alias is matched on a whole identifier" {
     ;
     var refs = try implReferences(testing.allocator, "Document", text);
     defer refs.deinit(testing.allocator);
-    try expectRefs(refs.items, &.{});
+    // Nothing reaches through the alias, so only its import counts (once).
+    try expectRefs(refs.items, &.{"1:Node.@import"});
 }
 
 test "an inline import of another impl is counted" {
@@ -1194,7 +1316,7 @@ test "an impl reaching another through the impls module is counted, its own type
         \\    const x = try impls.Node.init(a, S, v, c);
         \\}
     ;
-    var refs = try references(testing.allocator, &.{ "Document", "Node", "EventTarget" }, text);
+    var refs = try references(testing.allocator, &.{ "Document", "Node", "EventTarget" }, "src/webidl/impls", text);
     defer refs.deinit(testing.allocator);
     try expectRefs(refs.items, &.{"6:Range.call_detach"});
 }
@@ -1609,11 +1731,82 @@ test "a mixin module binds its impl's functions like an interface's file" {
     try testing.expectEqualStrings("get_stale", found.items[0].name);
 }
 
-test "only --rebase-for-rule-change may record an increase" {
-    try testing.expect(!mayRecord(true, false, 3));
-    try testing.expect(mayRecord(true, false, 0));
-    try testing.expect(!mayRecord(false, false, 0));
-    try testing.expect(mayRecord(false, true, 3));
+test "--update records a ratchet's baseline only when nothing is above it" {
+    try testing.expect(!mayRecord(true, 3));
+    try testing.expect(mayRecord(true, 0));
+    try testing.expect(!mayRecord(false, 0));
+}
+
+// ---------------------------------------------------------------------------
+// The impls boundary has no baseline (lane impls9)
+// ---------------------------------------------------------------------------
+
+test "the impls boundary has no baseline: every reference fails, sorted by key" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    try current.put(testing.allocator, "src/dom/b.zig Node.getParent", 1);
+    try current.put(testing.allocator, "src/dom/a.zig Range.call_detach", 2);
+    var found = try boundaryFailures(testing.allocator, &current);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 2), found.items.len);
+    try testing.expectEqualStrings("src/dom/a.zig Range.call_detach", found.items[0].key);
+    try testing.expectEqual(@as(u32, 0), found.items[0].allowed);
+    try testing.expectEqual(@as(u32, 2), found.items[0].found);
+    try testing.expectEqualStrings("src/dom/b.zig Node.getParent", found.items[1].key);
+}
+
+test "the impls boundary has no baseline: a clean tree passes" {
+    var current: Counts = .empty;
+    defer current.deinit(testing.allocator);
+    var found = try boundaryFailures(testing.allocator, &current);
+    defer found.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 0), found.items.len);
+}
+
+test "a boundary baseline file is refused, not read: the debt is gone and may not come back" {
+    try testing.expect(boundaryBaselineRefused(true));
+    try testing.expect(!boundaryBaselineRefused(false));
+}
+
+test "an impl's import of another impl's file counts even when nothing reaches through it" {
+    var refs = (try scanFile(testing.allocator, "src/webidl/impls/Attr.zig", "const std = @import(\"std\");\nconst NodeImpl = @import(\"Node.zig\");\npub fn f() void {}\n")).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"2:Node.@import"});
+}
+
+test "an impl's unused import of a helper, or of itself, is not another impl" {
+    var refs = (try scanFile(testing.allocator, "src/webidl/impls/Attr.zig", "const Self = @import(\"Attr.zig\");\nconst h = @import(\"cookie_values.zig\");\n")).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{});
+}
+
+test "outside the impls, an alias of an impl that nothing reaches through still counts once" {
+    var refs = try externalReferences(testing.allocator, "const NodeImpl = @import(\"impls\").Node;\nconst RangeImpl = @import(\"impls\").Range;\nfn f() void { _ = RangeImpl.call_detach(r); }\n");
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{ "1:Node.@import", "3:Range.call_detach" });
+}
+
+test "outside the impls, a path into src/webidl/impls/ is a reference: aliased, inline or unused" {
+    const text =
+        \\const NodeImpl = @import("webidl/impls/Node.zig");
+        \\const Body = @import("webidl/impls/fetch_body.zig");
+        \\fn f() void {
+        \\    _ = NodeImpl.getParent(n);
+        \\    _ = @import("../src/webidl/impls/Range.zig").call_detach(r);
+        \\    _ = @import("webidl/impls_tmp/Range.zig");
+        \\    _ = @import("impls/Range.zig");
+        \\    _ = @import("webidl/impls/sub/../Text.zig").x;
+        \\}
+    ;
+    var refs = (try scanFile(testing.allocator, "src/lib_exports.zig", text)).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{ "2:fetch_body.@import", "4:Node.getParent", "5:Range.call_detach", "8:Text.x" });
+}
+
+test "a path import resolves against the importing file's directory" {
+    var refs = (try scanFile(testing.allocator, "src/dom/x.zig", "const N = @import(\"../webidl/impls/Node.zig\");\nconst M = @import(\"webidl/impls/Node.zig\");\n")).?;
+    defer refs.deinit(testing.allocator);
+    try expectRefs(refs.items, &.{"1:Node.@import"});
 }
 
 // ---------------------------------------------------------------------------

@@ -5701,14 +5701,14 @@ pub fn build(b: *std.Build) void {
     interfaces_step.dependOn(&run_interfaces_check.step);
 
     // ========================================================================
-    // LINT: the impls boundary, as a ratchet
+    // LINT: the impls boundary, with no baseline
     // ========================================================================
     // AGENTS.md "The impls boundary": impls are private. tools/lint_impls_boundary.zig
-    // counts every reference into an impl from code that does not own it - per file
-    // and per Impl.member - and fails if any rises above
-    // tools/impls_boundary_baseline.txt or a new one appears. The baseline only goes
-    // down: `zig build lint-impls -- --update` records a paid-down tree and refuses
-    // to record an increase.
+    // fails on any reference into an impl from code that does not own it - the
+    // module graph (check-impls-boundary, below) already rejects one from outside
+    // the generated layer, and the lint also sees an impl reaching another impl's
+    // file inside the impls module and a path into src/webidl/impls/. Its naming and
+    // unchecked-state ratchets keep baselines that only go down (`-- --update`).
     //
     // `zig build test` depends on it, so the pre-commit suite cannot pass with a new
     // cross-impl reference. (The check it replaces listed files importing impls
