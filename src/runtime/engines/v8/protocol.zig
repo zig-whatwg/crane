@@ -1106,6 +1106,10 @@ pub fn writeHeapSnapshot(agent: *Agent, path: [:0]const u8) bool {
 ///   gc_bench's build (-DCRANE_TRACK_GLOBALS=1; 0 in every other);
 /// - `global_handle_bytes`: V8's used global handle bytes for the current
 ///   isolate (0 with none), which counts every Global whoever made it;
+/// - `global_handle_capacity_bytes`: the bytes of every block V8's global
+///   handle table holds for the current isolate (0 with none), in use or
+///   not - it never falls, so it is the most Globals alive at one moment so
+///   far, to the next block of 256 (v8_Isolate_GetGlobalHandleCapacityBytes);
 /// - `wrapper_cache_entries`: the wrappers every realm's wrapper cache on this
 ///   thread holds, each keeping its instance alive until the wrapper dies;
 /// - `wrapper_cache_pool_bytes`: the memory of the record pools of those
@@ -1197,6 +1201,9 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         // no bookkeeping of ours in it, so it is the cross-check on the
         // counters above.
         .{ .name = "global_handle_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleBytes(isolate)) else 0 },
+        // What V8 keeps for the table whether the handles live or not: the
+        // peak, which only the isolate's end gives back.
+        .{ .name = "global_handle_capacity_bytes", .value = if (ffi.v8_Isolate_GetCurrent()) |isolate| @intCast(ffi.v8_Isolate_GetGlobalHandleCapacityBytes(isolate)) else 0 },
         .{ .name = "wrapper_cache_entries", .value = @intCast(@import("wrapper_cache.zig").liveEntryCount()) },
         .{ .name = "node_wrappers", .value = @intCast(@import("node_wrappers.zig").liveCount()) },
         .{ .name = "node_wrapper_net_waiting", .value = @intCast(@import("node_wrappers.zig").netWaitingOfCurrent()) },

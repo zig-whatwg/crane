@@ -1039,6 +1039,12 @@ pub extern fn v8_Debug_NodeWrapperTableBytes(isolate: ?*Isolate) u64;
 /// by V8 and updated as each is created or reset. In every build: the measure
 /// for a test asserting that an operation leaves no handle behind.
 pub extern fn v8_Isolate_GetGlobalHandleBytes(isolate: *Isolate) usize;
+
+/// The bytes of every block V8's global handle table holds for `isolate`, in
+/// use or not: it never falls while the isolate lives (V8 frees a block only
+/// with the table), so it is the most Globals alive at one moment so far, to
+/// the next block of 256.
+pub extern fn v8_Isolate_GetGlobalHandleCapacityBytes(isolate: *Isolate) usize;
 /// Whether `isolate` has a C++ heap (cppgc): every isolate v8_wrapper.cpp
 /// makes has one (the wrapper redesign's P3, IsolateData::cpp_heap).
 pub extern fn v8_Isolate_HasCppHeap(isolate: *Isolate) bool;

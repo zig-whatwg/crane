@@ -7602,6 +7602,20 @@ size_t v8_Isolate_GetGlobalHandleBytes(Isolate* isolate) {
     return stats.used_global_handles_size();
 }
 
+// Bytes of the BLOCKS V8's global handle table holds: every block it ever
+// made for this isolate, in use or not (GlobalHandles::TotalSize). V8 makes a
+// block of 256 nodes when its free list is empty and frees one only with the
+// table (15.7.112.43 src/handles/global-handles.cc NodeSpace::Allocate,
+// ~NodeSpace), so this never falls: it is the most Globals that were alive
+// at one moment since the isolate began, to the next block - what a burst of
+// objects leaves behind for the isolate's life (lane vm1: 40 MB after the
+// perf suite's streams page). Read from V8, no bookkeeping of ours.
+size_t v8_Isolate_GetGlobalHandleCapacityBytes(Isolate* isolate) {
+    HeapStatistics stats;
+    isolate->GetHeapStatistics(&stats);
+    return stats.total_global_handles_size();
+}
+
 /// A CONTEXT'S EMBEDDER-DATA SLOTS: ALL OF THEM, IN THIS ONE LIST. Each later
 /// enumerator takes the next index, so a new slot is a new line here and
 /// cannot take an index in use. They were constants beside their users, each
