@@ -178,6 +178,7 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   for Safari the WebKit processes launchd starts, by name - through `proc_pid_rusage`: CPU (user
   + system), instructions retired, `phys_footprint` (Activity Monitor's Memory: each page counted
   once) and resident size. It answers only after reading, so the page is idle while it is read.
+  (On Linux the same set is read from `/proc`: "perf_bench on Linux".)
 - A timed row's CPU and instructions are the set's between its begin and end marks; its memory,
   the footprints at both, the most a 50 ms sampler saw between them, and its **steady** footprint:
   after the workload's teardown, with the page left alone `--settle-ms` (500 ms by default), at
@@ -448,6 +449,87 @@ chat.local; main built on chat2 was +0.6%
 - a surprising micro-row change is first re-checked with a second build, both sides rebuilt on the
   timing host, and with instructions retired (page minus a 0-iteration control) - only a change
   that survives both is chased.
+
+## A lane's cost pair
+
+A lane that changes how an object is built, a hot path or what Crane holds measures its cost as a
+**pair**: its tip (`crane`) against the main it is based on (`crane_base`), both consoles built in
+the lane's own mirror on the timing host, alternating in one window. The bar is 3% (AGENTS.md,
+"The 3% memory bar reads what Crane holds"). The pair is two passes of `perf_bench run`, and one
+command reads them:
+
+```bash
+# the default pass: time, CPU, instructions; steady and peak memory
+perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<D> --round=<n> --runs=7 \
+  --pin=crane.pin --pin=crane_base.pin
+# the memory pass: memory only, the allocator's deferred-reclamation ring off on BOTH sides, and
+# each timed workload's footprint read once more after a full collection
+MallocLargeCache=0 perf_bench run --suite=... --root=tests/perf --out=<M> --round=<n> --runs=9 \
+  --pin=crane.pin --pin=crane_base.pin --collected
+perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
+```
+
+**The rule `cost` applies is the existing one:** time and instructions on the default pass (a row
+is over when the tip's median over the base's is above the bar and the two sides' launches do not
+overlap); memory on the steady figure and the peak, the medians of all launches, in either pass.
+`cost` prints the geometric means, every row over the bar with each launch's value on both sides,
+and a table of all rows (`!` above the bar, `*` the sides' launches apart, `L` two levels).
+
+**What it prints beside the rule, for a row a median cannot read** (lane tl2, 2026-11-17). The
+rows of the streams, attributes, page-growth and fetch pages sit on two memory levels: a median of
+3 or 9 launches flips between them, and two consoles can sit on different levels with disjoint
+ranges in either direction (lane wb1: +3.3% on one pair of trees, -3.3% on the next, the same
+lane diff). With the ring off, what is left of a level is garbage waiting for a collection at the
+settle mark - whether V8 started a marking task in the idle half second, whether a full
+collection landed inside the page - and a build can prefer one level while it holds the same
+bytes on each.
+
+- **The levels of both sides together.** The two sides run the same page on the same host in
+  alternation, so a level belongs to the page. `cost` looks for two levels in the launches of both
+  sides at once (the report's own test: two tight groups at least 3% apart, two launches or more
+  in each), puts each launch on the low or the high one, and prints the tip over the base **per
+  level both sides reached**, each side's count on each level, and the chance of shares that far
+  apart from one coin (Fisher's exact test, two-sided). A side with 8 launches low and 1 high, a
+  pass of 3 launches, and a side that sits on one level are all read this way; the report's own
+  levels need two groups on one side and miss each of them. A row over the bar by the rule whose
+  every shared level reads within the bar is a median that changed level.
+- **Sides that share no level.** Every launch of the tip on one level and every launch of the
+  base on the other is the row the steady figure cannot settle: the tip holds more (or less), or
+  each build prefers a level. `cost` says so, whichever side is the higher - a row reading 0.967
+  today is the row that reads 1.033 on the next pair.
+- **The collected figure** (`--collected`, `memory.footprint_collected`). After a workload's
+  `settled` mark the page asks for a full collection (`TestUtils.gc()` twice, as the retained
+  pages do), stays idle for the settle time again and posts a `collected` mark. The footprint
+  there is what the workload keeps once its garbage is gone, so the collector's schedule cannot
+  choose it. A collected pass's page runs at another pace (each row starts from a collected
+  heap), so its steady and peak figures are a pair's, compared only within the pass, and its times
+  are not read. No published round is run with `--collected`: without `collect=1` in its URL the
+  harness does what it always did.
+
+The demonstration (chat.local, 2026-11-17, one console as both sides - a pair whose true ratio is
+1.000 on every row) is in the lane's merge report; whether the bar is JUDGED on the per-level
+ratios or on the collected figure is the user's ruling to make, and until then the rule above is
+the verdict and the rest is evidence beside it.
+
+## perf_bench on Linux
+
+`perf_bench` runs on Linux (lane tl2, 2026-11-17: `tools/perf_bench/proc_linux.zig`), so a server1
+pair uses the same tool, journal and `cost` table as a chat.local one. What differs is the
+reading, so **a Linux row is compared only with a Linux row of the same host, and every published
+figure stays macOS's**:
+
+- memory: the footprint is `RssAnon + VmSwap` of `/proc/<pid>/status` - the process's own
+  anonymous memory, resident or swapped out, the nearest Linux has to `phys_footprint`.
+  `resident_end` is `VmRSS`, which also counts the executable's and the libraries' file pages
+  (the tables lanes mem2, idle1 and ev2 wrote before this read `VmRSS`: they are higher by those
+  pages);
+- CPU: `utime + stime` of `/proc/<pid>/stat`, all threads, in clock ticks - 10 ms steps;
+- instructions: not measured (the journal's field is absent). A counter on a process set from
+  outside misses what each thread did before the counter was opened;
+- the process set: the launched process and its descendants, from every thread's
+  `/proc/<pid>/task/<tid>/children`;
+- `perf_bench gc-bench` runs each row under GNU time (`/usr/bin/time -v`): wall time and the
+  largest resident size, which stands for the row's memory; no instructions.
 
 ## /performance/
 
