@@ -44,11 +44,11 @@ src/webidl/impls_tmp/
 erl_crash.dump
 wpt.fyi/
 
-# V8 build dependencies (downloaded by zig build browser)
+# V8: the archives scripts/build-v8-15.7.sh installs (jsengines/v8/<version>/); depot_tools from an older build step
 jsengines/depot_tools/
 jsengines/v8/
 
-# V8 headers and libraries (downloaded by zig build setup)
+# scripts/build-v8-static.sh's default output directory (deps/v8)
 deps/
 
 # External data files (downloaded by zig build setup)

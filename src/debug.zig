@@ -6,7 +6,7 @@
 //!
 //! ## Usage
 //!
-//! For modules with their own debug.zig (v8, webidl):
+//! For modules with their own debug.zig (the engine adapter, webidl):
 //! ```zig
 //! const debug = @import("debug.zig");
 //! debug.print("Message: {s}\n", .{value});
@@ -21,19 +21,21 @@
 //! ## Build Options
 //!
 //! - `zig build -Ddebug=true` - Enable all debug output
-//! - `zig build -Ddebug=true -Ddebug-scope=v8` - Only show v8 debug output
+//! - `zig build -Ddebug=true -Ddebug-scope=webidl` - Only show webidl debug output
 //! - `zig build -Ddebug=true -Ddebug-scope=webidl,dom` - Show webidl and dom output
 //!
 //! ## Available Scopes
 //!
-//! v8, webidl, dom, css, html, url, encoding, streams, fetch, runtime, gc, wpt, general
+//! webidl, dom, css, html, url, encoding, streams, fetch, runtime, gc, wpt, general;
+//! and the engine adapter's own, which its debug.zig matches and its build
+//! file names (`facts.debug_scope`: `zig build --help` lists it under
+//! -Ddebug-scope).
 
 const std = @import("std");
 const debug_options = @import("debug_options");
 
 /// Debug scopes for filtering output
 pub const Scope = enum {
-    v8,
     webidl,
     dom,
     css,

@@ -17,14 +17,8 @@
 //!   - `apply(options, adapter_options)` puts the values in the adapter's own
 //!     options module - `@import("adapter_options")`, which only the engine
 //!     adapter's module imports - never in the `build_options` every module
-//!     shares.
-//!   - `applyTransitional(options, shared)`: what the shared `build_options`
-//!     still carries of this adapter - the three values snapshot_loader.zig
-//!     reads there and three engine facts nothing reads - written with the
-//!     names and in the order they always had, so that moving their options
-//!     here changed no compile. It ends with the migration's one commit
-//!     that may change an options module's text
-//!     (tmp/plans/build-protocol-design.md, batch E5).
+//!     shares, which carries no engine value since batch E5 of
+//!     tmp/plans/build-protocol-design.md.
 //!   - `isDefaultFor(target)`: whether V8 is the engine of a build for
 //!     `target` when -Dengine does not say.
 //!   - `resolve(b, target, options)`: which V8 this build links - the
@@ -196,30 +190,21 @@ pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options {
     };
 }
 
-/// Put `options` in the adapter's own options module.
+/// Put `options` in the adapter's own options module. The last three - the
+/// values snapshot_loader.zig starts V8 with - travelled in the shared
+/// `build_options` until batch E5 of tmp/plans/build-protocol-design.md,
+/// under the names they keep here; the three engine facts written beside
+/// them there (`engine_name`, `has_snapshot_support`,
+/// `has_isolate_per_thread`) had no reader - code asks `engine.name` and
+/// `engine.capabilities` - and went with that batch.
 pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     adapter_options.addOption(?u32, "young_generation_mb", options.young_generation_mb);
     adapter_options.addOption(?u32, "navigation_collection_mb", options.navigation_collection_mb);
     adapter_options.addOption(bool, "wrapper_trace_check", options.wrapper_trace_check);
     adapter_options.addOption(?u32, "memory_pool_timeout_s", options.memory_pool_timeout_s);
-}
-
-/// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the
-/// three values snapshot_loader.zig still reads from the shared
-/// `build_options`, and after them the three engine facts the root build.zig
-/// used to write there and nothing reads (code asks `engine.name` and
-/// `engine.capabilities`) - all six with the names, the values and the order
-/// they have always had, so the module's text, and with it every compile
-/// that imports it, is what it was. The first three move to `apply`, and the
-/// last three go, with the one commit of the migration that may change an
-/// options module's text.
-pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void {
-    shared.addOption(bool, "jitless", options.jitless);
-    shared.addOption(bool, "v8_compilation_cache", options.compilation_cache);
-    shared.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, options.extra_flags, " "));
-    shared.addOption([]const u8, "engine_name", "v8");
-    shared.addOption(bool, "has_snapshot_support", true);
-    shared.addOption(bool, "has_isolate_per_thread", true);
+    adapter_options.addOption(bool, "jitless", options.jitless);
+    adapter_options.addOption(bool, "v8_compilation_cache", options.compilation_cache);
+    adapter_options.addOption([]const u8, "v8_extra_flags", std.mem.trim(u8, options.extra_flags, " "));
 }
 
 /// V8 is the engine of every build but an iOS one: iOS is JavaScriptCore's
@@ -247,9 +232,17 @@ pub const Resolved = struct {
 /// Which V8 this build links, or why it can link none: the archives the
 /// options and the target's OS select, and the facts the archive keeps
 /// beside itself (scripts/build-v8-15.7.sh writes them from GN's own compile
-/// and d8's own link). A configure-time read the configuration cache cannot
-/// see change, so it is poisoned; a host without the archive gets the reason
-/// and how to get it as this build's answer.
+/// and d8's own link). A host without the archive gets the reason and how
+/// to get it as this build's answer.
+///
+/// The two files are read at configure time, so the configuration depends
+/// on them: each is a TRACKED input of the configure
+/// (`b.dependOnFileContents`, std/Build.zig - Zig re-runs the configure
+/// when its contents change), not a reason to poison the configuration
+/// cache, which would make every `zig build` configure afresh (batch E5 of
+/// tmp/plans/build-protocol-design.md; design 1.6). A file that cannot be
+/// read is the one case a contents dependency cannot hold - its absence,
+/// which the archive's arrival must undo - so that answer still poisons.
 pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) engine_build.Resolution(Resolved) {
     const selected = archives.select(options.version, options.build, target.result.os.tag) catch |err| return .{
         .unavailable = switch (err) {
@@ -258,10 +251,8 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
         },
     };
     const chromium = selected.chromium;
-    b.graph.poisonCache();
-    const dir = b.root.root_dir.handle;
-    const flags_text = dir.readFileAlloc(b.graph.io, chromium.libcxx_flags, b.allocator, .limited(1 << 16)) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
-    const libs_text = dir.readFileAlloc(b.graph.io, chromium.system_libs, b.allocator, .limited(1 << 16)) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
+    const flags_text = readTracked(b, chromium.libcxx_flags) catch |err| return .{ .unavailable = noArchive(b, chromium.libcxx_flags, err) };
+    const libs_text = readTracked(b, chromium.system_libs) catch |err| return .{ .unavailable = noArchive(b, chromium.system_libs, err) };
     var flags: std.ArrayList([]const u8) = .empty;
     var lines = std.mem.tokenizeScalar(u8, flags_text, '\n');
     while (lines.next()) |line| {
@@ -278,6 +269,19 @@ pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options
         }
     }
     return .{ .ready = .{ .archives = selected, .libcxx_flags = flags.items, .frameworks = frameworks.items, .system_libs = system_libs.items } };
+}
+
+/// `path` (relative to the build root) read at configure time as a tracked
+/// input of the configuration (`resolve` says why); a failed read poisons
+/// the configuration cache instead, since the file's absence is no content
+/// a dependency can record.
+fn readTracked(b: *std.Build, path: []const u8) ![]u8 {
+    const text = b.root.root_dir.handle.readFileAlloc(b.graph.io, path, b.allocator, .limited(1 << 16)) catch |err| {
+        b.graph.poisonCache();
+        return err;
+    };
+    b.dependOnFileContents(b.path(path));
+    return text;
 }
 
 /// Why a host that lacks `path`, a file the archive keeps beside itself, can
@@ -321,7 +325,20 @@ fn wrapperFlags(b: *std.Build, resolved: *const Resolved, extra: []const []const
 ///     library of its own, uninstrumented (`addSource`) - so its source is
 ///     then not among the module's own, and nothing may take "this module
 ///     compiles v8_wrapper.cpp" for "this artifact links V8" (the protocol's
-///     `Engine.isLinkedInto` is the build's record of the call);
+///     `Engine.isLinkedInto` is the build's record of the call). What
+///     ThreadSanitizer then sees of V8 (moved from the root build.zig's
+///     tsan_suppressions_path, batch E5): V8 15.7's v8::base::Mutex is an
+///     absl::Mutex (src/base/platform/mutex.h), which synchronizes with
+///     futexes and atomics in uninstrumented code, so ThreadSanitizer sees
+///     none of V8's own locking - only V8's calls into the runtime's
+///     interceptors (memcpy, operator new/delete, free) - and reports
+///     V8-internal handoffs as races (the first -Dsanitize-thread run on
+///     15.7, server1, lane v8up b3e: 336 reports in the snapshot generator,
+///     all in V8's DefaultWorkerThreadsTaskRunner and heap). 13.1's
+///     base::Mutex was a pthread mutex, which TSAN intercepts. Those reports
+///     are suppressed by V8's own frames (tools/test_launcher/
+///     tsan_suppressions.txt, section 2), never by dropping the interceptors'
+///     accesses (`ignore_interceptors_accesses`, b3e's first answer);
 ///   - `request.handle_accounting`: the wrapper counts live Global<T> handles
 ///     (-DCRANE_TRACK_GLOBALS=1). It runs on every handle creation, so only
 ///     the binary that reports the count pays for it, never a browser;
@@ -658,9 +675,7 @@ pub const facts: engine_build.Facts = .{
     // that takes the module: a new import goes at the end, or where its cost
     // is known.
     .imports = &.{
-        // interface_bindings consults build_options.interface_allowlist (and
-        // snapshot_loader the three values `applyTransitional` still writes
-        // there).
+        // interface_bindings consults build_options.interface_allowlist.
         "build_options",
         "clock",
         "process",

@@ -1,0 +1,12 @@
+# Workflow: A tracked configure-time read shifts every string index of Zig 0.17's configuration
+
+**Date**: 2026-11-16
+**Lesson**: Replacing `b.graph.poisonCache()` with `b.dependOnFileContents(path)` adds a path dependency that Zig 0.17 serializes BEFORE the steps, so its path string is interned first and every string index after it moves by the path's length plus one - a declared change, never a byte-identical one.
+
+**Why**: The build migration proves each commit by the binary configuration (`--print-configuration-path`; tmp/plans/build-protocol-design.md 5.1a). `std/Build/Serialize.zig` writes `graph.configure_dependencies` as `path_deps` first, and each one's sub-path goes into the configuration's string table at that moment; step names, Run arguments and the rest are interned afterwards, in walk order. So a path dependency is not just two more records: it renumbers every string reference that follows. And it changes nothing else - a configure that anything else still poisons is not cached either way.
+
+**What Happened**: Lane build5's c4 (5522826b1e7) made the V8 adapter's `resolve` read the archive's `libcxx/flags.txt` and `system-libs.txt` as tracked inputs. The configuration of every V8 flag set changed in exactly two ways: `path_deps` gained the two entries, and 63 `.index` lines (string references) moved by +83 - the bytes of "jsengines/v8/15.7.112.43/libcxx/flags.txt" and "jsengines/v8/15.7.112.43/system-libs.txt", each with its terminating zero. The `-Dengine=jsc` set, which reads no archive, stayed byte-identical. Every compile was a cache hit and all 11 artifacts hash-equal. The configure itself stayed poisoned: the engine protocol's `checkListIsComplete` (every configure), the root's `checkEveryTestDirectoryIsASuite` (a whole-tree configure) and the one-binary layout's claim check still call `poisonCache`.
+
+**Fix**: Declare a new tracked read as "path_deps +N, string indices +bytes"; check the shift equals the paths' lengths plus one each. Track only a SUCCESSFUL read (a missing file is no content to record - poison on a failed read, so the file's arrival re-runs the configure). To make a configure actually cacheable, every remaining poisoner must become a tracked read as well (`dependOnDirectoryContents` for a directory listing).
+
+**Takeaway**: **A tracked configure-time read is serialized first: expect path_deps +1 and every string index shifted by the path's length plus one, and nothing cached until the last poisoner is gone.**

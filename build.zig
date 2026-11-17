@@ -1264,8 +1264,8 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
             dsym.setName(b.fmt("dsymutil {s}", .{name}));
             dsym.addArtifactArg(test_exe);
             dsym.expectExitCode(0);
-            // Its warnings about objects without debug information (the V8
-            // prebuilt) are not the build's diagnostics.
+            // Its warnings about objects without debug information (the
+            // engine's prebuilt archives) are not the build's diagnostics.
             _ = dsym.captureStdErr(.{});
             run.step.dependOn(&dsym.step);
         }
@@ -1306,7 +1306,7 @@ fn addSuiteRunWith(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Buil
 /// (`SuiteGroup`): each one's batch size (`--group`; -Dlaunch-batch
 /// overrides every one, so batch 0 is still each suite in one process), its
 /// slow, alone and tsan_skip names with its prefix, and `--plain` for one
-/// whose own executable linked no V8. `batches`: false for test-verify,
+/// whose own executable linked no engine. `batches`: false for test-verify,
 /// which runs its own shapes.
 fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaunch, groups: []const SuiteGroup, many_browsers: bool, batches: bool) void {
     for (groups) |g| {
@@ -1350,8 +1350,9 @@ fn addGroupArgs(b: *std.Build, run: *std.Build.Step.Run, launch: *const TestLaun
 /// `members`: the member suites of a joined executable (`OneBinary`,
 /// -Dtest-binaries=engine), each with its own row: the runner judges a test by
 /// its member's StandaloneRuntime, found by the test's name prefix (lane
-/// onebin3: tests-v8's .process_start had no per-member path, so its tests
-/// read as leavers in the joined "tests" executable). Empty for an
+/// onebin3: the engine adapter's own suite's .process_start had no
+/// per-member path, so its tests read as leavers in the joined "tests"
+/// executable). Empty for an
 /// executable of one suite, which keeps `standalone` for every test.
 ///
 /// What it says of the engine and of the busy Browser (`suite_engine_line`,
@@ -1629,8 +1630,8 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// so not a dependency package's (curl, mbedTLS, zlib: their option sets
 /// reject the option, and they stay uninstrumented, as do the C libraries
 /// this build links as separate artifacts - brotli, the image codecs,
-/// nghttp2 - which are not modules of the graph) - and never the V8
-/// prebuilt, which is an archive. The C++ of a Crane module is instrumented
+/// nghttp2 - which are not modules of the graph) - and never the engine's
+/// prebuilt archives. The C++ of a Crane module is instrumented
 /// with it - except the engine adapter's own, where the adapter compiles it
 /// apart (an artifact says it is thread-sanitized when it links the engine:
 /// engine_build.LinkRequest). Run at the end of `build`, when every import is
@@ -1638,21 +1639,15 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 /// artifact of the same build is instrumented there too.
 ///
 /// What the uninstrumented code does is invisible to TSAN except through
-/// the calls it intercepts (pthread, malloc): a race inside V8 is not seen,
-/// and V8's own atomics can make a report a false positive - suppressed
-/// only when proven, in tools/test_launcher/tsan_suppressions.txt.
-/// V8 15.7's v8::base::Mutex is an absl::Mutex (src/base/platform/mutex.h),
-/// which synchronizes with futexes and atomics in uninstrumented code, so
-/// ThreadSanitizer sees none of V8's own locking - only V8's calls into the
-/// runtime's interceptors (memcpy, operator new/delete, free) - and reports
-/// V8-internal handoffs as races (the first -Dsanitize-thread run on 15.7,
-/// server1, lane v8up b3e: 336 reports in the snapshot generator, all in V8's
-/// DefaultWorkerThreadsTaskRunner and heap). 13.1's base::Mutex was a pthread
-/// mutex, which TSAN intercepts. Those reports are suppressed by V8's own
-/// frames (tools/test_launcher/tsan_suppressions.txt, section 2), never by
-/// dropping the interceptors' accesses (`ignore_interceptors_accesses`, b3e's
-/// first answer): that also drops a Zig free or memcpy racing a Zig read,
-/// the class verify mode exists for. The launcher names the file in every
+/// the calls it intercepts (pthread, malloc): a race inside the engine is
+/// not seen, and the engine's own synchronization, done in uninstrumented
+/// code, can make a report of its internal handoffs a false positive (why
+/// for the engine an adapter links: the adapter's build file, at its
+/// `link`). Such a report is suppressed only when proven, by the engine's
+/// own frames (tools/test_launcher/tsan_suppressions.txt), never by
+/// dropping the interceptors' accesses (`ignore_interceptors_accesses`):
+/// that also drops a Zig free or memcpy racing a Zig read, the class verify
+/// mode exists for. The launcher names the file in every
 /// test child's TSAN_OPTIONS; the snapshot generator, which links the same
 /// instrumented modules, gets it from `useTsanSuppressions`.
 const tsan_suppressions_path = "tools/test_launcher/tsan_suppressions.txt";
@@ -1685,8 +1680,9 @@ fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
 ///
 /// One executable per directory, not per file: every test executable is a
 /// separate root-module compile that re-analyses everything its imports reach,
-/// and most of them reach the whole engine through `impls` - tests/v8 alone
-/// had 53 executables, each a full analysis and a full V8 link. So the
+/// and most of them reach the whole engine through `impls` - the engine
+/// adapter's own test directory alone had 53 executables, each a full
+/// analysis and a full engine link. So the
 /// directory's files are imported by one generated root, `<dir>/.all_tests.zig`,
 /// written here when its file list changes: a module's root file must sit in
 /// the directory its imports are resolved under, so it cannot live in the
@@ -2798,7 +2794,7 @@ pub fn build(b: *std.Build) void {
     // unit tests always have them (builtin.is_test). The audit sweep's runner
     // is built with -Drefcount-audit=true (refcount8, H-RC8-BUILD-AUDIT).
     // Its own options module, as fetch's curl_options: build_options is
-    // imported by several modules already.
+    // imported by the engine adapter's module already.
     const refcount_audit = b.option(bool, "refcount-audit", "Compile in the refcount zombie audit (run it with CRANE_REFCOUNT_AUDIT=1); unit tests always have it") orelse false;
     const dom_options = b.addOptions();
     dom_options.addOption(bool, "refcount_audit", refcount_audit);
@@ -2826,11 +2822,10 @@ pub fn build(b: *std.Build) void {
     ) orelse "";
     build_options.addOption([]const u8, "interface_allowlist", interface_allowlist);
 
-    // What the shared module still carries of the engine, written by the
-    // adapter where this file used to write it (TRANSITIONAL: the design's
-    // batch E5 moves it to the adapter's own module), and the adapter's own
-    // options module, which the engine adapter's module alone imports.
-    engine.applyTransitional(build_options);
+    // The adapter's own options module, which the engine adapter's module
+    // alone imports: every engine value is there (since batch E5 of
+    // tmp/plans/build-protocol-design.md the shared build_options carries
+    // none).
     const engine_adapter_options = engine.adapterOptions(b);
 
     // Validate spec filter.
@@ -3156,7 +3151,8 @@ pub fn build(b: *std.Build) void {
         launcher_fixture_options.addOptionPath("state_path", state_fixture.getEmittedBin());
         // A joined executable as -Dtest-binaries=engine makes one (tests/
         // test_runner_fixture/joined_fixture.zig): two members, "start."
-        // (.process_start, as tests-v8) and "held." (the default .per_test),
+        // (.process_start, as the engine adapter's own suite) and "held."
+        // (the default .per_test),
         // each judged by its own row (lane onebin3).
         const joined_fixture = b.addTest(.{
             .name = "test_joined_fixture",
@@ -3207,7 +3203,7 @@ pub fn build(b: *std.Build) void {
         // -Dmany-browsers: a test that assumes it is the only Browser of its
         // process, and one that assumes nothing - child.zig's tests check that
         // the variant's busy Browser runs beside them and works cleanly. It
-        // links V8, so it is built only in that build. It imports the engine
+        // links the engine, so it is built only in that build. It imports the engine
         // as every test executable that links it does (`addTestRootWith`),
         // so the Crane test runner treats it as one: the engine's process
         // start before its first test, the engine's counters in its state
@@ -3338,11 +3334,11 @@ pub fn build(b: *std.Build) void {
     const engine_startup_test_module: ?*std.Build.Module = if (engine_startup_tests) |startup_tests| startup_tests.createModule() else null;
 
     // What -Dtarget can build without running anything there: the artifacts
-    // that link no V8 are built (libwhatwg, the image codecs, the platform
-    // conformance tests); those that link V8 (crane, wpt_runner) are compiled
-    // without a binary, which analyses all their Zig and compiles
-    // v8_wrapper.cpp, and never links - there is no V8 prebuilt for any target
-    // but the build machine's (jsengines/v8/out/static). `check-linux` runs it
+    // that link no engine are built (libwhatwg, the image codecs, the platform
+    // conformance tests); those that link the engine (crane, wpt_runner) are
+    // compiled without a binary, which analyses all their Zig and compiles
+    // the engine adapter's C++, and never links - the engine's prebuilt
+    // archives exist for the build machine's target only. `check-linux` runs it
     // for both Linux targets; `crane-check` is the host's crane compile.
     const check_target_step = b.step("check-target", "Build what -Dtarget can build (libwhatwg, codecs, platform tests); compile crane and wpt_runner without linking");
     if (image_codecs) |codecs| check_target_step.dependOn(&codecs.step);
@@ -3476,10 +3472,10 @@ pub fn build(b: *std.Build) void {
         };
         // runs_engine = true: tests/dom/mutation_test.zig calls dom.mutation.insert
         // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
-        // NodeIterator and interfaces.NodeList.vtable - i.e. the V8 FFI layer,
-        // which also drags in libuv's event loop. With `false` this was the only
-        // one of 262 build steps that failed to link, with 246 undefined symbols
-        // (236 _v8_* + 10 _uv_*).
+        // NodeIterator and interfaces.NodeList.vtable - i.e. the engine
+        // adapter's FFI layer, which also drags in libuv's event loop. With
+        // `false` this was the only one of 262 build steps that failed to link,
+        // with 246 undefined symbols (236 of the adapter's C++ + 10 _uv_*).
         addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports, true, test_selection) catch |err| {
             std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
         };
@@ -3577,9 +3573,9 @@ pub fn build(b: *std.Build) void {
 
     if (test_streams) {
         // Note: Module tests for streams are skipped because they use refAllDecls on
-        // V8-dependent code (interfaces/impls). The dedicated test files in tests/streams/
-        // cover the functionality without requiring V8 to be linked.
-        // To run full streams tests with V8, use the REPL or integration tests.
+        // engine-dependent code (interfaces/impls). The dedicated test files in tests/streams/
+        // cover the functionality without linking the engine.
+        // To run full streams tests with the engine, use the REPL or integration tests.
 
         // Add dedicated test files from tests/streams/
         const streams_imports = [_]std.Build.Module.Import{
@@ -3686,11 +3682,12 @@ pub fn build(b: *std.Build) void {
 
     // HTML tests
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "html")) {
-        // NOT V8-linked, and it cannot be - see below. `testing_graph.html` imports
-        // `runtime`, `impls`, `interfaces` and `v8`, so this target links today
-        // only for as long as Zig's lazy analysis never walks from a test block
-        // in `src/html/` into a `v8_*` extern. The day one does, this goes red
-        // with ~238 `undefined symbol: _v8_*`. `tests/dom/` hit exactly that
+        // NOT engine-linked, and it cannot be - see below. `testing_graph.html`
+        // imports `runtime`, `impls`, `interfaces` and the engine adapter's
+        // module, so this target links today only for as long as Zig's lazy
+        // analysis never walks from a test block in `src/html/` into an extern
+        // of the adapter's C++. The day one does, this goes red with ~238
+        // undefined symbols of it. `tests/dom/` hit exactly that
         // wall with 246 and was fixed by passing `runs_engine = true` for the files
         // under `tests/dom/`; the module-root target still is not linked, so
         // `testing_graph.dom`, `testing_graph.intl` and `testing_graph.platform` all carry the same latency.
@@ -3711,7 +3708,7 @@ pub fn build(b: *std.Build) void {
         //     CallbackManager::instance_, ...)
         //   because `testing_graph.html` is a dependency of `wpt_runner`, `full_static_lib`,
         //   `crane` and `crane_exe`, each of which already compiles
-        //   `v8_wrapper.cpp` into itself. A module's link objects belong to every
+        //   the engine adapter's C++ into itself. A module's link objects belong to every
         //   artifact downstream of it.
         //
         // A generated root that does `_ = @import("html")` does not help either:
@@ -3723,8 +3720,8 @@ pub fn build(b: *std.Build) void {
         //      `html_core` (as it already does for DOMParser, innerHTML and
         //      Window) instead of `html`, which leaves `testing_graph.html` a leaf that
         //      can be cloned; or
-        //   2. keep every V8-reaching HTML test under `tests/html/`, which IS
-        //      V8-linked below, and treat `src/html/**` test blocks as
+        //   2. keep every engine-reaching HTML test under `tests/html/`, which IS
+        //      engine-linked below, and treat `src/html/**` test blocks as
         //      pure-Zig-only. That is the convention `tests/dom/` follows.
         const html_tests = b.addTest(.{ .root_module = testing_graph.html });
         const run_html_tests = addSuiteRun(b, launch, html_tests, "src-html", null);
@@ -3764,7 +3761,7 @@ pub fn build(b: *std.Build) void {
 
     // Service Workers: the service_worker module's tests (a dependency of
     // itself through impls, as html is, so its src/ test blocks do not run -
-    // its tests live in tests/service_worker, V8-linked like tests/html).
+    // its tests live in tests/service_worker, engine-linked like tests/html).
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "service_worker")) {
         const service_worker_imports = [_]std.Build.Module.Import{
             .{ .name = "host", .module = testing_graph.host },
@@ -3794,8 +3791,9 @@ pub fn build(b: *std.Build) void {
     // `src/browser/root.zig` even has the `test { _ = @import(...); }` block
     // that pulls the other three files in. It was wired to nothing.
     //
-    // V8-linked, and it has to be: `Browser.init` creates an isolate, and
-    // `testing_graph.browser` imports `v8`, `runtime` and `impls`. Unlike `testing_graph.html`
+    // Engine-linked, and it has to be: `Browser.init` starts the engine, and
+    // `testing_graph.browser` imports the engine adapter's module, `runtime`
+    // and `impls`. Unlike `testing_graph.html`
     // above, nothing imports `testing_graph.browser`, so it is not a dependency of itself
     // and `addModuleTestWithEngine` can clone it without two modules claiming
     // `src/browser/root.zig`.
@@ -3864,8 +3862,9 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_xhr_tests.step);
 
         // `testing_graph.xhr` already carries `fetch`, which is where the curl linkage
-        // comes from, so the test root needs nothing beyond `xhr` itself. No V8
-        // link: nothing under `src/xhr/` reaches a `v8_*` extern, which is now
+        // comes from, so the test root needs nothing beyond `xhr` itself. No
+        // engine link: nothing under `src/xhr/` reaches an extern of the engine
+        // adapter's C++, which is now
         // structural rather than incidental - the module has no `runtime`
         // import at all.
         const xhr_imports = [_]std.Build.Module.Import{
@@ -4031,17 +4030,17 @@ pub fn build(b: *std.Build) void {
         // A second binding of the facade cannot share a compile with the
         // production one: Zig checks that a file belongs to one module over
         // the whole import graph, analysed or not ("file exists in modules
-        // 'engine' and 'engine0'"). testing_graph.runtime reaches the V8 binding
-        // through a `v8` import (runtime -> v8 -> impls -> engine), so these
-        // tests use runtime without one - the runtime tier as the engine
-        // boundary leaves it. (runtime itself imports no v8 any more: its last
-        // use, realm.zig's populateIntrinsics, moved into the adapter's
-        // createWindowRealm.)
+        // 'engine' and 'engine0'"). testing_graph.runtime reaches the engine
+        // adapter's binding through the adapter's module (runtime -> adapter
+        // -> impls -> engine), so these tests use runtime without it - the
+        // runtime tier as the engine boundary leaves it. (runtime itself no
+        // longer imports the adapter's module: its last use, realm.zig's
+        // populateIntrinsics, moved into the adapter's createWindowRealm.)
         //
         // The runtime imports "engine" too, so a tier is a copy of testing_graph.runtime
-        // bound to its own facade: every import of testing_graph.runtime except v8 and
-        // engine, plus the facade the tier's adapter makes. A copy that kept
-        // testing_graph.runtime's engine would reach the V8-bound facade a second way,
+        // bound to its own facade: every import of testing_graph.runtime except the
+        // adapter's module and engine, plus the facade the tier's adapter makes. A copy
+        // that kept testing_graph.runtime's engine would reach the adapter-bound facade a second way,
         // and the facade's file cannot be in two modules of one compile.
         const test_adapter_tier = runtimeTier(b, target, testing_graph.runtime, b.path("tests/runtime/protocol_test_adapter.zig"));
         const runtime_tier_mod = test_adapter_tier.runtime;
@@ -4313,7 +4312,7 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    // Benchmark tests (requires V8 + browser)
+    // Benchmark tests (requires the engine + browser)
     //
     // Wired to a dedicated `bench` step and deliberately kept OUT of
     // `zig build test`. These are wall-clock measurements, not correctness
@@ -4361,7 +4360,7 @@ pub fn build(b: *std.Build) void {
 
     // tests/browser/: a directory suite like any (a new file there joins it),
     // run by its own step rather than by `test` - one more root compile of
-    // the whole engine with V8 linked. Its directory is recorded whatever
+    // the whole engine, linked. Its directory is recorded whatever
     // -Dspec selects (addTestFilesFromDir), so the configure check counts it.
     const test_browser_step = b.step("test-browser", "Run browser initialization tests (tests/browser/)");
     const browser_test_imports = [_]std.Build.Module.Import{
@@ -4442,7 +4441,7 @@ pub fn build(b: *std.Build) void {
     lib_step.dependOn(&install_shared.step);
 
     // ========================================================================
-    // FULL BROWSER RUNTIME LIBRARY (includes all WebIDL interfaces + V8)
+    // FULL BROWSER RUNTIME LIBRARY (includes all WebIDL interfaces + the engine)
     // ========================================================================
 
     // Create lib_exports module with all necessary imports
@@ -4514,7 +4513,7 @@ pub fn build(b: *std.Build) void {
     lib_full_step.dependOn(&install_full_static.step);
 
     // ========================================================================
-    // CRANE BROWSER (Self-contained browser with static V8)
+    // CRANE BROWSER (Self-contained browser, the engine linked in)
     // ========================================================================
     //
     // Build: zig build browser
@@ -4532,7 +4531,8 @@ pub fn build(b: *std.Build) void {
     crane_mod.addImport("webidl", webidl_mod);
     crane_mod.addImport("infra", infra_mod);
     // lib_exports.zig reaches the engine through the protocol, as
-    // lib_exports_mod does; it had "v8" and no "engine", so it did not compile.
+    // lib_exports_mod does; it had the adapter's module and no "engine", so it
+    // did not compile.
     crane_mod.addImport("engine", engine_mod);
     crane_mod.addImport("interfaces", interfaces_mod);
     crane_mod.addImport("impls", impls_mod);
@@ -4637,7 +4637,7 @@ pub fn build(b: *std.Build) void {
     crane_step.dependOn(&install_crane_exe.step);
 
     // crane without a binary: all of src/webdriver and the target platform's
-    // graph analysed, v8_wrapper.cpp compiled, nothing linked. Nothing else
+    // graph analysed, the engine adapter's C++ compiled, nothing linked. Nothing else
     // compiles either for the build machine - every test binds `testing` -
     // which is how src/webdriver sat out the Zig 0.16 migration.
     const crane_check = addCompileCheck(b, "crane_check", "src/webdriver/main.zig", target, optimize, &crane_exe_imports, &engine);
@@ -4674,9 +4674,9 @@ pub fn build(b: *std.Build) void {
 
     // lib-full for aarch64-ios, its own `zig build` like check-linux: a static
     // library, so it builds every C library and all of Crane for iOS and links
-    // nothing (an iOS link also needs a V8 ios-arm64 prebuilt that matches the
-    // wrapper - 24 V8 API symbols are missing from today's, lane zig017trial -
-    // and iOS ships on JavaScriptCore). -Dios-sdk passes through: the merge
+    // nothing (an iOS link also needs an engine prebuilt for the phone that
+    // matches the adapter - 24 of the engine's API symbols are missing from
+    // today's, lane zig017trial - and iOS ships on its system engine). -Dios-sdk passes through: the merge
     // check runs `zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk -j2`.
     // PAUSED (the user, 2026-11-10 15:55 ET: "skip ios builds and tests for now
     // until we get js core implemented"): the sub-build's engine links nothing
@@ -4968,7 +4968,7 @@ pub fn build(b: *std.Build) void {
     // Console fed lines, its output read back), part of `zig build test`.
     // Each test starts a Browser: batch 1 (suite_configs, tests-repl).
     // Selected with the Browser's own spec name, -Dspec=browser (tests/console/
-    // is the Console Standard's suite, without V8).
+    // is the Console Standard's suite, without the engine).
     if (spec_filter == null or std.mem.eql(u8, spec_filter.?, "all") or std.mem.eql(u8, spec_filter.?, "browser")) {
         const repl_test_mod = b.createModule(.{
             .root_source_file = b.path("tools/repl.zig"),
@@ -5003,7 +5003,7 @@ pub fn build(b: *std.Build) void {
     // Built in the WPT runner's root mode (ReleaseSafe by default,
     // `-Dwpt-runner-optimize=Debug` for both): its timings are bars beside the
     // runner's pages, and a Debug gc_bench measures a different engine - at -O0
-    // v8_wrapper.cpp's inlined V8 helpers were 45% of an indexed read
+    // the engine adapter's inlined C++ helpers were 45% of an indexed read
     // (tmp/plans/lane-idxfast-handoff.md). Its Crane modules and C libraries
     // are -Doptimize's, as the runner's modules are.
     const gc_bench_exe = b.addExecutable(.{
@@ -5077,7 +5077,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // Unit tests for the runner's pure-Zig support modules. These import only
-    // std, so they build and run without V8 or libuv - which means the parts of
+    // std, so they build and run without the engine or libuv - which means the parts of
     // the harness that decide *which* tests exist and *which* are in scope are
     // covered by `zig build test`, not just by the runner binary.
     {
@@ -5115,7 +5115,7 @@ pub fn build(b: *std.Build) void {
                     .target = target,
                     .optimize = optimize,
                     // host is std-only (plus libc); it keeps these modules free
-                    // of V8 and libuv while giving them the process std.Io.
+                    // of the engine and libuv while giving them the process std.Io.
                     .imports = &.{
                         .{ .name = "clock", .module = testing_graph.clock },
                         .{ .name = "host", .module = testing_graph.host },
@@ -5645,8 +5645,9 @@ pub fn build(b: *std.Build) void {
     // LINT: the engine boundary, as a ratchet
     // ========================================================================
     // AGENTS.md "The engine boundary": the JavaScript engine is an adapter, and
-    // V8 belongs in src/runtime/engines/v8/ (and tests/v8/) only.
-    // tools/lint_engine_boundary.zig counts every V8 reference elsewhere - per
+    // an engine's own code belongs in its adapter's directory under
+    // src/runtime/engines/ (and the adapter's own tests) only.
+    // tools/lint_engine_boundary.zig counts every engine reference elsewhere - per
     // file and per name - and fails if any rises above
     // tools/engine_boundary_baseline.txt or a new one appears. The baseline only
     // goes down: `zig build lint-engine -- --update` records a paid-down tree and
@@ -5941,7 +5942,7 @@ pub fn build(b: *std.Build) void {
     // std.HashMap deletes by tombstone and never grows while puts and removes
     // balance, so a long-lived map's free slots run out and every miss walks
     // the table (src/infra/tombstones.zig; found and fixed in the instance
-    // registries, the V8 wrapper cache and the timer maps).
+    // registries, the engine adapter's wrapper cache and the timer maps).
     // tools/lint_tombstones.zig flags, through std.zig.Ast, every container
     // field or container-level `var` std hash map in src/ that its file removes
     // from with no TombstoneGuard and no `// tombstones: <why>` exemption, and
@@ -6012,8 +6013,9 @@ pub fn build(b: *std.Build) void {
     // The code-size report
     // ========================================================================
     // tools/code_size_report.zig groups a binary's functions by generic
-    // family - every instance of `V8Interface(X).constructorCallback` is one
-    // family - from its symbol table, with count and bytes per family: what
+    // family - every instance of one generic function, as an interface
+    // template's `constructorCallback` for each X, is one family - from its
+    // symbol table, with count and bytes per family: what
     // LLVM emitted, so what LLVM Emit Object spent its time on (lane
     // compiletime1; Rust's cargo-llvm-lines). `zig build code-size --
     // <binary> [--top=N] [--base=<binary>] [--tsv]`.
@@ -6028,6 +6030,28 @@ pub fn build(b: *std.Build) void {
     code_size_run.addPassthruArgs();
     b.step("code-size", "Group a binary's functions by generic family, with count and bytes (-- <binary> [--top=N] [--base=<binary>] [--tsv])").dependOn(&code_size_run.step);
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = code_size_module }), "tools-code_size_report", null).step);
+
+    // ========================================================================
+    // Where two executables differ, section by section
+    // ========================================================================
+    // tools/section_diff.zig compares two Mach-O or ELF files region by
+    // region and says whether they are the same program, leaving out what
+    // names one link rather than the program (a UUID, a signature, a build
+    // id, the debug information): the cold check of the build migration's
+    // proof standard (tmp/plans/build-protocol-design.md 5.1a), where two
+    // cold builds of one tree differ by hash. `zig build section-diff --
+    // <a> <b>`; exit status 0 same, 1 differs, 2 not comparable.
+    const section_diff_module = b.createModule(.{
+        .root_source_file = b.path("tools/section_diff.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const section_diff_run = b.addRunArtifact(b.addExecutable(.{ .name = "section_diff", .root_module = section_diff_module }));
+    section_diff_run.has_side_effects = true;
+    section_diff_run.setCwd(b.path("."));
+    section_diff_run.addPassthruArgs();
+    b.step("section-diff", "Compare two executables region by region: the same program, or where they differ (-- <a> <b>)").dependOn(&section_diff_run.step);
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = section_diff_module }), "tools-section_diff", null).step);
 
     // ========================================================================
     // WPT: the wpt.fyi upload package
@@ -6054,48 +6078,6 @@ pub fn build(b: *std.Build) void {
     wpt_upload_package_step.dependOn(&wpt_upload_package_run.step);
     const wpt_upload_package_tests = b.addTest(.{ .root_module = wpt_upload_package_module });
     test_step.dependOn(&addSuiteRun(b, launch, wpt_upload_package_tests, "tools-wpt_upload_package", null).step);
-
-    // ========================================================================
-    // HELP: Available JavaScript Engines
-    // ========================================================================
-
-    const help_engines_step = b.step("help-engines", "Show available JavaScript engines");
-    const help_engines_cmd = b.addSystemCommand(&[_][]const u8{
-        "sh",
-        "-c",
-        \\echo "Available JavaScript Engines"
-        \\echo "============================"
-        \\echo ""
-        \\echo "  v8       Google V8 (default)"
-        \\echo "           - Best performance and feature support"
-        \\echo "           - Supports heap snapshots for fast startup"
-        \\echo "           - Isolate-per-thread threading model"
-        \\echo "           - Status: FULLY IMPLEMENTED"
-        \\echo "           - Requires: Homebrew V8 (brew install v8)"
-        \\echo ""
-        \\echo "  jsc      JavaScriptCore (WebKit)"
-        \\echo "           - Native on macOS/iOS"
-        \\echo "           - Good performance, stable C API"
-        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
-        \\echo "           - Requires: JavaScriptCore.framework (macOS)"
-        \\echo "                       javascriptcoregtk-4.0 (Linux)"
-        \\echo ""
-        \\echo "  quickjs  QuickJS"
-        \\echo "           - Lightweight, embeddable"
-        \\echo "           - Good for resource-constrained environments"
-        \\echo "           - Status: PARTIAL (see whatwg-qfv3a)"
-        \\echo "           - Requires: libquickjs.a"
-        \\echo ""
-        \\echo "Usage:"
-        \\echo "  zig build -Dengine=v8      # Build with V8 (default)"
-        \\echo "  zig build -Dengine=jsc     # Build with JavaScriptCore"
-        \\echo "  zig build -Dengine=quickjs # Build with QuickJS"
-        \\echo ""
-        \\echo "Note: Currently only V8 is fully implemented."
-        \\echo "JSC and QuickJS backends are tracked in issue whatwg-qfv3a."
-        ,
-    });
-    help_engines_step.dependOn(&help_engines_cmd.step);
 
     // ========================================================================
     // CLDR DATA PIPELINE TOOLS
@@ -6495,108 +6477,6 @@ pub fn build(b: *std.Build) void {
         \\    fi
         \\fi
         \\
-        \\# ========================================
-        \\# V8 JavaScript Engine (13.1.x branch)
-        \\# ========================================
-        \\PROJECT_ROOT="$(pwd)"
-        \\V8_DEST="$PROJECT_ROOT/jsengines/v8"
-        \\V8_LIB="$V8_DEST/out/static/obj/libv8_monolith.a"
-        \\DEPOT_TOOLS_DIR="$PROJECT_ROOT/jsengines/depot_tools"
-        \\
-        \\if [ ! -f "$V8_LIB" ]; then
-        \\    echo "==> Building V8 13.1.x (this takes 30-60 minutes on first run)..."
-        \\    
-        \\    # Install depot_tools if not present
-        \\    if [ ! -d "$DEPOT_TOOLS_DIR" ]; then
-        \\        echo "    Installing depot_tools..."
-        \\        git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git "$DEPOT_TOOLS_DIR"
-        \\    fi
-        \\    export PATH="$DEPOT_TOOLS_DIR:$PATH"
-        \\    
-        \\    # Bootstrap depot_tools (required before first use)
-        \\    echo "    Bootstrapping depot_tools..."
-        \\    gclient --version > /dev/null 2>&1 || true
-        \\    
-        \\    # Clone V8 to /tmp and checkout 13.1.x
-        \\    V8_BUILD_DIR="/tmp/v8-build"
-        \\    if [ ! -d "$V8_BUILD_DIR/v8" ]; then
-        \\        echo "    Cloning V8 repository..."
-        \\        rm -rf "$V8_BUILD_DIR"
-        \\        mkdir -p "$V8_BUILD_DIR"
-        \\        cd "$V8_BUILD_DIR"
-        \\        fetch v8
-        \\        cd v8
-        \\        git checkout branch-heads/13.1
-        \\        gclient sync
-        \\        cd - > /dev/null
-        \\    fi
-        \\    
-        \\    # Build V8 static library
-        \\    echo "    Building V8 static library..."
-        \\    cd "$V8_BUILD_DIR/v8"
-        \\    
-        \\    # Detect architecture
-        \\    ARCH=$(uname -m)
-        \\    if [ "$ARCH" = "arm64" ]; then
-        \\        V8_TARGET_CPU="arm64"
-        \\    else
-        \\        V8_TARGET_CPU="x64"
-        \\    fi
-        \\    
-        \\    # Generate build configuration
-        \\    mkdir -p out/static
-        \\    cat > out/static/args.gn << 'ARGS'
-        \\is_component_build = false
-        \\v8_monolithic = true
-        \\v8_use_external_startup_data = false
-        \\is_debug = false
-        \\symbol_level = 0
-        \\v8_enable_sandbox = true
-        \\v8_enable_pointer_compression = true
-        \\v8_enable_gdbjit = false
-        \\v8_enable_disassembler = false
-        \\v8_enable_object_print = false
-        \\v8_enable_verify_heap = false
-        \\v8_enable_trace_maps = false
-        \\v8_enable_test_features = false
-        \\v8_enable_v8_checks = false
-        \\v8_enable_i18n_support = false
-        \\clang_use_chrome_plugins = false
-        \\treat_warnings_as_errors = false
-        \\use_custom_libcxx = false
-        \\ARGS
-        \\    echo "target_cpu = \"$V8_TARGET_CPU\"" >> out/static/args.gn
-        \\    
-        \\    gn gen out/static
-        \\    ninja -C out/static v8_monolith v8_libplatform v8_libbase
-        \\    
-        \\    # Convert thin archives to fat archives (Zig can't parse thin archives)
-        \\    LLVM_AR="$(pwd)/third_party/llvm-build/Release+Asserts/bin/llvm-ar"
-        \\    cd out/static
-        \\    echo "    Converting thin archives to fat archives..."
-        \\    $LLVM_AR -t obj/libv8_libplatform.a > /tmp/platform_objs.txt
-        \\    $LLVM_AR rcs obj/libv8_libplatform_fat.a $(cat /tmp/platform_objs.txt)
-        \\    $LLVM_AR -t obj/libv8_libbase.a > /tmp/base_objs.txt
-        \\    $LLVM_AR rcs obj/libv8_libbase_fat.a $(cat /tmp/base_objs.txt)
-        \\    cd ../..
-        \\    
-        \\    cd - > /dev/null
-        \\    
-        \\    # Copy to jsengines/v8
-        \\    echo "    Copying V8 to $V8_DEST..."
-        \\    mkdir -p "$V8_DEST"
-        \\    rm -rf "$V8_DEST/include" "$V8_DEST/out"
-        \\    cp -r "$V8_BUILD_DIR/v8/include" "$V8_DEST/include"
-        \\    mkdir -p "$V8_DEST/out/static/obj"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_monolith.a" "$V8_DEST/out/static/obj/"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libplatform_fat.a" "$V8_DEST/out/static/obj/"
-        \\    cp "$V8_BUILD_DIR/v8/out/static/obj/libv8_libbase_fat.a" "$V8_DEST/out/static/obj/"
-        \\    
-        \\    echo "    V8 13.1.x built successfully"
-        \\else
-        \\    echo "==> V8 already present"
-        \\fi
-        \\
         \\echo ""
         \\echo "==> Setup complete!"
         \\echo ""
@@ -6612,10 +6492,6 @@ pub fn build(b: *std.Build) void {
         \\echo "  - idl/         W3C WebRef IDL definitions"
         \\echo "  - whatwg/      WHATWG specs (markdown)"
         \\echo "  - whatwg/html/ HTML multipage spec sections"
-        \\echo ""
-        \\echo "V8 engine is in: jsengines/v8/"
-        \\echo "  - include/     V8 headers"
-        \\echo "  - out/static/  Built static libraries"
         \\
     });
 
@@ -6701,7 +6577,7 @@ const CModes = struct {
         return .{ .optimize = modes.c_libraries, .sanitize_c = modes.sanitize_c };
     }
 
-    /// What `modes` give the root (v8_wrapper.cpp).
+    /// What `modes` give the root (the engine adapter's C++).
     fn root(modes: runner_build_mode.RunnerModes) CModes {
         return .{ .optimize = modes.root, .sanitize_c = modes.sanitize_c };
     }
@@ -6955,7 +6831,7 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
         }),
     });
     ctx.engine.link(b, exe.root_module, .{});
-    // v8_wrapper.cpp's sanitizer (build_mode.zig, RunnerModes.sanitize_c):
+    // The sanitizer of the engine adapter's C++ (build_mode.zig, RunnerModes.sanitize_c):
     // the production run's is its release mode's own (.trap), as the
     // console's; the bug-finding run's is `.full`, so a failed check names
     // itself in a ReleaseSafe runner as it does in Debug.
@@ -7095,7 +6971,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // hook.zig's Hook(T) and List(T, capacity)), written while the process
     // starts and frozen after. ZERO dependencies for the same reason as
     // clock_mod: every layer declares hook slots - src/dom, but also the
-    // runtime tier, the V8 adapter, fetch and hr_time below it - and a leaf
+    // runtime tier, the engine adapter, fetch and hr_time below it - and a leaf
     // module cannot form a cycle. dom re-exports it (dom.Hook,
     // dom.process_start).
     const process_mod = graphModule(b, public, "process", .{
@@ -7155,7 +7031,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     runtime_mod.addImport("webidl", webidl_mod);
     runtime_mod.addImport("infra", infra_mod);
     runtime_mod.addImport("storage", storage_mod);
-    runtime_mod.addOptions("build_options", build_options);
     runtime_mod.addOptions("debug_options", debug_options);
 
     // The engine adapter's module: the root file and the name its build file
@@ -7223,7 +7098,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     namespaces_mod.addImport("runtime", runtime_mod);
     namespaces_mod.addImport("webidl", webidl_mod); // For Opt wrapper in optional parameters
-    namespaces_mod.addOptions("build_options", build_options);
     namespaces_mod.addOptions("debug_options", debug_options);
 
     // ========================================================================
@@ -7283,7 +7157,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     });
     eventsource_mod.addImport("infra", infra_mod);
     impls_mod.addImport("eventsource", eventsource_mod);
-    impls_mod.addOptions("build_options", build_options);
     impls_mod.addOptions("debug_options", debug_options);
 
     // ========================================================================
@@ -8038,7 +7911,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // tests that HTTP/2 is live when the build asked for it. Its own options
     // module: one options file imported as a module by two others in the same
     // compilation is an error ("file exists in modules"), and build_options
-    // already is, through runtime and impls.
+    // already is, by the engine adapter's module.
     const curl_options = b.addOptions();
     curl_options.addOption(bool, "http2", enable_http2 and !use_system_curl);
     curl_options.addOption(bool, "mbedtls", tls_backend == .mbedtls and !use_system_curl);
@@ -8102,9 +7975,9 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // `runtime` is deliberately NOT an import here. `src/xhr/internal/context.zig`
     // was the only file that wanted it, for a `runtime.event_loop.Scheduler`
     // that does not exist; that file is gone. Keeping xhr free of `runtime`
-    // also breaks the cycle `impls -> xhr -> runtime -> v8 -> impls`, which is
-    // what stopped `xhr_mod` from being cloned into a test root, and lets the
-    // test block below run without linking V8.
+    // also breaks the cycle `impls -> xhr -> runtime -> <the engine adapter's
+    // module> -> impls`, which is what stopped `xhr_mod` from being cloned into
+    // a test root, and lets the test block below run without linking the engine.
 
     // Allow impls to access fetch for Headers, Request, Response implementations
     impls_mod.addImport("fetch", fetch_mod);
@@ -8370,7 +8243,7 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     permissions_mod.addImport("runtime", runtime_mod);
     impls_mod.addImport("permissions", permissions_mod);
 
-    // Browser module - Single V8 isolate browser implementation for WPT
+    // Browser module - the browser implementation the WPT runner drives
     const browser_mod = graphModule(b, public, "browser", .{
         .root_source_file = b.path("src/browser/root.zig"),
         .target = target,
