@@ -39,10 +39,15 @@
 //! 2026-11-16: the second dispatch read "NEWCOMER"): between two dispatches
 //! nothing kept the host the event's own touch target list named.
 //!
-//! THE THIRD TEST is the list's teardown net: a realm's end frees its nodes
-//! whatever counts them, so the list's reference alone left the host of a
+//! THE THIRD TEST is the list's teardown net: a forced realm end - here a
+//! removed iframe's - still frees its nodes whatever counts them (refcount
+//! step 7a keeps that free, and the holders' generation nets for it:
+//! dom.refcount's header), so the list's reference alone left the host of a
 //! removed frame freed (server1, with the list counted and no net: the
-//! third dispatch read "NEWCOMER").
+//! third dispatch read "NEWCOMER"). When refcount step 7b lands (a realm's
+//! end by counts, as WebKit and Blink keep a referenced node past its
+//! frame) the host survives and this test's third entry becomes
+//! 'x:fhost:false'.
 
 const std = @import("std");
 const testing = std.testing;
@@ -280,7 +285,8 @@ fn eventListAfterItsHostsRealmWent() !void {
     try turn(page);
     try page.run(
         \\// The frame's realm has ended, and its end freed the frame's nodes
-        \\// whatever held them - the host too, under the list's reference.
+        \\// whatever held them - the host too, under the list's reference
+        \\// (until refcount step 7b: then 'x:fhost:false').
         \\// The dispatch finds the list naming a freed node and empties it:
         \\// the touch's target reads as its own, the span.
         \\document.getElementById('x').dispatchEvent(keptEvent);

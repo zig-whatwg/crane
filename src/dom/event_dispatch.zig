@@ -164,15 +164,30 @@ pub const PathItem = struct {
 /// Window) is not counted (decision D3): it is always a touch's own target,
 /// which the touch keeps for the event.
 ///
-/// THE NET (`forgetFreed`): one free is made whatever the counts say - a
-/// realm's end frees its nodes under every reference (dom.refcount's
-/// header) - and the list can name a node of another realm than the
-/// event's and the touch's: the host of a frame's shadow tree, after the
-/// frame was removed and collected. The list's reference then holds a
-/// freed node, which each entry's generation tells (as `EventState.
-/// targetForScript` tells it for the target). A dispatch asks before it
-/// reads the list, and a list that names a freed node is emptied: each
-/// touch's target then reads as its own, unadjusted target.
+/// THE NET (`forgetFreed`): one free is still made whatever the counts
+/// say - a FORCED realm end's coordinated teardown (a page's end, a removed
+/// iframe, a back/forward cache eviction, the Browser's end) frees the
+/// realm's nodes under every reference, and "the holders' nets (generation
+/// and teardown-begun checks, `node_holds.Hold`) stay for it" (dom.refcount's
+/// header; dom.node_holds' header: such a node's reference is FORGOTTEN,
+/// never released; refcount step 7a, tmp/plans/refcount9-design.md B4). The
+/// list can name a node of another realm than the event's and the touch's:
+/// the host of a frame's shadow tree, after the frame was removed. Its
+/// reference then holds a freed node, which each entry's generation tells -
+/// the same check `EventState.targetForScript` makes for the event's
+/// target. A dispatch asks before it reads the list, and a list that names
+/// a freed node is emptied: each touch's target then reads as its own,
+/// unadjusted target.
+///
+/// This is the net, not the behaviour browsers have: WebKit and Blink keep
+/// a node another realm still references past its frame's end (a Node holds
+/// its Document; Blink's LocalWindowProxy::DisposeContext clears only the
+/// global's native info). Crane gets there with refcount step 7b - a
+/// realm's end drops the realm's own references and lets the counts decide
+/// (queued: "REFCOUNT step 7b: realm end by counts") - and then the list's
+/// reference alone keeps the host, this net never fires, and
+/// tests/html/ev2_touch_targets_held_test.zig's third test expects the
+/// host again.
 pub const TouchTargetList = struct {
     /// The targets and the list's references on them, or null for a list
     /// nothing was ever appended to.
