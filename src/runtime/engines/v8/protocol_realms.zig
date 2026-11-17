@@ -1003,6 +1003,24 @@ fn endRealm(realm: Context, how: engine.WindowRealmEnd) void {
         if (isLive(context)) realm_global.clearInstance(context, window);
     };
 
+    // The callbacks this realm's objects store - its nodes' event handlers,
+    // tagged with its key (protocol_callbacks.tagWithCurrentRealm) - are kept
+    // from its retained store and made weak, as `detach` makes them: since
+    // refcount step 7b a realm's end frees none of its nodes whatever their
+    // counts, so a handler kept strongly would keep its closure's context,
+    // and through it the realm's global, its wrappers and its whole DOM, for
+    // ever (an element's `onload` closing over the element). A handler of an
+    // ended realm never runs again (HTML "check if we can run script"); Blink
+    // traces its listeners from their targets and WebKit's JSEventListener
+    // holds its function weakly, so neither roots a page's context with them.
+    // A detached realm's were weakened at its detach.
+    if (detached == null and isLive(context)) {
+        if (realm_global.retainedStore(realm)) |global| {
+            defer ffi.v8_Global_Dispose(global);
+            _ = ffi.v8_Object_WeakenTaggedHandles(global, key, retained_key.ptr, retained_key.len);
+        }
+    }
+
     // 1. The context manager first: it tears down the Window, its document and
     // its frames, and retires the realm - which from here on has no engine
     // context, and may only be compared.

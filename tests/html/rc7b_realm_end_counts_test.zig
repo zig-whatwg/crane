@@ -239,3 +239,73 @@ fn popupClosedByItsBrowser() !void {
 test "a popup its Browser closes with an img update in flight lets the update go: its document is freed before the Browser ends" {
     try onFreshThread(popupClosedByItsBrowser);
 }
+
+// ============================================================================
+// An ended realm's event handlers keep nothing
+// ============================================================================
+
+/// The platform object `source` evaluates to in the current page's realm,
+/// with its slab generation - no wrapper of it kept by the test.
+fn instanceAt(page: h.Page, source: []const u8) !struct { instance: *h.runtime.Instance, generation: u64 } {
+    const held = try page.browser.evaluateScript(source);
+    defer held.release();
+    const realm = page.browser.getRealm() orelse return error.NoRealm;
+    const instance = h.engine.convertToPlatformObject(realm, held.borrow()) orelse return error.NotAPlatformObject;
+    return .{ .instance = instance, .generation = h.runtime.SlabAllocator.generationOf(instance) };
+}
+
+fn handlerClosingOverItsElement() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    const before = try baseline(page);
+    // An element whose onclick handler closes over the element itself: the
+    // handler's function reaches the page's global, the global the element.
+    try page.run(
+        \\(() => {
+        \\  const b = document.body.appendChild(document.createElement('button'));
+        \\  b.onclick = () => { b.textContent = 'clicked'; };
+        \\  document.body.appendChild(document.createElement('p')).onmouseover = function () { return this; };
+        \\})();
+        \\0;
+    );
+    // The page ends; its realm's handlers become weak with it (as at a
+    // detach), so its global and its whole DOM are garbage.
+    try page.browser.navigate("about:blank", .window);
+    const context = page.browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+    try expectAllFreed(page, before, "a page whose element's handler closes over the element, navigated away from");
+}
+
+test "a page whose element's event handler closes over the element is freed once navigated away from: its handlers keep nothing" {
+    try onFreshThread(handlerClosingOverItsElement);
+}
+
+fn handlerClosingOverAnotherPagesElement() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    // A popup - its own top-level traversable, which outlives the page that
+    // opened it - with an element the page's handler closes over.
+    try page.run(
+        \\globalThis.w = window.open('about:blank', 'rc7b-other');
+        \\w.document.body.innerHTML = '<p id="other">other</p>';
+        \\(() => {
+        \\  const other = w.document.getElementById('other');
+        \\  document.body.appendChild(document.createElement('button')).onclick = () => other.textContent;
+        \\})();
+        \\0;
+    );
+    const other = try instanceAt(page, "w.document.getElementById('other')");
+    try page.browser.navigate("about:blank", .window);
+    const context = page.browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+    try settle(page);
+    // The ended page's handler let go of everything; the popup's element is
+    // its document's, alive and connected.
+    if (h.runtime.SlabAllocator.generationOf(other.instance) != other.generation) return error.OtherPagesElementFreed;
+    const base = h.dom.instance_bridge.getNodeBase(@ptrCast(other.instance)) orelse return error.OtherPagesElementFreed;
+    if (!base.is_connected) return error.OtherPagesElementDisconnected;
+}
+
+test "an ended page's handler that closes over another live page's element frees nothing of that page" {
+    try onFreshThread(handlerClosingOverAnotherPagesElement);
+}
