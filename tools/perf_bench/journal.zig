@@ -174,6 +174,16 @@ pub const Memory = struct {
     /// beside `footprint_end` (right after its last sample) and the peak. For
     /// a page's own row, at its done mark after the settle time.
     footprint_settled: ?u64 = null,
+    /// A memory-only pass run with `perf_bench run --collected` (a lane's
+    /// cost pair, never a published round): the footprint once more, after
+    /// the settled reading, a full collection the page asked for
+    /// (`TestUtils.gc()` twice) and the settle time again - what the
+    /// workload keeps once its garbage is gone, which the collector's
+    /// schedule cannot choose (cost.zig). Absent from every other row: the
+    /// format's name stays, a line without the field is byte for byte what
+    /// it was, and a perf_bench from before 2026-11-17 reads every journal
+    /// but a collected pass's.
+    footprint_collected: ?u64 = null,
 };
 
 pub const Record = struct {
@@ -433,6 +443,24 @@ test "a timed record is written as exactly the pinned line" {
     defer out.deinit();
     try writeLine(&out.writer, sampleTimed());
     try testing.expectEqualStrings(golden_timed, out.written());
+}
+
+test "a collected pass's row carries the footprint after a collection; every other line is what it was" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    // The pinned line has no such field (the test above), and reads with none.
+    const plain = try parseLine(arena.allocator(), std.mem.trimEnd(u8, golden_timed, "\n"));
+    try testing.expectEqual(@as(?u64, null), plain.memory.?.footprint_collected);
+    var r = sampleTimed();
+    r.memory.?.footprint_settled = 1150;
+    r.memory.?.footprint_collected = 1100;
+    var out: Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try writeLine(&out.writer, r);
+    try testing.expect(std.mem.indexOf(u8, out.written(), "\"processes\":1,\"footprint_settled\":1150,\"footprint_collected\":1100}") != null);
+    const back = try parseLine(arena.allocator(), std.mem.trimEnd(u8, out.written(), "\n"));
+    try testing.expectEqual(@as(?u64, 1100), back.memory.?.footprint_collected);
+    try testing.expectEqual(@as(?u64, 1150), back.memory.?.footprint_settled);
 }
 
 test "the pinned line reads back into the same record" {

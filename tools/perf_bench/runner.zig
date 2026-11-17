@@ -50,6 +50,12 @@ pub const Config = struct {
     sample_ms: u32 = 50,
     /// The server's port (0: any).
     port: u16 = 0,
+    /// A memory-only pass of a lane's cost pair (`--collected`): after each
+    /// timed workload's settled mark the page asks for a full collection,
+    /// stays idle for the settle time again and posts a `collected` mark
+    /// (collector.zig). The page then runs at another pace, so such a
+    /// pass's times are not a round's, and no published round is run so.
+    collected: bool = false,
 };
 
 /// The launch in progress, shared with the server's threads (marks) and the
@@ -414,7 +420,7 @@ pub const Runner = struct {
                 .argv => 0,
                 else => try freePort(self.io),
             };
-            const l = try engines.launchWith(arena, pin, url, profile, protocol_port, .{ .collect = page.kind == .retained });
+            const l = try engines.launchWith(arena, pin, url, profile, protocol_port, .{ .collect = page.kind == .retained or (self.config.collected and page.kind == .timed) });
             if (k == 0) collector.base.engine.flags = l.flags;
 
             var env = try self.config.environ.clone(arena);
@@ -529,7 +535,8 @@ pub const Runner = struct {
     }
 
     fn pageUrl(self: *const Runner, arena: Allocator, page: suite_mod.Page, token: []const u8) ![]const u8 {
-        return pageUrlFor(arena, self.server.port(), page, token, self.config.iterations, self.config.warmup, self.config.settle_ms);
+        const url = try pageUrlFor(arena, self.server.port(), page, token, self.config.iterations, self.config.warmup, self.config.settle_ms);
+        return if (self.config.collected) collectedUrl(arena, page, url) else url;
     }
 
     fn writeRecords(self: *Runner, records: []const journal.Record) !void {
@@ -556,6 +563,16 @@ pub fn pageUrlFor(arena: Allocator, port: u16, page: suite_mod.Page, token: []co
     return std.fmt.allocPrint(arena, "http://127.0.0.1:{d}/{s}?perf={s}&iterations={d}&warmup={d}&steps={d}&settle={d}", .{
         port, page.page, token, iterations, warmup, page.steps, settle_ms,
     });
+}
+
+/// A timed page's URL in a collected pass (`Config.collected`): the page's
+/// own URL with `collect=1`, which tells the harness to ask for a
+/// collection after each workload's settled mark. Every other kind of page
+/// keeps its URL: a retained page collects by itself, and a chain, an idle
+/// page and an instances row have no settled mark.
+pub fn collectedUrl(arena: Allocator, page: suite_mod.Page, url: []const u8) ![]const u8 {
+    if (page.kind != .timed) return url;
+    return std.fmt.allocPrint(arena, "{s}&collect=1", .{url});
 }
 
 /// Ends `pids` by exact pid: SIGTERM to each, then SIGKILL to any still
@@ -746,6 +763,24 @@ test "a page's URL: a retained page's count and settle time; every other page's 
     // A retained page: its own settle time and its count.
     const retained: suite_mod.Page = .{ .page = "memory/elements-detached-div.html", .kind = .retained, .count = 100000, .settle_ms = 3000, .workloads = &.{"elements.detached-div"} };
     try testing.expectEqualStrings("http://127.0.0.1:8123/memory/elements-detached-div.html?perf=crane.17.0.0&iterations=10&warmup=3&steps=0&settle=3000&count=100000", try pageUrlFor(a, 8123, retained, "crane.17.0.0", 10, 3, 500));
+}
+
+test "a collected pass: a timed page's URL asks for it, and no other page's URL changes" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const timed: suite_mod.Page = .{ .page = "workloads/streams.html", .kind = .timed, .workloads = &.{"streams.reader"} };
+    const plain = try pageUrlFor(a, 8123, timed, "crane.2.0.0", 10, 3, 500);
+    try testing.expectEqualStrings("http://127.0.0.1:8123/workloads/streams.html?perf=crane.2.0.0&iterations=10&warmup=3&steps=0&settle=500&collect=1", try collectedUrl(a, timed, plain));
+    for ([_]suite_mod.Page{
+        .{ .page = "load/news.html", .kind = .chain, .steps = 10, .workloads = &.{"load.news"} },
+        .{ .page = "memory/idle.html", .kind = .idle, .settle_ms = 3000, .workloads = &.{"memory.idle-page"} },
+        .{ .page = "memory/instance.html", .kind = .instances, .instances = 4, .workloads = &.{"memory.instances"} },
+        .{ .page = "memory/elements-detached-div.html", .kind = .retained, .count = 100000, .settle_ms = 3000, .workloads = &.{"elements.detached-div"} },
+    }) |page| {
+        const url = try pageUrlFor(a, 8123, page, "t.0", 10, 3, 500);
+        try testing.expectEqualStrings(url, try collectedUrl(a, page, url));
+    }
 }
 
 test "a launch is refused while its engine's app is already running" {

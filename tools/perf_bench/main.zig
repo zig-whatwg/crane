@@ -5,8 +5,19 @@
 //!                  --round=<n> --runs=<n> --pin=<file> [--pin=<file> ...]
 //!                  [--profiles=<dir>] [--stop-file=<f>] [--only=<text>]
 //!                  [--iterations=<n>] [--warmup=<n>] [--settle-ms=<n>] [--port=<n>]
+//!                  [--collected]
 //!       every engine pinned on every page of the suite, <runs> times, in
-//!       alternating order; the journal is <out>/journal.jsonl
+//!       alternating order; the journal is <out>/journal.jsonl. --collected
+//!       (a memory-only pass of a lane's cost pair, never a round): each
+//!       timed workload's footprint is read once more after a full
+//!       collection the page asks for
+//!   perf_bench cost --default=<dir> [--memory=<dir>] [--bar=<ratio>]
+//!       a lane's cost pair (crane against crane_base) read against the 3%
+//!       bar: time, CPU and instructions from the default pass's journals,
+//!       memory from both passes, the rule's verdict (the medians) with the
+//!       levels of both sides together and the collected figure beside it
+//!       (cost.zig; docs/performance.md, "A lane's cost pair"); exit 0
+//!       whatever it reads - the table is the result
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
 //!       the run's input checks alone (window scripts run them first): the
 //!       suite against its pages, each pin readable, each binary there and
@@ -49,9 +60,10 @@ pub const gcbench = @import("gcbench.zig");
 pub const report = @import("report.zig");
 pub const card = @import("card.zig");
 pub const chart = @import("chart.zig");
+pub const cost = @import("cost.zig");
 
 const usage =
-    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|serve [options]
+    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|cost|serve [options]
     \\       (docs/performance.md; tools/perf_bench/main.zig lists every option)
     \\
 ;
@@ -139,6 +151,7 @@ pub fn main(init: std.process.Init) !void {
             .warmup = args.int(u32, "warmup", 3),
             .settle_ms = args.int(u32, "settle-ms", 500),
             .port = args.int(u16, "port", 0),
+            .collected = args.get("collected") != null,
         });
         try r.run();
     } else if (std.mem.eql(u8, cmd, "gc-bench")) {
@@ -163,6 +176,8 @@ pub fn main(init: std.process.Init) !void {
         if (bad) std.process.exit(1);
     } else if (std.mem.eql(u8, cmd, "report")) {
         try writeReport(arena, io, &args);
+    } else if (std.mem.eql(u8, cmd, "cost")) {
+        try writeCost(arena, io, &args);
     } else if (std.mem.eql(u8, cmd, "serve")) {
         const s = try server.Server.start(init.gpa, io, .{ .root = args.need("root"), .port = args.int(u16, "port", 8000) });
         defer s.stop();
@@ -459,6 +474,34 @@ fn readJournals(arena: Allocator, io: Io, dir_path: []const u8) ![]const journal
     return all.items;
 }
 
+/// One pass of a cost pair from the journals below `dir`.
+fn costPass(arena: Allocator, io: Io, dir: []const u8) !cost.Pass {
+    return cost.passOf(arena, try readJournals(arena, io, dir)) catch |err| switch (err) {
+        error.NoTip => fail("{s}: no row of crane (the tip)", .{dir}),
+        error.NoBase => fail("{s}: no row of crane_base (the base the tip is compared with)", .{dir}),
+        error.TwoTips => fail("{s}: rows of two versions of crane - one pass compares one tip", .{dir}),
+        error.TwoBases => fail("{s}: rows of two versions of crane_base - one pass compares one base", .{dir}),
+        error.OutOfMemory => return err,
+    };
+}
+
+fn writeCost(arena: Allocator, io: Io, args: *const Args) !void {
+    const default_dir = args.need("default");
+    const default = try costPass(arena, io, default_dir);
+    var memory: ?cost.Pass = null;
+    if (args.get("memory")) |dir| memory = try costPass(arena, io, dir);
+    const bar = if (args.get("bar")) |text| std.fmt.parseFloat(f64, text) catch fail("--bar={s} is not a ratio", .{text}) else cost.default_bar;
+    if (!(bar > 1)) fail("--bar={d} is not above 1: the bar is the tip's figure over the base's", .{bar});
+    var out: Io.Writer.Allocating = .init(arena);
+    _ = try cost.write(&out.writer, arena, &default, if (memory) |*p| p else null, .{ .bar = bar, .default_name = default_dir, .memory_name = args.get("memory") orelse "" });
+    // The table is the command's result: on stdout, appended (a streaming
+    // write: stdout may be a log other processes write to).
+    var buf: [4096]u8 = undefined;
+    var stdout = Io.File.stdout().writerStreaming(io, &buf);
+    try stdout.interface.writeAll(out.written());
+    try stdout.interface.flush();
+}
+
 fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
     const records = try readJournals(arena, io, args.need("journals"));
     const model = try report.build(arena, records);
@@ -551,4 +594,5 @@ test {
     _ = report;
     _ = card;
     _ = chart;
+    _ = cost;
 }
