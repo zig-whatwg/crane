@@ -474,7 +474,9 @@ perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 
 - time and instructions, on the default pass: a row is over when the tip's median over the base's
   is above the bar and the two sides' launches do not overlap;
-- memory, on the steady figure and the peak - the medians of all launches, in either pass. A
+- memory, on the steady figure and the peak of the **memory pass** - the medians of all its
+  launches - and only there: the default pass's memory figures are printed for information (the
+  ring is on, so the same bytes read in two levels by chance) and never fail the verdict. A
   figure above the bar is **cleared**, with every launch's value printed, when
   (a) both sides reached a common level and each such level's tip / base ratio is within the bar,
   or (b) the row's collected figure is within the bar. A figure neither clears is over;
@@ -483,9 +485,10 @@ perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 
 `cost` prints the geometric means, every row above the bar with each launch's value on both sides
 and its verdict (`CLEARED (a)`, `CLEARED (b)` or `OVER THE BAR`, with why), and a table of all
-rows (`!` above the bar and not cleared, `c` a memory figure the rule clears, `*` the sides'
-launches apart, `L` two levels). Its last line is the pair's verdict, and it exits 1 when a row is
-over the bar and not cleared.
+rows (`!` above the bar and not cleared, `c` a memory-pass figure the rule clears, `i` a
+default-pass memory figure above the bar, for information, `*` the sides' launches apart, `L` two
+levels). Its last line is the pair's verdict, and it exits 1 when a row is over the bar and not
+cleared. Without a memory pass it says that memory was not judged.
 
 **The two readings that clear a row, and why a median needs them** (lane tl2, 2026-11-17). The
 rows of the streams, attributes, page-growth and fetch pages sit on two memory levels: a median of
@@ -536,7 +539,11 @@ as both sides of the pair, so every row's true ratio is 1.000; the attributes an
 - a real pair read by the command (lane impls8's cost window, 7 launches a side): the attributes
   rows 1.116 by the rule on the ring-off pass; levels of both sides together 55.5 and 62.8 MB, the
   tip 3 low and 4 high, the base 5 low and 2 high (the chance of those shares from one coin 0.59),
-  level against level 1.004 and 0.995.
+  level against level 1.004 and 0.995. By the rule that window has 8 figures above the bar on its
+  memory pass: 6 cleared by (a), and 2 peaks not cleared, where one launch of the tip at 67.7 MB
+  sits far above the high level and the launches no longer form two groups (it had no collected
+  pass to clear them by (b)); its 8 figures above the bar on the default pass, the `events` rows
+  at 1.033 to 1.038, are for information and read 1.011 with the ring off.
 
 The user's ruling on these figures (2026-11-17) is the rule above: steady and peak stay the bar,
 and either reading may clear a row.

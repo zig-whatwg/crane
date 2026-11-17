@@ -14,8 +14,9 @@
 //!   perf_bench cost --default=<dir> [--memory=<dir>] [--bar=<ratio>]
 //!       a lane's cost pair (crane against crane_base) read against the 3%
 //!       bar: time, CPU and instructions from the default pass's journals,
-//!       memory from both passes; a steady or peak figure above the bar is
-//!       cleared by common levels within the bar or by the collected figure
+//!       memory judged on the memory pass alone (the default pass's memory
+//!       is printed for information); a steady or peak figure above the bar
+//!       is cleared by common levels within the bar or by the collected figure
 //!       (AGENTS.md's rule; cost.zig; docs/performance.md, "A lane's cost
 //!       pair"). Exit 1 when a row is over the bar and not cleared
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
