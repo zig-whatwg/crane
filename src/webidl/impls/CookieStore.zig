@@ -20,7 +20,7 @@ const log = std.log.scoped(.cookie_store);
 
 // The Promise-returning operations make their promises and values through
 // the engine protocol (cookie_values.zig).
-const cookie_values = @import("cookie_values.zig");
+const cookie_values = @import("cookie_values");
 
 const CookieStore = interfaces.CookieStore;
 const CookieJar = cookiestore.CookieJar;

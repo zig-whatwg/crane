@@ -99,13 +99,13 @@ pub const InternalState = struct {
     /// for `ancestor_origins_document` only; another document gets its own.
     ancestor_origins: ?*runtime.Instance = null,
     /// The document `ancestor_origins` was made for.
-    ancestor_origins_document: ?@import("same_object.zig").Link = null,
+    ancestor_origins_document: ?@import("dom").same_object.Link = null,
     /// Keeps the list's wrapper and its script properties alive with ours.
-    ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
+    ancestor_origins_edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
     /// The Location's "empty DOMStringList" (HTML 7.2.4), returned whenever
     /// there is no relevant Document: one list for the Location's life.
     empty_ancestor_origins: ?*runtime.Instance = null,
-    empty_ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.emptyAncestorOrigins" } },
+    empty_ancestor_origins_edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "Location.emptyAncestorOrigins" } },
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
@@ -713,7 +713,7 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instan
     const list = try dom.string_lists.create(instance.ctx, strings.items);
     internal.ancestor_origins_edge.hold(instance, list);
     internal.ancestor_origins = list;
-    internal.ancestor_origins_document = @import("same_object.zig").Link.to(document);
+    internal.ancestor_origins_document = @import("dom").same_object.Link.to(document);
     return list;
 }
 
@@ -1322,7 +1322,7 @@ fn topLevelFragmentNavigation(
     if (params.navigation_api_state) |state| {
         destination_state = try state.clone(allocator);
     } else if (bc) |b| {
-        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+        if (b.ensureHistoryEntries(&@import("history_documents").infoOf)) |history| {
             if (history.currentEntry(b.id)) |entry| destination_state = try entry.api_state.clone(allocator);
         } else |_| {}
     }
@@ -1345,7 +1345,7 @@ fn topLevelFragmentNavigation(
     // step 15's update writes them).
     var pending: ?joint_history.SameDocumentNavigation = null;
     if (dom.browser_state.browsingContextOf(window)) |b| {
-        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+        if (b.ensureHistoryEntries(&@import("history_documents").infoOf)) |history| {
             const api_state = destination_state.clone(allocator) catch null;
             pending = history.navigateSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch null;
         } else |_| {}

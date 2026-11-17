@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const CSSOMString = @import("typedefs").CSSOMString;
 const Range = @import("interfaces").Range;
 
-pub const impl = @import("impls").Region;
+const impl = @import("impls").Region;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

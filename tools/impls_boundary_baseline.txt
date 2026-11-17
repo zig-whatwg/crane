@@ -1,4 +1,0 @@
-# References into impls from code that does not own them: path Impl.member count.
-# A ratchet - `zig build lint-impls`, part of `zig build test`, fails if any
-# count rises or a new pair appears. After paying debt down, lower it with
-# `zig build lint-impls -- --update`. Never raise it by hand.

@@ -3725,7 +3725,7 @@ fn writeOverloadDelegates(
                 // An inherited overload is implemented when the mixin's impl
                 // has it; the mixin module's gated delegate answers either way.
                 if (inheritedFrom(options, op.mixin)) |mixin| {
-                    try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl(mixins.{s}.impl, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, mixin, set.name, k });
+                    try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl(@import(\"impls\").{s}, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, mixin, set.name, k });
                 } else {
                     try writer.print("            .{{ .function = \"call_{s}__{d}\", .implemented = @hasDecl({s}, \"call_{s}__{d}\"), .args = &.{{", .{ set.name, k, impl_name, set.name, k });
                 }

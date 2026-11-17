@@ -1529,6 +1529,220 @@ fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch
     }
 }
 
+/// The impls' shared helpers, each a module of its own beside the impls
+/// (src/webidl/impls/<name>.zig): an impl imports one by name, and it imports
+/// what every impl imports - never an impl. They are the boundary rule 3's
+/// debt (src/webidl/AGENTS.md: a shared helper belongs in src/dom, src/html
+/// or its subsystem); a new one is not added here.
+const impl_helper_names = [_][]const u8{ "cookie_values", "fetch_body", "history_documents", "navigation_entries", "node_filter" };
+
+/// The impls, as src/webidl/impls/root.zig names them: one
+/// `pub const <Name> = @import("<Name>");` line each. Read at configure time,
+/// with the file a dependency of the configure cache (dependOnFileContents):
+/// an edited root configures again, and nothing poisons the cache.
+fn implModuleNames(b: *std.Build) []const []const u8 {
+    const root = "src/webidl/impls/root.zig";
+    b.dependOnFileContents(b.path(root));
+    const text = b.root.root_dir.handle.readFileAlloc(b.graph.io, root, b.allocator, .limited(1 << 20)) catch |err|
+        std.debug.panic("build.zig: cannot read {s}, the list of the impls: {s}", .{ root, @errorName(err) });
+    var names: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var number: usize = 0;
+    while (lines.next()) |line| {
+        number += 1;
+        if (line.len == 0 or std.mem.startsWith(u8, line, "//")) continue;
+        const prefix = "pub const ";
+        const eq = std.mem.indexOf(u8, line, " = @import(\"") orelse "".len;
+        const name = if (std.mem.startsWith(u8, line, prefix) and eq > prefix.len) line[prefix.len..eq] else "";
+        if (name.len == 0 or !std.mem.eql(u8, line[eq..], b.fmt(" = @import(\"{s}\");", .{name})))
+            std.debug.panic("build.zig: {s}:{d}: each line names one impl, `pub const <Name> = @import(\"<Name>\");`: {s}", .{ root, number, line });
+        names.append(b.allocator, name) catch @panic("OOM");
+    }
+    return names.items;
+}
+
+/// One module per impl (src/webidl/AGENTS.md "The impls boundary"; design
+/// 5.3 4b, lane impls9): the impl at src/webidl/impls/<Name>.zig is the root
+/// of a module of its own, which imports what every impl imports - `impls`'
+/// imports so far, moved off it - and the shared helpers, and no impl. The
+/// impls module's root then imports only the impls, by name. So an impl
+/// reaching another is a compile error: by name, no other impl is in its
+/// imports; by path, the other's file already belongs to its own module.
+/// Same cost in the program: Zig compiles every module of an artifact into
+/// one unit either way.
+fn addImplModules(b: *std.Build, impls: *std.Build.Module, target: std.Build.ResolvedTarget, names: []const []const u8) void {
+    const arena = b.graph.arena;
+    const shared = impls.import_table;
+    var helpers: [impl_helper_names.len]*std.Build.Module = undefined;
+    for (impl_helper_names, &helpers) |name, *helper| {
+        helper.* = b.createModule(.{ .root_source_file = b.path(b.fmt("src/webidl/impls/{s}.zig", .{name})), .target = target });
+        helper.*.import_table = shared.clone(arena) catch @panic("OOM");
+    }
+    // A helper may use another (navigation_entries uses history_documents).
+    for (helpers) |helper| {
+        for (impl_helper_names, helpers) |name, other| if (other != helper) helper.addImport(name, other);
+    }
+    var table: std.array_hash_map.String(*std.Build.Module) = .empty;
+    for (names) |name| {
+        const module = b.createModule(.{ .root_source_file = b.path(b.fmt("src/webidl/impls/{s}.zig", .{name})), .target = target });
+        module.import_table = shared.clone(arena) catch @panic("OOM");
+        for (impl_helper_names, helpers) |helper_name, helper| module.addImport(helper_name, helper);
+        table.put(arena, b.graph.dupeString(name), module) catch @panic("OOM");
+    }
+    impls.import_table = table;
+}
+
+/// The roots of the generated layer (src/webidl/AGENTS.md, "The impls
+/// boundary"): the only modules that may import an impl. Every interface,
+/// namespace and mixin delegates to its own impl from here.
+const generated_layer_roots = [_][]const u8{
+    "src/webidl/interfaces/root.zig",
+    "src/webidl/namespaces/root.zig",
+    "src/webidl/mixins/root.zig",
+};
+const impls_dir_prefix = "src/webidl/impls/";
+const impls_root_path = "src/webidl/impls/root.zig";
+
+/// The source path of a module's root, as the boundary check names it.
+fn moduleRootName(b: *std.Build, module: *const std.Build.Module) []const u8 {
+    const root = module.root_source_file orelse return "(no root source file)";
+    return switch (root) {
+        .src_path => |p| p.sub_path,
+        .generated => |g| b.fmt("(a generated file) {s}", .{g.sub_path}),
+        else => "(a root outside the build root)",
+    };
+}
+
+/// What a module is to the impls boundary, by its root.
+const ImplsRole = enum {
+    /// Rooted outside src/webidl/impls/ (the generated layer is told apart
+    /// by `isGeneratedLayerModule`).
+    outside,
+    /// src/webidl/impls/root.zig: the module that imports every impl.
+    impls_root,
+    /// One impl (`addImplModules`) - or any other module rooted at a file
+    /// of src/webidl/impls/ that is not a listed helper.
+    impl,
+    /// A shared helper of the impls (`impl_helper_names`).
+    helper,
+};
+
+fn implsRole(module: *const std.Build.Module) ImplsRole {
+    const root = module.root_source_file orelse return .outside;
+    const sub_path = switch (root) {
+        .src_path => |p| p.sub_path,
+        else => return .outside,
+    };
+    if (!std.mem.startsWith(u8, sub_path, impls_dir_prefix)) return .outside;
+    if (std.mem.eql(u8, sub_path, impls_root_path)) return .impls_root;
+    const file = sub_path[impls_dir_prefix.len..];
+    for (impl_helper_names) |helper| {
+        if (file.len == helper.len + ".zig".len and std.mem.startsWith(u8, file, helper) and std.mem.endsWith(u8, file, ".zig")) return .helper;
+    }
+    return .impl;
+}
+
+/// Whether `importer` may import `imported` under the impls boundary: the
+/// impls module only from the generated layer, an impl only from the impls
+/// module, a helper only from an impl or a helper.
+fn implsImportAllowed(importer: *const std.Build.Module, imported: *const std.Build.Module) bool {
+    return switch (implsRole(imported)) {
+        .outside => true,
+        .impls_root => isGeneratedLayerModule(importer),
+        .impl => implsRole(importer) == .impls_root,
+        .helper => switch (implsRole(importer)) {
+            .impl, .helper => true,
+            .outside, .impls_root => false,
+        },
+    };
+}
+
+fn isGeneratedLayerModule(module: *const std.Build.Module) bool {
+    const root = module.root_source_file orelse return false;
+    return switch (root) {
+        .src_path => |p| for (generated_layer_roots) |allowed| {
+            if (std.mem.eql(u8, p.sub_path, allowed)) break true;
+        } else false,
+        else => false,
+    };
+}
+
+/// The impls boundary, held by the module graph (src/webidl/AGENTS.md, "The
+/// impls boundary"; lane impls9): the impls module is imported by the
+/// generated layer only, each impl's module by the impls module only, and a
+/// helper's by the impls and helpers only (`implsImportAllowed`). Walks every
+/// compile a top-level step reaches and every module its root imports -
+/// every graph, every test suite, every tool - and makes `step` fail, naming
+/// each import that breaks it, under whatever name. Known here, once every
+/// step exists. The compiler then rejects the rest: `@import("impls")`
+/// anywhere else, or `@import("<Impl>")` in an impl ("no module named ...
+/// available within module ..."); and a file cannot import an impl's file by
+/// path - it lies outside the importer's module path, or it already belongs
+/// to the impl's own module. Returns a module of the impl `sample` (the
+/// first found) for the negative test's impl cases. Reads no file and runs
+/// nothing: the configure cache is untouched.
+fn checkImplsBoundary(b: *std.Build, step: *std.Build.Step, sample: []const u8) ?*std.Build.Module {
+    const gpa = b.allocator;
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    var modules: std.AutoArrayHashMapUnmanaged(*std.Build.Module, void) = .empty;
+    for (b.top_level_steps.values()) |tls| stack.append(gpa, &tls.step) catch @panic("OOM");
+    while (stack.pop()) |s| {
+        if ((seen.getOrPut(gpa, s) catch @panic("OOM")).found_existing) continue;
+        if (s.cast(std.Build.Step.Compile)) |compile| modules.put(gpa, compile.root_module, {}) catch @panic("OOM");
+        for (s.dependencies.items) |dep| stack.append(gpa, dep) catch @panic("OOM");
+    }
+    // One line per importer, imported module and name: the graphs hold many
+    // copies of one module (one per platform and runner mode).
+    var lines: std.StringArrayHashMapUnmanaged(void) = .empty;
+    var found: ?*std.Build.Module = null;
+    const sample_path = b.fmt("{s}{s}.zig", .{ impls_dir_prefix, sample });
+    var next: usize = 0;
+    while (next < modules.count()) : (next += 1) {
+        const module = modules.keys()[next];
+        if (found == null and std.mem.eql(u8, moduleRootName(b, module), sample_path)) found = module;
+        for (module.import_table.keys(), module.import_table.values()) |name, imported| {
+            modules.put(gpa, imported, {}) catch @panic("OOM");
+            if (implsImportAllowed(module, imported)) continue;
+            lines.put(gpa, b.fmt("  {s} imports {s} as \"{s}\"", .{ moduleRootName(b, module), moduleRootName(b, imported), name }), {}) catch @panic("OOM");
+        }
+    }
+    if (lines.count() == 0) return found;
+    const sorted = lines.keys();
+    std.mem.sort([]const u8, sorted, {}, struct {
+        fn lessThan(_: void, l: []const u8, r: []const u8) bool {
+            return std.mem.lessThan(u8, l, r);
+        }
+    }.lessThan);
+    step.dependOn(&b.addFail(b.fmt(
+        "the impls boundary (src/webidl/AGENTS.md): {d} import(s) it forbids - only the interfaces, namespaces and mixins modules import the impls module, only the impls module imports an impl, only an impl or a helper imports a helper:\n{s}",
+        .{ sorted.len, std.mem.join(gpa, "\n", sorted) catch @panic("OOM") },
+    )).step);
+    return found;
+}
+
+/// One case of the impls boundary's negative test: a one-line file compiled
+/// in a module whose import table is a COPY of `like`'s - a real module of
+/// the graph, one that could be tempted to reach an impl - which passes only
+/// when the compiler rejects the line with `expected` (`expect_errors`). The
+/// error is found while the line is analysed: nothing is emitted or linked.
+fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.ResolvedTarget, case: []const u8, like: *std.Build.Module, line: []const u8, expected: []const u8) void {
+    const files = b.addWriteFiles();
+    const root = files.add(b.fmt("impls_boundary_{s}.zig", .{case}), b.fmt(
+        \\//! The impls boundary's negative test (build.zig addImplsBoundaryCase):
+        \\//! a file of a module that imports what {s}'s module imports.
+        \\comptime {{
+        \\    _ = {s};
+        \\}}
+        \\
+    , .{ case, line }));
+    const module = b.createModule(.{ .root_source_file = root, .target = target, .optimize = .Debug });
+    module.import_table = like.import_table.clone(b.graph.arena) catch @panic("OOM");
+    const object = b.addObject(.{ .name = b.fmt("impls-boundary-{s}", .{case}), .root_module = module });
+    object.expect_errors = .{ .contains = expected };
+    step.dependOn(&object.step);
+}
+
 /// The `test-verify` step and its files: -Dverify-files, else
 /// -Dverify-base's git diff.
 fn testVerifySelection(b: *std.Build) *TestVerify {
@@ -2425,6 +2639,8 @@ const ModuleConfig = struct {
     platform_module: ?[]const u8,
     /// Tables computed once by build steps and embedded (`addGeneratedTables`).
     tables: GeneratedTables,
+    /// The impls, one module each (`implModuleNames`, `addImplModules`).
+    impl_names: []const []const u8,
 };
 
 /// Tables a build step computes once and Zig caches, which modules embed with
@@ -2952,6 +3168,7 @@ pub fn build(b: *std.Build) void {
         .platform_static = platform_static,
         .platform_module = platform_module_path,
         .tables = addGeneratedTables(b),
+        .impl_names = implModuleNames(b),
     };
     const crane_graph = addCraneModules(b, target, target_platform, module_config);
     const testing_graph = if (target_platform == .testing) crane_graph else addCraneModules(b, target, .testing, module_config);
@@ -3061,7 +3278,6 @@ pub fn build(b: *std.Build) void {
     const namespaces_mod = crane_graph.namespaces;
     const typedefs_mod = crane_graph.typedefs;
     const interfaces_mod = crane_graph.interfaces;
-    const impls_mod = crane_graph.impls;
     const engine_mod = crane_graph.engine;
     const dom_mod = crane_graph.dom;
     const mixins_mod = crane_graph.mixins;
@@ -3465,14 +3681,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "selector", .module = testing_graph.selector },
             .{ .name = "runtime", .module = testing_graph.runtime },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "enums", .module = testing_graph.enums },
             // tests/dom/hr_time_coarsen_exactness_test.zig: the coarsening grid's exact arithmetic.
             .{ .name = "hr_time", .module = testing_graph.hr_time },
         };
         // runs_engine = true: tests/dom/mutation_test.zig calls dom.mutation.insert
-        // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
-        // NodeIterator and interfaces.NodeList.vtable - i.e. the engine
+        // and .adopt, and src/dom/mutation.zig reaches the NodeList, Range and
+        // NodeIterator interfaces and interfaces.NodeList.vtable - i.e. the engine
         // adapter's FFI layer, which also drags in libuv's event loop. With
         // `false` this was the only one of 262 build steps that failed to link,
         // with 246 undefined symbols (236 of the adapter's C++ + 10 _uv_*).
@@ -3586,7 +3801,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = testing_graph.dom },
             .{ .name = "streams", .module = testing_graph.streams },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "dictionaries", .module = testing_graph.dictionaries },
             .{ .name = "streams_common", .module = testing_graph.streams_common },
             .{ .name = "streams_queue", .module = testing_graph.streams_queue },
@@ -3698,7 +3912,7 @@ pub fn build(b: *std.Build) void {
         //   own link objects - so the linkage stays local to the test:
         //     src/webidl/impls/HTMLIFrameElement.zig:1:1: error: file exists in
         //     modules 'root' and 'html'
-        //   because `testing_graph.impls.addImport("html", testing_graph.html)` above makes
+        //   because the impls module's `addImport("html", testing_graph.html)` makes
         //   `testing_graph.html` a transitive dependency of itself. The clone is rooted
         //   at `src/html/full.zig` and so is `testing_graph.html`, and both end up in the
         //   one compilation: `-Mroot=src/html/full.zig ... -Mhtml=src/html/full.zig`.
@@ -3851,7 +4065,7 @@ pub fn build(b: *std.Build) void {
     //
     // These were opt-in behind `-Dspec=xhr` and left out of `all` while
     // `src/xhr/` carried 30 compile errors across 8 files - a module that
-    // nothing had ever compiled, because `testing_graph.impls` imports `xhr` but Zig
+    // nothing had ever compiled, because the impls module imports `xhr` but Zig
     // analyses only what is REFERENCED, and `call_send` never called into it.
     //
     // All 30 are fixed, so this runs with `all` like every other spec. Keep it
@@ -4013,7 +4227,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "public_suffix", .module = testing_graph.cookiestore.import_table.get("public_suffix").? },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
             .{ .name = "runtime", .module = testing_graph.runtime },
         };
@@ -4104,7 +4317,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = testing_graph.engine },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "dom", .module = testing_graph.dom },
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
@@ -4457,7 +4669,6 @@ pub fn build(b: *std.Build) void {
     lib_exports_mod.addImport("infra", infra_mod);
     lib_exports_mod.addImport("engine", engine_mod);
     lib_exports_mod.addImport("interfaces", interfaces_mod);
-    lib_exports_mod.addImport("impls", impls_mod);
     lib_exports_mod.addImport("namespaces", namespaces_mod);
     lib_exports_mod.addImport("dictionaries", dictionaries_mod);
     lib_exports_mod.addImport("typedefs", typedefs_mod);
@@ -4535,7 +4746,6 @@ pub fn build(b: *std.Build) void {
     // did not compile.
     crane_mod.addImport("engine", engine_mod);
     crane_mod.addImport("interfaces", interfaces_mod);
-    crane_mod.addImport("impls", impls_mod);
     crane_mod.addImport("namespaces", namespaces_mod);
     crane_mod.addImport("dictionaries", dictionaries_mod);
     crane_mod.addImport("typedefs", typedefs_mod);
@@ -5025,7 +5235,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "dom", .module = dom_mod },
                 .{ .name = "infra", .module = infra_mod },
                 .{ .name = "browser", .module = browser_mod },
-                .{ .name = "impls", .module = impls_mod },
                 .{ .name = "webidl", .module = webidl_mod },
                 .{ .name = "dictionaries", .module = dictionaries_mod },
             },
@@ -5573,7 +5782,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "streams", .module = streams_mod },
                 .{ .name = "mimesniff", .module = mimesniff_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "impls", .module = impls_mod },
             },
         }),
     });
@@ -5600,14 +5808,14 @@ pub fn build(b: *std.Build) void {
     interfaces_step.dependOn(&run_interfaces_check.step);
 
     // ========================================================================
-    // LINT: the impls boundary, as a ratchet
+    // LINT: the impls boundary, with no baseline
     // ========================================================================
     // AGENTS.md "The impls boundary": impls are private. tools/lint_impls_boundary.zig
-    // counts every reference into an impl from code that does not own it - per file
-    // and per Impl.member - and fails if any rises above
-    // tools/impls_boundary_baseline.txt or a new one appears. The baseline only goes
-    // down: `zig build lint-impls -- --update` records a paid-down tree and refuses
-    // to record an increase.
+    // fails on any reference into an impl from code that does not own it - the
+    // module graph (check-impls-boundary, below) already rejects one from outside
+    // the generated layer, and the lint also sees an impl reaching another impl's
+    // file inside the impls module and a path into src/webidl/impls/. Its naming and
+    // unchecked-state ratchets keep baselines that only go down (`-- --update`).
     //
     // `zig build test` depends on it, so the pre-commit suite cannot pass with a new
     // cross-impl reference. (The check it replaces listed files importing impls
@@ -5640,6 +5848,18 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&lint_impls_check.step);
     const lint_impls_tests = b.addTest(.{ .root_module = lint_impls_module });
     test_step.dependOn(&addSuiteRun(b, launch, lint_impls_tests, "tools-lint_impls", null).step);
+
+    // ========================================================================
+    // CHECK: the impls boundary, held by the module graph
+    // ========================================================================
+    // src/webidl/AGENTS.md "The impls boundary": only the generated layer -
+    // the interfaces, namespaces and mixins modules - imports the impls, so
+    // the compiler rejects a reference from anywhere else. Its negative test
+    // and `checkImplsBoundary`, which walks every module of every compile and
+    // fails this step on any other importer, are added once every step and
+    // import exists (near the end of build()).
+    const impls_boundary_step = b.step("check-impls-boundary", "Check that only the generated layer can import the impls (the compiler rejects any other import)");
+    test_step.dependOn(impls_boundary_step);
 
     // ========================================================================
     // LINT: the engine boundary, as a ratchet
@@ -6509,6 +6729,30 @@ pub fn build(b: *std.Build) void {
     // the launcher runs `test` makes. Both known here, once every step exists.
     if (test_selection.one) |one| finishOneBinary(b, launch, one) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
+    // Only the generated layer imports an impl: known here, once every
+    // module of every step exists. The negative test first: a file in a
+    // module that imports what dom, html, browser, whatwg, the full library's
+    // and the crane browser's lib_exports modules and the engine adapter's
+    // module import - their tables as they are now, final - cannot import the
+    // impls; and one that imports the mixins cannot reach a mixin's impl
+    // through them. Then the walk, which sees those cases too.
+    const no_impls_module = "no module named 'impls' available within module 'root'";
+    for ([_]struct { []const u8, *std.Build.Module }{
+        .{ "dom", dom_mod },
+        .{ "html", html_mod },
+        .{ "browser", browser_mod },
+        .{ "whatwg", whatwg_mod },
+        .{ "lib_exports", lib_exports_mod },
+        .{ "crane", crane_mod },
+        .{ "engine_adapter", engine_impl_mod },
+    }) |case| addImplsBoundaryCase(b, impls_boundary_step, target, case[0], case[1], "@import(\"impls\")", no_impls_module);
+    addImplsBoundaryCase(b, impls_boundary_step, target, "mixin_impl", browser_mod, "@import(\"mixins\").ParentNode.impl", "'impl' is not marked 'pub'");
+    // Then the walk; then two cases in a copy of an impl's own import table
+    // (Text's): it cannot import the impls module, nor another impl by name.
+    const impl_sample = checkImplsBoundary(b, impls_boundary_step, "Text") orelse
+        std.debug.panic("build.zig: no compile reaches the impl Text's module (addImplModules)", .{});
+    addImplsBoundaryCase(b, impls_boundary_step, target, "impl_to_impls", impl_sample, "@import(\"impls\")", no_impls_module);
+    addImplsBoundaryCase(b, impls_boundary_step, target, "impl_to_impl", impl_sample, "@import(\"Node\")", "no module named 'Node' available within module 'root'");
     // Every tests/<dir>/ with test files is a suite: known here, once every
     // suite has been added - when no -Dspec or -Dtest-file skipped some.
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
@@ -6701,7 +6945,6 @@ const CraneModules = struct {
     namespaces: *std.Build.Module,
     typedefs: *std.Build.Module,
     interfaces: *std.Build.Module,
-    impls: *std.Build.Module,
     webcrypto: *std.Build.Module,
     eventsource: *std.Build.Module,
     engine: *std.Build.Module,
@@ -6805,8 +7048,6 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
         .{ .name = "infra", .module = graph.infra },
         // Browser module for single-isolate WPT execution
         .{ .name = "browser", .module = graph.browser },
-        // Impls module for HTMLParser (needed for HTML test parsing)
-        .{ .name = "impls", .module = graph.impls },
         // WebIDL module for Optional type wrappers
         .{ .name = "webidl", .module = graph.webidl },
         // Dictionaries module for Event init dictionaries
@@ -7129,8 +7370,17 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // ========================================================================
     // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
     // ========================================================================
-
-    const impls_mod = graphModule(b, public, "impls", .{
+    //
+    // Private to the generated layer (src/webidl/AGENTS.md "The impls
+    // boundary"): the interfaces, namespaces and mixins modules import it,
+    // nothing else does (checkImplsBoundary holds that for every compile),
+    // so the compiler rejects an impl reference from any other module. Never
+    // a graph field, and never registered by name for packages that depend
+    // on Crane (b.addModule): no module outside this function can name it.
+    // Its root only names the impls, each a module of its own: the imports
+    // added to it below are what every impl imports, and `addImplModules`
+    // (at the end of this function) moves them onto each impl's module.
+    const impls_mod = b.createModule(.{
         .root_source_file = b.path("src/webidl/impls/root.zig"),
         .target = target,
     });
@@ -7235,7 +7485,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("storage", storage_mod);
     dom_mod.addImport("engine", engine_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
-    dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
     // CSP violation events (csp_violations.zig): a queued task run in the
     // global's realm (the engine protocol), and the event's init dictionary.
     dom_mod.addImport("engine", engine_mod);
@@ -8094,17 +8343,15 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // Uses full.zig as root which re-exports html_core plus adds interface access.
     // Contains everything in html_core PLUS access to:
     // - interfaces module (for script execution files)
-    // - impls module (for script execution coordination)
     // - runtime module (for JS execution context)
+    // It never imports the impls (src/webidl/AGENTS.md "The impls boundary"):
+    // it reaches every type through its interface.
     //
-    // Dependency graph (no cycle):
+    // Dependency graph:
     //   html_core_mod ← infra, dom, platform (NO interfaces)
     //        ↓
-    //   impls_mod ← html_core_mod, interfaces_mod, ...
-    //        ↓
-    //   html_mod ← interfaces_mod, impls_mod, runtime_mod (CAN use interfaces)
-    //
-    // html_mod does NOT feed back into impls_mod, so no cycle is created.
+    //   impls_mod ← html_core_mod, html_mod, interfaces_mod, ...
+    //   html_mod ← interfaces_mod, runtime_mod (CAN use interfaces)
     const html_mod = graphModule(b, public, "html", .{
         .root_source_file = b.path("src/html/full.zig"),
         .target = target,
@@ -8113,7 +8360,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_mod.addImport("html_core", html_core_mod);
     // Interface access for script execution files (now in src/html/)
     html_mod.addImport("interfaces", interfaces_mod);
-    html_mod.addImport("impls", impls_mod);
     html_mod.addImport("runtime", runtime_mod);
     html_mod.addImport("platform", platform_mod);
     // WebIDL types needed by custom_elements.zig and upgrade.zig
@@ -8259,7 +8505,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
     browser_mod.addImport("cookiestore", cookiestore_mod);
-    browser_mod.addImport("impls", impls_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
@@ -8301,7 +8546,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     whatwg_mod.addImport("streams", streams_mod);
     whatwg_mod.addImport("mimesniff", mimesniff_mod);
     whatwg_mod.addImport("interfaces", interfaces_mod);
-    whatwg_mod.addImport("impls", impls_mod);
     whatwg_mod.addImport("quirks", quirks_mod);
     whatwg_mod.addImport("css", css_mod);
     whatwg_mod.addImport("file", file_mod);
@@ -8331,7 +8575,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .{ .name = "dictionaries", .module = dictionaries_mod },
         .{ .name = "webidl", .module = webidl_mod },
         .{ .name = "typedefs", .module = typedefs_mod },
-        .{ .name = "impls", .module = impls_mod },
         .{ .name = "namespaces", .module = namespaces_mod },
         .{ .name = "dom", .module = dom_mod },
         .{ .name = "event_loop", .module = streams_event_loop_mod },
@@ -8359,6 +8602,10 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         std.debug.panic("the engine adapter's module imports \"{s}\" (its build file's facts.imports), which is no module this graph offers an adapter: add it to addCraneModules' offered_to_engine", .{name});
     }
 
+    // Last: every import the impls share is known, so each impl becomes a
+    // module of its own (`addImplModules`).
+    addImplModules(b, impls_mod, target, config.impl_names);
+
     return .{
         .whatwg = whatwg_mod,
         .clock = clock_mod,
@@ -8378,7 +8625,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .namespaces = namespaces_mod,
         .typedefs = typedefs_mod,
         .interfaces = interfaces_mod,
-        .impls = impls_mod,
         .webcrypto = webcrypto_mod,
         .eventsource = eventsource_mod,
         .engine = engine_mod,

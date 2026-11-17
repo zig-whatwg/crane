@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const SVGAnimatedLength = @import("interfaces").SVGAnimatedLength;
 const SVGAnimatedString = @import("interfaces").SVGAnimatedString;
 
-pub const impl = @import("impls").SVGFilterPrimitiveStandardAttributes;
+const impl = @import("impls").SVGFilterPrimitiveStandardAttributes;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

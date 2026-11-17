@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const XRRigidTransform = @import("interfaces").XRRigidTransform;
 
-pub const impl = @import("impls").XRViewGeometry;
+const impl = @import("impls").XRViewGeometry;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

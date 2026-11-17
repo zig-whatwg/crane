@@ -16,7 +16,7 @@ const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const Animation = @import("interfaces").Animation;
 
-pub const impl = @import("impls").DocumentOrShadowRoot;
+const impl = @import("impls").DocumentOrShadowRoot;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

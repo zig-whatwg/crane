@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const PushManager = @import("interfaces").PushManager;
 
-pub const impl = @import("impls").PushManagerAttribute;
+const impl = @import("impls").PushManagerAttribute;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

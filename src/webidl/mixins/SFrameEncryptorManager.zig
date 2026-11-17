@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const CryptoKey = @import("interfaces").CryptoKey;
 
-pub const impl = @import("impls").SFrameEncryptorManager;
+const impl = @import("impls").SFrameEncryptorManager;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

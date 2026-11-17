@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const EventHandler = @import("typedefs").EventHandler;
 
-pub const impl = @import("impls").MessageEventTarget;
+const impl = @import("impls").MessageEventTarget;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

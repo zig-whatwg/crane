@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const DOMMatrix2DInit = @import("dictionaries").DOMMatrix2DInit;
 const DOMMatrix = @import("interfaces").DOMMatrix;
 
-pub const impl = @import("impls").CanvasTransform;
+const impl = @import("impls").CanvasTransform;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

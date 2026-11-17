@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CrossOriginStorageManager = @import("interfaces").CrossOriginStorageManager;
 
-pub const impl = @import("impls").NavigatorCrossOriginStorage;
+const impl = @import("impls").NavigatorCrossOriginStorage;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

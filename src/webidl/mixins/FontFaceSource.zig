@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FontFaceSet = @import("interfaces").FontFaceSet;
 
-pub const impl = @import("impls").FontFaceSource;
+const impl = @import("impls").FontFaceSource;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

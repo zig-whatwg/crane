@@ -21,7 +21,7 @@ const dictionaries = @import("dictionaries");
 const engine = @import("engine");
 const file = @import("file");
 const FileReader = interfaces.FileReader;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const blob_bytes = @import("dom").blob_bytes;
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 

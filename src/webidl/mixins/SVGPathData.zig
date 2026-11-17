@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const SVGPathDataSettings = @import("dictionaries").SVGPathDataSettings;
 const SVGPathSegment = @import("interfaces").SVGPathSegment;
 
-pub const impl = @import("impls").SVGPathData;
+const impl = @import("impls").SVGPathData;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

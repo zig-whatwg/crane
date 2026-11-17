@@ -11,7 +11,7 @@ const webidl = @import("webidl");
 const HTMLCanvasElement = interfaces.HTMLCanvasElement;
 const engine = @import("engine");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const reflection = @import("dom").reflection;
 
 const log = std.log.scoped(.html_canvas);

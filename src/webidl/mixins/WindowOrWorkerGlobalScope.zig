@@ -29,7 +29,7 @@ const Response = @import("interfaces").Response;
 const DOMString = @import("typedefs").DOMString;
 const ImageBitmap = @import("interfaces").ImageBitmap;
 
-pub const impl = @import("impls").WindowOrWorkerGlobalScope;
+const impl = @import("impls").WindowOrWorkerGlobalScope;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

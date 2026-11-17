@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").PopoverTargetAttributes;
+const impl = @import("impls").PopoverTargetAttributes;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

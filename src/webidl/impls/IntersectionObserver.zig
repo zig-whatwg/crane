@@ -16,7 +16,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const IntersectionObserver = interfaces.IntersectionObserver;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const clock = @import("clock");
 const browser_object_lists = @import("dom").browser_object_lists;
 

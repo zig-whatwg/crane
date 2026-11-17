@@ -643,6 +643,7 @@ progress = [
   "0d2de53a60 - B5: event handler IDL attributes are the generated interface's (dom.event_handlers.value/setValue); Event's dispatch state is dom.event_dispatch.EventState, which the dispatcher works on through of(); every fire site through dom.fire_event",
   "256279627b8 - impls7: every reference outside the files other lanes held: Document's state types in dom.document_state, sub-objects and node creation facts as construction arguments, same_object in src/dom; left are HTMLIFrameElement, Window, the V8 adapter and the Streams helpers (after the Zig 0.17 port)",
   "lane impls8 (2026-11-16) - the last 28 references: a frame's Window, Document and Location wired through hooks (dom.window_globals, dom.document_browsing_context; Location's and History's steps in window_globals' slot), History and Storage made with construction arguments, WindowProperties through Window's generated named getter, the wrapper cache through dom reads, the Streams helpers in src/dom; tools/impls_boundary_baseline.txt is EMPTY. Left: the module-graph enforcement (no \"impls\" import outside the generated layers, no baseline)",
+  "lane impls9 (2026-11-17) - enforced by the build: only the interfaces, namespaces and mixins modules import the impls module (14 import sites removed; not exported to dependent packages), each impl is a module of its own (design 5.3 4b: an impl reaching another is a compile error), generated mixins keep their impl alias private; zig build check-impls-boundary (configure-time walk of every compile's modules + compile-failure cases) and lint-impls with NO baseline (tools/impls_boundary_baseline.txt deleted) both run in zig build test. No shipped program changes. Cost: an uncached configure +1.35 s (0.21 -> 1.59 s, macOS; paid on every invocation only while 6 calls poison the configure cache), cached 0.085 s both; the cold set +1.3% wall, peak RSS unchanged",
 ]
 
   [[infra.items]]
@@ -659,7 +660,11 @@ progress = [
 
   [[infra.items]]
   name = "Baseline at zero; the ratchet becomes a hard rule enforced by the module graph"
-  status = "doing"
+  status = "done"
+
+  [[infra.items]]
+  name = "One module per impl: an impl reaching another impl is a compile error (design 5.3 4b)"
+  status = "done"
 
 [[infra]]
 id = "v8-pgo"

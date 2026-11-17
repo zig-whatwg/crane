@@ -14,7 +14,7 @@ const CryptoKeyID = @import("typedefs").CryptoKeyID;
 const EventHandler = @import("typedefs").EventHandler;
 const CryptoKey = @import("interfaces").CryptoKey;
 
-pub const impl = @import("impls").SFrameDecryptorManager;
+const impl = @import("impls").SFrameDecryptorManager;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

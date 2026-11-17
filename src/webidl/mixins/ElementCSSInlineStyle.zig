@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
 const StylePropertyMap = @import("interfaces").StylePropertyMap;
 
-pub const impl = @import("impls").ElementCSSInlineStyle;
+const impl = @import("impls").ElementCSSInlineStyle;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -6,7 +6,7 @@ const interfaces = @import("interfaces");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const construction = @import("dom").event_construction;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 pub const State = interfaces.TrackEvent.State;
 pub const InternalState = struct {
     allocator: std.mem.Allocator,

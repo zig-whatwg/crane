@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 
-pub const impl = @import("impls").LinkStyle;
+const impl = @import("impls").LinkStyle;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).
