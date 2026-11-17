@@ -38,6 +38,11 @@ pub const Reason = enum {
     sharedworker,
     unload_listener,
     webtransport,
+    /// Chrome's "weblocks-contention" (back_forward_cache_can_store_document_
+    /// result.cc, kWebLocksContention): a cached page's worker held a lock
+    /// another environment contended for, and the page was evicted
+    /// (web_locks registry, `contend`). HTML's list names no reason for it.
+    weblocks_contention,
 
     /// The reason's string: "navigation-failure" for .navigation_failure.
     pub fn name(self: Reason) []const u8 {
@@ -55,6 +60,7 @@ pub const Reason = enum {
             .sharedworker => "sharedworker",
             .unload_listener => "unload-listener",
             .webtransport => "webtransport",
+            .weblocks_contention => "weblocks-contention",
         };
     }
 };

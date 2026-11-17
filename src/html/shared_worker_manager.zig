@@ -34,8 +34,30 @@
 //! worker timeout - and so actively needed and protected: it closes only
 //! once that timeout has passed with its owner set still empty
 //! (`closeIfStillOrphaned`; the caller arms the timer, on its Browser's
-//! window loop). (Crane's Documents are fully active until destroyed, so
-//! "in extended lifetime" steps 4-5 add nothing.)
+//! window loop).
+//!
+//! "Suspending workers" ("run a worker" step 8): a worker that is
+//! "suspendable" - not actively needed, but permissible - has its script
+//! suspended until it stops being suspendable. A shared worker is actively
+//! needed while some Document of its owner set is fully active; a Document
+//! the back/forward cache keeps is not (it stays in the owner set until it is
+//! destroyed). So each owner here carries whether its Document is fully
+//! active (`ownerInactive` at the cache's store, `ownerActive` at its
+//! restore, a new owner active), and a worker whose owner set holds none
+//! that is is suspended - with the workers it owns (WorkerRegistry.
+//! markSubtree) - and resumed as soon as one is again. One made with
+//! extendedLifetime is still "in extended lifetime" for the extended
+//! lifetime shared worker timeout after its last owner stopped being fully
+//! active ("in extended lifetime" step 5), so actively needed: it is
+//! suspended once that timeout has passed with no owner fully active
+//! (`suspendIfStillInactive`; the caller arms the timer). Chrome does the
+//! same (SharedWorkerHost::OnClientStateChanged, under kFreezeSharedWorker:
+//! Freeze() when no client is active - after kSharedWorkerDestructionDelay
+//! for an extended lifetime - and Resume() when one is), and so does Firefox
+//! (SharedWorkerManager::UpdateFrozen freezes the worker when every actor is
+//! frozen); back-forward-cache/eligibility/shared-worker.html and
+//! shared-worker-active-client.window.js pass in Chrome, Firefox and Safari
+//! on wpt.fyi.
 //!
 //! The manager's steps run on its Browser's window thread (SharedWorker is
 //! [Exposed=Window]); a realm's end on ANY thread asks it to drop that realm
@@ -49,6 +71,7 @@ const runtime = @import("runtime");
 const html_core = @import("html_core");
 const workers = html_core.workers;
 const WorkerLink = @import("worker_link.zig").WorkerLink;
+const WorkerRegistry = @import("worker_registry.zig").WorkerRegistry;
 
 pub const SharedWorkerManager = struct {
     allocator: Allocator,
@@ -107,8 +130,12 @@ pub const SharedWorkerManager = struct {
         /// Dereferenced only on the worker's thread, by tasks of its loop.
         host: *anyopaque,
         /// The owner set: the realms of the Documents that own the worker,
-        /// each once. Compared, never dereferenced.
-        owners: std.ArrayListUnmanaged(*const anyopaque) = .empty,
+        /// each once, with whether each Document is fully active.
+        owners: std.ArrayListUnmanaged(Owner) = .empty,
+        /// Bumped whenever its owner set stops holding a fully active
+        /// Document, or holds one again: a suspension timer armed for an
+        /// extended lifetime (`suspendIfStillInactive`) finds another epoch.
+        inactive_epoch: u64 = 0,
 
         fn matches(self: *const Entry, key: Key) bool {
             return std.mem.eql(u8, self.storage_key, key.storage_key) and
@@ -116,9 +143,42 @@ pub const SharedWorkerManager = struct {
                 std.mem.eql(u8, self.name, key.name);
         }
 
-        fn hasOwner(self: *const Entry, owner: *const anyopaque) bool {
-            return std.mem.indexOfScalar(*const anyopaque, self.owners.items, owner) != null;
+        fn indexOfOwner(self: *const Entry, owner: *const anyopaque) ?usize {
+            for (self.owners.items, 0..) |item, index| {
+                if (item.realm == owner) return index;
+            }
+            return null;
         }
+
+        fn hasOwner(self: *const Entry, owner: *const anyopaque) bool {
+            return self.indexOfOwner(owner) != null;
+        }
+
+        /// "Actively needed" from its owners (HTML 10.2.3 step 2): an
+        /// owner set with a fully active Document.
+        fn hasActiveOwner(self: *const Entry) bool {
+            for (self.owners.items) |item| {
+                if (item.active) return true;
+            }
+            return false;
+        }
+    };
+
+    /// One Document of an owner set: its realm - compared, never
+    /// dereferenced - and whether it is fully active (false while the
+    /// back/forward cache keeps it).
+    pub const Owner = struct {
+        realm: *const anyopaque,
+        active: bool = true,
+    };
+
+    /// A shared worker in extended lifetime whose owners are all cached: it
+    /// is suspended once the extended lifetime shared worker timeout passes
+    /// unless an owner is fully active again by then (`epoch`). The link is a
+    /// reference, the caller's to release.
+    pub const Inactive = struct {
+        link: *WorkerLink,
+        epoch: u64,
     };
 
     pub fn init(allocator: Allocator) SharedWorkerManager {
@@ -168,14 +228,27 @@ pub const SharedWorkerManager = struct {
         const matched = entry.worker_type == options.worker_type and
             entry.credentials == options.credentials and
             entry.extended_lifetime == options.extended_lifetime;
-        if (matched and !entry.hasOwner(owner)) try entry.owners.append(self.allocator, owner);
-        return .{ .link = entry.link.retain(), .host = entry.host, .matched = matched };
+        var resumes = false;
+        if (matched) {
+            // The constructor runs in a fully active Document: the worker is
+            // actively needed again if its owners were all cached.
+            resumes = !entry.hasActiveOwner();
+            if (entry.indexOfOwner(owner)) |index| {
+                entry.owners.items[index].active = true;
+            } else try entry.owners.append(self.allocator, .{ .realm = owner });
+            if (resumes) entry.inactive_epoch +%= 1;
+        }
+        return .{ .link = entry.link.retain(), .host = entry.host, .matched = matched, .resumes = resumes };
     }
 
     pub const Found = struct {
         link: *WorkerLink,
         host: *anyopaque,
         matched: bool,
+        /// The worker's owner set had no fully active Document before this
+        /// owner joined: it was suspended (or about to be), and the caller
+        /// resumes it - with the workers it owns - before it connects.
+        resumes: bool = false,
     };
 
     /// "Run a worker" for a shared worker, the manager's part: the new
@@ -209,7 +282,7 @@ pub const SharedWorkerManager = struct {
             .host = host,
         };
         errdefer entry.owners.deinit(self.allocator);
-        try entry.owners.append(self.allocator, owner);
+        try entry.owners.append(self.allocator, .{ .realm = owner });
 
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -239,17 +312,30 @@ pub const SharedWorkerManager = struct {
     /// caller to arm (`closeIfStillOrphaned` when it fires); with no list,
     /// or no room in it, they are closed now. How many workers were closed
     /// now.
-    pub fn removeOwner(self: *SharedWorkerManager, owner: *const anyopaque, extended: ?*std.ArrayListUnmanaged(Orphan)) usize {
+    ///
+    /// A worker it leaves with owners none of which is fully active - the
+    /// last one shown went, the others are cached - is suspendable now:
+    /// suspended (`Transitions`, with `registry`'s nested workers).
+    pub fn removeOwner(self: *SharedWorkerManager, owner: *const anyopaque, extended: ?*std.ArrayListUnmanaged(Orphan), transitions: ?*Transitions) usize {
         var orphans: std.ArrayListUnmanaged(*WorkerLink) = .empty;
         defer orphans.deinit(self.allocator);
         {
             std.Io.Threaded.mutexLockUncancelable(&self.mutex);
             defer std.Io.Threaded.mutexUnlock(&self.mutex);
             for (self.entries.items) |entry| {
-                const index = std.mem.indexOfScalar(*const anyopaque, entry.owners.items, owner) orelse continue;
+                const index = entry.indexOfOwner(owner) orelse continue;
+                const was_active = entry.hasActiveOwner();
                 _ = entry.owners.swapRemove(index);
-                if (entry.owners.items.len != 0) continue;
+                if (entry.owners.items.len != 0) {
+                    if (was_active and !entry.hasActiveOwner()) self.becameInactive(entry, transitions);
+                    continue;
+                }
                 // Freed when the owner set empties, as every container here.
+                // A suspended worker stays suspended until it closes: Chrome,
+                // the one engine shipping extendedLifetime, keeps a frozen
+                // worker frozen when its last client goes
+                // (SharedWorkerHost::OnClientConnectionLost re-evaluates the
+                // freeze only while clients remain).
                 entry.owners.clearAndFree(self.allocator);
                 entry.orphan_epoch +%= 1;
                 if (entry.extended_lifetime) {
@@ -275,6 +361,167 @@ pub const SharedWorkerManager = struct {
         return orphans.items.len;
     }
 
+    // ------------------------------------------------------------------------
+    // Suspending workers (see the file's header)
+    // ------------------------------------------------------------------------
+
+    /// What a change to owners' activity asks of the caller, done outside
+    /// the manager's lock: workers to suspend and to resume - each with the
+    /// workers it owns (WorkerRegistry.markSubtree) - and the extended
+    /// lifetime workers whose suspension waits for the timeout (the caller
+    /// arms `suspendIfStillInactive`). Every link retained; `apply` then
+    /// `deinit`.
+    pub const Transitions = struct {
+        allocator: Allocator,
+        suspend_now: std.ArrayListUnmanaged(*WorkerLink) = .empty,
+        resume_now: std.ArrayListUnmanaged(*WorkerLink) = .empty,
+        /// Null: an extended lifetime worker is suspended now too (a caller
+        /// with no timer to arm).
+        delayed: ?std.ArrayListUnmanaged(Inactive) = null,
+
+        pub fn init(allocator: Allocator, with_delays: bool) Transitions {
+            return .{ .allocator = allocator, .delayed = if (with_delays) .empty else null };
+        }
+
+        /// Suspend and resume the links (and their nested workers, when
+        /// `registry` knows them). The delayed ones are the caller's.
+        pub fn apply(self: *Transitions, registry: ?*WorkerRegistry) void {
+            for (self.suspend_now.items) |link| {
+                if (registry) |r| _ = r.markSubtree(link, true) else _ = link.suspendExecution();
+            }
+            for (self.resume_now.items) |link| {
+                if (registry) |r| _ = r.markSubtree(link, false) else _ = link.resumeFromSuspension();
+            }
+        }
+
+        pub fn deinit(self: *Transitions) void {
+            for (self.suspend_now.items) |link| link.release();
+            for (self.resume_now.items) |link| link.release();
+            self.suspend_now.deinit(self.allocator);
+            self.resume_now.deinit(self.allocator);
+            if (self.delayed) |*list| {
+                for (list.items) |item| item.link.release();
+                list.deinit(self.allocator);
+            }
+        }
+
+        /// Under the manager's lock: `link` is to be suspended now. With no
+        /// memory to note it, it is suspended here - the link alone (its
+        /// flag; no registry lock is taken under the manager's).
+        fn suspendLink(self: *Transitions, link: *WorkerLink) void {
+            self.suspend_now.append(self.allocator, link.retain()) catch {
+                link.release();
+                _ = link.suspendExecution();
+            };
+        }
+
+        fn resumeLink(self: *Transitions, link: *WorkerLink) void {
+            self.resume_now.append(self.allocator, link.retain()) catch {
+                link.release();
+                _ = link.resumeFromSuspension();
+            };
+        }
+    };
+
+    /// The Document whose realm is `owner` is no longer fully active - the
+    /// back/forward cache keeps it (its unload's store step): in each owner
+    /// set it is in, it stops counting, and a worker left with no fully
+    /// active owner is suspendable.
+    pub fn ownerInactive(self: *SharedWorkerManager, owner: *const anyopaque, transitions: *Transitions) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            const index = entry.indexOfOwner(owner) orelse continue;
+            if (!entry.owners.items[index].active) continue;
+            entry.owners.items[index].active = false;
+            if (!entry.hasActiveOwner()) self.becameInactive(entry, transitions);
+        }
+    }
+
+    /// The Document whose realm is `owner` is fully active again (the
+    /// back/forward cache restored it): each worker it owns is actively
+    /// needed again, and resumes if it was suspended.
+    pub fn ownerActive(self: *SharedWorkerManager, owner: *const anyopaque, transitions: *Transitions) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            const index = entry.indexOfOwner(owner) orelse continue;
+            if (entry.owners.items[index].active) continue;
+            const had_active = entry.hasActiveOwner();
+            entry.owners.items[index].active = true;
+            if (had_active) continue;
+            entry.inactive_epoch +%= 1;
+            transitions.resumeLink(entry.link);
+        }
+    }
+
+    /// Under the lock: `entry`'s owner set, not empty, just lost its last
+    /// fully active Document. Suspended now - or, in extended lifetime, once
+    /// the timeout passes (`suspendIfStillInactive`).
+    fn becameInactive(self: *SharedWorkerManager, entry: *Entry, transitions: ?*Transitions) void {
+        _ = self;
+        entry.inactive_epoch +%= 1;
+        const list = transitions orelse {
+            _ = entry.link.suspendExecution();
+            return;
+        };
+        if (entry.extended_lifetime) {
+            if (list.delayed) |*delayed| {
+                if (delayed.append(list.allocator, .{ .link = entry.link.retain(), .epoch = entry.inactive_epoch })) |_| {
+                    return;
+                } else |_| entry.link.release();
+            }
+        }
+        list.suspendLink(entry.link);
+    }
+
+    /// The extended lifetime shared worker timeout has passed since the
+    /// worker whose link is `link` lost its last fully active owner (its
+    /// `epoch`): suspended now - with its nested workers, through `registry`
+    /// - if none of its owners is fully active again and it still has
+    /// owners (an emptied owner set closes it instead). Whether it was.
+    pub fn suspendIfStillInactive(self: *SharedWorkerManager, link: *WorkerLink, epoch: u64, registry: ?*WorkerRegistry) bool {
+        const still = blk: {
+            std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+            defer std.Io.Threaded.mutexUnlock(&self.mutex);
+            for (self.entries.items) |entry| {
+                if (entry.link != link) continue;
+                break :blk entry.owners.items.len != 0 and !entry.hasActiveOwner() and entry.inactive_epoch == epoch;
+            }
+            break :blk false;
+        };
+        if (!still) return false;
+        if (registry) |r| _ = r.markSubtree(link, true) else _ = link.suspendExecution();
+        return true;
+    }
+
+    /// Whether the worker whose link is `link` has a fully active Document
+    /// in its owner set - the question Chrome's lock contention asks before
+    /// it evicts a shared worker's cached clients (SharedWorkerHost::
+    /// OnLockContention returns at the first active client).
+    pub fn hasActiveOwnerOf(self: *SharedWorkerManager, link: *const WorkerLink) bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            if (entry.link == link) return entry.hasActiveOwner();
+        }
+        return false;
+    }
+
+    /// The owner realms of the worker whose link is `link`, appended to
+    /// `out` (compared only). Whether `link` is a shared worker's here.
+    pub fn ownersOf(self: *SharedWorkerManager, link: *const WorkerLink, out: *std.ArrayListUnmanaged(*const anyopaque), allocator: Allocator) Allocator.Error!bool {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        for (self.entries.items) |entry| {
+            if (entry.link != link) continue;
+            try out.ensureUnusedCapacity(allocator, entry.owners.items.len);
+            for (entry.owners.items) |item| out.appendAssumeCapacity(item.realm);
+            return true;
+        }
+        return false;
+    }
+
     /// The extended lifetime shared worker timeout has passed since the owner
     /// set of the worker whose link is `link` emptied (its `epoch`): closed
     /// now if its owner set is still empty - no Document connected since.
@@ -294,10 +541,8 @@ pub const SharedWorkerManager = struct {
     }
 
     /// Whether `owner` - a Document's realm - is in the owner set of a
-    /// shared worker: the back/forward cache keeps no page that owns one
-    /// (Blink's "sharedworker" reason). A snapshot: the set may change as
-    /// soon as the lock drops; the cache decides at unload, on the owner's
-    /// own thread, which is the only thread that adds that owner.
+    /// shared worker. A snapshot: the set may change as soon as the lock
+    /// drops.
     pub fn hasOwner(self: *SharedWorkerManager, owner: *const anyopaque) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);

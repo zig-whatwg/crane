@@ -27,6 +27,9 @@ pub const WorkerRegistry = struct {
     links: std.ArrayListUnmanaged(*WorkerLink) = .empty,
     /// The Browser is ending: no worker starts any more.
     closed: bool = false,
+    /// The number of the last subtree walk (`markSubtreeLocked`). Under
+    /// `mutex`.
+    walk: u64 = 0,
 
     pub fn init(allocator: Allocator) WorkerRegistry {
         return .{ .allocator = allocator };
@@ -58,11 +61,130 @@ pub const WorkerRegistry = struct {
 
     /// Record a worker about to start: the registry takes a reference.
     /// error.Closed once the Browser is ending - the worker must not start.
+    ///
+    /// A nested worker started by a suspended worker starts suspended: its
+    /// only owner is not actively needed, so neither is it (HTML 10.2.3,
+    /// "actively needed": an owner that is a WorkerGlobalScope counts only
+    /// while it is actively needed). Decided under the lock that
+    /// `suspendOwnedByRealm` and `resumeOwnedByRealm` hold while they walk a
+    /// worker's descendants, so a worker started while its owner is being
+    /// suspended is either walked or sees its owner suspended here.
     pub fn register(self: *WorkerRegistry, link: *WorkerLink) error{ Closed, OutOfMemory }!void {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         if (self.closed) return error.Closed;
-        try self.links.append(self.allocator, link.retain());
+        try self.links.ensureUnusedCapacity(self.allocator, 1);
+        if (self.ownerLinkLocked(link)) |owner| {
+            if (owner.isSuspended()) _ = link.suspendExecution();
+        }
+        self.links.appendAssumeCapacity(link.retain());
+    }
+
+    /// The registered link of the worker that owns `link` - the one whose
+    /// loop `link` posts to - when its owner is a worker. Under the lock.
+    fn ownerLinkLocked(self: *WorkerRegistry, link: *const WorkerLink) ?*WorkerLink {
+        for (self.links.items) |registered| {
+            if (registered.worker_sink == link.owner_sink) return registered;
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------------
+    // Suspending workers (HTML 10.2.3-10.2.4)
+    // ------------------------------------------------------------------------
+    //
+    // A dedicated worker's owner set is the Document of the Window that made
+    // its Worker object, or - nested - the worker that made it. While that
+    // Document is in the back/forward cache it is not fully active, so the
+    // worker is not "actively needed", and neither is any worker it owns;
+    // they are still "permissible" (their owner sets are not empty), so they
+    // are "suspendable", and "run a worker" step 8 suspends them until the
+    // Document is fully active again (`resumeOwnedByRealm`) or it is
+    // destroyed - its unloading cleanup terminates them
+    // (`terminateOwnedByRealm`). Chrome freezes a cached page's dedicated
+    // workers the same way (DedicatedWorker::ContextLifecycleStateChanged:
+    // kFrozen -> WorkerThread Freeze, kRunning -> Resume); Firefox and
+    // Safari keep and restore them too (back-forward-cache/eligibility/
+    // dedicated-worker.html passes in all three on wpt.fyi).
+
+    /// Suspend every worker whose Worker object lives in `owner_realm` - a
+    /// Window's realm whose Document the back/forward cache keeps - and
+    /// every worker those own, transitively. How many it suspended.
+    pub fn suspendOwnedByRealm(self: *WorkerRegistry, owner_realm: *const anyopaque) usize {
+        return self.markOwnedByRealm(owner_realm, true);
+    }
+
+    /// The Document of `owner_realm` is fully active again: every worker it
+    /// owns, and theirs, resumes. How many it resumed.
+    pub fn resumeOwnedByRealm(self: *WorkerRegistry, owner_realm: *const anyopaque) usize {
+        return self.markOwnedByRealm(owner_realm, false);
+    }
+
+    /// Suspend (or resume) `root` and every worker it owns, transitively:
+    /// a shared worker whose owners are all cached (SharedWorkerManager).
+    pub fn markSubtree(self: *WorkerRegistry, root: *WorkerLink, suspend_it: bool) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        return self.markSubtreeLocked(root, suspend_it);
+    }
+
+    fn markOwnedByRealm(self: *WorkerRegistry, owner_realm: *const anyopaque, suspend_it: bool) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var marked: usize = 0;
+        for (self.links.items) |link| {
+            if (link.owner_realm != owner_realm) continue;
+            marked += self.markSubtreeLocked(link, suspend_it);
+        }
+        return marked;
+    }
+
+    /// `root` and its descendants - each link whose owner sink is the worker
+    /// sink of a link already in the subtree - suspended or resumed, under
+    /// the lock. A link's mark never takes the registry's lock (a flag and a
+    /// post), so it is safe here. No memory: each link carries the walk's
+    /// number (`WorkerLink.registry_walk`, the registry's, under its lock),
+    /// and passes over the list repeat until one adds nothing - nesting is
+    /// shallow and a registry holds tens of links.
+    fn markSubtreeLocked(self: *WorkerRegistry, root: *WorkerLink, suspend_it: bool) usize {
+        self.walk +%= 1;
+        const walk = self.walk;
+        var marked: usize = 0;
+        root.registry_walk = walk;
+        if (mark(root, suspend_it)) marked += 1;
+        var grew = true;
+        while (grew) {
+            grew = false;
+            for (self.links.items) |link| {
+                if (link.registry_walk == walk) continue;
+                const owner = self.ownerLinkLocked(link) orelse continue;
+                if (owner.registry_walk != walk) continue;
+                link.registry_walk = walk;
+                if (mark(link, suspend_it)) marked += 1;
+                grew = true;
+            }
+        }
+        return marked;
+    }
+
+    /// The worker at the top of `link`'s owner chain: `link` itself when its
+    /// owner is not a worker - a dedicated worker made by a Window (its
+    /// `owner_realm` is the Window's), or a shared worker - else its owner's
+    /// root. Retained: the caller releases it. Bounded by the registry's
+    /// size, so a chain that loops ends.
+    pub fn ownerChainRoot(self: *WorkerRegistry, link: *WorkerLink) *WorkerLink {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var current = link;
+        var steps: usize = 0;
+        while (steps <= self.links.items.len) : (steps += 1) {
+            current = self.ownerLinkLocked(current) orelse break;
+        }
+        return current.retain();
+    }
+
+    fn mark(link: *WorkerLink, suspend_it: bool) bool {
+        return if (suspend_it) link.suspendExecution() else link.resumeFromSuspension();
     }
 
     /// The worker has ended and its owner has joined its thread: forget it.
@@ -81,12 +203,8 @@ pub const WorkerRegistry = struct {
         if (found) link.release();
     }
 
-    /// Whether a registered worker owned by `realm` has not ended: the
-    /// back/forward cache keeps no page with one (a stated phase B limit -
-    /// Chrome freezes a cached page's dedicated workers). A snapshot: a
-    /// worker may start or end as soon as the lock drops; the cache decides
-    /// at unload, on the realm's own thread, which is the only thread that
-    /// starts that realm's workers.
+    /// Whether a registered worker owned by `realm` has not ended. A
+    /// snapshot: a worker may start or end as soon as the lock drops.
     pub fn ownsAny(self: *WorkerRegistry, realm: *const anyopaque) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
