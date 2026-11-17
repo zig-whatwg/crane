@@ -18,7 +18,7 @@ const GPUSignedOffset32 = @import("typedefs").GPUSignedOffset32;
 const GPUSize32 = @import("typedefs").GPUSize32;
 const GPUIndexFormat = @import("enums").GPUIndexFormat;
 
-pub const impl = @import("impls").GPURenderCommandsMixin;
+const impl = @import("impls").GPURenderCommandsMixin;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

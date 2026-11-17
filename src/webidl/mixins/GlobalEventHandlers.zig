@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
 const EventHandler = @import("typedefs").EventHandler;
 
-pub const impl = @import("impls").GlobalEventHandlers;
+const impl = @import("impls").GlobalEventHandlers;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

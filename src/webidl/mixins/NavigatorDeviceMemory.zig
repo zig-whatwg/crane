@@ -11,7 +11,7 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 
-pub const impl = @import("impls").NavigatorDeviceMemory;
+const impl = @import("impls").NavigatorDeviceMemory;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPU = @import("interfaces").GPU;
 
-pub const impl = @import("impls").NavigatorGPU;
+const impl = @import("impls").NavigatorGPU;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

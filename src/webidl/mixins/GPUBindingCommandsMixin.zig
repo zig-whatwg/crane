@@ -17,7 +17,7 @@ const GPUBindGroup = @import("interfaces").GPUBindGroup;
 const GPUBufferDynamicOffset = @import("typedefs").GPUBufferDynamicOffset;
 const GPUSize32 = @import("typedefs").GPUSize32;
 
-pub const impl = @import("impls").GPUBindingCommandsMixin;
+const impl = @import("impls").GPUBindingCommandsMixin;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

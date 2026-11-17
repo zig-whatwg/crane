@@ -313,7 +313,7 @@ pub const GPURenderPassEncoder = struct {
     pub const overloads = .{
         .{ "setBindGroup", &[_]webidl.overload_resolution.Overload{
             .{ .function = "call_setBindGroup", .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.sequence}, .optionality = .optional } } },
-            .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(mixins.GPUBindingCommandsMixin.impl, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
+            .{ .function = "call_setBindGroup__1", .implemented = @hasDecl(@import("impls").GPUBindingCommandsMixin, "call_setBindGroup__1"), .args = &.{ .{ .kinds = &.{.numeric} }, .{ .kinds = &.{(if (@hasDecl(@import("interfaces"), "GPUBindGroup")) webidl.overload_resolution.Kind{ .interface = runtime.typeId(@import("interfaces").GPUBindGroup.State) } else .other)}, .nullable = true }, .{ .kinds = &.{.{ .typed_array = "Uint32Array" }} }, .{ .kinds = &.{.numeric} }, .{ .kinds = &.{.numeric} } } },
         } },
     };
 

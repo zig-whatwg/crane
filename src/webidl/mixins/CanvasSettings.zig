@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CanvasRenderingContext2DSettings = @import("dictionaries").CanvasRenderingContext2DSettings;
 
-pub const impl = @import("impls").CanvasSettings;
+const impl = @import("impls").CanvasSettings;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

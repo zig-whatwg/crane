@@ -700,6 +700,23 @@ fn isElementInterface(model: *const ir_mod.IR, name: []const u8) bool {
     return false;
 }
 
+/// A generated mixin module's prelude, after its imports: the impl alias
+/// the module's own delegates use, its process-wide hooks and ParentNode's
+/// NodeOrString. The alias is NOT pub (src/webidl/AGENTS.md "The impls
+/// boundary"): browser and the lib_exports modules import the mixins, and a
+/// `pub const impl` would hand each of them a way to the impl. An includer's
+/// generated interface asks `@import("impls")` itself.
+pub fn writeMixinPrelude(w: anytype, mixin_name: []const u8) !void {
+    try w.print("const impl = @import(\"impls\").{s};\n", .{mixin_name});
+    try w.writeAll("\n");
+    try writer.writeInstallHooks(w, mixin_name, "");
+    // ParentNode's NodeOrString, a type its includers' signatures name.
+    if (std.mem.eql(u8, mixin_name, "ParentNode")) {
+        try w.writeAll("pub const NodeOrString = impl.NodeOrString;\n");
+    }
+    try w.writeAll("\n");
+}
+
 /// Generate a mixin's module: its members' delegates to the mixin's impl.
 ///
 /// An interface that includes the mixin inherits these functions by alias
@@ -746,16 +763,7 @@ pub fn generateMixin(
     }
     try writer.writeImports(w, mixin_name, null, &.{}, member_refs, type_registry);
     try w.writeAll("\n");
-
-    // Re-export types from impl
-    try w.print("pub const impl = @import(\"impls\").{s};\n", .{mixin_name});
-    try w.writeAll("\n");
-    try writer.writeInstallHooks(w, mixin_name, "");
-    // Re-export NodeOrString if this is ParentNode (commonly needed by interfaces)
-    if (std.mem.eql(u8, mixin_name, "ParentNode")) {
-        try w.writeAll("pub const NodeOrString = impl.NodeOrString;\n");
-    }
-    try w.writeAll("\n");
+    try writeMixinPrelude(w, mixin_name);
 
     var attrs = std.ArrayList(types.Attribute).empty;
     defer attrs.deinit(allocator);

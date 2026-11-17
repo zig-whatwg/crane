@@ -38,7 +38,7 @@ const Uint32List = @import("typedefs").Uint32List;
 const WebGLQuery = @import("interfaces").WebGLQuery;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").WebGL2RenderingContextBase;
+const impl = @import("impls").WebGL2RenderingContextBase;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

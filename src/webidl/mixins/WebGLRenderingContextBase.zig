@@ -35,7 +35,7 @@ const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
 const DOMString = @import("typedefs").DOMString;
 const HTMLCanvasElement = @import("interfaces").HTMLCanvasElement;
 
-pub const impl = @import("impls").WebGLRenderingContextBase;
+const impl = @import("impls").WebGLRenderingContextBase;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

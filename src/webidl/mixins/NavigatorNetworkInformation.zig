@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const NetworkInformation = @import("interfaces").NetworkInformation;
 
-pub const impl = @import("impls").NavigatorNetworkInformation;
+const impl = @import("impls").NavigatorNetworkInformation;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

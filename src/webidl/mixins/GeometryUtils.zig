@@ -19,7 +19,7 @@ const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 
-pub const impl = @import("impls").GeometryUtils;
+const impl = @import("impls").GeometryUtils;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).
