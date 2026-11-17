@@ -1,6 +1,7 @@
 # Workflow: lint-impls counts every usage once per local alias
 
 **Date**: 2026-09-26
+**Status** (2026-11-17, lane impls9): history. The lint counts each use once since the B0 rule change, the impls boundary has no baseline at all (every reference fails), and an alias nothing reaches through counts once, as `Impl.@import`. Inside the impls an impl cannot even import another: each impl is a module of its own.
 **Lesson**: In a file that binds a non-ancestor impl locally in several functions (`const EventImpl = @import("Event.zig");` six times in EventTarget.zig), adding one more such binding raised EVERY `EventImpl.member` count in the file by one - `Event.clearPath: allowed 6, found 7`, listing the same line seven times - and failed `zig build test` with 16 keys above the baseline.
 
 **Why**: the impls-boundary lint counts a usage once per alias declaration of that name in the file, so the file's counts scale with how many functions bind the alias. The baseline recorded the old multiple.

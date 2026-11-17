@@ -120,7 +120,7 @@ sufficient — see the regression protocol above.
 
 ## Boundaries
 
-- **Impls:** an interface's impl is reached ONLY through that interface's own generated file - no other impl, not an ancestor's, and no other code names an `XImpl` or imports `impls`; a step with no IDL member goes through a `src/dom` hook its owner installs; shared helpers live outside `src/webidl/impls/`; never cast another type's `_internal` to its `InternalState` (src/webidl/AGENTS.md, "The impls boundary").
+- **Impls:** an interface's impl is reached ONLY through that interface's own generated file - no other impl, not an ancestor's, and no other code names an `XImpl` or imports `impls`; the build enforces it (only the generated layer imports `impls`, each impl is a module of its own: `zig build check-impls-boundary`); a step with no IDL member goes through a `src/dom` hook its owner installs; shared helpers live outside `src/webidl/impls/`; never cast another type's `_internal` to its `InternalState` (src/webidl/AGENTS.md, "The impls boundary").
 - **Names are the binding map:** in an impl, `get_`/`set_`/`call_` mean "exposed to script" and nothing else, and a mixin's member is implemented once, in the mixin's impl; a private function never takes one of those prefixes (src/webidl/AGENTS.md).
 - **Never edit generated files** (`src/webidl/{interfaces,typedefs,dictionaries,callbacks,mixins,namespaces,enums}/`, the directories `codegen-check` compares): fix the codegen or the IDL and regenerate with `zig build codegen -- --dest-root src/webidl/`, one invocation over both sources (src/webidl/AGENTS.md, "WebIDL codegen").
 - **Engine:** V8 types and calls live only in `src/runtime/engines/v8/` and `tests/v8/`; everything else calls the `engine` protocol, and a new engine need is a new protocol operation, requested from the integrator; ownership is in the types - a `JSValue` parameter is borrowed, what the caller must release has an owning type (src/runtime/AGENTS.md, "The engine boundary").
@@ -153,9 +153,9 @@ because the end is where context runs out and sessions get interrupted.
 
 - Memory leaks, Zig or C++
 - Committing a hand-edited generated file
-- Referencing an impl from anywhere but its own generated interface, in **new**
-  code - ancestors included; `zig build lint-impls` (part of `zig build test`)
-  enforces it
+- Referencing an impl from anywhere but its own generated interface - ancestors
+  included; the compiler rejects it (`zig build check-impls-boundary`) and `zig
+  build lint-impls`, with no baseline, names it (both part of `zig build test`)
 - V8 outside the V8 adapter in **new** code - `zig build lint-engine` (part of
   `zig build test`) enforces it; see "The engine boundary"
 - A new `threadlocal` or container-level `var` - `zig build lint-global-state`
