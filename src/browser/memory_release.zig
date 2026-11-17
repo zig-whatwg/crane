@@ -59,11 +59,12 @@
 //!    a release that returned under 1 MB - is not kept (the user's decision,
 //!    2026-11-16): WebKit's rule spaces answers to memory-pressure events,
 //!    where a release that found nothing says the next will find nothing;
-//!    Crane's releases follow idle stretches, and the process's first one -
-//!    a page's first idle stretch, with little freed yet - found little and
-//!    then kept what the page freed next for half a minute. The process's
-//!    hold-off is in the process's own record (process.start MemoryHoldOff);
-//!    `Gate` is the rule over it.
+//!    most of Crane's releases follow idle stretches, and the process's
+//!    first one - a page's first idle stretch, with little freed yet - found
+//!    little and then kept what the page freed next for half a minute. A
+//!    release a pressure event asks for (below) is held off by the same
+//!    rule. The process's hold-off is in the process's own record
+//!    (process.start MemoryHoldOff); `Gate` is the rule over it.
 //!
 //! The OS's memory-pressure notification asks through the same gate: a
 //! critical one is a task of the window's loop that calls
