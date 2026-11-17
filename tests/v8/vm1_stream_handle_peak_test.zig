@@ -64,7 +64,7 @@ test "a burst of streams grows V8's global handle table by at most two handles a
     protocol.notifyMemoryPressure(page.agent, .critical);
 
     const before = ffi.v8_Isolate_GetGlobalHandleCapacityBytes(isolate);
-    try rounds_lib.expectEval(page.realm, std.fmt.comptimePrint("for (let i = 0; i < {d}; i++) void " ++ reader_of_closed_stream ++ "; 'ok'", .{burst}), "ok");
+    try rounds_lib.expectEval(page.realm, "for (let i = 0; i < " ++ std.fmt.comptimePrint("{d}", .{burst}) ++ "; i++) void " ++ reader_of_closed_stream ++ "; 'ok'", "ok");
     const after = ffi.v8_Isolate_GetGlobalHandleCapacityBytes(isolate);
     for (0..4) |_| try protocol.performMicrotaskCheckpoint(page.agent);
     protocol.notifyMemoryPressure(page.agent, .critical);
