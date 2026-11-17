@@ -37,6 +37,51 @@ const burst = 20_000;
 const kept_limit = 2 * 32;
 const burst_limit = 2 * 32;
 
+/// The adapter's counter named `name` (protocol.diagnosticCounters).
+fn counter(name: []const u8) !i64 {
+    const counters = try protocol.diagnosticCounters(std.testing.allocator);
+    defer std.testing.allocator.free(counters);
+    for (counters) |c| if (std.mem.eql(u8, c.name, name)) return c.value;
+    return error.CounterMissing;
+}
+
+test "wrapping a platform object makes no Global for its prototype or its template" {
+    var page: rounds_lib.Page = undefined;
+    try page.start("https://stream-handle-peak-wrap.test");
+    defer page.end();
+    try rounds_lib.expectEval(page.realm, "void " ++ reader_of_closed_stream ++ "; 'ok'", "ok");
+
+    // The wrapper's prototype is `globalThis.<Interface>.prototype`. It was
+    // fetched as a Global of its own for every wrap
+    // (v8_GetGlobalPrototype, which counts its calls in every build), set
+    // and disposed; it is a Local inside the one call that makes the wrapper
+    // now (v8_FunctionTemplate_NewWrapper). A process-wide count: nothing
+    // else in this binary wraps while the script below runs.
+    const rounds = 500;
+    const lookups_before = try counter("object_globals_from.GetGlobalPrototype");
+    const wrappers_before = try counter("object_globals_from.ObjectTemplate_NewInstance");
+    try rounds_lib.expectEval(page.realm, "for (let i = 0; i < 500; i++) void " ++ reader_of_closed_stream ++ "; 'ok'", "ok");
+    const lookups = try counter("object_globals_from.GetGlobalPrototype") - lookups_before;
+    const wrappers = try counter("object_globals_from.ObjectTemplate_NewInstance") - wrappers_before;
+    // At least the controller and the reader are wrapped by the adapter
+    // each round (the stream's own wrapper may be its constructor's `this`),
+    // and each still has the interface's prototype.
+    if (wrappers < 2 * rounds or lookups != 0) {
+        std.debug.print("{d} wrappers made in {d} rounds (at least 2 a round expected), {d} Globals made for their prototypes (0 expected)\n", .{ wrappers, rounds, lookups });
+        return error.PrototypeGlobals;
+    }
+    try rounds_lib.expectEval(page.realm,
+        \\(() => {
+        \\  let c;
+        \\  const s = new ReadableStream({ start(controller) { c = controller; } });
+        \\  const r = s.getReader();
+        \\  return String([s instanceof ReadableStream, Object.getPrototypeOf(s) === ReadableStream.prototype,
+        \\    c instanceof ReadableStreamDefaultController, Object.getPrototypeOf(c) === ReadableStreamDefaultController.prototype,
+        \\    r instanceof ReadableStreamDefaultReader, Object.getPrototypeOf(r) === ReadableStreamDefaultReader.prototype]);
+        \\})()
+    , "true,true,true,true,true,true");
+}
+
 test "a kept stream with its reader holds at most two global handles" {
     var page: rounds_lib.Page = undefined;
     try page.start("https://stream-handle-peak-kept.test");
