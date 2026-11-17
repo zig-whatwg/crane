@@ -363,9 +363,10 @@ pub const V8EventLoop = struct {
     /// This is the recommended method for callers who need to control timing.
     /// It follows the Node.js/Chromium pattern:
     /// 1. Drain microtask queue (Promise reactions, queueMicrotask callbacks)
-    /// 2. Calculate optimal wait time based on pending timers and max_wait_ms
-    /// 3. Block on libuv until event or timeout
-    /// 4. Execute timer/I/O callbacks
+    /// 2. Run the queued tasks and the engine's platform tasks
+    /// 3. Wait for the next timer's deadline, at most max_wait_ms and the
+    ///    timer backend's slice
+    /// 4. Execute the timer callbacks that are due
     /// 5. Drain microtask queue again
     ///
     /// @param max_wait_ms Maximum time to block waiting for events.
@@ -400,29 +401,29 @@ pub const V8EventLoop = struct {
         // on the agent's host), pumped by the host's own event loop - the
         // Browser's or a worker's - never by this adapter loop.
 
-        // Step 3: Calculate optimal wait time
-        // We want to wake up when the next timer fires OR when max_wait_ms expires
-        const wait_time = blk: {
-            // A task left for the next turn is work waiting now: poll, but
-            // do not block.
-            if (self.tasks.items.len > 0) break :blk 0;
-            if (self.timer_manager) |mgr| {
-                if (mgr.getNextTimerDeadline()) |deadline| {
-                    // Wake up at whichever comes first: timer deadline or max wait
-                    break :blk @min(deadline, max_wait_ms);
-                }
-            }
-            // No pending timers - use max_wait_ms (or 0 for non-blocking)
-            break :blk max_wait_ms;
-        };
+        // Step 3: the longest this turn may wait: the caller's bound, and
+        // nothing while a task left for the next turn waits - that is work
+        // waiting now: poll, but do not block.
+        const wait_ns: u64 = if (self.tasks.items.len > 0) 0 else max_wait_ms *| std.time.ns_per_ms;
 
-        // Step 4: Poll libuv for I/O and timer events
+        // Step 4: wait for the next timer and run the timers that are due,
+        // each callback a task, followed by a microtask checkpoint (HTML
+        // 8.1.7.3). The timer backend waits to the next timer's deadline
+        // exactly, within this bound and its own 1 ms slice
+        // (pollBlockingEachNs). This step used to pass it the time to the
+        // next timer in whole milliseconds, rounded down: for a timer due in
+        // under a millisecond that was a bound of 0, so the turn did not
+        // wait, and its caller turned again and again - a microtask
+        // checkpoint, the platform pump and a timer poll each time - until
+        // the timer was due (tests/v8/ev2_adapter_loop_timer_wait_test.zig
+        // counts the polls; the window and worker loops had the same
+        // rounding until lane flk2). Every browser's loop waits for its next
+        // delayed task's exact remaining delay: Chromium's pump sleeps on
+        // its event for `next_work_info.remaining_delay()`
+        // (base/message_loop/message_pump_default.cc,
+        // MessagePumpDefault::Run).
         if (self.timer_manager) |mgr| {
-            // Use blocking poll with timeout - this waits efficiently for timer/I/O
-            // and returns after at most wait_time milliseconds
-            // - each callback a task, followed by a microtask checkpoint
-            // (HTML 8.1.7.3).
-            const had_callbacks = mgr.pollBlockingEach(wait_time, .{ .context = self, .run = checkpointAfterTimer });
+            const had_callbacks = mgr.pollBlockingEachNs(wait_ns, .{ .context = self, .run = checkpointAfterTimer });
             if (had_callbacks) {
                 did_work = true;
             }

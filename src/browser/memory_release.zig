@@ -24,7 +24,8 @@
 //!   memory pressure, and then refuses the next pressure event for 20 times
 //!   the time the release took, at least 5 seconds, and 30 seconds when it
 //!   returned under 1 MB (Source/WTF/wtf/unix/MemoryPressureHandlerUnix.cpp,
-//!   respondToMemoryPressure).
+//!   respondToMemoryPressure). Crane keeps the first two numbers and not
+//!   the third (rule 3).
 //!
 //! Crane's rule (lane idle1, the integrator's approval 2026-11-16):
 //!
@@ -51,11 +52,19 @@
 //!    at that moment.
 //! 3. HOW MUCH. For the whole process - the allocator is the process's,
 //!    whichever Browser's loop asks - no release is asked for while one runs,
-//!    nor until `holdOff` has passed since the last one ended: WebKit's
-//!    three numbers, unchanged. Releases therefore take at most a twentieth
-//!    of one thread's time, and one that finds nothing to return is not
-//!    repeated for 30 seconds. The process's hold-off is in the process's
-//!    own record (process.start MemoryHoldOff); `Gate` is the rule over it.
+//!    nor until `holdOff` has passed since the last one ended: 20 times the
+//!    release's duration, at least 5 seconds, whatever it returned. Releases
+//!    therefore take at most a twentieth of one thread's time, and no more
+//!    than one starts in 5 seconds. WebKit's third number - 30 seconds after
+//!    a release that returned under 1 MB - is not kept (the user's decision,
+//!    2026-11-16): WebKit's rule spaces answers to memory-pressure events,
+//!    where a release that found nothing says the next will find nothing;
+//!    most of Crane's releases follow idle stretches, and the process's
+//!    first one - a page's first idle stretch, with little freed yet - found
+//!    little and then kept what the page freed next for half a minute. A
+//!    release a pressure event asks for (below) is held off by the same
+//!    rule. The process's hold-off is in the process's own record
+//!    (process.start MemoryHoldOff); `Gate` is the rule over it.
 //!
 //! The OS's memory-pressure notification asks through the same gate: a
 //! critical one is a task of the window's loop that calls
@@ -77,21 +86,13 @@ pub const hold_off_multiplier: i64 = 20;
 /// WebKit's s_minimumHoldOffTime.
 pub const min_hold_off_ns: i64 = 5 * std.time.ns_per_s;
 
-/// WebKit's s_maximumHoldOffTime: the wait after a release that returned
-/// less than `small_release_bytes`.
-pub const small_release_hold_off_ns: i64 = 30 * std.time.ns_per_s;
-
-/// WebKit's s_minimumBytesFreedToUseMinimumHoldOffTime: 1 MiB.
-pub const small_release_bytes: usize = 1024 * 1024;
-
-/// How long no release starts after one that took `duration_ns` and
-/// returned `returned_bytes`.
+/// How long no release starts after one that took `duration_ns`: 20 times
+/// that, at least 5 seconds. What the release returned (`returned_bytes`)
+/// changes nothing - WebKit's s_maximumHoldOffTime, 30 seconds after a
+/// release that returned under 1 MB, is not kept (the header's rule 3).
 pub fn holdOff(duration_ns: i64, returned_bytes: usize) i64 {
-    const wanted = if (returned_bytes >= small_release_bytes)
-        @max(0, duration_ns) *| hold_off_multiplier
-    else
-        small_release_hold_off_ns;
-    return @max(wanted, min_hold_off_ns);
+    _ = returned_bytes;
+    return @max(@max(0, duration_ns) *| hold_off_multiplier, min_hold_off_ns);
 }
 
 /// One event loop's side of the rule: how long it has had nothing to run,
@@ -354,19 +355,26 @@ test "IdleWatch: a refused release leaves the loop asking" {
     try testing.expect(watch.idleTurn(4_000 * ms));
 }
 
-test "holdOff: 20 times the release's duration, at least 5 seconds; 30 seconds when under 1 MiB came back" {
+test "holdOff: 20 times the release's duration, at least 5 seconds - whatever the release returned" {
     const ms = std.time.ns_per_ms;
     const s = std.time.ns_per_s;
-    // A release that returned memory: 20 times its duration, from 5 s up.
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, 275 * 1024 * 1024));
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(250 * ms, small_release_bytes));
-    try testing.expectEqual(@as(i64, 6 * s), holdOff(300 * ms, small_release_bytes));
+    const mib = 1024 * 1024;
+    // 20 times its duration, from 5 s up.
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, 275 * mib));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(250 * ms, mib));
+    try testing.expectEqual(@as(i64, 6 * s), holdOff(300 * ms, mib));
     try testing.expectEqual(@as(i64, 40 * s), holdOff(2 * s, 1 << 30));
-    // One that returned under 1 MiB: 30 seconds, however short it was.
-    try testing.expectEqual(@as(i64, 30 * s), holdOff(0, 0));
-    try testing.expectEqual(@as(i64, 30 * s), holdOff(8 * ms, small_release_bytes - 1));
+    // A release that returned little or nothing is held off the same way,
+    // not for WebKit's 30 seconds (the user, 2026-11-16: "5 s always"). The
+    // process's first release - a page's first idle stretch - is such a
+    // one, and 30 seconds kept the memory a page frees after it.
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(0, 0));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, mib - 1));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(20 * std.time.ns_per_us, 4096));
+    try testing.expectEqual(@as(i64, 8 * s), holdOff(400 * ms, 0));
     // A clock that went backwards is no negative hold-off.
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, small_release_bytes));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, mib));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, 0));
 }
 
 test "Gate: the first release is started, at the level asked" {
@@ -405,14 +413,18 @@ test "Gate: after a release that returned memory the next is refused for 20 time
     try testing.expectEqual(@as(u64, 3), gate.count());
 }
 
-test "Gate: a release that returned under 1 MiB is not repeated for 30 seconds" {
+test "Gate: a release that returned under 1 MiB is held off 5 seconds, as any other" {
     var fake: Fake = .{ .release_takes_ns = 20 * std.time.ns_per_us, .release_returns = 4096 };
     const gate = fake.gate();
     try testing.expect(gate.release(.idle));
     const end = fake.now_ns;
-    fake.now_ns = end + 30 * std.time.ns_per_s - 1;
+    fake.now_ns = end + 5 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
-    fake.now_ns = end + 30 * std.time.ns_per_s;
+    // The next idle stretch 5 seconds on is let through: the memory a page
+    // freed after a first release that found little is returned then, not
+    // half a minute later.
+    fake.now_ns = end + 5 * std.time.ns_per_s;
+    fake.release_returns = 150 * 1024 * 1024;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 2), fake.asked);
 }
@@ -493,7 +505,7 @@ test "Gate: of several threads that find the record open at once, exactly one st
     for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Race.thread, .{&race});
     race.go.store(true, .release);
     for (threads) |t| t.join();
-    // The clock stands at 0 and the first release's hold-off ends at 30 s:
+    // The clock stands at 0 and the first release's hold-off ends at 5 s:
     // every thread after the first finds the record claimed or held.
     try testing.expectEqual(@as(u32, 1), race.asked.load(.monotonic));
     try testing.expectEqual(@as(u64, 1), race.hold.releases.load(.monotonic));
@@ -537,7 +549,7 @@ test "Gate.settle - what the process's end waits with - returns only once the re
             const self: *@This() = @ptrCast(@alignCast(context.?));
             platform.sleepThread(50 * std.time.ns_per_ms);
             self.finished.store(true, .release);
-            ended(&self.hold, now(null), 2 * small_release_bytes, 50 * std.time.ns_per_ms);
+            ended(&self.hold, now(null), 2 * 1024 * 1024, 50 * std.time.ns_per_ms);
         }
     };
     var slow: Slow = .{};
