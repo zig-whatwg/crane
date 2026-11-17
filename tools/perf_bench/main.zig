@@ -245,6 +245,23 @@ fn capture(arena: Allocator, io: Io, argv: []const []const u8) []const u8 {
 /// The measuring host, as every row records it.
 pub fn hostInfo(arena: Allocator, io: Io) !journal.Host {
     const name = capture(arena, io, &.{ "hostname", "-s" });
+    if (builtin.os.tag == .linux) {
+        const release = capture(arena, io, &.{ "uname", "-r" });
+        const read = struct {
+            fn f(a: Allocator, i: Io, path: []const u8) []const u8 {
+                return Io.Dir.cwd().readFileAlloc(i, path, a, .limited(4 << 20)) catch "";
+            }
+        }.f;
+        const cpuinfo = read(arena, io, "/proc/cpuinfo");
+        return .{
+            .name = if (name.len > 0) name else "unknown",
+            .os = try linuxOsName(arena, read(arena, io, "/etc/os-release"), release),
+            .arch = @tagName(builtin.cpu.arch),
+            .cpu = linuxCpuName(cpuinfo) orelse "unknown",
+            .cores = linuxCores(cpuinfo),
+            .memory_bytes = linuxMemoryBytes(read(arena, io, "/proc/meminfo")),
+        };
+    }
     const product = capture(arena, io, &.{ "sw_vers", "-productVersion" });
     const build_v = capture(arena, io, &.{ "sw_vers", "-buildVersion" });
     const cpu = capture(arena, io, &.{ "sysctl", "-n", "machdep.cpu.brand_string" });
@@ -258,6 +275,83 @@ pub fn hostInfo(arena: Allocator, io: Io) !journal.Host {
         .cores = cores,
         .memory_bytes = mem,
     };
+}
+
+/// A Linux host's name for the journal: /etc/os-release's PRETTY_NAME and
+/// the kernel's release ("Ubuntu 24.04.1 LTS (Linux 6.8.0-48-generic)").
+fn linuxOsName(arena: Allocator, os_release: []const u8, kernel: []const u8) ![]const u8 {
+    var pretty: []const u8 = "Linux";
+    var lines = std.mem.splitScalar(u8, os_release, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "PRETTY_NAME=")) continue;
+        const value = std.mem.trim(u8, line["PRETTY_NAME=".len..], " \t\r\"'");
+        if (value.len > 0) pretty = value;
+    }
+    if (kernel.len == 0) return pretty;
+    return std.fmt.allocPrint(arena, "{s} (Linux {s})", .{ pretty, kernel });
+}
+
+/// The value of /proc/cpuinfo's first `key` line ("model name\t: AMD ...").
+fn cpuinfoValue(cpuinfo: []const u8, key: []const u8) ?[]const u8 {
+    var lines = std.mem.splitScalar(u8, cpuinfo, '\n');
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.mem.eql(u8, std.mem.trim(u8, line[0..colon], " \t"), key)) continue;
+        const value = std.mem.trim(u8, line[colon + 1 ..], " \t\r");
+        if (value.len > 0) return value;
+    }
+    return null;
+}
+
+/// The CPU's name: x86's "model name"; an Arm host has none and gives its
+/// part numbers instead.
+fn linuxCpuName(cpuinfo: []const u8) ?[]const u8 {
+    return cpuinfoValue(cpuinfo, "model name") orelse cpuinfoValue(cpuinfo, "Model") orelse cpuinfoValue(cpuinfo, "CPU part");
+}
+
+/// How many logical CPUs /proc/cpuinfo lists (its "processor" lines).
+fn linuxCores(cpuinfo: []const u8) u32 {
+    var n: u32 = 0;
+    var lines = std.mem.splitScalar(u8, cpuinfo, '\n');
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (std.mem.eql(u8, std.mem.trim(u8, line[0..colon], " \t"), "processor")) n += 1;
+    }
+    return n;
+}
+
+/// /proc/meminfo's MemTotal ("MemTotal:       131811640 kB"), in bytes.
+fn linuxMemoryBytes(meminfo: []const u8) u64 {
+    var lines = std.mem.splitScalar(u8, meminfo, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "MemTotal:")) continue;
+        var it = std.mem.tokenizeAny(u8, line["MemTotal:".len..], " \t");
+        const kb = std.fmt.parseInt(u64, it.next() orelse return 0, 10) catch return 0;
+        return kb * 1024;
+    }
+    return 0;
+}
+
+test "a Linux host's description: its distribution and kernel, CPU, cores and memory" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const os_release =
+        \\PRETTY_NAME="Ubuntu 24.04.1 LTS"
+        \\NAME="Ubuntu"
+        \\VERSION_ID="24.04"
+        \\
+    ;
+    try std.testing.expectEqualStrings("Ubuntu 24.04.1 LTS (Linux 6.8.0-48-generic)", try linuxOsName(a, os_release, "6.8.0-48-generic"));
+    try std.testing.expectEqualStrings("Linux (Linux 6.8.0)", try linuxOsName(a, "", "6.8.0"));
+    try std.testing.expectEqualStrings("Linux", try linuxOsName(a, "", ""));
+    const cpuinfo = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9 7950X 16-Core Processor\ncpu MHz\t\t: 4491.540\n\n" ++
+        "processor\t: 1\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9 7950X 16-Core Processor\n";
+    try std.testing.expectEqualStrings("AMD Ryzen 9 7950X 16-Core Processor", linuxCpuName(cpuinfo).?);
+    try std.testing.expectEqual(@as(u32, 2), linuxCores(cpuinfo));
+    try std.testing.expectEqual(@as(?[]const u8, null), linuxCpuName("processor\t: 0\n"));
+    try std.testing.expectEqual(@as(u64, 131811640 * 1024), linuxMemoryBytes("MemTotal:       131811640 kB\nMemFree:        1024 kB\n"));
+    try std.testing.expectEqual(@as(u64, 0), linuxMemoryBytes("MemFree: 1 kB\n"));
 }
 
 fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void {
@@ -320,7 +414,8 @@ fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void
                 .counters = try gcbench.counters(a, f),
             };
             if (f.wall_s) |s| rec.wall_ms = try a.dupe(f64, &.{s * 1000.0});
-            if (f.peak_footprint) |p| rec.memory = .{ .footprint_start = 0, .footprint_end = p, .footprint_peak = p, .resident_end = f.max_rss orelse 0, .processes = 1 };
+            // GNU time (Linux) reports no footprint: the largest resident size stands in (gcbench.zig).
+            if (f.peak_footprint orelse f.max_rss) |p| rec.memory = .{ .footprint_start = 0, .footprint_end = p, .footprint_peak = p, .resident_end = f.max_rss orelse 0, .processes = 1 };
             const exited_ok = switch (result.term) {
                 .exited => |code| code == 0,
                 else => false,
