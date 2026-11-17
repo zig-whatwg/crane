@@ -1,88 +1,58 @@
-//! An engine's process set and what it uses: CPU time, instructions retired,
-//! phys_footprint and resident size, read per process with macOS's
-//! proc_pid_rusage (RUSAGE_INFO_V4) and summed over the set - the method of
-//! lane chromeref1's sampler (wpt-results/lanes/chromeref/scripts/
-//! chrome-ref.sh, `sample_tree`), in Zig.
+//! An engine's process set and what it uses: CPU time, instructions retired
+//! where the host counts them, the memory it holds and its resident size,
+//! read per process and summed over the set. The reading itself is the
+//! operating system's:
+//! - macOS (proc_darwin.zig): proc_pid_rusage (RUSAGE_INFO_V4), the method
+//!   of lane chromeref1's sampler. The footprint is phys_footprint, what
+//!   Activity Monitor calls Memory: a process's own dirty pages, anonymous
+//!   and compressed. The kernel charges a shared page to one owner, so a
+//!   sum over processes counts it once - unlike resident size, which counts
+//!   a shared page in every process that maps it (kept for reference only);
+//! - Linux (proc_linux.zig, lane tl2): /proc/<pid>/stat and
+//!   /proc/<pid>/status. The footprint is RssAnon + VmSwap, the process's
+//!   own anonymous memory, resident or swapped; CPU moves in clock ticks
+//!   (10 ms); instructions are not measured (0, which the collector writes
+//!   as "not measured"). Every published figure is macOS's: a Linux row is
+//!   compared only with a Linux row of the same host.
 //!
-//! phys_footprint is what Activity Monitor calls Memory: a process's own
-//! dirty pages, anonymous and compressed. The kernel charges a shared page to
-//! one owner, so a sum over processes counts it once - unlike resident size,
-//! which counts a shared page in every process that maps it (kept for
-//! reference only).
+//! The set is the launched process and all its descendants, plus - for an
+//! engine whose processes launchd starts, Safari's WebKit processes - every
+//! process with one of the given names. CPU is summed per pid between two
+//! readings, so a process that starts between them counts from zero; one
+//! that ends between them loses what it used since the first reading (the
+//! sampler's 50 ms readings keep that loss small; the report says so).
 //!
-//! The set is the launched process and all its descendants
-//! (proc_listchildpids, recursively), plus - for an engine whose processes
-//! launchd starts, Safari's WebKit processes - every process with one of the
-//! given names. CPU is summed per pid between two readings, so a process
-//! that starts between them counts from zero; one that ends between them
-//! loses what it used since the first reading (the sampler's 50 ms readings
-//! keep that loss small; the report says so).
+//! A start time (`Usage.start_abs`, `absoluteNow`) is in the host's own
+//! unit and compared only with another of the same host: mach absolute time
+//! on macOS, clock ticks since boot on Linux - where a process started in
+//! the same 10 ms tick as a reading of `absoluteNow` counts as started
+//! after it.
 
 const std = @import("std");
 const builtin = @import("builtin");
 
-pub const supported = builtin.os.tag == .macos;
+/// The Linux reader's parsers are text in, figures out: tested on every OS.
+pub const linux = @import("proc_linux.zig");
 
-const RusageInfoV4 = extern struct {
-    uuid: [16]u8,
-    user_time: u64,
-    system_time: u64,
-    pkg_idle_wkups: u64,
-    interrupt_wkups: u64,
-    pageins: u64,
-    wired_size: u64,
-    resident_size: u64,
-    phys_footprint: u64,
-    proc_start_abstime: u64,
-    proc_exit_abstime: u64,
-    child_user_time: u64,
-    child_system_time: u64,
-    child_pkg_idle_wkups: u64,
-    child_interrupt_wkups: u64,
-    child_pageins: u64,
-    child_elapsed_abstime: u64,
-    diskio_bytesread: u64,
-    diskio_byteswritten: u64,
-    cpu_time_qos_default: u64,
-    cpu_time_qos_maintenance: u64,
-    cpu_time_qos_background: u64,
-    cpu_time_qos_utility: u64,
-    cpu_time_qos_legacy: u64,
-    cpu_time_qos_user_initiated: u64,
-    cpu_time_qos_user_interactive: u64,
-    billed_system_time: u64,
-    serviced_system_time: u64,
-    logical_writes: u64,
-    lifetime_max_phys_footprint: u64,
-    instructions: u64,
-    cycles: u64,
-    billed_energy: u64,
-    serviced_energy: u64,
-    interval_max_phys_footprint: u64,
-    runnable_time: u64,
+const os = switch (builtin.os.tag) {
+    .macos => @import("proc_darwin.zig"),
+    .linux => linux,
+    else => struct {},
 };
 
-comptime {
-    // <sys/resource.h>: 16 bytes of uuid and 35 u64 fields.
-    std.debug.assert(@sizeOf(RusageInfoV4) == 16 + 35 * 8);
-    std.debug.assert(@offsetOf(RusageInfoV4, "phys_footprint") == 72);
-}
+pub const supported = switch (builtin.os.tag) {
+    .macos, .linux => true,
+    else => false,
+};
 
-const RUSAGE_INFO_V4 = 4;
+/// Whether the host counts the instructions a process retires
+/// (`Usage.instructions`); where it does not, they read 0.
+pub const counts_instructions = builtin.os.tag == .macos;
 
-const MachTimebase = extern struct { numer: u32, denom: u32 };
-
-extern "c" fn proc_pid_rusage(pid: c_int, flavor: c_int, buffer: *RusageInfoV4) c_int;
-extern "c" fn proc_listchildpids(ppid: c_int, buffer: ?*anyopaque, buffersize: c_int) c_int;
-extern "c" fn proc_listallpids(buffer: ?*anyopaque, buffersize: c_int) c_int;
-extern "c" fn proc_name(pid: c_int, buffer: [*]u8, buffersize: u32) c_int;
-extern "c" fn mach_timebase_info(info: *MachTimebase) c_int;
-extern "c" fn mach_absolute_time() u64;
-
-/// Now, in the clock rusage's `proc_start_abstime` uses.
+/// Now, in the clock a process's start time uses.
 pub fn absoluteNow() u64 {
     if (!supported) return 0;
-    return mach_absolute_time();
+    return os.absoluteNow();
 }
 
 /// One process's figures at one moment.
@@ -93,31 +63,13 @@ pub const Usage = struct {
     instructions: u64,
     footprint: u64,
     resident: u64,
-    /// When the process started (mach absolute time).
+    /// When the process started (the host's unit: `absoluteNow`).
     start_abs: u64 = 0,
 };
 
-/// rusage times are mach absolute time units (24 MHz ticks on Apple
-/// silicon, nanoseconds on Intel): `ns = ticks * numer / denom`.
-fn ticksToNs(ticks: u64) u64 {
-    var tb: MachTimebase = .{ .numer = 1, .denom = 1 };
-    _ = mach_timebase_info(&tb);
-    if (tb.denom == 0) return ticks;
-    return @intCast(@as(u128, ticks) * tb.numer / tb.denom);
-}
-
 pub fn usageOf(pid: i32) ?Usage {
     if (!supported) return null;
-    var info: RusageInfoV4 = undefined;
-    if (proc_pid_rusage(pid, RUSAGE_INFO_V4, &info) != 0) return null;
-    return .{
-        .pid = pid,
-        .cpu_ns = ticksToNs(info.user_time + info.system_time),
-        .instructions = info.instructions,
-        .footprint = info.phys_footprint,
-        .resident = info.resident_size,
-        .start_abs = info.proc_start_abstime,
-    };
+    return os.usageOf(pid);
 }
 
 /// The most processes one set holds; more are ignored (and the count says
@@ -130,8 +82,8 @@ pub const Selector = struct {
     root: i32,
     /// Processes outside the tree that belong to the engine, by exact
     /// process name (Safari's: launchd starts them) - and only those started
-    /// at or after `started_after` (mach absolute time): another app's WebKit
-    /// processes, there before the launch, are not the engine's.
+    /// at or after `started_after` (`absoluteNow`'s clock): another app's
+    /// WebKit processes, there before the launch, are not the engine's.
     names: []const []const u8 = &.{},
     started_after: u64 = 0,
 };
@@ -147,12 +99,8 @@ pub fn members(sel: Selector, out: []i32) usize {
     // Breadth-first over the tree: out[0..n] grows as children are found.
     var i: usize = 0;
     while (i < n) : (i += 1) {
-        var kids: [max_processes]c_int = undefined;
-        const got = proc_listchildpids(out[i], &kids, @intCast(@sizeOf(@TypeOf(kids))));
-        if (got <= 0) continue;
-        // proc_listchildpids returns a count of pids (not bytes) on current
-        // macOS; clamp either way.
-        const count: usize = @min(@as(usize, @intCast(got)), kids.len);
+        var kids: [max_processes]i32 = undefined;
+        const count = os.children(out[i], &kids);
         for (kids[0..count]) |k| {
             if (k <= 0 or n >= out.len) continue;
             if (std.mem.indexOfScalar(i32, out[0..n], k) != null) continue;
@@ -173,23 +121,20 @@ pub fn members(sel: Selector, out: []i32) usize {
     return n;
 }
 
-/// A process's name (proc_name: its executable's, at most 2 * MAXCOMLEN).
+/// A process's name: its executable's (macOS: at most 2 * MAXCOMLEN
+/// characters; Linux: the kernel's 15).
 pub fn nameOf(pid: i32, buf: []u8) error{NoSuchProcess}![]const u8 {
     if (!supported) return error.NoSuchProcess;
-    const len = proc_name(pid, buf.ptr, @intCast(buf.len));
-    if (len <= 0) return error.NoSuchProcess;
-    return buf[0..@intCast(len)];
+    return os.nameOf(pid, buf);
 }
 
 /// The pids of every process with one of `names` (exact process names)
-/// started at or after `started_after` (mach absolute time; 0: any), into
+/// started at or after `started_after` (`absoluteNow`'s clock; 0: any), into
 /// `out`; how many.
 pub fn named(names: []const []const u8, started_after: u64, out: []i32) usize {
     if (!supported or names.len == 0) return 0;
-    var all: [4096]c_int = undefined;
-    const got = proc_listallpids(&all, @intCast(@sizeOf(@TypeOf(all))));
-    if (got <= 0) return 0;
-    const count: usize = @min(@as(usize, @intCast(got)), all.len);
+    var all: [4096]i32 = undefined;
+    const count = os.allPids(&all);
     var n: usize = 0;
     for (all[0..count]) |p| {
         if (p <= 0 or n >= out.len) continue;
@@ -270,17 +215,39 @@ pub const Delta = struct {
 
 const testing = std.testing;
 
-test "this process reads: CPU, instructions and a footprint" {
+test {
+    _ = linux;
+}
+
+/// This process's own start, once the clock has moved past it: Linux counts
+/// a start in clock ticks, so a process younger than one tick has not
+/// "started before now" yet.
+fn startedBeforeNow(pid: i32) !void {
+    const mine = usageOf(pid) orelse return error.TestUnexpectedResult;
+    var spins: u64 = 0;
+    while (absoluteNow() <= mine.start_abs) : (spins += 1) {
+        if (spins > 2_000_000_000) return error.TestUnexpectedResult;
+        std.atomic.spinLoopHint();
+    }
+}
+
+test "this process reads: CPU and a footprint, and instructions where the host counts them" {
     if (!supported) return error.SkipZigTest;
     const me: i32 = @intCast(std.c.getpid());
     const a = usageOf(me) orelse return error.TestUnexpectedResult;
     try testing.expect(a.footprint > 0);
     try testing.expect(a.resident > 0);
-    // Burn a little CPU; the reading moves forward.
+    try testing.expectEqual(counts_instructions, a.instructions > 0);
+    // Burn CPU until the reading moves forward: at once on macOS, within a
+    // clock tick or two (10 ms each) on Linux.
     var x: u64 = 0;
-    for (0..20_000_000) |i| x +%= i *% 2654435761;
-    std.mem.doNotOptimizeAway(x);
-    const b = usageOf(me) orelse return error.TestUnexpectedResult;
+    var b = a;
+    var rounds: u32 = 0;
+    while (b.cpu_ns <= a.cpu_ns and rounds < 2000) : (rounds += 1) {
+        for (0..20_000_000) |i| x +%= i *% 2654435761;
+        std.mem.doNotOptimizeAway(x);
+        b = usageOf(me) orelse return error.TestUnexpectedResult;
+    }
     try testing.expect(b.cpu_ns > a.cpu_ns);
 }
 
@@ -294,15 +261,52 @@ test "a set: the root and its descendants, with no pid twice" {
     for (pids[0..n], 0..) |p, i| try testing.expect(std.mem.indexOfScalar(i32, pids[0..i], p) == null);
 }
 
+test "a set holds a child the process started, and its child" {
+    if (!supported) return error.SkipZigTest;
+    const io = testing.io;
+    // A shell that starts a sleep of its own and waits for it: a child and
+    // a grandchild.
+    var child = try std.process.spawn(io, .{ .argv = &.{ "/bin/sh", "-c", "sleep 30 & wait" }, .stdin = .ignore, .stdout = .ignore, .stderr = .ignore });
+    const child_pid: i32 = child.id.?;
+    defer {
+        var all: [max_processes]i32 = undefined;
+        const n = members(.{ .root = child_pid }, &all);
+        for (all[0..n]) |p| std.posix.kill(p, .KILL) catch {};
+        _ = child.wait(io) catch {};
+    }
+    const me: i32 = @intCast(std.c.getpid());
+    var pids: [max_processes]i32 = undefined;
+    // Until the shell has started its sleep (bounded).
+    var n: usize = 0;
+    var tries: u32 = 0;
+    while (tries < 500) : (tries += 1) {
+        n = members(.{ .root = me }, &pids);
+        var under_child: [max_processes]i32 = undefined;
+        if (members(.{ .root = child_pid }, &under_child) >= 2) break;
+        std.Io.sleep(io, .fromMilliseconds(10), .awake) catch {};
+    }
+    try testing.expect(std.mem.indexOfScalar(i32, pids[0..n], child_pid) != null);
+    var under_child: [max_processes]i32 = undefined;
+    const below = members(.{ .root = child_pid }, &under_child);
+    try testing.expect(below >= 2);
+    // The grandchild is in this process's set too.
+    n = members(.{ .root = me }, &pids);
+    for (under_child[0..below]) |p| try testing.expect(std.mem.indexOfScalar(i32, pids[0..n], p) != null);
+    // And the set's figures are its members': a footprint for each.
+    const reading = Reading.take(.{ .root = child_pid });
+    try testing.expect(reading.count >= 2);
+    try testing.expect(reading.footprint() > 0);
+}
+
 test "a process named but started before the launch is not the engine's" {
     if (!supported) return error.SkipZigTest;
     // This process's own name, with a launch time after it started: not in
     // the set; with a launch time of 0: in it.
     const me: i32 = @intCast(std.c.getpid());
+    try startedBeforeNow(me);
     var name_buf: [256]u8 = undefined;
-    const len = proc_name(me, &name_buf, name_buf.len);
-    try testing.expect(len > 0);
-    const names = [_][]const u8{name_buf[0..@intCast(len)]};
+    const name = try nameOf(me, &name_buf);
+    const names = [_][]const u8{name};
     var pids: [max_processes]i32 = undefined;
     const later = members(.{ .root = 0, .names = &names, .started_after = absoluteNow() }, &pids);
     for (pids[0..later]) |p| try testing.expect(p != me);
@@ -315,10 +319,10 @@ test "the processes of a name: every one, or only those started after a time" {
     // This process, by its own name: found with no start bound, not found
     // when only processes started from now on count.
     const me: i32 = @intCast(std.c.getpid());
+    try startedBeforeNow(me);
     var name_buf: [256]u8 = undefined;
-    const len = proc_name(me, &name_buf, name_buf.len);
-    try testing.expect(len > 0);
-    const names = [_][]const u8{name_buf[0..@intCast(len)]};
+    const name = try nameOf(me, &name_buf);
+    const names = [_][]const u8{name};
     var pids: [max_processes]i32 = undefined;
     const any = named(&names, 0, &pids);
     try testing.expect(std.mem.indexOfScalar(i32, pids[0..any], me) != null);
