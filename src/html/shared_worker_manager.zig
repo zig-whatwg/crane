@@ -496,9 +496,7 @@ pub const SharedWorkerManager = struct {
     }
 
     /// Whether the worker whose link is `link` has a fully active Document
-    /// in its owner set - the question Chrome's lock contention asks before
-    /// it evicts a shared worker's cached clients (SharedWorkerHost::
-    /// OnLockContention returns at the first active client).
+    /// in its owner set.
     pub fn hasActiveOwnerOf(self: *SharedWorkerManager, link: *const WorkerLink) bool {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
@@ -508,18 +506,49 @@ pub const SharedWorkerManager = struct {
         return false;
     }
 
-    /// The owner realms of the worker whose link is `link`, appended to
-    /// `out` (compared only). Whether `link` is a shared worker's here.
-    pub fn ownersOf(self: *SharedWorkerManager, link: *const WorkerLink, out: *std.ArrayListUnmanaged(*const anyopaque), allocator: Allocator) Allocator.Error!bool {
+    /// What `doomForLockContention` found.
+    pub const Doom = union(enum) {
+        /// `link` is no shared worker's here.
+        not_shared,
+        /// An owner's Document is fully active, or an owner's page is not one
+        /// the cache can doom (being restored): nothing changed.
+        kept,
+        /// Every owner's page is doomed and the worker is closing: the owner
+        /// realms (compared only), OWNED by the `allocator` passed.
+        doomed: []*const anyopaque,
+    };
+
+    /// Lock contention for a lock the shared worker whose link is `link`
+    /// holds (Chrome's SharedWorkerHost::OnLockContention: nothing while a
+    /// client is active; otherwise every client - each one cached - is
+    /// evicted, and with them goes the worker). Under the lock: when no
+    /// Document of its owner set is fully active, `doom` dooms every owner's
+    /// kept page (dom.bfcache.doomRealms, all or none), and the worker's
+    /// closing flag is set, so no SharedWorker constructor matches it any
+    /// more - a page connecting meanwhile starts a new worker instead of
+    /// resuming one whose lock was broken. The caller wakes it (its
+    /// termination) and evicts the pages. Any thread.
+    pub fn doomForLockContention(
+        self: *SharedWorkerManager,
+        link: *WorkerLink,
+        allocator: Allocator,
+        context: *anyopaque,
+        doom: *const fn (context: *anyopaque, realms: []const *const anyopaque) bool,
+    ) Doom {
         std.Io.Threaded.mutexLockUncancelable(&self.mutex);
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
-        for (self.entries.items) |entry| {
-            if (entry.link != link) continue;
-            try out.ensureUnusedCapacity(allocator, entry.owners.items.len);
-            for (entry.owners.items) |item| out.appendAssumeCapacity(item.realm);
-            return true;
+        const entry = for (self.entries.items) |entry| {
+            if (entry.link == link) break entry;
+        } else return .not_shared;
+        if (entry.owners.items.len == 0 or entry.hasActiveOwner()) return .kept;
+        const realms = allocator.alloc(*const anyopaque, entry.owners.items.len) catch return .kept;
+        for (entry.owners.items, realms) |owner, *realm| realm.* = owner.realm;
+        if (!doom(context, realms)) {
+            allocator.free(realms);
+            return .kept;
         }
-        return false;
+        _ = entry.link.requestClose();
+        return .{ .doomed = realms };
     }
 
     /// The extended lifetime shared worker timeout has passed since the owner

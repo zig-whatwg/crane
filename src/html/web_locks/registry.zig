@@ -82,12 +82,15 @@ pub const Delivery = struct {
     /// held, on the thread that removed the Client.
     deinit: *const fn (ctx: *anyopaque) void,
     /// Another environment contends for a lock this environment holds: a
-    /// request that cannot be granted now waits behind it, or a query lists
-    /// it. If this environment is suspended because the back/forward cache
-    /// keeps its page, ask for that page's eviction - which ends the
-    /// environment, and with it its locks - and return true. Runs on any
-    /// thread, with the registry's lock held: the same rules as `post`.
-    /// Null: an environment that is never suspended with a lock.
+    /// request that cannot be granted now would wait behind it, or a query
+    /// lists it. If the back/forward cache keeps this environment's page -
+    /// its document's, or the page that keeps this worker suspended - doom
+    /// that page (dom.bfcache.doomRealms: it is never restored again), ask
+    /// for its eviction - which ends the environment - and return true: a
+    /// request's contention then breaks the lock at once (`contend`). False
+    /// when the page is shown, or is being restored. Runs on any thread,
+    /// with the registry's lock held: the same rules as `post`. Null: an
+    /// environment that is never kept with a lock.
     contention: ?*const fn (ctx: *anyopaque) bool = null,
 };
 
@@ -368,9 +371,12 @@ pub const Registry = struct {
         // held be manager's held lock set."
         if (!options.steal) {
             // A request that cannot be granted now contends with the
-            // holders of `name`: one whose page the back/forward cache keeps
-            // is asked to leave the cache (`contend`).
-            if (!newRequestGrantable(manager, name, options.mode)) contend(manager, name);
+            // holders of `name`: the lock of one whose page the back/forward
+            // cache keeps breaks at once, and the page leaves the cache
+            // (`contend`); the requests already waiting for it come first.
+            if (!newRequestGrantable(manager, name, options.mode)) {
+                if (contend(self, manager, name)) self.processQueue(manager, name);
+            }
             // "3.5.1 If ifAvailable is true and request is not grantable,
             // then enqueue the following steps on callback's relevant
             // settings object's responsible event loop: invoke callback with
@@ -486,9 +492,11 @@ pub const Registry = struct {
         }
         // "5. For each lock of manager's held lock set: append ... to held."
         for (manager.held.items) |entry| try appendInfo(&held, allocator, entry);
-        // A query contends with every holder it lists (`contend`), after
-        // the snapshot: it reports the state it found.
-        contend(manager, null);
+        // A query contends with every holder it lists, after the snapshot -
+        // it reports the state it found - and breaks nothing (`notifyHolders`):
+        // Chrome's LockManager::QueryState calls each holder's
+        // OnLockContention, and leaves its lock to the eviction.
+        notifyHolders(manager);
 
         const held_slice = try held.toOwnedSlice(allocator);
         errdefer freeInfos(allocator, held_slice);
@@ -601,43 +609,82 @@ pub const Registry = struct {
     }
 };
 
-/// "Grantable" (section 2.5) for a request not in its queue yet - the
-/// ifAvailable check of "request a lock" step 3.5.1: "If queue is not empty
-/// and request is not the first item in queue, then return false" - so only
-/// with no queue for `name` - then the held lock set decides.
-/// Lock contention with environments the back/forward cache keeps
-/// suspended: each holder of a lock named `name` (every holder, for null - a
-/// query) is told (`Delivery.contention`), and one whose page is cached asks
-/// for its eviction. The page's end terminates its worker, and "terminate
-/// remaining locks and requests" releases the lock, which a waiting request
-/// is then granted - asynchronously here: Chrome breaks the evicted holder's
-/// lock at once (content/browser/locks/lock_manager.h, AddRequest: "This
-/// triggers eviction for holders in BFCache", BreakLock; QueryState notifies
-/// every holder it lists), which only an ifAvailable request could tell
-/// apart.
+/// Lock contention with environments the back/forward cache keeps (Web
+/// Locks has no back/forward cache text; this is Chrome's model, golden rule
+/// 2 below). Each holder of a lock named `name` is told
+/// (`Delivery.contention`); one whose page is cached dooms the page - never
+/// restored again - asks for its eviction, and answers true, and its lock is
+/// broken here at once: it leaves the held lock set without its environment
+/// being told (it will never run script again; its end terminates what it
+/// has left). Whether any lock broke - the caller then processes the queue.
+/// Chrome's LockManager AddRequest (content/browser/locks/lock_manager.h,
+/// Chromium c699bd7e6414, "[WebLocks] Synchronously release BFCached clients
+/// on contention"): "This triggers eviction for holders in BFCache and
+/// returns true, allowing us to synchronously release their locks", then
+/// BreakLock and can_grant re-evaluated - so an ifAvailable request is
+/// granted.
 ///
-/// Not in the Web Locks spec, which has no back/forward cache text: a
-/// page's own locks are terminated at its unload (2.6, the unloading
-/// document cleanup steps - HTML's "lock" not restored reason, so such a page
-/// is not kept), but its workers are suspended with it rather than ended
-/// (HTML "run a worker" step 8), and their locks stay held. Golden rule 2,
-/// mechanism by mechanism: a page whose worker holds a lock IS kept by
-/// Chrome and Safari (web-locks/bfcache/held.tentative.https.html: C 4/4,
-/// F 0/4, S 4/4 on wpt.fyi stable 2026-11-15/16) - the majority - and a
-/// request contending with it is granted without waiting for the page to
-/// leave the cache in Chrome (eviction) and Firefox (never cached), while
-/// Safari waits (contention.https.window.js: C 12/12, F 12/12, S 0, its
-/// worker request variants TIMEOUT) - the majority again. Together that is
-/// Chrome's shipping behaviour, which this is. Its not restored reason is
-/// Chrome's "weblocks-contention": HTML's list has none for it.
-fn contend(manager: *Manager, name: ?[]const u8) void {
+/// Golden rule 2. The spec terminates a document's locks at its unload (2.6,
+/// the unloading document cleanup steps; HTML's "lock" not restored reason),
+/// so such a page is never kept - Firefox. wpt.fyi stable (Chrome 157 run
+/// 5373481064333312, Firefox 160 4797853223092224, Safari 27.2
+/// 5107374017478656): web-locks/bfcache/held.tentative.https.html C 4/4,
+/// F 0/4, S 4/4; release-across-thread.tentative C 3/3, F 0/3, S 3/3;
+/// contention.https.window.js (12 variants) C 12/12, F 12/12, S 0/12.
+/// - Chrome keeps the page and its lock (Chromium 91c1404bed7e, "[WebLocks]
+///   Allow Web Locks in BFCache and evict on contention": blink's Lock no
+///   longer disables the cache; RenderFrameHostImpl, DedicatedWorkerHost and
+///   SharedWorkerHost::OnLockContention evict, reason kWebLocksContention),
+///   and a restored page still holds it.
+/// - Safari keeps the page but releases its locks as it stores it (WebKit
+///   Source/WebCore/Modules/web-locks/WebLockManager.cpp,
+///   WebLockManager::suspend: clientIsGoingAway() for
+///   ReasonForSuspension::BackForwardCache), so nothing is contended and
+///   the page stays (contention S 0/12).
+/// Mechanism by mechanism: a page holding a lock is kept (Chrome, Safari);
+/// once another context contends for its lock it is not restored (Chrome,
+/// Firefox); the contending request - ifAvailable included - is granted
+/// without waiting (all three). Together that is Chrome's shipping
+/// behaviour, which this is. The page's not restored reason is Chrome's
+/// "weblocks-contention": HTML's list has none for it.
+fn contend(self: *Registry, manager: *Manager, name: []const u8) bool {
+    var broke = false;
+    var i: usize = 0;
+    while (i < manager.held.items.len) {
+        const entry = manager.held.items[i];
+        if (!std.mem.eql(u8, entry.name, name)) {
+            i += 1;
+            continue;
+        }
+        const hook = entry.client.delivery.contention orelse {
+            i += 1;
+            continue;
+        };
+        if (!hook(entry.client.delivery.ctx)) {
+            i += 1;
+            continue;
+        }
+        // Chrome's BreakLock: the doomed holder's lock leaves at once.
+        _ = manager.held.orderedRemove(i);
+        self.allocator.free(entry.name);
+        broke = true;
+    }
+    return broke;
+}
+
+/// A query's contention (`snapshot`): every holder is told, and a cached
+/// one's page is doomed and evicted - its locks go with its end, not here.
+fn notifyHolders(manager: *Manager) void {
     for (manager.held.items) |entry| {
-        if (name) |n| if (!std.mem.eql(u8, entry.name, n)) continue;
         const hook = entry.client.delivery.contention orelse continue;
         _ = hook(entry.client.delivery.ctx);
     }
 }
 
+/// "Grantable" (section 2.5) for a request not in its queue yet - the
+/// ifAvailable check of "request a lock" step 3.5.1: "If queue is not empty
+/// and request is not the first item in queue, then return false" - so only
+/// with no queue for `name` - then the held lock set decides.
 fn newRequestGrantable(manager: *Manager, name: []const u8, mode: Mode) bool {
     if (manager.queues.get(name)) |queue| {
         if (queue.items.len > 0) return false;
