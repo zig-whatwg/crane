@@ -229,25 +229,24 @@ const Script = struct {
 };
 
 /// V8's answer for an object made the way the binding makes an
-/// HTMLDivElement's wrapper: `with_prototype` sets the global interface's
-/// prototype after NewInstance (template_registry.wrapInstanceAsV8Object),
-/// `with_edge` adds a private property (node tracing's edges), `apply` is
-/// script's use of it.
-fn shapeDroppable(page: Page, with_prototype: bool, with_edge: bool, apply: ?[]const u8) !c_int {
-    return shapeDroppableOf(page, "HTMLDivElement", with_prototype, with_edge, apply);
+/// HTMLDivElement's wrapper - its instance template's NewInstance in the
+/// realm's context and nothing more (template_registry.wrapInstanceAsV8Object;
+/// since lane gcp1 it sets no prototype after: NewInstance's is the realm's
+/// interface prototype object) - `with_edge` adding a private property (node
+/// tracing's edges), `apply` script's use of it.
+fn shapeDroppable(page: Page, with_edge: bool, apply: ?[]const u8) !c_int {
+    return shapeDroppableOf(page, "HTMLDivElement", with_edge, apply);
 }
 
-fn shapeDroppableOf(page: Page, comptime interface: [:0]const u8, with_prototype: bool, with_edge: bool, apply: ?[]const u8) !c_int {
+fn shapeDroppableOf(page: Page, comptime interface: [:0]const u8, with_edge: bool, apply: ?[]const u8) !c_int {
     const entered = page.enter();
     defer page.leave(entered);
     const isolate = page.isolate();
     const context: *ffi.Context = @ptrCast(@alignCast(page.realm.engine_ctx.?));
     const template = v8.template_registry.getTemplateForIsolate(interface, isolate) orelse return error.NoTemplate;
-    const prototype = if (with_prototype) ffi.v8_GetGlobalPrototype(context, interface) orelse return error.NoPrototype else null;
-    defer if (prototype) |p| ffi.v8_Object_Dispose(p);
     const script: ?Script = if (apply) |source| try Script.of(page, source) else null;
     defer if (script) |s| s.release();
-    return ffi.v8_test_NodeTemplateWrapperDroppable(isolate, context, template, prototype, with_edge, if (script) |s| s.handle() else null);
+    return ffi.v8_test_NodeTemplateWrapperDroppable(isolate, context, template, null, with_edge, if (script) |s| s.handle() else null);
 }
 
 test "wr8 R3: V8 drops in a scavenge only a wrapper script cannot tell apart - its unmodified-API-object rule on the binding's wrapper shape" {
@@ -262,10 +261,10 @@ test "wr8 R3: V8 drops in a scavenge only a wrapper script cannot tell apart - i
         \\globalThis.Other = class extends HTMLElement {};
     );
     // The wrapper as NewInstance makes it, used by nothing: dropped.
-    try testing.expectEqual(@as(c_int, 1), try shapeDroppable(page, false, false, null));
+    try testing.expectEqual(@as(c_int, 1), try shapeDroppable(page, false, null));
     // A private property - node tracing's edges in P4 - is a map transition:
     // never dropped.
-    try testing.expectEqual(@as(c_int, 0), try shapeDroppable(page, false, true, null));
+    try testing.expectEqual(@as(c_int, 0), try shapeDroppable(page, true, null));
     // Every use script could tell apart keeps it.
     const uses = [_][]const u8{
         "(o) => wm.set(o, 1)", // a WeakMap key: an identity hash
@@ -278,20 +277,23 @@ test "wr8 R3: V8 drops in a scavenge only a wrapper script cannot tell apart - i
         "(o) => { Object.preventExtensions(o); }", // an integrity level: a map transition
     };
     for (uses) |use| {
-        const outcome = try shapeDroppable(page, false, false, use);
+        const outcome = try shapeDroppable(page, false, use);
         if (outcome != 0) std.debug.print("dropped (or inconclusive: {d}) after: {s}\n", .{ outcome, use });
         try testing.expectEqual(@as(c_int, 0), outcome);
     }
 }
 
-test "wr8: the binding's own wrapper shape - is setting the global interface's prototype after NewInstance a map transition?" {
+test "wr8: the binding's own wrapper shape - NewInstance in the realm's context, with the realm's prototype - is droppable" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const page = try Page.open(&queue);
     defer page.close();
-    const outcome = try shapeDroppable(page, true, false, null);
-    // A fact for the design (the integrator, 2026-11-09 14:57).
-    if (outcome != 1) std.debug.print("wr8 fact: NewInstance + SetPrototype(globalThis.HTMLDivElement.prototype) droppable = {d}\n", .{outcome});
+    // A fact for the design (the integrator, 2026-11-09 14:57). The binding
+    // set globalThis.HTMLDivElement.prototype after NewInstance until lane
+    // gcp1 (that SetPrototype was a no-op on an unreplaced global, and this
+    // test read it droppable too); the wrapper is NewInstance alone now.
+    const outcome = try shapeDroppable(page, false, null);
+    if (outcome != 1) std.debug.print("wr8 fact: the binding's NewInstance droppable = {d}\n", .{outcome});
     try testing.expectEqual(@as(c_int, 1), outcome);
 }
 
@@ -475,7 +477,7 @@ test "wr8: a Document's wrapper is modified at its making - its template's insta
     // members (location), which instantiation adds as own properties - map
     // transitions (13.1 ApiNatives::InstantiateObject, ConfigureInstance).
     // Blink's Document wrapper has the same unforgeables on its instance.
-    const outcome = try shapeDroppableOf(page, "Document", true, false, null);
+    const outcome = try shapeDroppableOf(page, "Document", false, null);
     if (outcome != 0) std.debug.print("wr8 fact: a Document template instance droppable = {d}\n", .{outcome});
     try testing.expectEqual(@as(c_int, 0), outcome);
     // And script's own: a dropped Document whose only reference was its
