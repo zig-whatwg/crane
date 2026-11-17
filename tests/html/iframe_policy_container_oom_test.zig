@@ -633,7 +633,22 @@ fn sweepContentWindow(rounds: usize) !void {
     var counting: CountingAllocator = .{};
     defer counting.deinit();
     const start = counting.live();
-    try sweepContentWindowOn(&counting, rounds);
+    sweepContentWindowOn(&counting, rounds) catch |err| {
+        // Which error, in which round, and where it came from - the test's
+        // thread hands only the error back (a flake under load had nothing
+        // else to go on: impls9, 2026-11-17; lane bugs1). `counting.round`
+        // is the round plus one ("failing allocation <round>" in the lines
+        // above); 9000 is the navigation after the sweep, with memory to
+        // spare; 0 is before the first round.
+        const at = counting.round.load(.monotonic);
+        std.debug.print("sweepContentWindow failed: {t} in {s} {d}\n", .{
+            err,
+            if (at == 9000) "the navigation after the sweep, round" else if (at == 0) "the set-up before the first round, round" else "failing allocation",
+            if (at == 0 or at == 9000) at else at - 1,
+        });
+        if (@errorReturnTrace()) |trace| std.debug.dumpStackTrace(trace);
+        return err;
+    };
     const end = counting.live();
     var summary: CountingAllocator.Summary = .{};
     if (end.count != start.count or end.bytes != start.bytes) {
