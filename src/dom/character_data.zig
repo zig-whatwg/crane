@@ -205,6 +205,31 @@ pub const Data = struct {
         return self.stored().storage();
     }
 
+    /// What the data holds of its Browser's DOM memory
+    /// (runtime.BrowserScope.dom_memory) now: its block, as that figure
+    /// counts one (runtime.gc.ExternalMemory.blockBytes), or 0 for data in
+    /// the word or the shared blob. CharacterData counts it - the difference
+    /// across each change of the data (its impl's `recount`) - and the walk
+    /// that weighs a dying tree sums it (dom.tree_teardown.measureUpTo), so
+    /// both read this one answer.
+    pub fn countedBytes(self: Data) usize {
+        return switch (self.storage()) {
+            .in_word, .shared => 0,
+            .heap => runtime.gc.ExternalMemory.blockBytes(self.head.size.bytes),
+        };
+    }
+
+    /// The data of the leaf node `base`: every leaf is a CharacterData node
+    /// (NodeBase.claimLeafWord is called by `claim` alone), whose State block
+    /// starts with CharacterData's State at the same byte as every level's
+    /// (dom.node_base.ofState). Only while the node stands - its State block
+    /// is there; after CharacterData's teardown the data is empty.
+    pub fn ofLeaf(base: *const node_base.NodeBase) Data {
+        std.debug.assert(base.leaf);
+        const state: *interfaces.CharacterData.State = @ptrFromInt(@intFromPtr(base) - node_base.offset_in_state);
+        return ofHead(&state._embedded);
+    }
+
     /// What the node held at one moment, by value: the storage a change lets
     /// go of once the new data is in place.
     const Stored = struct {

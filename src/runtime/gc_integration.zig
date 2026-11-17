@@ -970,7 +970,9 @@ pub const DeferredTeardown = struct {
 /// Native memory that a host's objects keep alive beside an agent's engine
 /// heap, which the engine's collector cannot see: a Browser's DOM - every
 /// node's slab slot, state block and NodeBase (runtime.BrowserScope.
-/// dom_memory, counted by dom.instance_bridge as nodes are made and freed).
+/// dom_memory, counted by dom.instance_bridge as nodes are made and freed),
+/// its rare data, its text in a block of its own and its attribute values'
+/// records (`blockBytes`).
 ///
 /// The engine collects when ITS heap grows. A wrapper is a few dozen bytes
 /// of it and keeps a whole native tree alive (a dropped cloneNode(true) of
@@ -1058,6 +1060,19 @@ pub const ExternalMemory = struct {
     /// (128 KB; src/heap/cppgc-js/cpp-heap.cc). A smaller step would only
     /// cost calls; a larger one would let the engine see the growth late.
     pub const report_step: usize = 128 * 1024;
+
+    /// What a block of `bytes` from a Browser's general allocator is counted
+    /// as: its bytes to the next multiple of 16, malloc's granule - macOS's
+    /// nano and tiny zones hand out multiples of 16 bytes, and a glibc chunk
+    /// is its request plus an 8-byte header to the next multiple of 16 (at
+    /// least 32). A floor on both: the figure never says more than is held.
+    /// A node's text block and an attribute value's record are counted so
+    /// (dom.character_data, dom.attribute_values; lane vm1) - each added
+    /// when its block is made and subtracted, the same amount, when it is
+    /// freed.
+    pub fn blockBytes(bytes: usize) usize {
+        return (bytes + 15) & ~@as(usize, 15);
+    }
 
     /// An agent takes it, on its own thread (the adapter's createAgent),
     /// with the queue whose safe points report it (null: its microtask

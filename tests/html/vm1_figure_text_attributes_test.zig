@@ -18,7 +18,9 @@
 //!   with its nodes;
 //! - an attribute value's record (dom.attribute_values: one per distinct
 //!   value in the Browser, counted references), where the record is made and
-//!   freed - shared, so no tree's walk sums it.
+//!   freed - shared, so no tree's walk sums it;
+//! - an element's attribute list (dom.element_data.AttributeList: one block,
+//!   shared by parsed elements with equal attributes), likewise.
 //!
 //! Every block is counted at malloc's granule: its bytes to the next
 //! multiple of 16 (runtime.gc.ExternalMemory.blockBytes), a floor on macOS
@@ -125,8 +127,16 @@ fn attributeValuesAreCounted() !void {
     for (0..4) |_| try page.collect();
     const before = live(page);
 
-    // The empty value has no record.
+    // An element's attribute list is a block of its own: its 8-byte header
+    // and 8 bytes an attribute, 16 for one. The empty value has no record.
+    const plain = try added(page, "globalThis.p = []; for (let i = 0; i < 1000; i++) p.push(document.createElement('div')); 0;");
     const empty = try added(page, "globalThis.a = []; for (let i = 0; i < 1000; i++) { const e = document.createElement('div'); e.setAttribute('data-v', ''); a.push(e); } 0;");
+    try expectBytes("1,000 lists of one attribute with the empty value", count * 16, empty - plain);
+    // Parsed elements with equal attributes share one list (the document's
+    // cache holds it too): one block for 1,000 elements.
+    const parsed_plain = try added(page, "globalThis.q = document.createElement('section'); q.innerHTML = '<p></p>'.repeat(1000); 0;");
+    const parsed = try added(page, "globalThis.r = document.createElement('section'); r.innerHTML = '<p hidden></p>'.repeat(1000); 0;");
+    try expectBytes("1,000 parsed elements sharing one attribute list", 16, parsed - parsed_plain);
     // 1,000 distinct values of 304 bytes: a record each, its 8-byte header
     // and its bytes in one block of 320.
     const distinct = try added(page, "globalThis.b = []; for (let i = 0; i < 1000; i++) { const e = document.createElement('div'); e.setAttribute('data-v', 'v'.repeat(300) + String(i).padStart(4, '0')); b.push(e); } 0;");
@@ -141,11 +151,14 @@ fn attributeValuesAreCounted() !void {
     try page.run("for (const e of b) e.setAttribute('data-v', e.getAttribute('data-v') + 'w'.repeat(16)); 0;");
     try expectBytes("each distinct value 16 bytes longer", at_distinct + count * 16, live(page));
     try page.run("for (const e of b) e.removeAttribute('data-v'); 0;");
-    try expectBytes("the distinct values' attributes removed", at_distinct - count * 320, live(page));
+    // Each element's list goes with its last attribute.
+    try expectBytes("the distinct values' attributes removed", at_distinct - count * (320 + 16), live(page));
 
-    try page.run("a = b = c = null; 0;");
+    try page.run("a = b = c = p = q = r = null; 0;");
     for (0..4) |_| try page.collect();
-    try expectBytes("after the elements' teardown", before, live(page));
+    // The document's cache of shared lists keeps the parsed elements' one
+    // block for 10 s after its last parse (dom.attribute_block_cache).
+    try expectBytes("after the elements' teardown", before + 16, live(page));
 }
 
 test "an attribute value's record is in the figure once, however many attributes share it, and leaves with its last attribute" {
@@ -180,9 +193,12 @@ fn shortValuesWaitBounded() !void {
     // next attribute with its value - at most 16 KB of them
     // (dom.attribute_values Parking.max_bytes) - and is counted while it is
     // allocated.
+    // The ring bounds the blocks' own bytes; the figure counts each to the
+    // next 16: up to 256 records and their class names.
+    const bound = 16 * 1024 + 256 * 2 * 16;
     const left = live(page) - before;
-    if (left > 16 * 1024) {
-        std.debug.print("{d} B of attribute values are still in the figure after their elements' teardown (at most 16384 wait)\n", .{left});
+    if (left > bound) {
+        std.debug.print("{d} B of attribute values are still in the figure after their elements' teardown (at most {d} wait)\n", .{ left, bound });
         return error.ValuesKept;
     }
 }

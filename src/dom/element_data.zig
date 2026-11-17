@@ -331,7 +331,7 @@ pub const AttributeList = struct {
     fn createShared(scope: *runtime.BrowserScope, entries: []const Entry, holders: u8) error{OutOfMemory}!*AttributeList {
         std.debug.assert(entries.len != 0 and holders != 0);
         if (entries.len > std.math.maxInt(u32)) return error.OutOfMemory;
-        const list = try create(scope.allocator, try classFor(entries.len));
+        const list = try create(scope, try classFor(entries.len));
         @memcpy(list.slots()[0..entries.len], entries);
         list.len = @intCast(entries.len);
         const tables = Tables.of(scope);
@@ -361,45 +361,53 @@ pub const AttributeList = struct {
             return;
         }
         for (list.items()) |entry| ElementData.releaseEntry(scope, entry);
-        mutable.destroy(scope.allocator);
+        mutable.destroy(scope);
     }
 
-    /// An empty list of class `class`, its header written.
-    fn create(allocator: std.mem.Allocator, class: u8) error{OutOfMemory}!*AttributeList {
-        const memory = allocator.rawAlloc(bytesFor(capacityOf(class)), .of(AttributeList), @returnAddress()) orelse return error.OutOfMemory;
+    /// An empty list of class `class`, its header written. A block of
+    /// `scope`'s general allocator, counted in its DOM memory
+    /// (runtime.BrowserScope.dom_memory, what V8 schedules its collections
+    /// by) from here to `destroy`, at runtime.gc.ExternalMemory.blockBytes of
+    /// its size - once, however many elements share it (lane vm1: an
+    /// element's attributes were no part of the figure).
+    fn create(scope: *runtime.BrowserScope, class: u8) error{OutOfMemory}!*AttributeList {
+        const size = bytesFor(capacityOf(class));
+        const memory = scope.allocator.rawAlloc(size, .of(AttributeList), @returnAddress()) orelse return error.OutOfMemory;
         const list: *AttributeList = @ptrCast(@alignCast(memory));
         list.* = .{ .len = 0, .cap_class = class };
+        scope.dom_memory.add(runtime.gc.ExternalMemory.blockBytes(size));
         return list;
     }
 
-    fn destroy(self: *AttributeList, allocator: std.mem.Allocator) void {
+    fn destroy(self: *AttributeList, scope: *runtime.BrowserScope) void {
         const memory = self.block();
+        scope.dom_memory.sub(runtime.gc.ExternalMemory.blockBytes(memory.len));
         if (debug_checks) @memset(memory, 0xAA);
-        allocator.rawFree(memory, .of(AttributeList), @returnAddress());
+        scope.allocator.rawFree(memory, .of(AttributeList), @returnAddress());
     }
 
     /// The list in a block of class `class`: header and entries copied,
     /// this one freed (MOVED - nothing holds a pointer into it across this;
     /// a view's bytes are its records', which do not move).
-    fn moved(self: *AttributeList, allocator: std.mem.Allocator, class: u8) error{OutOfMemory}!*AttributeList {
+    fn moved(self: *AttributeList, scope: *runtime.BrowserScope, class: u8) error{OutOfMemory}!*AttributeList {
         std.debug.assert(!self.isShared());
-        const list = try create(allocator, class);
+        const list = try create(scope, class);
         const header = self.*;
         @memcpy(list.slots()[0..self.len], self.items());
         list.* = header;
         list.cap_class = class;
-        self.destroy(allocator);
+        self.destroy(scope);
         return list;
     }
 
     /// The list with room for one more script append: itself, or a larger
     /// copy (1 -> 4 -> x2: oss R16).
-    fn withRoom(self: *AttributeList, allocator: std.mem.Allocator) error{OutOfMemory}!*AttributeList {
+    fn withRoom(self: *AttributeList, scope: *runtime.BrowserScope) error{OutOfMemory}!*AttributeList {
         // The length is 32 bits; past it there is no room to make.
         if (self.len == std.math.maxInt(u32)) return error.OutOfMemory;
         if (self.len < self.capacity()) return self;
         const current = self.capacity();
-        return self.moved(allocator, try classFor(if (current < 4) 4 else current * 2));
+        return self.moved(scope, try classFor(if (current < 4) 4 else current * 2));
     }
 
     /// The index byte for an attribute at `position`.
@@ -632,9 +640,9 @@ pub const ElementData = struct {
         if (self.attrs != null) {
             const list = try self.writable(scope, more);
             if (wanted <= list.capacity()) return;
-            self.attrs = try list.moved(scope.allocator, try AttributeList.classFor(wanted));
+            self.attrs = try list.moved(scope, try AttributeList.classFor(wanted));
         } else {
-            self.attrs = try AttributeList.create(scope.allocator, try AttributeList.classFor(wanted));
+            self.attrs = try AttributeList.create(scope, try AttributeList.classFor(wanted));
         }
     }
 
@@ -658,7 +666,7 @@ pub const ElementData = struct {
             return mutable;
         }
         const wanted = std.math.add(usize, list.len, room) catch return error.OutOfMemory;
-        const copy = try AttributeList.create(scope.allocator, try AttributeList.classFor(wanted));
+        const copy = try AttributeList.create(scope, try AttributeList.classFor(wanted));
         const entries = list.items();
         @memcpy(copy.slots()[0..entries.len], entries);
         copy.len = list.len;
@@ -684,7 +692,7 @@ pub const ElementData = struct {
             return;
         }
         if (entries.len > std.math.maxInt(u32)) return error.OutOfMemory;
-        const list = try AttributeList.create(scope.allocator, try AttributeList.classFor(entries.len));
+        const list = try AttributeList.create(scope, try AttributeList.classFor(entries.len));
         @memcpy(list.slots()[0..entries.len], entries);
         list.len = @intCast(entries.len);
         const tables = Tables.of(scope);
@@ -712,7 +720,7 @@ pub const ElementData = struct {
             self.attrs = list;
             return;
         }
-        const copy = try AttributeList.create(scope.allocator, try AttributeList.classFor(list.len));
+        const copy = try AttributeList.create(scope, try AttributeList.classFor(list.len));
         const entries = list.items();
         @memcpy(copy.slots()[0..entries.len], entries);
         copy.len = list.len;
@@ -726,7 +734,7 @@ pub const ElementData = struct {
     /// - on success only. Element's "append an attribute" step 1. The list
     /// may MOVE (script's appends grow it 1 -> 4 -> x2).
     pub fn appendAttribute(self: *ElementData, scope: *runtime.BrowserScope, entry: Entry) error{OutOfMemory}!void {
-        const list = if (self.attrs != null) try (try self.writable(scope, 1)).withRoom(scope.allocator) else try AttributeList.create(scope.allocator, 1);
+        const list = if (self.attrs != null) try (try self.writable(scope, 1)).withRoom(scope) else try AttributeList.create(scope, 1);
         self.attrs = list;
         const position = list.len;
         list.slots()[position] = entry;
@@ -754,7 +762,7 @@ pub const ElementData = struct {
         std.mem.copyForwards(Entry, items[index .. items.len - 1], items[index + 1 ..]);
         list.len -= 1;
         if (list.len == 0) {
-            list.destroy(scope.allocator);
+            list.destroy(scope);
             self.attrs = null;
             return entry;
         }
