@@ -2393,33 +2393,39 @@ fn engineProtocolBinding(
     return facade;
 }
 
-/// The iPhoneOS SDK root: `-Dios-sdk=<path>` when given, else what `xcrun`
-/// names, else null.
+/// The iPhoneOS SDK root of this build, as `recordIosSdk` recorded it, or
+/// null off iOS. Every caller here holds only `b`, so the root is kept by
+/// name on the build itself (`named_lazy_paths`), made once.
+fn iosSdkPath(b: *std.Build) ?std.Build.LazyPath {
+    return b.named_lazy_paths.get(ios_sdk_root_name);
+}
+
+/// The name `recordIosSdk` keeps the SDK root under.
+const ios_sdk_root_name = "crane-ios-sdk-root";
+
+/// Record the iPhoneOS SDK root for an iOS build: `-Dios-sdk=<path>` when
+/// given, else the root `xcrun` names, asked at make time (build_probe
+/// sdk-root links it into the cache): an answer the configure cache cannot
+/// track is never asked at configure time (`check-configure-cache`). No SDK
+/// fails that step, naming the option.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
 /// path fails as missing libc headers rather than as a missing SDK. The option
 /// is for a machine whose xcode-select names the Command Line Tools, which
 /// have no iPhoneOS SDK: the pool hosts are set up that way and link their
 /// Xcode's SDK at ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
-/// build() declares the option; this reads it, since one option cannot be
-/// declared twice and every caller here holds only `b`.
-fn iosSdkPath(b: *std.Build) ?[]const u8 {
-    if (b.user_input_options.get("ios-sdk")) |option| switch (option) {
-        .scalar => |path| return path,
-        else => {},
+fn recordIosSdk(b: *std.Build, option: ?[]const u8, build_probe: *std.Build.Step.Compile) std.Build.LazyPath {
+    const root: std.Build.LazyPath = if (option) |path| .{ .cwd_relative = path } else asked: {
+        const run = b.addRunArtifact(build_probe);
+        run.setName("find the iPhoneOS SDK");
+        run.addArgs(&.{ "sdk-root", "--sdk=iphoneos", "--option=ios-sdk" });
+        const out = run.addOutputDirectoryArg("sdk");
+        // Its answer is the machine's: asked on every build.
+        run.has_side_effects = true;
+        break :asked out.path(b, "root");
     };
-    // A configure-time probe of the machine: the configure cache cannot see
-    // what xcrun answers, so a cached configuration must not be reused.
-    b.graph.poisonCache();
-    var code: u8 = 0;
-    const out = b.runAllowFail(
-        &.{ "xcrun", "--sdk", "iphoneos", "--show-sdk-path" },
-        &code,
-        .ignore,
-    ) catch return null;
-    const path = std.mem.trim(u8, out, " \n\r\t");
-    if (path.len == 0) return null;
-    return b.dupe(path);
+    b.addNamedLazyPath(ios_sdk_root_name, root);
+    return root;
 }
 
 /// Apply the iOS SDK paths to every Compile step reachable from `root`.
@@ -2432,12 +2438,12 @@ fn iosSdkPath(b: *std.Build) ?[]const u8 {
 /// Depth-bounded rather than visited-tracked: the build graph is a DAG, revisiting
 /// a module is idempotent here, and a bound needs no allocation. Real dependency
 /// chains are nowhere near this deep.
-fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?[]const u8) void {
+fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?std.Build.LazyPath) void {
     if (sdk == null) return;
     applyIosSdkStep(b, root, sdk, 0);
 }
 
-fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?[]const u8, depth: u32) void {
+fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?std.Build.LazyPath, depth: u32) void {
     if (depth > 24) return;
     if (step.cast(std.Build.Step.Compile)) |compile| {
         addIosSdkPaths(compile.root_module, sdk);
@@ -2458,23 +2464,11 @@ fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?[]const u8, depth
 ///
 /// No-op off iOS. Called for every module that compiles or links C, since Zig will
 /// not find them on its own for this target.
-fn addIosSdkPaths(module: *std.Build.Module, sdk: ?[]const u8) void {
+fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
     const root = sdk orelse return;
-    module.addSystemIncludePath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/usr/include",
-        .{root},
-    ) catch @panic("OOM") });
-    module.addLibraryPath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/usr/lib",
-        .{root},
-    ) catch @panic("OOM") });
-    module.addFrameworkPath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/System/Library/Frameworks",
-        .{root},
-    ) catch @panic("OOM") });
+    module.addSystemIncludePath(root.path(module.owner, "usr/include"));
+    module.addLibraryPath(root.path(module.owner, "usr/lib"));
+    module.addFrameworkPath(root.path(module.owner, "System/Library/Frameworks"));
 }
 
 /// A C header set translated to Zig by the build: what a file's `@cImport`
@@ -2517,7 +2511,7 @@ fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget,
     for (spec.macros) |macro| translate.defineCMacro(macro[0], macro[1]);
     for (spec.system_libs) |lib| translate.linkSystemLibrary(lib, .{});
     if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
-        translate.addSystemIncludePath(.{ .cwd_relative = b.fmt("{s}/usr/include", .{sdk}) });
+        translate.addSystemIncludePath(sdk.path(b, "usr/include"));
     };
     return translate.createModule();
 }
@@ -2958,11 +2952,11 @@ pub fn build(b: *std.Build) void {
     //
     // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
     // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
-    // with Xcode.
-    // -Dios-sdk: the SDK root iosSdkPath uses before xcrun (declared here once;
+    // with Xcode - at make time (recordIosSdk).
+    // -Dios-sdk: the SDK root used instead of xcrun's (declared here once;
     // check-ios passes it to its sub-build).
     const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
-    const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
+    const ios_sdk: ?std.Build.LazyPath = if (target.result.os.tag == .ios) recordIosSdk(b, ios_sdk_option, build_probe) else null;
 
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
