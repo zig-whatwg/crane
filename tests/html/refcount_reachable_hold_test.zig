@@ -121,9 +121,12 @@ fn holdOutlivesItsRealm() !void {
     try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
     try testing.expect(hold.get() == instance);
     try testing.expectEqual(dom.NodeBase.ELEMENT_NODE, base.node_type);
-    try expectCount(1, base, "the hold's alone, its wrapper collected with its realm");
+    // A ReachableHold keeps its node's wrapper too (its counted keep: WebKit's
+    // GCReachableRef), so the wrapper outlived the collections with it.
+    try expectCount(2, base, "the hold's and its wrapper's, the wrapper kept by the hold");
 
-    // The hold ends: the counts free the node, between tasks.
+    // The hold ends - its keep, then its count: the collections take the
+    // wrapper of the ended realm, and the counts free the node between tasks.
     hold.release();
     for (0..3) |_| try collect(page);
     try testing.expect(runtime.SlabAllocator.generationOf(instance) != generation);
