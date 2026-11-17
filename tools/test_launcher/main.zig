@@ -994,6 +994,20 @@ test "exit status: a launcher error fails the run in server mode too, where a te
     try testing.expectEqual(@as(u8, 1), exitStatus(true, true, .{ .pass = 3, .launcher_error = 1 }, 0));
 }
 
+test "exit status: a test that never ran fails the run, in server mode and report-only too" {
+    // vm1, 2026-11-17: a replay given `--listen=-` by hand, whose stdin
+    // never spoke the protocol, listed 2,893 tests, ran none ("NOT-RUN
+    // 2893") and exited 0. Nothing ran: that is the launcher's failure,
+    // never a pass.
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, false, .{ .not_run = 2893 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, true, .{ .not_run = 2893 }, 0));
+    // Some ran, some never did: still a failure.
+    try testing.expectEqual(@as(u8, 1), exitStatus(true, false, .{ .pass = 3, .not_run = 1 }, 0));
+    try testing.expectEqual(@as(u8, 1), exitStatus(false, true, .{ .pass = 3, .not_run = 1 }, 0));
+    // A run with nothing selected ran nothing and owes nothing.
+    try testing.expectEqual(@as(u8, 0), exitStatus(true, false, .{}, 0));
+}
+
 /// A failure of the launcher itself, outside any test (it could not list
 /// the tests, open the slot directory, write the results): printed with its
 /// cause as an `error: '<step>' failed:` line (the form gate scripts grep,
