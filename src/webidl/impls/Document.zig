@@ -36,7 +36,7 @@ const Registry = document_state.Registry;
 
 // A node's node document, set through Node's step (dom.node_document).
 const node_document = @import("dom").node_document;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 // Import ParentNode mixin for shared ParentNode interface methods
 const mixins = @import("mixins");
@@ -577,7 +577,7 @@ fn setTargetElement(document: *runtime.Instance, element: ?*runtime.Instance) vo
     // the element is not designated, as for a document with no state.
     if (element == null and internal.rareData() == null) return;
     const rare = internal.ensureRareData(document) catch return;
-    rare.target_element = if (element) |e| @import("same_object.zig").Link.to(e) else null;
+    rare.target_element = if (element) |e| @import("dom").same_object.Link.to(e) else null;
 }
 
 /// dom.pointer_states: `document`'s element for `state`, or null once the
@@ -597,7 +597,7 @@ fn pointerState(document: *runtime.Instance, state: @import("dom").pointer_state
 fn pointerStates(document: *runtime.Instance) [3]?*runtime.Instance {
     const internal = getInternal(document) orelse return .{ null, null, null };
     const rare = internal.rareData() orelse return .{ null, null, null };
-    const links = [3]?@import("same_object.zig").Link{ rare.hovered_element, rare.pointed_element, rare.activated_element };
+    const links = [3]?@import("dom").same_object.Link{ rare.hovered_element, rare.pointed_element, rare.activated_element };
     var out: [3]?*runtime.Instance = .{ null, null, null };
     for (links, 0..) |maybe, i| {
         if (maybe) |link| if (link.isLive()) {
@@ -615,7 +615,7 @@ fn setPointerState(document: *runtime.Instance, state: @import("dom").pointer_st
     // no state.
     if (element == null and internal.rareData() == null) return;
     const rare = internal.ensureRareData(document) catch return;
-    const link: ?@import("same_object.zig").Link = if (element) |e| @import("same_object.zig").Link.to(e) else null;
+    const link: ?@import("dom").same_object.Link = if (element) |e| @import("dom").same_object.Link.to(e) else null;
     switch (state) {
         .hovered => rare.hovered_element = link,
         .pointed => rare.pointed_element = link,

@@ -21,7 +21,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const dom = @import("dom");
 const engine = @import("engine");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const NavigationPrecommitController = interfaces.NavigationPrecommitController;
 
 pub const State = NavigationPrecommitController.State;

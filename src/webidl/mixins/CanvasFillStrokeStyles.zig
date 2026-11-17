@@ -15,7 +15,7 @@ const CanvasImageSource = @import("typedefs").CanvasImageSource;
 const CanvasPattern = @import("interfaces").CanvasPattern;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").CanvasFillStrokeStyles;
+const impl = @import("impls").CanvasFillStrokeStyles;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

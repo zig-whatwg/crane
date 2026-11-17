@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Document = @import("interfaces").Document;
 
-pub const impl = @import("impls").GetSVGDocument;
+const impl = @import("impls").GetSVGDocument;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

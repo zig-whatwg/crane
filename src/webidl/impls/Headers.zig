@@ -18,7 +18,7 @@ const headers_class = fetch.webidl.headers;
 const engine = @import("engine");
 
 const Headers = interfaces.Headers;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 pub const State = Headers.State;
 

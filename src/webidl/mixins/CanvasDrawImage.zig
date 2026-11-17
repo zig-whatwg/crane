@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const CanvasImageSource = @import("typedefs").CanvasImageSource;
 
-pub const impl = @import("impls").CanvasDrawImage;
+const impl = @import("impls").CanvasDrawImage;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

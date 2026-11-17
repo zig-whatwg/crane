@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const Element = @import("interfaces").Element;
 const Path2D = @import("interfaces").Path2D;
 
-pub const impl = @import("impls").CanvasUserInterface;
+const impl = @import("impls").CanvasUserInterface;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

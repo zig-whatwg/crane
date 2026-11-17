@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 
-pub const impl = @import("impls").Slottable;
+const impl = @import("impls").Slottable;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

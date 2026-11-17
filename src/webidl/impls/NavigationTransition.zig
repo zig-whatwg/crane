@@ -18,7 +18,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const engine = @import("engine");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const NavigationTransition = interfaces.NavigationTransition;
 
 pub const State = NavigationTransition.State;

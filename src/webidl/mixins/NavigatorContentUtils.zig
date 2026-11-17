@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").NavigatorContentUtils;
+const impl = @import("impls").NavigatorContentUtils;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

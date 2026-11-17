@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const TextMetrics = @import("interfaces").TextMetrics;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").CanvasText;
+const impl = @import("impls").CanvasText;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

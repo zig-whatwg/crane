@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const SVGAnimatedRect = @import("interfaces").SVGAnimatedRect;
 const SVGAnimatedPreserveAspectRatio = @import("interfaces").SVGAnimatedPreserveAspectRatio;
 
-pub const impl = @import("impls").SVGFitToViewBox;
+const impl = @import("impls").SVGFitToViewBox;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

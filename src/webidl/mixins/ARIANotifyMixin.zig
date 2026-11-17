@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const AriaNotificationOptions = @import("dictionaries").AriaNotificationOptions;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").ARIANotifyMixin;
+const impl = @import("impls").ARIANotifyMixin;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -14,7 +14,7 @@ const DOMStringMap = @import("interfaces").DOMStringMap;
 const DOMString = @import("typedefs").DOMString;
 const FocusOptions = @import("dictionaries").FocusOptions;
 
-pub const impl = @import("impls").HTMLOrSVGOrMathMLElement;
+const impl = @import("impls").HTMLOrSVGOrMathMLElement;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

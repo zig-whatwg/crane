@@ -28,7 +28,7 @@ const SharedWorker = interfaces.SharedWorker;
 const event_handlers = @import("dom").event_handlers;
 
 // Keeping the port's wrapper alive for as long as this object.
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 // URL parsing and origins, for steps 3-5 and the constructor origin.
 const api_parser = @import("api_parser");

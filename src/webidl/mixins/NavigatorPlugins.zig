@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const MimeTypeArray = @import("interfaces").MimeTypeArray;
 const PluginArray = @import("interfaces").PluginArray;
 
-pub const impl = @import("impls").NavigatorPlugins;
+const impl = @import("impls").NavigatorPlugins;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -16,7 +16,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const clock = @import("clock");
 const NavigationCurrentEntryChangeEvent = interfaces.NavigationCurrentEntryChangeEvent;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 pub const State = NavigationCurrentEntryChangeEvent.State;
 

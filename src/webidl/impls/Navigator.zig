@@ -511,7 +511,7 @@ pub fn call_sendBeacon(instance: *runtime.Instance, url: runtime.USVString, data
     request.unsafe_request = true;
     if (data.wasPassed()) {
         if (data.getValue()) |body_init| {
-            var extracted = try @import("fetch_body.zig").extract(allocator, body_init, true);
+            var extracted = try @import("fetch_body").extract(allocator, body_init, true);
             defer extracted.deinit();
             if (extracted.content_type) |content_type| {
                 if (!fetch.internal.isCORSSafelistedRequestHeader("Content-Type", content_type)) request.mode = .cors;

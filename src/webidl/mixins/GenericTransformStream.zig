@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const ReadableStream = @import("interfaces").ReadableStream;
 const WritableStream = @import("interfaces").WritableStream;
 
-pub const impl = @import("impls").GenericTransformStream;
+const impl = @import("impls").GenericTransformStream;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

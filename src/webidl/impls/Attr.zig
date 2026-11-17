@@ -18,9 +18,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const Attr = interfaces.Attr;
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
 // Import DOM algorithms
 const dom = @import("dom");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;

@@ -1,6 +1,7 @@
 # Workflow: A module that re-exports impls hides its users from lint-impls
 
 **Date**: 2026-10-30
+**Status** (2026-11-17, lane impls9): the module graph closes this door for every module outside the generated layer - none can import `impls` to re-export it. The last such door was in the generated layer itself: every generated mixin had `pub const impl = @import("impls").X;`, reachable by anything importing the mixins; it is `const impl` now (architecture-a-module-boundary-holds-only-if-nothing-allowed-across-it-re-exports-it.md).
 **Lesson**: `src/html/full.zig` had `pub const impls = @import("impls");`. The lint counted that line once, as `impls.@import`. The test that used it, `const impls = html.impls;` followed by `impls.Node.getInternalState`, `getParent` and `deinitNodeByType`, was invisible to the lint.
 
 **Why**: lint-impls counts references that start at `@import("impls")` or at a relative `@import("X.zig")` inside src/webidl/impls. A reference reached through another module's re-export starts at that module's name (`html.impls.Node`), which the lint does not follow. The design's section 1.2 lists two other blind spots of the same kind: helper files in impls/, and `impls.<lower-case>`.

@@ -22,7 +22,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const NavigationActivation = interfaces.NavigationActivation;
 
 pub const State = NavigationActivation.State;

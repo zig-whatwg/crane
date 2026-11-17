@@ -27,7 +27,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const event_construction = @import("dom").event_construction;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const SubmitEvent = interfaces.SubmitEvent;
 
 pub const State = SubmitEvent.State;

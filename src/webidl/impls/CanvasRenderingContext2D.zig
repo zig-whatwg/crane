@@ -11,7 +11,7 @@ const webidl = @import("webidl");
 const CanvasRenderingContext2D = interfaces.CanvasRenderingContext2D;
 const engine = @import("engine");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 // Use shared InstanceRegistry utility for internal state management
 const utils = @import("webidl").utils;

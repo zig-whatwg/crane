@@ -71,8 +71,39 @@ test "a mixin's further overloads are inherited, and the overload table asks the
 
     try testing.expect(contains(out, "pub const call_walk = mixins.Walkable.call_walk;"));
     try testing.expect(contains(out, "pub const call_walk__1 = mixins.Walkable.call_walk__1;"));
-    try testing.expect(contains(out, ".implemented = @hasDecl(mixins.Walkable.impl, \"call_walk__1\")"));
+    // The generated interface asks the impls module itself, which only the
+    // generated layer imports: the mixin module publishes no way to its impl.
+    try testing.expect(contains(out, ".implemented = @hasDecl(@import(\"impls\").Walkable, \"call_walk__1\")"));
+    try testing.expect(!contains(out, "mixins.Walkable.impl"));
     try testing.expect(!contains(out, "@hasDecl(DogImpl, \"call_walk__1\")"));
+}
+
+test "a mixin module keeps its impl private: nothing that imports the mixins reaches an impl through them" {
+    // src/webidl/AGENTS.md "The impls boundary": browser, lib_exports and the
+    // generated interfaces import the mixins, and only the generated layer
+    // may name an impl. A `pub const impl` would hand every importer of the
+    // mixins module a way to the impl (build.zig's impls-boundary case
+    // "mixin_impl" pins the compiler's answer, "'impl' is not marked 'pub'").
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try codegen.generator.writeMixinPrelude(&buffer.writer, "Walkable");
+    const out = buffer.written();
+
+    try testing.expect(std.mem.startsWith(u8, out, "const impl = @import(\"impls\").Walkable;\n"));
+    try testing.expect(!contains(out, "pub const impl"));
+    // Its hooks are still installed at process start, through the impls module.
+    try testing.expect(contains(out, "pub fn installHooks() void {"));
+    try testing.expect(contains(out, "if (comptime @hasDecl(impls.Walkable, \"installHooks\")) impls.Walkable.installHooks();"));
+}
+
+test "ParentNode's mixin module re-exports its impl's NodeOrString, a type, not the impl" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try codegen.generator.writeMixinPrelude(&buffer.writer, "ParentNode");
+    const out = buffer.written();
+
+    try testing.expect(contains(out, "pub const NodeOrString = impl.NodeOrString;"));
+    try testing.expect(!contains(out, "pub const impl"));
 }
 
 test "a [SameObject] mixin attribute caches in the includer's state around the inherited getter" {

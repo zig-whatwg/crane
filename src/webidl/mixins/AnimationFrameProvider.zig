@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const FrameRequestCallback = @import("callbacks").FrameRequestCallback;
 
-pub const impl = @import("impls").AnimationFrameProvider;
+const impl = @import("impls").AnimationFrameProvider;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

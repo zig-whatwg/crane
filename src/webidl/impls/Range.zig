@@ -24,7 +24,7 @@ const Range = interfaces.Range;
 const range_boundaries = @import("dom").range_boundaries;
 const boundary_points = @import("dom").boundary_points;
 const dom = @import("dom");
-const Link = @import("same_object.zig").Link;
+const Link = @import("dom").same_object.Link;
 const document_internals = @import("dom").document_internals;
 
 pub const State = Range.State;

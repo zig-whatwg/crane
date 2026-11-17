@@ -7,7 +7,7 @@ const enums = @import("enums");
 const typedefs = @import("typedefs");
 const dom = @import("dom");
 const hooks = dom.media_elements;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 pub const State = interfaces.TextTrack.State;
 pub const InternalState = struct {
     allocator: std.mem.Allocator,

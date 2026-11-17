@@ -23,7 +23,7 @@ const GLintptr = @import("typedefs").GLintptr;
 const GLsizei = @import("typedefs").GLsizei;
 const WebGLUniformLocation = @import("interfaces").WebGLUniformLocation;
 
-pub const impl = @import("impls").WebGLRenderingContextOverloads;
+const impl = @import("impls").WebGLRenderingContextOverloads;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

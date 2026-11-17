@@ -22,7 +22,7 @@ const CookieListItem = cookiestore.CookieListItem;
 // The FrozenArray<CookieListItem> attributes are made through the engine
 // protocol (cookie_values.zig).
 const engine = @import("engine");
-const cookie_values = @import("cookie_values.zig");
+const cookie_values = @import("cookie_values");
 
 pub const State = CookieChangeEvent.State;
 

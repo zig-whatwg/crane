@@ -19,9 +19,6 @@ const DocumentFragment = interfaces.DocumentFragment;
 const dom = @import("dom");
 const engine = @import("engine");
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
 // Import mixins for shared interface methods
 const mixins = @import("mixins");
 

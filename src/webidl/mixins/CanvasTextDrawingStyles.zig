@@ -19,7 +19,7 @@ const CanvasFontKerning = @import("enums").CanvasFontKerning;
 const CanvasTextRendering = @import("enums").CanvasTextRendering;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").CanvasTextDrawingStyles;
+const impl = @import("impls").CanvasTextDrawingStyles;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

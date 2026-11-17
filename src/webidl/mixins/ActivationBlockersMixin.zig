@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const ActivationBlockersMixinBlockerReason = @import("enums").ActivationBlockersMixinBlockerReason;
 const EventHandler = @import("typedefs").EventHandler;
 
-pub const impl = @import("impls").ActivationBlockersMixin;
+const impl = @import("impls").ActivationBlockersMixin;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

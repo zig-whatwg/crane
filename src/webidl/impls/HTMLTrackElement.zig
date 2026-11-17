@@ -10,7 +10,7 @@ const dom = @import("dom");
 const html = @import("html");
 const common = html.media_runtime;
 const hooks = dom.media_elements;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 pub const State = interfaces.HTMLTrackElement.State;
 const Kind = enum(u16) { read, failure };
 /// A block of the Browser's runtime arena (`arena`), registered in the
