@@ -244,7 +244,6 @@ pub const event_path = @import("event_path.zig");
 pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
 pub const pointer_states = @import("pointer_states.zig");
-pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
