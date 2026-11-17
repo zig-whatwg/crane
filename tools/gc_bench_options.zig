@@ -448,3 +448,53 @@ test "the counts default to the measurement's, and a count given wins" {
     try std.testing.expectEqual(@as(usize, 1000), countArg(&.{ "gc_bench", "3000", "1000", "--bench=wide" }, 2, wide.every));
     try std.testing.expectEqual(@as(usize, 10_000), countArg(&.{"gc_bench"}, 1, 10_000));
 }
+
+test "the pause row holds its tree's wrappers whatever a collector does first: each is given a property" {
+    // Lane nm2's cost window: the row wrapped each element and forgot it
+    // (`void e`), so a young collection could drop the wrapper and a full
+    // one promoted whichever were left - 2 or about 6,000 by which came
+    // first, +9.7% instructions on one binary.
+    const pause = benchNamed("pause").?;
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "for (const e of r.querySelectorAll('*')) e.pauseKept = true;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "void e;") == null);
+    // 100 sections of 100 paragraphs: 10,100 elements below the root.
+    try std.testing.expect(std.mem.indexOf(u8, pause.body, "('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100)") != null);
+    try std.testing.expectEqual(@as(?usize, 10_100), pause.kept_wrappers);
+    // The run checks it: all 10,100 and the few a reading may add (the
+    // root, the document, the batch's last elements).
+    try std.testing.expect(pause.holdsShape(10_100));
+    try std.testing.expect(pause.holdsShape(10_102));
+    try std.testing.expect(pause.holdsShape(10_100 + Bench.kept_wrappers_slack));
+    // The two values the old row read are neither of them its shape.
+    try std.testing.expect(!pause.holdsShape(2));
+    try std.testing.expect(!pause.holdsShape(5_908));
+    try std.testing.expect(!pause.holdsShape(6_101));
+    try std.testing.expect(!pause.holdsShape(10_099));
+    try std.testing.expect(!pause.holdsShape(10_100 + Bench.kept_wrappers_slack + 1));
+    try std.testing.expect(!pause.holdsShape(-1));
+}
+
+test "pause-bare is the same tree with no wrapper below its root, and says so" {
+    const pause = benchNamed("pause").?;
+    const bare = benchNamed("pause-bare").?;
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "('<section>' + '<p></p>'.repeat(100) + '</section>').repeat(100)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "querySelectorAll") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bare.body, "void document.createElement('span');") != null);
+    try std.testing.expectEqual(pause.cycles, bare.cycles);
+    try std.testing.expectEqual(pause.every, bare.every);
+    try std.testing.expectEqual(Bench.Gc.forced, bare.gc);
+    try std.testing.expectEqual(@as(?usize, 0), bare.kept_wrappers);
+    try std.testing.expect(bare.holdsShape(0));
+    try std.testing.expect(bare.holdsShape(2));
+    try std.testing.expect(!bare.holdsShape(5_908));
+    try std.testing.expectEqualStrings(bare.body, cycleBody(&.{ "gc_bench", "--bench=pause-bare" }));
+}
+
+test "a row with no kept tree has no shape to hold" {
+    for ([_][]const u8{ "wide", "qsa-deep", "wrapper-churn-nogc", "div", "text", "clone-drop", "parse-drop" }) |name| {
+        const bench = benchNamed(name).?;
+        try std.testing.expectEqual(@as(?usize, null), bench.kept_wrappers);
+        try std.testing.expect(bench.holdsShape(0));
+        try std.testing.expect(bench.holdsShape(123_456));
+    }
+}
