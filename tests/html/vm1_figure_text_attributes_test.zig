@@ -132,11 +132,17 @@ fn attributeValuesAreCounted() !void {
     const plain = try added(page, "globalThis.p = []; for (let i = 0; i < 1000; i++) p.push(document.createElement('div')); 0;");
     const empty = try added(page, "globalThis.a = []; for (let i = 0; i < 1000; i++) { const e = document.createElement('div'); e.setAttribute('data-v', ''); a.push(e); } 0;");
     try expectBytes("1,000 lists of one attribute with the empty value", count * 16, empty - plain);
-    // Parsed elements with equal attributes share one list (the document's
-    // cache holds it too): one block for 1,000 elements.
+    // Parsed elements with equal attributes share a list, which counts its
+    // holders in one byte: the document's cache and up to 254 elements a
+    // block, then a new block (dom.element_data SharingCache.share). So
+    // 1,000 elements are four blocks of 16 - not one, as this test first
+    // expected (its first green run: "expected 16 B in the figure, found 64").
+    const per_block: usize = dom.element_data.AttributeList.max_holders - 1;
+    const shared_blocks: usize = (count + per_block - 1) / per_block;
+    try testing.expectEqual(@as(usize, 4), shared_blocks);
     const parsed_plain = try added(page, "globalThis.q = document.createElement('section'); q.innerHTML = '<p></p>'.repeat(1000); 0;");
     const parsed = try added(page, "globalThis.r = document.createElement('section'); r.innerHTML = '<p hidden></p>'.repeat(1000); 0;");
-    try expectBytes("1,000 parsed elements sharing one attribute list", 16, parsed - parsed_plain);
+    try expectBytes("1,000 parsed elements sharing their attribute lists", shared_blocks * 16, parsed - parsed_plain);
     // 1,000 distinct values of 304 bytes: a record each, its 8-byte header
     // and its bytes in one block of 320.
     const distinct = try added(page, "globalThis.b = []; for (let i = 0; i < 1000; i++) { const e = document.createElement('div'); e.setAttribute('data-v', 'v'.repeat(300) + String(i).padStart(4, '0')); b.push(e); } 0;");
@@ -156,8 +162,9 @@ fn attributeValuesAreCounted() !void {
 
     try page.run("a = b = c = p = q = r = null; 0;");
     for (0..4) |_| try page.collect();
-    // The document's cache of shared lists keeps the parsed elements' one
-    // block for 10 s after its last parse (dom.attribute_block_cache).
+    // The document's cache of shared lists keeps the block it last made for
+    // the parsed elements - one; the three before it went with their last
+    // elements - for 10 s after its last parse (dom.attribute_block_cache).
     try expectBytes("after the elements' teardown", before + 16, live(page));
 }
 
