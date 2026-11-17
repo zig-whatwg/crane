@@ -585,6 +585,16 @@ figure stays macOS's**:
 - `perf_bench gc-bench` runs each row under GNU time (`/usr/bin/time -v`): wall time and the
   largest resident size, which stands for the row's memory; no instructions.
 
+**A Linux pair's memory rows are noisier than macOS's** (server1, 2026-11-17, one console as both
+sides, the attributes and streams pages, 7 launches a side, a plain and a `--collected` pass, 210
+of 210 records ok in each): time read 0.973 to 1.015 and the streams rows' memory 0.978 to 1.001
+on the memory pass, but four rows of the attributes page read 1.029 to 1.065 there, on steady,
+peak and collected alike -
+one side's launches of `dom.event-ctor` read 45.6 to 57.3 MB, the other's 47.2 to 54.3, one wide
+level (glibc keeps freed memory in per-thread arenas: lane mem2). So `cost` says OVER THE BAR for
+a pair that is one binary: on Linux, 7 launches a side do not read a 3% memory bar on these rows,
+and a Linux pair's memory verdict is evidence to weigh, not a gate. The bar is read on chat.local.
+
 ## /performance/
 
 `perf_bench report` writes `index.html` and `card.png` from every journal below `--journals`:
