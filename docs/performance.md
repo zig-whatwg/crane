@@ -194,15 +194,24 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   `src/browser/memory_release.zig`): once a window's event loop has had nothing to run for 200 ms
   it starts a release of the system allocator's free memory on a detached thread - once per idle
   stretch, and for the whole process not again until 20 times the release's duration has passed,
-  at least 5 seconds, and 30 seconds after a release that returned under 1 MiB (WebKit's numbers).
+  at least 5 seconds, whatever the release returned (WebKit's two numbers; its third, 30 seconds
+  after a release that returned under 1 MiB, was dropped on 2026-11-16 - the user's decision,
+  lane ev2).
   The settle time is 500 ms, so a `settled` mark reads after the release where the hold-off let
   one start. On Linux (glibc `malloc_trim(0)`) that lowers the rows that follow a large free:
   server1, the tip against main ca7726f6964, 7 launches a side - settled resident memory x0.943
   over 51 rows with no row above x0.995 (`streams.transform-chain` and `streams.blob-stream` 517
   -> 366 MB; the `dom.*` attribute rows 92.6 -> 81.9 MB; the page peaks x0.955 to x0.995), time
   x0.985 over 50 rows with no row outside the base's own spread. The first three streams rows stay
-  near 510 MB: the process's first release, at the page's first idle stretch, returns under 1 MiB,
-  and the next is held off for 30 seconds. On macOS nothing is returned: since macOS 26 the system
+  near 510 MB, with the 30-second case or without it (server1, 2026-11-17, the streams page, 7
+  launches a side, main b411b15afb5 against the 5-second rule: `streams.reader` 502.3 -> 509.1 MB,
+  `streams.enqueue-read` 519.5 -> 520.7, `streams.pipe-through-decoder` 520.7 -> 521.8,
+  `streams.blob-stream` 374.2 -> 372.1; time x0.992). On both sides the release that lowers the
+  page comes at `streams.transform-chain`'s mark or the next one - that row reads one of two
+  levels, about 376 or 520 MB, in both consoles (main: 4 launches of 7 on the low level; the
+  5-second rule: 3 of 7) - so the page's first release returns at least 1 MiB and the 5-second
+  floor, not the 30-second case, is what the first rows end inside. On macOS nothing is
+  returned: since macOS 26 the system
   allocator ignores `malloc_zone_pressure_relief`, the one public call (chat.local, 27.0.1: time
   x0.999, footprint x1.004 on the default pass and x0.992 with `MallocLargeCache=0`; three
   `events.*` rows read 1.5 MB higher on the default pass in every launch and the same, 31 MB,

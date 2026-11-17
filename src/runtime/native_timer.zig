@@ -536,21 +536,52 @@ pub const NativeTimerManager = struct {
 
     /// `pollBlocking`, running `after_each` after every callback it fires.
     pub fn pollBlockingEach(self: *Self, timeout_ms: u64, after_each: ?AfterEach) bool {
+        return self.pollBlockingEachNs(timeout_ms *| std.time.ns_per_ms, after_each);
+    }
+
+    /// `pollBlockingEach` with the caller's bound in nanoseconds: fire what
+    /// is due; if nothing was, wait until the next timer's deadline - to the
+    /// nanosecond - or the caller's bound or `max_block_ms`, whichever is
+    /// soonest, and fire what is due then. A bound of 0 polls once and does
+    /// not wait.
+    ///
+    /// The wait is the time left to the deadline itself, never a count of
+    /// whole milliseconds: that count, rounded down, read a timer due in
+    /// under a millisecond as "due in 0", so the poll did not wait, found
+    /// nothing due and returned, and a loop built on it turned without a
+    /// wait until the timer was due (the V8 adapter's standalone loop; the
+    /// window and worker loops had the same rounding until lane flk2: 500 to
+    /// 600 turns and 0.85 ms of CPU for every timer). Every browser's loop
+    /// waits for its next delayed task's exact remaining delay: Chromium's
+    /// pump sleeps on its event for `next_work_info.remaining_delay()`
+    /// (base/message_loop/message_pump_default.cc, MessagePumpDefault::Run).
+    ///
+    /// The wait is real time. A manager on its owner's clock
+    /// (`initWithClock`) is waited for by that owner's loop, which knows
+    /// whether the clock moves by itself.
+    pub fn pollBlockingEachNs(self: *Self, timeout_ns: u64, after_each: ?AfterEach) bool {
         if (!self.initialized) return false;
-        if (timeout_ms == 0) return self.pollEach(after_each);
+        if (timeout_ns == 0) return self.pollEach(after_each);
 
         // Anything already due: fire it now rather than sleeping first.
         if (self.pollEach(after_each)) return true;
 
         // Sleep until the earliest of: the next deadline, the caller's bound, and
         // max_block_ms - see above for why that last cap exists.
-        const next = self.getNextTimerDeadline() orelse timeout_ms;
-        // Explicit u64: @min against a comptime-known bound narrows the result type
-        // (to u1 for max_block_ms = 1), and the ns_per_ms multiply then overflows it.
-        const wait_ms: u64 = @min(@min(next, timeout_ms), max_block_ms);
+        const until_next = self.untilNextDeadlineNs() orelse timeout_ns;
+        const wait_ns: u64 = @min(until_next, timeout_ns, max_block_ms * std.time.ns_per_ms);
 
-        if (wait_ms > 0) clock.sleep(wait_ms *| std.time.ns_per_ms);
+        if (wait_ns > 0) clock.sleep(wait_ns);
         return self.pollEach(after_each);
+    }
+
+    /// How long until the next live timer is due on the manager's clock
+    /// (ns): 0 when one is due already, null when there is none.
+    fn untilNextDeadlineNs(self: *Self) ?u64 {
+        const deadline = self.nextDeadlineNs() orelse return null;
+        const now = self.nowNs();
+        if (deadline <= now) return 0;
+        return std.math.cast(u64, deadline - now) orelse std.math.maxInt(u64);
     }
 
     pub fn timerInterface(self: *Self) TimerInterface {
