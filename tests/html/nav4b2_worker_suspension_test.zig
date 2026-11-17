@@ -387,7 +387,22 @@ test "a shared worker in extended lifetime is suspended only once the timeout pa
     _ = manager.removeOwner(&realm_a, null, null);
 }
 
-test "ownersOf lists a shared worker's owner realms" {
+/// The doom a shared worker's lock contention asks for: what it was asked,
+/// and its answer.
+const DoomProbe = struct {
+    answer: bool,
+    asked: usize = 0,
+    realms: usize = 0,
+
+    fn doom(context: *anyopaque, realms: []const *const anyopaque) bool {
+        const self: *DoomProbe = @ptrCast(@alignCast(context));
+        self.asked += 1;
+        self.realms = realms.len;
+        return self.answer;
+    }
+};
+
+test "locks1: a shared worker's lock contention dooms its owners' pages only when none is fully active, and closes the worker" {
     const sink = try runtime.TaskSink.create(testing.allocator);
     defer sink.release();
     var manager = SharedWorkerManager.init(testing.allocator);
@@ -398,12 +413,37 @@ test "ownersOf lists a shared worker's owner realms" {
     defer stranger.release();
     try manager.add(key, classic, link, &host_data, &realm_a);
     (try manager.connect(key, classic, &realm_b)).?.link.release();
-    var owners: std.ArrayListUnmanaged(*const anyopaque) = .empty;
-    defer owners.deinit(testing.allocator);
-    try testing.expect(try manager.ownersOf(link, &owners, testing.allocator));
-    try testing.expectEqual(@as(usize, 2), owners.items.len);
-    owners.clearRetainingCapacity();
-    try testing.expect(!(try manager.ownersOf(stranger, &owners, testing.allocator)));
+    var probe: DoomProbe = .{ .answer = true };
+    // No shared worker of the manager's.
+    try testing.expect(manager.doomForLockContention(stranger, testing.allocator, &probe, DoomProbe.doom) == .not_shared);
+    // Fully active owners: nothing asked, nothing changes.
+    try testing.expect(manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom) == .kept);
+    try testing.expectEqual(@as(usize, 0), probe.asked);
+    {
+        var transitions = SharedWorkerManager.Transitions.init(testing.allocator, true);
+        defer transitions.deinit();
+        manager.ownerInactive(&realm_a, &transitions);
+        manager.ownerInactive(&realm_b, &transitions);
+        transitions.apply(null);
+    }
+    // Both cached, but a page is being restored (the doom refuses): kept.
+    probe.answer = false;
+    try testing.expect(manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom) == .kept);
+    try testing.expectEqual(@as(usize, 1), probe.asked);
+    try testing.expect(link.runsTasks());
+    // Both cached, both doomed: their realms, and the worker closes - a
+    // constructor no longer finds it.
+    probe.answer = true;
+    switch (manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom)) {
+        .doomed => |realms| {
+            defer testing.allocator.free(realms);
+            try testing.expectEqual(@as(usize, 2), realms.len);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+    try testing.expectEqual(@as(usize, 2), probe.realms);
+    try testing.expect(!link.runsTasks());
+    try testing.expect((try manager.connect(key, classic, &realm_a)) == null);
     _ = manager.removeOwner(&realm_a, null, null);
     _ = manager.removeOwner(&realm_b, null, null);
 }
@@ -412,18 +452,28 @@ test "ownersOf lists a shared worker's owner realms" {
 // Lock contention reaches the holder
 // ============================================================================
 
-/// A lock environment whose contention hook counts.
+/// A lock environment whose contention hook counts, and answers `doomed`:
+/// whether its page can never be restored (lane locks1: the registry then
+/// breaks its lock at once).
 const Holder = struct {
     contended: usize = 0,
     events: usize = 0,
+    granted: usize = 0,
+    not_granted: usize = 0,
+    doomed: bool = false,
 
     fn delivery(self: *Holder) web_locks.Delivery {
         return .{ .ctx = self, .post = post, .deinit = deinitCtx, .contention = contention };
     }
 
-    fn post(ctx: *anyopaque, _: web_locks.Event) void {
+    fn post(ctx: *anyopaque, event: web_locks.Event) void {
         const self: *Holder = @ptrCast(@alignCast(ctx));
         self.events += 1;
+        switch (event.kind) {
+            .granted => self.granted += 1,
+            .not_granted => self.not_granted += 1,
+            .stolen => {},
+        }
     }
 
     fn deinitCtx(_: *anyopaque) void {}
@@ -431,7 +481,7 @@ const Holder = struct {
     fn contention(ctx: *anyopaque) bool {
         const self: *Holder = @ptrCast(@alignCast(ctx));
         self.contended += 1;
-        return true;
+        return self.doomed;
     }
 };
 
@@ -470,6 +520,55 @@ test "a request that cannot be granted, or a query, tells the holders of the loc
     _ = try registry.request(client_asker, "shared", .{ .mode = .shared });
     try testing.expectEqual(@as(usize, 0), shared_holder.contended);
     registry.unregister(client_shared);
+    registry.unregister(client_asker);
+    registry.unregister(client_holder);
+}
+
+test "locks1: a doomed holder's lock breaks at once - a request, an ifAvailable one too, is granted; a query breaks nothing" {
+    var registry = web_locks.Registry.init(testing.allocator);
+    defer registry.deinit();
+    var holder: Holder = .{};
+    var asker: Holder = .{};
+    const client_holder = try registry.register(&realm_a, &realm_a, origin, holder.delivery());
+    const client_asker = try registry.register(&realm_b, &realm_b, origin, asker.delivery());
+
+    _ = try registry.request(client_holder, "res", .{});
+    _ = try registry.request(client_holder, "kept", .{});
+    try testing.expectEqual(@as(usize, 2), holder.granted);
+    // Not doomed: an ifAvailable request is refused, and nothing breaks.
+    _ = try registry.request(client_asker, "res", .{ .if_available = true });
+    try testing.expectEqual(@as(usize, 1), asker.not_granted);
+    try testing.expectEqual(@as(usize, 0), asker.granted);
+    // Doomed (its page can never be restored): a query tells it, and
+    // breaks nothing - the snapshot lists both of its locks.
+    holder.doomed = true;
+    var snapshot = try registry.snapshot(client_asker, testing.allocator);
+    try testing.expectEqual(@as(usize, 2), snapshot.held.len);
+    snapshot.deinit(testing.allocator);
+    try testing.expectEqual(@as(usize, 3), holder.contended);
+    // An ifAvailable request: the doomed holder's lock breaks at once, and
+    // the request is granted - its other lock stays.
+    _ = try registry.request(client_asker, "res", .{ .if_available = true });
+    try testing.expectEqual(@as(usize, 1), asker.not_granted);
+    try testing.expectEqual(@as(usize, 1), asker.granted);
+    snapshot = try registry.snapshot(client_holder, testing.allocator);
+    try testing.expectEqual(@as(usize, 2), snapshot.held.len);
+    for (snapshot.held) |info| try testing.expect(std.mem.eql(u8, info.name, "res") == std.mem.eql(u8, &info.client_id, &client_asker.id));
+    snapshot.deinit(testing.allocator);
+    // A plain request breaks it too, and a request that waited behind the
+    // broken lock since before its holder was doomed is granted first, in
+    // queue order.
+    holder.doomed = false;
+    _ = try registry.request(client_asker, "kept", .{});
+    try testing.expectEqual(@as(usize, 1), asker.granted);
+    holder.doomed = true;
+    var third: Holder = .{};
+    var realm_c: u8 = 0;
+    const client_third = try registry.register(&realm_c, &realm_c, origin, third.delivery());
+    _ = try registry.request(client_third, "kept", .{});
+    try testing.expectEqual(@as(usize, 2), asker.granted);
+    try testing.expectEqual(@as(usize, 0), third.granted);
+    registry.unregister(client_third);
     registry.unregister(client_asker);
     registry.unregister(client_holder);
 }

@@ -48,7 +48,15 @@ const routes = [_]http.Route{
     // A page that listens on a BroadcastChannel.
     .{ .path = "/channel.html", .content_type = "text/html", .body = page("channel", "var heard = 0; new BroadcastChannel('bfb').onmessage = () => { heard++; };") },
     // A page that holds a Web Lock until it is destroyed.
-    .{ .path = "/lock.html", .content_type = "text/html", .body = page("lock", "navigator.locks.request('bfb-lock', () => new Promise(() => {}));") },
+    .{ .path = "/lock.html", .content_type = "text/html", .body = page("lock", "var held = false; navigator.locks.request('bfb-lock', () => { held = true; return new Promise(() => {}); });") },
+    // A page that waits for a Web Lock the test holds, and logs its grant.
+    .{ .path = "/wait.html", .content_type = "text/html", .body = page("wait", "navigator.locks.request('bfb-wait', () => { log.push('granted'); return new Promise(() => {}); });") },
+    // A page whose dedicated worker, and one whose shared worker, holds a
+    // Web Lock until it ends (`held` once it does).
+    .{ .path = "/lockworker.html", .content_type = "text/html", .body = page("lockworker", "var held = false; var w = new Worker('/lw.js'); w.onmessage = () => { held = true; };") },
+    .{ .path = "/lw.js", .content_type = "text/javascript", .body = "navigator.locks.request('bfb-wlock', () => { postMessage('held'); return new Promise(() => {}); });" },
+    .{ .path = "/lockshared.html", .content_type = "text/html", .body = page("lockshared", "var held = false; var s = new SharedWorker('/ls.js'); s.port.onmessage = () => { held = true; };") },
+    .{ .path = "/ls.js", .content_type = "text/javascript", .body = "onconnect = (e) => { const port = e.ports[0]; navigator.locks.request('bfb-slock', () => { port.postMessage('held'); return new Promise(() => {}); }); };" },
     // A page with a frame (srcdoc): kept with its frame since phase C.
     .{ .path = "/frame.html", .content_type = "text/html", .body = page("frame", "") ++ "<iframe srcdoc='<p>child'></iframe>" },
     // A page with an RTCPeerConnection (Chromium's "rtc").
@@ -392,11 +400,14 @@ fn keptAfterLeavingAt(comptime origin: []const u8, comptime path: []const u8, co
     return fixture.cached() > 0;
 }
 
-test "the eligibility matrix: a page that holds a lock is not kept; one with a frame (phase C), a worker or a shared worker is kept" {
+test "the eligibility matrix: a page that holds a lock, one with a frame (phase C), a worker or a shared worker is kept" {
     try testing.expect(try keptAfterLeaving("/a.html", "/b.html"));
     // Web Locks are [SecureContext]: the page holds its lock on localhost.
     try testing.expect(try keptAfterLeavingAt("http://localhost", "/a.html", "/b.html"));
-    try testing.expect(!try keptAfterLeavingAt("http://localhost", "/lock.html", "/b.html"));
+    // Lane locks1: a page whose document holds a lock is kept, its lock
+    // held, as Chrome and Safari keep it (web-locks/bfcache/
+    // held.tentative.https.html) - until another page contends for it.
+    try testing.expect(try keptAfterLeavingAt("http://localhost", "/lock.html", "/b.html"));
     // Bfcache phase C (lane nav4): a page is kept with its frames
     // (tests/html/nav4_bfcache_frames_test.zig has the rest).
     try testing.expect(try keptAfterLeaving("/frame.html", "/b.html"));
@@ -574,4 +585,175 @@ test "an owner's restore step runs once per restore, for the restored page, and 
     try fixture.goTo(bc, "history.back()", "/a.html");
     try testing.expectEqual(@as(u32, 2), fixture.server.count("/a.html"));
     try testing.expectEqual(before + 2, restore_steps_run.load(.monotonic));
+}
+
+// ============================================================================
+// Web Locks and the cache (lane locks1)
+// ============================================================================
+//
+// A page whose document - or whose suspended worker - holds a Web Lock is
+// kept, its lock held, as Chrome and Safari keep it (web-locks/bfcache/
+// held.tentative.https.html). Another page's contention for that lock dooms
+// the page - it is never restored again - breaks its lock at once, so the
+// request is granted without waiting (an ifAvailable one gets the lock, as
+// in all three browsers), and evicts it ("weblocks-contention", Chrome's).
+
+/// Turn `fixture`'s loop until `realm` answers `condition` with true.
+fn waitFor(fixture: *Fixture, realm: runtime.Context, condition: []const u8) !void {
+    var turns: usize = 0;
+    while (turns < 300) : (turns += 1) {
+        if (try isTrue(realm, condition)) return;
+        try fixture.turn(10);
+    }
+    return error.TimedOut;
+}
+
+/// Turn `fixture`'s loop until the cache holds no page.
+fn waitForEmptyCache(fixture: *Fixture) !void {
+    var turns: usize = 0;
+    while (turns < 300) : (turns += 1) {
+        if (fixture.cached() == 0) return;
+        try fixture.turn(10);
+    }
+    return error.TimedOut;
+}
+
+/// Open `path` on localhost (a secure context: Web Locks), wait until
+/// `ready` is true in its realm, and leave it for /b.html: the popup, with
+/// the page kept.
+fn keepLockPage(fixture: *Fixture, comptime path: []const u8, ready: []const u8) !*html.BrowsingContext {
+    const bc = try fixture.openPopupAt("http://localhost", path);
+    try waitFor(fixture, activeRealm(bc).?, ready);
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    return bc;
+}
+
+test "locks1: a request for a cached page's lock is granted at once, and the page is evicted, never restored" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try keepLockPage(fixture, "/lock.html", "held");
+    const realm_b = activeRealm(bc).?;
+    try expectIn(realm_b, "var got = 'waiting'; navigator.locks.request('bfb-lock', () => { got = 'granted'; }); 'asked'", "asked");
+    try waitFor(fixture, realm_b, "got === 'granted'");
+    try waitForEmptyCache(fixture);
+    // Back: the page is fetched again, a new page.
+    try fixture.goTo(bc, "history.back()", "/lock.html");
+    try testing.expectEqual(@as(u32, 2), fixture.server.count("/lock.html"));
+    try expectIn(activeRealm(bc).?, "log.join()", "pageshow:false");
+}
+
+test "locks1: an ifAvailable request for a cached page's lock gets the lock, as in Chrome, Firefox and Safari" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try keepLockPage(fixture, "/lock.html", "held");
+    const realm_b = activeRealm(bc).?;
+    // The cached holder's lock breaks at once: the callback gets a Lock,
+    // not null - in the same task, before the eviction has run.
+    try expectIn(realm_b, "var got = 'waiting'; navigator.locks.request('bfb-lock', { ifAvailable: true }, (lock) => { got = lock ? 'lock' : 'null'; }); 'asked'", "asked");
+    try waitFor(fixture, realm_b, "got !== 'waiting'");
+    try expectIn(realm_b, "got", "lock");
+    try waitForEmptyCache(fixture);
+}
+
+test "locks1: a query lists a cached page's lock and dooms the page; an ifAvailable request right after gets the lock" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try keepLockPage(fixture, "/lock.html", "held");
+    const realm_b = activeRealm(bc).?;
+    // One script: the query, then the request, before any task runs - the
+    // eviction the query asked for has not run yet, but the page is doomed.
+    try expectIn(realm_b, "var held = 'waiting', got = 'waiting';" ++
+        "navigator.locks.query().then((s) => { held = s.held.map((l) => l.name).join(); });" ++
+        "navigator.locks.request('bfb-lock', { ifAvailable: true }, (lock) => { got = lock ? 'lock' : 'null'; }); 'asked'", "asked");
+    try waitFor(fixture, realm_b, "held !== 'waiting' && got !== 'waiting'");
+    // The query reports the state it found: the lock held.
+    try expectIn(realm_b, "held", "bfb-lock");
+    try expectIn(realm_b, "got", "lock");
+    try waitForEmptyCache(fixture);
+    try fixture.goTo(bc, "history.back()", "/lock.html");
+    try testing.expectEqual(@as(u32, 2), fixture.server.count("/lock.html"));
+}
+
+test "locks1: an ifAvailable request for a lock a cached page's suspended worker holds gets it, and the page is evicted" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try keepLockPage(fixture, "/lockworker.html", "held");
+    const realm_b = activeRealm(bc).?;
+    try expectIn(realm_b, "var got = 'waiting'; navigator.locks.request('bfb-wlock', { ifAvailable: true }, (lock) => { got = lock ? 'lock' : 'null'; }); 'asked'", "asked");
+    try waitFor(fixture, realm_b, "got !== 'waiting'");
+    try expectIn(realm_b, "got", "lock");
+    try waitForEmptyCache(fixture);
+    try fixture.goTo(bc, "history.back()", "/lockworker.html");
+    try testing.expectEqual(@as(u32, 2), fixture.server.count("/lockworker.html"));
+}
+
+test "locks1: an ifAvailable request for a lock a cached page's suspended shared worker holds gets it, and the page is evicted" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try keepLockPage(fixture, "/lockshared.html", "held");
+    const realm_b = activeRealm(bc).?;
+    try expectIn(realm_b, "var got = 'waiting'; navigator.locks.request('bfb-slock', { ifAvailable: true }, (lock) => { got = lock ? 'lock' : 'null'; }); 'asked'", "asked");
+    try waitFor(fixture, realm_b, "got !== 'waiting'");
+    try expectIn(realm_b, "got", "lock");
+    try waitForEmptyCache(fixture);
+    // A new page connecting to the same shared worker URL gets a new worker:
+    // the doomed one no longer matches.
+    try fixture.goTo(bc, "history.back()", "/lockshared.html");
+    try testing.expectEqual(@as(u32, 2), fixture.server.count("/lockshared.html"));
+    try waitFor(fixture, activeRealm(bc).?, "held");
+}
+
+test "locks1: restored, a page still holds the lock it held when it was cached (Chrome)" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const bc = try fixture.openPopupAt("http://localhost", "/lock.html");
+    const realm_a = activeRealm(bc).?;
+    try waitFor(fixture, realm_a, "held");
+    try expectIn(realm_a, "var before = 'waiting'; navigator.locks.query().then((s) => { before = s.held.map((l) => l.name + ' ' + l.clientId).join(); }); 'asked'", "asked");
+    try waitFor(fixture, realm_a, "before !== 'waiting'");
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    try fixture.goTo(bc, "history.back()", "/lock.html");
+    // The same page, restored; its own query does not evict it.
+    try testing.expectEqual(realm_a, activeRealm(bc).?);
+    try testing.expectEqual(@as(u32, 1), fixture.server.count("/lock.html"));
+    try expectIn(realm_a, "var after = 'waiting'; navigator.locks.query().then((s) => { after = s.held.map((l) => l.name + ' ' + l.clientId).join(); }); 'asked'", "asked");
+    try waitFor(fixture, realm_a, "after !== 'waiting'");
+    try expectIn(realm_a, "String(after === before && before.startsWith('bfb-lock '))", "true");
+}
+
+/// A lock environment of the test's own: it holds what a page waits for.
+const TestHolder = struct {
+    fn delivery(self: *TestHolder) html.web_locks.Delivery {
+        return .{ .ctx = self, .post = post, .deinit = deinitCtx };
+    }
+
+    fn post(_: *anyopaque, _: html.web_locks.Event) void {}
+
+    fn deinitCtx(_: *anyopaque) void {}
+};
+
+test "locks1: a lock granted to a cached page waits for its restore: its callback runs after pageshow, never in the cache" {
+    const fixture = try Fixture.start(.{});
+    defer fixture.stop();
+    const registry = try fixture.browser.scope.of(html.web_locks.Registry);
+    var holder: TestHolder = .{};
+    var environment: u8 = 0;
+    const client = try registry.register(&environment, &environment, "http://localhost", holder.delivery());
+    defer registry.unregister(client);
+    const id = try registry.request(client, "bfb-wait", .{});
+    const bc = try fixture.openPopupAt("http://localhost", "/wait.html");
+    const realm_a = activeRealm(bc).?;
+    try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
+    // Kept with its request still waiting.
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    // The page's request is granted while it is cached: its task waits.
+    registry.release(id);
+    try fixture.turn(50);
+    try testing.expectEqual(@as(usize, 1), fixture.cached());
+    try fixture.goTo(bc, "history.back()", "/wait.html");
+    try testing.expectEqual(realm_a, activeRealm(bc).?);
+    try waitFor(fixture, realm_a, "log.includes('granted')");
+    try expectIn(realm_a, "log.join()", "pageshow:false,pagehide:true,pageshow:true,granted");
 }

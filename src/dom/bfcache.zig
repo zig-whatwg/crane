@@ -110,8 +110,8 @@ pub fn blockingDetails(document: *runtime.Instance) []const Reason {
 //    in its browsing context group, whose document came from a GET of an
 //    HTTP(S) URL answered 200, with no child navigables, in a Browser whose
 //    cache keeps pages (the navigation code, with `cacheEnabled`);
-// 2. its features': each owner of a feature a kept page cannot keep - a
-//    held lock, a worker - says so (`installBlocker`), and the reason is
+// 2. its features': each owner of a feature a kept page cannot keep - an
+//    RTCPeerConnection - says so (`installBlocker`), and the reason is
 //    recorded with "make document unsalvageable" before pagehide fires, so
 //    pagehide reports persisted false and not restored reasons name it;
 // 3. the document's own: salvageable, and loaded (`mayKeep`).
@@ -342,6 +342,12 @@ pub const Cache = struct {
     /// `realm` - its own or a frame's, compared only (a key that names no
     /// kept page names nothing) - leaves the cache the same way.
     evict_realm: *const fn (scope: *runtime.BrowserScope, realm: *const anyopaque, reason: ?Reason) void = &noRealmEviction,
+    /// Any thread: the kept pages of the Browser whose scope is `scope` that
+    /// hold `realms` - each a page's own realm or one of its frames'
+    /// (compared only) - can never be restored from now on (`take` refuses
+    /// them). All or none: false, dooming nothing, when one of `realms` is
+    /// no kept page's - a page taken for a restore is not.
+    doom_realms: *const fn (scope: *runtime.BrowserScope, realms: []const *const anyopaque) bool = &noDoom,
     /// Every page `traversable` keeps is destroyed now (the traversable is
     /// closing; HTML "destroy a top-level traversable" destroys every entry's
     /// document). `realm` names the Browser: one of its realms.
@@ -441,15 +447,72 @@ pub fn evict(object: *const anyopaque, reason: ?Reason) void {
 
 /// Evict the page kept by the Browser of `scope` whose realm - or one of
 /// whose frames' realms - is `realm` (compared only: it may name a realm that
-/// has ended), recording `reason`: a worker that page owns holds what another
-/// page contends for (web_locks contention). On the Browser's window thread.
-/// Nothing when no kept page has that realm.
+/// has ended), recording `reason`: the page, or a worker it owns, holds what
+/// another context contends for (web_locks contention). On the Browser's
+/// window thread. Nothing when no kept page has that realm.
 pub fn evictRealm(scope: *runtime.BrowserScope, realm: *const anyopaque, reason: ?Reason) void {
     const impl = cache.get() orelse return;
     impl.evict_realm(scope, realm, reason);
 }
 
 fn noRealmEviction(_: *runtime.BrowserScope, _: *const anyopaque, _: ?Reason) void {}
+
+fn noDoom(_: *runtime.BrowserScope, _: []const *const anyopaque) bool {
+    return false;
+}
+
+/// Doom the kept pages holding `realms` (see Cache.doom_realms): another
+/// context contends for a Web Lock that the page - its document, or a worker
+/// it keeps suspended - holds, and the lock is about to break, so the page
+/// must never be shown again. Any thread; whether they were doomed (false
+/// with no cache installed). Their eviction is `queueRealmEvictions`'.
+pub fn doomRealms(scope: *runtime.BrowserScope, realms: []const *const anyopaque) bool {
+    const impl = cache.get() orelse return false;
+    return impl.doom_realms(scope, realms);
+}
+
+/// Evict the kept pages of the Browser of `scope` holding `realms`
+/// (`evictRealm`, `reason` recorded first) at a task posted through `sink`,
+/// a sink of that Browser's window loop - the pages `doomRealms` doomed. Any
+/// thread, any lock held but the sink's: it allocates and posts. `realms` is
+/// copied. Without memory for the task the doomed pages stay until the
+/// cache's own eviction of them (a traversal's `take`, their time to live).
+pub fn queueRealmEvictions(scope: *runtime.BrowserScope, sink: *runtime.TaskSink, realms: []const *const anyopaque, reason: Reason) void {
+    const task = RealmEvictions.create(scope, realms, reason) catch return;
+    // A closed sink - the loop, and the Browser with it, ending - drops it.
+    _ = sink.post(.{ .run = RealmEvictions.run, .drop = RealmEvictions.drop, .data = task });
+}
+
+/// `queueRealmEvictions`' task, on the Browser's window thread.
+const RealmEvictions = struct {
+    allocator: Allocator,
+    scope: *runtime.BrowserScope,
+    /// Compared only. Owned.
+    realms: []*const anyopaque,
+    reason: Reason,
+
+    fn create(scope: *runtime.BrowserScope, realms: []const *const anyopaque, reason: Reason) Allocator.Error!*RealmEvictions {
+        // The scope's allocator is thread-safe: made here, freed on the
+        // window thread.
+        const allocator = scope.allocator;
+        const self = try allocator.create(RealmEvictions);
+        errdefer allocator.destroy(self);
+        self.* = .{ .allocator = allocator, .scope = scope, .realms = try allocator.dupe(*const anyopaque, realms), .reason = reason };
+        return self;
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const self: *RealmEvictions = @ptrCast(@alignCast(data.?));
+        defer drop(self);
+        for (self.realms) |realm| evictRealm(self.scope, realm, self.reason);
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *RealmEvictions = @ptrCast(@alignCast(data.?));
+        self.allocator.free(self.realms);
+        self.allocator.destroy(self);
+    }
+};
 
 /// Evict every page `traversable` keeps, now. `realm` names the Browser.
 pub fn evictTraversable(realm: runtime.Context, traversable: *anyopaque) void {

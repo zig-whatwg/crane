@@ -2441,66 +2441,51 @@ pub fn linkOfScope(ctx: runtime.Context) ?*WorkerLink {
 /// Web Locks contention (web_locks.Delivery.contention, the registry's
 /// `contend`) for a lock the worker of `link` holds: when the worker is
 /// suspended - the pages that own it are in the back/forward cache - those
-/// pages are evicted, from a task of the Browser's window loop (the owner
-/// loop of the top of its owner chain; `LockContentionEviction`), and their
-/// end terminates the worker and with it its locks. Whether the worker was
-/// suspended. Any thread, with the lock registry's lock held: it takes only
-/// the worker registry's lock, briefly (no path takes the lock registry's
-/// lock while holding that one), and posts.
+/// pages are doomed (dom.bfcache.doomRealms: never restored again), and
+/// evicted from a task of the Browser's window loop (the owner loop of the
+/// top of its owner chain); their end terminates the worker and with it its
+/// locks. A dedicated root's owner page; a shared root's owner pages, all
+/// of them, unless one is fully active (Chrome's SharedWorkerHost::
+/// OnLockContention returns at the first active client, and evicts every
+/// cached one otherwise) - and the shared worker closes now, so no page
+/// connects to it again (`SharedWorkerManager.doomForLockContention`).
+/// Whether the pages were doomed: the registry then breaks the lock at once
+/// (Chrome's DedicatedWorkerHost and SharedWorkerHost::OnLockContention
+/// answer true once they evicted, and LockManager breaks the lock -
+/// Chromium c699bd7e6414). Any thread, with the lock registry's lock held:
+/// it takes the worker registry's, the shared worker manager's and the
+/// cache's locks, briefly, in that order (no path takes the lock registry's
+/// lock while holding one of them), and posts.
 pub fn evictForLockContention(registry: *WorkerRegistry, scope: *runtime.BrowserScope, link: *WorkerLink) bool {
     if (!link.isSuspended()) return false;
     const root = registry.ownerChainRoot(link);
+    defer root.release();
     const allocator = registry.allocator;
-    const task = allocator.create(LockContentionEviction) catch {
-        root.release();
-        return true;
-    };
-    task.* = .{ .allocator = allocator, .scope = scope, .root = root };
+    if (scope.existing(SharedWorkerManager)) |manager| {
+        switch (manager.doomForLockContention(root, allocator, scope, doomPages)) {
+            .not_shared => {},
+            .kept => return false,
+            .doomed => |realms| {
+                defer allocator.free(realms);
+                // Closing: its loop, parked while suspended, wakes to end.
+                _ = root.terminate();
+                @import("dom").bfcache.queueRealmEvictions(scope, root.owner_sink, realms, .weblocks_contention);
+                return true;
+            },
+        }
+    }
+    const realm = root.owner_realm orelse return false;
+    const realms = [_]*const anyopaque{realm};
+    if (!@import("dom").bfcache.doomRealms(scope, &realms)) return false;
     // A closed sink - its loop has ended, the Browser with it - drops it.
-    _ = root.owner_sink.post(.{ .run = LockContentionEviction.run, .drop = LockContentionEviction.drop, .data = task });
+    @import("dom").bfcache.queueRealmEvictions(scope, root.owner_sink, &realms, .weblocks_contention);
     return true;
 }
 
-/// The eviction a lock contention asked for, on the Browser's window thread:
-/// the cached pages that keep the suspended worker `root` - the top of the
-/// lock holder's owner chain - suspended. A dedicated root's owner page; a
-/// shared root's owner pages, all of them, unless one is fully active again
-/// (Chrome's SharedWorkerHost::OnLockContention returns at the first active
-/// client, and evicts every cached one otherwise). Nothing when `root` is
-/// not suspended any more: its page was restored meanwhile.
-const LockContentionEviction = struct {
-    allocator: Allocator,
-    scope: *runtime.BrowserScope,
-    /// A reference.
-    root: *WorkerLink,
-
-    fn run(data: ?*anyopaque) void {
-        const self: *LockContentionEviction = @ptrCast(@alignCast(data.?));
-        defer drop(self);
-        const root = self.root;
-        if (!root.isSuspended()) return;
-        const reason: @import("dom").bfcache.Reason = .weblocks_contention;
-        if (self.scope.existing(SharedWorkerManager)) |manager| {
-            var owners: std.ArrayListUnmanaged(*const anyopaque) = .empty;
-            defer owners.deinit(self.allocator);
-            const shared = manager.ownersOf(root, &owners, self.allocator) catch return;
-            if (shared) {
-                if (manager.hasActiveOwnerOf(root)) return;
-                for (owners.items) |realm| @import("dom").bfcache.evictRealm(self.scope, realm, reason);
-                return;
-            }
-        }
-        const realm = root.owner_realm orelse return;
-        @import("dom").bfcache.evictRealm(self.scope, realm, reason);
-    }
-
-    fn drop(data: ?*anyopaque) void {
-        const self: *LockContentionEviction = @ptrCast(@alignCast(data.?));
-        const root = self.root;
-        self.allocator.destroy(self);
-        root.release();
-    }
-};
+fn doomPages(context: *anyopaque, realms: []const *const anyopaque) bool {
+    const scope: *runtime.BrowserScope = @ptrCast(@alignCast(context));
+    return @import("dom").bfcache.doomRealms(scope, realms);
+}
 
 /// A shared worker in extended lifetime whose owners are all cached: its
 /// suspension waits for the extended lifetime shared worker timeout, on its

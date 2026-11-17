@@ -32,7 +32,7 @@ pub const Route = struct {
     held: bool = false,
 };
 
-pub const max_routes = 16;
+pub const max_routes = 32;
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
