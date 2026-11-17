@@ -493,11 +493,15 @@ fn isListed(name: []const u8) bool {
 /// three, silently. (A listed adapter without its directory or its build
 /// file cannot happen: the list imports the file.) The pattern of the root
 /// build.zig's check that every test directory is a suite.
+///
+/// What it reads - the directory's entries, by name and kind - is a tracked
+/// input of Zig's configure cache (`dependOnDirectoryContents` records
+/// exactly those), so a new directory there configures again and fails here,
+/// and an unchanged one leaves the cached configuration in use (lane cfg1).
 fn checkListIsComplete(b: *std.Build) void {
-    // A configure-time read of the checkout the configure cache cannot track.
-    b.graph.poisonCache();
     const io = b.graph.io;
     const engines_path = "src/runtime/engines";
+    b.dependOnDirectoryContents(b.path(engines_path));
     var engines = b.root.root_dir.handle.openDir(io, engines_path, .{ .iterate = true }) catch |err|
         std.debug.panic("the engine build protocol cannot open {s} to check its list of adapters: {t}", .{ engines_path, err });
     defer engines.close(io);
