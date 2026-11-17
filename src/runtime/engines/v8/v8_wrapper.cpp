@@ -10845,7 +10845,26 @@ Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Gl
     if (constructor_name) {
         Local<String> name;
         Local<Value> constructor;
-        if (String::NewFromUtf8(isolate, constructor_name, NewStringType::kInternalized).ToLocal(&name) &&
+        // The name is made exactly as main makes it (v8_GetGlobalPrototype):
+        // String::NewFromUtf8's default, a fresh string for every wrap.
+        //
+        // An INTERNALIZED name (NewStringType::kInternalized) is the right
+        // code - nothing allocated after an interface's first wrap - and it
+        // is HELD BACK, not rejected. Young collections are paced by the JS
+        // bytes a page allocates, and a wrapper's host side is 6-10 times its
+        // JS size. Measured with the internalized name (lane vm1, 2026-11-17,
+        // chat.local, three consoles, 9 launches a side, memory pass): a
+        // wrap allocates 34 B less in the young generation (67 -> 33 B a
+        // div), V8 runs half the young collections (65 -> 32 for 2,000,000
+        // divs), and the host memory of wrappers that are already dead
+        // stands twice as high between two of them - dom.create-element
+        // holds 38.9 -> 43.2 MB after a full collection (+11%), page.streams
+        // +10%, load.docs +11%, at instructions 0.926.
+        //
+        // The cause to fix is the pacing, not this string: host bytes must
+        // count toward young collections (queued by the integrator with
+        // these numbers). When that lands, internalize the name.
+        if (String::NewFromUtf8(isolate, constructor_name).ToLocal(&name) &&
             ctx->Global()->Get(ctx, name).ToLocal(&constructor) && constructor->IsFunction()) {
             found = constructor.As<Function>()->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
                 prototype->IsObject();
