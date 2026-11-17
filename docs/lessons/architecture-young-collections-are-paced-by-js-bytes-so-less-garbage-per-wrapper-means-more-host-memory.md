@@ -1,6 +1,7 @@
 # Architecture: Young collections are paced by JS bytes, so less JS garbage per wrapper means more host memory held
 
 **Date**: 2026-11-17
+**Status** (2026-11-17, lane gcp1): Fix step 3's "the cause to fix is the pacing" has no fix in V8 15.7 - no API counts host bytes toward young collections, and Blink never needed one (architecture-blink-frees-no-host-memory-in-a-scavenge-only-jsc-paces-young-collections-by-host-bytes.md). The user accepted the memory the same day; the wrap now makes no name at all (WebIDL 2.1: the realm's prototype from V8's per-context template instantiation), and a V8 feature request is drafted.
 **Lesson**: A change that allocates fewer young-generation bytes per wrapper makes V8 run fewer young collections, and the host memory of wrappers that are already dead then stands higher between them; a wrap-path change that "only saves an allocation" needs the memory pass of a cost pair before it is called a saving.
 
 **Why**: A wrapper's JS object is small (tens of bytes) and its host side - the node or instance, the cache record, the handle - is 6-10 times larger. V8 starts a young collection when the young generation fills with JS bytes; nothing of the host side counts toward that. The number of dead wrappers waiting for the next young collection is therefore `young space / JS bytes per wrapper`, and every structure sized by a peak (handle blocks, slab pages, malloc's dirty pages) keeps that peak after the collection.

@@ -366,6 +366,12 @@ pub fn registerAllTemplatesOnly(
     const template_registry = @import("template_registry.zig");
     const iface_decls = zig017DeclsOf(@typeInfo(interfaces).@"struct".decl_names);
 
+    // [interface_prototypes] A wrap in a lazy realm builds its interface's
+    // interface object first (context_manager.InterfaceObjects).
+    if (objects == .lazy_follows) {
+        if (@import("context_manager.zig").getEntry(context)) |entry| entry.interface_objects.lazy = true;
+    }
+
     // Get global object for reinstalling constructors
     const global = v8.v8_Context_Global(context) orelse return;
     defer v8.v8_Object_Dispose(global);
