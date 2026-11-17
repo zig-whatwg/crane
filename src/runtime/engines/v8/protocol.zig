@@ -1234,7 +1234,8 @@ pub fn diagnosticCounters(allocator: Allocator) Error![]engine.Counter {
         .{ .name = "cpp_atomic_compact_us_max", .value = anchors.cpp_compact_us_max },
         .{ .name = "cpp_atomic_sweep_us_max", .value = anchors.cpp_sweep_us_max },
         .{ .name = "globals_created", .value = ffi.v8_Debug_CreatedGlobals() },
-        // v8_wrapper.cpp's g_obj_src slots, in its order.
+        // v8_wrapper.cpp's g_obj_src slots, in its order. Nothing counts 3 and 4
+        // since their functions went (lane gcp1: a wrap looks no prototype up).
         .{ .name = "object_globals_from.FunctionCallbackInfo_This", .value = ffi.v8_Debug_ObjSrc(0) },
         .{ .name = "object_globals_from.PropertyCallbackInfo_Holder", .value = ffi.v8_Debug_ObjSrc(1) },
         .{ .name = "object_globals_from.Context_Global", .value = ffi.v8_Debug_ObjSrc(2) },
