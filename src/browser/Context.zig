@@ -2091,6 +2091,13 @@ pub const Context = struct {
         // cleanup steps other specifications define run for it (its frames'
         // run as their realms end, clearWindowState).
         if (self.realm) |realm| {
+            // HTML "destroy a top-level traversable" step 2 -> "destroy a
+            // document" step 2, "abort a document": the fetches the page's
+            // script started are discarded, firing nothing - an img's update
+            // of the image data lets go of its element. Since refcount step
+            // 7b nothing else would: a realm's end frees no node whatever its
+            // counts (the Browser's end aborts again: no-op).
+            dom_mod.document_fetches.abortAll(realm);
             dom_mod.unloading_cleanup.run(realm);
             engine.destroyWindowRealm(realm, .global_detached);
             self.realm = null;
