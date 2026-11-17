@@ -27,8 +27,9 @@
 //! 1. LEVELS OF BOTH SIDES TOGETHER (`Joint`). The two sides run the same
 //!    page on the same host in alternation, so a level belongs to the page:
 //!    it is looked for in the launches of both sides at once, and each
-//!    launch is then put on the low or the high one. report.zig's own
-//!    levels (`levelsOf`, lane mem1) need two tight groups on ONE side, so
+//!    launch is then put on the low or the high one (`jointLevels`).
+//!    report.zig's own levels (`levelsOf`, lane mem1) need two tight groups
+//!    on ONE side, so
 //!    they miss a side with 8 launches low and 1 high, any pass of 3
 //!    launches, and two sides that each sit on one level. Per level both
 //!    sides reached, the tip's median over the base's; and each side's
@@ -141,12 +142,52 @@ fn nearerLow(low: u64, high: u64, v: u64) bool {
     return @abs(@log(f64Of(v) / f64Of(low))) <= @abs(@log(f64Of(v) / f64Of(high)));
 }
 
+/// Two groups of both sides' launches are two levels when each is closer
+/// together than half the gap between them: its own range at most the gap
+/// over this. report.zig asks a quarter of one side's launches
+/// (`level_tightness`); two sides together double the launches a group
+/// holds and add the difference between two builds on one level, and a
+/// level found here is evidence beside the rule, never the rule (lane
+/// impls8's cost window: events.dispatch read 35.3-35.7 and 36.6-37.3 MB on
+/// both sides, 1.1 MB apart, and 1.035 by the medians).
+pub const joint_tightness = 2;
+
+/// The two levels of both sides' launches, `all`: report.zig's test
+/// (`levelsOf`: split at the widest gap between neighbours; the gap at
+/// least `level_gap` of the lower group's median; `level_min_runs` in each
+/// group) with `joint_tightness` for how tight a group must be.
+fn jointLevels(gpa: Allocator, all: []const u64) Allocator.Error!?report.Levels {
+    if (all.len < 2 * report.level_min_runs) return null;
+    const sorted = try gpa.dupe(u64, all);
+    defer gpa.free(sorted);
+    std.mem.sort(u64, sorted, {}, std.sort.asc(u64));
+    if (sorted[0] == 0) return null;
+    var split: usize = 1;
+    for (1..sorted.len) |i| {
+        if (sorted[i] - sorted[i - 1] > sorted[split] - sorted[split - 1]) split = i;
+    }
+    const low = sorted[0..split];
+    const high = sorted[split..];
+    if (low.len < report.level_min_runs or high.len < report.level_min_runs) return null;
+    const gap = high[0] - low[low.len - 1];
+    const low_level = (try stats.medianU64(gpa, low)).?;
+    if (f64Of(gap) < report.level_gap * f64Of(low_level)) return null;
+    const widest = @max(low[low.len - 1] - low[0], high[high.len - 1] - high[0]);
+    if (widest * joint_tightness > gap) return null;
+    return .{
+        .low = low_level,
+        .low_runs = @intCast(low.len),
+        .high = (try stats.medianU64(gpa, high)).?,
+        .high_runs = @intCast(high.len),
+    };
+}
+
 /// Both sides' launches of one row, read together; null when a side has
 /// none, or a median is zero.
 ///
-/// The levels are report.zig's (`levelsOf`: two tight groups at least 3%
-/// apart, two launches or more in each), looked for in the launches of both
-/// sides at once.
+/// The levels are looked for in the launches of both sides at once
+/// (`jointLevels`: two groups at least 3% apart, two launches or more in
+/// each, each closer together than half the gap).
 pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Error!?Joint {
     const tip_median = (try stats.medianU64(gpa, tip)) orelse return null;
     const base_median = (try stats.medianU64(gpa, base)) orelse return null;
@@ -156,7 +197,7 @@ pub fn joint(gpa: Allocator, tip: []const u64, base: []const u64) Allocator.Erro
     defer gpa.free(all);
     @memcpy(all[0..tip.len], tip);
     @memcpy(all[tip.len..], base);
-    const found = (try report.levelsOf(gpa, all)) orelse return out;
+    const found = (try jointLevels(gpa, all)) orelse return out;
     var levels: Joint.Levels = .{ .low = found.low, .high = found.high, .tip_low = 0, .tip_high = 0, .base_low = 0, .base_high = 0, .share_chance = 1 };
     const sides = [_][]const u64{ tip, base };
     var medians: [2][2]?u64 = @splat(@splat(null));
@@ -715,6 +756,31 @@ test "levels of both sides together: a pass of three launches a side, sides that
     try testing.expectApproxEqAbs(@as(f64, 1.0), j4.plain, 0.001);
     // A side with no launch reads nothing.
     try testing.expectEqual(@as(?Joint, null), try joint(a, &.{}, &b4));
+}
+
+test "levels of both sides together: groups wider than a quarter of the gap, as two builds on one level are" {
+    const a = testing.allocator;
+    // Lane impls8's cost window, events.dispatch on the default pass: both
+    // sides read about 35.4 and about 36.9 MB, the groups 0.4 and 0.7 MB
+    // wide and 0.9 MB apart; the medians read 1.035.
+    const mb10 = mib / 10;
+    const tip = [_]u64{ 354 * mb10, 355 * mb10, 357 * mb10, 368 * mb10, 368 * mb10, 372 * mb10, 373 * mb10 };
+    const base = [_]u64{ 353 * mb10, 354 * mb10, 354 * mb10, 355 * mb10, 368 * mb10, 368 * mb10, 369 * mb10 };
+    const j = (try joint(a, &tip, &base)).?;
+    try testing.expect(j.plain > 1.03);
+    const l = j.levels.?;
+    try testing.expectEqual(@as(u32, 3), l.tip_low);
+    try testing.expectEqual(@as(u32, 4), l.tip_high);
+    try testing.expectEqual(@as(u32, 4), l.base_low);
+    try testing.expectEqual(@as(u32, 3), l.base_high);
+    try testing.expect(l.low_ratio.? < 1.01 and l.high_ratio.? < 1.01);
+    try testing.expect(!l.tipHigherShare());
+    // A spread with no gap that wide is one level: 81-83 MB and five
+    // launches from 92 to 97 (the streams page's collected figure, lane
+    // tl2's demonstration) - the upper group is wider than half the gap.
+    const spread = [_]u64{ 817 * mb10, 819 * mb10, 820 * mb10, 821 * mb10, 824 * mb10, 825 * mb10, 923 * mb10, 964 * mb10 };
+    const spread_base = [_]u64{ 817 * mb10, 818 * mb10, 820 * mb10, 822 * mb10, 822 * mb10, 917 * mb10, 967 * mb10, 972 * mb10 };
+    try testing.expectEqual(@as(?Joint.Levels, null), (try joint(a, &spread, &spread_base)).?.levels);
 }
 
 test "Fisher's exact test, two-sided: the chance of shares this far apart from one coin" {

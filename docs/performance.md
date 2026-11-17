@@ -486,8 +486,9 @@ bytes on each.
 
 - **The levels of both sides together.** The two sides run the same page on the same host in
   alternation, so a level belongs to the page. `cost` looks for two levels in the launches of both
-  sides at once (the report's own test: two tight groups at least 3% apart, two launches or more
-  in each), puts each launch on the low or the high one, and prints the tip over the base **per
+  sides at once (two groups at least 3% apart, two launches or more in each, each closer together
+  than half the gap between them), puts each launch on the low or the high one, and prints the tip
+  over the base **per
   level both sides reached**, each side's count on each level, and the chance of shares that far
   apart from one coin (Fisher's exact test, two-sided). A side with 8 launches low and 1 high, a
   pass of 3 launches, and a side that sits on one level are all read this way; the report's own
@@ -506,10 +507,27 @@ bytes on each.
   are not read. No published round is run with `--collected`: without `collect=1` in its URL the
   harness does what it always did.
 
-The demonstration (chat.local, 2026-11-17, one console as both sides - a pair whose true ratio is
-1.000 on every row) is in the lane's merge report; whether the bar is JUDGED on the per-level
-ratios or on the collected figure is the user's ruling to make, and until then the rule above is
-the verdict and the rest is evidence beside it.
+**What the figures are worth, measured** (chat.local, 2026-11-17, main 4aa01442561: ONE console
+as both sides of the pair, so every row's true ratio is 1.000; the attributes and streams pages,
+9 launches a side, the ring off):
+
+- the steady figure of a plain memory pass read 1.000 to 1.016 over the 15 rows: the five rows
+  after `streams.reader` read 265-267, 270-272 or 276-281 MB by launch, one side had more launches
+  on the middle group, and its medians read 1.015 to 1.017 for no difference at all; three
+  attributes rows read 55.6 or 61.5 MB (4 launches and 5 on each side) and their medians 1.010;
+- the collected figure read 0.998 to 1.002 over the same 15 rows. On the attributes page it is one
+  level (42.5-43.0 MB in all 18 launches). On the streams page it is 81.2-82.7 MB in 13 launches of
+  18 and 92-97 MB in the other 5 (2 of one side, 3 of the other), the same launches on every row
+  after `streams.reader`: a collection frees the garbage, not the pages the heap's largest size
+  left in the allocator, which macOS does not take back. So the collected figure is not one level
+  everywhere; its median holds while fewer than half the launches are in that tail;
+- a real pair read by the command (lane impls8's cost window, 7 launches a side): the attributes
+  rows 1.116 by the rule on the ring-off pass; levels of both sides together 55.5 and 62.8 MB, the
+  tip 3 low and 4 high, the base 5 low and 2 high (the chance of those shares from one coin 0.59),
+  level against level 1.004 and 0.995.
+
+Whether the bar is JUDGED on the per-level ratios or on the collected figure is the user's ruling
+to make; until then the rule above is the verdict and the rest is evidence beside it.
 
 ## perf_bench on Linux
 
