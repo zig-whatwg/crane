@@ -164,6 +164,11 @@ fn ticksPerSecond() u64 {
     return if (t > 0) @intCast(t) else 100;
 }
 
+/// A /proc path, NUL-terminated, in `buf`; null when it does not fit.
+fn pathZ(buf: []u8, comptime fmt: []const u8, args: anytype) ?[:0]u8 {
+    return std.fmt.bufPrintSentinel(buf, fmt, args, 0) catch null;
+}
+
 /// A small /proc file, whole, into `buf`; null when it cannot be opened or
 /// read (the process ended).
 fn readFile(path: [*:0]const u8, buf: []u8) ?[]u8 {
@@ -210,11 +215,11 @@ pub fn absoluteNow() u64 {
 pub fn usageOf(pid: i32) ?Usage {
     var path_buf: [64]u8 = undefined;
     var stat_buf: [1024]u8 = undefined;
-    const stat_path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/stat", .{pid}) catch return null;
+    const stat_path = pathZ(&path_buf, "/proc/{d}/stat", .{pid}) orelse return null;
     const stat = parseStat(readFile(stat_path, &stat_buf) orelse return null) orelse return null;
     // A process that ended between the two reads has its CPU and no memory.
     var status_buf: [4096]u8 = undefined;
-    const status_path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/status", .{pid}) catch return null;
+    const status_path = pathZ(&path_buf, "/proc/{d}/status", .{pid}) orelse return null;
     const status: Status = if (readFile(status_path, &status_buf)) |text| parseStatus(text) else .{};
     const per_second = ticksPerSecond();
     return .{
@@ -257,7 +262,7 @@ const Tasks = struct {
         const tid = pidOfName(name) orelse return;
         var path_buf: [96]u8 = undefined;
         var buf: [4096]u8 = undefined;
-        const path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/task/{d}/children", .{ self.pid, tid }) catch return;
+        const path = pathZ(&path_buf, "/proc/{d}/task/{d}/children", .{ self.pid, tid }) orelse return;
         const text = readFile(path, &buf) orelse return;
         self.read_any = true;
         self.n = parseChildren(text, self.out, self.n);
@@ -268,7 +273,7 @@ const Tasks = struct {
 /// of the THREAD that made it, so every thread's list is read.
 pub fn children(pid: i32, out: []i32) usize {
     var path_buf: [64]u8 = undefined;
-    const tasks_path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/task", .{pid}) catch return 0;
+    const tasks_path = pathZ(&path_buf, "/proc/{d}/task", .{pid}) orelse return 0;
     var tasks: Tasks = .{ .pid = pid, .out = out };
     if (!eachEntry(tasks_path, &tasks, Tasks.add)) return 0;
     if (tasks.read_any) return tasks.n;
@@ -280,7 +285,7 @@ pub fn children(pid: i32, out: []i32) usize {
     for (all[0..count]) |p| {
         if (n >= out.len) break;
         var stat_buf: [1024]u8 = undefined;
-        const stat_path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/stat", .{p}) catch continue;
+        const stat_path = pathZ(&path_buf, "/proc/{d}/stat", .{p}) orelse continue;
         const stat = parseStat(readFile(stat_path, &stat_buf) orelse continue) orelse continue;
         if (stat.ppid != pid) continue;
         out[n] = p;
@@ -293,7 +298,7 @@ pub fn children(pid: i32, out: []i32) usize {
 /// kernel's 15 characters.
 pub fn nameOf(pid: i32, buf: []u8) error{NoSuchProcess}![]const u8 {
     var path_buf: [64]u8 = undefined;
-    const path = std.fmt.bufPrintZ(&path_buf, "/proc/{d}/comm", .{pid}) catch return error.NoSuchProcess;
+    const path = pathZ(&path_buf, "/proc/{d}/comm", .{pid}) orelse return error.NoSuchProcess;
     const text = readFile(path, buf) orelse return error.NoSuchProcess;
     const name = std.mem.trimEnd(u8, text, "\n");
     if (name.len == 0) return error.NoSuchProcess;
