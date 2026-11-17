@@ -10734,16 +10734,27 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
 /// One HandleScope; the one Global made is the wrapper's, which the caller
 /// owns. nullptr when the instance cannot be made.
 ///
-/// A wrap now allocates nothing on the young generation but the wrapper: the
-/// name string main made (about 34 B a wrap) was a clock that paced young
-/// collections, and without it the host memory of dead wrappers stands
-/// higher between them (lane vm1, 2026-11-17: dom.create-element +11%
-/// collected). That memory is accepted by the user's ruling of 2026-11-17,
-/// relayed by the integrator ("Accept memory + file V8 request"): V8 15.7 gives an embedder no way to count
-/// host bytes toward young collections (heap.cc Heap::UpdateExternalMemory
-/// paces full ones only; young ArrayBuffer bytes alone count, inside V8,
-/// Heap::AllocateExternalBackingStore), which tmp/plans/
-/// v8-feature-request-young-external-bytes.md asks V8 for.
+/// What the lookup's garbage did, and what its absence costs. A wrap now
+/// leaves nothing young but the wrapper; the lookup made two strings a wrap
+/// (the name and the "prototype" key: NewFromUtf8Literal's kNormal makes a
+/// fresh one each call - read from the API, the split of the bytes not
+/// measured), and that garbage was the clock that paced young collections in
+/// a wrap-heavy loop. MEASURED (lane gcp1, 2026-11-17, chat.local, the cost
+/// window's own production gc_bench, 2,000,000 document.createElement('div')
+/// made and dropped in one script): young collections 65 -> 1, full
+/// collections 7 -> 20, V8's global handle table grew 0.54 -> 1.83-1.89 MB.
+/// Dead wrappers now wait for a full collection, paced by the DOM's host
+/// memory against V8's global limit - Blink's model for its Oilpan objects -
+/// instead of a scavenge every ~31,000 divs. The cost window (9 ring-off
+/// launches a side, --collected): wrap-and-drop rows hold +8% to +23%
+/// (dom.create-element steady 1.234, collected 1.188; timers.message-channel
+/// 1.175, collected 1.208), at dom.create-element time 0.715 and
+/// instructions 0.806. Accepted by the user's ruling of 2026-11-17, relayed
+/// by the integrator, scoped to that window's rows. V8 15.7 gives an
+/// embedder no way to count host bytes toward young collections
+/// (heap.cc Heap::UpdateExternalMemory paces full ones only; young
+/// ArrayBuffer bytes alone count, inside V8, Heap::AllocateExternalBackingStore),
+/// which tmp/plans/v8-feature-request-young-external-bytes.md asks V8 for.
 Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context) {
     // The wrapper's Global is this entry point's now: gc_bench's "wrappers
     // made per cycle" reads this count.
