@@ -1,0 +1,12 @@
+# Workflow: A configure-time read that another call's poison covered goes stale when the poison goes
+
+**Date**: 2026-11-17
+**Lesson**: Before removing the last `b.graph.poisonCache()` from a Zig 0.17 build, find every read the configure makes of the checkout - not only the reads next to the poison calls - because a read nothing declared was only ever fresh because some other call poisoned every configure.
+
+**Why**: Zig 0.17 caches build.zig's configuration, keyed by build.zig and what it imports, the command line and the paths the configure declared it read (`b.dependOnFileContents`, `b.dependOnDirectoryContents`). One poisoning call anywhere makes every configure run afresh, which hides every undeclared read in the file. Remove the poison and each such read freezes at whatever the cached configuration saw. A directory dependency is its entries' names and kinds and is NOT recursive; a missing path cannot be a dependency at all (Zig fails the build on it).
+
+**What Happened**: Lane cfg1 replaced the six poisoning calls (build.zig's checkEveryTestDirectoryIsASuite, the one-binary claim check, -Dverify-base's git diff, -Dsystem-curl's curl-config, the iOS SDK's xcrun; the engine protocol's checkListIsComplete). A survey of every `openDir`/`readFile`/`walk` in build.zig found `addTestFilesFromDir` walking every tests/<dir>/ at configure time to write its `.all_tests.zig`, with nothing declared - the poisons alone kept it fresh. Without tracking it, a new `*_test.zig` file in an existing suite would have been compiled by nothing until build.zig itself changed. The configure went from 1.15 s every time (server1) to 1.15 s once and 0.03 s after.
+
+**Fix**: List every configure-time read first (grep for `openDir`, `readFileAlloc`, `walk(`, `statFile`, `access(`, `runAllowFail`, `environ_map`), then declare each: every directory a walk lists (`dependOnDirectoryContents`, one per level), every file read or written (`dependOnFileContents`; a generated root too, so a deleted one is written again), and a missing path as the listing of its nearest existing directory, which the path's arrival changes (build.zig `ConfigureInputs`). A program's answer cannot be declared: ask it at make time (tools/build_probe.zig). Then hold it: `zig build check-configure-cache` configures each gate's flag set with `--cache-poison=disallowed`.
+
+**Takeaway**: **A poison hides every undeclared read in the file; before the last one goes, find and declare them all - each directory a walk lists, each file, and each absence through its parent's listing.**

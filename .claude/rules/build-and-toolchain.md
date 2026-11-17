@@ -51,10 +51,31 @@ picks the toolchain from it. Switch to 0.17.1 when it ships.
 - **`zig build` takes no `--global-cache-dir`.** The global cache is set only
   through `ZIG_GLOBAL_CACHE_DIR` (the pool's shim exports `~/.cache/zig-017`, a
   cache 0.16 never shared); `--cache-dir` works as before.
-- **The configuration is cached.** `build.zig` runs in a configure process
-  whose result Zig 0.17 caches: anything it reads from the machine at configure
-  time (a file probe, `xcrun`, `curl-config`) must call
-  `b.graph.poisonCache()`, or a changed machine reuses a stale configuration.
+- **The configuration is cached, and stays cacheable** (lane cfg1, 2026-11-17).
+  `build.zig` runs in a configure process whose result Zig 0.17 caches, keyed
+  by build.zig and what it imports, the command line, and the paths the
+  configure declared it read: cached it takes 0.03 s on Linux and 0.085 s on
+  macOS, redone 1.1 s and 1.6 s. So nothing it reads goes undeclared:
+  - **a read of the checkout is a tracked input** - `b.dependOnFileContents`
+    for a file, `b.dependOnDirectoryContents` for a listing (its entries'
+    names and kinds, NOT recursive: a walk declares every directory it lists;
+    build.zig's `ConfigureInputs`). A missing path cannot be one (Zig fails
+    the build on it): declare the listing of its nearest existing directory,
+    which the path's arrival changes;
+  - **a program's answer** (`xcrun`, `curl-config`, `git`) **is asked at make
+    time** by a Run step of tools/build_probe.zig, and handed on as a path or
+    a sub-build's command line - never asked by the configure;
+  - **no Run step sets an environment variable**: `Run.setEnvironmentVariable`
+    copies the whole configure-time environment into the configuration, and
+    the cache does not key on the environment, so a cached configuration
+    replays an old one. Pass the variable as an argument (the test
+    launcher's `--child-env=NAME=VALUE`; for a program run directly,
+    `env NAME=VALUE <program>` - the engine build protocol's `startupRun`);
+  - `b.graph.poisonCache()` only for a file that is there and cannot be
+    read (the V8 adapter's `readTracked`). `zig build check-configure-cache`
+    (part of `zig build test`) configures every gate's flag set with
+    `--cache-poison=disallowed` and fails on a poisoning call or an
+    environment copy.
 - **The macOS SDK is the default one.** Zig 0.17's libc++ builds against the
   macOS 27 SDK, so the 0.16 workaround that built against a 26.x SDK through a
   libc file (`useBuildableMacosSdk`, the `INFINITY` break) is gone. Do not put
