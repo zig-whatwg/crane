@@ -87,6 +87,14 @@ pub const BackForwardCache = struct {
     /// Evictions queued as tasks and not yet run: Browser.deinit and the
     /// opener page's end run them first.
     queued: std.ArrayListUnmanaged(*EvictionTask) = .empty,
+    /// Protects the `entries` list - its length, its buffer and its items'
+    /// places - and each entry's `doomed`. The window thread changes the
+    /// list only under it, and reads it without; `doomRealms`, from any
+    /// thread (a Web Lock contention), reads it under it. So a page is
+    /// either doomed before a traversal takes it, and the take refuses it,
+    /// or taken first, and the doom finds no page. A leaf lock: nothing is
+    /// called while it is held.
+    mutex: std.Io.Mutex = .init,
 
     const Entry = struct {
         page: KeptPage,
@@ -96,6 +104,10 @@ pub const BackForwardCache = struct {
         /// still read as cached, inactive, until then - but cannot be
         /// restored, and does not count toward `size`.
         evicting: bool = false,
+        /// Another context contends for a Web Lock the page holds, and the
+        /// lock was broken (`doomRealms`): it is never restored, and its
+        /// eviction is on its way. Under `mutex`.
+        doomed: bool = false,
     };
 
     /// A new, empty cache (BrowserScope.of): it keeps nothing until
@@ -111,6 +123,14 @@ pub const BackForwardCache = struct {
         std.debug.assert(self.queued.items.len == 0);
         self.entries.deinit(self.allocator);
         self.queued.deinit(self.allocator);
+    }
+
+    fn lockList(self: *BackForwardCache) void {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+    }
+
+    fn unlockList(self: *BackForwardCache) void {
+        std.Io.Threaded.mutexUnlock(&self.mutex);
     }
 
     /// The Browser's configuration (Browser.init).
@@ -145,7 +165,11 @@ pub const BackForwardCache = struct {
     pub fn store(self: *BackForwardCache, page: KeptPage) bool {
         const loop = self.loop orelse return false;
         if (self.size == 0) return false;
-        self.entries.ensureUnusedCapacity(self.allocator, 1) catch return false;
+        {
+            self.lockList();
+            defer self.unlockList();
+            self.entries.ensureUnusedCapacity(self.allocator, 1) catch return false;
+        }
         // Its tasks wait in a group of their own; its timers stop. So do each
         // of its frames' (phase C): a frame's document stays its navigable's
         // active one, so only the cache knows it is not shown.
@@ -163,7 +187,11 @@ pub const BackForwardCache = struct {
         for (page.frames) |frame| {
             if (frame.realm.hasEngine()) dom.window_documents.suspendTimers(frame.realm);
         }
-        self.entries.appendAssumeCapacity(.{ .page = page, .stored_at_ms = platform.monotonicMillis() });
+        {
+            self.lockList();
+            defer self.unlockList();
+            self.entries.appendAssumeCapacity(.{ .page = page, .stored_at_ms = platform.monotonicMillis() });
+        }
         // Oldest first: the ones beyond the size go.
         var over = self.keptCount() -| self.size;
         for (self.entries.items) |*entry| {
@@ -178,22 +206,62 @@ pub const BackForwardCache = struct {
 
     /// Take the page of `traversable` showing `document` out of the cache
     /// for a restore: its tasks and timers stay suspended until the restore
-    /// resumes them (`resumePage`). Null for a page it does not hold, or one
-    /// leaving it.
+    /// resumes them (`resumePage`). Null for a page it does not hold, one
+    /// leaving it, or one doomed (`doomRealms`) - whose eviction is queued
+    /// here if it is not yet. Chrome likewise never restores a page it
+    /// evicted for lock contention: a traversal to it loads it again.
     pub fn take(self: *BackForwardCache, traversable: *anyopaque, document: *const anyopaque) ?KeptPage {
+        const index = self.indexOfPage(traversable, document) orelse return null;
+        const entry = &self.entries.items[index];
+        if (entry.evicting) return null;
+        // A page whose realm ended with its opener's is no page.
+        if (!entry.page.realm.hasEngine()) return null;
+        if (runtime.SlabAllocator.generationOf(entry.page.document) != entry.page.document_generation) return null;
+        // ... and the Window the restore makes its navigable's active one
+        // again (lane winslot1, kind 8).
+        if (runtime.SlabAllocator.generationOf(entry.page.window) != entry.page.window_generation) return null;
+        // Doomed, or taken: decided under the lock `doomRealms` takes.
+        const page = blk: {
+            self.lockList();
+            defer self.unlockList();
+            if (entry.doomed) break :blk null;
+            break :blk self.entries.orderedRemove(index).page;
+        } orelse {
+            // Its lock was broken: it leaves, if its eviction is not queued
+            // yet (the doom's own task may not have run).
+            self.queueEviction(entry);
+            return null;
+        };
+        self.armTtl();
+        return page;
+    }
+
+    fn indexOfPage(self: *const BackForwardCache, traversable: *anyopaque, document: *const anyopaque) ?usize {
         for (self.entries.items, 0..) |entry, index| {
             if (entry.page.traversable != traversable) continue;
             if (@as(*const anyopaque, @ptrCast(entry.page.document)) != document) continue;
-            if (entry.evicting) return null;
-            // A page whose realm ended with its opener's is no page.
-            if (!entry.page.realm.hasEngine()) return null;
-            if (runtime.SlabAllocator.generationOf(entry.page.document) != entry.page.document_generation) return null;
-            // ... and the Window the restore makes its navigable's active one
-            // again (lane winslot1, kind 8).
-            if (runtime.SlabAllocator.generationOf(entry.page.window) != entry.page.window_generation) return null;
-            _ = self.entries.orderedRemove(index);
-            self.armTtl();
-            return entry.page;
+            return index;
+        }
+        return null;
+    }
+
+    /// Doom the pages holding `realms` (dom.bfcache.Cache.doom_realms): all
+    /// of them, or none when one of `realms` is no page's here. Any thread.
+    /// A page leaving already (`evicting`) is doomed too: it is never
+    /// restored either way.
+    pub fn doomRealms(self: *BackForwardCache, realms: []const *const anyopaque) bool {
+        self.lockList();
+        defer self.unlockList();
+        for (realms) |realm| {
+            if (self.indexOfRealmLocked(realm) == null) return false;
+        }
+        for (realms) |realm| self.entries.items[self.indexOfRealmLocked(realm).?].doomed = true;
+        return true;
+    }
+
+    fn indexOfRealmLocked(self: *const BackForwardCache, realm: *const anyopaque) ?usize {
+        for (self.entries.items, 0..) |*entry, index| {
+            if (pageHasRealm(&entry.page, realm)) return index;
         }
         return null;
     }
@@ -289,7 +357,11 @@ pub const BackForwardCache = struct {
     /// Evict the page at `index` now: out of the list, its tasks dropped,
     /// then the navigation code's steps.
     fn evictAt(self: *BackForwardCache, index: usize) void {
-        const entry = self.entries.orderedRemove(index);
+        const entry = blk: {
+            self.lockList();
+            defer self.unlockList();
+            break :blk self.entries.orderedRemove(index);
+        };
         self.forgetQueued(entry.page.document);
         self.runEviction(entry.page);
     }
@@ -473,6 +545,11 @@ fn hookEvictRealm(scope: *runtime.BrowserScope, realm: *const anyopaque, reason:
     cache.evictRealm(realm, reason);
 }
 
+fn hookDoomRealms(scope: *runtime.BrowserScope, realms: []const *const anyopaque) bool {
+    const cache = scope.existing(BackForwardCache) orelse return false;
+    return cache.doomRealms(realms);
+}
+
 fn hookEvictTraversable(realm: runtime.Context, traversable: *anyopaque) void {
     const cache = cacheOfRealm(realm) orelse return;
     cache.evictTraversable(traversable);
@@ -494,6 +571,7 @@ pub fn installHooks() void {
         .holds = &hookHolds,
         .evict = &hookEvict,
         .evict_realm = &hookEvictRealm,
+        .doom_realms = &hookDoomRealms,
         .evict_traversable = &hookEvictTraversable,
         .prune = &hookPrune,
     });
