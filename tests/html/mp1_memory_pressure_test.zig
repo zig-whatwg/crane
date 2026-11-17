@@ -17,6 +17,13 @@
 //!   warning on macOS and Linux; Firefox answers at critical only; Chromium
 //!   alone sends V8 a moderate notice).
 //!
+//! A worker's task carries its WorkerLink with no reference of its own (a
+//! reference would be a cycle: the link owns the sink the task waits in).
+//! The last two tests post to workers that never run the task - one
+//! terminated while the task waits behind a running script, one terminated
+//! before its script ran - and end their Browser on std.testing.allocator:
+//! a use of a freed link or anything left behind fails them.
+//!
 //! The testing platform has no OS observer: a test posts the event itself
 //! with `platform.adapter.postEvent`, which calls the Browser's EventSink on
 //! the calling thread exactly as an observer does. Each test runs a whole
@@ -246,4 +253,87 @@ fn workerIsLeftAloneAtWarning() !void {
 
 test "a warning collects nothing in a worker" {
     try helpers.onFreshThread(workerIsLeftAloneAtWarning);
+}
+
+/// How many workers the page's Browser still has registered: 0 once every
+/// worker's end has reached its owner.
+fn registeredWorkers(page: helpers.Page) usize {
+    const registry = page.browser.scope.existing(html.WorkerRegistry) orelse return 0;
+    return registry.count();
+}
+
+/// Turn the loop until no worker is registered, at most 20 s.
+fn turnUntilNoWorker(page: helpers.Page) !void {
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    const start = clock.monotonicMillis();
+    while (registeredWorkers(page) != 0) {
+        if (clock.monotonicMillis() - start > 20_000) return error.WorkerNeverEnded;
+        _ = loop.runOnceBlocking(5);
+    }
+}
+
+fn workerTerminatedBeforeItsTaskRuns() !void {
+    var recorder: Recorder = .{};
+    defer recorder.gate().settle();
+    const page = try openWith(&recorder);
+    defer page.close();
+    // A worker that says it is busy and then never returns to its loop.
+    try page.run(
+        \\globalThis.state = 0;
+        \\globalThis.wk = new Worker('data:text/javascript,' + encodeURIComponent(`
+        \\  onmessage = e => { postMessage('spinning'); for (;;) {} };
+        \\`));
+        \\wk.onmessage = e => { state = 1; };
+        \\wk.postMessage('spin');
+    );
+    try turnUntil(page, "String(state)");
+    try testing.expectEqual(@as(usize, 1), registeredWorkers(page));
+
+    // The worker's task waits in its sink behind the script that never
+    // ends; "terminate a worker" aborts the script, and the loop runs no
+    // further task: the task is dropped when the loop closes its sink.
+    try postPressure(page, .critical);
+    try page.run("wk.terminate();");
+    try turnUntilNoWorker(page);
+
+    // The window's own task ran, whatever became of the worker's.
+    try testing.expectEqual(@as(u32, 1), recorder.pressure);
+    // The page's end, on std.testing.allocator, reports a link or a task
+    // left behind.
+}
+
+test "a critical event for a worker terminated before its loop runs the task: the task is dropped, nothing is used after free, nothing is left" {
+    try helpers.onFreshThread(workerTerminatedBeforeItsTaskRuns);
+}
+
+fn workerTerminatedBeforeItsScriptRan() !void {
+    var recorder: Recorder = .{};
+    defer recorder.gate().settle();
+    const page = try openWith(&recorder);
+    defer page.close();
+    // Terminated in the job that made it: its thread is starting, or finds
+    // itself closing before its script runs; its loop runs no task. It
+    // stays registered until its end reaches this loop.
+    try page.run(
+        \\globalThis.dead = new Worker('data:text/javascript,onmessage%20%3D%20e%20%3D%3E%20postMessage(e.data)');
+        \\dead.terminate();
+    );
+    // Critical events while it starts and ends - before its loop exists,
+    // while it closes, after its sink is closed - each with a turn of this
+    // loop between.
+    const loop = page.browser.event_loop orelse return error.NoEventLoop;
+    var posted: u32 = 0;
+    while (posted < 40) : (posted += 1) {
+        try postPressure(page, .critical);
+        _ = loop.runOnceBlocking(1);
+    }
+    try turnUntilNoWorker(page);
+    try page.turn();
+
+    // Every one of the window's own tasks ran.
+    try testing.expectEqual(posted, recorder.pressure);
+}
+
+test "critical events for a worker terminated before its script ran: nothing is used after free, nothing is left" {
+    try helpers.onFreshThread(workerTerminatedBeforeItsScriptRan);
 }
