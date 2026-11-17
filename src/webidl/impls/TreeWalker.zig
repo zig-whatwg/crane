@@ -27,7 +27,7 @@ const NodeFilter = struct {
     const FILTER_SKIP = interfaces.NodeFilter.get_FILTER_SKIP();
     const SHOW_ALL = interfaces.NodeFilter.get_SHOW_ALL();
 };
-const node_filter = @import("node_filter.zig");
+const node_filter = @import("node_filter");
 const dom_module = @import("dom");
 const InternalStateAccessor = @import("webidl").utils.InternalStateAccessor;
 

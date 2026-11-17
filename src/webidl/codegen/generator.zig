@@ -416,7 +416,7 @@ pub fn generateImplsRoot(
         };
 
         // File exists - import it as namespace (impl files don't have struct types)
-        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+        try w.print("pub const {s} = @import(\"{s}\");\n", .{ name, name });
     }
 
     // Export all namespace implementations
@@ -441,7 +441,7 @@ pub fn generateImplsRoot(
         };
 
         // File exists - import it (namespaces use same naming as interfaces)
-        try w.print("pub const {s} = @import(\"{s}.zig\");\n", .{ name, name });
+        try w.print("pub const {s} = @import(\"{s}\");\n", .{ name, name });
     }
 
     try w.flush();

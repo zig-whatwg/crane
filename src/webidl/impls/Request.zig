@@ -24,7 +24,7 @@ const webidl = @import("webidl");
 
 const Request = interfaces.Request;
 const same_object = @import("dom").same_object;
-const fetch_body = @import("fetch_body.zig");
+const fetch_body = @import("fetch_body");
 
 pub const State = Request.State;
 

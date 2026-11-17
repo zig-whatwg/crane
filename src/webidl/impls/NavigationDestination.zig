@@ -21,7 +21,7 @@ const engine = @import("engine");
 const dom = @import("dom");
 const joint_history = @import("html_core").navigation.joint_history;
 const same_object = @import("dom").same_object;
-const navigation_entries = @import("navigation_entries.zig");
+const navigation_entries = @import("navigation_entries");
 const NavigationDestination = interfaces.NavigationDestination;
 
 pub const State = NavigationDestination.State;

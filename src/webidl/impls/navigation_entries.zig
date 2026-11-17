@@ -10,7 +10,7 @@ const interfaces = @import("interfaces");
 const html_core = @import("html_core");
 const BrowsingContext = html_core.window.BrowsingContext;
 const joint_history = html_core.navigation.joint_history;
-const history_documents = @import("history_documents.zig");
+const history_documents = @import("history_documents");
 const engine = @import("engine");
 
 /// A window whose document is fully active: its navigable, that document,

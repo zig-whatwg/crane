@@ -30,7 +30,7 @@ const dom = @import("dom");
 const NavigateEvent = interfaces.NavigateEvent;
 const engine = @import("engine");
 const same_object = @import("dom").same_object;
-const navigation_entries = @import("navigation_entries.zig");
+const navigation_entries = @import("navigation_entries");
 
 pub const State = NavigateEvent.State;
 

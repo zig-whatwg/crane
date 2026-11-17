@@ -17,7 +17,7 @@ const engine = @import("engine");
 const file_mod = @import("file");
 const BlobURLStore = file_mod.BlobURLStore;
 // Scheme fetch "blob"'s resolver over the store (a helper module, not an impl).
-const fetch_body = @import("fetch_body.zig");
+const fetch_body = @import("fetch_body");
 
 // Import URL infrastructure from src/url/
 const URLRecord = @import("url_record").URLRecord;

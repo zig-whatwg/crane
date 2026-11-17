@@ -9,7 +9,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
-const fetch_body = @import("fetch_body.zig");
+const fetch_body = @import("fetch_body");
 const same_object = @import("dom").same_object;
 const HTMLFormElement = interfaces.HTMLFormElement;
 

@@ -24,7 +24,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const NavigationHistoryEntry = interfaces.NavigationHistoryEntry;
-const navigation_entries = @import("navigation_entries.zig");
+const navigation_entries = @import("navigation_entries");
 const engine = @import("engine");
 const joint_history = @import("html_core").navigation.joint_history;
 

@@ -1322,7 +1322,7 @@ fn topLevelFragmentNavigation(
     if (params.navigation_api_state) |state| {
         destination_state = try state.clone(allocator);
     } else if (bc) |b| {
-        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+        if (b.ensureHistoryEntries(&@import("history_documents").infoOf)) |history| {
             if (history.currentEntry(b.id)) |entry| destination_state = try entry.api_state.clone(allocator);
         } else |_| {}
     }
@@ -1345,7 +1345,7 @@ fn topLevelFragmentNavigation(
     // step 15's update writes them).
     var pending: ?joint_history.SameDocumentNavigation = null;
     if (dom.browser_state.browsingContextOf(window)) |b| {
-        if (b.ensureHistoryEntries(&@import("history_documents.zig").infoOf)) |history| {
+        if (b.ensureHistoryEntries(&@import("history_documents").infoOf)) |history| {
             const api_state = destination_state.clone(allocator) catch null;
             pending = history.navigateSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch null;
         } else |_| {}
