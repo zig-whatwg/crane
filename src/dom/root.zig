@@ -244,9 +244,7 @@ pub const event_path = @import("event_path.zig");
 pub const selector_matching = @import("selector_matching.zig");
 /// The elements a Document's :hover and :active rest on.
 pub const pointer_states = @import("pointer_states.zig");
-pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
-pub const attribute_algorithms = @import("attribute_algorithms.zig");
 pub const slot_helpers = @import("slot_helpers.zig");
 pub const cookie_change_event = @import("cookie_change_event.zig");
 /// Document's state type: the impl owns the state, src/dom reads it here.
@@ -332,14 +330,13 @@ pub const InstanceStateMap = @import("instance_state_map.zig").InstanceStateMap;
 // Opaque handle types for breaking circular imports
 pub const handles = @import("handles.zig");
 
-// XPath 1.0: the grammar's types. Evaluation over platform nodes is the
-// XPathExpression interface's impl (its own parser and evaluator); the old
-// evaluator here, over NodeBase and the WithBase types, had no caller and
-// went with those types (lane wb1).
+// XPath 1.0: the grammar's types. Parsing and evaluation over platform nodes
+// are the XPathExpression interface's impl (its own parser and evaluator).
+// The old evaluator here, over NodeBase and the WithBase types, had no
+// caller and went with those types (lane wb1); the tokenizer and parser
+// that fed it had none either and went after it (lane mp1).
 pub const xpath = struct {
-    pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
-    pub const parser = @import("xpath/parser.zig");
 };
 
 pub const boundary_points = @import("boundary_points.zig");

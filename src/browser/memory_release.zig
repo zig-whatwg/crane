@@ -57,10 +57,11 @@
 //!    repeated for 30 seconds. The process's hold-off is in the process's
 //!    own record (process.start MemoryHoldOff); `Gate` is the rule over it.
 //!
-//! Not here yet: the OS's memory-pressure notification (no platform posts
-//! platform events yet; when they are delivered, a critical one is
-//! engine.notifyMemoryPressure and then `Gate.release(.pressure)`), and a
-//! host that stops turning an idle loop (it gets no idle turn to ask on).
+//! The OS's memory-pressure notification asks through the same gate: a
+//! critical one is a task of the window's loop that calls
+//! engine.notifyMemoryPressure and then `Gate.release(.pressure)`
+//! (platform_events.zig). Not here yet: a host that stops turning an idle
+//! loop (it gets no idle turn to ask on).
 
 const std = @import("std");
 const platform = @import("platform");

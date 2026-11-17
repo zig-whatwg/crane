@@ -167,6 +167,15 @@ pub const WorkerLink = struct {
         return agent;
     }
 
+    /// The worker's agent, for a task of the worker's own loop - on the
+    /// worker's OWN thread only. That thread alone writes `agent`
+    /// (`publishAgent`, `retireAgent`), so it reads it without the lock,
+    /// which is never held across a task. Null before the agent is made
+    /// and once it is retired.
+    pub fn agentOnOwnThread(self: *const WorkerLink) ?*engine.Agent {
+        return self.agent;
+    }
+
     /// HTML "terminate a worker", the steps that reach the worker's thread,
     /// from the owner (or the Browser's end) on any thread: 1. set the
     /// closing flag; 3. abort the script running in it - V8's termination,

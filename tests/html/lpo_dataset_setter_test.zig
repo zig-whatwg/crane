@@ -1,22 +1,17 @@
 //! DOMStringMap rejects invalid names before mutating its element.
+//!
+//! On a page of a real Browser (native_read_page.zig, lane mp1): the dataset
+//! is its wrapper's to end, and the engine-less context this test had freed
+//! it by hand.
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const dom = @import("dom");
+const native_read_page = @import("native_read_page.zig");
 const testing = std.testing;
 
-fn exercise() !void {
-    interfaces.process_hooks.startHooksForTest();
-    runtime.initializeRuntime(testing.allocator);
-    defer runtime.deinitializeRuntime();
-    var context = try runtime.ContextData.init(testing.allocator, .{});
-    defer context.deinit();
-    const document = try interfaces.Document.init(testing.allocator, &context);
-    defer interfaces.Document.deinit(document);
-    const element = try interfaces.Document.call_createElementNS(document, runtime.DOMString.initInterned("http://www.w3.org/1999/xhtml"), runtime.DOMString.initInterned("div"), .notPassed());
-    defer dom.node_creation.destroyUninserted(element);
+fn exercise(page: native_read_page.Page) !void {
+    const element = try page.elementNS("http://www.w3.org/1999/xhtml", "div");
     const dataset = try interfaces.HTMLElement.get_dataset(element);
-    defer runtime.Instance.deinit(dataset);
     const value = runtime.DOMString.initInterned("value");
     for ([_][]const u8{ "-a", "foo-bar", "--a", "bad-a/", "bad-a " }) |name| {
         try testing.expectError(error.SyntaxError, interfaces.DOMStringMap.call_setter(dataset, runtime.DOMString.initInterned(name), value));
@@ -43,15 +38,5 @@ fn exercise() !void {
 }
 
 test "dataset setter validates hyphen-lowercase before attribute names and converts only ASCII capitals" {
-    const Run = struct {
-        fn run(result: *?anyerror) void {
-            exercise() catch |err| {
-                result.* = err;
-            };
-        }
-    };
-    var result: ?anyerror = null;
-    const thread = try std.Thread.spawn(.{}, Run.run, .{&result});
-    thread.join();
-    if (result) |err| return err;
+    try native_read_page.onPage(exercise);
 }

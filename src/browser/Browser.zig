@@ -271,7 +271,13 @@ pub const Browser = struct {
             scope.arena.poison_freed = true;
             scope.arena.quarantine_freed = true;
         }
-        const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform });
+        // The Browser's receiver for platform events first: the platform's
+        // observers (memory pressure) report through it from threads of
+        // their own, from the moment the platform state exists until it
+        // ends, so it is the scope's earlier supplement and ends after it.
+        // It has no loop to post to until `attach`, below.
+        const platform_events = try @import("platform_events.zig").make(scope);
+        const browser_platform = try @import("html").platform_state.createWith(scope, &.{ .platform = config.platform }, platform_events.eventSink());
         const browser_clock = platform.browserClock(browser_platform);
         var random_seed: u64 = undefined;
         const seeded = platform.fillBrowserRandom(browser_platform, std.mem.asBytes(&random_seed));
@@ -338,6 +344,10 @@ pub const Browser = struct {
         // tasks, and its fetches, which the loop pumps.
         event_loop.deferred_teardown = &agent_host.deferred_teardown;
         event_loop.fetches = &agent_host.fetches;
+        // Platform events become this loop's tasks from now on
+        // (platform_events.zig); a Browser that fails to start lets go.
+        if (@import("platform_events.zig").of(scope)) |platform_events| platform_events.attach(event_loop);
+        errdefer if (@import("platform_events.zig").of(scope)) |platform_events| platform_events.detach();
 
         // The user agent's cookie jar, and the CookieStores that hear it:
         // the listeners are its change hook from before any realm can change
@@ -435,7 +445,10 @@ pub const Browser = struct {
         self.storage.deinit();
         self.allocator.destroy(self.storage);
 
-        // Cleanup event loop
+        // Cleanup event loop. Platform events stop becoming its tasks first:
+        // the platform's observers post until the platform state ends,
+        // below, and a post from now on finds no loop.
+        if (@import("platform_events.zig").of(self.scope)) |platform_events| platform_events.detach();
         if (self.event_loop) |event_loop| {
             event_loop.deinit();
             self.allocator.destroy(event_loop);
