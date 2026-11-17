@@ -24,7 +24,6 @@ pub const json = @import("json.zig");
 pub const base64 = @import("base64.zig");
 pub const namespaces = @import("namespaces.zig");
 pub const time = @import("time.zig");
-pub const bloom_filter = @import("bloom_filter.zig");
 pub const ancestor_bloom_filter = @import("ancestor_bloom_filter.zig");
 /// Not Infra's: when to rehash a long-lived std hash map whose keys come
 /// and go (TombstoneGuard). Here so every module that keeps such a map -
@@ -48,7 +47,6 @@ pub const InfraValue = json.InfraValue;
 pub const InfraError = string.InfraError;
 pub const Moment = time.Moment;
 pub const Duration = time.Duration;
-pub const BloomFilter = bloom_filter.BloomFilter;
 pub const AncestorBloomFilter = ancestor_bloom_filter.AncestorBloomFilter;
 pub const AncestorHashes = ancestor_bloom_filter.AncestorHashes;
 pub const hashString = ancestor_bloom_filter.hashString;
