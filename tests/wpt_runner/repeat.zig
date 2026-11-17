@@ -14,6 +14,16 @@
 //! crashed) counts as failed in that run - and each runner's file statuses.
 //! It is written to `<output>/repeat-tally.txt` and printed.
 //!
+//! Subtests are named by the child's result stream; every file's counts
+//! (passed, failed, timed out, not run) are in its journal record whether
+//! or not the stream has a line for it. So a file is also held to its
+//! counts: counts that differ between a runner's runs are a flake
+//! (`--verify`), and where the journals count subtest results the stream
+//! does not name, the report says how many passed in every run by the
+//! journals. A runner from before 2026-11-17 streamed no line for a Crane
+//! test (tests/wpt/crane/), so ten runs of one read "0 subtests passed in
+//! every run" (lane flk2's finding, lane tl2's fix).
+//!
 //! A repetition never writes a sweep record. Its child keeps its own journal
 //! and result stream under `<output>/repeat/<k>/` (`Layout`), two levels
 //! below the output directory, where tools/wpt_progress.py never reads (it
@@ -141,6 +151,52 @@ const Counts = struct {
     }
 };
 
+/// The subtest counts of one journal record.
+const FileCount = struct {
+    passed: usize,
+    failed: usize,
+    timed_out: usize,
+    notrun: usize,
+    /// How many of the runner's runs recorded exactly these counts.
+    runs: usize = 1,
+
+    fn same(a: FileCount, b: FileCount) bool {
+        return a.passed == b.passed and a.failed == b.failed and a.timed_out == b.timed_out and a.notrun == b.notrun;
+    }
+};
+
+/// One journal file's counts over the series: each distinct set a runner's
+/// runs recorded, in the order they first appeared.
+const FileCounts = struct {
+    seen: [2]std.ArrayListUnmanaged(FileCount) = .{ .empty, .empty },
+
+    fn add(self: *FileCounts, allocator: Allocator, s: usize, count: FileCount) !void {
+        for (self.seen[s].items) |*have| if (have.same(count)) {
+            have.runs += 1;
+            return;
+        };
+        try self.seen[s].append(allocator, count);
+    }
+
+    /// Whether the runner's runs recorded different counts for the file.
+    fn differ(self: *const FileCounts, s: usize) bool {
+        return self.seen[s].items.len > 1;
+    }
+
+    /// The subtests that passed in every one of the runner's `runs` runs,
+    /// by the counts alone: the fewest any run passed, and none when a run
+    /// has no record of the file.
+    fn passedEveryRun(self: *const FileCounts, s: usize, runs: usize) usize {
+        var recorded: usize = 0;
+        var least: ?usize = null;
+        for (self.seen[s].items) |c| {
+            recorded += c.runs;
+            least = if (least) |l| @min(l, c.passed) else c.passed;
+        }
+        return if (recorded >= runs) least orelse 0 else 0;
+    }
+};
+
 /// The per-subtest failure rate over a repeat series.
 pub const Tally = struct {
     allocator: Allocator,
@@ -155,6 +211,13 @@ pub const Tally = struct {
     /// "<journal path>[\t<context>]" -> the file's journal statuses
     /// (`--verify`: a file whose status differs between runs).
     files: std.StringArrayHashMapUnmanaged(Counts) = .empty,
+    /// The same keys -> the file's journal counts (`--verify`: a file whose
+    /// counts differ between runs, whatever the stream names).
+    file_counts: std.StringArrayHashMapUnmanaged(FileCounts) = .empty,
+    /// Subtest results the journals counted, and subtest results the result
+    /// streams named, per runner, over all its runs.
+    journal_results: [2]usize = .{ 0, 0 },
+    stream_results: [2]usize = .{ 0, 0 },
 
     pub fn init(allocator: Allocator) Tally {
         return .{ .allocator = allocator };
@@ -168,6 +231,33 @@ pub const Tally = struct {
             }
             map.deinit(self.allocator);
         }
+        for (self.file_counts.keys(), self.file_counts.values()) |k, *v| {
+            self.allocator.free(k);
+            for (&v.seen) |*list| list.deinit(self.allocator);
+        }
+        self.file_counts.deinit(self.allocator);
+    }
+
+    /// Subtest results the runner's journals counted that its result
+    /// streams have no line for (a Crane test, from a runner that streams
+    /// none): they are judged by the counts alone.
+    pub fn unnamedResults(self: *const Tally, side: Side) usize {
+        const s = @backingInt(side);
+        return self.journal_results[s] -| self.stream_results[s];
+    }
+
+    /// How many subtests passed in every one of the runner's runs, by its
+    /// journals' counts.
+    pub fn passedEveryRunByJournal(self: *const Tally, side: Side) usize {
+        const s = @backingInt(side);
+        var n: usize = 0;
+        for (self.file_counts.values()) |*c| n += c.passedEveryRun(s, self.runs[s]);
+        return n;
+    }
+
+    fn countsDiffer(self: *const Tally, key: []const u8, s: usize) bool {
+        const c = self.file_counts.getPtr(key) orelse return false;
+        return c.differ(s);
     }
 
     /// How many of each runner's runs subtest `name` of test URL `url`
@@ -211,6 +301,17 @@ pub const Tally = struct {
             const key = if (rec.context.len == 0) rec.path else std.fmt.bufPrint(&key_buf, "{s}\t{s}", .{ rec.path, rec.context }) catch rec.path;
             const f = try self.entry(&self.files, key);
             f.seen[s][@backingInt(seenStatus(rec.status.toString()))] += 1;
+
+            const gop = try self.file_counts.getOrPut(self.allocator, key);
+            if (!gop.found_existing) {
+                gop.key_ptr.* = self.allocator.dupe(u8, key) catch |err| {
+                    _ = self.file_counts.pop();
+                    return err;
+                };
+                gop.value_ptr.* = .{};
+            }
+            try gop.value_ptr.add(self.allocator, s, .{ .passed = rec.passed, .failed = rec.failed, .timed_out = rec.timed_out, .notrun = rec.notrun });
+            self.journal_results[s] += rec.passed + rec.failed + rec.timed_out + rec.notrun;
         }
 
         var lines = std.mem.splitScalar(u8, stream_bytes, '\n');
@@ -246,6 +347,7 @@ pub const Tally = struct {
                 };
                 const name = stringField(so, "name") orelse continue;
                 const sub_status = stringField(so, "status") orelse continue;
+                self.stream_results[s] += 1;
                 const seen_before = try occurrences.getOrPut(self.allocator, name);
                 seen_before.value_ptr.* = if (seen_before.found_existing) seen_before.value_ptr.* + 1 else 1;
                 const key = if (seen_before.value_ptr.* == 1)
@@ -271,11 +373,14 @@ pub const Tally = struct {
 
     /// `--verify`: how many files, harness statuses and subtests had a
     /// status that differed between `side`'s runs. A consistent failure is
-    /// not one; a status a run never reported is.
+    /// not one; a status a run never reported is; and so is a file whose
+    /// journal counts differed, whether or not the stream names the subtest
+    /// that moved (one entry with the file's status).
     pub fn unstable(self: *const Tally, side: Side) usize {
         const s = @backingInt(side);
         var n: usize = 0;
-        inline for (.{ &self.files, &self.harness, &self.subtests }) |map| {
+        for (self.files.keys(), self.files.values()) |key, c| n += @intFromBool(c.differs(s, self.runs[s]) or self.countsDiffer(key, s));
+        inline for (.{ &self.harness, &self.subtests }) |map| {
             for (map.values()) |c| n += @intFromBool(c.differs(s, self.runs[s]));
         }
         return n;
@@ -303,8 +408,10 @@ pub const Tally = struct {
                 .{ .name = "subtest", .map = &self.subtests },
             };
             for (kinds) |kind| {
+                const is_file = kind.map == &self.files;
                 for (kind.map.keys(), kind.map.values()) |key, c| {
-                    if (!c.differs(s, self.runs[s])) continue;
+                    const counts_differ = is_file and self.countsDiffer(key, s);
+                    if (!c.differs(s, self.runs[s]) and !counts_differ) continue;
                     try w.print("  {s} ", .{kind.name});
                     if (std.mem.indexOfScalar(u8, key, '\t')) |tab| {
                         try w.print("{s} | {s}: ", .{ key[0..tab], key[tab + 1 ..] });
@@ -317,6 +424,12 @@ pub const Tally = struct {
                     }
                     const missing = self.runs[s] -| c.reported(s);
                     if (missing != 0) try w.print("{s}(not reported) {d}", .{ if (first) "" else ", ", missing });
+                    if (counts_differ) {
+                        try w.writeAll("; its subtest counts differ:");
+                        for (self.file_counts.getPtr(key).?.seen[s].items, 0..) |fc, i| {
+                            try w.print("{s} {d} passed, {d} failed, {d} timed out, {d} not run in {d} run{s}", .{ if (i == 0) "" else ";", fc.passed, fc.failed, fc.timed_out, fc.notrun, fc.runs, if (fc.runs == 1) "" else "s" });
+                        }
+                    }
                     try w.writeByte('\n');
                 }
             }
@@ -394,6 +507,16 @@ pub const Tally = struct {
         if (failing == 0) try w.writeAll("  none\n");
         const steady = self.subtests.count() - failing;
         try w.print("{d} subtest{s} passed in every run\n", .{ steady, if (steady == 1) "" else "s" });
+        // What the streams did not name: by the journals' counts, per runner.
+        for (sides) |side| {
+            const unnamed = self.unnamedResults(side);
+            if (unnamed == 0) continue;
+            const label = if (header.with == null) "" else if (side == .this) " (this)" else " (with)";
+            const by_journal = self.passedEveryRunByJournal(side);
+            try w.print("by the journals' counts{s}: {d} subtest{s} passed in every run ({d} subtest result{s} no line in the result stream - a runner from before 2026-11-17 streams none for a Crane test - so those files are held to their journal records' counts, their subtests unnamed)\n", .{
+                label, by_journal, if (by_journal == 1) "" else "s", unnamed, if (unnamed == 1) " has" else "s have",
+            });
+        }
         if (header.verify) try self.writeVerify(w, header);
     }
 };

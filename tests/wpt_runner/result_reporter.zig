@@ -488,15 +488,15 @@ pub const WptReport = struct {
     ///
     /// The result is named by the test URL wpt.fyi keys on ("/x.any.worker.html",
     /// "/a.html?variant"): the manifest's URL for the run when there is one, WPT's
-    /// documented naming otherwise. Crane's own tests (crane/) are not reported.
+    /// documented naming otherwise. One of Crane's own tests (crane/) is kept
+    /// for the result stream (`resultsSince`) and left out of the report
+    /// written for upload and of its summary (`TestResultJson.own`).
     pub fn addResult(self: *WptReport, harness_result: test_harness.TestResult) !void {
         try self.addResultWithExpected(harness_result, null);
     }
 
     /// Add a test result with optional expected results metadata (for XFAIL tracking)
     pub fn addResultWithExpected(self: *WptReport, harness_result: test_harness.TestResult, expected: ?*const ExpectedResults) !void {
-        if (wpt_test_ids.isCraneTest(harness_result.test_path)) return;
-
         const candidates: ?[]const []const u8 = if (self.manifest) |m|
             m.getUrlsForSource(harness_result.test_path)
         else
@@ -521,6 +521,7 @@ pub const WptReport = struct {
             .expected = test_expected,
             .duration = harness_result.duration_ms,
             .subtests = .empty,
+            .own = wpt_test_ids.isCraneTest(harness_result.test_path),
         };
 
         for (harness_result.subtests.items) |sub| {
@@ -621,22 +622,26 @@ pub const WptReport = struct {
         try writer.print("  \"time_start\": {d},\n", .{self.time_start});
         try writer.print("  \"time_end\": {d},\n", .{self.time_end});
 
-        // results
+        // results: WPT's, never Crane's own tests (`TestResultJson.own`).
         try writer.writeAll("  \"results\": [\n");
-        for (self.results.items, 0..) |result, i| {
+        var written: usize = 0;
+        for (self.results.items) |result| {
+            if (result.own) continue;
+            if (written > 0) try writer.writeAll(",\n");
             try result.writeJson(writer, "    ", self.allocator);
-            if (i < self.results.items.len - 1) {
-                try writer.writeAll(",");
-            }
-            try writer.writeAll("\n");
+            written += 1;
         }
+        if (written > 0) try writer.writeAll("\n");
         try writer.writeAll("  ]\n");
 
         try writer.writeAll("}\n");
     }
 
     /// The results added since the report held `first` of them: one file's
-    /// results, when `first` is the count taken as the file started.
+    /// results, when `first` is the count taken as the file started. What
+    /// the result stream writes: Crane's own tests included, so the repeat
+    /// tally (repeat.zig) and the build comparison (build_compare.zig) see
+    /// their subtests.
     pub fn resultsSince(self: *const WptReport, first: usize) []const TestResultJson {
         return self.results.items[@min(first, self.results.items.len)..];
     }
@@ -646,6 +651,8 @@ pub const WptReport = struct {
         var summary = Summary{};
 
         for (self.results.items) |result| {
+            // The summary is the upload's: Crane's own tests are not in it.
+            if (result.own) continue;
             summary.total_tests += 1;
 
             // Map status string back to enum (strings are uppercase)
@@ -746,6 +753,10 @@ pub const TestResultJson = struct {
     duration: u64 = 0,
     /// Subtest results
     subtests: std.ArrayList(SubtestResultJson),
+    /// One of Crane's own tests (tests/wpt/crane/): in the result stream,
+    /// which only Crane's tools read, and never in the report for upload -
+    /// it is not WPT (wpt_test_ids.isCraneTest).
+    own: bool = false,
 
     pub fn deinit(self: *TestResultJson, allocator: std.mem.Allocator) void {
         allocator.free(self.test_path);
