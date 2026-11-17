@@ -16,6 +16,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
+const engine = @import("engine");
 const WorkerLink = @import("worker_link.zig").WorkerLink;
 
 pub const WorkerRegistry = struct {
@@ -221,6 +222,49 @@ pub const WorkerRegistry = struct {
         defer std.Io.Threaded.mutexUnlock(&self.mutex);
         return self.links.items.len;
     }
+
+    // ------------------------------------------------------------------------
+    // Memory pressure (docs/platform-protocol.md section 7)
+    // ------------------------------------------------------------------------
+
+    /// A critical memory-pressure event reached the Browser: every worker
+    /// collects its own agent's garbage, on its own thread - a task posted
+    /// to its loop, as blink::MemoryPressureNotificationToAllIsolates posts
+    /// one to each worker thread and WebKit's releaseMemory asks each
+    /// worker thread (src/browser/platform_events.zig has the evidence).
+    /// Any thread - the platform's observer's. How many workers took the
+    /// task: a worker that has ended, or is ending, drops it; one still
+    /// starting runs it once its loop runs; a suspended one when it resumes.
+    ///
+    /// Under the lock, as the suspend walk posts: a post takes only the
+    /// worker's sink's lock, which no path holds while taking this one.
+    ///
+    /// The task's data is the link, with NO reference of its own: a task
+    /// runs only inside the worker's loop, whose thread holds the worker
+    /// side's reference for as long as the loop runs, and a task that never
+    /// runs is dropped without touching the link. (A reference here would
+    /// be a cycle - the link owns the sink the task waits in - that nothing
+    /// ends for a worker whose loop never started.)
+    pub fn collectUnderPressure(self: *WorkerRegistry) usize {
+        std.Io.Threaded.mutexLockUncancelable(&self.mutex);
+        defer std.Io.Threaded.mutexUnlock(&self.mutex);
+        var posted: usize = 0;
+        for (self.links.items) |link| {
+            if (link.worker_sink.post(.{ .run = collectOnWorkerThread, .drop = dropNothing, .data = link })) posted += 1;
+        }
+        return posted;
+    }
+
+    /// The worker's task for a critical memory-pressure event, on the
+    /// worker's own thread: everything that can be collected is, before it
+    /// returns (engine.notifyMemoryPressure). The allocator's free memory is
+    /// the process's, returned once, by the window loop's task.
+    fn collectOnWorkerThread(data: ?*anyopaque) void {
+        const link: *WorkerLink = @ptrCast(@alignCast(data.?));
+        if (link.agentOnOwnThread()) |agent| engine.notifyMemoryPressure(agent, .critical);
+    }
+
+    fn dropNothing(_: ?*anyopaque) void {}
 
     /// The Browser's end, first half: no worker starts from now on, and
     /// every running one is terminated ("terminate a worker" - its script

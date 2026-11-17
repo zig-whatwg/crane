@@ -22,6 +22,7 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const helpers = @import("edges_node_holders_helpers.zig");
+const native_read_page = @import("native_read_page.zig");
 
 const html_ns = "http://www.w3.org/1999/xhtml";
 const svg_ns = "http://www.w3.org/2000/svg";
@@ -256,30 +257,6 @@ fn mathmlAnchorFollowsItsHyperlink() !void {
 // Ownership: nothing is left behind (the integrator's condition 1)
 // ============================================================================
 
-/// An engine-less page over `allocator` (the fixture tests/dom/cg1_element_same_object_test.zig
-/// had until lane lk1 moved its run-time tests to a real page).
-const NativePage = struct {
-    scope: runtime.BrowserScope,
-    ctx: runtime.ContextData,
-    document: *runtime.Instance = undefined,
-
-    fn open(self: *NativePage, allocator: std.mem.Allocator) !void {
-        interfaces.process_hooks.startHooksForTest();
-        self.* = .{ .scope = runtime.BrowserScope.init(allocator), .ctx = try runtime.ContextData.init(allocator, .{}) };
-        self.ctx.browser_scope = &self.scope;
-        self.document = try interfaces.Document.init(allocator, &self.ctx);
-        try dom.document_internals.setContentType(self.document, "text/html");
-        try dom.document_internals.setDocumentType(self.document, .html);
-    }
-
-    fn close(self: *NativePage) void {
-        interfaces.Document.deinit(self.document);
-        dom.teardown_sweeps.runAll(&self.scope);
-        self.scope.deinit();
-        self.ctx.deinit();
-    }
-};
-
 fn setEverything(comptime I: type, element: *runtime.Instance) ![2]*runtime.Instance {
     try interfaces.Element.call_setAttribute(element, str("nonce"), .{ .domstring = str("from the attribute") });
     try I.set_nonce(element, str("set by script"));
@@ -287,14 +264,19 @@ fn setEverything(comptime I: type, element: *runtime.Instance) ![2]*runtime.Inst
     _ = try I.get_style(element);
     try interfaces.Element.call_setAttribute(element, str("data-x"), .{ .domstring = str("1") });
     // The generated caches' objects (dataset, attributeStyleMap) are their
-    // wrappers' to free; no engine wraps them here.
+    // wrappers' to free: each getter wraps what it makes and ties it to the
+    // element (dom.same_object_cache).
     return .{ try I.get_dataset(element), try I.get_attributeStyleMap(element) };
 }
 
-test "HTML, SVG and MathML elements with nonce, style and dataset set leave nothing at their deinit" {
-    var page: NativePage = undefined;
-    try page.open(testing.allocator);
-    defer page.close();
+/// On a page of a real Browser (native_read_page.zig, lane mp1). The test
+/// had an engine-less page of its own, where nothing wraps the generated
+/// caches' objects, and freed each by hand before its element. Here each
+/// element is freed by its creator with its objects made, as native code
+/// frees a node script never reached, and its objects go as production
+/// frees them: their wrappers, which only the element's edges kept, are
+/// collected. The page's allocator reports what any of it leaves.
+fn nothingLeftAtDeinit(page: native_read_page.Page) !void {
     const cases = .{
         .{ html_ns, "div", interfaces.HTMLElement },
         .{ svg_ns, "rect", interfaces.SVGElement },
@@ -302,18 +284,35 @@ test "HTML, SVG and MathML elements with nonce, style and dataset set leave noth
         .{ mathml_ns, "a", interfaces.MathMLElement },
     };
     inline for (cases) |case| {
+        // Not in the tree: no wrapper, and nothing keeps it but its creator.
         const element = try interfaces.Document.call_createElementNS(page.document, str(case[0]), str(case[1]), .notPassed());
         const made = try setEverything(case[2], element);
         var nonce = try case[2].get_nonce(element);
         defer nonce.deinit(testing.allocator);
         try testing.expectEqualStrings("set by script", nonce.asSlice());
-        for (made) |object| runtime.Instance.deinit(object);
         // An SVG or MathML element's style object is the generated cache's,
-        // its wrapper's to free: no engine wraps it here. HTMLElement's goes
-        // with the element.
-        if (comptime case[2] != interfaces.HTMLElement) runtime.Instance.deinit(try case[2].get_style(element));
+        // its wrapper's to free, as its dataset and attributeStyleMap are.
+        // HTMLElement's goes with the element.
+        const own_style: ?*runtime.Instance = if (comptime case[2] != interfaces.HTMLElement) try case[2].get_style(element) else null;
+        const objects: [3]?*runtime.Instance = .{ made[0], made[1], own_style };
+        var generations: [3]u64 = undefined;
+        for (objects, &generations) |object, *generation| {
+            generation.* = if (object) |o| runtime.SlabAllocator.generationOf(o) else 0;
+        }
+        const element_generation = runtime.SlabAllocator.generationOf(element);
+        // The element's deinit: its rare data's destroy frees the nonce
+        // bytes, and the chain ends the edges to its objects.
         dom.node_creation.destroyUninserted(element);
+        try testing.expect(runtime.SlabAllocator.generationOf(element) != element_generation);
+        for (0..4) |_| try page.collect();
+        for (objects, generations) |object, generation| {
+            if (object) |o| try testing.expect(runtime.SlabAllocator.generationOf(o) != generation);
+        }
     }
+}
+
+test "HTML, SVG and MathML elements with nonce, style and dataset set leave nothing at their deinit" {
+    try native_read_page.onPage(nothingLeftAtDeinit);
 }
 
 fn sweptAtTeardown() !void {

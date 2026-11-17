@@ -198,6 +198,36 @@ test "a spawned thread runs and joins" {
     try testing.expect(platform.logicalProcessorCount() >= 1);
 }
 
+/// An EventSink that counts what it is given.
+fn countEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
+    _ = event;
+    const count: *std.atomic.Value(u32) = @ptrCast(@alignCast(context.?));
+    _ = count.fetchAdd(1, .seq_cst);
+}
+
+test "a Browser's platform state starts and stops its observers: nothing is posted once destroy has returned" {
+    // The platform's observers (3.3) report through the EventSink from
+    // threads of their own - darwin's memory-pressure dispatch source,
+    // linux's /proc/meminfo poller; the testing platform has none. The sink
+    // is borrowed "until destroyBrowserPlatform returns": each round's
+    // destroy returns (the source canceled and waited for, the thread woken
+    // and joined - at once, not at its next poll), and the count is still
+    // after it, however many events the machine's state posted before.
+    var count: std.atomic.Value(u32) = .init(0);
+    const sink: platform.EventSink = .{ .context = &count, .post = countEvent };
+    const start = platform.monotonicNow();
+    for (0..50) |_| {
+        const browser = try platform.createBrowserPlatform(testing.allocator, &.{}, sink);
+        platform.destroyBrowserPlatform(browser);
+        const after = count.load(.seq_cst);
+        platform.sleepThread(200 * std.time.ns_per_us);
+        try testing.expectEqual(after, count.load(.seq_cst));
+    }
+    // 50 rounds with a 0.2 ms pause each: far inside one poll period (5 s),
+    // so no destroy waited for a poll.
+    try testing.expect(platform.monotonicNow().ns - start.ns < 4 * std.time.ns_per_s);
+}
+
 test "files: write atomically, read, stat, list and delete a tree" {
     const allocator = testing.allocator;
     var nonce: [8]u8 = undefined;

@@ -19,6 +19,9 @@ const memory = @import("memory");
 // the iPhoneOS SDK's for aarch64-ios.
 const c_time = @import("c_time");
 const signal_stack = @import("signal_stack.zig");
+/// Linux memory pressure from /proc/meminfo: the rule and the read a
+/// platform's observer polls (the linux platform's memory_pressure.zig).
+pub const meminfo = @import("meminfo.zig");
 
 const log = std.log.scoped(.platform);
 

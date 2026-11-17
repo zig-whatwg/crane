@@ -48,6 +48,10 @@ pub const Process = process.Process;
 /// the process's hold-off between releases.
 pub const memory_release = @import("memory_release.zig");
 
+/// A Browser's receiver for platform events (the platform protocol's
+/// EventSink): a critical memory-pressure event becomes tasks.
+pub const platform_events = @import("platform_events.zig");
+
 pub const Context = @import("Context.zig").Context;
 pub const back_forward_cache = @import("back_forward_cache.zig");
 pub const ContextType = @import("Context.zig").ContextType;
