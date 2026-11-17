@@ -89,27 +89,18 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 
 /// The hooks this impl owns, installed once at process start: the `locks`
 /// getter's way to this object, and the end of an environment.
+///
+/// No back/forward cache blocker (lane locks1): a page whose document holds
+/// a lock, or waits for one, is kept with its locks and requests, and
+/// another context's contention for one of its locks dooms and evicts it
+/// (`Target.contention`; html.web_locks.registry `contend` has the browsers'
+/// evidence - Chrome's model). Until it is restored or evicted, what the
+/// lock task queue posts to it waits (`Task.run`). Only a page that is NOT
+/// kept terminates its locks at its unload (`endEnvironment`), and records
+/// HTML's "lock" reason.
 pub fn installHooks() void {
     web_locks.lock_managers.install(.{ .of = lockManagerOf });
     dom.unloading_cleanup.install(&endEnvironment);
-    dom.bfcache.installBlocker(&blocksBfcache);
-}
-
-/// dom.bfcache: an environment that holds a lock or waits for one makes its
-/// document unsalvageable with "lock" - what its unloading cleanup step
-/// (`endEnvironment`) records at unload step 18 - here, before pagehide, so
-/// a page that will not be kept says so in pagehide.persisted (false), as
-/// Chrome and Firefox do: web-locks/bfcache/contention.https.window.js
-/// (shouldBeCached false) passes in both on wpt.fyi 23b0b89b1a.
-fn blocksBfcache(realm: runtime.Context) ?dom.bfcache.Blocked {
-    const scope = realm.browser_scope orelse return null;
-    const registry = scope.existing(web_locks.Registry) orelse return null;
-    const client = registry.clientOf(realm) orelse return null;
-    if (registry.ended(client)) return null;
-    // The LockManager is the realm's, held until it ends: alive here.
-    const instance: *runtime.Instance = @ptrCast(@alignCast(client.owner));
-    const internal = getInternal(instance) orelse return null;
-    return if (internal.records.items.len > 0) .{ .reason = .lock } else null;
 }
 
 /// Initialize instance (creates the instance)
@@ -174,9 +165,10 @@ fn lockManagerOf(realm: runtime.Context) anyerror!*runtime.Instance {
     defer if (origin) |o| realm.allocator.free(o);
     const storage_key: ?[]const u8 = if (origin) |o| (if (std.mem.eql(u8, o, "null")) null else o) else null;
     const target = try Target.create(registry.allocator, instance, realm.task_sink);
-    // A worker's environment: its locks are contended for while the
-    // back/forward cache keeps its pages suspended (Target.contention).
-    target.watchWorker(realm, scope);
+    // A Window's environment, or a worker's: its locks are contended for
+    // while the back/forward cache keeps its page, or the pages that keep
+    // the worker suspended (Target.contention).
+    target.watch(realm, scope);
     internal.client = try registry.register(realm, instance, storage_key, target.delivery());
     internal.registry = registry;
     // The settings object's one LockManager: kept for its realm's life, with
@@ -488,12 +480,17 @@ const Target = struct {
     /// Its realm's loop's inbox, a reference; null for a realm with no loop
     /// (a test's): nothing reaches it.
     sink: ?*runtime.TaskSink,
-    /// For a worker's environment: its worker's link (a reference), the
-    /// Browser's worker registry and scope - what a lock contention needs to
-    /// find the cached pages that keep the worker suspended
+    /// For a worker's environment: its worker's link (a reference) and the
+    /// Browser's worker registry - what a lock contention needs to find the
+    /// cached pages that keep the worker suspended
     /// (html.worker_host.evictForLockContention). Null for a Window's.
     worker: ?*html.WorkerLink = null,
     worker_registry: ?*html.WorkerRegistry = null,
+    /// For a Window's environment: its realm, compared only - the key of
+    /// the kept page that holds it (dom.bfcache.doomRealms). Null for a
+    /// worker's.
+    window_realm: ?*const anyopaque = null,
+    /// The Browser's scope, for either. Null: nothing to contend with.
     scope: ?*runtime.BrowserScope = null,
 
     fn create(allocator: std.mem.Allocator, manager: *runtime.Instance, sink: ?*runtime.TaskSink) !*Target {
@@ -511,9 +508,15 @@ const Target = struct {
         return .{ .ctx = self, .post = post, .deinit = deinitCtx, .contention = contention };
     }
 
-    /// Record the worker whose global scope's realm is `realm`, if it is a
-    /// worker's (on its own thread, as its LockManager is made).
-    fn watchWorker(self: *Target, realm: runtime.Context, scope: *runtime.BrowserScope) void {
+    /// Record what a contention needs for the environment whose realm is
+    /// `realm` (on its own thread, as its LockManager is made): a Window's
+    /// realm, or the worker whose global scope's realm it is.
+    fn watch(self: *Target, realm: runtime.Context, scope: *runtime.BrowserScope) void {
+        if (realm.isWindow()) {
+            self.window_realm = @ptrCast(realm);
+            self.scope = scope;
+            return;
+        }
         const link = html.worker_host.linkOfScope(realm) orelse return;
         const registry = html.WorkerRegistry.existingOf(realm) orelse {
             link.release();
@@ -525,13 +528,25 @@ const Target = struct {
     }
 
     /// web_locks.Delivery.contention: any thread, the registry's lock held.
-    /// A Window's environment is never suspended with a lock - a page that
-    /// holds one or waits for one is not kept (LockManager.blocksBfcache) -
-    /// so only a worker's answers.
+    /// A Window's environment whose page the back/forward cache keeps - its
+    /// own, or the page whose frame it is - dooms that page (never restored
+    /// again: dom.bfcache.doomRealms) and asks for its eviction from a task
+    /// of the window loop, which ends the environment (reason
+    /// "weblocks-contention", Chrome's RenderFrameHostImpl::
+    /// OnLockContention, kWebLocksContention); true, so the registry breaks
+    /// the lock at once. A worker's asks its pages
+    /// (html.worker_host.evictForLockContention).
     fn contention(ctx: *anyopaque) bool {
         const self: *Target = @ptrCast(@alignCast(ctx));
-        const link = self.worker orelse return false;
-        return html.worker_host.evictForLockContention(self.worker_registry.?, self.scope.?, link);
+        const scope = self.scope orelse return false;
+        if (self.worker) |link| return html.worker_host.evictForLockContention(self.worker_registry.?, scope, link);
+        const realm = self.window_realm orelse return false;
+        const realms = [_]*const anyopaque{realm};
+        if (!dom.bfcache.doomRealms(scope, &realms)) return false;
+        // The window loop's sink: the task names no document, so it runs
+        // at once, not with the cached page.
+        if (self.sink) |sink| dom.bfcache.queueRealmEvictions(scope, sink, &realms, .weblocks_contention);
+        return true;
     }
 
     /// Any thread, the registry's lock held: post the event's task.
@@ -573,11 +588,19 @@ const Task = struct {
         self.allocator.destroy(self);
     }
 
-    /// The task, from the LockManager's event loop.
+    /// The task, from the LockManager's event loop. The spec's "enqueue the
+    /// following steps on callback's relevant settings object's responsible
+    /// event loop" for a Window: they reach its script, so while the
+    /// back/forward cache keeps its page they wait as a global task of the
+    /// Window - a grant to a cached page's request runs its callback once
+    /// the page is restored, after its pageshow, and is dropped with it at
+    /// its eviction (whose end releases the lock): a task posted through a
+    /// sink names no document, and would run in the cached page.
     fn run(data: ?*anyopaque) void {
         const self: *Task = @ptrCast(@alignCast(data orelse return));
+        const manager = self.live() orelse return self.allocator.destroy(self);
+        if (dom.document_activity.queuedUntilFullyActive(manager, run, drop, self)) return;
         defer self.allocator.destroy(self);
-        const manager = self.live() orelse return;
         engine.runTaskInRealm(manager.ctx, steps, self) catch |err| {
             log.debug("lock event not run: {s}", .{@errorName(err)});
         };
@@ -850,10 +873,12 @@ const QueryTask = struct {
         self.allocator.destroy(self);
     }
 
+    /// Waits while the Window's page is cached, as `Task.run` does.
     fn run(data: ?*anyopaque) void {
         const self: *QueryTask = @ptrCast(@alignCast(data orelse return));
+        const manager = self.live() orelse return self.allocator.destroy(self);
+        if (dom.document_activity.queuedUntilFullyActive(manager, run, drop, self)) return;
         defer self.allocator.destroy(self);
-        const manager = self.live() orelse return;
         engine.runTaskInRealm(manager.ctx, steps, self) catch |err| {
             log.debug("query answer not run: {s}", .{@errorName(err)});
         };

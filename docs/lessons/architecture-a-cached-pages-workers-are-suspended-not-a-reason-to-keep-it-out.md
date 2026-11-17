@@ -1,6 +1,7 @@
 # Architecture: A cached page's workers are suspended, and what they post must wait as the page's own task
 
 **Date**: 2026-11-16
+**Status** (2026-11-16, lane locks1): Fix step 4 changed. A contention now dooms the cached page and breaks the lock at once, so the request is granted without waiting, as in Chrome (c699bd7e6414). A page whose document holds a lock is kept too. See [A lock broken for a cached page needs a "doomed" mark](architecture-a-lock-broken-for-a-cached-page-needs-a-doom-the-restore-respects.md).
 **Lesson**: Keep a page with workers in the back/forward cache by suspending its workers (HTML "run a worker" step 8), and make every cross-thread delivery to the page a global task of its Window, which the event loop keeps with the cached page.
 
 **Why**: HTML has no "worker blocks the bfcache" rule: a worker whose owners' Documents are not fully active is "suspendable" (10.2.3), and step 8 suspends its script until it is not. Chrome, Firefox and Safari all keep and restore such a page (back-forward-cache/eligibility/dedicated-worker.html, shared-worker.html, shared-worker-active-client.window.js pass in all three). A blocker that keeps the page out passes the tests that want it out and fails the four that want it kept - and hides the real work: what keeps a suspended worker's effects from reaching a page that is not shown.
