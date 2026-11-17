@@ -25,7 +25,12 @@
 // length), step (this document's place in the chain), settle (ms the page is left alone after
 // each timed workload's teardown, and before its done mark, for the steady footprint the runner
 // reads at the `settled` and `done` marks; a retained page's idle time before each reading),
-// count (how many objects a retained page makes and keeps).
+// count (how many objects a retained page makes and keeps), collect (1: a memory-only pass of
+// a lane's cost pair, `perf_bench run --collected` - after each timed workload's settled mark
+// the page asks for a full collection, stays idle for the settle time again and posts a
+// `collected` mark, so that the runner also reads what the workload keeps once its garbage is
+// gone; no published round passes it, and without it the page does nothing it did not do
+// before).
 //
 // A retained page (docs/performance.md, "Memory per element") holds everything it makes in
 // `this` from setup on, so nothing it keeps is garbage at either reading; what `setup` makes
@@ -43,6 +48,7 @@
   const step = Math.max(0, +(params.get('step') || 0));
   const settle = Math.max(0, +(params.get('settle') || 0));
   const count = Math.max(0, +(params.get('count') || 0));
+  const collectAfterSettled = params.get('collect') === '1';
   const idle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const workloads = [];
   let chainName = null;
@@ -112,6 +118,13 @@
     // What the workload kept, once it is over and the page has been idle a while.
     if (settle > 0) await idle(settle);
     await post('settled', { workload: w.name });
+    // A collected pass: the same reading once more, after a full collection and the settle
+    // time again - the collector's own schedule can no longer choose what is read.
+    if (collectAfterSettled) {
+      const method = await collect();
+      if (settle > 0) await idle(settle);
+      await post('collected', { workload: w.name, gc: method });
+    }
   }
 
   async function runTimed() {

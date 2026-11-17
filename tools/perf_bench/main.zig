@@ -5,8 +5,20 @@
 //!                  --round=<n> --runs=<n> --pin=<file> [--pin=<file> ...]
 //!                  [--profiles=<dir>] [--stop-file=<f>] [--only=<text>]
 //!                  [--iterations=<n>] [--warmup=<n>] [--settle-ms=<n>] [--port=<n>]
+//!                  [--collected]
 //!       every engine pinned on every page of the suite, <runs> times, in
-//!       alternating order; the journal is <out>/journal.jsonl
+//!       alternating order; the journal is <out>/journal.jsonl. --collected
+//!       (a memory-only pass of a lane's cost pair, never a round): each
+//!       timed workload's footprint is read once more after a full
+//!       collection the page asks for
+//!   perf_bench cost --default=<dir> [--memory=<dir>] [--bar=<ratio>]
+//!       a lane's cost pair (crane against crane_base) read against the 3%
+//!       bar: time, CPU and instructions from the default pass's journals,
+//!       memory judged on the memory pass alone (the default pass's memory
+//!       is printed for information); a steady or peak figure above the bar
+//!       is cleared by common levels within the bar or by the collected figure
+//!       (AGENTS.md's rule; cost.zig; docs/performance.md, "A lane's cost
+//!       pair"). Exit 1 when a row is over the bar and not cleared
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
 //!       the run's input checks alone (window scripts run them first): the
 //!       suite against its pages, each pin readable, each binary there and
@@ -49,9 +61,10 @@ pub const gcbench = @import("gcbench.zig");
 pub const report = @import("report.zig");
 pub const card = @import("card.zig");
 pub const chart = @import("chart.zig");
+pub const cost = @import("cost.zig");
 
 const usage =
-    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|serve [options]
+    \\usage: perf_bench run|check|check-suite|gc-bench|validate|report|cost|serve [options]
     \\       (docs/performance.md; tools/perf_bench/main.zig lists every option)
     \\
 ;
@@ -139,6 +152,7 @@ pub fn main(init: std.process.Init) !void {
             .warmup = args.int(u32, "warmup", 3),
             .settle_ms = args.int(u32, "settle-ms", 500),
             .port = args.int(u16, "port", 0),
+            .collected = args.get("collected") != null,
         });
         try r.run();
     } else if (std.mem.eql(u8, cmd, "gc-bench")) {
@@ -163,6 +177,8 @@ pub fn main(init: std.process.Init) !void {
         if (bad) std.process.exit(1);
     } else if (std.mem.eql(u8, cmd, "report")) {
         try writeReport(arena, io, &args);
+    } else if (std.mem.eql(u8, cmd, "cost")) {
+        try writeCost(arena, io, &args);
     } else if (std.mem.eql(u8, cmd, "serve")) {
         const s = try server.Server.start(init.gpa, io, .{ .root = args.need("root"), .port = args.int(u16, "port", 8000) });
         defer s.stop();
@@ -245,6 +261,23 @@ fn capture(arena: Allocator, io: Io, argv: []const []const u8) []const u8 {
 /// The measuring host, as every row records it.
 pub fn hostInfo(arena: Allocator, io: Io) !journal.Host {
     const name = capture(arena, io, &.{ "hostname", "-s" });
+    if (builtin.os.tag == .linux) {
+        const release = capture(arena, io, &.{ "uname", "-r" });
+        // /proc files are read to their end (their size reads 0, so a read
+        // sized by the file's length gets nothing: server1's first rows said
+        // "unknown", 0 cores, 0 bytes).
+        const cpuinfo = proc.linux.readFile("/proc/cpuinfo", try arena.alloc(u8, 1 << 20)) orelse "";
+        const meminfo = proc.linux.readFile("/proc/meminfo", try arena.alloc(u8, 64 << 10)) orelse "";
+        const os_release = Io.Dir.cwd().readFileAlloc(io, "/etc/os-release", arena, .limited(1 << 20)) catch "";
+        return .{
+            .name = if (name.len > 0) name else "unknown",
+            .os = try linuxOsName(arena, os_release, release),
+            .arch = @tagName(builtin.cpu.arch),
+            .cpu = linuxCpuName(cpuinfo) orelse "unknown",
+            .cores = linuxCores(cpuinfo),
+            .memory_bytes = linuxMemoryBytes(meminfo),
+        };
+    }
     const product = capture(arena, io, &.{ "sw_vers", "-productVersion" });
     const build_v = capture(arena, io, &.{ "sw_vers", "-buildVersion" });
     const cpu = capture(arena, io, &.{ "sysctl", "-n", "machdep.cpu.brand_string" });
@@ -258,6 +291,94 @@ pub fn hostInfo(arena: Allocator, io: Io) !journal.Host {
         .cores = cores,
         .memory_bytes = mem,
     };
+}
+
+/// A Linux host's name for the journal: /etc/os-release's PRETTY_NAME and
+/// the kernel's release ("Ubuntu 24.04.1 LTS (Linux 6.8.0-48-generic)").
+fn linuxOsName(arena: Allocator, os_release: []const u8, kernel: []const u8) ![]const u8 {
+    var pretty: []const u8 = "Linux";
+    var lines = std.mem.splitScalar(u8, os_release, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "PRETTY_NAME=")) continue;
+        const value = std.mem.trim(u8, line["PRETTY_NAME=".len..], " \t\r\"'");
+        if (value.len > 0) pretty = value;
+    }
+    if (kernel.len == 0) return pretty;
+    return std.fmt.allocPrint(arena, "{s} (Linux {s})", .{ pretty, kernel });
+}
+
+/// The value of /proc/cpuinfo's first `key` line ("model name\t: AMD ...").
+fn cpuinfoValue(cpuinfo: []const u8, key: []const u8) ?[]const u8 {
+    var lines = std.mem.splitScalar(u8, cpuinfo, '\n');
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (!std.mem.eql(u8, std.mem.trim(u8, line[0..colon], " \t"), key)) continue;
+        const value = std.mem.trim(u8, line[colon + 1 ..], " \t\r");
+        if (value.len > 0) return value;
+    }
+    return null;
+}
+
+/// The CPU's name: x86's "model name"; an Arm host has none and gives its
+/// part numbers instead.
+fn linuxCpuName(cpuinfo: []const u8) ?[]const u8 {
+    return cpuinfoValue(cpuinfo, "model name") orelse cpuinfoValue(cpuinfo, "Model") orelse cpuinfoValue(cpuinfo, "CPU part");
+}
+
+/// How many logical CPUs /proc/cpuinfo lists (its "processor" lines).
+fn linuxCores(cpuinfo: []const u8) u32 {
+    var n: u32 = 0;
+    var lines = std.mem.splitScalar(u8, cpuinfo, '\n');
+    while (lines.next()) |line| {
+        const colon = std.mem.indexOfScalar(u8, line, ':') orelse continue;
+        if (std.mem.eql(u8, std.mem.trim(u8, line[0..colon], " \t"), "processor")) n += 1;
+    }
+    return n;
+}
+
+/// /proc/meminfo's MemTotal ("MemTotal:       131811640 kB"), in bytes.
+fn linuxMemoryBytes(meminfo: []const u8) u64 {
+    var lines = std.mem.splitScalar(u8, meminfo, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, line, "MemTotal:")) continue;
+        var it = std.mem.tokenizeAny(u8, line["MemTotal:".len..], " \t");
+        const kb = std.fmt.parseInt(u64, it.next() orelse return 0, 10) catch return 0;
+        return kb * 1024;
+    }
+    return 0;
+}
+
+test "this host's description on Linux: a CPU, its cores and its memory, read from /proc" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const host = try hostInfo(arena.allocator(), std.testing.io);
+    try std.testing.expect(host.cores > 0);
+    try std.testing.expect(host.memory_bytes > 0);
+    try std.testing.expect(!std.mem.eql(u8, host.cpu, "unknown"));
+    try std.testing.expect(std.mem.indexOf(u8, host.os, "Linux") != null);
+}
+
+test "a Linux host's description: its distribution and kernel, CPU, cores and memory" {
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const os_release =
+        \\PRETTY_NAME="Ubuntu 24.04.1 LTS"
+        \\NAME="Ubuntu"
+        \\VERSION_ID="24.04"
+        \\
+    ;
+    try std.testing.expectEqualStrings("Ubuntu 24.04.1 LTS (Linux 6.8.0-48-generic)", try linuxOsName(a, os_release, "6.8.0-48-generic"));
+    try std.testing.expectEqualStrings("Linux (Linux 6.8.0)", try linuxOsName(a, "", "6.8.0"));
+    try std.testing.expectEqualStrings("Linux", try linuxOsName(a, "", ""));
+    const cpuinfo = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9 7950X 16-Core Processor\ncpu MHz\t\t: 4491.540\n\n" ++
+        "processor\t: 1\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9 7950X 16-Core Processor\n";
+    try std.testing.expectEqualStrings("AMD Ryzen 9 7950X 16-Core Processor", linuxCpuName(cpuinfo).?);
+    try std.testing.expectEqual(@as(u32, 2), linuxCores(cpuinfo));
+    try std.testing.expectEqual(@as(?[]const u8, null), linuxCpuName("processor\t: 0\n"));
+    try std.testing.expectEqual(@as(u64, 131811640 * 1024), linuxMemoryBytes("MemTotal:       131811640 kB\nMemFree:        1024 kB\n"));
+    try std.testing.expectEqual(@as(u64, 0), linuxMemoryBytes("MemFree: 1 kB\n"));
 }
 
 fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void {
@@ -320,7 +441,8 @@ fn runGcBench(gpa: Allocator, arena: Allocator, io: Io, args: *const Args) !void
                 .counters = try gcbench.counters(a, f),
             };
             if (f.wall_s) |s| rec.wall_ms = try a.dupe(f64, &.{s * 1000.0});
-            if (f.peak_footprint) |p| rec.memory = .{ .footprint_start = 0, .footprint_end = p, .footprint_peak = p, .resident_end = f.max_rss orelse 0, .processes = 1 };
+            // GNU time (Linux) reports no footprint: the largest resident size stands in (gcbench.zig).
+            if (f.peak_footprint orelse f.max_rss) |p| rec.memory = .{ .footprint_start = 0, .footprint_end = p, .footprint_peak = p, .resident_end = f.max_rss orelse 0, .processes = 1 };
             const exited_ok = switch (result.term) {
                 .exited => |code| code == 0,
                 else => false,
@@ -362,6 +484,37 @@ fn readJournals(arena: Allocator, io: Io, dir_path: []const u8) ![]const journal
     if (all.items.len == 0) fail("no journal records below {s}", .{dir_path});
     std.debug.print("perf_bench: {d} records from {d} journals\n", .{ all.items.len, paths.items.len });
     return all.items;
+}
+
+/// One pass of a cost pair from the journals below `dir`.
+fn costPass(arena: Allocator, io: Io, dir: []const u8) !cost.Pass {
+    return cost.passOf(arena, try readJournals(arena, io, dir)) catch |err| switch (err) {
+        error.NoTip => fail("{s}: no row of crane (the tip)", .{dir}),
+        error.NoBase => fail("{s}: no row of crane_base (the base the tip is compared with)", .{dir}),
+        error.TwoTips => fail("{s}: rows of two versions of crane - one pass compares one tip", .{dir}),
+        error.TwoBases => fail("{s}: rows of two versions of crane_base - one pass compares one base", .{dir}),
+        error.OutOfMemory => return err,
+    };
+}
+
+fn writeCost(arena: Allocator, io: Io, args: *const Args) !void {
+    const default_dir = args.need("default");
+    const default = try costPass(arena, io, default_dir);
+    var memory: ?cost.Pass = null;
+    if (args.get("memory")) |dir| memory = try costPass(arena, io, dir);
+    const bar = if (args.get("bar")) |text| std.fmt.parseFloat(f64, text) catch fail("--bar={s} is not a ratio", .{text}) else cost.default_bar;
+    if (!(bar > 1)) fail("--bar={d} is not above 1: the bar is the tip's figure over the base's", .{bar});
+    var out: Io.Writer.Allocating = .init(arena);
+    const summary = try cost.write(&out.writer, arena, &default, if (memory) |*p| p else null, .{ .bar = bar, .default_name = default_dir, .memory_name = args.get("memory") orelse "" });
+    // The table is the command's result: on stdout, appended (a streaming
+    // write: stdout may be a log other processes write to).
+    var buf: [4096]u8 = undefined;
+    var stdout = Io.File.stdout().writerStreaming(io, &buf);
+    try stdout.interface.writeAll(out.written());
+    try stdout.interface.flush();
+    // Over the bar and not cleared: the command fails, so a window script
+    // cannot read a table it did not look at as a pass.
+    if (summary.failed()) std.process.exit(1);
 }
 
 fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
@@ -456,4 +609,5 @@ test {
     _ = report;
     _ = card;
     _ = chart;
+    _ = cost;
 }

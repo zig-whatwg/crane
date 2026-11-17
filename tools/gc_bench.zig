@@ -27,8 +27,9 @@
 //!                                       # a named measurement - its statement,
 //!                                       # counts and collections - and its
 //!                                       # report (wide, qsa-deep,
-//!                                       # wrapper-churn-nogc, pause, div,
-//!                                       # text, clone-drop, parse-drop,
+//!                                       # wrapper-churn-nogc, pause,
+//!                                       # pause-bare, div, text,
+//!                                       # clone-drop, parse-drop,
 //!                                       # sandbox-small, sandbox-bigint,
 //!                                       # sandbox-chunks,
 //!                                       # sandbox-megabyte-loop:
@@ -492,7 +493,7 @@ pub fn main(init: std.process.Init) !void {
 
     report(samples.items, force_gc, control, body, drive_loop);
     reportCounters(samples.items);
-    if (bench) |b| reportBench(b, samples.items);
+    const shape_held = if (bench) |b| reportBench(b, samples.items) else true;
 
     if (profile) {
         const sites = try counting.topSites(allocator, 12);
@@ -510,6 +511,9 @@ pub fn main(init: std.process.Init) !void {
             .{},
         );
     }
+    // A row that did not hold its shape measured another experiment: its
+    // figures are printed, and the run fails so that no table takes them.
+    if (!shape_held) return error.BenchShapeNotHeld;
 }
 
 /// The longest `--loop` turns the event loop after one batch.
@@ -651,8 +655,10 @@ fn report(samples: []const Sample, gc_was_forced: bool, was_control: bool, body:
 /// What a named measurement (`--bench=`) reports beside the table, from the
 /// engine's counters: the full collections the run made and their pauses,
 /// and the wrappers made per cycle where the bench asks for it. A counter
-/// the engine does not report reads "not measured".
-fn reportBench(bench: *const options.Bench, samples: []const Sample) void {
+/// the engine does not report reads "not measured". Whether the run held
+/// the row's shape (`options.Bench.holdsShape`): true for a row without
+/// one, and where the engine reports no `node_wrappers` to check it by.
+fn reportBench(bench: *const options.Bench, samples: []const Sample) bool {
     const first = &samples[0];
     const last = &samples[samples.len - 1];
     std.debug.print("\n=== bench {s}: {s} ===\n", .{ bench.name, bench.what });
@@ -678,6 +684,17 @@ fn reportBench(bench: *const options.Bench, samples: []const Sample) void {
             std.debug.print("  wrappers made per cycle: {d:.2} (the engine's wrapper creations, {s})\n", .{ @as(f64, @floatFromInt(made - (first.counter(name) orelse 0))) / cycles_run, name });
         } else std.debug.print("  wrappers made per cycle: not measured (the engine reports no {s})\n", .{name});
     }
+    const want = bench.kept_wrappers orelse return true;
+    const alive = last.counter("node_wrappers") orelse {
+        std.debug.print("  node wrappers kept: not measured (the engine reports no node_wrappers): the row's shape, {d} below its tree's root, is not checked\n", .{want});
+        return true;
+    };
+    const kept = alive - (first.counter("node_wrappers") orelse 0);
+    const held = bench.holdsShape(kept);
+    std.debug.print("  node wrappers kept: {d} more than before the run; the row's shape is {d} to {d}: {s}\n", .{
+        kept, want, want + options.Bench.kept_wrappers_slack, if (held) "held" else "NOT HELD - this run measured another experiment, and its figures are not the row's",
+    });
+    return held;
 }
 
 /// Every counter the engine adapter reports, at the first and last reading and

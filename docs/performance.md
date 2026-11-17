@@ -178,6 +178,7 @@ zig-out/bin/perf_bench run --suite=tests/perf/elements.json --root=tests/perf --
   for Safari the WebKit processes launchd starts, by name - through `proc_pid_rusage`: CPU (user
   + system), instructions retired, `phys_footprint` (Activity Monitor's Memory: each page counted
   once) and resident size. It answers only after reading, so the page is idle while it is read.
+  (On Linux the same set is read from `/proc`: "perf_bench on Linux".)
 - A timed row's CPU and instructions are the set's between its begin and end marks; its memory,
   the footprints at both, the most a 50 ms sampler saw between them, and its **steady** footprint:
   after the workload's teardown, with the page left alone `--settle-ms` (500 ms by default), at
@@ -457,6 +458,142 @@ chat.local; main built on chat2 was +0.6%
 - a surprising micro-row change is first re-checked with a second build, both sides rebuilt on the
   timing host, and with instructions retired (page minus a 0-iteration control) - only a change
   that survives both is chased.
+
+## A lane's cost pair
+
+A lane that changes how an object is built, a hot path or what Crane holds measures its cost as a
+**pair**: its tip (`crane`) against the main it is based on (`crane_base`), both consoles built in
+the lane's own mirror on the timing host, alternating in one window. The bar is 3% (AGENTS.md,
+"The 3% memory bar reads what Crane holds"). The pair is two passes of `perf_bench run`, and one
+command reads them:
+
+```bash
+# the default pass: time, CPU, instructions; steady and peak memory
+perf_bench run --suite=tests/perf/suite.json --root=tests/perf --out=<D> --round=<n> --runs=7 \
+  --pin=crane.pin --pin=crane_base.pin
+# the memory pass: memory only, the allocator's deferred-reclamation ring off on BOTH sides, and
+# ALWAYS --collected: each timed workload's footprint read once more after a full collection
+MallocLargeCache=0 perf_bench run --suite=... --root=tests/perf --out=<M> --round=<n> --runs=9 \
+  --pin=crane.pin --pin=crane_base.pin --collected
+perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
+```
+
+**The memory pass is always run with `--collected`** (the integrator, 2026-11-17), so that
+clearing (b) below is available for every row: a row whose launches form no two tight groups -
+one stray launch far above a level is enough (lane impls8's window: one launch at 67.7 MB above a
+level of 62 to 63 MB) - cannot be cleared by its levels, and without a collected figure it goes
+to a ruling for nothing. In such a pass each row starts from a heap the row before it had
+collected, so its steady and peak figures are the row's own, without what earlier rows left
+uncollected; they are a pair's figures, compared only within the pass.
+
+**The rule `cost` applies** (AGENTS.md, "The 3% memory bar reads what Crane holds"; the user,
+2026-11-15 and 2026-11-17):
+
+- time and instructions, on the default pass: a row is over when the tip's median over the base's
+  is above the bar and the two sides' launches do not overlap;
+- memory, on the steady figure and the peak of the **memory pass** - the medians of all its
+  launches - and only there: the default pass's memory figures are printed for information (the
+  ring is on, so the same bytes read in two levels by chance) and never fail the verdict. A
+  figure above the bar is **cleared**, with every launch's value printed, when
+  (a) both sides reached a common level and each such level's tip / base ratio is within the bar,
+  or (b) the row's collected figure is within the bar. A figure neither clears is over;
+- the collected figure never replaces steady and peak: it is read only to clear a row they put
+  above the bar.
+
+`cost` prints the geometric means, every row above the bar with each launch's value on both sides
+and its verdict (`CLEARED (a)`, `CLEARED (b)` or `OVER THE BAR`, with why), and a table of all
+rows (`!` above the bar and not cleared, `c` a memory-pass figure the rule clears, `i` a
+default-pass memory figure above the bar, for information, `*` the sides' launches apart, `L` two
+levels). Its last line is the pair's verdict, and it exits 1 when a row is over the bar and not
+cleared. Without a memory pass it says that memory was not judged.
+
+**The two readings that clear a row, and why a median needs them** (lane tl2, 2026-11-17). The
+rows of the streams, attributes, page-growth and fetch pages sit on two memory levels: a median of
+3 or 9 launches flips between them, and two consoles can sit on different levels with disjoint
+ranges in either direction (lane wb1: +3.3% on one pair of trees, -3.3% on the next, the same
+lane diff). With the ring off, what is left of a level is garbage waiting for a collection at the
+settle mark - whether V8 started a marking task in the idle half second, whether a full
+collection landed inside the page - and a build can prefer one level while it holds the same
+bytes on each.
+
+- **The levels of both sides together.** The two sides run the same page on the same host in
+  alternation, so a level belongs to the page. `cost` looks for two levels in the launches of both
+  sides at once (two groups at least 3% apart, two launches or more in each, each closer together
+  than half the gap between them), puts each launch on the low or the high one, and prints the tip
+  over the base **per
+  level both sides reached**, each side's count on each level, and the chance of shares that far
+  apart from one coin (Fisher's exact test, two-sided). A side with 8 launches low and 1 high, a
+  pass of 3 launches, and a side that sits on one level are all read this way; the report's own
+  levels need two groups on one side and miss each of them. A figure above the bar whose every
+  shared level reads within it is a median that changed level: clearing (a).
+- **Sides that share no level.** Every launch of the tip on one level and every launch of the
+  base on the other is the row the steady figure cannot settle: the tip holds more (or less), or
+  each build prefers a level. `cost` says so, whichever side is the higher - a row reading 0.967
+  today is the row that reads 1.033 on the next pair.
+- **The collected figure** (`--collected`, `memory.footprint_collected`). After a workload's
+  `settled` mark the page asks for a full collection (`TestUtils.gc()` twice, as the retained
+  pages do), stays idle for the settle time again and posts a `collected` mark. The footprint
+  there is what the workload keeps once its garbage is gone, so the collector's schedule cannot
+  choose it. A collected pass's page runs at another pace (each row starts from a collected
+  heap), so its steady and peak figures are a pair's, compared only within the pass, and its times
+  are not read. No published round is run with `--collected`: without `collect=1` in its URL the
+  harness does what it always did.
+
+**What the figures are worth, measured** (chat.local, 2026-11-17, main 4aa01442561: ONE console
+as both sides of the pair, so every row's true ratio is 1.000; the attributes and streams pages,
+9 launches a side, the ring off):
+
+- the steady figure of a plain memory pass read 1.000 to 1.016 over the 15 rows: the five rows
+  after `streams.reader` read 265-267, 270-272 or 276-281 MB by launch, one side had more launches
+  on the middle group, and its medians read 1.015 to 1.017 for no difference at all; three
+  attributes rows read 55.6 or 61.5 MB (4 launches and 5 on each side) and their medians 1.010;
+- the collected figure read 0.998 to 1.002 over the same 15 rows. On the attributes page it is one
+  level (42.5-43.0 MB in all 18 launches). On the streams page it is 81.2-82.7 MB in 13 launches of
+  18 and 92-97 MB in the other 5 (2 of one side, 3 of the other), the same launches on every row
+  after `streams.reader`: a collection frees the garbage, not the pages the heap's largest size
+  left in the allocator, which macOS does not take back. So the collected figure is not one level
+  everywhere; its median holds while fewer than half the launches are in that tail;
+- a real pair read by the command (lane impls8's cost window, 7 launches a side): the attributes
+  rows 1.116 by the rule on the ring-off pass; levels of both sides together 55.5 and 62.8 MB, the
+  tip 3 low and 4 high, the base 5 low and 2 high (the chance of those shares from one coin 0.59),
+  level against level 1.004 and 0.995. By the rule that window has 8 figures above the bar on its
+  memory pass: 6 cleared by (a), and 2 peaks not cleared, where one launch of the tip at 67.7 MB
+  sits far above the high level and the launches no longer form two groups (it had no collected
+  pass to clear them by (b)); its 8 figures above the bar on the default pass, the `events` rows
+  at 1.033 to 1.038, are for information and read 1.011 with the ring off.
+
+The user's ruling on these figures (2026-11-17) is the rule above: steady and peak stay the bar,
+and either reading may clear a row.
+
+## perf_bench on Linux
+
+`perf_bench` runs on Linux (lane tl2, 2026-11-17: `tools/perf_bench/proc_linux.zig`), so a server1
+pair uses the same tool, journal and `cost` table as a chat.local one. What differs is the
+reading, so **a Linux row is compared only with a Linux row of the same host, and every published
+figure stays macOS's**:
+
+- memory: the footprint is `RssAnon + VmSwap` of `/proc/<pid>/status` - the process's own
+  anonymous memory, resident or swapped out, the nearest Linux has to `phys_footprint`.
+  `resident_end` is `VmRSS`, which also counts the executable's and the libraries' file pages
+  (the tables lanes mem2, idle1 and ev2 wrote before this read `VmRSS`: they are higher by those
+  pages);
+- CPU: `utime + stime` of `/proc/<pid>/stat`, all threads, in clock ticks - 10 ms steps;
+- instructions: not measured (the journal's field is absent). A counter on a process set from
+  outside misses what each thread did before the counter was opened;
+- the process set: the launched process and its descendants, from every thread's
+  `/proc/<pid>/task/<tid>/children`;
+- `perf_bench gc-bench` runs each row under GNU time (`/usr/bin/time -v`): wall time and the
+  largest resident size, which stands for the row's memory; no instructions.
+
+**A Linux pair's memory rows are noisier than macOS's** (server1, 2026-11-17, one console as both
+sides, the attributes and streams pages, 7 launches a side, a plain and a `--collected` pass, 210
+of 210 records ok in each): time read 0.973 to 1.015 and the streams rows' memory 0.978 to 1.001
+on the memory pass, but four rows of the attributes page read 1.029 to 1.065 there, on steady,
+peak and collected alike -
+one side's launches of `dom.event-ctor` read 45.6 to 57.3 MB, the other's 47.2 to 54.3, one wide
+level (glibc keeps freed memory in per-thread arenas: lane mem2). So `cost` says OVER THE BAR for
+a pair that is one binary: on Linux, 7 launches a side do not read a 3% memory bar on these rows,
+and a Linux pair's memory verdict is evidence to weigh, not a gate. The bar is read on chat.local.
 
 ## /performance/
 

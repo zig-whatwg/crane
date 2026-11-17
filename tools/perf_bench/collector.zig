@@ -11,6 +11,11 @@
 //!   error   a workload threw (`unsupported`: it needs what the engine lacks)
 //!   log     a line for the run's log
 //!   done    the page has finished
+//!   collected  a memory-only pass run with --collected (a lane's cost
+//!           pair): after a workload's settled mark the page asked for a
+//!           full collection (`gc`: how, as for before) and stayed idle for
+//!           the settle time again; the reading is what the workload keeps
+//!           once its garbage is gone (`footprint_collected`, cost.zig)
 //!   before  a retained page's objects are about to be made: the reading is
 //!           the footprint before them (`gc`: the collection the page asked
 //!           for first - "TestUtils.gc", "gc" or "none"; `js_heap`: the JS
@@ -105,6 +110,9 @@ pub const Collector = struct {
     failed: std.StringArrayHashMapUnmanaged(Failure) = .empty,
     /// A retained page's before mark, until its after mark.
     before: ?Before = null,
+    /// The reading of the page's last collected mark, while no workload has
+    /// begun since: the page's own row is then read after a collection too.
+    last_collected: ?u64 = null,
 
     const Before = struct { gc: []const u8, js_heap: ?f64 };
 
@@ -156,6 +164,7 @@ pub const Collector = struct {
                 self.loaded_reading = reading.*;
             }
         } else if (std.mem.eql(u8, t, "begin")) {
+            self.last_collected = null;
             if (!self.listed(mark.workload)) return self.note("begin of an unlisted workload: {s}", .{mark.workload});
             const p = try self.arena.create(Pending);
             p.* = .{ .workload = try self.arena.dupe(u8, mark.workload), .begin = reading.*, .footprint_start = footprint, .peak = footprint };
@@ -244,6 +253,22 @@ pub const Collector = struct {
                 if (r.memory) |*m| m.footprint_settled = footprint;
                 break;
             }
+        } else if (std.mem.eql(u8, t, "collected")) {
+            // An engine whose page cannot ask for a collection read nothing
+            // new: the figure is only ever one taken after a collection.
+            if (!forcedGc(mark.gc)) return self.note("collected mark of {s} without a collection ({s}): not recorded", .{ mark.workload, if (mark.gc.len > 0) mark.gc else "none" });
+            // The last record of this workload: what it keeps, collected.
+            var i = self.records.items.len;
+            while (i > 0) {
+                i -= 1;
+                const r = &self.records.items[i];
+                if (!std.mem.eql(u8, r.workload, mark.workload)) continue;
+                if (r.memory) |*m| {
+                    m.footprint_collected = footprint;
+                    self.last_collected = footprint;
+                }
+                break;
+            }
         } else if (std.mem.eql(u8, t, "done")) {
             self.done = true;
             if (self.page.kind == .timed) try self.pageRow(reading);
@@ -290,6 +315,10 @@ pub const Collector = struct {
             .resident_end = done.resident(),
             .processes = @intCast(done.count),
             .footprint_settled = end,
+            // In a collected pass the done mark follows the last workload's
+            // collection with nothing run since: the page's row is collected
+            // too, read at this mark like its settled figure.
+            .footprint_collected = if (self.last_collected != null) end else null,
         };
         try self.records.append(self.arena, r);
     }
@@ -520,6 +549,52 @@ test "steady memory: each workload's settled footprint, and the page's own row" 
     try testing.expectEqual(@as(?u64, 500), page.memory.?.footprint_settled);
     try testing.expectEqual(@as(u64, 900), page.memory.?.footprint_peak);
     for (records) |r| try journal.validate(r);
+}
+
+test "a collected pass: each workload's footprint after a collection, and the page's own row; no other pass has the figure" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var streams_base = test_base;
+    streams_base.page = "workloads/streams.html";
+    var c: Collector = .{ .arena = a, .base = streams_base, .page = .{ .page = "workloads/streams.html", .kind = .timed, .workloads = &.{ "streams.a", "streams.b" } } };
+    try c.onMark(.{ .type = "loaded", .load_ms = 20 }, 300, &fakeReading(9, 0, 100));
+    try c.onMark(.{ .type = "begin", .workload = "streams.a" }, 310, &fakeReading(9, 0, 150));
+    try c.onMark(.{ .type = "end", .workload = "streams.a", .ops = 10, .wall_ms = &.{1.0} }, 320, &fakeReading(9, 1_000_000, 800));
+    // Half a second idle: the garbage may or may not be gone yet.
+    try c.onMark(.{ .type = "settled", .workload = "streams.a" }, 830, &fakeReading(9, 1_000_000, 700));
+    // After the collection the page asked for: what the workload keeps.
+    try c.onMark(.{ .type = "collected", .workload = "streams.a", .gc = "TestUtils.gc" }, 1400, &fakeReading(9, 1_000_000, 400));
+    try c.onMark(.{ .type = "begin", .workload = "streams.b" }, 1410, &fakeReading(9, 1_000_000, 400));
+    try c.onMark(.{ .type = "end", .workload = "streams.b", .ops = 10, .wall_ms = &.{1.0} }, 1420, &fakeReading(9, 2_000_000, 900));
+    try c.onMark(.{ .type = "settled", .workload = "streams.b" }, 1930, &fakeReading(9, 2_000_000, 850));
+    try c.onMark(.{ .type = "collected", .workload = "streams.b", .gc = "TestUtils.gc" }, 2500, &fakeReading(9, 2_000_000, 450));
+    try c.onMark(.{ .type = "done" }, 2510, &fakeReading(9, 2_000_000, 455));
+    const records = try c.finish(.done);
+    try testing.expectEqual(@as(usize, 3), records.len);
+    try testing.expectEqual(@as(?u64, 700), records[0].memory.?.footprint_settled);
+    try testing.expectEqual(@as(?u64, 400), records[0].memory.?.footprint_collected);
+    try testing.expectEqual(@as(?u64, 850), records[1].memory.?.footprint_settled);
+    try testing.expectEqual(@as(?u64, 450), records[1].memory.?.footprint_collected);
+    // The page's row, read at the done mark, right after the last collection.
+    try testing.expectEqualStrings("page.streams", records[2].workload);
+    try testing.expectEqual(@as(?u64, 455), records[2].memory.?.footprint_collected);
+    try testing.expectEqual(@as(?u64, 455), records[2].memory.?.footprint_settled);
+    for (records) |r| try journal.validate(r);
+
+    // An engine whose page cannot ask for a collection: the mark is noted,
+    // and no figure is recorded as collected.
+    var d: Collector = .{ .arena = a, .base = streams_base, .page = .{ .page = "workloads/streams.html", .kind = .timed, .workloads = &.{"streams.a"} } };
+    try d.onMark(.{ .type = "loaded", .load_ms = 20 }, 300, &fakeReading(9, 0, 100));
+    try d.onMark(.{ .type = "begin", .workload = "streams.a" }, 310, &fakeReading(9, 0, 150));
+    try d.onMark(.{ .type = "end", .workload = "streams.a", .ops = 10, .wall_ms = &.{1.0} }, 320, &fakeReading(9, 1_000_000, 800));
+    try d.onMark(.{ .type = "settled", .workload = "streams.a" }, 830, &fakeReading(9, 1_000_000, 700));
+    try d.onMark(.{ .type = "collected", .workload = "streams.a", .gc = "none" }, 1400, &fakeReading(9, 1_000_000, 700));
+    try d.onMark(.{ .type = "done" }, 1410, &fakeReading(9, 1_000_000, 700));
+    const plain = try d.finish(.done);
+    try testing.expectEqual(@as(?u64, null), plain[0].memory.?.footprint_collected);
+    try testing.expectEqual(@as(?u64, null), plain[1].memory.?.footprint_collected);
+    try testing.expect(std.mem.indexOf(u8, d.log.items, "collected mark of streams.a without a collection (none)") != null);
 }
 
 test "retained: the footprint before and after the objects, one record, no page or startup row" {
