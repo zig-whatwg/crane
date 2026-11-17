@@ -912,14 +912,6 @@ pub fn get_documentElement(instance: *runtime.Instance) anyerror!?*runtime.Insta
     return documentElementOf(instance);
 }
 
-/// Setter for documentElement (internal use)
-/// Used when creating initial document structure for about:blank
-pub fn setDocumentElement(instance: *runtime.Instance, element: ?*runtime.Instance) void {
-    if (getInternal(instance)) |internal| {
-        internal.document_element = element;
-    }
-}
-
 /// Getter for fragmentDirective
 pub fn get_fragmentDirective(instance: *runtime.Instance) anyerror!*runtime.Instance {
     _ = instance;

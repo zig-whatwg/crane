@@ -364,6 +364,17 @@ pub fn allowsDeclarativeShadowRoots(instance: *runtime.Instance) bool {
     return internal.allow_declarative_shadow_roots or internal.default_view != null;
 }
 
+/// Whether `instance` is a Document with a browsing context - a window's
+/// document, whose defaultView is that window (dom.document_browsing_context
+/// sets it, "destroy a document" clears it). False for anything else: a
+/// document no window shows, a node that is no Document. The engine
+/// adapter's wrapper cache keeps such a document's wrapper with its window,
+/// as WebKit's window keeps its document.
+pub fn hasDefaultView(instance: *runtime.Instance) bool {
+    const internal = getInternal(instance) orelse return false;
+    return internal.default_view != null;
+}
+
 /// A listed or form-associated element the HTML parser associated with the
 /// form element pointer's form ("create an element for a token" step 15)
 /// where the tree alone would not: the two instances and their slab

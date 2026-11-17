@@ -178,6 +178,14 @@ pub const fetch_objects = @import("fetch_objects.zig");
 pub const blob_bytes = @import("blob_bytes.zig");
 /// FileAPI "process blob parts" for the Blob and File constructors.
 pub const blob_parts = @import("blob_parts.zig");
+/// The Streams Standard's abstract operations over the stream interfaces'
+/// platform objects: the shared steps their impls run (lane impls8 moved
+/// them out of src/webidl/impls/, the impls boundary rule 3).
+pub const streams_js = @import("streams_js.zig");
+pub const streams_readable = @import("streams_readable.zig");
+pub const streams_writable = @import("streams_writable.zig");
+pub const streams_transform = @import("streams_transform.zig");
+pub const streams_from = @import("streams_from.zig");
 pub const text_stream = @import("text_stream.zig");
 /// A CharacterData node's data, read in place by the tree's own algorithms.
 pub const character_data = @import("character_data.zig");

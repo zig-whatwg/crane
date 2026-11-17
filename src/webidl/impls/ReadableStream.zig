@@ -12,10 +12,10 @@ const typedefs = @import("typedefs");
 const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const ReadableStream = interfaces.ReadableStream;
-const js = @import("streams_js.zig");
+const js = @import("dom").streams_js;
 const engine = @import("engine");
-const srd = @import("streams_readable.zig");
-const sw = @import("streams_writable.zig");
+const srd = @import("dom").streams_readable;
+const sw = @import("dom").streams_writable;
 
 pub const State = ReadableStream.State;
 pub const InternalState = srd.Stream;
@@ -135,7 +135,7 @@ pub fn call_constructor(ctx: runtime.Context, underlyingSource: webidl.Opt(runti
 /// `ReadableStream.from(asyncIterable)` - § 4.2.4:
 /// Return ? ReadableStreamFromIterable(asyncIterable).
 pub fn call_static_from(instance: *runtime.Instance, asyncIterable: runtime.JSValue) anyerror!*runtime.Instance {
-    return @import("streams_from.zig").fromIterable(try js.Realm.of(instance), instance.ctx, asyncIterable);
+    return @import("dom").streams_from.fromIterable(try js.Realm.of(instance), instance.ctx, asyncIterable);
 }
 
 /// `locked` - § 4.2.4.

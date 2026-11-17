@@ -5,7 +5,7 @@
 //! Spec: WHATWG Streams §4.2.1 ReadableStreamFromIterable
 //!
 //! This module provides a Zig-only model of async iteration (tests, mocks).
-//! ReadableStream.from() itself is src/webidl/impls/streams_from.zig.
+//! ReadableStream.from() itself is src/dom/streams_from.zig.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

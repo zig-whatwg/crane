@@ -9,8 +9,8 @@ const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const webidl = @import("webidl");
-const js = @import("streams_js.zig");
-const srd = @import("streams_readable.zig");
+const js = @import("dom").streams_js;
+const srd = @import("dom").streams_readable;
 
 pub const State = interfaces.ReadableByteStreamController.State;
 pub const InternalState = srd.ByteController;

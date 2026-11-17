@@ -28,7 +28,6 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const HTMLIFrameElement = interfaces.HTMLIFrameElement;
 const DOMTokenList = interfaces.DOMTokenList;
-const DOMTokenListImpl = @import("DOMTokenList.zig");
 
 // Import html_core for IFrameIntegration (interface-free module)
 const html_core = @import("html_core");
@@ -226,8 +225,7 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     log.debug("[HTMLIFrameElement.init] instance={*} -> internal={*} -> integration={*}", .{ instance, state.own._internal.?, state.own._internal.?.integration });
 
     // Set Node's local name for iframe identification during DOM operations
-    const NodeImpl = @import("Node.zig");
-    try NodeImpl.setLocalName(instance, runtime.DOMString.initInterned("iframe"));
+    try dom_module.node_creation.setNodeLocalName(instance, runtime.DOMString.initInterned("iframe"));
 }
 
 /// Deinitialize instance. An iframe keeps a deinit of its own rather than a
@@ -353,7 +351,6 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     // Per HTML spec, about:blank documents must have a basic HTML structure:
     // <html><head></head><body></body></html>
     // This is required because browsers always create these elements for any HTML document.
-    const DocumentImpl = @import("Document.zig");
 
     // Create html element (HTMLHtmlElement)
     const html_element = interfaces.Document.call_createElement(
@@ -398,7 +395,7 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
     };
 
     // Set the document element (html) on the Document
-    DocumentImpl.setDocumentElement(document_instance, html_element);
+    document_internals.setDocumentElement(document_instance, html_element);
 
     // The Document's wrapper, made now in its own realm (see wrapInOwnRealm).
     if (runtime_ctx.engine_ctx == null) return null;
@@ -410,11 +407,10 @@ fn createDocumentForIframe(runtime_ctx_ptr: ?*anyopaque, browsing_ctx_ptr: *html
         browsing_ctx_ptr.setActiveDocument(document_instance, window_ptr);
 
         // Also set the document on the Window
-        const WindowImpl = @import("Window.zig");
         const window_instance: *runtime.Instance = @ptrCast(@alignCast(window_ptr));
-        WindowImpl.setDocument(window_instance, document_instance);
+        dom_module.window_globals.setDocument(window_instance, document_instance);
         // Set the defaultView on the document (bidirectional Document <-> Window link)
-        DocumentImpl.setDefaultView(document_instance, window_instance);
+        dom_module.document_browsing_context.setWindow(document_instance, window_instance);
     }
 
     return document_instance;
@@ -565,12 +561,10 @@ fn createNavigationDocument(
     // its origin is known only now, after redirects.
     dom_module.deferred_fetches.potentiallyFreeQuota(browsing_ctx_ptr, document_instance);
 
-    const DocumentImpl = @import("Document.zig");
     if (window_instance) |window_inst| {
         browsing_ctx_ptr.setActiveDocument(document_instance, window_inst);
-        const WindowImpl = @import("Window.zig");
-        WindowImpl.setDocument(window_inst, document_instance);
-        DocumentImpl.setDefaultView(document_instance, window_inst);
+        dom_module.window_globals.setDocument(window_inst, document_instance);
+        dom_module.document_browsing_context.setWindow(document_instance, window_inst);
     } else {
         log.debug("[createNavigationDocument] BC={*} WARNING: No active window, document {*} will NOT be linked!", .{ browsing_ctx_ptr, document_instance });
     }
@@ -779,10 +773,8 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: 
     // The realm's Window.
     const window = windowOfRealm(realm) orelse return;
 
-    // Get Window's Location
-    const WindowImpl = @import("Window.zig");
-    const internal = WindowImpl.getInternal(window) orelse return;
-    const location = internal.location orelse return;
+    // The Window's Location, when it has made one.
+    const location = dom_module.window_globals.location(window) orelse return;
 
     // Record it as the realm's document URL too - only top-level pages and
     // workers ever did, so `document.URL` inside an iframe was "".
@@ -792,8 +784,7 @@ fn updateIframeLocation(realm_ptr: ?*anyopaque, url: []const u8, same_document: 
     if (same_document) realm.updateDocumentUrl(url) catch {} else realm.setDocumentUrl(url) catch {};
 
     // Update Location's URL
-    const LocationImpl = @import("Location.zig");
-    LocationImpl.setURLFromString(location, url) catch {};
+    dom_module.window_globals.setLocationUrl(location, url) catch {};
 }
 
 // ============================================================================
@@ -7242,7 +7233,7 @@ const FrameWindow = struct {
         // The navigable's browsing context, not the one Window.init made -
         // frames[index] and contentDocument find the Window through it -
         // and this Window its active window.
-        @import("Window.zig").replaceBrowsingContext(window, @ptrCast(self.browsing_context));
+        dom_module.window_globals.adoptBrowsingContext(window, @ptrCast(self.browsing_context));
         // The global the Window is bound to, for cross-realm access: a frame's
         // Window reached from its parent is this global, not a new wrapper.
         switch (global_this) {
@@ -8373,9 +8364,8 @@ fn hostTraversableIsNavigating(record: *anyopaque) bool {
 /// Location-object navigate), and names `window` as its own.
 fn giveLocationNavigateCallback(window: *runtime.Instance, integration: *IFrameIntegration) void {
     if (interfaces.Window.get_location(window)) |location| {
-        const LocationImpl = @import("Location.zig");
-        LocationImpl.setWindow(location, window);
-        LocationImpl.setNavigateCallback(location, &navigateFromLocation, @ptrCast(integration));
+        dom_module.window_globals.setLocationWindow(location, window);
+        dom_module.window_globals.setLocationNavigable(location, &navigateFromLocation, @ptrCast(integration));
     } else |err| log.debug("a navigable's Location was not made: {}", .{err});
 }
 
@@ -8580,11 +8570,10 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     const token_list = DOMTokenList.init(internal.allocator, instance.ctx) catch return error.OutOfMemory;
     errdefer DOMTokenList.deinit(token_list);
 
-    // Set supported tokens for supports() method
-    DOMTokenListImpl.setSupportedTokens(token_list, &sandboxing.supported_tokens);
-
-    // Associate with this element and attribute name
-    DOMTokenListImpl.setElement(token_list, instance, runtime.DOMString.initInterned("sandbox"));
+    // Associate it with this element and its sandbox attribute, as every
+    // reflected DOMTokenList is (dom.token_lists); the association gives it
+    // the sandboxing keywords as its supported tokens, for supports().
+    try dom_module.token_lists.associate(token_list, instance, "sandbox");
 
     // Initialize the token list from the element's current sandbox attribute value.
     // This is critical: the attribute may have been set via Element.setAttribute()
