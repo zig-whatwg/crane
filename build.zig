@@ -6153,13 +6153,20 @@ pub fn build(b: *std.Build) void {
     // that carries an environment of its own. Nothing else is built.
     const configure_cache_step = b.step("check-configure-cache", "Check that no configure of this build poisons Zig's configure cache or copies the configure-time environment into a Run step: a sub-build per flag set with --cache-poison=disallowed (nothing is compiled)");
     const configure_environment_step = b.step("check-configure-environment", "Fail on any Run step this configuration gives an environment of its own (check-configure-cache builds it under each flag set)");
-    inline for ([_][]const []const u8{
-        &.{},
-        &.{"-Dtest-binaries=engine"},
-        &.{"-Dsanitize-thread"},
-        &.{"-Dverify-base=HEAD"},
+    // The flag sets: the gates' own, and each one under which the configure
+    // used to read the checkout or ask the machine (the one-binary layout's
+    // module roots, git, curl-config, xcrun). This build's engine for every
+    // set but the iOS target's, which takes its own default.
+    const engine_flag = b.fmt("-Dengine={t}", .{engine.name});
+    for ([_][]const []const u8{
+        &.{engine_flag},
+        &.{ engine_flag, "-Dtest-binaries=engine" },
+        &.{ engine_flag, "-Dsanitize-thread" },
+        &.{ engine_flag, "-Dverify-base=HEAD" },
+        &.{ engine_flag, "-Dsystem-curl" },
+        &.{"-Dtarget=aarch64-ios"},
     }) |flags| {
-        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed", b.fmt("-Dengine={t}", .{engine.name}) });
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed" });
         sub_build.setName(b.fmt("configure this build with --cache-poison=disallowed {s}", .{std.mem.join(b.allocator, " ", flags) catch @panic("OOM")}));
         sub_build.addArgs(flags);
         // The parent's local cache; the global one travels in the
@@ -6170,6 +6177,10 @@ pub fn build(b: *std.Build) void {
         // The sub-build decides; this step always asks it.
         sub_build.has_side_effects = true;
         configure_cache_step.dependOn(&sub_build.step);
+    }
+    // Part of the whole test run.
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        test_step.dependOn(configure_cache_step);
     }
 
     // ========================================================================
@@ -6941,8 +6952,11 @@ pub fn build(b: *std.Build) void {
     checkNoEnvironmentCopies(b, configure_environment_step);
 
     // -Dsystem-curl: whatever is built, the system libcurl's WebSocket check
-    // runs with it, as the configure-time warning it replaces did.
-    if (system_curl_check) |check| for (b.top_level_steps.values()) |top| top.step.dependOn(&check.step);
+    // runs with it, as the configure-time warning it replaces did - but for
+    // the configuration's own check, which builds nothing.
+    if (system_curl_check) |check| for (b.top_level_steps.values()) |top| {
+        if (&top.step != configure_environment_step) top.step.dependOn(&check.step);
+    };
 }
 
 /// The mode and C sanitizer one part of a build compiles its C with (null:
