@@ -139,18 +139,10 @@ pub const custom_element_returns = @import("custom_elements/returns.zig");
 // CustomElementDefinition fields. They are available via the html module
 // (full.zig) instead of html_core.
 
-// Script Execution (§4.12.1), Script Runner (§4.12.1.1), and Event Utilities
-// MOVED to src/webidl/impls/ to break circular dependency:
-//   html_mod → interfaces_mod → impls_mod → html_mod (CYCLE!)
-//
-// These modules are now available via the impls module:
-//   - impls.script_execution (prepareScriptElement, executeScriptElement, etc.)
-//   - impls.script_runner (ScriptRunner)
-//   - impls.event_utils (fireEvent, fireErrorEvent, reportException, etc.)
-//
-// Example usage:
-//   const impls = @import("impls");
-//   try impls.script_execution.prepareScriptElement(allocator, script_element);
+// Nothing here imports the impls: only the generated layer (the interfaces,
+// namespaces and mixins modules) can (src/webidl/AGENTS.md "The impls
+// boundary"). Reach a type through `interfaces.X`, and a step with no IDL
+// member through the src/dom hook its impl installs.
 
 // Structured Clone (§2.7)
 pub const structured_clone = @import("structured_clone/root.zig");

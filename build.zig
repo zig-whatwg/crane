@@ -3171,7 +3171,6 @@ pub fn build(b: *std.Build) void {
     const namespaces_mod = crane_graph.namespaces;
     const typedefs_mod = crane_graph.typedefs;
     const interfaces_mod = crane_graph.interfaces;
-    const impls_mod = crane_graph.impls;
     const engine_mod = crane_graph.engine;
     const dom_mod = crane_graph.dom;
     const mixins_mod = crane_graph.mixins;
@@ -3575,14 +3574,13 @@ pub fn build(b: *std.Build) void {
             .{ .name = "selector", .module = testing_graph.selector },
             .{ .name = "runtime", .module = testing_graph.runtime },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "enums", .module = testing_graph.enums },
             // tests/dom/hr_time_coarsen_exactness_test.zig: the coarsening grid's exact arithmetic.
             .{ .name = "hr_time", .module = testing_graph.hr_time },
         };
         // runs_engine = true: tests/dom/mutation_test.zig calls dom.mutation.insert
-        // and .adopt, and src/dom/mutation.zig reaches impls.NodeList/Range/
-        // NodeIterator and interfaces.NodeList.vtable - i.e. the engine
+        // and .adopt, and src/dom/mutation.zig reaches the NodeList, Range and
+        // NodeIterator interfaces and interfaces.NodeList.vtable - i.e. the engine
         // adapter's FFI layer, which also drags in libuv's event loop. With
         // `false` this was the only one of 262 build steps that failed to link,
         // with 246 undefined symbols (236 of the adapter's C++ + 10 _uv_*).
@@ -3696,7 +3694,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = testing_graph.dom },
             .{ .name = "streams", .module = testing_graph.streams },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "dictionaries", .module = testing_graph.dictionaries },
             .{ .name = "streams_common", .module = testing_graph.streams_common },
             .{ .name = "streams_queue", .module = testing_graph.streams_queue },
@@ -3808,7 +3805,7 @@ pub fn build(b: *std.Build) void {
         //   own link objects - so the linkage stays local to the test:
         //     src/webidl/impls/HTMLIFrameElement.zig:1:1: error: file exists in
         //     modules 'root' and 'html'
-        //   because `testing_graph.impls.addImport("html", testing_graph.html)` above makes
+        //   because the impls module's `addImport("html", testing_graph.html)` makes
         //   `testing_graph.html` a transitive dependency of itself. The clone is rooted
         //   at `src/html/full.zig` and so is `testing_graph.html`, and both end up in the
         //   one compilation: `-Mroot=src/html/full.zig ... -Mhtml=src/html/full.zig`.
@@ -3961,7 +3958,7 @@ pub fn build(b: *std.Build) void {
     //
     // These were opt-in behind `-Dspec=xhr` and left out of `all` while
     // `src/xhr/` carried 30 compile errors across 8 files - a module that
-    // nothing had ever compiled, because `testing_graph.impls` imports `xhr` but Zig
+    // nothing had ever compiled, because the impls module imports `xhr` but Zig
     // analyses only what is REFERENCED, and `call_send` never called into it.
     //
     // All 30 are fixed, so this runs with `all` like every other spec. Keep it
@@ -4123,7 +4120,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "clock", .module = testing_graph.clock },
             .{ .name = "cookiestore", .module = testing_graph.cookiestore },
             .{ .name = "public_suffix", .module = testing_graph.cookiestore.import_table.get("public_suffix").? },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
             .{ .name = "runtime", .module = testing_graph.runtime },
         };
@@ -4214,7 +4210,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = testing_graph.webidl },
             .{ .name = "engine", .module = testing_graph.engine },
             .{ .name = "interfaces", .module = testing_graph.interfaces },
-            .{ .name = "impls", .module = testing_graph.impls },
             .{ .name = "dom", .module = testing_graph.dom },
             .{ .name = "urlpattern", .module = testing_graph.urlpattern },
             .{ .name = "url", .module = testing_graph.url },
@@ -4567,7 +4562,6 @@ pub fn build(b: *std.Build) void {
     lib_exports_mod.addImport("infra", infra_mod);
     lib_exports_mod.addImport("engine", engine_mod);
     lib_exports_mod.addImport("interfaces", interfaces_mod);
-    lib_exports_mod.addImport("impls", impls_mod);
     lib_exports_mod.addImport("namespaces", namespaces_mod);
     lib_exports_mod.addImport("dictionaries", dictionaries_mod);
     lib_exports_mod.addImport("typedefs", typedefs_mod);
@@ -4645,7 +4639,6 @@ pub fn build(b: *std.Build) void {
     // did not compile.
     crane_mod.addImport("engine", engine_mod);
     crane_mod.addImport("interfaces", interfaces_mod);
-    crane_mod.addImport("impls", impls_mod);
     crane_mod.addImport("namespaces", namespaces_mod);
     crane_mod.addImport("dictionaries", dictionaries_mod);
     crane_mod.addImport("typedefs", typedefs_mod);
@@ -5135,7 +5128,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "dom", .module = dom_mod },
                 .{ .name = "infra", .module = infra_mod },
                 .{ .name = "browser", .module = browser_mod },
-                .{ .name = "impls", .module = impls_mod },
                 .{ .name = "webidl", .module = webidl_mod },
                 .{ .name = "dictionaries", .module = dictionaries_mod },
             },
@@ -5683,7 +5675,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "streams", .module = streams_mod },
                 .{ .name = "mimesniff", .module = mimesniff_mod },
                 .{ .name = "interfaces", .module = interfaces_mod },
-                .{ .name = "impls", .module = impls_mod },
             },
         }),
     });
@@ -6842,7 +6833,6 @@ const CraneModules = struct {
     namespaces: *std.Build.Module,
     typedefs: *std.Build.Module,
     interfaces: *std.Build.Module,
-    impls: *std.Build.Module,
     webcrypto: *std.Build.Module,
     eventsource: *std.Build.Module,
     engine: *std.Build.Module,
@@ -6946,8 +6936,6 @@ fn addWptRunner(b: *std.Build, which: runner_build_mode.RunnerBuild, config: run
         .{ .name = "infra", .module = graph.infra },
         // Browser module for single-isolate WPT execution
         .{ .name = "browser", .module = graph.browser },
-        // Impls module for HTMLParser (needed for HTML test parsing)
-        .{ .name = "impls", .module = graph.impls },
         // WebIDL module for Optional type wrappers
         .{ .name = "webidl", .module = graph.webidl },
         // Dictionaries module for Event init dictionaries
@@ -7270,8 +7258,14 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // ========================================================================
     // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
     // ========================================================================
-
-    const impls_mod = graphModule(b, public, "impls", .{
+    //
+    // Private to the generated layer (src/webidl/AGENTS.md "The impls
+    // boundary"): the interfaces, namespaces and mixins modules import it,
+    // nothing else does (checkImplsBoundary holds that for every compile),
+    // so the compiler rejects an impl reference from any other module. Never
+    // a graph field, and never registered by name for packages that depend
+    // on Crane (b.addModule): no module outside this function can name it.
+    const impls_mod = b.createModule(.{
         .root_source_file = b.path("src/webidl/impls/root.zig"),
         .target = target,
     });
@@ -7376,7 +7370,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     dom_mod.addImport("storage", storage_mod);
     dom_mod.addImport("engine", engine_mod);
     dom_mod.addImport("interfaces", interfaces_mod);
-    dom_mod.addImport("impls", impls_mod); // For document_internals to access Document.InternalState
     // CSP violation events (csp_violations.zig): a queued task run in the
     // global's realm (the engine protocol), and the event's init dictionary.
     dom_mod.addImport("engine", engine_mod);
@@ -8235,17 +8228,15 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     // Uses full.zig as root which re-exports html_core plus adds interface access.
     // Contains everything in html_core PLUS access to:
     // - interfaces module (for script execution files)
-    // - impls module (for script execution coordination)
     // - runtime module (for JS execution context)
+    // It never imports the impls (src/webidl/AGENTS.md "The impls boundary"):
+    // it reaches every type through its interface.
     //
-    // Dependency graph (no cycle):
+    // Dependency graph:
     //   html_core_mod ← infra, dom, platform (NO interfaces)
     //        ↓
-    //   impls_mod ← html_core_mod, interfaces_mod, ...
-    //        ↓
-    //   html_mod ← interfaces_mod, impls_mod, runtime_mod (CAN use interfaces)
-    //
-    // html_mod does NOT feed back into impls_mod, so no cycle is created.
+    //   impls_mod ← html_core_mod, html_mod, interfaces_mod, ...
+    //   html_mod ← interfaces_mod, runtime_mod (CAN use interfaces)
     const html_mod = graphModule(b, public, "html", .{
         .root_source_file = b.path("src/html/full.zig"),
         .target = target,
@@ -8254,7 +8245,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     html_mod.addImport("html_core", html_core_mod);
     // Interface access for script execution files (now in src/html/)
     html_mod.addImport("interfaces", interfaces_mod);
-    html_mod.addImport("impls", impls_mod);
     html_mod.addImport("runtime", runtime_mod);
     html_mod.addImport("platform", platform_mod);
     // WebIDL types needed by custom_elements.zig and upgrade.zig
@@ -8400,7 +8390,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     browser_mod.addImport("fetch", fetch_mod);
     // The Browser owns the user agent's cookie jar.
     browser_mod.addImport("cookiestore", cookiestore_mod);
-    browser_mod.addImport("impls", impls_mod);
     browser_mod.addImport("webidl", webidl_mod);
     browser_mod.addImport("dom", dom_mod);
     browser_mod.addImport("html", html_mod);
@@ -8442,7 +8431,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
     whatwg_mod.addImport("streams", streams_mod);
     whatwg_mod.addImport("mimesniff", mimesniff_mod);
     whatwg_mod.addImport("interfaces", interfaces_mod);
-    whatwg_mod.addImport("impls", impls_mod);
     whatwg_mod.addImport("quirks", quirks_mod);
     whatwg_mod.addImport("css", css_mod);
     whatwg_mod.addImport("file", file_mod);
@@ -8472,7 +8460,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .{ .name = "dictionaries", .module = dictionaries_mod },
         .{ .name = "webidl", .module = webidl_mod },
         .{ .name = "typedefs", .module = typedefs_mod },
-        .{ .name = "impls", .module = impls_mod },
         .{ .name = "namespaces", .module = namespaces_mod },
         .{ .name = "dom", .module = dom_mod },
         .{ .name = "event_loop", .module = streams_event_loop_mod },
@@ -8519,7 +8506,6 @@ fn addCraneModules(b: *std.Build, target: std.Build.ResolvedTarget, platform: Pl
         .namespaces = namespaces_mod,
         .typedefs = typedefs_mod,
         .interfaces = interfaces_mod,
-        .impls = impls_mod,
         .webcrypto = webcrypto_mod,
         .eventsource = eventsource_mod,
         .engine = engine_mod,
