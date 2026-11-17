@@ -196,7 +196,11 @@ fn shortValuesWaitBounded() !void {
         \\0;
     );
     // Over the elements themselves: at least each title's record (8 + 14
-    // bytes: a block of 32) and each class value's.
+    // bytes: a block of 32) and each class value's. Without the values in
+    // the figure the difference is 16 B an element - the rare block its
+    // class read makes, counted before (this test's red run: 160,000 B
+    // against the plain elements' 144,000) - so 64 an element cannot be met
+    // by what was counted already.
     if (made < plain + count * (32 + 32)) {
         std.debug.print("1,000 elements with a title and a class value add {d} B to the figure, 1,000 plain ones {d} B: expected at least {d} B more in the figure\n", .{ made, plain, count * (32 + 32) });
         return error.FigureDiffers;
