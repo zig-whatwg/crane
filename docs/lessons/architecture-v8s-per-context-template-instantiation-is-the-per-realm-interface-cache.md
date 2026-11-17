@@ -1,0 +1,17 @@
+# Architecture: V8's per-context template instantiation is the per-realm interface cache - a wrap needs no lookup, and its garbage was the young-collection clock
+
+**Date**: 2026-11-17
+**Lesson**: A platform object's [[Prototype]] is "the interface prototype object for interface in realm" (WebIDL "internally create a new object implementing the interface", 2.1); `InstanceTemplate()->NewInstance()` in the realm's context already gives it, because V8 instantiates a template's function once per native context and that function is the realm's interface object - so no name lookup, no cache of our own and no Global is needed.
+
+**Why**: V8 caches each template's instantiation in the native context (15.7.112.43 src/api/api-natives.cc `InstantiateObject` -> `InstantiateFunction`, `TemplateInfo::ProbeInstantiationsCache`) and makes an instance from the constructor's initial map, whose prototype is that function's `prototype`; for a cacheable instance template it copies a cached instance after the first (`CopyJSObject`), as Blink clones its boilerplate (V8PerContextData::CreateWrapperFromCache, Chromium 157). Crane makes every realm's interface object as `GetFunction(registry template, context)` (interface.zig `materializeInterfaceObject`), so the two are the same object. Crane's iterator prototypes already relied on the same fact (`getOrCreateIteratorPrototype`).
+
+**What Happened**: The wrap read `globalThis[<Interface>].prototype` by name and set it, a workaround from January 2026 (2e1f303f282) when the global's template and the wrap's were different objects. Once one registry template served both, the read only did harm: a page that replaced `HTMLDivElement` gave later divs its fake prototype, an accessor there ran inside the wrap, a throwing one left an exception pending - Chrome 157, Firefox 159 and Safari 27 do none of that (lane gcp1's probe, 12 cases). Lane gcp1 removed the read; NewInstance alone passes every case, and the full A/B was unchanged (13,683 files). A realm that builds its interface objects on first read (a frame, a hydrated worker) builds one on its first wrap too - the by-name read had done that as a side effect (context_manager.InterfaceObjects, Blink's constructor map).
+
+The read also made two strings a wrap (the name, and "prototype" from `NewFromUtf8Literal`, which makes a fresh string each call), about 68 B of young garbage a div. Without them, 2,000,000 `createElement('div')` ran 1 young collection instead of 65 and 25 full ones instead of 12: dead wrappers waited for full collections paced by the DOM figure, and wrap-and-drop pages held +8% to +23% memory at -28% time on element creation (accepted by the user, scoped).
+
+**Fix**:
+1. Make a wrapper with the realm's context entered and nothing after NewInstance; never read a global to find a prototype.
+2. Where interface objects are built lazily, build the interface's on the realm's first wrap of it, recorded per realm.
+3. Before removing allocation from a wrap path, measure young and full collection counts with `-Dv8-extra-flags=--trace-gc` on both sides (lesson architecture-young-collections-are-paced-by-js-bytes-so-less-garbage-per-wrapper-means-more-host-memory.md): the clock can stop, not just slow.
+
+**Takeaway**: **Ask V8 for the realm's object through the context, never through a name script can rebind - and expect the work you remove from a wrap to have been someone's clock.**

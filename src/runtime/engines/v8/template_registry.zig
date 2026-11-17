@@ -159,6 +159,30 @@ pub fn getTemplateForIsolate(interface_name: []const u8, isolate: ?*v8.Isolate) 
     return storage.registered.get(interface_name);
 }
 
+/// [interface_prototypes] In a realm that builds its interface objects on
+/// first read (context_manager.InterfaceObjects): build `interface_name`'s
+/// before the realm's first wrapper of it - the lazy global's getter does
+/// the same work (global_constructor_handler.lazyConstructorGetter), and a
+/// built one is found marked and handed back as it is. Once per interface
+/// per realm: the template is recorded after, built or not, so an interface
+/// that has no interface object to build (none is registered under its
+/// name) costs the search once. Out of memory to record it, the next wrap
+/// searches again - the same answer.
+fn ensureInterfaceObjectBuilt(
+    entry: *@import("context_manager.zig").ContextEntry,
+    template: *v8.FunctionTemplate,
+    interface_name: []const u8,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+) void {
+    const objects = &entry.interface_objects;
+    if (objects.built.contains(template)) return;
+    if (@import("interface_bindings.zig").materializeInterfaceObjectByName(interface_name, isolate, context)) |constructor| {
+        v8.v8_Function_Dispose(constructor);
+    }
+    objects.built.put(entry.allocator, template, {}) catch {};
+}
+
 /// Wrap a Zig runtime.Instance into a V8 Object with the correct prototype
 ///
 /// This is the key function for returning interface instances from methods.
@@ -280,10 +304,8 @@ pub fn wrapInstanceAsV8Object(
     // realm's end already expects of a wrap there. Blink, likewise, makes a
     // wrapper only in a world with a DOMDataStore to hold it
     // (DOMDataStore::SetWrapper).
-    {
-        const runtime_ctx = ctx_mgr.get(context) orelse return error.NoWrapperCache;
-        if (runtime_ctx.getV8WrapperCacheStorage() == null) return error.NoWrapperCache;
-    }
+    const entry = ctx_mgr.getEntry(context) orelse return error.NoWrapperCache;
+    if (entry.runtime_ctx.getV8WrapperCacheStorage() == null) return error.NoWrapperCache;
 
     // Look up the FunctionTemplate for this interface
     // First try the template registry (for templates already registered for this isolate)
@@ -300,31 +322,22 @@ pub fn wrapInstanceAsV8Object(
         return error.TemplateNotRegistered;
     };
 
-    // The wrapper: a new instance of the interface's instance template
-    // (InstanceTemplate()->NewInstance(), never Function::NewInstance(), which
-    // calls the constructor callback - "Illegal constructor" for an interface
-    // with none, HTMLCollection or Navigator), its prototype set to the one
-    // script sees, `globalThis[interface_name].prototype`: NewInstance does
-    // not link the prototype chain, and the template's own function is another
-    // function with another prototype, so `instanceof` needs the global's.
-    // An interface the global does not expose gets the template's own.
+    // The wrapper: a new instance of the interface's instance template in
+    // this realm's context (InstanceTemplate()->NewInstance(), never
+    // Function::NewInstance(), which calls the constructor callback -
+    // "Illegal constructor" for an interface with none, HTMLCollection or
+    // Navigator). Its [[Prototype]] is the realm's interface prototype object
+    // (WebIDL "internally create a new object implementing the interface"
+    // step 2.1), as V8 instantiates this template there - never a read of
+    // the global property script may have replaced (lane gcp1;
+    // v8_FunctionTemplate_NewWrapper says how). ONE call, whose one Global is
+    // the wrapper's.
     //
-    // ONE call (v8_FunctionTemplate_NewWrapper), whose one Global is the
-    // wrapper's. This ran as four calls and made three Globals a wrapper - the
-    // instance template's and the prototype's disposed straight after - for
-    // every platform object a page wraps (lane vm1: the perf suite's
-    // streams.reader statement wraps three objects - a stream, its controller
-    // and its reader - and made three prototype Globals an operation). The
-    // lookup by name is a known deviation from Web IDL, older than this
-    // call: see the function's comment in v8_wrapper.cpp.
-    var name_buf: [256]u8 = undefined;
-    const name_z: ?[*:0]const u8 = blk: {
-        if (interface_name.len >= name_buf.len) break :blk null;
-        @memcpy(name_buf[0..interface_name.len], interface_name);
-        name_buf[interface_name.len] = 0;
-        break :blk @ptrCast(&name_buf);
-    };
-    const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context, name_z) orelse {
+    // [interface_prototypes] A realm that builds its interface objects when
+    // script first reads them builds this one first, so the prototype has
+    // everything WebIDL puts on it whether or not script read the global.
+    if (entry.interface_objects.lazy) ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
+    const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context) orelse {
         return error.ObjectCreationFailed;
     };
 

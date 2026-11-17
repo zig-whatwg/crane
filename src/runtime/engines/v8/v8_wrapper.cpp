@@ -475,19 +475,6 @@ static Global<T>* trackHandle(Global<T>* handle) {
     return handle;
 }
 
-// `v8_GetGlobalPrototype` returning null is an EXPECTED outcome, not an error:
-// the caller (template_registry.zig) falls back to the template's own prototype
-// for interfaces that are not exposed on the global object. Reporting it ran
-// `fprintf(stderr)` once per wrapped element, so it is off unless asked for.
-#ifndef CRANE_PROTO_MISS_LOG
-#define CRANE_PROTO_MISS_LOG 0
-#endif
-#if CRANE_PROTO_MISS_LOG
-#define CRANE_PROTO_MISS(...) fprintf(stderr, __VA_ARGS__)
-#else
-#define CRANE_PROTO_MISS(...) ((void)0)
-#endif
-
 // ============================================================================
 // Debug Alignment Checks
 // ============================================================================
@@ -10707,183 +10694,77 @@ void v8_FunctionTemplate_ReadOnlyPrototype(Global<FunctionTemplate>* tpl) {
     local_tpl->ReadOnlyPrototype();
 }
 
-// Get the prototype object from a FunctionTemplate.
-// This calls GetFunction() and then gets the "prototype" property from the function.
-// Used when wrapping Zig instances as V8 objects - we need to manually set the prototype
-// because ObjectTemplate::NewInstance() doesn't automatically link to the FunctionTemplate's prototype.
-Global<Object>* v8_FunctionTemplate_GetPrototypeObject(Global<FunctionTemplate>* tpl, Global<Context>* context) {
-    g_obj_src[4].fetch_add(1, std::memory_order_relaxed);
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-
-    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
-    Local<Context> ctx = context->Get(isolate);
-
-    // Get the function from the template
-    MaybeLocal<Function> maybe_fn = local_tpl->GetFunction(ctx);
-    if (maybe_fn.IsEmpty()) {
-        return nullptr;
-    }
-
-    Local<Function> fn = maybe_fn.ToLocalChecked();
-
-    // Get the "prototype" property from the function
-    Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
-    MaybeLocal<Value> maybe_proto = fn->Get(ctx, prototype_str);
-    if (maybe_proto.IsEmpty()) {
-        return nullptr;
-    }
-
-    Local<Value> proto_val = maybe_proto.ToLocalChecked();
-    if (!proto_val->IsObject()) {
-        return nullptr;
-    }
-
-    Local<Object> proto_obj = proto_val.As<Object>();
-    return trackHandle(new Global<Object>(isolate, proto_obj));
-}
-
-// Get the prototype object by looking up the constructor from the global object.
-// This ensures we get the SAME prototype that JavaScript sees on globalThis.ConstructorName.prototype.
-// This is necessary for `instanceof` to work correctly.
-Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* constructor_name) {
-    g_obj_src[3].fetch_add(1, std::memory_order_relaxed);
-    Isolate* isolate = Isolate::GetCurrent();
-    HandleScope handle_scope(isolate);
-
-    Local<Context> ctx = context->Get(isolate);
-    Local<Object> global = ctx->Global();
-
-    // Get the constructor from global (e.g., globalThis.MessagePort)
-    Local<String> name_str = String::NewFromUtf8(isolate, constructor_name).ToLocalChecked();
-    MaybeLocal<Value> maybe_constructor = global->Get(ctx, name_str);
-    if (maybe_constructor.IsEmpty()) {
-        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: constructor not found\n", constructor_name);
-        return nullptr;
-    }
-
-    Local<Value> constructor_val = maybe_constructor.ToLocalChecked();
-    if (!constructor_val->IsFunction()) {
-        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: not a function\n", constructor_name);
-        return nullptr;
-    }
-
-    Local<Function> constructor = constructor_val.As<Function>();
-
-    // Get the "prototype" property from the constructor
-    Local<String> prototype_str = String::NewFromUtf8Literal(isolate, "prototype");
-    MaybeLocal<Value> maybe_proto = constructor->Get(ctx, prototype_str);
-    if (maybe_proto.IsEmpty()) {
-        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: no prototype property\n", constructor_name);
-        return nullptr;
-    }
-
-    Local<Value> proto_val = maybe_proto.ToLocalChecked();
-    if (!proto_val->IsObject()) {
-        CRANE_PROTO_MISS("[v8_GetGlobalPrototype] %s: prototype is not an object\n", constructor_name);
-        return nullptr;
-    }
-
-    Local<Object> proto_obj = proto_val.As<Object>();
-
-    return trackHandle(new Global<Object>(isolate, proto_obj));
-}
-
 /// A new wrapper object for an instance of the interface whose constructor
-/// template is `tpl`: InstanceTemplate()->NewInstance(), with its
-/// [[Prototype]] set to `globalThis[constructor_name].prototype` - the
-/// prototype script sees, which `instanceof` needs (v8_GetGlobalPrototype
-/// says why the template's own is not it) - or, for an interface the global
-/// does not expose (and for a null name), to the prototype of the template's
-/// own function (v8_FunctionTemplate_GetPrototypeObject). The steps
-/// template_registry.zig's wrapInstanceAsV8Object ran as four calls, in ONE
-/// HandleScope: every intermediate is a Local, and the one Global made is
-/// the wrapper's, which the caller owns. As four calls each wrap made three
-/// Globals and disposed two - the instance template's and the prototype's -
-/// for every platform object a page wraps (lane vm1; the prototype's is
-/// counted: object_globals_from.GetGlobalPrototype rose once a wrapper).
-/// nullptr when the instance cannot be made.
+/// template is `tpl`, in `context`: InstanceTemplate()->NewInstance() with
+/// that context entered, and nothing else. Its [[Prototype]] is "the
+/// interface prototype object for interface in realm" (WebIDL "internally
+/// create a new object implementing the interface", step 2.1: no NewTarget):
+/// V8 makes the object from the initial map of the template's function IN
+/// THIS CONTEXT (15.7.112.43 src/api/api-natives.cc InstantiateObject:
+/// InstantiateFunction of the instance template's constructor, then
+/// JSObject::New(constructor, constructor)), and that function is the
+/// realm's interface object - V8 instantiates a template once per native
+/// context and hands the same function back after (TemplateInfo::
+/// ProbeInstantiationsCache), and every path that makes a realm's interface
+/// object takes the template registry's template there
+/// (interface.zig materializeInterfaceObject). V8's per-context
+/// instantiation cache is the per-realm cache Blink keeps beside it
+/// (V8PerContextData::ConstructorForType and CreateWrapperFromCache,
+/// third_party/blink/renderer/platform/bindings/v8_per_context_data.cc at
+/// Chromium 157.0.8103.51, BSD-3, read 2026-11-17 - its design, no code):
+/// after the first, each wrapper is a copy of the context's cached instance
+/// (InstantiateObject's CopyJSObject), as Blink clones its boilerplate.
 ///
-/// Blink holds every intermediate of a wrap in a Local too
-/// (V8DOMWrapper::CreateWrapper, third_party/blink/renderer/platform/
-/// bindings/v8_dom_wrapper.cc at Chromium 157.0.8103.51, read 2026-11-17: a
-/// v8::Local<v8::Object> from V8PerContextData::CreateWrapperFromCache, or,
-/// for a detached context, GetV8ClassTemplate()->InstanceTemplate()->
-/// NewInstance). Its usual path does NOT look the prototype up by name: the
-/// wrapper comes from a per-context cache. Only the handle discipline is
-/// taken from it here.
+/// What a realm whose interface objects are built on first read
+/// (global_constructor_handler.zig) needs before this - the interface object
+/// built, so the prototype carries everything WebIDL puts on it - the caller
+/// does (template_registry.wrapInstanceAsV8Object).
 ///
-/// KNOWN DEVIATION, older than this function and kept exactly as it was
-/// (v8_GetGlobalPrototype did the same lookups): Web IDL's "internally
-/// create a new object implementing the interface" step 2.1 gives a platform
-/// object made with no NewTarget "the interface prototype object for
-/// interface in realm" - the realm's own object. This reads
-/// `globalThis[constructor_name]` and its `prototype` with ordinary [[Get]]s
-/// when the wrapper is made, under no TryCatch (the context is entered for
-/// NewInstance alone): a page that has replaced the global property gives
-/// new wrappers that value's `prototype`, and an accessor it defined there
-/// runs inside the wrap. Not probed against the browsers; filed by lane vm1
-/// for a bindings lane (a per-realm cache of interface prototype objects,
-/// Blink's shape, would end both the deviation and the two lookups a wrap).
-Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context, const char* constructor_name) {
+/// It read `globalThis[<Interface>]` and its `prototype` by name here, made
+/// the name as a fresh string and set the result as the prototype: a page
+/// that had replaced the global property gave later wrappers that value's
+/// prototype, an accessor there ran page script inside the wrap, and one that
+/// threw left its exception pending (lane gcp1; Chrome 157, Firefox 159 and
+/// Safari 27 give the realm's prototype and run nothing,
+/// tests/v8/gcp1_wrap_realm_prototype_test.zig,
+/// crane/gcp1-wrap-realm-prototype.html). The lookup dated from before one
+/// registry template served the global and the wrap (2e1f303f282,
+/// 2026-01-15), when the template's own function was another one.
+///
+/// One HandleScope; the one Global made is the wrapper's, which the caller
+/// owns. nullptr when the instance cannot be made.
+///
+/// What the lookup's garbage did, and what its absence costs. A wrap now
+/// leaves nothing young but the wrapper; the lookup made two strings a wrap
+/// (the name and the "prototype" key: NewFromUtf8Literal's kNormal makes a
+/// fresh one each call - read from the API, the split of the bytes not
+/// measured), and that garbage was the clock that paced young collections in
+/// a wrap-heavy loop. MEASURED (lane gcp1, 2026-11-17, chat.local, the cost
+/// window's own production gc_bench, 2,000,000 document.createElement('div')
+/// made and dropped in one script): young collections 65 -> 1, full
+/// collections 7 -> 20, V8's global handle table grew 0.54 -> 1.83-1.89 MB.
+/// Dead wrappers now wait for a full collection, paced by the DOM's host
+/// memory against V8's global limit - Blink's model for its Oilpan objects -
+/// instead of a scavenge every ~31,000 divs. The cost window (9 ring-off
+/// launches a side, --collected): wrap-and-drop rows hold +8% to +23%
+/// (dom.create-element steady 1.234, collected 1.188; timers.message-channel
+/// 1.175, collected 1.208), at dom.create-element time 0.715 and
+/// instructions 0.806. Accepted by the user's ruling of 2026-11-17, relayed
+/// by the integrator, scoped to that window's rows. V8 15.7 gives an
+/// embedder no way to count host bytes toward young collections
+/// (heap.cc Heap::UpdateExternalMemory paces full ones only; young
+/// ArrayBuffer bytes alone count, inside V8, Heap::AllocateExternalBackingStore),
+/// which tmp/plans/v8-feature-request-young-external-bytes.md asks V8 for.
+Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context) {
     // The wrapper's Global is this entry point's now: gc_bench's "wrappers
     // made per cycle" reads this count.
     g_obj_src[5].fetch_add(1, std::memory_order_relaxed);
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
-    Local<FunctionTemplate> local_tpl = tpl->Get(isolate);
     Local<Context> ctx = context->Get(isolate);
-
+    Context::Scope context_scope(ctx);
     Local<Object> object;
-    {
-        Context::Scope context_scope(ctx);
-        if (!local_tpl->InstanceTemplate()->NewInstance(ctx).ToLocal(&object)) return nullptr;
-    }
-
-    Local<Value> prototype;
-    bool found = false;
-    if (constructor_name) {
-        Local<String> name;
-        Local<Value> constructor;
-        // The name is made exactly as main makes it (v8_GetGlobalPrototype):
-        // String::NewFromUtf8's default, a fresh string for every wrap.
-        //
-        // An INTERNALIZED name (NewStringType::kInternalized) is the right
-        // code - nothing allocated after an interface's first wrap - and it
-        // is HELD BACK, not rejected. Young collections are paced by the JS
-        // bytes a page allocates, and a wrapper's host side is 6-10 times its
-        // JS size. Measured with the internalized name (lane vm1, 2026-11-17,
-        // chat.local, three consoles, 9 launches a side, memory pass): a
-        // wrap allocates 34 B less in the young generation (67 -> 33 B a
-        // div), V8 runs half the young collections (65 -> 32 for 2,000,000
-        // divs), and the host memory of wrappers that are already dead
-        // stands twice as high between two of them - dom.create-element
-        // holds 38.9 -> 43.2 MB after a full collection (+11%), page.streams
-        // +10%, load.docs +11%, at instructions 0.926.
-        //
-        // The cause to fix is the pacing, not this string: host bytes must
-        // count toward young collections (queued by the integrator with
-        // these numbers). When that lands, internalize the name.
-        if (String::NewFromUtf8(isolate, constructor_name).ToLocal(&name) &&
-            ctx->Global()->Get(ctx, name).ToLocal(&constructor) && constructor->IsFunction()) {
-            found = constructor.As<Function>()->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
-                prototype->IsObject();
-        } else {
-            CRANE_PROTO_MISS("[v8_FunctionTemplate_NewWrapper] %s: no constructor on the global\n", constructor_name);
-        }
-    }
-    if (!found) {
-        // Not exposed on the global: the template's own function's prototype.
-        Local<Function> function;
-        found = local_tpl->GetFunction(ctx).ToLocal(&function) &&
-            function->Get(ctx, String::NewFromUtf8Literal(isolate, "prototype")).ToLocal(&prototype) &&
-            prototype->IsObject();
-    }
-    // The object has no anchor yet (the caller binds it next), so no cache
-    // holds it and there is nothing to tell of the change
-    // (notePlatformWrapperChanged, which v8_Object_SetPrototype calls for a
-    // wrapper a cache may already hold).
-    if (found) (void)object->SetPrototype(ctx, prototype).FromMaybe(false);
+    if (!tpl->Get(isolate)->InstanceTemplate()->NewInstance(ctx).ToLocal(&object)) return nullptr;
     return trackHandle(new Global<Object>(isolate, object));
 }
 
