@@ -1529,6 +1529,116 @@ fn checkEveryTestRunsThroughTheLauncher(b: *std.Build, launch: *const TestLaunch
     }
 }
 
+/// The roots of the generated layer (src/webidl/AGENTS.md, "The impls
+/// boundary"): the only modules that may import an impl. Every interface,
+/// namespace and mixin delegates to its own impl from here.
+const generated_layer_roots = [_][]const u8{
+    "src/webidl/interfaces/root.zig",
+    "src/webidl/namespaces/root.zig",
+    "src/webidl/mixins/root.zig",
+};
+const impls_dir_prefix = "src/webidl/impls/";
+
+/// The source path of a module's root, as the boundary check names it.
+fn moduleRootName(b: *std.Build, module: *const std.Build.Module) []const u8 {
+    const root = module.root_source_file orelse return "(no root source file)";
+    return switch (root) {
+        .src_path => |p| p.sub_path,
+        .generated => |g| b.fmt("(a generated file) {s}", .{g.sub_path}),
+        else => "(a root outside the build root)",
+    };
+}
+
+/// Whether a module is rooted in src/webidl/impls/ - the impls module, or any
+/// module someone roots at one impl's file.
+fn isImplModule(module: *const std.Build.Module) bool {
+    const root = module.root_source_file orelse return false;
+    return switch (root) {
+        .src_path => |p| std.mem.startsWith(u8, p.sub_path, impls_dir_prefix),
+        else => false,
+    };
+}
+
+fn isGeneratedLayerModule(module: *const std.Build.Module) bool {
+    const root = module.root_source_file orelse return false;
+    return switch (root) {
+        .src_path => |p| for (generated_layer_roots) |allowed| {
+            if (std.mem.eql(u8, p.sub_path, allowed)) break true;
+        } else false,
+        else => false,
+    };
+}
+
+/// The impls boundary, held by the module graph (src/webidl/AGENTS.md, "The
+/// impls boundary"; lane impls9): an impl is imported by the generated layer
+/// only. Walks every compile a top-level step reaches and every module its
+/// root imports - every graph, every test suite, every tool - and makes
+/// `step` fail, naming each module outside the generated layer whose import
+/// table holds a module rooted in src/webidl/impls/, under whatever name.
+/// Known here, once every step exists. The compiler then rejects any
+/// `@import("impls")` outside that layer ("no module named 'impls' available
+/// within module ..."), and a file of another module cannot import an impl's
+/// file by path either: it lies outside that module's path, or it already
+/// belongs to the impls module.
+fn checkImplsBoundary(b: *std.Build, step: *std.Build.Step) void {
+    const gpa = b.allocator;
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    var modules: std.AutoArrayHashMapUnmanaged(*std.Build.Module, void) = .empty;
+    for (b.top_level_steps.values()) |tls| stack.append(gpa, &tls.step) catch @panic("OOM");
+    while (stack.pop()) |s| {
+        if ((seen.getOrPut(gpa, s) catch @panic("OOM")).found_existing) continue;
+        if (s.cast(std.Build.Step.Compile)) |compile| modules.put(gpa, compile.root_module, {}) catch @panic("OOM");
+        for (s.dependencies.items) |dep| stack.append(gpa, dep) catch @panic("OOM");
+    }
+    // One line per importer, imported module and name: the graphs hold many
+    // copies of one module (one per platform and runner mode).
+    var lines: std.StringArrayHashMapUnmanaged(void) = .empty;
+    var next: usize = 0;
+    while (next < modules.count()) : (next += 1) {
+        const module = modules.keys()[next];
+        const allowed = isGeneratedLayerModule(module) or isImplModule(module);
+        for (module.import_table.keys(), module.import_table.values()) |name, imported| {
+            modules.put(gpa, imported, {}) catch @panic("OOM");
+            if (allowed or !isImplModule(imported)) continue;
+            lines.put(gpa, b.fmt("  {s} imports {s} as \"{s}\"", .{ moduleRootName(b, module), moduleRootName(b, imported), name }), {}) catch @panic("OOM");
+        }
+    }
+    if (lines.count() == 0) return;
+    const sorted = lines.keys();
+    std.mem.sort([]const u8, sorted, {}, struct {
+        fn lessThan(_: void, l: []const u8, r: []const u8) bool {
+            return std.mem.lessThan(u8, l, r);
+        }
+    }.lessThan);
+    step.dependOn(&b.addFail(b.fmt(
+        "the impls boundary (src/webidl/AGENTS.md): {d} import(s) of an impl outside the generated layer - only the interfaces, namespaces and mixins modules may import a module rooted in src/webidl/impls/:\n{s}",
+        .{ sorted.len, std.mem.join(gpa, "\n", sorted) catch @panic("OOM") },
+    )).step);
+}
+
+/// One case of the impls boundary's negative test: a one-line file compiled
+/// in a module whose import table is a COPY of `like`'s - a real module of
+/// the graph, one that could be tempted to reach an impl - which passes only
+/// when the compiler rejects the line with `expected` (`expect_errors`). The
+/// error is found while the line is analysed: nothing is emitted or linked.
+fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.ResolvedTarget, case: []const u8, like: *std.Build.Module, line: []const u8, expected: []const u8) void {
+    const files = b.addWriteFiles();
+    const root = files.add(b.fmt("impls_boundary_{s}.zig", .{case}), b.fmt(
+        \\//! The impls boundary's negative test (build.zig addImplsBoundaryCase):
+        \\//! a file of a module that imports what {s}'s module imports.
+        \\comptime {{
+        \\    _ = {s};
+        \\}}
+        \\
+    , .{ case, line }));
+    const module = b.createModule(.{ .root_source_file = root, .target = target, .optimize = .Debug });
+    module.import_table = like.import_table.clone(b.graph.arena) catch @panic("OOM");
+    const object = b.addObject(.{ .name = b.fmt("impls-boundary-{s}", .{case}), .root_module = module });
+    object.expect_errors = .{ .contains = expected };
+    step.dependOn(&object.step);
+}
+
 /// The `test-verify` step and its files: -Dverify-files, else
 /// -Dverify-base's git diff.
 fn testVerifySelection(b: *std.Build) *TestVerify {
@@ -5642,6 +5752,18 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&addSuiteRun(b, launch, lint_impls_tests, "tools-lint_impls", null).step);
 
     // ========================================================================
+    // CHECK: the impls boundary, held by the module graph
+    // ========================================================================
+    // src/webidl/AGENTS.md "The impls boundary": only the generated layer -
+    // the interfaces, namespaces and mixins modules - imports the impls, so
+    // the compiler rejects a reference from anywhere else. Its negative test
+    // and `checkImplsBoundary`, which walks every module of every compile and
+    // fails this step on any other importer, are added once every step and
+    // import exists (near the end of build()).
+    const impls_boundary_step = b.step("check-impls-boundary", "Check that only the generated layer can import the impls (the compiler rejects any other import)");
+    test_step.dependOn(impls_boundary_step);
+
+    // ========================================================================
     // LINT: the engine boundary, as a ratchet
     // ========================================================================
     // AGENTS.md "The engine boundary": the JavaScript engine is an adapter, and
@@ -6509,6 +6631,25 @@ pub fn build(b: *std.Build) void {
     // the launcher runs `test` makes. Both known here, once every step exists.
     if (test_selection.one) |one| finishOneBinary(b, launch, one) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
+    // Only the generated layer imports an impl: known here, once every
+    // module of every step exists. The negative test first: a file in a
+    // module that imports what dom, html, browser, whatwg, the full library's
+    // and the crane browser's lib_exports modules and the engine adapter's
+    // module import - their tables as they are now, final - cannot import the
+    // impls; and one that imports the mixins cannot reach a mixin's impl
+    // through them. Then the walk, which sees those cases too.
+    const no_impls_module = "no module named 'impls' available within module 'root'";
+    for ([_]struct { []const u8, *std.Build.Module }{
+        .{ "dom", dom_mod },
+        .{ "html", html_mod },
+        .{ "browser", browser_mod },
+        .{ "whatwg", whatwg_mod },
+        .{ "lib_exports", lib_exports_mod },
+        .{ "crane", crane_mod },
+        .{ "engine_adapter", engine_impl_mod },
+    }) |case| addImplsBoundaryCase(b, impls_boundary_step, target, case[0], case[1], "@import(\"impls\")", no_impls_module);
+    addImplsBoundaryCase(b, impls_boundary_step, target, "mixin_impl", browser_mod, "@import(\"mixins\").ParentNode.impl", "'impl' is not marked 'pub'");
+    checkImplsBoundary(b, impls_boundary_step);
     // Every tests/<dir>/ with test files is a suite: known here, once every
     // suite has been added - when no -Dspec or -Dtest-file skipped some.
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
