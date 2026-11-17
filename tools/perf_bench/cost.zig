@@ -13,12 +13,18 @@
 //!   run with `--collected`, each workload's footprint read once more after
 //!   a full collection the page asked for (`footprint_collected`).
 //!
-//! THE RULE is unchanged and is what `over` means here: a memory row is
-//! over the bar when the tip's median over the base's median, over all the
-//! launches of a pass, is above it - on the steady figure or on the peak,
-//! in either pass.
+//! THE RULE (AGENTS.md; the user, 2026-11-15 and 2026-11-17): a memory row
+//! is judged on the steady figure and the peak - the tip's median over the
+//! base's, over all the launches of a pass, in either pass. A figure above
+//! the bar may be CLEARED, with every launch's value printed, when
+//! (a) both sides reached a common level and each such level's tip / base
+//!     ratio is within the bar, or
+//! (b) the row's collected figure is within the bar.
+//! A figure above the bar that neither clears is OVER (`Verdict`), and the
+//! command then exits 1. The collected figure never replaces steady and
+//! peak: it is read only to clear a row they put over the bar.
 //!
-//! What this adds beside the rule, for the rows a median cannot read (lane
+//! What the two clearing readings are, for the rows a median cannot read (lane
 //! wb1, 2026-11-16: the streams, attributes, page-growth and fetch rows sit
 //! on two memory levels; a median of 3 or 9 launches flips between them,
 //! and two consoles can sit on different levels with disjoint ranges in
@@ -455,19 +461,56 @@ pub const Options = struct {
     memory_name: []const u8 = "",
 };
 
-/// What the cost command decided, beside its text: how many rows are over
-/// the bar by the rule.
+/// What the rule says of one steady or peak figure.
+pub const Verdict = enum {
+    /// At or under the bar.
+    within,
+    /// Above the bar, and cleared: (a) both sides reached a common level
+    /// and each such level's ratio is within the bar.
+    cleared_by_levels,
+    /// Above the bar, and cleared: (b) the collected figure is within it.
+    cleared_by_collected,
+    /// Above the bar and not cleared.
+    over,
+
+    pub fn cleared(v: Verdict) bool {
+        return v == .cleared_by_levels or v == .cleared_by_collected;
+    }
+};
+
+/// The rule's verdict on a steady or peak reading `r`, with the row's
+/// collected reading where the memory pass read one.
+pub fn verdictOf(r: Reading, collected: ?Reading, bar: f64) Verdict {
+    if (!(r.ratio > bar)) return .within;
+    if (r.levels) |l| if (l.shared()) {
+        const low_ok = if (l.low_ratio) |x| x <= bar else true;
+        const high_ok = if (l.high_ratio) |x| x <= bar else true;
+        if (low_ok and high_ok) return .cleared_by_levels;
+    };
+    if (collected) |c| if (c.ratio <= bar) return .cleared_by_collected;
+    return .over;
+}
+
+/// What the cost command decided, beside its text.
 pub const Summary = struct {
+    /// Time and instruction rows over the bar (above it, the sides apart).
     time_over: usize = 0,
     instructions_over: usize = 0,
+    /// Steady and peak figures above the bar, in either pass...
     memory_over: usize = 0,
-    /// Memory rows over the bar by the rule whose sides share a level, each
-    /// level's ratio within the bar: the median changed level, the bytes on
-    /// a level did not.
-    memory_over_level_only: usize = 0,
-    /// Memory rows whose sides share no level (in the pass the bar is read
-    /// on): the steady or peak figure cannot settle them.
+    /// ... of which cleared by (a), by (b), and not cleared.
+    memory_cleared_levels: usize = 0,
+    memory_cleared_collected: usize = 0,
+    memory_not_cleared: usize = 0,
+    /// Memory figures whose sides share no level (in the pass the bar is
+    /// read on): the figure alone cannot settle them.
     memory_apart_levels: usize = 0,
+
+    /// Whether the pair is over the bar: a time or instruction row, or a
+    /// memory figure the rule does not clear.
+    pub fn failed(s: Summary) bool {
+        return s.time_over + s.instructions_over + s.memory_not_cleared > 0;
+    }
 };
 
 const mb = 1024.0 * 1024.0;
@@ -509,9 +552,16 @@ fn writeLevels(w: W, l: Joint.Levels) !void {
     try w.print("; the chance of these shares from one coin {d:.3}{s}\n", .{ l.share_chance, if (l.tipHigherShare()) " - the tip is on the high level more often" else "" });
 }
 
-/// One memory finding in full: the rule's ratio, every launch, the levels,
-/// and the row's collected figure from `memory_pass` where it has one.
-fn writeMemoryFinding(w: W, gpa: Allocator, row: *const Row, m: Measure, r: Reading, pass_label: []const u8, collected_row: ?*const Row) !void {
+/// One memory finding in full: the figure's ratio, every launch, the
+/// levels, and the row's collected figure from the memory pass where it
+/// has one, with every launch of that too; for a steady or peak figure
+/// above `bar`, the rule's verdict (null: no verdict is printed).
+///
+/// `other_pass_row`: for a figure of the default pass, the same row of the
+/// memory pass, whose reading of the same figure is printed - with the ring
+/// off it is the nearer of the two to what Crane holds, and it is judged in
+/// its own right.
+fn writeMemoryFinding(w: W, gpa: Allocator, row: *const Row, m: Measure, r: Reading, pass_label: []const u8, collected_row: ?*const Row, bar: ?f64, other_pass_row: ?*const Row) !void {
     try w.print("  {s}  {s}, {s}: {d:.3} (tip ", .{ row.workload, pass_label, @tagName(m), r.ratio });
     try writeUnit(w, m, r.tip_median);
     try w.writeAll(" | base ");
@@ -523,19 +573,44 @@ fn writeMemoryFinding(w: W, gpa: Allocator, row: *const Row, m: Measure, r: Read
         try writeLevels(w, l);
     } else try w.writeAll("      one level: the launches of both sides form no two groups\n");
     if (m == .collected) return;
-    const c_row = collected_row orelse return;
-    if (try reading(gpa, c_row, .collected)) |c| {
+    if (other_pass_row) |other| {
+        if (try reading(gpa, other, m)) |o| {
+            try w.print("      the same figure on the memory pass (the ring off): {d:.3} (tip {d:.1} MB | base {d:.1} MB)\n", .{ o.ratio, o.tip_median / mb, o.base_median / mb });
+        } else try w.writeAll("      the same figure on the memory pass: not read\n");
+    }
+    var collected: ?Reading = null;
+    if (collected_row) |c_row| collected = try reading(gpa, c_row, .collected);
+    if (collected) |c| {
         try w.print("      collected (after a full collection the page asked for): {d:.3} (tip {d:.1} MB | base {d:.1} MB)", .{ c.ratio, c.tip_median / mb, c.base_median / mb });
         if (c.levels) |l| {
             try w.writeAll(" - it reads two levels too:\n");
             try writeLevels(w, l);
         } else try w.writeAll(", one level\n");
+        try writeLaunches(w, gpa, .collected, "collected, MB  tip: ", collected_row.?.tip.of(.collected));
+        try writeLaunches(w, gpa, .collected, "               base:", collected_row.?.base.of(.collected));
     } else try w.writeAll("      collected: not read (run the memory pass with --collected)\n");
+    const limit = bar orelse return;
+    switch (verdictOf(r, collected, limit)) {
+        .within => {},
+        .cleared_by_levels => try w.writeAll("      VERDICT: CLEARED (a) - both sides reached a common level, and each level they share reads within the bar\n"),
+        .cleared_by_collected => try w.print("      VERDICT: CLEARED (b) - the collected figure reads within the bar ({d:.3})\n", .{collected.?.ratio}),
+        .over => {
+            try w.writeAll("      VERDICT: OVER THE BAR - (a) ");
+            if (r.levels) |l| {
+                if (l.shared()) try w.writeAll("a level both sides reached reads over the bar") else try w.writeAll("the sides share no level");
+            } else try w.writeAll("the launches form one level");
+            if (collected) |c| try w.print("; (b) the collected figure reads {d:.3}\n", .{c.ratio}) else try w.writeAll("; (b) no collected figure was read\n");
+        },
+    }
 }
 
-fn writeCell(w: W, r: ?Reading, bar: f64) !void {
+/// A table cell: the ratio; `!` above the bar (a memory figure: and not
+/// cleared), `c` a memory figure above the bar that the rule clears; `*`
+/// the two sides' launches apart.
+fn writeCell(w: W, r: ?Reading, bar: f64, v: ?Verdict) !void {
     const x = r orelse return w.writeAll("       -  ");
-    try w.print("  {d:>6.3}{s}{s}", .{ x.ratio, if (x.ratio > bar) "!" else " ", if (x.apart) "*" else " " });
+    const flag: []const u8 = if (!(x.ratio > bar)) " " else if (v) |verdict| (if (verdict.cleared()) "c" else "!") else "!";
+    try w.print("  {d:>6.3}{s}{s}", .{ x.ratio, flag, if (x.apart) "*" else " " });
 }
 
 /// The cost pair's table. `memory` is the memory-only pass (null: none was
@@ -590,8 +665,9 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
     }
     if (!any) try w.writeAll("  none\n");
 
-    // Memory by the rule: the medians, steady and peak, in each pass.
-    try w.writeAll("MEMORY OVER THE BAR BY THE RULE (the medians of all launches; steady and peak; each pass)\n");
+    // Memory by the rule: the medians, steady and peak, in each pass; a
+    // figure above the bar with the two readings that may clear it.
+    try w.writeAll("MEMORY ABOVE THE BAR ON STEADY OR PEAK (the medians of all launches; each pass), AND THE RULE'S VERDICT\n");
     any = false;
     const passes = [_]struct { pass: ?*const Pass, label: []const u8 }{
         .{ .pass = default, .label = "default pass" },
@@ -605,12 +681,14 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
                 if (try reading(gpa, row, m)) |r| if (r.ratio > bar) {
                     any = true;
                     summary.memory_over += 1;
-                    if (r.levels) |l| if (l.shared()) {
-                        const low_ok = if (l.low_ratio) |x| x <= bar else true;
-                        const high_ok = if (l.high_ratio) |x| x <= bar else true;
-                        if (low_ok and high_ok) summary.memory_over_level_only += 1;
-                    };
-                    try writeMemoryFinding(w, gpa, row, m, r, entry.label, collected_row);
+                    const collected: ?Reading = if (collected_row) |c_row| try reading(gpa, c_row, .collected) else null;
+                    switch (verdictOf(r, collected, bar)) {
+                        .within => unreachable,
+                        .cleared_by_levels => summary.memory_cleared_levels += 1,
+                        .cleared_by_collected => summary.memory_cleared_collected += 1,
+                        .over => summary.memory_not_cleared += 1,
+                    }
+                    try writeMemoryFinding(w, gpa, row, m, r, entry.label, collected_row, bar, if (pass == default and memory != null) collected_row else null);
                 };
             }
         }
@@ -632,7 +710,7 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
                     const over_by_rule = m != .collected and r.ratio > bar;
                     if (!over_by_rule and (!l.shared() or l.tipHigherShare() or m == .collected)) {
                         any = true;
-                        try writeMemoryFinding(w, gpa, row, m, r, judged_label, if (m == .collected) null else row);
+                        try writeMemoryFinding(w, gpa, row, m, r, judged_label, if (m == .collected) null else row, null, null);
                     }
                 }
             }
@@ -641,13 +719,18 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
     if (!any) try w.writeAll("  none\n");
 
     // Every row.
-    try w.writeAll("ALL ROWS (tip / base; ! = above the bar, * = the two sides' launches apart, L = two levels)\n");
+    try w.writeAll("ALL ROWS (tip / base; ! = above the bar, c = a memory figure above the bar that the rule clears, * = the two sides' launches apart, L = two levels)\n");
     try w.print("  {s:<34} {s:>9} {s:>9} {s:>9} {s:>9}", .{ "", "time", "instr", "steady", "peak" });
     if (memory != null) try w.print(" | {s:>9} {s:>9} {s:>9}", .{ "steady", "peak", "collected" });
     try w.writeByte('\n');
     for (default.rows) |*row| {
         try w.print("  {s:<34}", .{row.workload});
-        inline for (.{ Measure.time, Measure.instructions, Measure.steady, Measure.peak }) |m| try writeCell(w, try reading(gpa, row, m), bar);
+        const collected_row: ?*const Row = if (memory) |p| p.row(row.workload) else null;
+        const collected: ?Reading = if (collected_row) |c_row| try reading(gpa, c_row, .collected) else null;
+        inline for (.{ Measure.time, Measure.instructions, Measure.steady, Measure.peak }) |m| {
+            const r = try reading(gpa, row, m);
+            try writeCell(w, r, bar, if (m.isMemory()) (if (r) |x| verdictOf(x, collected, bar) else null) else null);
+        }
         if (memory) |p| {
             try w.writeAll(" |");
             var leveled = false;
@@ -657,16 +740,20 @@ pub fn write(w: W, gpa: Allocator, default: *const Pass, memory: ?*const Pass, o
                     if (r) |x| if (x.levels != null) {
                         leveled = true;
                     };
-                    try writeCell(w, r, bar);
+                    // The collected figure is not a figure of the bar: no flag.
+                    if (m == .collected) {
+                        if (r) |x| try w.print("  {d:>6.3}  ", .{x.ratio}) else try w.writeAll("       -  ");
+                    } else try writeCell(w, r, bar, if (r) |x| verdictOf(x, collected, bar) else null);
                 }
             } else try w.writeAll("       -         -         -  ");
             if (leveled) try w.writeAll(" L");
         }
         try w.writeByte('\n');
     }
-    try w.print("SUMMARY: over the bar by the rule - time {d}, instructions {d}, memory {d} row figures ({d} of them with every shared level's own ratio within the bar: the median changed level); {d} memory row figures whose sides share no level\n", .{
-        summary.time_over, summary.instructions_over, summary.memory_over, summary.memory_over_level_only, summary.memory_apart_levels,
+    try w.print("SUMMARY: time {d} and instructions {d} rows over the bar; memory {d} steady or peak figures above it - {d} cleared by (a) common levels within the bar, {d} cleared by (b) the collected figure, {d} NOT CLEARED; {d} memory figures whose sides share no level\n", .{
+        summary.time_over, summary.instructions_over, summary.memory_over, summary.memory_cleared_levels, summary.memory_cleared_collected, summary.memory_not_cleared, summary.memory_apart_levels,
     });
+    try w.print("VERDICT: {s}\n", .{if (summary.failed()) "OVER THE BAR" else "within the bar"});
     return summary;
 }
 
@@ -901,7 +988,10 @@ test "the cost table: the rule's verdict stays the medians'; the levels and the 
     // The rule: the medians. streams.reader steady is over in the memory
     // pass (308 against 297), and it is the one memory figure over.
     try testing.expectEqual(@as(usize, 1), summary.memory_over);
-    try testing.expectEqual(@as(usize, 1), summary.memory_over_level_only);
+    try testing.expectEqual(@as(usize, 1), summary.memory_cleared_levels);
+    try testing.expectEqual(@as(usize, 0), summary.memory_not_cleared);
+    // The time and instruction rows put the pair over all the same.
+    try testing.expect(summary.failed());
     try testing.expectEqual(@as(usize, 1), summary.time_over);
     try testing.expectEqual(@as(usize, 1), summary.instructions_over);
     try testing.expectEqual(@as(usize, 1), summary.memory_apart_levels);
@@ -912,6 +1002,8 @@ test "the cost table: the rule's verdict stays the medians'; the levels and the 
     try testing.expect(std.mem.indexOf(u8, text, "launches, MB   tip:  297.0 297.0 308.0 308.0 308.0 308.0 308.0 308.0 308.0") != null);
     try testing.expect(std.mem.indexOf(u8, text, "tip 2 low / 7 high, base 6 low / 3 high; level against level: low 1.000 high 1.000; the chance of these shares from one coin 0.153") != null);
     try testing.expect(std.mem.indexOf(u8, text, "collected (after a full collection the page asked for): 1.000 (tip 250.0 MB | base 250.0 MB), one level") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "collected, MB  tip:  250.0 250.0 250.0 250.0 250.0 250.0 250.0 250.0 250.0") != null);
+    try testing.expect(std.mem.indexOf(u8, text, "VERDICT: CLEARED (a) - both sides reached a common level, and each level they share reads within the bar") != null);
     // Time and instructions over the bar, with their launches.
     try testing.expect(std.mem.indexOf(u8, text, "dom.clone-node  time: 1.050 (tip 10.500 ms | base 10.000 ms)") != null);
     try testing.expect(std.mem.indexOf(u8, text, "dom.clone-node  instructions: 1.050") != null);
@@ -922,7 +1014,8 @@ test "the cost table: the rule's verdict stays the medians'; the levels and the 
     // Every row once, in the journal's order.
     const table = text[std.mem.indexOf(u8, text, "ALL ROWS").?..];
     try testing.expect(std.mem.indexOf(u8, table, "streams.reader").? < std.mem.indexOf(u8, table, "dom.clone-node").?);
-    try testing.expect(std.mem.indexOf(u8, table, " 1.037! ") != null);
+    try testing.expect(std.mem.indexOf(u8, table, " 1.037c ") != null);
+    try testing.expect(std.mem.endsWith(u8, text, "VERDICT: OVER THE BAR\n"));
     try testing.expect(std.mem.indexOf(u8, table, " 1.050!*") != null);
 
     // With no memory pass the bar is read on the default pass, and says so.
@@ -930,5 +1023,131 @@ test "the cost table: the rule's verdict stays the medians'; the levels and the 
     const s2 = try write(&alone.writer, a, &default, null, .{});
     try testing.expectEqual(@as(usize, 0), s2.memory_over);
     try testing.expect(std.mem.indexOf(u8, alone.written(), "memory pass: none - the memory bar is read on the default pass alone") != null);
-    try testing.expect(std.mem.indexOf(u8, alone.written(), "MEMORY OVER THE BAR BY THE RULE (the medians of all launches; steady and peak; each pass)\n  none\n") != null);
+    try testing.expect(std.mem.indexOf(u8, alone.written(), "AND THE RULE'S VERDICT\n  none\n") != null);
+}
+
+fn levelsFor(low_ratio: ?f64, high_ratio: ?f64) Joint.Levels {
+    return .{ .low = 297 * mib, .high = 308 * mib, .tip_low = 4, .tip_high = 5, .base_low = 5, .base_high = 4, .low_ratio = low_ratio, .high_ratio = high_ratio, .share_chance = 1 };
+}
+
+test "the rule's verdict on a figure above the bar: cleared by common levels, cleared by the collected figure, or over" {
+    const bar = default_bar;
+    const over: Reading = .{ .ratio = 1.037, .tip_median = 308, .base_median = 297, .apart = false };
+    const collected_same: Reading = .{ .ratio = 1.001, .tip_median = 250, .base_median = 250, .apart = false };
+    const collected_more: Reading = .{ .ratio = 1.035, .tip_median = 259, .base_median = 250, .apart = true };
+    // At or under the bar there is nothing to clear.
+    try testing.expectEqual(Verdict.within, verdictOf(.{ .ratio = 1.03, .tip_median = 1, .base_median = 1, .apart = false }, null, bar));
+    try testing.expectEqual(Verdict.within, verdictOf(.{ .ratio = 0.9, .tip_median = 1, .base_median = 1, .apart = true }, collected_more, bar));
+    // (a) Both sides reached a common level and each such level is within
+    // the bar - both levels, or the one level they share.
+    var by_levels = over;
+    by_levels.levels = levelsFor(1.004, 0.995);
+    try testing.expectEqual(Verdict.cleared_by_levels, verdictOf(by_levels, null, bar));
+    try testing.expectEqual(Verdict.cleared_by_levels, verdictOf(by_levels, collected_more, bar));
+    by_levels.levels = levelsFor(null, 1.01);
+    try testing.expectEqual(Verdict.cleared_by_levels, verdictOf(by_levels, null, bar));
+    // (b) The collected figure within the bar: for sides that share no
+    // level, for one level, and for a shared level that reads over.
+    var apart_levels = over;
+    apart_levels.levels = levelsFor(null, null);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(apart_levels, collected_same, bar));
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(over, collected_same, bar));
+    var one_level_over = over;
+    one_level_over.levels = levelsFor(1.002, 1.04);
+    try testing.expectEqual(Verdict.cleared_by_collected, verdictOf(one_level_over, collected_same, bar));
+    // Not cleared: a real change - over on both levels and on the collected
+    // figure - and every case with no reading that clears it.
+    var real = over;
+    real.levels = levelsFor(1.035, 1.036);
+    try testing.expectEqual(Verdict.over, verdictOf(real, collected_more, bar));
+    try testing.expectEqual(Verdict.over, verdictOf(real, null, bar));
+    try testing.expectEqual(Verdict.over, verdictOf(one_level_over, collected_more, bar));
+    try testing.expectEqual(Verdict.over, verdictOf(apart_levels, null, bar));
+    try testing.expectEqual(Verdict.over, verdictOf(apart_levels, collected_more, bar));
+    try testing.expectEqual(Verdict.over, verdictOf(over, null, bar));
+    try testing.expect(Verdict.cleared_by_levels.cleared() and Verdict.cleared_by_collected.cleared());
+    try testing.expect(!Verdict.over.cleared() and !Verdict.within.cleared());
+}
+
+test "a pair's verdict from its journals: one row cleared by levels, one by the collected figure, and a real 3.5% on both levels and collected is over" {
+    var arena_state: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const rows = [_][]const u8{ "streams.reader", "streams.enqueue-read", "streams.blob-stream" };
+    var default_records: std.ArrayList(journal.Record) = .empty;
+    var memory_records: std.ArrayList(journal.Record) = .empty;
+    for (0..9) |i| {
+        const run: u32 = @intCast(i);
+        const jitter: u64 = @as(u64, i) * 4096;
+        // The default pass: no row moved.
+        for (rows) |name| {
+            try default_records.append(a, try testRecord(a, .crane, "tip1", name, run, 10, 1_000_000, 320 * mib + jitter, 400 * mib, null));
+            try default_records.append(a, try testRecord(a, .crane_base, "base1", name, run, 10, 1_000_000, 320 * mib + jitter, 400 * mib, null));
+        }
+        // (a) Both sides on 297 and 308 MB, the tip high more often.
+        try memory_records.append(a, try testRecord(a, .crane, "tip1", rows[0], run, 10, 1, (if (i < 2) @as(u64, 297) else 308) * mib + jitter, 400 * mib, 250 * mib + jitter));
+        try memory_records.append(a, try testRecord(a, .crane_base, "base1", rows[0], run, 10, 1, (if (i < 6) @as(u64, 297) else 308) * mib + jitter, 400 * mib, 250 * mib + jitter));
+        // (b) Every launch of the tip on the high level, every launch of
+        // the base on the low one; collected, they hold the same.
+        try memory_records.append(a, try testRecord(a, .crane, "tip1", rows[1], run, 10, 1, 308 * mib + jitter, 400 * mib, 250 * mib + jitter));
+        try memory_records.append(a, try testRecord(a, .crane_base, "base1", rows[1], run, 10, 1, 297 * mib + jitter, 400 * mib, 250 * mib + jitter));
+        // A real change: the tip holds 3.5% more on the low level, on the
+        // high level and collected; both sides 4 launches low and 5 high.
+        const level: u64 = (if (i < 4) @as(u64, 297) else 340) * mib;
+        try memory_records.append(a, try testRecord(a, .crane, "tip1", rows[2], run, 10, 1, level * 1035 / 1000 + jitter, 400 * mib, 250 * mib * 1035 / 1000 + jitter));
+        try memory_records.append(a, try testRecord(a, .crane_base, "base1", rows[2], run, 10, 1, level + jitter, 400 * mib, 250 * mib + jitter));
+    }
+    const default = try passOf(a, default_records.items);
+    const memory = try passOf(a, memory_records.items);
+    var out: Io.Writer.Allocating = .init(a);
+    const summary = try write(&out.writer, a, &default, &memory, .{});
+    const text = out.written();
+    try testing.expectEqual(@as(usize, 3), summary.memory_over);
+    try testing.expectEqual(@as(usize, 1), summary.memory_cleared_levels);
+    try testing.expectEqual(@as(usize, 1), summary.memory_cleared_collected);
+    try testing.expectEqual(@as(usize, 1), summary.memory_not_cleared);
+    try testing.expectEqual(@as(usize, 0), summary.time_over);
+    try testing.expect(summary.failed());
+    // Each row's verdict follows its own finding, in the journal's order.
+    const first = std.mem.indexOf(u8, text, "streams.reader  memory pass, steady: 1.037").?;
+    const second = std.mem.indexOf(u8, text, "streams.enqueue-read  memory pass, steady: 1.037").?;
+    const third = std.mem.indexOf(u8, text, "streams.blob-stream  memory pass, steady: 1.035").?;
+    try testing.expect(first < second and second < third);
+    try testing.expect(std.mem.indexOf(u8, text[first..second], "VERDICT: CLEARED (a)") != null);
+    try testing.expect(std.mem.indexOf(u8, text[second..third], "the sides share no level") != null);
+    try testing.expect(std.mem.indexOf(u8, text[second..third], "VERDICT: CLEARED (b) - the collected figure reads within the bar (1.000)") != null);
+    // Every launch of the figure that clears it is printed.
+    try testing.expect(std.mem.indexOf(u8, text[second..third], "collected, MB  tip:  250.0 250.0 250.0 250.0 250.0 250.0 250.0 250.0 250.0") != null);
+    const tail = text[third..];
+    try testing.expect(std.mem.indexOf(u8, tail, "tip 4 low / 5 high, base 4 low / 5 high; level against level: low 1.035 high 1.035") != null);
+    try testing.expect(std.mem.indexOf(u8, tail, "VERDICT: OVER THE BAR - (a) a level both sides reached reads over the bar; (b) the collected figure reads 1.035") != null);
+    try testing.expect(std.mem.endsWith(u8, text, "VERDICT: OVER THE BAR\n"));
+
+    // A figure of the default pass that is above the bar says what the same
+    // figure reads with the ring off, and is judged like any other.
+    var ring_on: std.ArrayList(journal.Record) = .empty;
+    for (0..9) |i| {
+        const run: u32 = @intCast(i);
+        try ring_on.append(a, try testRecord(a, .crane, "tip1", rows[1], run, 10, 1_000_000, 105 * mib + @as(u64, i) * 4096, 400 * mib, null));
+        try ring_on.append(a, try testRecord(a, .crane_base, "base1", rows[1], run, 10, 1_000_000, 100 * mib + @as(u64, i) * 4096, 400 * mib, null));
+    }
+    const ring_on_pass = try passOf(a, ring_on.items);
+    var out3: Io.Writer.Allocating = .init(a);
+    const s3 = try write(&out3.writer, a, &ring_on_pass, &memory, .{});
+    try testing.expect(std.mem.indexOf(u8, out3.written(), "streams.enqueue-read  default pass, steady: 1.050") != null);
+    try testing.expect(std.mem.indexOf(u8, out3.written(), "the same figure on the memory pass (the ring off): 1.037 (tip 308.0 MB | base 297.0 MB)") != null);
+    // Cleared by the row's collected figure, as the memory pass's own is.
+    try testing.expectEqual(@as(usize, 2), s3.memory_cleared_collected);
+
+    // Without the row that really moved, the pair is within the bar: two
+    // figures above it, both cleared.
+    var cleared_records: std.ArrayList(journal.Record) = .empty;
+    for (memory_records.items) |r| if (!std.mem.eql(u8, r.workload, rows[2])) try cleared_records.append(a, r);
+    const cleared_pass = try passOf(a, cleared_records.items);
+    var out2: Io.Writer.Allocating = .init(a);
+    const s2 = try write(&out2.writer, a, &default, &cleared_pass, .{});
+    try testing.expectEqual(@as(usize, 2), s2.memory_over);
+    try testing.expectEqual(@as(usize, 0), s2.memory_not_cleared);
+    try testing.expect(!s2.failed());
+    try testing.expect(std.mem.endsWith(u8, out2.written(), "VERDICT: within the bar\n"));
 }

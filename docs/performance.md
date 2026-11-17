@@ -469,13 +469,25 @@ MallocLargeCache=0 perf_bench run --suite=... --root=tests/perf --out=<M> --roun
 perf_bench cost --default=<D> --memory=<M> [--bar=1.03]
 ```
 
-**The rule `cost` applies is the existing one:** time and instructions on the default pass (a row
-is over when the tip's median over the base's is above the bar and the two sides' launches do not
-overlap); memory on the steady figure and the peak, the medians of all launches, in either pass.
-`cost` prints the geometric means, every row over the bar with each launch's value on both sides,
-and a table of all rows (`!` above the bar, `*` the sides' launches apart, `L` two levels).
+**The rule `cost` applies** (AGENTS.md, "The 3% memory bar reads what Crane holds"; the user,
+2026-11-15 and 2026-11-17):
 
-**What it prints beside the rule, for a row a median cannot read** (lane tl2, 2026-11-17). The
+- time and instructions, on the default pass: a row is over when the tip's median over the base's
+  is above the bar and the two sides' launches do not overlap;
+- memory, on the steady figure and the peak - the medians of all launches, in either pass. A
+  figure above the bar is **cleared**, with every launch's value printed, when
+  (a) both sides reached a common level and each such level's tip / base ratio is within the bar,
+  or (b) the row's collected figure is within the bar. A figure neither clears is over;
+- the collected figure never replaces steady and peak: it is read only to clear a row they put
+  above the bar.
+
+`cost` prints the geometric means, every row above the bar with each launch's value on both sides
+and its verdict (`CLEARED (a)`, `CLEARED (b)` or `OVER THE BAR`, with why), and a table of all
+rows (`!` above the bar and not cleared, `c` a memory figure the rule clears, `*` the sides'
+launches apart, `L` two levels). Its last line is the pair's verdict, and it exits 1 when a row is
+over the bar and not cleared.
+
+**The two readings that clear a row, and why a median needs them** (lane tl2, 2026-11-17). The
 rows of the streams, attributes, page-growth and fetch pages sit on two memory levels: a median of
 3 or 9 launches flips between them, and two consoles can sit on different levels with disjoint
 ranges in either direction (lane wb1: +3.3% on one pair of trees, -3.3% on the next, the same
@@ -492,8 +504,8 @@ bytes on each.
   level both sides reached**, each side's count on each level, and the chance of shares that far
   apart from one coin (Fisher's exact test, two-sided). A side with 8 launches low and 1 high, a
   pass of 3 launches, and a side that sits on one level are all read this way; the report's own
-  levels need two groups on one side and miss each of them. A row over the bar by the rule whose
-  every shared level reads within the bar is a median that changed level.
+  levels need two groups on one side and miss each of them. A figure above the bar whose every
+  shared level reads within it is a median that changed level: clearing (a).
 - **Sides that share no level.** Every launch of the tip on one level and every launch of the
   base on the other is the row the steady figure cannot settle: the tip holds more (or less), or
   each build prefers a level. `cost` says so, whichever side is the higher - a row reading 0.967
@@ -526,8 +538,8 @@ as both sides of the pair, so every row's true ratio is 1.000; the attributes an
   tip 3 low and 4 high, the base 5 low and 2 high (the chance of those shares from one coin 0.59),
   level against level 1.004 and 0.995.
 
-Whether the bar is JUDGED on the per-level ratios or on the collected figure is the user's ruling
-to make; until then the rule above is the verdict and the rest is evidence beside it.
+The user's ruling on these figures (2026-11-17) is the rule above: steady and peak stay the bar,
+and either reading may clear a row.
 
 ## perf_bench on Linux
 

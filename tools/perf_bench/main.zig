@@ -14,10 +14,10 @@
 //!   perf_bench cost --default=<dir> [--memory=<dir>] [--bar=<ratio>]
 //!       a lane's cost pair (crane against crane_base) read against the 3%
 //!       bar: time, CPU and instructions from the default pass's journals,
-//!       memory from both passes, the rule's verdict (the medians) with the
-//!       levels of both sides together and the collected figure beside it
-//!       (cost.zig; docs/performance.md, "A lane's cost pair"); exit 0
-//!       whatever it reads - the table is the result
+//!       memory from both passes; a steady or peak figure above the bar is
+//!       cleared by common levels within the bar or by the collected figure
+//!       (AGENTS.md's rule; cost.zig; docs/performance.md, "A lane's cost
+//!       pair"). Exit 1 when a row is over the bar and not cleared
 //!   perf_bench check --suite=... --root=... --pin=<file> ...
 //!       the run's input checks alone (window scripts run them first): the
 //!       suite against its pages, each pin readable, each binary there and
@@ -493,13 +493,16 @@ fn writeCost(arena: Allocator, io: Io, args: *const Args) !void {
     const bar = if (args.get("bar")) |text| std.fmt.parseFloat(f64, text) catch fail("--bar={s} is not a ratio", .{text}) else cost.default_bar;
     if (!(bar > 1)) fail("--bar={d} is not above 1: the bar is the tip's figure over the base's", .{bar});
     var out: Io.Writer.Allocating = .init(arena);
-    _ = try cost.write(&out.writer, arena, &default, if (memory) |*p| p else null, .{ .bar = bar, .default_name = default_dir, .memory_name = args.get("memory") orelse "" });
+    const summary = try cost.write(&out.writer, arena, &default, if (memory) |*p| p else null, .{ .bar = bar, .default_name = default_dir, .memory_name = args.get("memory") orelse "" });
     // The table is the command's result: on stdout, appended (a streaming
     // write: stdout may be a log other processes write to).
     var buf: [4096]u8 = undefined;
     var stdout = Io.File.stdout().writerStreaming(io, &buf);
     try stdout.interface.writeAll(out.written());
     try stdout.interface.flush();
+    // Over the bar and not cleared: the command fails, so a window script
+    // cannot read a table it did not look at as a pass.
+    if (summary.failed()) std.process.exit(1);
 }
 
 fn writeReport(arena: Allocator, io: Io, args: *const Args) !void {
