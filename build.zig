@@ -1745,8 +1745,12 @@ fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.
 }
 
 /// The `test-verify` step and its files: -Dverify-files, else
-/// -Dverify-base's git diff.
-fn testVerifySelection(b: *std.Build) *TestVerify {
+/// -Dverify-base's git diff - asked at make time (build_probe verify-base),
+/// which then builds `test-verify -Dverify-files=<the diff's files>` with
+/// this build's -D options: which test executables test-verify builds
+/// depends on the list, and a configure that ran git would poison Zig's
+/// configure cache (`check-configure-cache`).
+fn testVerifySelection(b: *std.Build, build_probe: *std.Build.Step.Compile) *TestVerify {
     const v = b.allocator.create(TestVerify) catch @panic("OOM");
     v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
     const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
@@ -1758,18 +1762,29 @@ fn testVerifySelection(b: *std.Build) *TestVerify {
         while (it.next()) |file| files.append(b.allocator, file) catch @panic("OOM");
     } else if (base) |ref| {
         v.asked = true;
-        // A configure-time read of the checkout the configure cache cannot
-        // track.
-        b.graph.poisonCache();
-        var code: u8 = 0;
-        const out = b.runAllowFail(&.{ "git", "diff", "--name-only", "--diff-filter=AMR", b.fmt("{s}...HEAD", .{ref}), "--", "tests/" }, &code, .inherit) catch |err| {
-            v.step.dependOn(&b.addFail(b.fmt("test-verify: git diff {s}...HEAD failed ({t}): no git checkout here? Pass -Dverify-files=<a,b,...> instead", .{ ref, err })).step);
-            return v;
-        };
-        var lines = std.mem.tokenizeScalar(u8, out, '\n');
-        while (lines.next()) |file| {
-            if (std.mem.endsWith(u8, file, "_test.zig") and !std.mem.startsWith(u8, file, "tests/wpt/")) files.append(b.allocator, file) catch @panic("OOM");
+        const run = b.addRunArtifact(build_probe);
+        run.setName(b.fmt("test-verify the test files git diff {s}...HEAD names", .{ref}));
+        run.addArgs(&.{ "verify-base", b.fmt("--ref={s}", .{ref}), b.fmt("--zig={s}", .{b.graph.zig_exe}), "--" });
+        // This build's -D options, but the two that name the files.
+        for (b.user_input_options.keys(), b.user_input_options.values()) |name, value| {
+            if (std.mem.eql(u8, name, "verify-base") or std.mem.eql(u8, name, "verify-files")) continue;
+            switch (value) {
+                .flag => run.addArg(b.fmt("-D{s}", .{name})),
+                .scalar => |text| run.addArg(b.fmt("-D{s}={s}", .{ name, text })),
+                .list => |list| for (list.items) |text| run.addArg(b.fmt("-D{s}={s}", .{ name, text })),
+                // The command line makes none of these.
+                .map, .lazy_path, .lazy_path_list => std.debug.panic("build.zig: -D{s}: an option the command line cannot give", .{name}),
+            }
         }
+        // The parent's local cache, as check-linux's sub-builds (the global
+        // one travels as ZIG_GLOBAL_CACHE_DIR in the environment).
+        run.addArgs(&.{ "-j2", "--cache-dir" });
+        run.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        run.setCwd(b.path("."));
+        // A verification is a run, never a cache hit.
+        run.has_side_effects = true;
+        run.stdio = .inherit;
+        v.step.dependOn(&run.step);
     }
     v.files = files.items;
     v.matched = b.allocator.alloc(bool, files.items.len) catch @panic("OOM");
@@ -3519,7 +3534,7 @@ pub fn build(b: *std.Build) void {
                 list.* = .empty;
                 break :test_exes list;
             },
-            .verify = testVerifySelection(b),
+            .verify = testVerifySelection(b, build_probe),
             .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
         break :launch l;
