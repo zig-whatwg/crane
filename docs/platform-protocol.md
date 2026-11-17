@@ -212,7 +212,12 @@ that report through the EventSink.
 Crane holds the Browser's BrowserPlatform as part of the Browser (BrowserScope, docs/instances.md
 rule 2); a realm reaches it through `realm.browser_scope`. Built so far: Browser.init
 creates it and Browser.deinit destroys it, as a supplement of the scope that
-`html.platform_state.of(realm)` reads (src/html/platform_state.zig); its EventSink posts nothing yet. A worker realm carries its creator's scope,
+`html.platform_state.of(realm)` reads (src/html/platform_state.zig). Its EventSink is the Browser's
+receiver (src/browser/platform_events.zig, a supplement of the scope made before the platform state, so
+that it ends after it); one event is delivered so far, memory pressure (section 7). An observer starts
+when the BrowserPlatform is made and has stopped when `destroyBrowserPlatform` returns: nothing is
+posted after it (kit/browser_state calls the platform's `Extra.start` and, first in destroy,
+`Extra.deinit`). A worker realm carries its creator's scope,
 so a worker's requests use its Browser's BrowserPlatform.
 
 ## 4. Threads and asynchronous results
@@ -792,7 +797,7 @@ pub const EventSink = extern struct {
 | `languages_changed` | `languagechange` (HTML 8.10.1.2) |
 | `preferences_changed(UserPreferences)` | media query re-evaluation |
 | `visibility_changed(tab, Visibility)` | the document visibility steps |
-| `memory_pressure(level)` | `engine.notifyMemoryPressure` on every agent of the Browser |
+| `memory_pressure(level)` | DELIVERED. `critical`: a task on the window's event loop - `engine.notifyMemoryPressure(.critical)` (a full collection) and then one release of the allocator's free memory at `.pressure` through the loop's gate (src/browser/memory_release.zig) - and a task on every running worker's loop, the same collection in the worker's agent on its own thread. `warning` and `normal`: nothing (WebKit and Firefox collect no script memory at a warning; Chromium alone sends V8 a moderate notice). The evidence is in src/browser/platform_events.zig |
 | `permission_changed(descriptor, origin, top_level_origin, state)` | an OS-governed decision changed (the user changed it in Settings), or a store entry was set; PermissionStatus `change` (Permissions 5.4) |
 | `media_devices_changed` | `devicechange` |
 | `capture_ended(source)`, `capture_muted(source, bool)` | MediaStreamTrack `ended` / `mute` / `unmute` |
@@ -858,8 +863,11 @@ image decoding, built in today (kit/image_decoding, D1) and ImageIO if the adapt
 image encoding, built in today (kit/image_encoding: PNG) and ImageIO if the adapter links out later;
 media decoding, built in today (kit/media_decoding: WAV linear PCM, D4) and AVFoundation if the adapter
 links out later; the OS permission system (section 8); native system alerts and pickers over the key window; screen,
-reachability, memory pressure and app lifecycle observed and reported as events. Capabilities not
-built yet alias kit/headless.
+reachability, memory pressure and app lifecycle observed and reported as events. Built so far of the
+observers: memory pressure - one DISPATCH_SOURCE_TYPE_MEMORYPRESSURE source per Browser on the default
+global queue (normal, warn and critical; the level read from the event's data, as WebKit and Firefox
+read it), canceled and waited for at the Browser's end (src/platform/adapters/darwin/memory_pressure.zig).
+Capabilities not built yet alias kit/headless.
 
 **linux**, following its link plan (10.2): glibc's clocks, entropy and threads; kit/curl (static: the
 distros' libcurl lacks or varies in WebSockets) with the system zlib and nghttp2; the system SQLite;
@@ -867,7 +875,12 @@ OpenSSL 3 for TLS and crypto where its link plan accepts it, mbedTLS and kit/cry
 distro CA bundle; the clipboard, built in today (kit/memory_clipboard per Browser, D2), and the system
 clipboard through X11 or Wayland when a display is present (loaded at run time) if the adapter links
 out later; image decoding, built in today (kit/image_decoding, D1); image encoding, built in today
-(kit/image_encoding: PNG); media decoding, built in today (kit/media_decoding: WAV linear PCM, D4).
+(kit/image_encoding: PNG); media decoding, built in today (kit/media_decoding: WAV linear PCM, D4);
+memory pressure observed by polling, as WebKit and Firefox do on Linux (Chromium has no monitor on
+desktop Linux): one thread per Browser reads MemTotal and MemAvailable from /proc/meminfo every 5 s,
+every 1 s at warning or above, and posts when the level changes - warning at 90 % of memory used,
+critical at 95 % (kit/posix/meminfo.zig, the rule; src/platform/adapters/linux/memory_pressure.zig,
+the thread, woken and joined at the Browser's end).
 
 **testing** (decision 2, revised): the build machine's real OS services - darwin's or linux's, chosen by
 `builtin.os.tag` - plus compiled-in test capabilities, with all their state per Browser:
@@ -886,6 +899,7 @@ out later; image decoding, built in today (kit/image_decoding, D1); image encodi
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
 | clocks (`browserClock`), opt in | `PlatformBrowserOptions.virtual_clock`: a per-Browser VIRTUAL clock (src/platform/adapters/testing/virtual_clock.zig), Chromium's MOCK_TIME - it stands still while the Browser works and moves only when its event loop is idle (no runnable task, no posted task, no deferred teardown, no fetch in flight, no running worker) and a timer or an idle period is due, to exactly that wake-up, or when a test calls `platform.adapter.advanceClock(browser, ns)`. Monotonic and wall time move together; the wall clock starts at `virtual_clock_wall_start_ms` (2026-01-01T00:00:00Z by default), the monotonic one at an arbitrary origin that is not 0. Work takes no time: a page that busy-waits on performance.now() or Date.now() never sees time pass, as under MOCK_TIME. Off by default; WPT runs keep real time, as all three browsers' do. FIRST BATCH (2026-11-02): the Browser's window event loop, its timers, frame clock and idle periods, its window realms' performance.now()/timeOrigin/Event.timeStamp, IdleDeadline, and Date in its window agent (engine `host_clock`). Still on the process clock: workers' loops and realms, WebSocket and EventSource polling (their 1 ms pump timers make virtual time run ahead of their real I/O - a Blink-style virtual-time pauser is the next step), a navigation's fetch timing (so a virtual Browser's time origin stays its Window's creation, not the navigation's fetch start), and the other process-clock readers (cookie expiry, File.lastModified, XHR timeouts, IndexedDB, Reporting) |
+| platform events | no OS observer: no machine's state reaches a test. A test posts an event itself with `platform.adapter.postEvent(browser, &event)`, which calls the Browser's EventSink on the calling thread, as an observer does. `platform.adapter.memoryPressureLevelOfMeminfo(text)` answers the level the linux platform's rule reads from a /proc/meminfo's text (a pure function, the same on every OS) |
 | randomness (`fillBrowserRandom`), opt in | `PlatformBrowserOptions.random_seed` (0, the default: none): a per-Browser SplitMix64 stream (src/platform/adapters/testing/seeded_random.zig), written out so a seed replays on every toolchain. Its first draw seeds the Browser's agent's Math.random (engine `seeded_random`); V8's process-wide --random-seed is never used, because it gives every isolate the same sequence |
 
 Its per-Browser options (`platform.PlatformBrowserOptions` in a testing build) carry the fake devices,

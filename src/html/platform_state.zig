@@ -3,10 +3,12 @@
 //! take, held as a supplement of the Browser's scope and read through a
 //! realm's (recipes 0.5).
 //!
-//! Minimal: Browser.init creates it and Browser.deinit destroys it; its
-//! EventSink posts nothing yet. Recipes
-//! step 7 grows it - the requester, the event loop's port, platform events
-//! turned into tasks.
+//! Minimal: Browser.init creates it and Browser.deinit destroys it, with
+//! the EventSink its creator gives it - the Browser's receiver
+//! (src/browser/platform_events.zig), which turns a critical
+//! `memory_pressure` event into tasks; a scope made without a Browser
+//! (`create`) ignores every event. Recipes step 7 grows it - the requester,
+//! the event loop's port, the other platform events turned into tasks.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -33,7 +35,8 @@ pub const PlatformState = struct {
     }
 };
 
-/// Platform events: none are turned into steps yet (recipes step 7).
+/// The sink of a scope whose creator has no receiver for platform events
+/// (`create`: a test's scope, with no Browser and no event loop).
 fn ignoreEvent(context: ?*anyopaque, event: *const platform.PlatformEvent) callconv(.c) void {
     _ = .{ context, event };
 }
@@ -43,17 +46,22 @@ const no_events: platform.EventSink = .{ .context = null, .post = ignoreEvent };
 /// Make `scope`'s Browser's platform state - the platform's defaults for
 /// every option (contract 3.1).
 pub fn create(scope: *runtime.BrowserScope) !void {
-    _ = try createWith(scope, &.{});
+    _ = try createWith(scope, &.{}, no_events);
 }
 
 /// Make `scope`'s Browser's platform state with `options` (BrowserConfig's
 /// platform options among them), and answer it: Browser.init's, before the
 /// Browser's agent and event loop, which take its clock and its seed. A
 /// scope that has one already keeps it.
-pub fn createWith(scope: *runtime.BrowserScope, options: *const platform.BrowserOptions) !*platform.BrowserPlatform {
+///
+/// `events` is where the platform's observers report (contract section 7),
+/// from any thread, BORROWED until this state ends (`destroy`, or the
+/// scope's end): what it points to must be a supplement of `scope` made
+/// before this call - supplements end in reverse - or outlive the scope.
+pub fn createWith(scope: *runtime.BrowserScope, options: *const platform.BrowserOptions, events: platform.EventSink) !*platform.BrowserPlatform {
     const state = try scope.of(PlatformState);
     if (state.browser) |browser| return browser;
-    const browser = try platform.createBrowserPlatform(state.allocator, options, no_events);
+    const browser = try platform.createBrowserPlatform(state.allocator, options, events);
     state.browser = browser;
     return browser;
 }

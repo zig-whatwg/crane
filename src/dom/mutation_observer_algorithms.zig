@@ -17,9 +17,6 @@ const Allocator = std.mem.Allocator;
 
 // Import DOM types from interfaces (via root.zig re-exports)
 const interfaces = @import("interfaces");
-const Node = interfaces.Node;
-const NodeList = interfaces.NodeList;
-const MutationObserver = interfaces.MutationObserver;
 const MutationRecord = interfaces.MutationRecord;
 
 // Import dictionary from dictionaries module
@@ -224,138 +221,6 @@ pub fn resetAgent(realm: runtime.Context) void {
     agent.deinit();
     agent.* = MutationObserverAgent.init(allocator);
     agent.observer_counter = counter;
-}
-
-/// DOM §7.3 - Queue a mutation record
-///
-/// Queue a mutation record of type for target with name, namespace, oldValue,
-/// addedNodes, removedNodes, previousSibling, and nextSibling.
-///
-/// Spec: https://dom.spec.whatwg.org/#queueing-a-mutation-record
-pub fn queueMutationRecord(
-    allocator: Allocator,
-    mutation_type: []const u8,
-    target: *Node,
-    name: ?[]const u8,
-    namespace: ?[]const u8,
-    old_value: ?[]const u8,
-    added_nodes: *NodeList,
-    removed_nodes: *NodeList,
-    previous_sibling: ?*Node,
-    next_sibling: ?*Node,
-) !void {
-    // Step 1: Let interestedObservers be an empty map
-    var interested_observers = std.AutoHashMap(*MutationObserver, ?[]const u8).init(allocator);
-    defer interested_observers.deinit();
-
-    // Step 2: Let nodes be the inclusive ancestors of target
-    const tree_helpers = @import("tree_helpers.zig");
-    var nodes = try tree_helpers.getInclusiveAncestors(allocator, target);
-    defer nodes.deinit();
-
-    // Step 3: For each node in nodes, and then for each registered of node's registered observer list
-    for (nodes.items()) |node| {
-        var entries = node.registeredObservers();
-        while (entries.next()) |registered| {
-            const options = registered.options;
-
-            // Step 3.2: If none of the following are true, then:
-            var should_skip = false;
-
-            // - node is not target and options["subtree"] is false
-            if (node != target and !options.subtree) {
-                should_skip = true;
-            }
-
-            // - type is "attributes" and options["attributes"] either does not exist or is false
-            if (std.mem.eql(u8, mutation_type, "attributes")) {
-                if (options.attributes == null or !options.attributes.?) {
-                    should_skip = true;
-                }
-                // - type is "attributes", options["attributeFilter"] exists, and
-                //   options["attributeFilter"] does not contain name or namespace is non-null
-                if (options.attributeFilter) |filter| {
-                    if (namespace != null) {
-                        should_skip = true;
-                    } else if (name) |attr_name| {
-                        var found = false;
-                        for (filter) |filter_name| {
-                            if (std.mem.eql(u8, filter_name, attr_name)) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) should_skip = true;
-                    }
-                }
-            }
-
-            // - type is "characterData" and options["characterData"] either does not exist or is false
-            if (std.mem.eql(u8, mutation_type, "characterData")) {
-                if (options.characterData == null or !options.characterData.?) {
-                    should_skip = true;
-                }
-            }
-
-            // - type is "childList" and options["childList"] is false
-            if (std.mem.eql(u8, mutation_type, "childList")) {
-                if (!options.childList) {
-                    should_skip = true;
-                }
-            }
-
-            if (should_skip) continue;
-
-            // Step 3.2.1: Let mo be registered's observer
-            // Cast from opaque type to concrete MutationObserver struct
-            const mo: *MutationObserver = @ptrCast(@alignCast(registered.observer));
-
-            // Step 3.2.2: If interestedObservers[mo] does not exist, then set interestedObservers[mo] to null
-            if (!interested_observers.contains(mo)) {
-                try interested_observers.put(mo, null);
-            }
-
-            // Step 3.2.3: If either type is "attributes" and options["attributeOldValue"] is true,
-            // or type is "characterData" and options["characterDataOldValue"] is true,
-            // then set interestedObservers[mo] to oldValue
-            if (std.mem.eql(u8, mutation_type, "attributes") and (options.attributeOldValue orelse false)) {
-                try interested_observers.put(mo, old_value);
-            } else if (std.mem.eql(u8, mutation_type, "characterData") and (options.characterDataOldValue orelse false)) {
-                try interested_observers.put(mo, old_value);
-            }
-        }
-    }
-
-    // Step 4: For each observer → mappedOldValue of interestedObservers
-    var it = interested_observers.iterator();
-    while (it.next()) |entry| {
-        const observer = entry.key_ptr.*;
-        const mapped_old_value = entry.value_ptr.*;
-
-        // Step 4.1: Let record be a new MutationRecord object with...
-        const record = try MutationRecord.init(
-            allocator,
-            mutation_type,
-            target,
-            added_nodes,
-            removed_nodes,
-            previous_sibling,
-            next_sibling,
-            name,
-            namespace,
-            mapped_old_value,
-        );
-
-        // Step 4.2: Enqueue record to observer's record queue
-        try observer.enqueueRecord(record);
-    }
-
-    // Steps 4.3 and 5 - the surrounding agent's pending mutation observers,
-    // and its microtask - are skipped: a legacy `*Node` carries no realm to
-    // name the surrounding agent by, so the records wait in their observers'
-    // queues (takeRecords). (Nothing reaches this function: its only caller,
-    // attribute_algorithms.handleAttributeChanges, has no caller since the
-    // unused dom_token_list.zig was deleted - lane wb1.)
 }
 
 /// DOM §7.3 - Queue a tree mutation record
@@ -571,8 +436,10 @@ fn queueRecordWithoutNodes(
     try queueMutationRecordInternal(target.ctx.allocator, mutation_type, target, name, namespace, old_value, &.{}, &.{}, null, null);
 }
 
-/// Internal version of queueMutationRecord that uses runtime.Instance
-/// This avoids the architectural mismatch with the old interface-based signatures
+/// DOM §7.3 - Queue a mutation record, over platform objects
+/// (runtime.Instance): the one record queue, which queueTreeMutationRecord,
+/// queueAttributeMutationRecord and queueCharacterDataMutationRecord all
+/// end in.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queueing-a-mutation-record
 fn queueMutationRecordInternal(

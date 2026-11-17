@@ -17,6 +17,10 @@
 //! the other holders' attributes as they were. std.testing.allocator checks
 //! that every block, record and cache table is freed.
 //!
+//! The writer that goes through classList is on a real Browser page, in
+//! tests/html/nd2_attribute_sharing_class_list_test.zig (lane mp1): the
+//! DOMTokenList is its wrapper's to end, and these pages have no engine.
+//!
 //! These name only generated interfaces and src/dom: no impl (AGENTS.md "The
 //! impls boundary").
 
@@ -107,16 +111,10 @@ test "A3: parser-made elements with equal sets share one block; with no timers t
 }
 
 test "A3: each writer on one of two sharing elements copies and leaves the other untouched" {
-    const Writer = enum { change, append, remove, toggle_off, attr_value, class_list, set_attribute_node };
+    const Writer = enum { change, append, remove, toggle_off, attr_value, set_attribute_node };
     for (std.enums.values(Writer)) |writer| {
-        // classList's DOMTokenList is a same-object cache that only a
-        // wrapper's collection frees: with no engine here it stays, so that
-        // case runs over an arena (as cg1_element_same_object_test did until
-        // lane lk1 moved its run-time tests to tests/html, on a real page).
-        var arena = std.heap.ArenaAllocator.init(testing.allocator);
-        defer arena.deinit();
         var page: Page = undefined;
-        try page.open(if (writer == .class_list) arena.allocator() else testing.allocator);
+        try page.open(testing.allocator);
         defer page.close();
         var els: [2]*runtime.Instance = undefined;
         try page.parse("<span class=\"k\" title=t></span><span class=\"k\" title=t></span>", &els);
@@ -129,7 +127,6 @@ test "A3: each writer on one of two sharing elements copies and leaves the other
             .remove => try interfaces.Element.call_removeAttribute(el, str("title")),
             .toggle_off => try testing.expect(!try interfaces.Element.call_toggleAttribute(el, str("title"), no_force)),
             .attr_value => try interfaces.Attr.set_value((try interfaces.Element.call_getAttributeNode(el, str("title"))).?, str("u")),
-            .class_list => try interfaces.DOMTokenList.call_add(try interfaces.Element.get_classList(el), &.{str("m")}),
             .set_attribute_node => {
                 const attr = try interfaces.Document.call_createAttribute(page.document, str("title"));
                 try interfaces.Attr.set_value(attr, str("u"));
@@ -149,7 +146,6 @@ test "A3: each writer on one of two sharing elements copies and leaves the other
             .change, .attr_value, .set_attribute_node => try testing.expectEqualStrings("u", (try Page.get(el, "title")).?),
             .append => try testing.expectEqualStrings("en", (try Page.get(el, "lang")).?),
             .remove, .toggle_off => try testing.expect((try Page.get(el, "title")) == null),
-            .class_list => try testing.expectEqualStrings("k m", (try Page.get(el, "class")).?),
         }
     }
 }
