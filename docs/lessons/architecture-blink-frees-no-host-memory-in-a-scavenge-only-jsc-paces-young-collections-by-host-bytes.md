@@ -1,0 +1,17 @@
+# Architecture: Blink frees no host memory in a scavenge, and V8 lets no embedder pace one - only JavaScriptCore counts host bytes toward young collections
+
+**Date**: 2026-11-17
+**Lesson**: "Make host bytes pace young collections, as Blink/V8 do" had no Blink or V8 to copy: read what each engine does before designing to a claim about it.
+
+**Why**: Crane releases a refcounted node when its wrapper dies, so a scavenge that drops a wrapper frees host memory; V8 schedules scavenges by JS bytes alone, so the less JS garbage a wrap makes, the more dead wrappers' host memory waits between scavenges (lesson architecture-young-collections-are-paced-by-js-bytes-so-less-garbage-per-wrapper-means-more-host-memory.md). The fix that suggests itself - tell V8 the host bytes of young wrappers - is not on offer:
+- **V8 15.7.112.43**: young collections start on new-space allocation failure, at the minor-GC task's 80% of new space (src/heap/minor-gc-job.cc) and, inside V8 only, when young ArrayBuffer backing stores reach 2 x DefaultMaxSemiSpaceSize (heap.cc Heap::AllocateExternalBackingStore - 64 MB on desktop, far above a wrap-heavy page's cadence). `ExternalMemoryAccounter` paces FULL collections only (Heap::UpdateExternalMemory). The one public request for a young GC, `RequestGarbageCollectionForTesting(kMinorGarbageCollection)`, needs `--expose-gc`, which puts `gc` on every global. cppgc's young generation is an experimental flag that turns off unmodified-wrapper reclamation.
+- **Blink (Chromium 157)**: Chrome does not enable Oilpan's young generation; on a young V8 GC, BlinkRootsHandler::ResetRoot only clears the dropped wrapper's reference, and the Oilpan object waits for the next full (unified) GC, paced by Oilpan bytes against V8's global limit. Blink never frees host memory in a scavenge, so it never meets the problem.
+- **JavaScriptCore**: Heap::reportExtraMemoryAllocated -> didAllocate adds host bytes to the same "bytes allocated this cycle" counter cells feed, which brings the next Eden (young) collection forward; WebCore reports memoryCost() for [ReportExtraMemoryCost] wrappers. The one engine that does what the brief described (Heap.cpp is LGPL: reference only).
+
+**What Happened**: Lane gcp1's brief asked for host-byte pacing of young collections "as Blink/V8 do", then to land the wrap's internalized interface name that lane vm1 had held back for its memory cost. Reading V8 at the pinned tag (`git show 15.7.112.43:<path>` in jsengines/v8/v8) and Chromium 157's thread_state.cc, gin/v8_initializer.cc and gin_features.cc took about twenty minutes and showed there was nothing to build without patching V8 or allocating JS garbage on purpose to advance the clock (a workaround). The integrator took the finding to the user, who ruled the memory accepted and asked for a V8 feature request (tmp/plans/v8-feature-request-young-external-bytes.md) - before any code was written for the pacing.
+
+**Fix**:
+1. When a brief says "as engine X does", read X's code at the version that ships (Chromium's tag via `chromium.googlesource.com/.../+/refs/tags/<version>/<path>?format=TEXT`, V8 via the pinned tag) and quote the lines before designing.
+2. If the premise fails, stop and send the integrator the finding with the options (upstream request, ruling, hold) before building anything; never build the workaround that imitates the missing API.
+
+**Takeaway**: **A brief's "as Blink does" is a claim to check, not a design: twenty minutes in the shipping source can save a batch spent imitating an engine that never did it.**
