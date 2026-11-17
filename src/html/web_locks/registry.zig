@@ -81,6 +81,14 @@ pub const Delivery = struct {
     /// The Client is gone: free `ctx`. Runs with the registry's lock NOT
     /// held, on the thread that removed the Client.
     deinit: *const fn (ctx: *anyopaque) void,
+    /// Another environment contends for a lock this environment holds: a
+    /// request that cannot be granted now waits behind it, or a query lists
+    /// it. If this environment is suspended because the back/forward cache
+    /// keeps its page, ask for that page's eviction - which ends the
+    /// environment, and with it its locks - and return true. Runs on any
+    /// thread, with the registry's lock held: the same rules as `post`.
+    /// Null: an environment that is never suspended with a lock.
+    contention: ?*const fn (ctx: *anyopaque) bool = null,
 };
 
 /// The length of a clientId: a UUID's string form.
@@ -359,6 +367,10 @@ pub const Registry = struct {
         // "3.1 Let queueMap be manager's lock request queue map." "3.3 Let
         // held be manager's held lock set."
         if (!options.steal) {
+            // A request that cannot be granted now contends with the
+            // holders of `name`: one whose page the back/forward cache keeps
+            // is asked to leave the cache (`contend`).
+            if (!newRequestGrantable(manager, name, options.mode)) contend(manager, name);
             // "3.5.1 If ifAvailable is true and request is not grantable,
             // then enqueue the following steps on callback's relevant
             // settings object's responsible event loop: invoke callback with
@@ -474,6 +486,9 @@ pub const Registry = struct {
         }
         // "5. For each lock of manager's held lock set: append ... to held."
         for (manager.held.items) |entry| try appendInfo(&held, allocator, entry);
+        // A query contends with every holder it lists (`contend`), after
+        // the snapshot: it reports the state it found.
+        contend(manager, null);
 
         const held_slice = try held.toOwnedSlice(allocator);
         errdefer freeInfos(allocator, held_slice);
@@ -590,6 +605,39 @@ pub const Registry = struct {
 /// ifAvailable check of "request a lock" step 3.5.1: "If queue is not empty
 /// and request is not the first item in queue, then return false" - so only
 /// with no queue for `name` - then the held lock set decides.
+/// Lock contention with environments the back/forward cache keeps
+/// suspended: each holder of a lock named `name` (every holder, for null - a
+/// query) is told (`Delivery.contention`), and one whose page is cached asks
+/// for its eviction. The page's end terminates its worker, and "terminate
+/// remaining locks and requests" releases the lock, which a waiting request
+/// is then granted - asynchronously here: Chrome breaks the evicted holder's
+/// lock at once (content/browser/locks/lock_manager.h, AddRequest: "This
+/// triggers eviction for holders in BFCache", BreakLock; QueryState notifies
+/// every holder it lists), which only an ifAvailable request could tell
+/// apart.
+///
+/// Not in the Web Locks spec, which has no back/forward cache text: a
+/// page's own locks are terminated at its unload (2.6, the unloading
+/// document cleanup steps - HTML's "lock" not restored reason, so such a page
+/// is not kept), but its workers are suspended with it rather than ended
+/// (HTML "run a worker" step 8), and their locks stay held. Golden rule 2,
+/// mechanism by mechanism: a page whose worker holds a lock IS kept by
+/// Chrome and Safari (web-locks/bfcache/held.tentative.https.html: C 4/4,
+/// F 0/4, S 4/4 on wpt.fyi stable 2026-11-15/16) - the majority - and a
+/// request contending with it is granted without waiting for the page to
+/// leave the cache in Chrome (eviction) and Firefox (never cached), while
+/// Safari waits (contention.https.window.js: C 12/12, F 12/12, S 0, its
+/// worker request variants TIMEOUT) - the majority again. Together that is
+/// Chrome's shipping behaviour, which this is. Its not restored reason is
+/// Chrome's "weblocks-contention": HTML's list has none for it.
+fn contend(manager: *Manager, name: ?[]const u8) void {
+    for (manager.held.items) |entry| {
+        if (name) |n| if (!std.mem.eql(u8, entry.name, n)) continue;
+        const hook = entry.client.delivery.contention orelse continue;
+        _ = hook(entry.client.delivery.ctx);
+    }
+}
+
 fn newRequestGrantable(manager: *Manager, name: []const u8, mode: Mode) bool {
     if (manager.queues.get(name)) |queue| {
         if (queue.items.len > 0) return false;

@@ -77,3 +77,37 @@ pub fn activity(document: *anyopaque, generation: u64) Activity {
 pub fn fullyActive(document: *anyopaque, generation: u64) bool {
     return activity(document, generation) == .fully_active;
 }
+
+/// `object`'s relevant global, when it is a Window whose Document is not
+/// fully active but may be again (`activity`: inactive - the back/forward
+/// cache keeps it); null otherwise (fully active, gone, or a worker's realm,
+/// which has no Document).
+pub fn inactiveWindowOf(object: *runtime.Instance) ?*runtime.Instance {
+    if (!object.ctx.isWindow()) return null;
+    const record = object.ctx.getRealm() orelse return null;
+    const global: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return null));
+    if (activity(global, runtime.SlabAllocator.generationOf(global)) != .inactive) return null;
+    return global;
+}
+
+/// For a task that reached `object`'s loop from another thread - posted
+/// through a sink, so it names no document - and is HTML's "queue a global
+/// task" given `object`'s relevant global (a worker's message, error or
+/// start for its Worker; a port's message): when that global is a Window
+/// whose Document is not fully active but may be again, the task is queued
+/// again as a global task naming the Window, and the window event loop keeps
+/// it with the page - run at its restore, dropped at its eviction
+/// (src/browser/event_loop.zig, `suspendDocument`). Whether it was queued;
+/// the caller runs the steps now otherwise.
+pub fn queuedUntilFullyActive(object: *runtime.Instance, callback: *const fn (?*anyopaque) void, drop: *const fn (?*anyopaque) void, context: *anyopaque) bool {
+    const global = inactiveWindowOf(object) orelse return false;
+    const loop = object.ctx.getOptionalEventLoop() orelse return false;
+    loop.queueTask(.{
+        .callback = callback,
+        .context = context,
+        .drop = drop,
+        .document = global,
+        .document_generation = runtime.SlabAllocator.generationOf(global),
+    });
+    return true;
+}

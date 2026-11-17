@@ -70,6 +70,10 @@ pub const InternalState = struct {
     /// [[Detached]]: set by close(), and by the transfer steps.
     detached: bool = false,
 
+    /// A task that enables the end again once the port's page is fully
+    /// active waits in its realm's loop (`EnableWhenActive`).
+    enable_queued: bool = false,
+
     pub fn deinit(self: *InternalState) void {
         // The port goes, and its end with it: disentangled (its peer hears
         // `close`), its queue dropped.
@@ -493,11 +497,65 @@ const Delivery = struct {
         const self: *Delivery = @ptrCast(@alignCast(data orelse return));
         // The event loop runs no task whose document is not fully active;
         // the message stays queued. Asked in the realm: the question reads
-        // its global.
-        if (!documentIsFullyActive(self.port)) return;
+        // its global. A page the back/forward cache keeps is fully active
+        // again when it is restored: the queue's task waits for that
+        // (`EnableWhenActive`), as Firefox and Safari keep a cached page's
+        // port messages, and Chrome re-posts them to the page's frozen task
+        // queue (MessagePort::Accept, kBackForwardCachePostedMessage) - all
+        // three deliver them once the page is shown. (Chrome evicts the page
+        // instead for a message to a SharedWorker's port,
+        // "sharedworker-message"; Firefox and Safari queue that too, the
+        // majority.)
+        if (!documentIsFullyActive(self.port)) {
+            if (dom.document_activity.inactiveWindowOf(self.port) != null) EnableWhenActive.queue(self.port);
+            return;
+        }
         const message = self.delivery.next() orelse return;
         defer message.destroy();
         deliver(self.port, message);
+    }
+};
+
+/// A port message queue that waits for its page to be fully active again:
+/// a global task naming the port's Window enables the port's end once the
+/// event loop runs it - at the page's restore - and port_channels.End.enable
+/// notifies the port when messages wait. One at a time per port.
+const EnableWhenActive = struct {
+    port: *runtime.Instance,
+    generation: u64,
+    allocator: std.mem.Allocator,
+
+    fn queue(port: *runtime.Instance) void {
+        const internal = getInternal(port) orelse return;
+        if (internal.enable_queued) return;
+        const self = internal.allocator.create(EnableWhenActive) catch return;
+        self.* = .{ .port = port, .generation = runtime.SlabAllocator.generationOf(port), .allocator = internal.allocator };
+        if (!dom.document_activity.queuedUntilFullyActive(port, run, drop, self)) {
+            internal.allocator.destroy(self);
+            return;
+        }
+        internal.enable_queued = true;
+    }
+
+    fn run(data: ?*anyopaque) void {
+        const self: *EnableWhenActive = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.port) != self.generation) return;
+        const internal = getInternal(self.port) orelse return;
+        internal.enable_queued = false;
+        if (internal.end) |end| {
+            if (end.state().enabled) end.enable();
+        }
+    }
+
+    /// Never run: the page left the cache to be destroyed, or the loop
+    /// ended.
+    fn drop(data: ?*anyopaque) void {
+        const self: *EnableWhenActive = @ptrCast(@alignCast(data.?));
+        defer self.allocator.destroy(self);
+        if (runtime.SlabAllocator.generationOf(self.port) != self.generation) return;
+        const internal = getInternal(self.port) orelse return;
+        internal.enable_queued = false;
     }
 };
 
