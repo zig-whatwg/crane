@@ -40,6 +40,7 @@ const bundled_zlib = curl.share.trust.enabled;
 const crypto = @import("kit_crypto");
 const browser_state = @import("kit_browser_state");
 const memory_clipboard = @import("kit_memory_clipboard");
+const memory_pressure = @import("memory_pressure.zig");
 
 /// CoreText (fonts.zig, decision 20), unless font_decoding is compiled out
 /// - or this platform is built for another OS, as the conformance test
@@ -79,16 +80,26 @@ const media_decoding = if (media_decoding_built_in) @import("kit_media_decoding"
 /// the in-memory clipboard (kit/memory_clipboard; the user's ruling D2,
 /// 2026-11-09), as headless Chrome keeps one - components/headless/
 /// clipboard/headless_clipboard.cc, a ui::ClipboardNonBacked that
-/// headless/lib/browser/headless_browser_main_parts.cc installs.
+/// headless/lib/browser/headless_browser_main_parts.cc installs. And the
+/// Browser's memory-pressure observer (memory_pressure.zig: a DISPATCH_SOURCE_TYPE_MEMORYPRESSURE source), which
+/// reports through the Browser's EventSink from `start` until `deinit`.
 const Extra = struct {
     clipboard: memory_clipboard.Clipboard,
+    memory_pressure: memory_pressure.Observer = .{},
 
     pub fn init(allocator: std.mem.Allocator, options: *const platform.BrowserOptions) error{OutOfMemory}!Extra {
         _ = options;
         return .{ .clipboard = .init(allocator) };
     }
 
+    /// kit/browser_state calls this once the state is at its final address.
+    pub fn start(self: *Extra, events: platform.EventSink) void {
+        self.memory_pressure.start(events);
+    }
+
     pub fn deinit(self: *Extra) void {
+        // First: no event is posted once the observer has stopped.
+        self.memory_pressure.stop();
         self.clipboard.deinit();
     }
 };

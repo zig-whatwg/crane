@@ -208,6 +208,14 @@ pub const protocol = struct {
         events.post(events.context, event);
     }
 
+    /// Test control: the memory-pressure level the linux platform's observer
+    /// reads from a /proc/meminfo with this text (kit/posix/meminfo.zig), or
+    /// null when the text does not say. The rule is a pure function, the
+    /// same on every OS.
+    pub fn memoryPressureLevelOfMeminfo(text: []const u8) ?platform.MemoryPressureLevel {
+        return posix.meminfo.levelOf(text);
+    }
+
     /// The seeded Browser's stream, else none.
     pub fn fillBrowserRandom(browser: *platform.BrowserPlatform, bytes: []u8) bool {
         return State.of(browser).extra.random.fill(bytes);

@@ -8,6 +8,15 @@
 //! `Extra` may declare `fn init(allocator, *const platform.BrowserOptions)
 //! error{OutOfMemory}!Extra` and `fn deinit(*Extra) void`; a platform with no
 //! state of its own passes `struct {}`.
+//!
+//! `Extra` may also declare `fn start(*Extra, platform.EventSink) void`: the
+//! platform's observers (docs/platform-protocol.md 3.3), which report through
+//! the Browser's EventSink from threads of their own. `create` calls it last,
+//! once the state is at its final address - an observer's context is a
+//! pointer into `extra`, which never moves after - and `deinit`, the first
+//! step of `destroy`, stops them: no observer posts after `destroy` returns
+//! (the contract: the EventSink is borrowed "until destroyBrowserPlatform
+//! returns").
 
 const std = @import("std");
 const platform = @import("platform");
@@ -39,6 +48,7 @@ pub fn BrowserState(comptime Extra: type) type {
                 .platform_options = options.platform,
                 .extra = extra,
             };
+            if (@hasDecl(Extra, "start")) self.extra.start(events);
             return @ptrCast(self);
         }
 
