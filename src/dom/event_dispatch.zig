@@ -164,30 +164,14 @@ pub const PathItem = struct {
 /// Window) is not counted (decision D3): it is always a touch's own target,
 /// which the touch keeps for the event.
 ///
-/// THE NET (`forgetFreed`): one free is still made whatever the counts
-/// say - a FORCED realm end's coordinated teardown (a page's end, a removed
-/// iframe, a back/forward cache eviction, the Browser's end) frees the
-/// realm's nodes under every reference, and "the holders' nets (generation
-/// and teardown-begun checks, `node_holds.Hold`) stay for it" (dom.refcount's
-/// header; dom.node_holds' header: such a node's reference is FORGOTTEN,
-/// never released; refcount step 7a, tmp/plans/refcount9-design.md B4). The
-/// list can name a node of another realm than the event's and the touch's:
-/// the host of a frame's shadow tree, after the frame was removed. Its
-/// reference then holds a freed node, which each entry's generation tells -
-/// the same check `EventState.targetForScript` makes for the event's
-/// target. A dispatch asks before it reads the list, and a list that names
-/// a freed node is emptied: each touch's target then reads as its own,
-/// unadjusted target.
-///
-/// This is the net, not the behaviour browsers have: WebKit and Blink keep
-/// a node another realm still references past its frame's end (a Node holds
-/// its Document; Blink's LocalWindowProxy::DisposeContext clears only the
-/// global's native info). Crane gets there with refcount step 7b - a
-/// realm's end drops the realm's own references and lets the counts decide
-/// (queued: "REFCOUNT step 7b: realm end by counts") - and then the list's
-/// reference alone keeps the host, this net never fires, and
-/// tests/html/ev2_touch_targets_held_test.zig's third test expects the
-/// host again.
+/// A node the list names another realm's - the host of a frame's shadow
+/// tree, after the frame was removed - is kept by the list's reference past
+/// that realm's end, in its whole tree (refcount step 7b: a realm's end
+/// drops only the realm's own references and the counts decide, as WebKit
+/// and Blink keep a node another realm references past its frame's end);
+/// tests/html/ev2_touch_targets_held_test.zig's third test. Until then the
+/// realm's end freed the host under the list, and a generation net emptied
+/// the list before a dispatch read it.
 pub const TouchTargetList = struct {
     /// The targets and the list's references on them, or null for a list
     /// nothing was ever appended to.
@@ -242,24 +226,6 @@ pub const TouchTargetList = struct {
         std.mem.copyForwards(*runtime.Instance, listed[0..targets.len], listed[old_len..]);
         std.mem.copyForwards(node_holds.CountedRef, refs[0..targets.len], refs[old_len..]);
         list.shrinkRetainingCapacity(targets.len);
-    }
-
-    /// The teardown net: empty the list if a node it names was freed under
-    /// its reference - its slab slot freed or reissued, or its teardown
-    /// begun. Before a dispatch reads the list (dom.event_path `build`);
-    /// nothing is freed that way while a dispatch runs.
-    pub fn forgetFreed(self: *TouchTargetList) void {
-        const list = self.heap orelse return;
-        const entries = list.slice();
-        for (entries.items(.target), entries.items(.ref)) |target, ref| {
-            // Not a node: not counted, and kept by its touch.
-            if (ref.base == null) continue;
-            if (runtime.SlabAllocator.generationOf(target) != ref.generation) break;
-            if (runtime.instance_lifecycle.isCleanupStarted(target)) break;
-        } else return;
-        // The freed nodes' references are forgotten, the others let go
-        // (`CountedRef.release`).
-        self.clear();
     }
 
     /// Make the list empty (dispatch step 11), keeping its storage. Its

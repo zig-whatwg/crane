@@ -5353,9 +5353,9 @@ static void drainNodeWrappers(IsolateData* record) {
 /// released while the realm lived, the net declined and nothing looked
 /// again (feature-queue "THE 7a NET'S HOLE"; lane v8up b7:
 /// tests/html parser_implied_end_tags_test, 15 of 15 runs with the release
-/// owed by the first pass). The net remembers such a tree now and looks
-/// again at its realm's end (node_wrappers.zig `Registry.net_waiting`,
-/// tests/v8/wr11_net_hole_test.zig), so the timing is the queue's own: a
+/// owed by the first pass). Since refcount step 7b no net frees such a tree
+/// at all - the counts decide (tests/v8/rc7b_realm_end_test.zig) - so the
+/// timing is the queue's own: a
 /// dead tree's nodes go back to the allocator one collection sooner
 /// (dom.clone-node 145.5 -> 126.7 MB, dom.create-element 84.0 -> 72.0 MB,
 /// chat.local, 2026-11-13, x7). Nothing here depends on V8's second pass -

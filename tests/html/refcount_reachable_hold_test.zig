@@ -95,7 +95,7 @@ test "a keep taken before the node has a wrapper is the wrapper's when it is mad
     try onFreshThread(keepWaitsForTheWrapper);
 }
 
-/// The hold the realm-end case reads from a sweep the test adds after the
+/// The hold the final-sweep case reads from a sweep the test adds after the
 /// Browser's own (`teardown_sweeps.withSweepForTest`): its realm ended and
 /// its nodes were released, its slab is still there (a hold must not
 /// outlive its node's Browser: the wrapper redesign's P6 deleted the
@@ -119,18 +119,23 @@ fn nodeFreedUnderTheHold() !void {
     {
         const page = try open();
         defer page.close();
+        // The hold is no realm's: since refcount step 7b (lane rc7b) it keeps
+        // its node, and its document's tree, past every realm's end, and the
+        // Browser's final sweep - the one free made whatever the counts say -
+        // is what frees it, which is what this tests.
+        dom.refcount_teardown.allowLiveNodesAtAgentEnd(&page.browser.agent_host.deferred_teardown, "the hold outlives every realm's end and the final sweep frees its node, which is what this tests");
         try page.run("globalThis.target = document.body.appendChild(document.createElement('p')); 0;");
         const base = try page.node("target");
         FreedProbe.hold.take(instanceOf(base), base);
         try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
     }
-    // The realm's end freed the node: the hold read it as gone, and its
+    // The final sweep freed the node: the hold read it as gone, and its
     // release made no engine call and wrote nothing.
     try testing.expect(FreedProbe.ran);
     try testing.expect(!FreedProbe.read_live);
 }
 
-test "a ReachableHold whose node its realm's end freed holds nothing, and lets go of nothing" {
+test "a ReachableHold whose node the Browser's final sweep freed holds nothing, and lets go of nothing" {
     try onFreshThread(nodeFreedUnderTheHold);
 }
 

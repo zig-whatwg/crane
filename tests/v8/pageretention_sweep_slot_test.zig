@@ -28,11 +28,12 @@
 //! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: a node's wrapper
 //! is in its own slot, the agent's, never a cache entry - so there is no hash
 //! order of node entries left, and the two orders above are gone with it.
-//! The realm's end still frees its detached wrapped trees whatever their
-//! counts (refcount step 7a's net, node_wrappers.endRealm), each root's
-//! teardown freeing its children - which have their wrappers severed and
-//! give their slots to the teardown, returned after its last phase. That is
-//! what this file pins now.)
+//! Since refcount step 7b (lane rc7b) the realm's end frees no tree whatever
+//! its counts: it releases what its collected wrappers still owe, and the
+//! trees that leaves garbage are freed inside its teardown
+//! (refcount_teardown.drainRealm) - each root's teardown freeing its
+//! children, which give their slots to the teardown, returned after its last
+//! phase. That is what this file pins now.)
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -89,6 +90,13 @@ const Realm = struct {
     /// The cache's sweep, as the realm's end runs it (its wrapper_cache
     /// phase); the cache is gone after it.
     fn sweep(self: Realm) void {
+        // The realm's end since refcount step 7b (context_manager
+        // .removeContextByKey): the references its collected wrappers still
+        // owe are released, and what that leaves garbage is freed inside the
+        // teardown, before the cache's own sweep. No node is freed whatever
+        // its counts.
+        v8.node_wrappers.releaseRealm(self.data);
+        if (v8.protocol_agents.deferredTeardownOf(test_isolate.?)) |queue| dom.refcount_teardown.drainRealm(queue, self.data);
         self.cache.deinit();
         testing.allocator.destroy(self.cache);
         self.data.clearV8WrapperCacheStorage();
@@ -187,7 +195,7 @@ fn sweepOnce(coordinator_allocator: std.mem.Allocator, expect_returned: bool) !b
     // Their wrappers are collected first, their releases waiting (a walk
     // holds the agent's teardowns): the realm's end meets them as the
     // cache's sweep met entries whose finalizer had not run, and frees the
-    // trees (refcount step 7a's net, node_wrappers.endRealm).
+    // trees: their releases leave them garbage (refcount step 7b).
     engine_mod.deferTeardowns(realm.data);
     ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);
     ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);

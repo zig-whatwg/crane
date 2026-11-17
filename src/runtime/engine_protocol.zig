@@ -1057,12 +1057,10 @@ pub const Capabilities = struct {
     /// other realm's wrapper, not a realm's global. So an instance without a
     /// live mark is unreachable from script in every realm, now, and the host
     /// frees what only script could still have reached: at a realm's end, the
-    /// slab slot of a node its tree tore down (Node.deinitNodeByType), a
-    /// child an owner frees whole (runtime.gc.releaseOwned), and the realm's
-    /// orphans - subtrees removed while nothing wrapped them
-    /// (runtime.orphan_roots). Unsupported: a missing mark proves nothing
-    /// (instance_lifecycle.provablyUnwrapped's default) - a realm's end keeps
-    /// those slots, and an orphan stays until its Browser ends.
+    /// slab slot of a node its tree tore down (Node.deinitNodeByType) and a
+    /// child an owner frees whole (runtime.gc.releaseOwned). Unsupported: a
+    /// missing mark proves nothing (instance_lifecycle.provablyUnwrapped's
+    /// default) - a realm's end keeps those slots.
     wrap_tracking: Support,
     /// AgentOptions.clock: the agent's Date reads the host's clock.
     /// Unsupported: Date reads the engine's own clock, so a Browser with a

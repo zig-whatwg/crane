@@ -306,7 +306,15 @@ fn eventListAfterItsHostsRealmWent() !void {
     // to the list's count, and its document, are still the nodes they were.
     try page.run(
         \\(() => {
-        \\  const host = keptEvent.touches[0].target;
+        \\  // Outside a dispatch a Touch's target is its own (the span); the
+        \\  // host is read through the list, in a listener.
+        \\  let host = null;
+        \\  const x = document.getElementById('x');
+        \\  const take = (event) => { host = event.touches[0].target; };
+        \\  x.addEventListener('ping', take);
+        \\  x.dispatchEvent(keptEvent);
+        \\  x.removeEventListener('ping', take);
+        \\  log.length = 3;
         \\  expect(host.id, 'fhost', 'the host itself');
         \\  const fdoc = host.ownerDocument;
         \\  expect(fdoc.nodeType, 9, 'its document');

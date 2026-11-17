@@ -178,3 +178,64 @@ fn ownWorkLetGo() !void {
 test "a removed frame's own work - an img's update, a dialog's close watcher, a toggle task - lets its nodes go at its realm's end" {
     try onFreshThread(ownWorkLetGo);
 }
+
+// ============================================================================
+// Every way a page's document ends aborts its fetches
+// ============================================================================
+
+/// An img whose update of the image data waits on a fetch that never
+/// answers before the page goes: the update counts its element (refcount
+/// step 5d) until HTML "destroy a document" step 2, "abort a document",
+/// discards it (dom.document_fetches). Since refcount step 7b nothing else
+/// frees the element: a page end that forgot the abort would keep its whole
+/// document to the Browser's end.
+const pending_image = "<img src=\"http://example.test/rc7b-never-answers.png\">";
+
+fn pageEndedByNavigation() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    const before = try baseline(page);
+    try page.run("document.body.innerHTML = '" ++ pending_image ++ "'; 0;");
+    // The Browser opens a fresh top-level traversable: the page before it
+    // closes (HTML "destroy a top-level traversable": its documents
+    // destroyed, their fetches aborted), and the new page is the old one's
+    // twin.
+    try page.browser.navigate("about:blank", .window);
+    const context = page.browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+    try expectAllFreed(page, before, "a page with a pending img update, navigated away from");
+}
+
+test "a page navigated away from with an img update in flight lets the update go: its document is freed before the Browser ends" {
+    try onFreshThread(pageEndedByNavigation);
+}
+
+fn popupClosedByItsBrowser() !void {
+    const page = try h.Page.open();
+    defer page.close();
+    const before = try baseline(page);
+    try page.run(
+        \\(() => {
+        \\  const w = window.open('about:blank', 'rc7b-popup');
+        \\  w.document.body.innerHTML = '
+    ++ pending_image ++
+        \\';
+        \\})();
+        \\0;
+    );
+    var ids: [4]u64 = undefined;
+    const open = page.browser.traversableIds(&ids);
+    if (open != 2) {
+        std.debug.print("open traversables: {d}, expected the page and its popup\n", .{open});
+        return error.NoPopup;
+    }
+    // HTML "close a top-level traversable", as a host closes a tab: its
+    // documents destroyed - their fetches aborted - and its browsing
+    // context closed.
+    try page.browser.closeTraversable(ids[1]);
+    try expectAllFreed(page, before, "a popup with a pending img update, closed by its Browser");
+}
+
+test "a popup its Browser closes with an img update in flight lets the update go: its document is freed before the Browser ends" {
+    try onFreshThread(popupClosedByItsBrowser);
+}

@@ -19,7 +19,9 @@
 //! (2026-11-09, lane wr1 batch 2, the wrapper redesign's P2: node wrappers
 //! are no cache entries, so "the sweep" is now the realm's end freeing its
 //! detached wrapped trees (refcount step 7a's net, node_wrappers.endRealm,
-//! from WrapperCache.deinit), and a Document torn down under its live
+//! from WrapperCache.deinit; since step 7b, lane rc7b: their owed releases
+//! run and the counts free them inside the teardown,
+//! refcount_teardown.drainRealm), and a Document torn down under its live
 //! wrapper has the wrapper severed and its slot handed to the coordinator by
 //! its own teardown. The rule pinned is the same.)
 
@@ -77,6 +79,13 @@ const Realm = struct {
     /// The cache's sweep, as the realm's end runs it (its wrapper_cache
     /// phase); the cache is gone after it.
     fn sweep(self: Realm) void {
+        // The realm's end since refcount step 7b (context_manager
+        // .removeContextByKey): the references its collected wrappers still
+        // owe are released, and what that leaves garbage is freed inside the
+        // teardown, before the cache's own sweep. No node is freed whatever
+        // its counts.
+        v8.node_wrappers.releaseRealm(self.data);
+        if (v8.protocol_agents.deferredTeardownOf(test_isolate.?)) |queue| dom.refcount_teardown.drainRealm(queue, self.data);
         self.cache.deinit();
         testing.allocator.destroy(self.cache);
         self.data.clearV8WrapperCacheStorage();
@@ -221,7 +230,7 @@ fn sweepOnce() !bool {
     // The roots' wrappers are collected first, their releases waiting (a
     // walk holds the agent's teardowns): the realm's end meets them as the
     // cache's sweep met entries whose finalizer had not run, and frees them
-    // (refcount step 7a's net, node_wrappers.endRealm) - after the
+    // (since refcount step 7b: their releases leave them garbage) - after the
     // Document's teardown, reading it.
     @import("engine").deferTeardowns(realm.data);
     ffi.v8_Isolate_RequestGarbageCollection(test_isolate.?);

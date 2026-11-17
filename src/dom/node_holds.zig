@@ -34,9 +34,10 @@
 //! holders' registry and the removing-steps callback that asked them are
 //! gone with P6 - tracing finds a held node wherever its tree went.
 //!
-//! A node freed under its hold - only a forced realm end's coordinated
-//! teardown or the Browser's final sweep frees a node whatever the counts
-//! say - is recognised the way the wrapper's own reference recognises one:
+//! A node freed under its hold - only the Browser's final sweep frees a node
+//! whatever the counts say (since refcount step 7b a realm's end frees none:
+//! dom.refcount's header) - is recognised the way the wrapper's own
+//! reference recognises one:
 //! its slab slot freed or reissued (the generation), or its teardown begun
 //! (`instance_lifecycle.isCleanupStarted`: Node.deinit, and the final
 //! sweep's release of the NodeBase, mark it). Its reference is then
@@ -77,9 +78,9 @@ pub const Hold = struct {
     }
 
     /// Whether `node` is still the node held at `generation`: its slot not
-    /// freed or reissued, and its teardown not begun - a forced realm end's
-    /// coordinated teardown (Node.deinit) or the final sweep can release a
-    /// node's NodeBase while its slab slot, and its generation, stay live.
+    /// freed or reissued, and its teardown not begun - the Browser's final
+    /// sweep can release a node's NodeBase while its slab slot, and its
+    /// generation, stay live.
     fn stillHeld(node: *runtime.Instance, generation: u64) bool {
         if (runtime.SlabAllocator.generationOf(node) != generation) return false;
         return !runtime.instance_lifecycle.isCleanupStarted(node);
@@ -201,7 +202,7 @@ pub const MemberHold = struct {
 /// EventContext `RefPtr<Node> m_node` (dom/EventContext.h).
 ///
 /// A `Hold`: one `refcount.holderRef` while it holds the node. A node freed
-/// under it - its realm's forced end, the final sweep - is FORGOTTEN, never
+/// under it - the Browser's final sweep - is FORGOTTEN, never
 /// released (`Hold.stillHeld`), so a later `set` or `release` writes nothing
 /// to the freed node. A member that is not a node (a Window, an
 /// XMLHttpRequest) is not counted - decision D3, nodes first - and this

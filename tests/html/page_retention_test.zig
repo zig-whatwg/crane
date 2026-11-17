@@ -36,6 +36,9 @@ const Census = struct {
     counts: [512]usize = undefined,
     wrapped: [512]usize = undefined,
     torn_down: [512]usize = undefined,
+    /// Of a realm that ended (no engine realm behind it any more): what an
+    /// ended page left, as against the current page's own.
+    ended: [512]usize = undefined,
     len: usize = 0,
 
     fn of(browser: *browser_mod.Browser) Census {
@@ -60,12 +63,14 @@ const Census = struct {
             self.counts[self.len] = 0;
             self.wrapped[self.len] = 0;
             self.torn_down[self.len] = 0;
+            self.ended[self.len] = 0;
             self.len += 1;
             break :blk self.len - 1;
         };
         self.counts[k] += 1;
         if (runtime.instance_lifecycle.wasWrapped(instance)) self.wrapped[k] += 1;
         if (runtime.instance_lifecycle.isCleanupStarted(instance)) self.torn_down[k] += 1;
+        if (!instance.ctx.hasEngine()) self.ended[k] += 1;
     }
 
     fn count(self: *const Census, name: []const u8) usize {
@@ -82,7 +87,7 @@ const Census = struct {
             if (stillRetained(name)) continue;
             const before = first.count(name);
             if (self.counts[k] > before) {
-                std.debug.print("page {d}: {s} {d} -> {d} (wrapped {d}, torn down {d})\n", .{ page, name, before, self.counts[k], self.wrapped[k], self.torn_down[k] });
+                std.debug.print("page {d}: {s} {d} -> {d} (wrapped {d}, torn down {d}, of an ended realm {d})\n", .{ page, name, before, self.counts[k], self.wrapped[k], self.torn_down[k], self.ended[k] });
                 grew = true;
             }
         }

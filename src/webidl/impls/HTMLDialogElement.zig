@@ -91,7 +91,7 @@ fn internalState(instance: *Instance) !*InternalState {
 
 /// Install the dialog's non-IDL algorithms once at process startup.
 pub fn installHooks() void {
-    dom.dialog.install(.{ .show_modal = &showModal, .close = &closeDialog, .request_close = &requestCloseDialog, .inert = &modalInertness });
+    dom.dialog.install(.{ .show_modal = &showModal, .close = &closeDialog, .request_close = &requestCloseDialog, .inert = &modalInertness, .release_saved_nodes = &releaseSavedNodes });
     dom.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
         log.warn("dialog removing steps not registered: {}", .{err});
     };
@@ -447,6 +447,16 @@ fn beforeToggle(instance: *Instance, opening: bool, source: ?*Instance) !bool {
             event.releaseIfUnwrapped(generation);
     }
     return dom.fire_event.dispatchTrusted(instance, event);
+}
+
+/// dom.dialog.releaseSavedNodes: the saved focus and the request close
+/// source let go (refcount step 7b), the dialog's state otherwise unchanged.
+/// A dialog that never made state holds nothing.
+fn releaseSavedNodes(subject: *Instance) void {
+    const state = subject.stateAs(State) orelse return;
+    const internal = state.own._internal orelse return;
+    internal.previous_focus.release(subject, focus_slot);
+    internal.request_close_source.release(subject, request_close_source_slot);
 }
 
 fn savePreviousFocus(subject: *Instance) !void {

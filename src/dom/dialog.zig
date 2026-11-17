@@ -13,6 +13,9 @@ pub const Implementation = struct {
     close: *const fn (*Instance, webidl.Opt(runtime.DOMString), ?*Instance) anyerror!void,
     request_close: *const fn (*Instance, webidl.Opt(runtime.DOMString), ?*Instance) anyerror!void,
     inert: *const fn (*Instance) ?bool,
+    /// Refcount step 7b: the dialog lets go of the nodes its own state keeps
+    /// (`releaseSavedNodes`).
+    release_saved_nodes: *const fn (*Instance) void,
 };
 // process-wide: immutable dialog hook function pointers installed at process start, identical for every Browser and thread
 var implementation: Hook(?Implementation) = .init(null);
@@ -43,6 +46,18 @@ pub fn isModal(subject: *Instance) bool {
     if (subject.stateAs(interfaces.HTMLDialogElement.State) == null) return false;
     const state = (layer.ofElement(subject, false) catch null) orelse return false;
     return state.findModal(subject) != null;
+}
+
+/// `subject`, a dialog of a destroyed document nothing else reaches, lets go
+/// of the nodes its own state keeps - its previously focused element and its
+/// request close source - which, nodes of its own tree, would keep that tree
+/// alive for ever (refcount step 7b: the document's own references end,
+/// Document's lifecycleReleaseOwnReferences). WebKit holds the previously
+/// focused element weakly (HTMLDialogElement's WeakPtr
+/// m_previouslyFocusedElement), so its tree never waits for it. No focus moves
+/// and no event fires.
+pub fn releaseSavedNodes(subject: *Instance) void {
+    (implementation.get() orelse return).release_saved_nodes(subject);
 }
 
 /// Null means there is no modal, so focus keeps its existing ancestor walk.
