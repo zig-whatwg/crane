@@ -1080,13 +1080,19 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
 /// sits directly in tests/, where no suite looks (lane testfix2). Run when
 /// the whole tree is configured - no -Dspec, no -Dtest-file - since a
 /// selection skips suites.
-fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8) void {
-    // A configure-time read of the checkout the configure cache cannot track.
-    b.graph.poisonCache();
+///
+/// What the scan may read - tests/ and every directory below it but the WPT
+/// checkout's (test_suites.scannedDirs) - is an input of the configure cache
+/// (`ConfigureInputs`): a test directory or file added anywhere there
+/// configures again, and fails here when no suite takes it (lane cfg1).
+fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8, inputs: *ConfigureInputs) void {
     const io = b.graph.io;
     var tests_dir = b.root.root_dir.handle.openDir(io, "tests", .{ .iterate = true }) catch |err|
         std.debug.panic("build.zig: cannot open tests/ to check its suites: {s}", .{@errorName(err)});
     defer tests_dir.close(io);
+    const scanned = test_suites.scannedDirs(b.allocator, io, tests_dir, "tests") catch |err|
+        std.debug.panic("build.zig: cannot list the directories under tests/: {s}", .{@errorName(err)});
+    for (scanned) |dir| inputs.directory(b, dir);
     const with_tests = test_suites.dirsWithTests(b.allocator, io, tests_dir, "tests") catch |err|
         std.debug.panic("build.zig: cannot scan tests/ for test files: {s}", .{@errorName(err)});
     const missing = test_suites.missing(b.allocator, with_tests, suite_dirs) catch @panic("OOM");
@@ -6846,7 +6852,7 @@ pub fn build(b: *std.Build) void {
     // Every tests/<dir>/ with test files is a suite: known here, once every
     // suite has been added - when no -Dspec or -Dtest-file skipped some.
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
-        checkEveryTestDirectoryIsASuite(b, test_selection.suite_dirs.items);
+        checkEveryTestDirectoryIsASuite(b, test_selection.suite_dirs.items, test_selection.inputs);
     }
     if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
     finishTestVerify(b, launch.verify);
