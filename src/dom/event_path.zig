@@ -271,6 +271,10 @@ pub fn build(state: *EventState, path: *DispatchPath, target: *runtime.Instance,
         .target = target,
     };
 
+    // The event's touch target list names no node freed under it (the
+    // list's teardown net; a list never appended to costs one test).
+    state.touch_target_list.forgetFreed();
+
     // Step 4: "Let relatedTarget be the result of retargeting event's
     // relatedTarget against target" - and steps 6.1-6.2's touchTargets,
     // retargeted against target too (nothing observes their order).
