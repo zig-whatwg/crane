@@ -387,7 +387,22 @@ test "a shared worker in extended lifetime is suspended only once the timeout pa
     _ = manager.removeOwner(&realm_a, null, null);
 }
 
-test "ownersOf lists a shared worker's owner realms" {
+/// The doom a shared worker's lock contention asks for: what it was asked,
+/// and its answer.
+const DoomProbe = struct {
+    answer: bool,
+    asked: usize = 0,
+    realms: usize = 0,
+
+    fn doom(context: *anyopaque, realms: []const *const anyopaque) bool {
+        const self: *DoomProbe = @ptrCast(@alignCast(context));
+        self.asked += 1;
+        self.realms = realms.len;
+        return self.answer;
+    }
+};
+
+test "locks1: a shared worker's lock contention dooms its owners' pages only when none is fully active, and closes the worker" {
     const sink = try runtime.TaskSink.create(testing.allocator);
     defer sink.release();
     var manager = SharedWorkerManager.init(testing.allocator);
@@ -398,12 +413,37 @@ test "ownersOf lists a shared worker's owner realms" {
     defer stranger.release();
     try manager.add(key, classic, link, &host_data, &realm_a);
     (try manager.connect(key, classic, &realm_b)).?.link.release();
-    var owners: std.ArrayListUnmanaged(*const anyopaque) = .empty;
-    defer owners.deinit(testing.allocator);
-    try testing.expect(try manager.ownersOf(link, &owners, testing.allocator));
-    try testing.expectEqual(@as(usize, 2), owners.items.len);
-    owners.clearRetainingCapacity();
-    try testing.expect(!(try manager.ownersOf(stranger, &owners, testing.allocator)));
+    var probe: DoomProbe = .{ .answer = true };
+    // No shared worker of the manager's.
+    try testing.expect(manager.doomForLockContention(stranger, testing.allocator, &probe, DoomProbe.doom) == .not_shared);
+    // Fully active owners: nothing asked, nothing changes.
+    try testing.expect(manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom) == .kept);
+    try testing.expectEqual(@as(usize, 0), probe.asked);
+    {
+        var transitions = SharedWorkerManager.Transitions.init(testing.allocator, true);
+        defer transitions.deinit();
+        manager.ownerInactive(&realm_a, &transitions);
+        manager.ownerInactive(&realm_b, &transitions);
+        transitions.apply(null);
+    }
+    // Both cached, but a page is being restored (the doom refuses): kept.
+    probe.answer = false;
+    try testing.expect(manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom) == .kept);
+    try testing.expectEqual(@as(usize, 1), probe.asked);
+    try testing.expect(link.runsTasks());
+    // Both cached, both doomed: their realms, and the worker closes - a
+    // constructor no longer finds it.
+    probe.answer = true;
+    switch (manager.doomForLockContention(link, testing.allocator, &probe, DoomProbe.doom)) {
+        .doomed => |realms| {
+            defer testing.allocator.free(realms);
+            try testing.expectEqual(@as(usize, 2), realms.len);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+    try testing.expectEqual(@as(usize, 2), probe.realms);
+    try testing.expect(!link.runsTasks());
+    try testing.expect((try manager.connect(key, classic, &realm_a)) == null);
     _ = manager.removeOwner(&realm_a, null, null);
     _ = manager.removeOwner(&realm_b, null, null);
 }
