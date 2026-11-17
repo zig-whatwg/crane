@@ -868,62 +868,6 @@ const nghttp2_sources = [_][]const u8{
     "nghttp2_debug.c",         "sfparse.c",
 };
 
-/// Warns when `-Dsystem-curl` selects a libcurl that cannot do WebSockets.
-///
-/// `curl_ws_send`/`curl_ws_recv` have been declared in `<curl/websockets.h>`
-/// since 7.86, so the link always succeeds. A libcurl built without the feature
-/// just returns `CURLE_UNSUPPORTED_PROTOCOL` at runtime - invisible at build
-/// time, and afterwards indistinguishable from a Crane bug. macOS still ships
-/// 8.7.1, whose `curl-config --features` has no `WebSockets` entry; the vendored
-/// curl (8.18.0, see `buildStaticLibcurl`) has it compiled in.
-///
-/// Advisory only: `-Dsystem-curl` is a legitimate shortcut for work that never
-/// opens a WebSocket, so a missing feature must warn rather than fail.
-fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
-    // A configure-time probe of the machine the configure cache cannot track.
-    b.graph.poisonCache();
-    var code: u8 = 0;
-    const features = b.runAllowFail(
-        &.{ "curl-config", "--features" },
-        &code,
-        .ignore,
-    ) catch {
-        std.debug.print(
-            "warning: -Dsystem-curl is set, but `curl-config --features` would not run, " ++
-                "so the system libcurl's WebSocket support is unverified.\n" ++
-                "         If WebSockets fail at runtime, omit -Dsystem-curl to build the " ++
-                "vendored curl 8.18.0.\n",
-            .{},
-        );
-        return;
-    };
-
-    // One feature per line. No other curl feature name contains "WebSockets".
-    var it = std.mem.tokenizeAny(u8, features, " \t\r\n");
-    while (it.next()) |feature| {
-        if (std.ascii.eqlIgnoreCase(feature, "WebSockets")) return;
-    }
-
-    var version_code: u8 = 0;
-    const version_out: []const u8 = b.runAllowFail(
-        &.{ "curl-config", "--version" },
-        &version_code,
-        .ignore,
-    ) catch "";
-    const version = std.mem.trim(u8, version_out, " \t\r\n");
-
-    std.debug.print(
-        "warning: -Dsystem-curl is set and the system {s} lacks WebSocket support " ++
-            "(`curl-config --features` lists no `WebSockets`).\n" ++
-            "         src/websocket links that libcurl, so `curl_ws_send` resolves at " ++
-            "link time and returns CURLE_UNSUPPORTED_PROTOCOL at run time: every " ++
-            "WebSocket connection fails,\n" ++
-            "         and the WebSocket tests with it. Omit -Dsystem-curl to build the " ++
-            "vendored curl 8.18.0, which has WebSockets compiled in.\n",
-        .{if (version.len != 0) version else "libcurl"},
-    );
-}
-
 /// The name of the generated test root `addTestFilesFromDir` writes into each
 /// test directory (gitignored).
 const test_root_name = ".all_tests.zig";
@@ -2980,6 +2924,17 @@ pub fn build(b: *std.Build) void {
     // configures: each step that needs it fails with the adapter's reason.
     const engine = engine_build.choose(b, target);
 
+    // What the configure would ask the machine - a program's answer - is
+    // asked at make time by this tool (tools/build_probe.zig), so that the
+    // configuration never depends on it and Zig's configure cache holds
+    // (`check-configure-cache`). Build-time tool: runs on the host.
+    const build_probe_module = b.createModule(.{
+        .root_source_file = b.path("tools/build_probe.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const build_probe = b.addExecutable(.{ .name = "build_probe", .root_module = build_probe_module });
+
     // Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
     // trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
     // found, with or without --sysroot. That surfaces far from the cause, as 15
@@ -3205,9 +3160,18 @@ pub fn build(b: *std.Build) void {
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
     const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null);
-    // A system libcurl may lack WebSockets. Say so now rather than leaving it to
-    // a runtime CURLE_UNSUPPORTED_PROTOCOL.
-    if (use_system_curl) warnIfSystemCurlLacksWebSockets(b);
+    // A system libcurl may lack WebSockets. Say so when building rather than
+    // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL: a warning, asked at
+    // make time (build_probe curl-websockets) by every top-level step - the
+    // end of build() adds it to each.
+    const system_curl_check: ?*std.Build.Step.Run = if (use_system_curl) check: {
+        const run = b.addRunArtifact(build_probe);
+        run.setName("check the system libcurl for WebSockets");
+        run.addArg("curl-websockets");
+        // Its answer is the machine's: asked on every build.
+        run.has_side_effects = true;
+        break :check run;
+    } else null;
 
     // The library, the CLI and the iOS build use the target's platform; the WPT
     // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
@@ -5814,6 +5778,10 @@ pub fn build(b: *std.Build) void {
     fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
     fw_matrix_test_step.dependOn(&fw_matrix_check.step);
 
+    // tools/build_probe.zig: what the configure would ask the machine, asked
+    // at make time.
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = build_probe_module }), "tools-build_probe", null).step);
+
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
     const test_suites_tests = b.addTest(.{ .root_module = b.createModule(.{
@@ -6910,6 +6878,10 @@ pub fn build(b: *std.Build) void {
         thread_local_check.expectExitCode(0);
         step.dependOn(&thread_local_check.step);
     };
+
+    // -Dsystem-curl: whatever is built, the system libcurl's WebSocket check
+    // runs with it, as the configure-time warning it replaces did.
+    if (system_curl_check) |check| for (b.top_level_steps.values()) |top| top.step.dependOn(&check.step);
 }
 
 /// The mode and C sanitizer one part of a build compiles its C with (null:
