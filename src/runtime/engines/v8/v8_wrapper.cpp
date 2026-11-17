@@ -10800,14 +10800,31 @@ Global<Object>* v8_GetGlobalPrototype(Global<Context>* context, const char* cons
 /// HandleScope: every intermediate is a Local, and the one Global made is
 /// the wrapper's, which the caller owns. As four calls each wrap made three
 /// Globals and disposed two - the instance template's and the prototype's -
-/// for every platform object a page wraps (lane vm1: Blink's
-/// V8DOMWrapper::CreateWrapper holds them in Locals the same way). nullptr
-/// when the instance cannot be made.
+/// for every platform object a page wraps (lane vm1; the prototype's is
+/// counted: object_globals_from.GetGlobalPrototype rose once a wrapper).
+/// nullptr when the instance cannot be made.
 ///
-/// What the lookups can run is what they ran before: the Get of the
-/// constructor on the global and of its `prototype` are ordinary [[Get]]s
-/// (a page may have replaced either with an accessor), under no TryCatch,
-/// with the context entered for NewInstance alone.
+/// Blink holds every intermediate of a wrap in a Local too
+/// (V8DOMWrapper::CreateWrapper, third_party/blink/renderer/platform/
+/// bindings/v8_dom_wrapper.cc at Chromium 157.0.8103.51, read 2026-11-17: a
+/// v8::Local<v8::Object> from V8PerContextData::CreateWrapperFromCache, or,
+/// for a detached context, GetV8ClassTemplate()->InstanceTemplate()->
+/// NewInstance). Its usual path does NOT look the prototype up by name: the
+/// wrapper comes from a per-context cache. Only the handle discipline is
+/// taken from it here.
+///
+/// KNOWN DEVIATION, older than this function and kept exactly as it was
+/// (v8_GetGlobalPrototype did the same lookups): Web IDL's "internally
+/// create a new object implementing the interface" step 2.1 gives a platform
+/// object made with no NewTarget "the interface prototype object for
+/// interface in realm" - the realm's own object. This reads
+/// `globalThis[constructor_name]` and its `prototype` with ordinary [[Get]]s
+/// when the wrapper is made, under no TryCatch (the context is entered for
+/// NewInstance alone): a page that has replaced the global property gives
+/// new wrappers that value's `prototype`, and an accessor it defined there
+/// runs inside the wrap. Not probed against the browsers; filed by lane vm1
+/// for a bindings lane (a per-realm cache of interface prototype objects,
+/// Blink's shape, would end both the deviation and the two lookups a wrap).
 Global<Object>* v8_FunctionTemplate_NewWrapper(Global<FunctionTemplate>* tpl, Global<Context>* context, const char* constructor_name) {
     // The wrapper's Global is this entry point's now: gc_bench's "wrappers
     // made per cycle" reads this count.

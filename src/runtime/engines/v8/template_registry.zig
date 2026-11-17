@@ -312,8 +312,11 @@ pub fn wrapInstanceAsV8Object(
     // ONE call (v8_FunctionTemplate_NewWrapper), whose one Global is the
     // wrapper's. This ran as four calls and made three Globals a wrapper - the
     // instance template's and the prototype's disposed straight after - for
-    // every platform object a page wraps (lane vm1: 2 of the Globals a
-    // `new ReadableStream()` made were these, for each of its three objects).
+    // every platform object a page wraps (lane vm1: the perf suite's
+    // streams.reader statement wraps three objects - a stream, its controller
+    // and its reader - and made three prototype Globals an operation). The
+    // lookup by name is a known deviation from Web IDL, older than this
+    // call: see the function's comment in v8_wrapper.cpp.
     var name_buf: [256]u8 = undefined;
     const name_z: ?[*:0]const u8 = blk: {
         if (interface_name.len >= name_buf.len) break :blk null;
