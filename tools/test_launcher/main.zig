@@ -875,6 +875,13 @@ pub fn main(init: std.process.Init) !void {
 
     // What the launcher could not run fails the run; say what, once.
     try report.writeLauncherErrors(out, gpa, name, md.names, run.records);
+    // And what never ran (exitStatus fails it too), once.
+    if (c.not_run != 0) try out.print("error: 'test {s}' failed: NOT-RUN, {d} test{s} never ran{s}\n", .{
+        name,
+        c.not_run,
+        if (c.not_run == 1) "" else "s",
+        if (args.listen) " (server mode runs a test only when the build runner asks for it, and it asked for none of these)" else "",
+    });
 
     if (args.out) |path| {
         writeResults(io, arena, path, md.names, &plan, &run, seed) catch |err|
@@ -970,8 +977,18 @@ fn runVerify(gpa: std.mem.Allocator, io: Io, arena: std.mem.Allocator, out: *Io.
 /// `--report-only` fails only for the launcher's own failure: a variant's
 /// findings - the tests' verdicts and an exit after the last test - are
 /// printed and recorded, not failed.
+///
+/// A test that never ran (NOT-RUN) fails the run in every mode: nothing gave
+/// it a verdict, so nothing passed. In server mode a run starts at the build
+/// runner's first `run_test`, and one whose build runner asked for none - a
+/// hand replay given `--listen=-` with no protocol on its stdin (vm1,
+/// 2026-11-17: "NOT-RUN 2893", exit 0) - ran nothing; a test the build
+/// runner did ask for was answered `fail` already, and the step fails either
+/// way. Report-only excuses a variant's findings, not a run that did not
+/// happen.
 fn exitStatus(listen: bool, report_only: bool, c: sched.Run.Counts, exit_failures: u32) u8 {
     if (c.launcher_error != 0) return 1;
+    if (c.not_run != 0) return 1;
     if (report_only) return 0;
     if (exit_failures != 0) return 1;
     if (!listen and c.bad() != 0) return 1;
