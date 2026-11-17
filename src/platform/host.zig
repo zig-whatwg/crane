@@ -42,10 +42,44 @@ const std = @import("std");
 
 // process-wide: the one Io.Threaded a process may have - it installs process-wide SIGIO/SIGPIPE handlers (see "Hazard: signals"), so a second per Browser would fight the first; written only under init_mutex, by init (once, at the entry point, before any Browser) and deinit (at process end)
 var threaded: ?std.Io.Threaded = null;
-// process-wide: the process's std.Io (adopted from std.start, or `threaded`'s), the same for every Browser and thread until per-agent Io lands; written only under init_mutex, by init/adopt once at the entry point before any other thread exists and by deinit at process end - io()'s unlocked fast-path read relies on that order
-var cached_io: ?std.Io = null;
+// process-wide: the process's std.Io (adopted from std.start, or `threaded`'s), the same for every Browser and thread until per-agent Io lands; written only under init_mutex - by init/adopt, by io()'s lazy init on whichever thread asks first, and by deinit at process end - and published (`Published`): io()'s unlocked read is an acquire load of its flag, so a thread that finds it set reads the whole value, however many threads ask first at once
+var cached_io: Published = .{};
 // process-wide: the lock over `threaded` and `cached_io`'s writes (init, adopt, deinit and io()'s lazy init)
 var init_mutex: std.Io.Mutex = .init;
+
+/// The process Io once it is set, for a reader that takes no lock: `set`
+/// writes the value, then raises `ready` with release order; `get` loads
+/// `ready` with acquire order before it reads the value. Double-checked
+/// initialisation, as std's own once-guards do it - the writers still take
+/// `init_mutex`, so only one ever writes.
+///
+/// It was a plain optional read without the lock (2026-11-17, lane bugs1):
+/// correct only when the entry point set it before any other thread
+/// existed. A process whose entry point never does - a test executable,
+/// where io()'s lazy init runs on the first thread that asks - had two
+/// threads asking at once race: ThreadSanitizer reported io()'s read
+/// against init's write in every gate's platform step ("two runners
+/// starting together spawn one server between them").
+const Published = struct {
+    ready: std.atomic.Value(bool) = .init(false),
+    value: std.Io = undefined,
+
+    /// The value, if it is set: an acquire load, then the read.
+    fn get(p: *const Published) ?std.Io {
+        return if (p.ready.load(.acquire)) p.value else null;
+    }
+
+    /// Under `init_mutex`, when unset: the value, then its release.
+    fn set(p: *Published, value: std.Io) void {
+        p.value = value;
+        p.ready.store(true, .release);
+    }
+
+    /// Under `init_mutex`, at the process's end.
+    fn clear(p: *Published) void {
+        p.ready.store(false, .release);
+    }
+};
 
 /// Initialise the process Io. Call once, early, from `main` (or from
 /// `whatwg_runtime_init` in the library build).
@@ -55,12 +89,12 @@ var init_mutex: std.Io.Mutex = .init;
 pub fn init(gpa: std.mem.Allocator) void {
     std.Io.Threaded.mutexLockUncancelable(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
-    if (cached_io != null) return;
+    if (cached_io.get() != null) return;
     threaded = .init(gpa, .{});
     seedEnviron(&threaded.?);
     // io() captures &threaded, so the Threaded value must never move after this.
     // It lives in this module's static storage precisely so it cannot.
-    cached_io = threaded.?.io();
+    cached_io.set(threaded.?.io());
 }
 
 /// Adopt the `Io` the process entry point was handed, instead of building one.
@@ -73,8 +107,8 @@ pub fn init(gpa: std.mem.Allocator) void {
 pub fn adopt(process_io: std.Io) void {
     std.Io.Threaded.mutexLockUncancelable(&init_mutex);
     defer std.Io.Threaded.mutexUnlock(&init_mutex);
-    if (cached_io != null) return;
-    cached_io = process_io;
+    if (cached_io.get() != null) return;
+    cached_io.set(process_io);
 }
 
 /// Seed a self-built `Threaded` with the real environment block.
@@ -109,7 +143,7 @@ pub fn deinit() void {
     }
     // Also clears an Io taken by `adopt`, which this module does not own and
     // must therefore not deinit - only forget.
-    cached_io = null;
+    cached_io.clear();
 }
 
 /// The process Io.
@@ -120,9 +154,9 @@ pub fn deinit() void {
 /// lazy path cannot choose the allocator, and in tests `std.testing.io` is better
 /// still because it participates in leak checking.
 pub fn io() std.Io {
-    if (cached_io) |i| return i;
+    if (cached_io.get()) |i| return i;
     init(std.heap.smp_allocator);
-    return cached_io.?;
+    return cached_io.get().?;
 }
 
 /// `std.Io.Dir.cwd()` bound to the process Io - the direct replacement for
