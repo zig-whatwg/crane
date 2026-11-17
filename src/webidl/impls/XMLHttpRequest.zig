@@ -34,7 +34,7 @@ const log = std.log.scoped(.xhr);
 const clock = @import("clock");
 const fetch_mod = @import("fetch");
 
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const fetch_body = @import("fetch_body.zig");
 const blob_bytes = @import("dom").blob_bytes;
 const global_settings = @import("dom").global_settings;

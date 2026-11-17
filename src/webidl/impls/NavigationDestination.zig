@@ -20,7 +20,7 @@ const callbacks = @import("callbacks");
 const engine = @import("engine");
 const dom = @import("dom");
 const joint_history = @import("html_core").navigation.joint_history;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const navigation_entries = @import("navigation_entries.zig");
 const NavigationDestination = interfaces.NavigationDestination;
 

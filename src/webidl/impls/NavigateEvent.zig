@@ -29,7 +29,7 @@ const clock = @import("clock");
 const dom = @import("dom");
 const NavigateEvent = interfaces.NavigateEvent;
 const engine = @import("engine");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const navigation_entries = @import("navigation_entries.zig");
 
 pub const State = NavigateEvent.State;

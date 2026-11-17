@@ -20,7 +20,7 @@ const InternalResponse = fetch.internal.InternalResponse;
 const webidl = @import("webidl");
 
 const Response = interfaces.Response;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const js = @import("dom").streams_js;
 const srd = @import("dom").streams_readable;
 const BodyPipe = fetch.internal.BodyPipe;

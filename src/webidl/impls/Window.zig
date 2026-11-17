@@ -168,7 +168,7 @@ pub const InternalState = struct {
     own_performance: ?struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
-        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "performance" } },
+        edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "performance" } },
     } = null,
     /// The time origin of this window's environment settings object, a
     /// monotonic moment (ns, unsafe: Performance coarsens it). HTML: the
@@ -185,14 +185,14 @@ pub const InternalState = struct {
     crypto: ?struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
-        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "crypto" } },
+        edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "crypto" } },
     } = null,
     /// Trusted Types 4.1: this global's trusted type policy factory, traced
     /// for its whole lifetime.
     trusted_types: ?struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
-        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "trustedTypes" } },
+        edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "trustedTypes" } },
     } = null,
     /// The six BarProp objects, each made on first read and kept for the
     /// Window's life.
@@ -238,7 +238,7 @@ pub const InternalState = struct {
     cache_storage: ?struct {
         owner: *runtime.Instance,
         value: *runtime.Instance,
-        edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "caches" } },
+        edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "caches" } },
     } = null,
 
     /// CookieStore instance (lazily created)

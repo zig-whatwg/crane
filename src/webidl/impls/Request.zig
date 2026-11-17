@@ -23,7 +23,7 @@ const webidl = @import("webidl");
 // RequestInit is now properly defined in dictionaries with all Fetch spec fields
 
 const Request = interfaces.Request;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const fetch_body = @import("fetch_body.zig");
 
 pub const State = Request.State;

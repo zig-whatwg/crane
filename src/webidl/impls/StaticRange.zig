@@ -25,7 +25,7 @@ const StaticRange = interfaces.StaticRange;
 const AbstractRange = interfaces.AbstractRange;
 const range_boundaries = @import("dom").range_boundaries;
 const node_holds = @import("dom").node_holds;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 pub const State = StaticRange.State;
 

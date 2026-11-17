@@ -7,7 +7,7 @@ const typedefs = @import("typedefs");
 const engine = @import("engine");
 const host = @import("host");
 const random = @import("webcrypto").random;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const Crypto = interfaces.Crypto;
 
 pub const State = Crypto.State;

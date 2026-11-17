@@ -10,7 +10,7 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const fetch_body = @import("fetch_body.zig");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const HTMLFormElement = interfaces.HTMLFormElement;
 
 // Form submission (below call_submit).

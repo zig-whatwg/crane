@@ -99,13 +99,13 @@ pub const InternalState = struct {
     /// for `ancestor_origins_document` only; another document gets its own.
     ancestor_origins: ?*runtime.Instance = null,
     /// The document `ancestor_origins` was made for.
-    ancestor_origins_document: ?@import("same_object.zig").Link = null,
+    ancestor_origins_document: ?@import("dom").same_object.Link = null,
     /// Keeps the list's wrapper and its script properties alive with ours.
-    ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
+    ancestor_origins_edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "Location.ancestorOrigins" } },
     /// The Location's "empty DOMStringList" (HTML 7.2.4), returned whenever
     /// there is no relevant Document: one list for the Location's life.
     empty_ancestor_origins: ?*runtime.Instance = null,
-    empty_ancestor_origins_edge: @import("same_object.zig").Traced = .{ .slot = .{ .name = "Location.emptyAncestorOrigins" } },
+    empty_ancestor_origins_edge: @import("dom").same_object.Traced = .{ .slot = .{ .name = "Location.emptyAncestorOrigins" } },
 
     /// Cached href for comparison
     cached_href: ?[]const u8 = null,
@@ -713,7 +713,7 @@ pub fn get_ancestorOrigins(instance: *runtime.Instance) anyerror!*runtime.Instan
     const list = try dom.string_lists.create(instance.ctx, strings.items);
     internal.ancestor_origins_edge.hold(instance, list);
     internal.ancestor_origins = list;
-    internal.ancestor_origins_document = @import("same_object.zig").Link.to(document);
+    internal.ancestor_origins_document = @import("dom").same_object.Link.to(document);
     return list;
 }
 
