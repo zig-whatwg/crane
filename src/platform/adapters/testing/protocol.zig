@@ -199,6 +199,15 @@ pub const protocol = struct {
         State.of(browser).extra.clock.advance(nanoseconds);
     }
 
+    /// Test control: post `event` to the Browser's EventSink on the calling
+    /// thread, as a platform's observer does (docs/platform-protocol.md 7).
+    /// The testing platform has no OS observer of its own - no machine's
+    /// state reaches a test - so a test that wants an event posts it.
+    pub fn postEvent(browser: *platform.BrowserPlatform, event: *const platform.PlatformEvent) void {
+        const events = State.of(browser).events;
+        events.post(events.context, event);
+    }
+
     /// The seeded Browser's stream, else none.
     pub fn fillBrowserRandom(browser: *platform.BrowserPlatform, bytes: []u8) bool {
         return State.of(browser).extra.random.fill(bytes);
