@@ -880,7 +880,13 @@ memory pressure observed by polling, as WebKit and Firefox do on Linux (Chromium
 desktop Linux): one thread per Browser reads MemTotal and MemAvailable from /proc/meminfo every 5 s,
 every 1 s at warning or above, and posts when the level changes - warning at 90 % of memory used,
 critical at 95 % (kit/posix/meminfo.zig, the rule; src/platform/adapters/linux/memory_pressure.zig,
-the thread, woken and joined at the Browser's end).
+the thread, woken and joined at the Browser's end). A process inside a cgroup with a memory limit (a
+container, a systemd unit with MemoryMax= or MemoryHigh=) is judged against that limit too, WebKit's
+reading (Firefox reads no cgroup): the percentage used is the larger of the machine's and the
+cgroup's usage over its limit - memory.current over the smaller of memory.max and memory.high on
+cgroup v2, the memory controller's usage_in_bytes over limit_in_bytes (the memsw pair first) on
+cgroup v1 - for the cgroup /proc/self/cgroup names; a limit of "max" is no limit, and the machine's
+figures then decide alone.
 
 **testing** (decision 2, revised): the build machine's real OS services - darwin's or linux's, chosen by
 `builtin.os.tag` - plus compiled-in test capabilities, with all their state per Browser:
@@ -899,7 +905,7 @@ the thread, woken and joined at the Browser's end).
 | notifications, geolocation | recorded; positions scripted per Browser |
 | console | the per-Browser sink in its options (the runner's per-test log) |
 | clocks (`browserClock`), opt in | `PlatformBrowserOptions.virtual_clock`: a per-Browser VIRTUAL clock (src/platform/adapters/testing/virtual_clock.zig), Chromium's MOCK_TIME - it stands still while the Browser works and moves only when its event loop is idle (no runnable task, no posted task, no deferred teardown, no fetch in flight, no running worker) and a timer or an idle period is due, to exactly that wake-up, or when a test calls `platform.adapter.advanceClock(browser, ns)`. Monotonic and wall time move together; the wall clock starts at `virtual_clock_wall_start_ms` (2026-01-01T00:00:00Z by default), the monotonic one at an arbitrary origin that is not 0. Work takes no time: a page that busy-waits on performance.now() or Date.now() never sees time pass, as under MOCK_TIME. Off by default; WPT runs keep real time, as all three browsers' do. FIRST BATCH (2026-11-02): the Browser's window event loop, its timers, frame clock and idle periods, its window realms' performance.now()/timeOrigin/Event.timeStamp, IdleDeadline, and Date in its window agent (engine `host_clock`). Still on the process clock: workers' loops and realms, WebSocket and EventSource polling (their 1 ms pump timers make virtual time run ahead of their real I/O - a Blink-style virtual-time pauser is the next step), a navigation's fetch timing (so a virtual Browser's time origin stays its Window's creation, not the navigation's fetch start), and the other process-clock readers (cookie expiry, File.lastModified, XHR timeouts, IndexedDB, Reporting) |
-| platform events | no OS observer: no machine's state reaches a test. A test posts an event itself with `platform.adapter.postEvent(browser, &event)`, which calls the Browser's EventSink on the calling thread, as an observer does. `platform.adapter.memoryPressureLevelOfMeminfo(text)` answers the level the linux platform's rule reads from a /proc/meminfo's text (a pure function, the same on every OS) |
+| platform events | no OS observer: no machine's state reaches a test. A test posts an event itself with `platform.adapter.postEvent(browser, &event)`, which calls the Browser's EventSink on the calling thread, as an observer does. `platform.adapter.memoryPressureLevelOfMeminfo(text)` answers the level the linux platform's rule reads from a /proc/meminfo's text (a pure function, the same on every OS); `platform.adapter.memoryPressureLevelOfMeminfoAndCgroup(text, files)` the level for that machine and a cgroup whose memory files have the given texts, and `platform.adapter.memoryPressureCgroupPath(text)` the cgroup a /proc/self/cgroup's text names |
 | randomness (`fillBrowserRandom`), opt in | `PlatformBrowserOptions.random_seed` (0, the default: none): a per-Browser SplitMix64 stream (src/platform/adapters/testing/seeded_random.zig), written out so a seed replays on every toolchain. Its first draw seeds the Browser's agent's Math.random (engine `seeded_random`); V8's process-wide --random-seed is never used, because it gives every isolate the same sequence |
 
 Its per-Browser options (`platform.PlatformBrowserOptions` in a testing build) carry the fake devices,
