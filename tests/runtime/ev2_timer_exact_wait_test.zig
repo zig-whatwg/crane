@@ -37,11 +37,48 @@ test "a blocking poll with a bound of 0 does not wait" {
     const mgr = try NativeTimerManager.init(testing.allocator);
     defer mgr.deinit();
     var fired = false;
-    try testing.expect(mgr.setTimeout(10, fire, &fired) != 0);
+    // Ten seconds away: never due in this test, however late its thread runs.
+    try testing.expect(mgr.setTimeout(10_000, fire, &fired) != 0);
     const polls_before = mgr.probe.polls;
     try testing.expect(!mgr.pollBlockingEach(0, null));
-    // One poll, and no wait: the timer is still armed.
-    try testing.expectEqual(@as(u64, 1), mgr.probe.polls - polls_before);
+    try testing.expect(!mgr.pollBlockingEachNs(0, null));
+    // One poll each, and no wait: the timer is still armed.
+    try testing.expectEqual(@as(u64, 2), mgr.probe.polls - polls_before);
     try testing.expect(!fired);
     try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
+}
+
+test "a blocking poll bounded in nanoseconds waits its bound, not for a timer past it: it polls before and after and fires nothing" {
+    const mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+    var fired = false;
+    try testing.expect(mgr.setTimeout(10_000, fire, &fired) != 0);
+    const polls_before = mgr.probe.polls;
+    // 50 microseconds, then the backend's whole slice, then a bound far past
+    // the slice: each call polls, waits (its bound, or the 1 ms slice) and
+    // polls again. The timer is ten seconds away.
+    try testing.expect(!mgr.pollBlockingEachNs(50 * std.time.ns_per_us, null));
+    try testing.expect(!mgr.pollBlockingEachNs(std.time.ns_per_ms, null));
+    try testing.expect(!mgr.pollBlockingEachNs(std.math.maxInt(u64), null));
+    try testing.expectEqual(@as(u64, 6), mgr.probe.polls - polls_before);
+    try testing.expect(!fired);
+    try testing.expectEqual(@as(usize, 1), mgr.getActiveTimerCount());
+}
+
+test "a blocking poll in nanoseconds fires what is due at once, and a timer due in under a millisecond after waiting for it" {
+    const mgr = try NativeTimerManager.init(testing.allocator);
+    defer mgr.deinit();
+    var first = false;
+    var second = false;
+    // Due at once: fired by the poll before any wait.
+    try testing.expect(mgr.setTimeout(0, fire, &first) != 0);
+    const polls_before = mgr.probe.polls;
+    try testing.expect(mgr.pollBlockingEachNs(std.time.ns_per_ms, null));
+    try testing.expect(first);
+    try testing.expectEqual(@as(u64, 1), mgr.probe.polls - polls_before);
+    // Due in a millisecond, the bound two: one call waits to the deadline.
+    try testing.expect(mgr.setTimeout(1, fire, &second) != 0);
+    try testing.expect(mgr.pollBlockingEachNs(2 * std.time.ns_per_ms, null));
+    try testing.expect(second);
+    try testing.expectEqual(@as(usize, 0), mgr.getActiveTimerCount());
 }

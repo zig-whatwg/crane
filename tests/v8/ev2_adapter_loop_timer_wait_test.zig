@@ -30,16 +30,16 @@ var test_agent: test_process.TestAgent = .{ .reset = reset };
 
 fn reset() void {}
 
-/// Forty timers of `delay_ms`, each armed by the one before's callback.
+/// A chain of timers of `delay_ms`, each armed by the one before's
+/// callback: `remaining` more after the first.
 const Chain = struct {
     timers: runtime.TimerInterface,
     remaining: usize,
+    delay_ms: u64 = 1,
     fired: usize = 0,
 
-    const delay_ms = 3;
-
     fn arm(self: *Chain) !void {
-        if (self.timers.setTimeout(delay_ms, fire, self) == 0) return error.TimerNotArmed;
+        if (self.timers.setTimeout(self.delay_ms, fire, self) == 0) return error.TimerNotArmed;
     }
 
     fn fire(data: ?*anyopaque) void {
@@ -58,6 +58,12 @@ test "the adapter's loop waits through a timer's last sub-millisecond: it does n
     defer loop.deinit();
     const mgr = loop.timer_manager orelse return error.NoTimers;
 
+    // Forty 1 ms timers: each is under a millisecond away from the moment
+    // it is armed, so the whole of its delay is "the last sub-millisecond"
+    // - on any host, however long its sleeps really take. (Forty 3 ms
+    // timers showed the same on server1, 176,325 polls, and nothing on
+    // chat2.local, where a 1 ms sleep takes long enough that two of them
+    // reach a 3 ms deadline.)
     const count = 40;
     var chain: Chain = .{ .timers = loop.timerInterface().?, .remaining = count - 1 };
     try chain.arm();
@@ -71,13 +77,13 @@ test "the adapter's loop waits through a timer's last sub-millisecond: it does n
     }
     const polls = mgr.probe.polls - polls_before;
     // Every turn polls its timers once, and a second time after a wait
-    // (native_timer pollBlockingEachNs). A loop that WAITS for a 3 ms timer
-    // makes at most three waits of a millisecond and one shorter wait to the
-    // deadline itself: four turns, eight polls, for each timer. The bound
-    // allows ten turns a timer.
+    // (native_timer pollBlockingEachNs). A loop that WAITS for a 1 ms timer
+    // makes one wait to its deadline, and one more turn if the wait ended a
+    // moment early: two turns, four polls, for each timer. The bound allows
+    // ten turns a timer.
     const poll_bound = count * 10 * 2;
     if (polls > poll_bound) {
-        std.log.warn("{d} timer polls in {d} turns for forty 3 ms timers (at most {d} when the loop waits for each)", .{ polls, turns, poll_bound });
+        std.log.warn("{d} timer polls in {d} turns for forty 1 ms timers (at most {d} when the loop waits for each)", .{ polls, turns, poll_bound });
         return error.LoopTurnsWithoutWaiting;
     }
     try std.testing.expectEqual(@as(usize, count), chain.fired);
@@ -90,10 +96,11 @@ test "the adapter's loop still does not wait when its caller asks for a turn tha
     defer loop.deinit();
     const mgr = loop.timer_manager orelse return error.NoTimers;
 
-    var chain: Chain = .{ .timers = loop.timerInterface().?, .remaining = 0 };
+    // Ten seconds away - never due in this test, however late its thread
+    // runs: a turn bounded at 0 returns at once, its timer still armed,
+    // however many times it is asked.
+    var chain: Chain = .{ .timers = loop.timerInterface().?, .remaining = 0, .delay_ms = 10_000 };
     try chain.arm();
-    // Due in about 3 ms: a turn bounded at 0 returns at once, its timer
-    // still armed, however many times it is asked.
     const polls_before = mgr.probe.polls;
     for (0..3) |_| _ = loop.runOnceBlocking(0);
     try std.testing.expectEqual(@as(usize, 0), chain.fired);
