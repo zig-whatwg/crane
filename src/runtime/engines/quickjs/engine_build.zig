@@ -29,16 +29,6 @@ pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void {
     _ = adapter_options;
 }
 
-/// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it): the
-/// three engine facts the shared `build_options` carries and nothing reads,
-/// with the values the root build.zig gave a build of this engine.
-pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void {
-    _ = options;
-    shared.addOption([]const u8, "engine_name", "quickjs");
-    shared.addOption(bool, "has_snapshot_support", false);
-    shared.addOption(bool, "has_isolate_per_thread", false);
-}
-
 /// No target's engine unless -Dengine asks for it.
 pub fn isDefaultFor(target: std.Target) bool {
     _ = target;

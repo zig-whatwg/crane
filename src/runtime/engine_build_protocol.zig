@@ -19,7 +19,6 @@
 //!   pub const Options = struct { ... };       // what the command line gave
 //!   pub fn declareOptions(b: *std.Build, target: std.Build.ResolvedTarget) Options
 //!   pub fn apply(options: Options, adapter_options: *std.Build.Step.Options) void
-//!   pub fn applyTransitional(options: Options, shared: *std.Build.Step.Options) void
 //!   pub fn isDefaultFor(target: std.Target) bool
 //!   pub const Resolved = struct { ... };      // what this build links
 //!   pub fn resolve(b: *std.Build, target: std.Build.ResolvedTarget, options: Options) Resolution(Resolved)
@@ -254,7 +253,6 @@ fn checkAdapter(comptime name: []const u8, comptime A: type) void {
     }
     conforms(who, A, "declareOptions", fn (*std.Build, std.Build.ResolvedTarget) A.Options);
     conforms(who, A, "apply", fn (A.Options, *std.Build.Step.Options) void);
-    conforms(who, A, "applyTransitional", fn (A.Options, *std.Build.Step.Options) void);
     conforms(who, A, "isDefaultFor", fn (std.Target) bool);
     conforms(who, A, "resolve", fn (*std.Build, std.Build.ResolvedTarget, A.Options) Resolution(A.Resolved));
     conforms(who, A, "link", fn (*std.Build, *std.Build.Module, *const A.Resolved, LinkRequest) void);
@@ -343,26 +341,19 @@ pub const Engine = struct {
 
     const VTable = struct {
         apply: *const fn (state: *const anyopaque, adapter_options: *std.Build.Step.Options) void,
-        applyTransitional: *const fn (state: *const anyopaque, shared: *std.Build.Step.Options) void,
         link: *const fn (state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void,
         addStartupData: *const fn (state: *const anyopaque, b: *std.Build, request: StartupRequest) ?*std.Build.Step,
     };
 
     /// The adapter's own options module: its compile-time values, which only
-    /// the engine adapter's module imports, as "adapter_options".
+    /// the engine adapter's module imports, as "adapter_options" - the one
+    /// options module that carries an engine value (the shared
+    /// `build_options` has none since batch E5 of
+    /// tmp/plans/build-protocol-design.md).
     pub fn adapterOptions(engine: *const Engine, b: *std.Build) *std.Build.Step.Options {
         const adapter_options = b.addOptions();
         engine.vtable.apply(engine.state, adapter_options);
         return adapter_options;
-    }
-
-    /// TRANSITIONAL (batch E5 of tmp/plans/build-protocol-design.md ends it):
-    /// what the shared `build_options` still carries of the engine, written by
-    /// the adapter with the names, the values and the order they always had.
-    /// Call it where the root build.zig wrote them: after the module's
-    /// neutral fields.
-    pub fn applyTransitional(engine: *const Engine, shared: *std.Build.Step.Options) void {
-        engine.vtable.applyTransitional(engine.state, shared);
     }
 
     /// Link the engine into `module`: the adapter's own sources, their
@@ -464,10 +455,6 @@ fn vtableOf(comptime A: type) *const Engine.VTable {
             const typed: *const State = @ptrCast(@alignCast(state));
             A.apply(typed.options, adapter_options);
         }
-        fn applyTransitional(state: *const anyopaque, shared: *std.Build.Step.Options) void {
-            const typed: *const State = @ptrCast(@alignCast(state));
-            A.applyTransitional(typed.options, shared);
-        }
         fn link(state: *const anyopaque, b: *std.Build, module: *std.Build.Module, request: LinkRequest) void {
             const typed: *const State = @ptrCast(@alignCast(state));
             switch (typed.resolution) {
@@ -480,7 +467,7 @@ fn vtableOf(comptime A: type) *const Engine.VTable {
             const typed: *const State = @ptrCast(@alignCast(state));
             return A.addStartupData(b, typed.options, request);
         }
-        const table: Engine.VTable = .{ .apply = apply, .applyTransitional = applyTransitional, .link = link, .addStartupData = addStartupData };
+        const table: Engine.VTable = .{ .apply = apply, .link = link, .addStartupData = addStartupData };
     };
     return &functions.table;
 }

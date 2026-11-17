@@ -30,7 +30,7 @@ pub const RunnerAllocator = enum {
 pub const RunnerModes = struct {
     /// The runner's root module (tests/wpt_runner/main.zig). It decides the
     /// LLVM pipeline for all of the runner's Zig, std's mode, and the -O level
-    /// of v8_wrapper.cpp, which the root compiles.
+    /// of the engine adapter's C++, which the root compiles.
     root: Mode,
     /// Crane's own modules in the runner's graph: their `builtin.mode`. They
     /// keep -Doptimize's, so a default runner keeps every Debug-only check
@@ -40,7 +40,7 @@ pub const RunnerModes = struct {
     /// The C libraries the runner links: libcurl, mbedTLS, zlib, nghttp2,
     /// Brotli, the image codecs.
     c_libraries: Mode,
-    /// The C sanitizer for v8_wrapper.cpp and the C libraries (libcurl's own
+    /// The C sanitizer for the engine adapter's C++ and the C libraries (libcurl's own
     /// sources excepted: build.zig turns it off there in every mode). `.full`
     /// in the safe modes, as in Debug: the same checks as `.trap` (ReleaseSafe's
     /// default), but a failed one names the check and the source line and
@@ -77,7 +77,7 @@ pub const RunnerModes = struct {
 
 /// Whether a binary needs Zig's UBSan runtime: some C or C++ in it is
 /// compiled with the full sanitizer, whose failed checks call
-/// `__ubsan_handle_*` - its root's own (v8_wrapper.cpp takes the root's
+/// `__ubsan_handle_*` - its root's own (the engine adapter's C++ takes the root's
 /// sanitizer), or the C libraries it links. `.trap` traps in place and calls
 /// no handler, so a binary at `.trap` or off throughout needs none: the
 /// production run and the release console link none (docs/lessons/workflow-a-
