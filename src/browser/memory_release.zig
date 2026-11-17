@@ -353,19 +353,26 @@ test "IdleWatch: a refused release leaves the loop asking" {
     try testing.expect(watch.idleTurn(4_000 * ms));
 }
 
-test "holdOff: 20 times the release's duration, at least 5 seconds; 30 seconds when under 1 MiB came back" {
+test "holdOff: 20 times the release's duration, at least 5 seconds - whatever the release returned" {
     const ms = std.time.ns_per_ms;
     const s = std.time.ns_per_s;
-    // A release that returned memory: 20 times its duration, from 5 s up.
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, 275 * 1024 * 1024));
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(250 * ms, small_release_bytes));
-    try testing.expectEqual(@as(i64, 6 * s), holdOff(300 * ms, small_release_bytes));
+    const mib = 1024 * 1024;
+    // 20 times its duration, from 5 s up.
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, 275 * mib));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(250 * ms, mib));
+    try testing.expectEqual(@as(i64, 6 * s), holdOff(300 * ms, mib));
     try testing.expectEqual(@as(i64, 40 * s), holdOff(2 * s, 1 << 30));
-    // One that returned under 1 MiB: 30 seconds, however short it was.
-    try testing.expectEqual(@as(i64, 30 * s), holdOff(0, 0));
-    try testing.expectEqual(@as(i64, 30 * s), holdOff(8 * ms, small_release_bytes - 1));
+    // A release that returned little or nothing is held off the same way,
+    // not for WebKit's 30 seconds (the user, 2026-11-16: "5 s always"). The
+    // process's first release - a page's first idle stretch - is such a
+    // one, and 30 seconds kept the memory a page frees after it.
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(0, 0));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(8 * ms, mib - 1));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(20 * std.time.ns_per_us, 4096));
+    try testing.expectEqual(@as(i64, 8 * s), holdOff(400 * ms, 0));
     // A clock that went backwards is no negative hold-off.
-    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, small_release_bytes));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, mib));
+    try testing.expectEqual(@as(i64, 5 * s), holdOff(-1, 0));
 }
 
 test "Gate: the first release is started, at the level asked" {
@@ -404,14 +411,18 @@ test "Gate: after a release that returned memory the next is refused for 20 time
     try testing.expectEqual(@as(u64, 3), gate.count());
 }
 
-test "Gate: a release that returned under 1 MiB is not repeated for 30 seconds" {
+test "Gate: a release that returned under 1 MiB is held off 5 seconds, as any other" {
     var fake: Fake = .{ .release_takes_ns = 20 * std.time.ns_per_us, .release_returns = 4096 };
     const gate = fake.gate();
     try testing.expect(gate.release(.idle));
     const end = fake.now_ns;
-    fake.now_ns = end + 30 * std.time.ns_per_s - 1;
+    fake.now_ns = end + 5 * std.time.ns_per_s - 1;
     try testing.expect(!gate.release(.idle));
-    fake.now_ns = end + 30 * std.time.ns_per_s;
+    // The next idle stretch 5 seconds on is let through: the memory a page
+    // freed after a first release that found little is returned then, not
+    // half a minute later.
+    fake.now_ns = end + 5 * std.time.ns_per_s;
+    fake.release_returns = 150 * 1024 * 1024;
     try testing.expect(gate.release(.idle));
     try testing.expectEqual(@as(u32, 2), fake.asked);
 }
@@ -492,7 +503,7 @@ test "Gate: of several threads that find the record open at once, exactly one st
     for (&threads) |*t| t.* = try std.Thread.spawn(.{}, Race.thread, .{&race});
     race.go.store(true, .release);
     for (threads) |t| t.join();
-    // The clock stands at 0 and the first release's hold-off ends at 30 s:
+    // The clock stands at 0 and the first release's hold-off ends at 5 s:
     // every thread after the first finds the record claimed or held.
     try testing.expectEqual(@as(u32, 1), race.asked.load(.monotonic));
     try testing.expectEqual(@as(u64, 1), race.hold.releases.load(.monotonic));
