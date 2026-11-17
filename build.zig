@@ -2093,8 +2093,9 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary, in
     // keep their own executables.
     var claimed: std.AutoHashMapUnmanaged(usize, void) = .empty;
     {
-        // A configure-time read of the checkout the configure cache cannot track.
-        b.graph.poisonCache();
+        // Each root file read here is an input of the configure cache
+        // (`ConfigureInputs`): an edit that adds or drops such an import
+        // configures again.
         var roots: std.ArrayList(struct { key: usize, path: []const u8 }) = .empty;
         for (members) |m| for (m.imports) |imp| {
             const source = imp.module.root_source_file orelse continue;
@@ -2108,7 +2109,13 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary, in
             var text: ?[]const u8 = null;
             for (roots.items) |inner| {
                 const rel = test_suites.pathFrom(outer.path, inner.path) orelse continue;
-                if (text == null) text = b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20)) catch "";
+                if (text == null) text = if (b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20))) |read| read: {
+                    inputs.file(b, outer.path);
+                    break :read read;
+                } else |_| missing: {
+                    inputs.absent(b, outer.path);
+                    break :missing "";
+                };
                 if (test_suites.importsAsFile(text.?, rel)) try claimed.put(allocator, inner.key, {});
             }
         }
