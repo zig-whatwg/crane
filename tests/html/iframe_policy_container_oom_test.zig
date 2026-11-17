@@ -646,7 +646,7 @@ fn sweepContentWindow(rounds: usize) !void {
             if (at == 9000) "the navigation after the sweep, round" else if (at == 0) "the set-up before the first round, round" else "failing allocation",
             if (at == 0 or at == 9000) at else at - 1,
         });
-        if (@errorReturnTrace()) |trace| std.debug.dumpStackTrace(trace);
+        if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
         return err;
     };
     const end = counting.live();
