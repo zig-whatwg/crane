@@ -436,8 +436,10 @@ fn queueRecordWithoutNodes(
     try queueMutationRecordInternal(target.ctx.allocator, mutation_type, target, name, namespace, old_value, &.{}, &.{}, null, null);
 }
 
-/// Internal version of queueMutationRecord that uses runtime.Instance
-/// This avoids the architectural mismatch with the old interface-based signatures
+/// DOM §7.3 - Queue a mutation record, over platform objects
+/// (runtime.Instance): the one record queue, which queueTreeMutationRecord,
+/// queueAttributeMutationRecord and queueCharacterDataMutationRecord all
+/// end in.
 ///
 /// Spec: https://dom.spec.whatwg.org/#queueing-a-mutation-record
 fn queueMutationRecordInternal(
