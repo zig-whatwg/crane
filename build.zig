@@ -941,6 +941,9 @@ const TestSelection = struct {
     /// beside its wiring (`recordSuiteDir`), whether or not -Dspec selects
     /// it. `checkEveryTestDirectoryIsASuite` reads it.
     suite_dirs: *std.ArrayList([]const u8) = undefined,
+    /// What the configure reads of the checkout (`ConfigureInputs`): each
+    /// directory `addTestFilesFromDir` walks, and the root it writes.
+    inputs: *ConfigureInputs = undefined,
     /// How every test executable that links the engine links it.
     engine_link: engine_build.Link,
     /// -Dtest-binaries=engine: the directories `test` runs that link the
@@ -1017,6 +1020,52 @@ const OneBinary = struct {
 /// whether its own executable linked the engine (`plain`: it did not, so the
 /// many-Browsers variant never runs a busy Browser beside it).
 const SuiteGroup = struct { prefix: []const u8, config: SuiteConfig, plain: bool };
+
+/// What the configure reads of the checkout, each path made an input of
+/// Zig 0.17's configure cache once (std.Build `dependOnDirectoryContents`,
+/// `dependOnFileContents`). Zig caches this file's configuration and
+/// configures again only when a tracked input changes, so a read the cache
+/// does not know of leaves a stale configuration - a new tests/<dir>/ test
+/// file that no executable compiles. A read is tracked, never answered by
+/// poisoning the cache, which would make every `zig build` configure afresh
+/// (`check-configure-cache` holds that; lane cfg1).
+///
+/// A directory dependency is its entries' names and kinds, not recursive: a
+/// walk tracks every directory it lists. A missing path cannot be a
+/// dependency (Zig fails the build on it), so its absence is tracked as the
+/// listing of its nearest existing ancestor, which its arrival changes.
+/// Paths are relative to the build root, which the reads go through too.
+const ConfigureInputs = struct {
+    tracked: std.StringHashMapUnmanaged(void) = .empty,
+
+    /// The configure listed the entries of the directory `path`.
+    fn directory(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        if (inputs.isNew(b, path)) b.dependOnDirectoryContents(b.path(path));
+    }
+
+    /// The configure read the contents of the file `path` (or wrote them:
+    /// a generated root is tracked too, so a deleted or edited one is
+    /// written again).
+    fn file(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        if (inputs.isNew(b, path)) b.dependOnFileContents(b.path(path));
+    }
+
+    /// The configure found nothing at `path`.
+    fn absent(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        var dir = path;
+        while (std.fs.path.dirnamePosix(dir)) |parent| {
+            dir = parent;
+            const stat = b.root.root_dir.handle.statFile(b.graph.io, dir, .{}) catch continue;
+            if (stat.kind == .directory) return inputs.directory(b, dir);
+        }
+        inputs.directory(b, ".");
+    }
+
+    fn isNew(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) bool {
+        const entry = inputs.tracked.getOrPut(b.allocator, path) catch @panic("OOM");
+        return !entry.found_existing;
+    }
+};
 
 /// Record `dir`, a tests/<dir>/ whose tests a hand-made root runs, as a
 /// suite (`TestSelection.suite_dirs`).
@@ -1940,17 +1989,24 @@ fn addTestFilesFromDir(
         return;
     }
 
-    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
-        // Directory might not exist yet, skip silently
-        if (err == error.FileNotFound) return;
+    var dir = builder.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| {
+        // Directory might not exist yet, skip silently - until it does.
+        if (err == error.FileNotFound) {
+            select.inputs.absent(builder, dir_path);
+            return;
+        }
         return err;
     };
     defer dir.close(io);
 
+    // Every directory the walk lists is an input of the configuration: a test
+    // file added anywhere below `dir_path` changes the root written here.
+    select.inputs.directory(builder, dir_path);
     var files: std.ArrayList([]const u8) = .empty;
     var walker = try dir.walk(allocator);
     defer walker.deinit();
     while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) select.inputs.directory(builder, builder.fmt("{s}/{s}", .{ dir_path, entry.path }));
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         try files.append(allocator, try allocator.dupe(u8, entry.path));
@@ -1984,6 +2040,7 @@ fn addTestFilesFromDir(
         try dir.writeFile(io, .{ .sub_path = tmp_name, .data = contents });
         try dir.rename(tmp_name, dir, test_root_name, io);
     }
+    select.inputs.file(builder, root_path);
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
@@ -2008,7 +2065,7 @@ fn addTestFilesFromDir(
 /// whose imports agree and whose rows allow it (`OneBinary`) become ONE
 /// executable, "tests", rooted at tests/.all_tests.zig; every other member
 /// gets its own executable, as with -Dtest-binaries=dirs.
-fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !void {
+fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary, inputs: *ConfigureInputs) !void {
     const allocator = b.allocator;
     const members = one.members.items;
     if (members.len == 0) return;
@@ -2077,7 +2134,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     // only when it changes.
     const contents = try test_suites.oneBinaryRoot(allocator, joined_dirs.items, test_root_name);
     const io = b.graph.io;
-    var tests_dir = try std.Io.Dir.cwd().openDir(io, "tests", .{});
+    var tests_dir = try b.root.root_dir.handle.openDir(io, "tests", .{});
     defer tests_dir.close(io);
     const current = tests_dir.readFileAlloc(io, test_root_name, allocator, .limited(1 << 20)) catch "";
     if (!std.mem.eql(u8, current, contents)) {
@@ -2085,6 +2142,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
         try tests_dir.writeFile(io, .{ .sub_path = tmp_name, .data = contents });
         try tests_dir.rename(tmp_name, tests_dir, test_root_name, io);
     }
+    inputs.file(b, b.fmt("tests/{s}", .{test_root_name}));
 
     var groups: std.ArrayList(SuiteGroup) = .empty;
     var runs_engine = false;
@@ -3501,6 +3559,8 @@ pub fn build(b: *std.Build) void {
         list.* = .empty;
         break :suite_dirs list;
     };
+    test_selection.inputs = b.allocator.create(ConfigureInputs) catch @panic("OOM");
+    test_selection.inputs.* = .{};
 
     // The Crane test runner's many-Browsers neighbour (tests/test_runner/
     // neighbour.zig): its thread and handshake, std only, tested with a fake
@@ -6757,7 +6817,7 @@ pub fn build(b: *std.Build) void {
 
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
-    if (test_selection.one) |one| finishOneBinary(b, launch, one) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
+    if (test_selection.one) |one| finishOneBinary(b, launch, one, test_selection.inputs) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
     // Only the generated layer imports an impl: known here, once every
     // module of every step exists. The negative test first: a file in a
