@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const PermissionState = @import("enums").PermissionState;
 const EventHandler = @import("typedefs").EventHandler;
 
-pub const impl = @import("impls").PowerfulFeatureObserver;
+const impl = @import("impls").PowerfulFeatureObserver;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

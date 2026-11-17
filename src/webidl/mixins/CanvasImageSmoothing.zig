@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ImageSmoothingQuality = @import("enums").ImageSmoothingQuality;
 
-pub const impl = @import("impls").CanvasImageSmoothing;
+const impl = @import("impls").CanvasImageSmoothing;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

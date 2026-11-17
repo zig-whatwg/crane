@@ -25,7 +25,7 @@ const WorkerType = workers.WorkerType;
 
 // A global scope is an EventTarget: it chains to EventTarget's state, and its
 // event handler IDL attributes live in EventTarget's event handler map.
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const OriginRecord = @import("dom").origin_record.OriginRecord;
 
 // Import event loop for timer support

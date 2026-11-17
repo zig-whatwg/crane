@@ -20,7 +20,7 @@ const callbacks = @import("callbacks");
 const webidl = @import("webidl");
 const infra = @import("infra");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const Element = interfaces.Element;
 
 // Import related impls

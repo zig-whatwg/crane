@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const ML = @import("interfaces").ML;
 
-pub const impl = @import("impls").NavigatorML;
+const impl = @import("impls").NavigatorML;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

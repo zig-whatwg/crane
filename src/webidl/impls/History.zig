@@ -42,9 +42,9 @@ const basic_parser = @import("basic_parser");
 const url_serializer = @import("url_serializer");
 const UserInvolvement = @import("dom").history_traversal.UserInvolvement;
 const engine = @import("engine");
-const navigation_entries = @import("navigation_entries.zig");
+const navigation_entries = @import("navigation_entries");
 const log = std.log.scoped(.history);
-const history_documents = @import("history_documents.zig");
+const history_documents = @import("history_documents");
 
 pub const State = History.State;
 

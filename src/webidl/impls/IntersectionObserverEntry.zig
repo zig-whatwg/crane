@@ -33,7 +33,7 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const engine = @import("engine");
 const node_holds = @import("dom").node_holds;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const IntersectionObserverEntry = interfaces.IntersectionObserverEntry;
 
 pub const State = IntersectionObserverEntry.State;

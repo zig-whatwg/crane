@@ -17,9 +17,6 @@ const dictionaries = @import("dictionaries");
 const callbacks = @import("callbacks");
 const DocumentType = interfaces.DocumentType;
 
-// Import related impls
-const NodeImpl = @import("Node.zig");
-
 pub const State = DocumentType.State;
 
 pub const ImplError = error{

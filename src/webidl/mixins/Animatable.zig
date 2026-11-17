@@ -14,7 +14,7 @@ const Animation = @import("interfaces").Animation;
 const GetAnimationsOptions = @import("dictionaries").GetAnimationsOptions;
 const KeyframeAnimationOptions = @import("dictionaries").KeyframeAnimationOptions;
 
-pub const impl = @import("impls").Animatable;
+const impl = @import("impls").Animatable;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

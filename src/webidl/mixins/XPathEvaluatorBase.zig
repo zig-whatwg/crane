@@ -16,7 +16,7 @@ const Node = @import("interfaces").Node;
 const XPathResult = @import("interfaces").XPathResult;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").XPathEvaluatorBase;
+const impl = @import("impls").XPathEvaluatorBase;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -26,7 +26,7 @@ const dom_module = @import("dom");
 const instance_bridge = dom_module.instance_bridge;
 const NodeBase = dom_module.tree_helpers.NodeBase;
 const document_internals = dom_module.document_internals;
-const node_filter = @import("node_filter.zig");
+const node_filter = @import("node_filter");
 const traversal = dom_module.traversal;
 
 pub const State = NodeIterator.State;

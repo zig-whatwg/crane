@@ -23,7 +23,7 @@ const port_channels = dom.port_channels;
 const message_ports = dom.message_ports;
 
 // A channel keeps the ports it has handed out alive for as long as it lives.
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 pub const State = MessageChannel.State;
 

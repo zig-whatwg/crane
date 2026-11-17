@@ -16,7 +16,7 @@ const NodeList = @import("interfaces").NodeList;
 const HTMLCollection = @import("interfaces").HTMLCollection;
 const DOMString = @import("typedefs").DOMString;
 
-pub const impl = @import("impls").ParentNode;
+const impl = @import("impls").ParentNode;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

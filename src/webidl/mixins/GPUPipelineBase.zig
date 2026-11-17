@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const GPUBindGroupLayout = @import("interfaces").GPUBindGroupLayout;
 
-pub const impl = @import("impls").GPUPipelineBase;
+const impl = @import("impls").GPUPipelineBase;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -549,13 +549,14 @@ const tests: engine_build.Tests = .{
         "engine",
         // The generated interfaces, for a test host that makes platform
         // objects - a Window for a realm (page_realm_operations_test.zig).
+        // Never the impls: only the generated layer imports them
+        // (src/webidl/AGENTS.md "The impls boundary"; build.zig
+        // checkImplsBoundary).
         "interfaces",
-        // The impl helpers a tests/v8 test reaches through an impl's
-        // re-export (Response.streams_js, for the Deferred lifetime test).
-        "impls",
         // DOM's hooks, for a test that fires a trusted event
-        // (dom.fire_event) - the one module already in this graph through
-        // impls, not a second binding of it.
+        // (dom.fire_event), and the Streams helpers (dom.streams_js) - the
+        // one module already in this graph through the interfaces, not a
+        // second binding of it.
         "dom",
         // URLPattern's construction and matching, whose regexps run in the
         // engine (urlpattern_*_test.zig), and URL for its corpus.
@@ -697,8 +698,6 @@ pub const facts: engine_build.Facts = .{
         "webidl",
         // For HeadersInit conversion.
         "typedefs",
-        // For ReadableStream start callback invocation.
-        "impls",
         // The adapter registers the namespaces a snapshot lacks when it
         // creates a Window realm.
         "namespaces",

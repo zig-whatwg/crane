@@ -28,7 +28,7 @@ const engine = @import("engine");
 const encoding = @import("encoding");
 const xhr = @import("xhr");
 const form_parser = @import("form_parser");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const BodyPipe = fetch.internal.BodyPipe;
 
 pub const Error = error{ TypeError, OutOfMemory };

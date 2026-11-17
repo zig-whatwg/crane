@@ -18,7 +18,7 @@ const dictionaries = @import("dictionaries");
 const webidl = @import("webidl");
 const csp = @import("csp");
 const dom = @import("dom");
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const TrustedTypePolicyFactory = interfaces.TrustedTypePolicyFactory;
 
 const Kind = dom.trusted_types.Kind;

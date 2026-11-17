@@ -12,7 +12,7 @@ const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const USVString = @import("typedefs").USVString;
 
-pub const impl = @import("impls").GPUObjectBase;
+const impl = @import("impls").GPUObjectBase;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

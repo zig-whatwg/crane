@@ -23,7 +23,7 @@ const fetch = @import("fetch");
 const eventsource = @import("eventsource");
 const EventSource = interfaces.EventSource;
 const LiveSources = eventsource.Registry(*anyopaque, *anyopaque);
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 
 pub const State = EventSource.State;
 

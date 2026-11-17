@@ -47,7 +47,7 @@ const html_module = @import("html");
 const clock = @import("clock");
 const scripted_parser = html_module.scripted_parser;
 const document_internals = dom_module.document_internals;
-const history_documents = @import("history_documents.zig");
+const history_documents = @import("history_documents");
 const basic_parser = @import("basic_parser");
 const url_origin = @import("url").origin;
 

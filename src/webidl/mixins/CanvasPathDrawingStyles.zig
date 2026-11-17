@@ -13,7 +13,7 @@ const dictionaries = @import("dictionaries");
 const CanvasLineJoin = @import("enums").CanvasLineJoin;
 const CanvasLineCap = @import("enums").CanvasLineCap;
 
-pub const impl = @import("impls").CanvasPathDrawingStyles;
+const impl = @import("impls").CanvasPathDrawingStyles;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

@@ -24,7 +24,7 @@ const infra = @import("infra");
 const Selection = interfaces.Selection;
 const dom = @import("dom");
 const boundary_points = dom.boundary_points;
-const Link = @import("same_object.zig").Link;
+const Link = @import("dom").same_object.Link;
 
 const engine = @import("engine");
 

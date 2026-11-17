@@ -14,7 +14,7 @@ const common = html.media_runtime;
 const LoadState = @import("html_core").media.LoadState;
 /// Decoding through the Browser's platform (`media_decoding`).
 const backend = common.decoding;
-const same_object = @import("same_object.zig");
+const same_object = @import("dom").same_object;
 const clock = @import("clock");
 const hooks = dom.media_elements;
 pub const State = interfaces.HTMLMediaElement.State;

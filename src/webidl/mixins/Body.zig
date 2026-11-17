@@ -15,7 +15,7 @@ const Blob = @import("interfaces").Blob;
 const FormData = @import("interfaces").FormData;
 const USVString = @import("typedefs").USVString;
 
-pub const impl = @import("impls").Body;
+const impl = @import("impls").Body;
 
 /// The impl's process-wide hooks, installed once at process start
 /// (crane.Process, through the root's process_hooks).

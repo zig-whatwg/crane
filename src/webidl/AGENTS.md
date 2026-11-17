@@ -66,7 +66,9 @@ build (`zig build wpt-runner -j2`) to confirm no interface/impl signature drift.
 ### New interfaces
 
 1. Run codegen. 2. Copy the stub from `impls_tmp/X.zig` to `impls/X.zig`.
-3. Implement it. 4. Commit the file in `impls/`.
+3. Implement it, and add its line to `impls/root.zig`
+   (`pub const X = @import("X");` - build.zig makes the file a module of its
+   own from that line). 4. Commit both.
 
 When an IDL signature changes, diff `impls_tmp/X.zig` against `impls/X.zig` and
 merge by hand, preserving your implementation.
@@ -150,8 +152,37 @@ The generated interface X.zig          ->  its own impl (the one allowed referen
    several types goes in `src/dom/`, `src/html/` or its subsystem, and reaches
    types through interfaces and hooks like any other code.
 
-Never `@import("impls")` or name an `XImpl` outside the generated layers in new
-code, and never cast another type's `_internal` to its `InternalState`.
+Never `@import("impls")` or name an `XImpl` outside the generated layers, and
+never cast another type's `_internal` to its `InternalState`.
+
+**The build enforces it** (lane impls9, 2026-11-17; design 5.3, B11 and 4b):
+
+- Only the generated layer - the interfaces, namespaces and mixins modules -
+  imports the `impls` module; no other module of any graph, test suite or tool
+  has it in its imports, and it is not registered for dependent packages.
+- Each impl is a module of its own: `impls/root.zig` names every impl
+  (`pub const X = @import("X");`), build.zig (`addImplModules`) roots a module at
+  each `impls/X.zig` whose imports are what every impl shares plus the shared
+  helpers - never another impl - and the impls module's root imports only them.
+- A generated mixin keeps its impl alias private (`const impl`), so nothing that
+  imports the mixins reaches an impl through them.
+
+So the compiler rejects every way round: `@import("impls")` outside the
+generated layer, or `@import("Node")` in an impl - "no module named ...
+available within module ..."; `@import("Node.zig")` in an impl - "file exists
+in modules 'Node' and 'Attr'"; a path into `src/webidl/impls/` from another
+module - "import of file outside module path", or the same "file exists in
+modules"; `mixins.X.impl` - "'impl' is not marked 'pub'". `zig build
+check-impls-boundary` (part of `zig build test`) holds the module edges - it
+walks every compile's modules and fails on any import the rule forbids - and its
+compile-failure cases pin those answers on copies of the real modules' imports.
+`zig build lint-impls` runs with no baseline: any reference fails, by name.
+
+The five helpers still in `impls/` (`cookie_values`, `fetch_body`,
+`history_documents`, `navigation_entries`, `node_filter`) are modules of their
+own too (build.zig `impl_helper_names`), importable by impls only and importing
+no impl. They are rule 3's remaining debt: a new shared helper goes in src/dom,
+src/html or its subsystem, never in that list.
 
 **Construction and destruction are the generated chain.** `interfaces.X.init`
 runs the parent interface's chain, then `XImpl.initOwn(instance, allocator,
@@ -162,6 +193,6 @@ passed with `interfaces.X.initWith(.., .{ .name = value })`. An impl still
 defining `init`/`deinit` chains by hand, and the chain honours it
 ([lesson](../../docs/lessons/codegen-the-generated-interface-is-the-class.md)).
 
-**Existing references are debt, not precedent.** About 200 files outside the
-generated layers still reference impls (most of them impls reaching ancestors,
-which the old rule allowed). A change that touches such a line converts it.
+**There is no reference left to convert.** The debt went to zero in lane
+impls8 (2026-11-16) and tools/impls_boundary_baseline.txt was deleted with it;
+lint-impls refuses that file if it comes back.

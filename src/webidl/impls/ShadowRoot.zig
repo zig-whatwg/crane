@@ -77,7 +77,7 @@ pub const InternalState = struct {
 
     /// StyleSheetList (from DocumentOrShadowRoot mixin), and its keeping:
     /// see same_object.KeptChild.
-    style_sheets_kept: @import("same_object.zig").KeptChild = .{},
+    style_sheets_kept: @import("dom").same_object.KeptChild = .{},
 
     /// Adopted style sheets (CSSOM 6.2.3): the view of the
     /// ObservableArray<CSSStyleSheet>'s backing list the style engine reads
