@@ -1807,3 +1807,13 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = firefox, safari
 ruling          = no specification; only Chrome ships it (the integrator, 2026-11-18 4:00 PM ET; lane dom1)
 revisit         = when a specification defines Event.pseudoTarget, or Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[webidl/ecmascript-binding/allow-shared.https.html]
+kind            = follows-majority
+why             = Crane throws a TypeError from new ImageDecoder({data: <a SharedArrayBuffer view>, type: "invalid"}) at the constructor's first step - "if init is not valid ImageDecoderInit, throw a TypeError" (WebCodecs; type is no valid image MIME type) - as Firefox does ("ImageDecoder constructor: Invalid MIME type, must be 'image'"), so the subtest never reaches MIDIMessageEvent; Chrome does not throw there and passes; Safari has no ImageDecoder (a dom1 probe on tip3: a shared view with type image/png converts and constructs, so the TypeError is the type check's, not the data's)
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835: ReferenceError, no ImageDecoder)
+matches         = firefox
+ruling          = golden rule 2: Safari ships no ImageDecoder, so it does not count; Chrome and Firefox split with no majority, so the spec decides - WebCodecs' "valid ImageDecoderInit" step 1, which Firefox ships and Crane follows (lane dom1, 2026-11-18; the integrator's 4:00 PM ET OK: "allow-shared: only if Crane throws at the same step as Firefox")
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
