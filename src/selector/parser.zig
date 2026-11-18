@@ -677,6 +677,15 @@ pub const PseudoElementSelector = struct {
     /// The array is OWNED; each name, like every name in the AST, is a slice
     /// of the parsed text or of the outer list's decoded strings.
     part_names: []const []const u8 = &.{},
+    /// The name a named pseudo-element selects: a named view transition
+    /// pseudo-element's <pt-name-selector> <custom-ident> (View Transitions
+    /// 1 §5.2.1; null for `*`, which matches every name) or ::highlight()'s
+    /// <custom-ident> (CSS Highlight API 1 §4.1). Decoded, case-sensitive.
+    name_argument: ?[]const u8 = null,
+    /// A named view transition pseudo-element's <pt-class-selector> (View
+    /// Transitions 2 §10.4): classes the captured element's class list must
+    /// all contain. The array is OWNED, its names like part_names'.
+    class_arguments: []const []const u8 = &.{},
 
     pub fn deinit(self: *PseudoElementSelector, allocator: Allocator) void {
         if (self.argument) |list| {
@@ -685,15 +694,36 @@ pub const PseudoElementSelector = struct {
         }
         if (self.part_names.len != 0) allocator.free(self.part_names);
         self.part_names = &.{};
+        if (self.class_arguments.len != 0) allocator.free(self.class_arguments);
+        self.class_arguments = &.{};
+    }
+
+    /// One of the named view transition pseudo-elements (View Transitions 1
+    /// §5.2.1): ::view-transition-group(), -image-pair(), -old() and -new().
+    pub fn isNamedViewTransition(self: *const PseudoElementSelector) bool {
+        return isNamedViewTransitionName(self.name);
     }
 
     pub fn calculateSpecificity(self: *const PseudoElementSelector) Specificity {
+        // View Transitions 2 §10.4: a named view transition pseudo-element
+        // with a <custom-ident> name or at least one class has a type
+        // selector's specificity; with `*` and no class, zero.
+        if (self.isNamedViewTransition() and self.name_argument == null and self.class_arguments.len == 0) return .{};
         const own = Specificity{ .element = 1 };
         const list = self.argument orelse return own;
         if (list.selectors.len == 0) return own;
         return own.add(list.selectors[0].calculateSpecificity());
     }
 };
+
+/// One of the named view transition pseudo-elements' names (View
+/// Transitions 1 §5.2.1), as the parser keeps them (lowercase).
+pub fn isNamedViewTransitionName(name: []const u8) bool {
+    for ([_][]const u8{ "view-transition-group", "view-transition-image-pair", "view-transition-old", "view-transition-new" }) |named| {
+        if (std.mem.eql(u8, name, named)) return true;
+    }
+    return false;
+}
 
 // ============================================================================
 // Parser Errors
@@ -1831,8 +1861,48 @@ pub const Parser = struct {
             }
             pseudo.part_names = try self.allocator.dupe([]const u8, names.items);
         } else if (std.mem.eql(u8, name, "highlight")) {
-            _ = try singleToken(args, .ident);
+            pseudo.name_argument = (try singleToken(args, .ident)).value;
+        } else if (isNamedViewTransitionName(name)) {
+            try self.parseViewTransitionArgument(&stream, pseudo);
         }
+    }
+
+    /// View Transitions 2 §10.4: <pt-name-and-class-selector> =
+    /// <pt-name-selector> <pt-class-selector>? | <pt-class-selector>, with
+    /// <pt-name-selector> = '*' | <custom-ident> and <pt-class-selector> =
+    /// ['.' <custom-ident>]+, "white space is forbidden" between the name
+    /// and the classes and between the classes' components. An escaped
+    /// `\*` is an ident token, the ordinary name "*".
+    fn parseViewTransitionArgument(self: *Parser, stream: *Stream, pseudo: *PseudoElementSelector) ParserError!void {
+        const first = stream.peek();
+        if (first.tag == .delim and first.delim == '*') {
+            stream.advance();
+        } else if (first.tag == .ident) {
+            if (!isPtCustomIdent(first.value)) return error.InvalidSelector;
+            pseudo.name_argument = first.value;
+            stream.advance();
+        } else if (!(first.tag == .delim and first.delim == '.')) return error.InvalidSelector;
+        var classes: std.ArrayList([]const u8) = .empty;
+        defer classes.deinit(self.scratch);
+        while (stream.peek().tag == .delim and stream.peek().delim == '.') {
+            stream.advance();
+            const class = stream.peek();
+            if (class.tag != .ident or !isPtCustomIdent(class.value)) return error.InvalidSelector;
+            try classes.append(self.scratch, class.value);
+            stream.advance();
+        }
+        _ = stream.skipWhitespace();
+        if (!stream.atEnd()) return error.InvalidSelector;
+        if (classes.items.len != 0) pseudo.class_arguments = try self.allocator.dupe([]const u8, classes.items);
+    }
+
+    /// Values 4 §4.2 <custom-ident>: not a CSS-wide keyword nor `default`
+    /// (ASCII case-insensitively).
+    fn isPtCustomIdent(value: []const u8) bool {
+        for ([_][]const u8{ "initial", "inherit", "unset", "revert", "revert-layer", "default" }) |excluded| {
+            if (std.ascii.eqlIgnoreCase(value, excluded)) return false;
+        }
+        return true;
     }
 
     // ========================================================================

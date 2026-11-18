@@ -772,6 +772,37 @@ fn following(node: *NodeBase, root: *NodeBase) ?*NodeBase {
     return null;
 }
 
+/// Whether `pseudo` selects the pseudo-element the style engine resolves,
+/// `wanted`: its lowercase name, and for a named pseudo-element the name it
+/// is for in parentheses - "view-transition-group(root)", "highlight(foo)";
+/// "view-transition-group()" is the `*` of getComputedStyle's argument, so
+/// an escaped `\*`, the ordinary name "*", stays apart from it (View
+/// Transitions 1 §5.2.1, css-view-transitions/pseudo-get-computed-style-
+/// escaped-star.html: Chrome and Firefox). `originating` is the element
+/// whose pseudo-element it is.
+pub fn pseudoTargetMatches(wanted: []const u8, pseudo: *const selector.PseudoElementSelector, originating: *NodeBase) bool {
+    const open = std.mem.indexOfScalar(u8, wanted, '(');
+    const wanted_name = if (open) |i| wanted[0..i] else wanted;
+    if (!std.ascii.eqlIgnoreCase(wanted_name, pseudo.name)) return false;
+    const named = pseudo.isNamedViewTransition() or std.mem.eql(u8, pseudo.name, "highlight");
+    if (!named) return true;
+    // A named pseudo-element is always resolved for a name.
+    const i = open orelse return false;
+    if (wanted.len < i + 2 or wanted[wanted.len - 1] != ')') return false;
+    const argument = wanted[i + 1 .. wanted.len - 1];
+    // View Transitions 1 §5.2.1: `*` matches every name, a <custom-ident>
+    // that name only; a highlight's name is always one.
+    if (pseudo.name_argument) |name| if (!std.mem.eql(u8, name, argument)) return false;
+    // View Transitions 2 §10.4: the captured element's class list contains
+    // every class - a list that exists only during a view transition.
+    if (pseudo.class_arguments.len != 0) {
+        const element = instanceOf(originating) orelse return false;
+        if (argument.len == 0) return false;
+        return @import("style/hooks.zig").viewTransitionClasses(element, argument, pseudo.class_arguments);
+    }
+    return true;
+}
+
 fn instanceOf(node: *NodeBase) ?*runtime.Instance {
     return node.registeredInstance();
 }
@@ -1078,9 +1109,9 @@ const Matcher = struct {
                 // (pseudo_target), as matchesSimple accepts it for an
                 // ordinary subject. Chrome, Firefox and Safari apply it
                 // (css/css-shadow/keyframes-006.html).
-                .PseudoElement => |pseudo| {
+                .PseudoElement => |*pseudo| {
                     const wanted = self.pseudo_target orelse return false;
-                    if (!std.ascii.eqlIgnoreCase(wanted, pseudo.name)) return false;
+                    if (!pseudoTargetMatches(wanted, pseudo, subject.node)) return false;
                     continue;
                 },
                 .PseudoClass => |pseudo| pseudo.kind,
@@ -1119,7 +1150,7 @@ const Matcher = struct {
             // style engine resolving that pseudo-element's style, for which
             // the compound's other simple selectors match its originating
             // element.
-            .PseudoElement => |pseudo| if (self.pseudo_target) |wanted| std.ascii.eqlIgnoreCase(wanted, pseudo.name) else false,
+            .PseudoElement => |*pseudo| if (self.pseudo_target) |wanted| pseudoTargetMatches(wanted, pseudo, node) else false,
         };
     }
 

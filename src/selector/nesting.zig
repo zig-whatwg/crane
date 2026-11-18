@@ -130,6 +130,8 @@ fn hashCompound(hash: *std.hash.Wyhash, compound: *const p.CompoundSelector) voi
             .PseudoElement => |pseudo| {
                 if (pseudo.argument) |list| hashChild(hash, list);
                 for (pseudo.part_names) |text| hash.update(text);
+                if (pseudo.name_argument) |text| hash.update(text);
+                for (pseudo.class_arguments) |text| hash.update(text);
             },
             else => {},
         }
@@ -341,6 +343,12 @@ const Copier = struct {
                 const names = try self.allocator.alloc([]const u8, pseudo.part_names.len);
                 result.part_names = names;
                 for (pseudo.part_names, 0..) |name, i| names[i] = try self.string(name);
+                if (pseudo.name_argument) |name| result.name_argument = try self.string(name);
+                if (pseudo.class_arguments.len != 0) {
+                    const classes = try self.allocator.alloc([]const u8, pseudo.class_arguments.len);
+                    result.class_arguments = classes;
+                    for (pseudo.class_arguments, 0..) |name, i| classes[i] = try self.string(name);
+                }
                 break :blk .{ .PseudoElement = result };
             },
         };
