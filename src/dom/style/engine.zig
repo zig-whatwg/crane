@@ -394,6 +394,21 @@ pub const StyleEngine = struct {
         }
         var declared = css.property_registry.Declared.init(self.allocator);
         defer declared.deinit();
+        // §2.8: "All registrations, whether they appear in the outermost
+        // document or within a shadow tree, interact in a single global
+        // registration map for the Document" (css-houdini-drafts#1085,
+        // 2023-02; WPT css-properties-values-api/at-property-shadow.html
+        // updated to it, wpt#44922). Chrome, Firefox and Safari still read
+        // document-scope rules only (csswg-drafts#10541, open; interop#673
+        // asks to drop the test), with no engine's stated intent to keep
+        // that: golden rule 2, the newer spec. The order across trees is not
+        // specified: the shadow trees' rules first, in tree order, then the
+        // document's, so a document rule wins over a shadow tree's - the
+        // outer context, as normal declarations cascade (Cascade 5 6.1).
+        for (active.scopes.items) |*scope| for (scope.sheets.items) |sheet| for (sheet.contents.property_rules.items) |entry| {
+            if (sheet.contents.conditionHolds(entry.condition, &active.media))
+                try declared.add(entry.rule.data.property);
+        };
         // §2.1: the last rule in document stylesheet order wins. Imports are
         // already substituted by ensureActive; layer precedence is irrelevant.
         for (active.sheets.items) |sheet| for (sheet.contents.property_rules.items) |entry| {
