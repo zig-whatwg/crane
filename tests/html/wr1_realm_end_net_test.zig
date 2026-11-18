@@ -1,12 +1,13 @@
-//! Refcount step 7a's realm-end net after the wrapper redesign's P2 (lane wr1
-//! batch 2; the integrator's conditions of 2026-11-09 03:39 UTC).
+//! A realm's end and the nodes of its trees (lane wr1 batch 2, the
+//! integrator's conditions of 2026-11-09 03:39 UTC; since refcount step 7b,
+//! lane rc7b, with no net).
 //!
 //! A node's wrapper is its agent's, in its own slot (node_wrappers), so a
-//! realm's end no longer meets node wrappers in its cache. The net the
-//! cache's sweep made - a realm's detached trees freed at its end whatever
-//! their counts - is kept for trees no wrapper reaches any more
-//! (node_wrappers.endRealm, endedRealmNet), and never for a tree a live
-//! wrapper still reaches:
+//! realm's end no longer meets node wrappers in its cache. Step 7a kept a
+//! net for the trees no wrapper reached any more - a realm's detached trees
+//! freed at its end whatever their counts - and never for a tree a live
+//! wrapper still reached. Step 7b removed the net: the realm's end lets go of
+//! the realm's own references and the counts free the rest.
 //!
 //! 1. Cross-realm: a node of a same-origin frame's document, held by its
 //!    parent's script, stays usable after the frame is removed - a property
@@ -17,10 +18,11 @@
 //!    wrapper is its relevant realm's (the frame's), so the parent's hold is
 //!    a hold on the frame's realm, whose end cannot come under it.
 //! 2. Holders: a removed frame's detached <img> whose image update is still
-//!    pending - the update counts its element, and only the frame's end
-//!    would have let it go - is freed by the net once its wrapper goes, and
-//!    the update's later end touches nothing (the tests' allocators poison a
-//!    freed block: a read would see 0xdd).
+//!    pending - the update counts its element - is freed by the counts once
+//!    its wrapper goes: the frame's document's destruction aborted the
+//!    update ("abort a document": dom.document_fetches.abortAll), which let
+//!    its count go, and the update's later end touches nothing (the tests'
+//!    allocators poison a freed block: a read would see 0xdd).
 //!
 //! Each test runs on a thread of its own with a Browser of its own.
 
@@ -133,17 +135,18 @@ fn removedFramePendingImage() !void {
     const img_node = dom.instance_bridge.getNodeBase(img.instance) orelse return error.NotANode;
     try check(dom.refcount.count(img_node) >= 2, "the img's update counts it");
     try page.run("f.remove(); globalThis.f = null; 0;");
-    // Its realm ended; its wrapper goes with the collections, and the net
-    // frees the tree its update still holds - in a slice, after them.
+    // The frame's document was destroyed with its navigable: the abort let
+    // the update's count go. Its wrapper goes with the collections, and the
+    // counts free the tree - in a slice, after them.
     var turns: usize = 0;
     while (turns < 6 and runtime.SlabAllocator.generationOf(img.instance) == img.generation) : (turns += 1) try page.collect();
-    try check(runtime.SlabAllocator.generationOf(img.instance) != img.generation, "the net freed the img");
+    try check(runtime.SlabAllocator.generationOf(img.instance) != img.generation, "the counts freed the img");
     // The update's end (its fetch answered or cancelled, at the latest at
     // the page's end) finds its element freed and lets nothing go twice:
     // an underflow or a poisoned read is an error log, which fails the test.
     _ = try page.browser.runEventLoopBlocking(20);
 }
 
-test "a removed frame's detached img with a pending update is freed by the net once its wrapper goes, and the update's end touches nothing" {
+test "a removed frame's detached img with a pending update is freed by the counts once its wrapper goes, and the update's end touches nothing" {
     try onFreshThread(removedFramePendingImage);
 }

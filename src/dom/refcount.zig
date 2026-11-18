@@ -2,18 +2,23 @@
 //! tmp/plans/refcount-design.md; decisions in tmp/plans/refcount-decisions.md).
 //!
 //! The counts - the tree links (step 3), the wrapper's reference (step 4),
-//! the holders' references (step 5) - DECIDE every free of a node during its
-//! realm's life since step 7 (lane refcount9's 7a, tmp/plans/refcount9-
-//! design.md B1-B2; dom.refcount_teardown): a tree is freed only once its
-//! total is zero, in every agent made with a deferred teardown queue - every
-//! production agent (Browser.zig, html/worker_host.zig), and since the
-//! wrapper redesign's P2 in every agent: the V8 adapter frees no node, and
-//! gives an agent made without a queue (a test's own) one of its own. One
-//! free is still made whatever the counts say, and the holders' nets
-//! (generation and teardown-begun checks, `node_holds.Hold`) stay for it: a FORCED realm
-//! end's coordinated teardown (7a keeps it as the net: a page's end, a
-//! removed iframe, a back/forward cache eviction, the Browser's end). Lane wr1
-//! batch 2: tests/v8/wr1_counted_hold_test.zig, node_wrapper_inline_test.zig.
+//! the holders' references (step 5) - DECIDE every free of a node since step
+//! 7 (lane refcount9's 7a, tmp/plans/refcount9-design.md B1-B2;
+//! dom.refcount_teardown): a tree is freed only once its total is zero, in
+//! every agent made with a deferred teardown queue - every production agent
+//! (Browser.zig, html/worker_host.zig), and since the wrapper redesign's P2 in
+//! every agent: the V8 adapter frees no node, and gives an agent made without
+//! a queue (a test's own) one of its own. Since step 7b (lane rc7b, design B4)
+//! that holds at a realm's end too: the end lets go of the references the
+//! realm itself holds - its Window's on its document, its documents' queued
+//! tasks, its close watchers, its parsers, its fetches - and the counts decide
+//! the rest, so a node another realm still holds outlives its realm, in its
+//! whole tree, as in WebKit and Blink. The one free made whatever the counts
+//! say is the Browser's final sweep (dom.teardown_sweeps), after its agent's
+//! last drain; the holders' generation and teardown-begun checks
+//! (`node_holds.Hold`) stay for it. Lane wr1 batch 2:
+//! tests/v8/wr1_counted_hold_test.zig, node_wrapper_inline_test.zig; lane
+//! rc7b: tests/v8/rc7b_realm_end_test.zig.
 //!
 //! What a node count is, from WebKit (Source/WebCore/dom/Node.h, NodeInlines.h):
 //! `NodeBase.rc` holds the count of `Ref`s in units of `NodeBase.rc_one` with

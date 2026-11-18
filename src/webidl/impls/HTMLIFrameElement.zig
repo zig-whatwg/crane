@@ -7728,6 +7728,9 @@ fn destroyKeptDocument(integration: *IFrameIntegration, kept_in: KeptDocument) v
     destroyKeptFrames(kept.frames.items, kept.parked.items, history);
     if (runtime.SlabAllocator.generationOf(kept.document) != kept.generation) return;
     if (history) |h| h.forgetDocument(@ptrCast(kept.document));
+    // "Destroy a document" step 2, "abort a document", as for its frames
+    // (refcount step 7b: nothing else would let a fetch's hold go).
+    dom_module.document_fetches.abortAll(kept.document.ctx);
     document_lifecycle.destroy(kept.document);
     dom_module.window_documents.destroyed(kept.document.ctx);
 }
@@ -7739,7 +7742,11 @@ fn destroyKeptDocumentAndRealm(kept_in: KeptDocument, realm: runtime.Context) vo
     defer kept.freeLists(kept.document.ctx.allocator);
     if (!realm.hasEngine()) return destroyParkedNavigables(kept.parked.items);
     destroyKeptFrames(kept.frames.items, kept.parked.items, null);
-    if (runtime.SlabAllocator.generationOf(kept.document) == kept.generation) document_lifecycle.destroy(kept.document);
+    if (runtime.SlabAllocator.generationOf(kept.document) == kept.generation) {
+        // "Destroy a document" step 2, "abort a document", as for its frames.
+        dom_module.document_fetches.abortAll(kept.document.ctx);
+        document_lifecycle.destroy(kept.document);
+    }
     engine.destroyWindowRealm(realm, .global_detached);
 }
 

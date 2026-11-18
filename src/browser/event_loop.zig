@@ -77,6 +77,15 @@ pub const EventLoop = struct {
     /// runnable task may be queued" (`runnableQueued`). 0 while a drain runs.
     waiting: usize = 0,
 
+    /// While a drain walks `tasks` (`drainTasks`): the slots it already took
+    /// a task out of and has not compacted - `[drain_kept, drain_read)`,
+    /// stale copies of tasks that ran or were dropped - which
+    /// `discardDocumentTasks` must not read. Both 0, and `draining` false,
+    /// between drains.
+    drain_kept: usize = 0,
+    drain_read: usize = 0,
+    draining: bool = false,
+
     /// Track if we're inside runOnce to prevent reentrancy
     in_run_once: bool,
 
@@ -286,7 +295,52 @@ pub const EventLoop = struct {
         .runMicrotasks = runMicrotasks,
         .runOnce = runOnce,
         .promiseAllocator = promiseAllocator,
+        .discardDocumentTasks = discardDocumentTasksOf,
     };
+
+    fn discardDocumentTasksOf(ptr: *anyopaque, document: *anyopaque, generation: u64) void {
+        const self: *Self = @ptrCast(@alignCast(ptr));
+        self.discardDocumentTasks(document, generation);
+    }
+
+    /// HTML "destroy a document" step 5: "Remove any tasks whose document is
+    /// document from any task queue (without running those tasks)" - every
+    /// task queued for `document` (at `generation`: a freed document's slot
+    /// may hold another) leaves the queue now, its `drop` freeing what it
+    /// carries, and so does a document group the back/forward cache made for
+    /// it. What a task holds - a counted reference on its element - goes
+    /// with the document's destruction, before its realm's end decides what
+    /// is freed (refcount step 7b), not at the next drain that finds the
+    /// document gone. WebKit's EventLoopTaskGroup::stopAndDiscardAllTasks,
+    /// which Document::stopActiveDOMObjects calls as the document is
+    /// destroyed (Source/WebCore/dom/EventLoop.cpp, Document.cpp).
+    ///
+    /// Safe while a task runs - inside a drain, which reads the queue slot by
+    /// slot: a removed task's slot keeps a task that does nothing, so no
+    /// index moves, and the slots the drain has taken tasks out of and not
+    /// compacted yet (stale copies, the running task's among them) are left
+    /// alone.
+    pub fn discardDocumentTasks(self: *Self, document: *anyopaque, generation: u64) void {
+        self.discardDocument(document, generation);
+        const len = self.tasks.items.len;
+        var at: usize = 0;
+        while (at < len) : (at += 1) {
+            if (self.draining and at == self.drain_kept) {
+                at = self.drain_read;
+                if (at >= len) break;
+            }
+            // Read afresh: a `drop` below can queue a task (and move the
+            // storage), but never removes one.
+            const task = self.tasks.items[at];
+            const named = task.document orelse continue;
+            if (named != document or task.document_generation != generation) continue;
+            self.tasks.items[at] = .{ .callback = discardedTask, .context = null };
+            if (task.drop) |drop| drop(task.context);
+        }
+    }
+
+    /// What a discarded task's slot runs: nothing.
+    fn discardedTask(_: ?*anyopaque) void {}
 
     /// The Browser event loop `realm` queues on, when it is one (a worker's
     /// realm runs on another kind).
@@ -832,22 +886,31 @@ pub const EventLoop = struct {
         // The tasks of documents a restore made fully active again come
         // first: they were queued before anything queued while they waited.
         if (self.suspended.items.len != 0) self.spliceResumed();
-        // The tasks queued before the drain began: `read` walks them. Those
-        // left waiting are `self.tasks.items[0..kept]`; while a task runs,
-        // `[kept, read)` holds none (nothing reads the queue's tasks during
-        // a drain - nothing but a drain and `deinit` removes from it, and
-        // queueing appends past `end`, where the walk never goes).
+        // The tasks queued before the drain began: `drain_read` walks them.
+        // Those left waiting are `self.tasks.items[0..drain_kept]`; while a
+        // task runs, `[drain_kept, drain_read)` holds none - stale copies
+        // (nothing reads the queue's tasks during a drain but the drain and
+        // `discardDocumentTasks`, which skips that range; nothing but a
+        // drain and `deinit` removes from it, and queueing appends past
+        // `end`, where the walk never goes).
         const end = self.tasks.items.len;
         // Until this drain is done, any queued task may be runnable.
         self.waiting = 0;
-        var kept: usize = 0;
-        var read: usize = 0;
+        std.debug.assert(!self.draining);
+        self.draining = true;
+        self.drain_kept = 0;
+        self.drain_read = 0;
+        defer {
+            self.draining = false;
+            self.drain_kept = 0;
+            self.drain_read = 0;
+        }
         var progressed = false;
-        while (read < end) {
+        while (self.drain_read < end) {
             // Read afresh each time: a task that ran may have queued one,
             // and the queue's storage moved.
-            const task = self.tasks.items[read];
-            read += 1;
+            const task = self.tasks.items[self.drain_read];
+            self.drain_read += 1;
             switch (classify(task)) {
                 .inactive => {
                     // A document the back/forward cache holds: into its
@@ -862,8 +925,8 @@ pub const EventLoop = struct {
                     }
                     // Left in the queue, behind the ones left before it:
                     // the next drain asks again.
-                    self.tasks.items[kept] = task;
-                    kept += 1;
+                    self.tasks.items[self.drain_kept] = task;
+                    self.drain_kept += 1;
                 },
                 .gone => {
                     if (task.drop) |drop| drop(task.context);
@@ -877,6 +940,8 @@ pub const EventLoop = struct {
             }
         }
         // The tasks queued during the drain follow the waiting ones.
+        const kept = self.drain_kept;
+        const read = self.drain_read;
         if (kept != read) {
             const queued_meanwhile = self.tasks.items.len - read;
             std.mem.copyForwards(Task, self.tasks.items[kept .. kept + queued_meanwhile], self.tasks.items[read..]);

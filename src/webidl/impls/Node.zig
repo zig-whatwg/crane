@@ -177,9 +177,6 @@ pub fn installHooks() void {
         .clone = &cloneANode,
         .set_local_name = &setLocalNameHook,
     });
-    // A realm's end frees the orphans its removals recorded (dom.mutation's
-    // orphanRemoved), each through its own teardown as a tree frees a child.
-    runtime.orphan_roots.install(.{ .still_orphan = &stillOrphan, .free = &deinitNodeByType });
 }
 
 /// dom.instance_bridge's `node_base_of`: the NodeBase in `instance`'s own
@@ -187,23 +184,6 @@ pub fn installHooks() void {
 fn nodeBaseOf(instance: *runtime.Instance) ?*NodeBase {
     const internal = Registry.get(instance) orelse return null;
     return &internal.base;
-}
-
-/// runtime.orphan_roots' check, for a recorded root whose generation and
-/// cleanup flags still name it: still parentless, and still reached by no
-/// wrapper - not wrapped since its removal, in any realm ([wrap_tracking]) -
-/// nor any node of its tree. Since the wrapper redesign's P7 a wrap reaches
-/// no ancestor, so a node of the tree can be wrapped under an unwrapped
-/// root: its wrapper's reference holds the tree, and the counts (refcount
-/// step 7) free it once that wrapper goes. Only a wrapper refuses: a tree
-/// held by holders' counts alone is freed here as before P7 (dom.mutation
-/// orphanRemoved says why; refcount step 7b owns that drain).
-fn stillOrphan(instance: *runtime.Instance) bool {
-    const internal = Registry.get(instance) orelse return false;
-    const node_base = &internal.base;
-    if (node_base.parent_node != null or !node_base.wrapper.isEmpty()) return false;
-    if (dom_module.wrapper_tracing.holdsWrapper(node_base)) return false;
-    return runtime.instance_lifecycle.provablyUnwrapped(engine.capabilities.wrap_tracking != .unsupported, instance);
 }
 
 /// Node's own construction steps: the generated chain runs EventTarget's

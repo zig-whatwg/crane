@@ -963,24 +963,44 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
             internal.history = null;
         }
 
-        // The window's document and its tree go with the window, through
-        // Node's own teardown (dom.node_creation.destroyRoot), whose storage
-        // rule is every node's: back once no wrapper can reach the slot - at
-        // the end of the realm teardown under way - else at its wrapper's end.
-        // Chromium's Window.FrameDestroyed() calls Document.Shutdown() the
-        // same way. Only the document's destructor ran here before: a window
-        // whose document's wrapper was collected first - a removed frame's
-        // realm, which the collector takes whole - kept the document's slot
-        // until its Browser ended (lane pageretention1).
-        // Its reference on the document ends first (refcount step 5i).
+        // The window's document: HTML "destroy a document" for it, if its
+        // navigable's end has not run it already - no longer salvageable, its
+        // queued tasks removed (step 5), its parser detached, its browsing
+        // context null (step 6), so its defaultView answers null and the
+        // window no longer keeps its wrapper - then the window's counted
+        // reference on it ends (refcount step 5i). The counts decide the rest
+        // (refcount step 7b, lane rc7b): a tree nothing else holds is this
+        // realm's garbage, freed in the realm's teardown under way
+        // (context_manager.removeContextByKey drains it after this), and a
+        // node another realm still holds - its script's wrapper, a holder of
+        // its own - keeps its tree, whole, until that hold ends, as Blink
+        // and WebKit keep a node past its frame's end. The window used to
+        // free the tree whatever its counts (dom.node_creation.destroyRoot),
+        // and every holder that could name another realm's node needed a
+        // generation net for that.
+        // The global tasks queued given this window (a task that names the
+        // Window: its document is the window's associated Document when it
+        // runs) go with the window, without running - "destroy a document"
+        // step 5 for the tasks of its last document, which a navigation that
+        // reused the window would have handed on.
+        if (instance.ctx.getOptionalEventLoop()) |loop| loop.discardDocumentTasks(instance, runtime.SlabAllocator.generationOf(instance));
+        if (internal.document) |doc| {
+            const document_lifecycle = @import("dom").document_lifecycle;
+            if (!document_lifecycle.isDestroyed(doc)) document_lifecycle.destroy(doc);
+            @import("dom").document_browsing_context.clearWindow(doc);
+        }
         internal.document_ref.release();
         if (internal.document) |doc| {
-            log.debug("[Window.deinit] Cleaning up Document {*}", .{doc});
-            @import("dom").node_creation.destroyRoot(doc);
+            // A Window of an ENGINE-LESS realm - a ContextData a test makes
+            // with no agent, so no deferred teardown queue (dom.refcount_
+            // teardown.queueOf) - has no counts that free anything: there it
+            // frees its document's tree itself, as before step 7b. Never in
+            // production: a Window is made only as its realm's global object
+            // (engine.createWindowRealm's create_global_object: browser
+            // Context.createWindow, HTMLIFrameElement's FrameWindow.create),
+            // in a realm of an agent.
+            if (instance.ctx.agent == null) @import("dom").node_creation.destroyRoot(doc);
             internal.document = null;
-            log.debug("[Window.deinit] Document cleanup DONE", .{});
-        } else {
-            log.debug("[Window.deinit] NO document to clean up", .{});
         }
 
         // No browsing context names this Window from here on - its own, or a

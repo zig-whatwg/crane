@@ -117,6 +117,7 @@ fn navigatedFrames() !void {
         const now = count(browser, &document_parts);
         if (now != first) {
             std.debug.print("page {d}: the old documents' html/head/body stayed: {d} -> {d}\n", .{ page + 1, first, now });
+            @import("dom").refcount_teardown.describeLiveNodes(browser.scope, 40);
             return error.PageStorageRetained;
         }
     }
@@ -233,6 +234,7 @@ fn initialEmptyNavigated() !void {
             first = now;
         } else if (now != first) {
             std.debug.print("page {d}: the retired realms' html/head/body stayed: {d} -> {d}\n", .{ page_index + 1, first, now });
+            @import("dom").refcount_teardown.describeLiveNodes(browser.scope, 40);
             return error.PageStorageRetained;
         }
     }

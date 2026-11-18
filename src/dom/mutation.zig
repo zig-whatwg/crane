@@ -35,7 +35,6 @@ const mutation_observer = @import("mutation_observer_algorithms.zig");
 const document_internals = @import("document_internals.zig");
 const instance_bridge = @import("instance_bridge.zig");
 const refcount = @import("refcount.zig");
-const wrapper_tracing = @import("wrapper_tracing.zig");
 const engine = @import("engine");
 const node_document = @import("node_document.zig");
 const element_attributes = @import("element_attributes.zig");
@@ -818,11 +817,8 @@ fn insertWith(
     var linked: usize = 0;
     errdefer for (nodes[linked..nodes_count]) |n| {
         // A fragment's child step 4.1 took out and no step 7.3 linked is out
-        // of every tree now: recorded as a possible orphan here, while its
-        // remover's hold still stands, as its removal would have recorded
-        // it (a child step 4.1 never reached still has its parent, and is
-        // not).
-        if (isDocumentFragment(node)) orphanRemoved(n);
+        // of every tree now: the counts decide it once its remover's hold
+        // ends (refcount step 7).
         refcount.endRemovalHold(n);
     };
 
@@ -830,11 +826,8 @@ fn insertWith(
     if (isDocumentFragment(node)) {
         // Step 4.1: Remove its children with suppress observers flag set.
         // Moves, not removals: each child is linked into `parent` in step
-        // 7.3, so none is recorded as a possible orphan (removeHeldMoving).
-        // Nothing can reach one in between: the record is only ever made
-        // for a node no wrapper reaches, the fragment no longer lists it,
-        // and its remover's hold keeps it until its link or the errdefer
-        // above.
+        // 7.3 (removeHeldMoving), and its remover's hold keeps it until its
+        // link or the errdefer above.
         for (nodes[0..nodes_count]) |child_node| {
             try removeHeldMoving(child_node, true);
         }
@@ -1531,17 +1524,11 @@ fn removeHeld(
     suppress_observers: bool,
 ) (DOMException || error{OutOfMemory})!void {
     try removeHeldMoving(node, suppress_observers);
-    orphanRemoved(@ptrCast(node));
 }
 
 /// `removeHeld` for a caller that removes `node` only to link it again in
 /// the same algorithm - "insert"'s step 4.1, which takes a fragment's
-/// children out to give them to the parent in step 7.3: a MOVE. It does not
-/// record the node as a possible orphan (`orphanRemoved`): the record was
-/// stale the moment the node was linked, and `host.innerHTML` of 100,000
-/// spans left 100,000 of them, 2.2 MB, in the realm's list to its end (lane
-/// nm1; MEASURED, malloc_history: one block under removeHeld <- insert <-
-/// replaceAll). The caller records what it leaves unlinked on an error.
+/// children out to give them to the parent in step 7.3: a MOVE.
 /// Blink and WebKit move a fragment's children with no bookkeeping beyond
 /// the removal itself (ContainerNode::InsertBefore -> CollectChildrenAnd
 /// RemoveFromOldParent, a NodeVector of the held children).
@@ -1656,32 +1643,6 @@ fn removeHeldMoving(
         refcount.checkAround(@ptrCast(parent));
         refcount.checkAround(@ptrCast(node));
     }
-}
-
-/// `node` left its tree. A root no wrapper of any realm ever reached - nor
-/// any node of its tree (dom.wrapper_tracing.holdsWrapper) - is an ORPHAN:
-/// no tree teardown and no collector reaches it until reference counting
-/// decides (refcount design step 7). Its realm frees it at its end unless a
-/// tree or a wrapper takes it first (runtime.orphan_roots; lane unwrapped1).
-/// Only where the engine marks every wrap ([wrap_tracking]): elsewhere the
-/// missing mark proves nothing, and the orphan stays until its Browser ends,
-/// as before. The root's own wrapper state no longer speaks for its subtree:
-/// since the wrapper redesign's P7 a wrap reaches no ancestor, so a node
-/// script read out of the tree - getElementById - can be wrapped and held
-/// under a root no script ever saw (tests/wpt/crane/wr7-removed-unwrapped-
-/// root-keeps-held-node.html); its wrapper's reference holds the tree, and
-/// the counts decide that tree's free. Exactly that question - is a node of
-/// the tree WRAPPED - and no broader one: a tree held only by holders'
-/// counts is still recorded and freed at the realm's end, as before P7
-/// (refusing every held tree left lone elements held at the agent's end in
-/// the editing1/2/3 tests; that drain's own fate is refcount step 7b's).
-fn orphanRemoved(node: *NodeBase) void {
-    if (engine.capabilities.wrap_tracking == .unsupported) return;
-    if (node.parent_node != null or !node.wrapper.isEmpty()) return;
-    if (wrapper_tracing.holdsWrapper(node)) return;
-    const instance = node.registeredInstance() orelse return;
-    if (!runtime.instance_lifecycle.provablyUnwrapped(true, instance)) return;
-    runtime.orphan_roots.record(instance.ctx, instance);
 }
 
 // ============================================================================

@@ -1,19 +1,19 @@
 //! The wrapper redesign's P6 for a NODE that holds nodes (tmp/redesign/
-//! wrapper-redesign-design.md 4.4 "Holders"; the integrator's (a)): an open
-//! modal dialog keeps its previously focused element for script - HTML
-//! "close the dialog" focuses it again - and Blink's HTMLDialogElement::Trace
-//! visits previously_focused_element_ (Chromium 131.0.6778.0). Crane asks a
-//! node holder for what it holds where the walk visits it
-//! (NodeBase.traces_held, dom.wrapper_tracing): a dialog in the top layer is
-//! held by the top layer's counted hold, so the walk of its document visits
-//! it - wrapped by script or not.
+//! wrapper-redesign-design.md 4.4 "Holders"; the integrator's (a)) - as it
+//! stands for a dialog's previously focused element since refcount step 7b
+//! (lane rc7b): the dialog holds it WEAKLY, as WebKit's HTMLDialogElement
+//! (`WeakPtr<Element> m_previouslyFocusedElement`) and Gecko's (`nsWeakPtr
+//! mPreviouslyFocusedElement`, reference only) do; Blink traces it. A counted
+//! hold was a node holding a node of its own tree - another dialog, or the
+//! dialog itself - which the counts could never free once a realm's end
+//! stopped freeing whatever counted. HTML "close the dialog" focuses the
+//! element only while it is there; an element out of the document could not
+//! take focus anyway.
 //!
 //! The dialog is opened and closed natively, so script never wraps it; the
-//! saved element is detached and dropped by script, so only the dialog's
-//! hold reaches it. With no node edge (P7 deleted them; P6 ran this with
-//! runtime.lifetime's test-only `tree_edges` off) its wrapper and expando
-//! survive collections while the dialog is open, and go once the dialog
-//! closed.
+//! saved element is detached and dropped by script, so nothing keeps it: its
+//! wrapper goes with the collections while the dialog is still open, and the
+//! dialog's close then focuses nothing and throws nothing.
 const std = @import("std");
 const testing = std.testing;
 const browser_mod = @import("browser");
@@ -80,21 +80,23 @@ fn dialogKeepsItsSavedFocus() !void {
     const wrapped_by_opening = engine.hasWrapper(dialog);
     if (wrapped_by_opening) std.debug.print("note: opening the dialog wrapped it\n", .{});
     try testing.expect(try interfaces.HTMLDialogElement.get_open(dialog));
-    // The saved element leaves the document; script keeps only the WeakRef.
+    // The saved element leaves the document; script keeps only the WeakRef,
+    // and the dialog's weak link keeps nothing: the collections take it while
+    // the dialog is open.
     try page.runScript("window.ref.deref().remove();");
     try collect(browser);
-    try testing.expect(try holds(page, "String(window.ref.deref() !== undefined && window.ref.deref().wr === 'f' && !window.ref.deref().isConnected)"));
+    _ = try browser.runEventLoopBlocking(10);
+    try collect(browser);
+    try testing.expect(try holds(page, "String(window.ref.deref() === undefined)"));
 
-    // Closed: the dialog lets the element go (its focusing steps do nothing
-    // for an element out of the document), and nothing else reaches it.
+    // Closed: no element to give focus back to, and nothing throws.
     interfaces.HTMLDialogElement.call_close(dialog, .{ .was_passed = false, .value = undefined }) catch |err| {
         std.debug.print("close failed: {s}\n", .{@errorName(err)});
         return err;
     };
-    try collect(browser);
-    try testing.expect(try holds(page, "String(window.ref.deref() === undefined)"));
+    try testing.expect(!(try interfaces.HTMLDialogElement.get_open(dialog)));
 }
 
-test "wr6, production since P7 (no node edge): an open modal dialog script never wrapped keeps its detached saved focus's wrapper, and lets it go when closed" {
+test "wr6, since refcount step 7b: an open modal dialog holds its detached saved focus weakly - its wrapper goes while the dialog is open, and the close focuses nothing" {
     try onFreshThread(dialogKeepsItsSavedFocus);
 }

@@ -29,6 +29,10 @@ pub const Implementation = struct {
     /// nothing listens to it (their holds released; see
     /// `dropUnobservedLifecycleTasks`).
     drop_unobserved_lifecycle_tasks: *const fn (document: *runtime.Instance) void,
+    /// Refcount step 7b: a destroyed `document` nothing outside its own work
+    /// holds lets go of the references its own state keeps on its nodes (see
+    /// `releaseOwnReferences`).
+    release_own_references: *const fn (document: *runtime.Instance) void,
     parser_finished: *const fn (document: *runtime.Instance, parser: *anyopaque) void,
     finish_without_parser: *const fn (document: *runtime.Instance) void,
     parsing_stopped: *const fn (document: *runtime.Instance) void,
@@ -121,6 +125,17 @@ pub fn discardParser(document: *runtime.Instance, expected: ?*anyopaque) void {
 pub fn dropUnobservedLifecycleTasks(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.drop_unobserved_lifecycle_tasks(document);
+}
+
+/// A destroyed `document` became unreachable but through the references its
+/// own state keeps on its nodes (refcount_teardown.documentDereffed): they
+/// end - its top layer empties, without events, and its autofocus candidates
+/// go - so the counts can free its tree (refcount step 7b; WebKit's
+/// Document::removedLastRef clears its element pointers "or we will create a
+/// reference cycle").
+pub fn releaseOwnReferences(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    impl.release_own_references(document);
 }
 
 /// Actual EOF, once, with a pump reference held. Document detaches before

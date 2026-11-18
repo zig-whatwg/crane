@@ -95,43 +95,45 @@ test "a keep taken before the node has a wrapper is the wrapper's when it is mad
     try onFreshThread(keepWaitsForTheWrapper);
 }
 
-/// The hold the realm-end case reads from a sweep the test adds after the
-/// Browser's own (`teardown_sweeps.withSweepForTest`): its realm ended and
-/// its nodes were released, its slab is still there (a hold must not
-/// outlive its node's Browser: the wrapper redesign's P6 deleted the
-/// per-node chain that used to empty it).
-const FreedProbe = struct {
+/// A ReachableHold is no realm's: since refcount step 7b (lane rc7b) a
+/// realm's end frees no node whatever its counts, so the hold keeps its node -
+/// and the node's tree - past its realm's end, readable, and its release lets
+/// the counts free it. (Until 7b the realm's end freed the node under the
+/// hold, which then read it as gone and let nothing go.)
+fn holdOutlivesItsRealm() !void {
+    const page = try open();
+    defer page.close();
+    try page.run("globalThis.target = document.body.appendChild(document.createElement('p')); 0;");
+    const base = try page.node("target");
+    const instance = instanceOf(base);
+    const generation = runtime.SlabAllocator.generationOf(instance);
     var hold: dom.node_holds.ReachableHold = .{};
-    var ran: bool = false;
-    var read_live: bool = false;
+    defer hold.release();
+    hold.take(instance, base);
+    try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
 
-    fn sweep(_: *runtime.BrowserScope) void {
-        ran = true;
-        read_live = hold.get() != null;
-        hold.release();
-        hold.release();
-    }
-};
+    // The page ends - a fresh top-level traversable - and its realm with it;
+    // the collections take the old page's wrappers.
+    try page.browser.navigate("about:blank", .window);
+    const context = page.browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "about:blank" });
+    for (0..3) |_| try collect(page);
+    try testing.expectEqual(generation, runtime.SlabAllocator.generationOf(instance));
+    try testing.expect(hold.get() == instance);
+    try testing.expectEqual(dom.NodeBase.ELEMENT_NODE, base.node_type);
+    // A ReachableHold keeps its node's wrapper too (its counted keep: WebKit's
+    // GCReachableRef), so the wrapper outlived the collections with it.
+    try expectCount(2, base, "the hold's and its wrapper's, the wrapper kept by the hold");
 
-fn nodeFreedUnderTheHold() !void {
-    const probe = dom.teardown_sweeps.withSweepForTest(.documents, &FreedProbe.sweep);
-    defer probe.restore();
-    {
-        const page = try open();
-        defer page.close();
-        try page.run("globalThis.target = document.body.appendChild(document.createElement('p')); 0;");
-        const base = try page.node("target");
-        FreedProbe.hold.take(instanceOf(base), base);
-        try expectCount(2, base, "the wrapper's (the born reference, adopted) and the hold's");
-    }
-    // The realm's end freed the node: the hold read it as gone, and its
-    // release made no engine call and wrote nothing.
-    try testing.expect(FreedProbe.ran);
-    try testing.expect(!FreedProbe.read_live);
+    // The hold ends - its keep, then its count: the collections take the
+    // wrapper of the ended realm, and the counts free the node between tasks.
+    hold.release();
+    for (0..3) |_| try collect(page);
+    try testing.expect(runtime.SlabAllocator.generationOf(instance) != generation);
 }
 
-test "a ReachableHold whose node its realm's end freed holds nothing, and lets go of nothing" {
-    try onFreshThread(nodeFreedUnderTheHold);
+test "a ReachableHold keeps its node past its realm's end, and its release lets the counts free it" {
+    try onFreshThread(holdOutlivesItsRealm);
 }
 
 fn emptyHold() !void {

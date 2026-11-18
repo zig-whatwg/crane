@@ -13,7 +13,8 @@ const focus = html.focus;
 const Instance = runtime.Instance;
 const HTMLDialogElement = interfaces.HTMLDialogElement;
 const KeptInstance = dom.custom_elements.KeptInstance;
-const focus_slot: engine.TracedSlot = .{ .name = "dialog:previous-focus" };
+/// A weak link to a node (refcount.WeakRef): no count, no trace.
+const WeakNode = dom.refcount.WeakRef(dom.NodeBase);
 const request_close_source_slot: engine.TracedSlot = .{ .name = "dialog:request-close-source" };
 const close_watchers = html.close_watchers;
 const log = std.log.scoped(.dialog);
@@ -22,12 +23,19 @@ pub const State = HTMLDialogElement.State;
 pub const ImplError = error{ NotImplemented, InvalidStateError, OutOfMemory };
 
 /// Lazy state with both exits: generated destruction and the orphan sweep.
-/// The saved focus uses the existing MemberHold, including its teardown net.
 pub const InternalState = struct {
     allocator: std.mem.Allocator,
     owner: KeptInstance,
     return_value: runtime.DOMString = .empty,
-    previous_focus: dom.node_holds.MemberHold = .{},
+    /// HTML "previously focused element", WEAK (refcount step 7b, lane
+    /// rc7b): WebKit's HTMLDialogElement keeps `WeakPtr<Element>
+    /// m_previouslyFocusedElement` (Source/WebCore/html/HTMLDialogElement.h).
+    /// A counted reference here was a node holding a node of its own tree -
+    /// often another dialog, or the dialog itself (showModal, close,
+    /// showModal) - a cycle the counts could never free. Only "close the
+    /// dialog" reads it, to focus it; an element freed meanwhile was in no
+    /// document and could not take focus anyway.
+    previous_focus: ?WeakNode = null,
     /// HTML "enable close watcher for request close".
     enable_close_watcher_for_request_close: bool = false,
     /// HTML "request close return value": null or a string. OWNED.
@@ -39,10 +47,9 @@ pub const InternalState = struct {
         // As top_layer.State.releaseAfterRealmEnded: an orphan's realm can
         // have ended before the sweep. Its native hold must still unlink.
         if (self.owner.get() == null) {
-            self.previous_focus.kept = false;
             self.request_close_source.kept = false;
         }
-        self.previous_focus.release(self.owner.instance, focus_slot);
+        self.previous_focus = null;
         self.request_close_source.release(self.owner.instance, request_close_source_slot);
         self.setRequestCloseReturnValue(null);
         self.return_value.deinit(self.allocator);
@@ -57,16 +64,22 @@ pub const InternalState = struct {
     }
 
     /// runtime.VTable.trace_held_nodes (the wrapper redesign's P6, design
-    /// 4.4 "Holders"): the saved focus and the request close source, in the
-    /// collector's atomic pause, where the walk visits the dialog
-    /// (NodeBase.traces_held; Blink's HTMLDialogElement::Trace visits
-    /// previously_focused_element_). Reads only: a dialog that made no state
-    /// holds nothing.
+    /// 4.4 "Holders"): the request close source, in the collector's atomic
+    /// pause, where the walk visits the dialog (NodeBase.traces_held). The
+    /// saved focus is weak, and keeps nothing (WebKit's WeakPtr). Reads
+    /// only: a dialog that made no state holds nothing.
     pub fn traceHeldNodes(instance: *Instance, tracer: *@import("engine").Tracer) void {
         const state = instance.stateAs(State) orelse return;
         const self = state.own._internal orelse return;
-        self.previous_focus.trace(tracer);
         self.request_close_source.trace(tracer);
+    }
+
+    /// The previously focused element while it lives (`previous_focus`).
+    fn previousFocus(self: *const InternalState) ?*Instance {
+        const weak = self.previous_focus orelse return null;
+        if (runtime.SlabAllocator.generationOf(weak.instance) != weak.generation) return null;
+        if (dom.instance_bridge.getNodeBase(@ptrCast(@constCast(weak.instance))) == null) return null;
+        return @constCast(weak.instance);
     }
 
     /// Replace the request close source element.
@@ -91,7 +104,7 @@ fn internalState(instance: *Instance) !*InternalState {
 
 /// Install the dialog's non-IDL algorithms once at process startup.
 pub fn installHooks() void {
-    dom.dialog.install(.{ .show_modal = &showModal, .close = &closeDialog, .request_close = &requestCloseDialog, .inert = &modalInertness });
+    dom.dialog.install(.{ .show_modal = &showModal, .close = &closeDialog, .request_close = &requestCloseDialog, .inert = &modalInertness, .release_saved_nodes = &releaseSavedNodes });
     dom.mutation.registerRemovingStepsCallback(&removingSteps) catch |err| {
         log.warn("dialog removing steps not registered: {}", .{err});
     };
@@ -449,16 +462,20 @@ fn beforeToggle(instance: *Instance, opening: bool, source: ?*Instance) !bool {
     return dom.fire_event.dispatchTrusted(instance, event);
 }
 
+/// dom.dialog.releaseSavedNodes: the saved focus and the request close
+/// source let go (refcount step 7b), the dialog's state otherwise unchanged.
+/// A dialog that never made state holds nothing.
+fn releaseSavedNodes(subject: *Instance) void {
+    const state = subject.stateAs(State) orelse return;
+    const internal = state.own._internal orelse return;
+    internal.previous_focus = null;
+    internal.request_close_source.release(subject, request_close_source_slot);
+}
+
 fn savePreviousFocus(subject: *Instance) !void {
     const internal = try internalState(subject);
     const previous = focus.designatedAreaOf(try nodeDocument(subject));
-    if (internal.previous_focus.get() == previous) return;
-    // Root the replacement across releasing the old edge, using the same
-    // existing synchronous retention operation as command dispatch.
-    var hold = if (previous) |element| try retain(element) else null;
-    defer if (hold) |*owned| owned.release();
-    internal.previous_focus.release(subject, focus_slot);
-    if (previous) |element| internal.previous_focus.take(subject, element, focus_slot);
+    internal.previous_focus = if (previous) |element| (if (dom.instance_bridge.getNodeBase(@ptrCast(element))) |base| WeakNode.of(base) else null) else null;
 }
 
 /// HTML "show a modal dialog", including the command invoker as source.
@@ -534,10 +551,10 @@ fn closeDialog(instance: *Instance, return_value: webidl.Opt(runtime.DOMString),
     }
     // Step 12 clears the saved member before running focus callbacks.
     if (subject.getState(State).own._internal) |internal| {
-        const previous = internal.previous_focus.get();
+        const previous = internal.previousFocus();
         var previous_hold = if (previous) |element| try retain(element) else null;
         defer if (previous_hold) |*owned| owned.release();
-        internal.previous_focus.release(subject, focus_slot);
+        internal.previous_focus = null;
         if (previous) |element| {
             const document = try nodeDocument(subject);
             const focused_inside = if (focus.designatedAreaOf(document)) |current| shadowDescendant(current, subject) else false;
