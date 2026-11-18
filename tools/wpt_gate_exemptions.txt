@@ -164,7 +164,7 @@
 #   (wpt#64927, wpt#64928), but Firefox fails them earlier than Chrome and Safari
 #   do, so they are not test-bug: they are follows-majority entries (Crane =
 #   Chrome = Safari).
-# - needs-decoder: none yet (the user, 2026-11-18 2:53 PM ET).
+# - needs-decoder: since 2026-11-18 (the user, 2:53 PM ET), the block at the end of this file (lanes css1, csp1).
 # - follows-majority: since 2026-11-18 (lane gate1), the block at the end of this
 #   file, each verified subtest by subtest against generation 229 and the aligned
 #   stable runs at 2358bd4835; the candidates that did not hold are listed there.
@@ -958,7 +958,8 @@ assertion = assert_true: clicking on popover should always leave everything open
 # (status and failing assertion) against generation 229 (wpt-results/sweep-499dbc7841, main 499dbc7841f) and the
 # aligned stable wpt.fyi runs at Crane's own WPT revision 2358bd4835 (Chrome 157 run 4786307730243584, Firefox 160
 # run 4877168468033536, Safari 27.2 run 6479119966273536); evidence from lanes blk2, blk3, nav2, nav4, nav7, sw1,
-# sel1, forms1, editing5, codex-xhr, codex-shadowfocus, gr2audit and the loss dispositions.
+# sel1, forms1, editing5, codex-xhr, codex-shadowfocus, gr2audit and the loss dispositions; csp1's and net1's
+# candidates (tmp/plans/csp1- and net1-exemption-candidates.txt) are the second group below, checked the same way.
 # Candidates that did NOT hold (they stay blocking):
 # - html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-resolution-order.html:
 #   Crane times out as Firefox does, but Safari fails at an assertion (another order) and Chrome passes - one
@@ -988,8 +989,12 @@ assertion = assert_true: clicking on popover should always leave everything open
 # - service-workers/service-worker/ServiceWorkerGlobalScope/error-message-event.https.html: Crane fails at
 #   captureStream (NotSupportedError), Chrome and Firefox at DataCloneError; Safari passes.
 # - shadow-dom/leaktests/selection.html: Chrome and Safari pass.
-# - xhr/open-url-multi-window-3.htm: Crane = Safari only (send() does not throw); Chrome throws NetworkError and
-#   Firefox passes, so the mechanism majority throws.
+# - fetch/fetch-later/quota/same-origin-iframe/multiple-iframes.https.window.js (lane net1's test-bug candidate,
+#   wpt#64332): not test-bug - Chrome passes because it lags whatwg/fetch#1904 and Firefox and Safari do not ship
+#   fetchLater - and not follows-majority (no browser's result equals Crane's); it stays blocking.
+# - lane csp1's referrer-policy/generic/multiple-headers-one-invalid.html argument (Crane's referrer parse = Firefox
+#   and Safari with a renderer) does not change it: the run fails on geometry first, so no browser's assertion is
+#   Crane's.
 
 [html/semantics/forms/the-input-element/email-value-idn.html]
 kind            = follows-majority
@@ -1298,6 +1303,242 @@ matches         = chrome
 ruling          = golden rule 2: a browser that does not ship the feature does not count toward a majority - Firefox 160 and Safari 27.2 do not ship template-for streaming (17 of 537 subtests in template-for/, against Chrome 157's 505) - so Chrome is the shipping majority; the file's own bug is wpt#65399 (open), not test-bug because Firefox and Safari fail at an earlier assertion
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
+# follows-majority, lanes csp1 and net1's candidates (gate1, 3:12 PM ET): the same check - every subtest's status and
+# failing assertion on the aligned runs at 2358bd4835 against generation 229. Corrected from the lanes' drafts: the
+# four securitypolicyviolation-block-*image* files match Safari only (Chrome fails earlier, with no location), and
+# xhr/open-url-multi-window-3 holds by golden rule 2's mechanism-by-mechanism clause (lane net1 asked for it to be
+# confirmed).
+
+[content-security-policy/connect-src/connect-src-json-import-in-worker-and-worklet-blocked.https.html]
+kind            = follows-majority
+why             = a module DedicatedWorker's static JSON import is checked against the worker's own (empty) CSP, so no violation reaches the creator and subtest 1 times out, exactly as in Chrome, Firefox and Safari (the AudioWorklet subtest is NOTRUN everywhere)
+chrome.result   = wpt.fyi run 4786307730243584: 0/3 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/3 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = golden rule 2, no newer spec: Firefox and WebKit fetch a module worker's static descendants with the worker's settings (whatwg/html#9571, open), Crane's worker_host.zig executeModuleScript does the same (workers/modules/dedicated-worker-import-csp.html: Crane 8/11 = Firefox = Safari); the integrator, 2026-11-18 3:02 PM ET (lane csp1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/reporting-api/reporting-api-sends-reports-on-violation-for-dedicated-worker-import.https.sub.html]
+kind            = follows-majority
+why             = the module DedicatedWorker's cross-origin static import is checked against the worker's own CSP, not the creator's worker-src 'self', so no report is received - both subtests fail as in Chrome, Firefox and Safari (only each engine's TypeError text differs)
+chrome.result   = wpt.fyi run 4786307730243584: 0/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = golden rule 2, no newer spec: whatwg/html#9571 (Firefox and WebKit use the worker's settings for static descendants); the integrator, 2026-11-18 3:02 PM ET (lane csp1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/reporting-api/reporting-api-sends-reports-on-violation-for-shared-worker-import.https.sub.html]
+kind            = follows-majority
+why             = the module SharedWorker's static import is checked against the worker's own CSP, so no report is received - both subtests fail as in Chrome, Firefox and Safari (only each engine's TypeError text differs)
+chrome.result   = wpt.fyi run 4786307730243584: 0/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = golden rule 2, no newer spec: whatwg/html#9571 (Firefox and WebKit use the worker's settings for static descendants); workers/modules/shared-worker-import-csp.html: Crane 6/9 = Firefox = Safari; the integrator, 2026-11-18 3:02 PM ET (lane csp1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/inside-nested-dedicated-worker.html]
+kind            = follows-majority
+why             = the inner module worker's cross-origin static import is checked against the inner worker's own CSP, not the outer worker's script-src 'self', so the outer worker sees no violation and the test times out, as in Chrome, Firefox and Safari
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = golden rule 2, no newer spec: whatwg/html#9571 (Firefox and WebKit use the worker's settings for static descendants); the integrator, 2026-11-18 3:02 PM ET (lane csp1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/worker-src/service-worker-static-import-blocked.https.sub.html]
+kind            = follows-majority
+why             = a module service worker's cross-origin static import is checked against the worker's own CSP, not the registering page's worker-src 'self', so register() resolves and no violation fires - both subtests fail as in Firefox and Safari; Chrome rejects the registration (outside settings) and fails only the violation subtest
+chrome.result   = wpt.fyi run 4786307730243584: 1/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = golden rule 2, no newer spec: whatwg/html#9571 (Firefox and WebKit use the worker's settings for static descendants); the integrator, 2026-11-18 3:02 PM ET (lane csp1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/reporting/report-original-url-on-mixed-content-frame.https.sub.html]
+kind            = follows-majority
+why             = no CSP report is sent for the mixed-content frame block-all-mixed-content would block, as in Firefox and Safari (only each engine's TypeError text differs); only Chrome still reports the obsolete directive
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = golden rule 2: Mixed Content made block-all-mixed-content obsolete (a no-op, all mixed content being blocked or upgraded), which Firefox and Safari ship (lane rep1: "Chrome only")
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/reporting/post-redirect-stacktrace.https.html]
+kind            = follows-majority
+why             = the two stack-trace subtests pass; the two report subtests wait for a ReportingObserver report from a policy with only report-uri, which CSP queues only for report-to, so none comes and the file times out - every subtest exactly as in Firefox
+chrome.result   = wpt.fyi run 4786307730243584: 4/4 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 2/4 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/4 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = firefox
+ruling          = golden rule 2 with no majority (Chrome 4/4, Firefox 2/4, Safari 0/4), mechanism by mechanism: the stack traces do not leak (Chrome and Firefox) and a policy with only report-uri queues no Reporting API report (Firefox and Safari, CSP 3 section 5.5: a report only with report-to) - together Firefox's result (AGENTS.md golden rule 2, the user, 2026-10-17; lane rep1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image.sub.html]
+kind            = follows-majority
+why             = the same column assertion fails as in Safari, each with its JavaScript engine's column (Crane 11, Safari 6); Firefox's column is the one the test expects; Chrome reports no location at all and fails earlier
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the violation's location is captured when update the image data queues its microtask, as Firefox and Safari do; its column is the JavaScript engine's own (V8 11, JavaScriptCore 6, SpiderMonkey 5 = the test's), so no change in Crane's code gives SpiderMonkey's
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/securitypolicyviolation-block-image-from-script.sub.html]
+kind            = follows-majority
+why             = the same location assertion fails as in Safari, each with its JavaScript engine's [line, column] (Crane [2, 7], Safari [2, 2]); Firefox's is the one the test expects; Chrome reports no location at all
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the [line, column] is the JavaScript engine's own
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image.sub.html]
+kind            = follows-majority
+why             = for a cross-origin image, the same column assertion fails as in Safari, each with its JavaScript engine's column (Crane 11, Safari 6); Firefox's is the test's; Chrome reports no location at all
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the column is the JavaScript engine's own
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/securitypolicyviolation-block-cross-origin-image-from-script.sub.html]
+kind            = follows-majority
+why             = for a cross-origin image, the same location assertion fails as in Safari, each with its JavaScript engine's [line, column] (Crane [2, 7], Safari [2, 2]); Firefox's is the test's; Chrome reports no location at all
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = the integrator's golden-rule-2 ruling, 2026-11-12 (lane quick1 C22): the request-time location as Firefox and Safari capture it; the [line, column] is the JavaScript engine's own
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[upgrade-insecure-requests/gen/iframe-blank-inherit.meta/unset/iframe-tag.https.html]
+kind            = follows-majority
+why             = subtests 1-5 pass; subtest 6 (same-https origin, a downgrade redirect, expected blocked) never reports, and the file times out, exactly as in Chrome and Safari; only Firefox passes it
+chrome.result   = wpt.fyi run 4786307730243584: 5/6 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 6/6 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 5/6 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[upgrade-insecure-requests/gen/srcdoc-inherit.meta/unset/iframe-tag.https.html]
+kind            = follows-majority
+why             = subtests 1-5 pass; subtest 6 (same-https origin, a downgrade redirect, expected blocked) never reports, and the file times out, exactly as in Chrome and Safari; only Firefox passes it
+chrome.result   = wpt.fyi run 4786307730243584: 5/6 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 6/6 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 5/6 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[upgrade-insecure-requests/gen/top.meta/unset/iframe-tag.https.html]
+kind            = follows-majority
+why             = subtest 1 (cross-http downgrade redirect, expected blocked) never reports and the rest are NOTRUN, exactly as in Chrome and Safari; Firefox passes 1-2 and times out at 3
+chrome.result   = wpt.fyi run 4786307730243584: 0/6 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 2/6 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/6 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[subresource-integrity/integrity-policy/blocked-url-redirect.https.html]
+kind            = follows-majority
+why             = the frame's Integrity-Policy-Report-Only names no endpoints, so no integrity-violation report is generated and its ReportingObserver waits, as in Firefox and Safari; only Chrome notifies observers without an endpoint
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = golden rule 2, no newer spec: the browser majority and the spec (SRI's report violation steps 11-12 queue a report once per endpoint, unchanged since 2025-07)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[subresource-integrity/integrity-policy/blocked-url-service-worker.https.html]
+kind            = follows-majority
+why             = the report-only policy names no endpoints, so no report is generated and the observer waits, as in Firefox and Safari; Chrome reports, with the service worker's response URL, and fails the assertion
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = golden rule 2, no newer spec: the browser majority and the spec (SRI's report violation steps 11-12)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[cookies/origin-bound-cookies/port-bound-cookies.html]
+kind            = follows-majority
+why             = a cookie set on one port is visible on another port of the same host - cookies stay host-bound, as RFC 6265bis has them - exactly as in Chrome, Firefox and Safari: port-bound cookies (the Origin-Bound Cookies proposal) ship in no browser
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[fetch/metadata/generated/header-link.https.sub.html]
+kind            = follows-majority
+why             = no request is made for a Link response header's rel=icon or rel=stylesheet (HTML processes Link headers only for preload-like links), so all 37 header queries fail exactly as in Chrome and Safari; only Firefox loads Link-header stylesheets (18 subtests)
+chrome.result   = wpt.fyi run 4786307730243584: 0/37 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 18/37 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/37 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[fetch/metadata/generated/header-link.sub.html]
+kind            = follows-majority
+why             = no request is made for a Link response header's rel=icon or rel=stylesheet (HTML processes Link headers only for preload-like links), so all 36 header queries fail exactly as in Chrome and Safari; only Firefox loads Link-header stylesheets (18 subtests)
+chrome.result   = wpt.fyi run 4786307730243584: 0/36 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 18/36 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/36 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[service-workers/service-worker/resource-timing-cross-origin.https.html]
+kind            = follows-majority
+why             = a same-origin fetch a service worker answers with a cross-origin response reports domainLookupStart 0 where the test expects fetchStart, both subtests failing that assertion as in Firefox and Safari (each run's own fetchStart in the message); Chrome fails the first and times out on the second
+chrome.result   = wpt.fyi run 4786307730243584: 0/2 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[websockets/Create-protocols-repeated-case-insensitive.any.js]
+kind            = follows-majority
+why             = protocols repeated only in case do not throw - the WebSockets standard's step 9 rejects values that occur more than once, compared as RFC 6455's case-sensitive tokens - exactly as in Chrome, Firefox and Safari in every variant
+chrome.result   = wpt.fyi run 4786307730243584: 0/6 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/6 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/6 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[websockets/back-forward-cache-with-open-websocket-connection.window.js]
+kind            = follows-majority
+why             = a page with an open WebSocket goes into the back/forward cache ("document unexpectedly BFCached"), as in Chrome and Safari; only Firefox keeps it out
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[websockets/unload-a-document/004.html]
+kind            = follows-majority
+why             = navigating the nested browsing context whose WebSocket was closed discards its document before the test's check ("document was discarded"), exactly as in Chrome and Firefox; Safari fails the same subtest but ends in a harness ERROR (a failed cleanup)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 ERROR (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[xhr/open-url-multi-window-3.htm]
+kind            = follows-majority
+why             = send() on an XMLHttpRequest whose iframe was removed after open() does not throw, as the XHR send() steps say and Safari does; Chrome throws a NetworkError, Firefox the test's InvalidStateError
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = golden rule 2 with no majority (Chrome throws NetworkError, Firefox InvalidStateError, Safari does not throw), mechanism by mechanism: whether send() throws has a majority (yes) but which exception has none, so the majorities are no one browser's behaviour and the spec decides: XHR send() steps 1-2 throw only for its state and the send() flag, not for a document that is not fully active (AGENTS.md golden rule 2, the user, 2026-10-17; lane net1)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
 # test-bug (lane upstream10 filed wpt#65400-65403, #65405-65407 on the user's OK, 2026-11-18; entries by lane gate1,
 # 3:07 PM ET): each fails IDENTICALLY in Chrome 157, Firefox 160 and Safari 27.2 on the aligned stable runs at 2358bd4835
 # (the same status and failing assertion in every subtest; reload-service-worker-fetch-event differs only in each
@@ -1385,3 +1626,100 @@ chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
 firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
 safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 revisit         = when https://github.com/web-platform-tests/wpt/issues/65407 is resolved
+
+# needs-decoder (the user, 2026-11-18 2:53 PM ET; lanes css1 and csp1's candidates, checked by gate1, 3:12 PM ET): every
+# failing subtest of each file is a wait on media the default platform cannot decode - its media_decoding
+# capability decodes RIFF/WAVE PCM only (src/platform/kit/media_decoding/), so canPlayType answers "" for WebM,
+# Ogg and MP4, a typed <source> is skipped before it is fetched, and a fetched resource fails with
+# MEDIA_ERR_SRC_NOT_SUPPORTED instead of reaching canplay or loadeddata. Generation 229's subtests checked by hand;
+# Chrome 157, Firefox 160 and Safari 27.2 pass every file. Each comes off when a video-capable platform runs WPT.
+
+[css/selectors/media/media-playback-state.html]
+kind      = needs-decoder
+why       = the :playing, :paused and :seeking subtests wait for canplay on /common/media.js getVideoURI's video; the default platform decodes WAV only, so canPlayType is "" for WebM and MP4, resource selection ends in MEDIA_ERR_SRC_NOT_SUPPORTED and canplay never fires (the syntax and non-media-element subtests pass)
+media     = /media/counting.mp4 (video/mp4; /media/counting.webm when canPlayType answers for VP9 + Opus)
+assertion = TIMEOUT: Test :playing pseudo-class - Test timed out (then :paused and :seeking NOTRUN; 2/5 pass)
+
+[css/selectors/media/media-playback-state-timing.html]
+kind      = needs-decoder
+why       = the media-resource subtests wait for canplay on getVideoURI's video, which the default platform cannot decode (canPlayType "" for WebM and MP4), so canplay never fires (the subtest without a media resource passes)
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Test :playing and :paused timing with a media resource - Test timed out (then the :seeking subtest NOTRUN; 1/3 pass)
+
+[css/selectors/media/media-playing-paused-style-invalidation.html]
+kind      = needs-decoder
+why       = all three subtests wait for canplay on getVideoURI's video, which the default platform cannot decode (canPlayType "" for WebM and MP4), so canplay never fires
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: CSS invalidation fires for :playing when no :paused rule is present - Test timed out (the other two NOTRUN)
+
+[css/selectors/media/sound-state.html]
+kind      = needs-decoder
+why       = the :muted subtest waits for canplay on getVideoURI's video, which the default platform cannot decode, so canplay never fires and the file times out (the syntax subtest and the three muted-content-attribute subtests pass)
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Test :muted pseudo-class - Test timed out (4/5 pass)
+
+[css/selectors/media/media-loading-state.sub.html]
+kind      = needs-decoder
+why       = the :stalled and :buffering subtests wait for the stalled event of a WebM video the stall script serves 4 KiB of and then holds; the default platform cannot decode WebM, so the element fails before it can stall (the syntax subtest passes)
+media     = support/stall-resume.py, serving /media/movie_300.webm (video/webm)
+assertion = TIMEOUT: Test :stalled pseudo-class - Test timed out (then :buffering NOTRUN; 1/3 pass)
+
+[css/selectors/media/media-loading-state-timing.sub.html]
+kind      = needs-decoder
+why       = the one subtest waits for waiting and stalled on a WebM video the default platform cannot decode; video.play() rejects (no supported source), which the harness reports as the file's unhandled rejection
+media     = support/stall-resume.py?video, serving /media/movie_300.webm (video/webm)
+assertion = harness ERROR: Unhandled rejection (the play() promise), and TIMEOUT: Test :stalled timing relative to waiting and timeupdate events - Test timed out
+
+[css/selectors/invalidation/media-pseudo-classes-in-has.html]
+kind      = needs-decoder
+why       = the :has(:playing), :has(:seeking) and :has(:muted) subtests wait for canplay on getVideoURI's video, which the default platform cannot decode, so canplay never fires
+media     = /media/counting.mp4 (video/mp4)
+assertion = TIMEOUT: Test :playing pseudo-class - Test timed out (then :seeking and :muted NOTRUN)
+
+[css/selectors/invalidation/media-loading-pseudo-classes-in-has.sub.html]
+kind      = needs-decoder
+why       = the :has(:stalled) and :has(:buffering) subtests wait for the stalled event of a WebM video the default platform cannot decode, so the element fails before it can stall
+media     = ../media/support/stall-resume.py, serving /media/movie_300.webm (video/webm)
+assertion = TIMEOUT: Test :has(:stalled) invalidation - Test timed out (then :has(:buffering) NOTRUN)
+
+[content-security-policy/media-src/media-src-7_1.html]
+kind      = needs-decoder
+why       = the in-policy WebM loads but the default platform cannot decode it, so the element fires error where the test waits for loadeddata
+media     = /media/A4.webm (video/webm)
+assertion = assert_unreached: Media error handler should be triggered for non-allowed domain. Reached unreachable code (subtests 1-2; subtest 3 NOTRUN)
+
+[content-security-policy/media-src/media-src-7_1_2.sub.html]
+kind      = needs-decoder
+why       = the <source type="video/webm"> is skipped by resource selection before it is fetched (canPlayType answers ""), so only the src= video reaches media-src's check and one of the two expected violations fires (both element subtests pass)
+media     = /media/A4.webm (video/webm)
+assertion = TIMEOUT: Test that securitypolicyviolation events are fired - Test timed out (2/3 pass)
+
+[content-security-policy/media-src/media-src-7_2.html]
+kind      = needs-decoder
+why       = the in-policy Ogg audio loads but the default platform cannot decode it, so the element fires error where the test waits for loadeddata
+media     = /media/sound_5.oga (audio/ogg)
+assertion = assert_unreached: Media error handler should be triggered for non-allowed domain. Reached unreachable code (subtests 1-2; subtest 3 NOTRUN)
+
+[content-security-policy/media-src/media-src-7_2_2.sub.html]
+kind      = needs-decoder
+why       = the <source> typed audio/webm is skipped by resource selection before it is fetched (canPlayType answers ""), so one of the two expected violations fires (both element subtests pass)
+media     = /media/sound_5.oga (a <source> typed audio/webm)
+assertion = TIMEOUT: Test that securitypolicyviolation events are fired - Test timed out (2/3 pass)
+
+[content-security-policy/media-src/media-src-7_3.sub.html]
+kind      = needs-decoder
+why       = the video's only source is A4.webm, skipped because the default platform cannot decode WebM, so loadeddata never fires and the in-policy track test never runs
+media     = /media/A4.webm (video/webm)
+assertion = harness TIMEOUT: In-policy track element and Should not fire policy violation events NOTRUN
+
+[content-security-policy/media-src/media-src-blocked.sub.html]
+kind      = needs-decoder
+why       = subtest 2's <source type="video/webm"> is skipped by resource selection before any fetch, so media-src 'none' never sees it and the awaited violation never comes; subtests 3-4 are NOTRUN behind it (4's <source> typed audio/webm would be skipped the same way; subtest 1 passes)
+media     = /media/A4.webm (video/webm) and /media/sound_5.oga (a <source> typed audio/webm)
+assertion = TIMEOUT: Disallowed async video source element - Test timed out (1/4 pass)
+
+[content-security-policy/media-src/media-src-redir-bug.sub.html]
+kind      = needs-decoder
+why       = the in-policy WebM, direct and through a redirect, loads but the default platform cannot decode it, so the element fires error where the test waits for loadeddata
+media     = /media/A4.webm (video/webm)
+assertion = assert_unreached: Media error handler shouldn't be triggered for allowed domain. Reached unreachable code (subtests 1-3; 4-5 NOTRUN)
