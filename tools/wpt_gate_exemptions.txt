@@ -856,3 +856,13 @@ assertion = assert_unreached: Lazy-loading iframe far from viewport should not l
 kind      = needs-renderer
 why       = the frame sits 10000vh (or far to the side) inside a 100 px scroller; only layout says it does not intersect the viewport, and with no renderer Crane's lazy-load check treats every frame as being rendered (intersecting), so the lazy frame loads (horizontal scroller); the frame's load then calls iframe_onload, which the test never defines (it defines img_onload), so the harness reports an ERROR - reached only because the frame loads; with layout the frame would not load and the file passes
 assertion = harness ERROR: ReferenceError: iframe_onload is not defined (its one subtest passes)
+
+[navigation-api/scroll-behavior/after-transition-reload-after-traverse.html]
+kind      = needs-renderer
+why       = every scroll the test compares is "scroll to the fragment" for #frag, a div below 1000px of content: scrolling a target into view reads its box (CSSOM View "scroll a target into view" returns early for an element with no box), so with no renderer #frag's position is never applied - scrollY_frag reads 0 and the reload's after-transition scroll leaves the window where scrollTo(0, scrollY_frag + 30) put it; with layout the reload scrolls back to #frag (Chrome 157, Firefox 160 and Safari 27.2 pass 1/1); the reload's other step, scrolling to the fragment rather than restoring, runs (process scroll behavior, lane blk3)
+assertion = assert_equals: should scroll to the fragment, ignoring any saved scroll position expected 0 but got 30
+
+[performance-timeline/getEntriesByName-sort.html]
+kind      = needs-renderer
+why       = the test waits for the "first-contentful-paint" PerformancePaintTiming entry, which Paint Timing marks only when the rendering of a document paints contentful content ("mark paint timing" in update the rendering, with a contentful paint of the page's text); Crane paints nothing, so the entry never comes and the promise never settles - a renderer's answer, not geometry alone: the integrator's ruling of 2026-11-18 (paint timing is the renderer's; Crane's PerformancePaintTiming stays a stub until a renderer reports what it painted, so a renderer brings that work with it); Chrome 157 and Safari 27.2 pass 1/1, Firefox 160 fails its sort assertion
+assertion = TIMEOUT: getEntriesByName() sorts the paint entry by startTime - Test timed out
