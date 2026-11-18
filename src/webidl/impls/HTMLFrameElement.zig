@@ -191,7 +191,6 @@ fn createChildNavigable(element: *runtime.Instance) ?*IFrameIntegration {
     if (interfaces.Element.call_getAttribute(element, runtime.DOMString.initInterned("name")) catch null) |name| {
         if (name.len() > 0) {
             integration.setName(name.asSlice()) catch {};
-            dom.navigables.registerNamedProperty(integration, name.asSlice());
         }
     }
     return integration;

@@ -8807,7 +8807,6 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
             const owned = internal.allocator.dupe(u8, n) catch return;
             defer internal.allocator.free(owned);
             internal.integration.setName(owned) catch {};
-            dom_module.navigables.registerNamedProperty(internal.integration, owned);
         }
     }
 
