@@ -8011,6 +8011,18 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     // events queued, to fire after pageshow) - the navigation API's part,
     // which its Navigation object does (dom.navigation_api.reactivate).
     dom_module.navigation_api.reactivate(page.window);
+    // And each of its frames' documents, reactivated with it (bfcache phase
+    // C): each frame's navigation API takes its entry list from the history
+    // as it is now - a push of the top-level page while it was cached pruned
+    // the frame's forward entries, which the cached frame did not hear of
+    // (Navigation's entriesRemovedHook skips a kept page) - and the entries
+    // that went fire dispose after its pageshow. Chrome 157 and Safari 27.2
+    // (and Firefox nightly) dispose them then: navigation-api/
+    // navigation-history-entry/entries-after-bfcache-in-iframe.html.
+    for (page.frames) |frame| {
+        if (runtime.SlabAllocator.generationOf(frame.window) != frame.window_generation) continue;
+        dom_module.navigation_api.reactivate(frame.window);
+    }
 
     // Step 9: "reactivate" - its tasks and timers resume, then pageshow.
     dom_module.bfcache.reactivate(&page);

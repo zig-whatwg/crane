@@ -2758,6 +2758,12 @@ fn entriesRemovedHook(top_ptr: *anyopaque) void {
         const internal = getInternal(navigation) orelse continue;
         const s = scopeOf(navigation, internal) orelse continue;
         if (s.navigable.getTop() != top) continue;
+        // A frame of a page the back/forward cache keeps is not fully
+        // active: its entries go when the page comes back ("update the
+        // navigation API entries for reactivation", whose dispose events
+        // fire after pageshow - HTMLIFrameElement's restore reactivates each
+        // frame's navigation API), never while it is cached.
+        if (dom.bfcache.holds(@ptrCast(s.window))) continue;
         others.append(std.heap.c_allocator, .{ .instance = navigation, .generation = runtime.SlabAllocator.generationOf(navigation) }) catch return;
     }
     for (others.items) |other| {
