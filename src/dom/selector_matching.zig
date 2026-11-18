@@ -691,6 +691,8 @@ fn readsVolatileState(kind: PseudoClassKind, data: ElementData) bool {
         // dialog's, a select's and an input's picker are not.
         .Open => html and (std.mem.eql(u8, local, "dialog") or std.mem.eql(u8, local, "select") or std.mem.eql(u8, local, "input")),
         .PopoverOpen => data.findAttribute(null, "popover") != null,
+        // A fullscreen element is :modal too (HTML 4.16.3); that answer
+        // changes with the top layer, as :fullscreen's does (below).
         .Modal => html and std.mem.eql(u8, local, "dialog"),
         // :fullscreen changes with the top layer, whose revision moves the
         // style engine's generation (StyleEngine.observeTopLayer): every
