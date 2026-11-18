@@ -226,10 +226,17 @@ pub fn effectOptions(realm: runtime.Context, options: ?JSValue, allocator: Alloc
         defer m.release();
         out.id = try engine.convertToDOMString(realm, m.borrow(), allocator);
     }
-    // rangeEnd, rangeStart: read as the dictionary does; view and scroll
-    // timelines' ranges have no effect on a document timeline.
-    if (try reader.get("rangeEnd")) |m| m.release();
-    if (try reader.get("rangeStart")) |m| m.release();
+    // rangeEnd, rangeStart: converted and checked as Web Animations 2 §6.1
+    // says (`rangeOption`); view and scroll timelines' ranges have no effect
+    // on a document timeline.
+    if (try reader.get("rangeEnd")) |m| {
+        defer m.release();
+        try rangeOption(realm, m.borrow(), allocator);
+    }
+    if (try reader.get("rangeStart")) |m| {
+        defer m.release();
+        try rangeOption(realm, m.borrow(), allocator);
+    }
     if (try reader.get("timeline")) |m| {
         defer m.release();
         if (engine.typeOf(realm, m.borrow()) == .null) {
@@ -242,6 +249,106 @@ pub fn effectOptions(realm: runtime.Context, options: ?JSValue, allocator: Alloc
     }
     if (try reader.get("trigger")) |m| m.release();
     return out;
+}
+
+/// Web Animations 2 KeyframeAnimationOptions rangeStart / rangeEnd:
+/// `(TimelineRangeOffset or CSSNumericValue or CSSKeywordValue or
+/// DOMString)`. A DOMString "is parsed as an animation-range-end value"
+/// (`normal | <timeline-range-name> <length-percentage>? |
+/// <length-percentage>`), a CSSKeywordValue other than "normal" throws a
+/// TypeError, a CSSNumericValue is an offset with no range name, and a
+/// TimelineRangeOffset names a range (a <timeline-range-name>; `none` is
+/// none) and an offset. Every offset must be computationally independent:
+/// font-relative units, which nothing resolves for a script-set range, throw
+/// a TypeError (csswg-drafts#13853; WebKit 318815@main, Gecko, and Chromium
+/// gating its rejection for Interop 2026 -
+/// web-animations/interfaces/Animation/animation-range-invalid.html, Firefox
+/// and Safari Technology Preview 11/11: golden rule 2's newer behaviour).
+fn rangeOption(realm: runtime.Context, value: JSValue, allocator: Allocator) !void {
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(allocator);
+    if (engine.typeOf(realm, value) == .object) if (engine.convertToPlatformObject(realm, value)) |instance| {
+        if (instance.stateAs(interfaces.CSSKeywordValue.State) != null) {
+            const keyword = try interfaces.CSSKeywordValue.get_value(instance);
+            defer instance.ctx.allocator.free(keyword);
+            if (!std.mem.eql(u8, keyword, "normal")) return error.TypeError;
+            return;
+        }
+        if (instance.stateAs(interfaces.CSSNumericValue.State) != null) {
+            const serialized = try @import("../style/typed_om.zig").serializeNumeric(instance);
+            defer instance.ctx.allocator.free(serialized);
+            try text.appendSlice(allocator, serialized);
+            return checkRangeText(allocator, text.items, true);
+        }
+    };
+    if (engine.typeOf(realm, value) == .object) {
+        // TimelineRangeOffset: rangeName (CSSOMString?), offset
+        // (CSSNumericValue).
+        const name = try engine.getProperty(realm, value, "rangeName");
+        defer name.release();
+        switch (engine.typeOf(realm, name.borrow())) {
+            .undefined, .null => {},
+            else => {
+                const decoded = try engine.convertToDOMString(realm, name.borrow(), allocator);
+                defer allocator.free(decoded);
+                if (!isTimelineRangeName(decoded)) return error.TypeError;
+                try text.appendSlice(allocator, decoded);
+            },
+        }
+        const offset = try engine.getProperty(realm, value, "offset");
+        defer offset.release();
+        if (engine.typeOf(realm, offset.borrow()) != .undefined) {
+            const instance = engine.convertToPlatformObject(realm, offset.borrow()) orelse return error.TypeError;
+            if (instance.stateAs(interfaces.CSSNumericValue.State) == null) return error.TypeError;
+            const serialized = try @import("../style/typed_om.zig").serializeNumeric(instance);
+            defer instance.ctx.allocator.free(serialized);
+            if (text.items.len != 0) try text.append(allocator, ' ');
+            try text.appendSlice(allocator, serialized);
+            return checkRangeText(allocator, text.items, true);
+        }
+        return;
+    }
+    // The union's DOMString arm (ToString of anything else).
+    const string = try engine.convertToDOMString(realm, value, allocator);
+    defer allocator.free(string);
+    return checkRangeText(allocator, string, false);
+}
+
+/// Scroll Animations 1 <timeline-range-name>.
+fn isTimelineRangeName(name: []const u8) bool {
+    for ([_][]const u8{ "cover", "contain", "entry", "exit", "entry-crossing", "exit-crossing", "scroll" }) |known| {
+        if (std.mem.eql(u8, name, known)) return true;
+    }
+    return false;
+}
+
+/// `text` is one animation-range-end value (`offset_only`: a
+/// <length-percentage>, with any range name already checked) whose offset is
+/// computationally independent; else a TypeError.
+fn checkRangeText(allocator: Allocator, text: []const u8, offset_only: bool) !void {
+    const css = @import("css");
+    var block = css.declarations.DeclarationBlock.init(allocator);
+    defer block.deinit();
+    if (!try block.setProperty(.{ .allocator = allocator }, "animation-range-end", text, "")) return error.TypeError;
+    var tokenizer = css.tokenizer.Tokenizer.init(text);
+    var items: usize = 0;
+    while (true) {
+        const token = tokenizer.next();
+        switch (token.token_type) {
+            .eof => break,
+            // One value, not a list.
+            .comma => return error.TypeError,
+            .whitespace => continue,
+            .ident => if (offset_only and items == 0 and std.ascii.eqlIgnoreCase(token.value, "normal")) return error.TypeError,
+            .dimension => {
+                const unit = token.unit orelse continue;
+                inline for (.{ "em", "rem", "ex", "rex", "cap", "rcap", "ch", "rch", "ic", "ric", "lh", "rlh" }) |name|
+                    if (css.tokenizer.nameEql(unit, name)) return error.TypeError;
+            },
+            else => {},
+        }
+        items += 1;
+    }
 }
 
 /// WebIDL `double`: ToNumber, and a TypeError when not finite.
