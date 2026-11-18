@@ -13,7 +13,7 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change-ext
 //!
-//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement, HTMLElement, SVGElement, SVGStyleElement
+//! lint-impls: hook for HTMLIFrameElement, HTMLScriptElement, HTMLDetailsElement, HTMLLinkElement, HTMLInputElement, HTMLSlotElement, HTMLElement, SVGElement, SVGStyleElement, SVGScriptElement
 
 const std = @import("std");
 const hook = @import("hook.zig");
@@ -56,7 +56,10 @@ const max_entries = 32;
 /// Per (namespace, attribute) steps: nine at lane quick1 (2026-11-12: the
 /// nonce step for each of the three namespaces whose elements include
 /// HTMLOrSVGOrMathMLElement), ten with the SVG style element's media step
-/// (quick1 b4); past the bound, the process start panics.
+/// (quick1 b4), eleven with the SVG script element's href step (lane blk2);
+/// past the bound, the process start panics. Two owners may install steps
+/// for one (namespace, attribute) - SVG's href is a resource reference
+/// (style/svg_resources.zig) and an SVG script's URL - and each runs.
 const max_attribute_entries = 16;
 const Tables = struct {
     elements: hook.List(Entry, max_entries) = .empty,
@@ -90,11 +93,14 @@ pub fn install(element: []const u8, steps: Steps) void {
 }
 
 /// Install once, at process start, for an ATTRIBUTE local name on every
-/// element in `namespace`. The strings live for the process.
+/// element in `namespace`. The strings live for the process. Idempotent per
+/// change step: installing the same `steps.change` again for the same
+/// (namespace, attribute) updates its reader; a different change step is
+/// another owner's, and both run.
 pub fn installForAttribute(namespace: []const u8, attribute_local_name: []const u8, steps: AttributeSteps) void {
     const tables = entries.installing();
     for (tables.attributes.mutableSlice()) |*entry| {
-        if (std.mem.eql(u8, entry.attribute, attribute_local_name) and std.mem.eql(u8, entry.element_namespace, namespace)) {
+        if (std.mem.eql(u8, entry.attribute, attribute_local_name) and std.mem.eql(u8, entry.element_namespace, namespace) and entry.steps.change == steps.change) {
             if (!std.meta.eql(entry.steps, steps)) entry.steps = steps;
             return;
         }
@@ -110,7 +116,6 @@ pub fn runForAttribute(element: *runtime.Instance, element_namespace: []const u8
         if (!std.mem.eql(u8, entry.attribute, local_name)) continue;
         if (!std.mem.eql(u8, entry.element_namespace, element_namespace)) continue;
         entry.steps.change(element, local_name, old_value, value, namespace);
-        return;
     }
 }
 
@@ -189,4 +194,27 @@ test "attribute steps dispatch by attribute then element namespace, with an inde
     try std.testing.expectEqual(@as(usize, 1), Test.calls);
     try std.testing.expectEqualStrings("private slot", readForAttribute(&element, "urn:a", "nonce").?);
     try std.testing.expect(readForAttribute(&element, "urn:b", "nonce") == null);
+}
+
+test "two owners' steps for one (namespace, attribute) both run, each installed once" {
+    const override = entries.overrideForTest(.{});
+    defer override.restore();
+    const Test = struct {
+        var first: usize = 0;
+        var second: usize = 0;
+        fn one(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
+            first += 1;
+        }
+        fn two(_: *runtime.Instance, _: []const u8, _: ?[]const u8, _: ?[]const u8, _: ?[]const u8) void {
+            second += 1;
+        }
+    };
+    installForAttribute("urn:a", "href", .{ .change = &Test.one });
+    installForAttribute("urn:a", "href", .{ .change = &Test.two });
+    installForAttribute("urn:a", "href", .{ .change = &Test.one });
+    try std.testing.expectEqual(@as(usize, 2), entries.get().attributes.len);
+    var element: runtime.Instance = undefined;
+    runForAttribute(&element, "urn:a", "href", null, "x", null);
+    try std.testing.expectEqual(@as(usize, 1), Test.first);
+    try std.testing.expectEqual(@as(usize, 1), Test.second);
 }
