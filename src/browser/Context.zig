@@ -145,8 +145,8 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
     other.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const interval: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const interval: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
     const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
     try std.testing.expect(id != 0 and interval != 0 and elsewhere != 0);
 
@@ -192,7 +192,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
     defer manager.deinit();
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
-    const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
+    const resident: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
     var starved: usize = 0;
     var worst: usize = 0;
@@ -200,7 +200,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
         // A page's debounced work: timers armed, then cleared before due.
         var ids: [12]TimerId = undefined;
         for (&ids, 0..) |*id, i| {
-            id.* = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
+            id.* = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
             if (i == 0) {
                 const map = &realm.active_timers.map;
                 if (!webidl.utils.tombstones.slotCounts(map).halfOfUnusedFree()) starved += 1;
@@ -231,17 +231,17 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     defer manager.deinit();
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
-    const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
+    const resident: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
-    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
+    for (0..16) |_| clearTimer(&realm, try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
     const before = TimerMap.of(&realm).capacity();
 
     const burst = try allocator.alloc(i32, 5_000);
     defer allocator.free(burst);
-    for (burst) |*id| id.* = initializeTimer(&realm, .{ .function = .{ .number = 3 } }, 60_000, &.{}, false);
+    for (burst) |*id| id.* = try initializeTimer(&realm, .{ .function = .{ .number = 3 } }, 60_000, &.{}, false);
     for (burst) |id| clearTimer(&realm, id);
     // The next timers the pages that follow set.
-    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
+    for (0..16) |_| clearTimer(&realm, try initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
 
     const after = TimerMap.of(&realm).capacity();
     if (after > @max(before, 64)) {
@@ -263,8 +263,8 @@ test "a queued timer's task owns its record: suspension skips it, clearing relea
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
     realm.timer = manager.timerInterface();
-    const cleared: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const dropped: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
+    const cleared: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const dropped: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
     var queued: [2]*WindowTimerCallback = undefined;
     for ([_]TimerId{ cleared, dropped }, 0..) |key, i| {
         const wrapper = TimerMap.of(&realm).get(key).?;
@@ -300,8 +300,8 @@ test "a window's end leaves a queued timer's record to its task, holding no hand
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
     realm.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const armed: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, false));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const armed: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, false));
     try std.testing.expect(armed != 0);
     const wrapper = TimerMap.of(&realm).get(id).?;
     try std.testing.expect(manager.clearTimeout(wrapper.getData().current_timer_id));
@@ -328,7 +328,7 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
     other.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
     const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
     try std.testing.expect(id != 0 and elsewhere != 0);
     const armed = TimerMap.of(&realm).get(id).?.getData().current_timer_id;
