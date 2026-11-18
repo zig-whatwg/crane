@@ -4523,8 +4523,14 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 // (and so its reasons) across one: Chromium, the one engine
                 // that ships NotRestoredReasons, resets them, and
                 // performance-navigation-timing-reload.tentative expects
-                // null (Edge 157 passes it on wpt.fyi).
-                .not_restored_reasons = notRestoredReasonsOf(integration, record),
+                // null (Edge 157 passes it on wpt.fyi). Null after a
+                // traversal whose fetch was redirected too: the reasons are
+                // the original page's, not the redirect target's (Chromium
+                // NavigationRequest::OnRedirectChecksComplete resets the
+                // commit's not_restored_reasons at every redirect; HTML says
+                // nothing of it): not-restored-reasons/
+                // redirect-on-history.window.js, which Chrome 157 passes.
+                .not_restored_reasons = if (timing.redirect_count > 0 or response.has_cross_origin_redirects) null else notRestoredReasonsOf(integration, record),
                 // A traversal to the entry it leaves is a reload (as the
                 // navigation API's activation reads it), any other is
                 // back_forward; a push or replace navigates.
