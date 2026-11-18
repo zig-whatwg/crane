@@ -868,62 +868,6 @@ const nghttp2_sources = [_][]const u8{
     "nghttp2_debug.c",         "sfparse.c",
 };
 
-/// Warns when `-Dsystem-curl` selects a libcurl that cannot do WebSockets.
-///
-/// `curl_ws_send`/`curl_ws_recv` have been declared in `<curl/websockets.h>`
-/// since 7.86, so the link always succeeds. A libcurl built without the feature
-/// just returns `CURLE_UNSUPPORTED_PROTOCOL` at runtime - invisible at build
-/// time, and afterwards indistinguishable from a Crane bug. macOS still ships
-/// 8.7.1, whose `curl-config --features` has no `WebSockets` entry; the vendored
-/// curl (8.18.0, see `buildStaticLibcurl`) has it compiled in.
-///
-/// Advisory only: `-Dsystem-curl` is a legitimate shortcut for work that never
-/// opens a WebSocket, so a missing feature must warn rather than fail.
-fn warnIfSystemCurlLacksWebSockets(b: *std.Build) void {
-    // A configure-time probe of the machine the configure cache cannot track.
-    b.graph.poisonCache();
-    var code: u8 = 0;
-    const features = b.runAllowFail(
-        &.{ "curl-config", "--features" },
-        &code,
-        .ignore,
-    ) catch {
-        std.debug.print(
-            "warning: -Dsystem-curl is set, but `curl-config --features` would not run, " ++
-                "so the system libcurl's WebSocket support is unverified.\n" ++
-                "         If WebSockets fail at runtime, omit -Dsystem-curl to build the " ++
-                "vendored curl 8.18.0.\n",
-            .{},
-        );
-        return;
-    };
-
-    // One feature per line. No other curl feature name contains "WebSockets".
-    var it = std.mem.tokenizeAny(u8, features, " \t\r\n");
-    while (it.next()) |feature| {
-        if (std.ascii.eqlIgnoreCase(feature, "WebSockets")) return;
-    }
-
-    var version_code: u8 = 0;
-    const version_out: []const u8 = b.runAllowFail(
-        &.{ "curl-config", "--version" },
-        &version_code,
-        .ignore,
-    ) catch "";
-    const version = std.mem.trim(u8, version_out, " \t\r\n");
-
-    std.debug.print(
-        "warning: -Dsystem-curl is set and the system {s} lacks WebSocket support " ++
-            "(`curl-config --features` lists no `WebSockets`).\n" ++
-            "         src/websocket links that libcurl, so `curl_ws_send` resolves at " ++
-            "link time and returns CURLE_UNSUPPORTED_PROTOCOL at run time: every " ++
-            "WebSocket connection fails,\n" ++
-            "         and the WebSocket tests with it. Omit -Dsystem-curl to build the " ++
-            "vendored curl 8.18.0, which has WebSockets compiled in.\n",
-        .{if (version.len != 0) version else "libcurl"},
-    );
-}
-
 /// The name of the generated test root `addTestFilesFromDir` writes into each
 /// test directory (gitignored).
 const test_root_name = ".all_tests.zig";
@@ -941,6 +885,9 @@ const TestSelection = struct {
     /// beside its wiring (`recordSuiteDir`), whether or not -Dspec selects
     /// it. `checkEveryTestDirectoryIsASuite` reads it.
     suite_dirs: *std.ArrayList([]const u8) = undefined,
+    /// What the configure reads of the checkout (`ConfigureInputs`): each
+    /// directory `addTestFilesFromDir` walks, and the root it writes.
+    inputs: *ConfigureInputs = undefined,
     /// How every test executable that links the engine links it.
     engine_link: engine_build.Link,
     /// -Dtest-binaries=engine: the directories `test` runs that link the
@@ -1018,6 +965,52 @@ const OneBinary = struct {
 /// many-Browsers variant never runs a busy Browser beside it).
 const SuiteGroup = struct { prefix: []const u8, config: SuiteConfig, plain: bool };
 
+/// What the configure reads of the checkout, each path made an input of
+/// Zig 0.17's configure cache once (std.Build `dependOnDirectoryContents`,
+/// `dependOnFileContents`). Zig caches this file's configuration and
+/// configures again only when a tracked input changes, so a read the cache
+/// does not know of leaves a stale configuration - a new tests/<dir>/ test
+/// file that no executable compiles. A read is tracked, never answered by
+/// poisoning the cache, which would make every `zig build` configure afresh
+/// (`check-configure-cache` holds that; lane cfg1).
+///
+/// A directory dependency is its entries' names and kinds, not recursive: a
+/// walk tracks every directory it lists. A missing path cannot be a
+/// dependency (Zig fails the build on it), so its absence is tracked as the
+/// listing of its nearest existing ancestor, which its arrival changes.
+/// Paths are relative to the build root, which the reads go through too.
+const ConfigureInputs = struct {
+    tracked: std.StringHashMapUnmanaged(void) = .empty,
+
+    /// The configure listed the entries of the directory `path`.
+    fn directory(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        if (inputs.isNew(b, path)) b.dependOnDirectoryContents(b.path(path));
+    }
+
+    /// The configure read the contents of the file `path` (or wrote them:
+    /// a generated root is tracked too, so a deleted or edited one is
+    /// written again).
+    fn file(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        if (inputs.isNew(b, path)) b.dependOnFileContents(b.path(path));
+    }
+
+    /// The configure found nothing at `path`.
+    fn absent(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) void {
+        var dir = path;
+        while (std.fs.path.dirnamePosix(dir)) |parent| {
+            dir = parent;
+            const stat = b.root.root_dir.handle.statFile(b.graph.io, dir, .{}) catch continue;
+            if (stat.kind == .directory) return inputs.directory(b, dir);
+        }
+        inputs.directory(b, ".");
+    }
+
+    fn isNew(inputs: *ConfigureInputs, b: *std.Build, path: []const u8) bool {
+        const entry = inputs.tracked.getOrPut(b.allocator, path) catch @panic("OOM");
+        return !entry.found_existing;
+    }
+};
+
 /// Record `dir`, a tests/<dir>/ whose tests a hand-made root runs, as a
 /// suite (`TestSelection.suite_dirs`).
 fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
@@ -1031,13 +1024,19 @@ fn recordSuiteDir(b: *std.Build, select: TestSelection, dir: []const u8) void {
 /// sits directly in tests/, where no suite looks (lane testfix2). Run when
 /// the whole tree is configured - no -Dspec, no -Dtest-file - since a
 /// selection skips suites.
-fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8) void {
-    // A configure-time read of the checkout the configure cache cannot track.
-    b.graph.poisonCache();
+///
+/// What the scan may read - tests/ and every directory below it but the WPT
+/// checkout's (test_suites.scannedDirs) - is an input of the configure cache
+/// (`ConfigureInputs`): a test directory or file added anywhere there
+/// configures again, and fails here when no suite takes it (lane cfg1).
+fn checkEveryTestDirectoryIsASuite(b: *std.Build, suite_dirs: []const []const u8, inputs: *ConfigureInputs) void {
     const io = b.graph.io;
     var tests_dir = b.root.root_dir.handle.openDir(io, "tests", .{ .iterate = true }) catch |err|
         std.debug.panic("build.zig: cannot open tests/ to check its suites: {s}", .{@errorName(err)});
     defer tests_dir.close(io);
+    const scanned = test_suites.scannedDirs(b.allocator, io, tests_dir, "tests") catch |err|
+        std.debug.panic("build.zig: cannot list the directories under tests/: {s}", .{@errorName(err)});
+    for (scanned) |dir| inputs.directory(b, dir);
     const with_tests = test_suites.dirsWithTests(b.allocator, io, tests_dir, "tests") catch |err|
         std.debug.panic("build.zig: cannot scan tests/ for test files: {s}", .{@errorName(err)});
     const missing = test_suites.missing(b.allocator, with_tests, suite_dirs) catch @panic("OOM");
@@ -1420,6 +1419,29 @@ fn addConfigurationsAgree(b: *std.Build, tool: *std.Build.Step.Compile, what: []
     return check;
 }
 
+/// Fail `check` for each Run step `top` reaches that carries an environment
+/// map of its own. `Run.setEnvironmentVariable` (and `getEnvMap`) copies the
+/// WHOLE configure-time environment into the configuration, and Zig 0.17's
+/// configure cache does not key on the environment: a cached configuration
+/// hands every later build the environment of the build that configured it
+/// (`CRANE_TEST_STATE=report` on a later run would not reach that step). A
+/// variable a program needs is passed as its argument instead - the test
+/// launcher's `--child-env=NAME=VALUE` sets it in the processes it starts
+/// (lane cfg1).
+fn checkNoEnvironmentCopies(b: *std.Build, check: *std.Build.Step) void {
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Step, void) = .empty;
+    var stack: std.ArrayList(*std.Build.Step) = .empty;
+    for (b.top_level_steps.values()) |top| stack.append(b.allocator, &top.step) catch @panic("OOM");
+    while (stack.pop()) |step| {
+        if ((seen.getOrPut(b.allocator, step) catch @panic("OOM")).found_existing) continue;
+        if (step.cast(std.Build.Step.Run)) |run| if (run.environ_map != null) check.dependOn(&b.addFail(b.fmt(
+            "the Run step '{s}' carries the configure-time environment (Run.setEnvironmentVariable copies all of it, and a cached configuration replays it): pass the variable as an argument instead (the test launcher's --child-env=NAME=VALUE)",
+            .{step.name},
+        )).step);
+        for (step.dependencies.items) |dependency| stack.append(b.allocator, dependency) catch @panic("OOM");
+    }
+}
+
 fn useCraneTestRunner(b: *std.Build, test_exe: *std.Build.Step.Compile, engine: *const engine_build.Engine, name: []const u8, checks: StateChecks, standalone: StandaloneRuntime, members: []const SuiteGroup, many_browsers: bool, log_level: ?std.log.Level) bool {
     const root = test_exe.root_module;
     const wf = b.addWriteFiles();
@@ -1744,8 +1766,12 @@ fn addImplsBoundaryCase(b: *std.Build, step: *std.Build.Step, target: std.Build.
 }
 
 /// The `test-verify` step and its files: -Dverify-files, else
-/// -Dverify-base's git diff.
-fn testVerifySelection(b: *std.Build) *TestVerify {
+/// -Dverify-base's git diff - asked at make time (build_probe verify-base),
+/// which then builds `test-verify -Dverify-files=<the diff's files>` with
+/// this build's -D options: which test executables test-verify builds
+/// depends on the list, and a configure that ran git would poison Zig's
+/// configure cache (`check-configure-cache`).
+fn testVerifySelection(b: *std.Build, build_probe: *std.Build.Step.Compile) *TestVerify {
     const v = b.allocator.create(TestVerify) catch @panic("OOM");
     v.* = .{ .step = b.step("test-verify", "Verify new and changed tests: each test of the files -Dverify-files=<a,b> (or -Dverify-base=<ref>: git diff <ref>...HEAD) 10 times in one process and 5 times alone; with -Dsanitize-thread, once") };
     const files_option = b.option([]const u8, "verify-files", "test-verify: comma-separated tests/<dir>/**/*_test.zig files (repository-relative)");
@@ -1757,18 +1783,29 @@ fn testVerifySelection(b: *std.Build) *TestVerify {
         while (it.next()) |file| files.append(b.allocator, file) catch @panic("OOM");
     } else if (base) |ref| {
         v.asked = true;
-        // A configure-time read of the checkout the configure cache cannot
-        // track.
-        b.graph.poisonCache();
-        var code: u8 = 0;
-        const out = b.runAllowFail(&.{ "git", "diff", "--name-only", "--diff-filter=AMR", b.fmt("{s}...HEAD", .{ref}), "--", "tests/" }, &code, .inherit) catch |err| {
-            v.step.dependOn(&b.addFail(b.fmt("test-verify: git diff {s}...HEAD failed ({t}): no git checkout here? Pass -Dverify-files=<a,b,...> instead", .{ ref, err })).step);
-            return v;
-        };
-        var lines = std.mem.tokenizeScalar(u8, out, '\n');
-        while (lines.next()) |file| {
-            if (std.mem.endsWith(u8, file, "_test.zig") and !std.mem.startsWith(u8, file, "tests/wpt/")) files.append(b.allocator, file) catch @panic("OOM");
+        const run = b.addRunArtifact(build_probe);
+        run.setName(b.fmt("test-verify the test files git diff {s}...HEAD names", .{ref}));
+        run.addArgs(&.{ "verify-base", b.fmt("--ref={s}", .{ref}), b.fmt("--zig={s}", .{b.graph.zig_exe}), "--" });
+        // This build's -D options, but the two that name the files.
+        for (b.user_input_options.keys(), b.user_input_options.values()) |name, value| {
+            if (std.mem.eql(u8, name, "verify-base") or std.mem.eql(u8, name, "verify-files")) continue;
+            switch (value) {
+                .flag => run.addArg(b.fmt("-D{s}", .{name})),
+                .scalar => |text| run.addArg(b.fmt("-D{s}={s}", .{ name, text })),
+                .list => |list| for (list.items) |text| run.addArg(b.fmt("-D{s}={s}", .{ name, text })),
+                // The command line makes none of these.
+                .map, .lazy_path, .lazy_path_list => std.debug.panic("build.zig: -D{s}: an option the command line cannot give", .{name}),
+            }
         }
+        // The parent's local cache, as this file's other sub-builds (the
+        // global one travels as ZIG_GLOBAL_CACHE_DIR in the environment).
+        run.addArgs(&.{ "-j2", "--cache-dir" });
+        run.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        run.setCwd(b.path("."));
+        // A verification is a run, never a cache hit.
+        run.has_side_effects = true;
+        run.stdio = .inherit;
+        v.step.dependOn(&run.step);
     }
     v.files = files.items;
     v.matched = b.allocator.alloc(bool, files.items.len) catch @panic("OOM");
@@ -1867,15 +1904,21 @@ fn finishTestVerify(b: *std.Build, v: *TestVerify) void {
 const tsan_suppressions_path = "tools/test_launcher/tsan_suppressions.txt";
 
 /// A run of an instrumented program outside the launcher (the snapshot
-/// generator) reads the suppressions too: TSAN_OPTIONS names the file
-/// relative to the build root, which becomes the run's working directory
-/// (the runtime opens a relative path from there), and the file is an input
-/// of the run, so a changed file runs it again.
+/// generator) reads the suppressions too: TSAN_OPTIONS
+/// (`tsan_suppressions_environment`, which the engine adapter's startupRun
+/// sets through `env`) names the file relative to the build root, which
+/// becomes the run's working directory (the runtime opens a relative path
+/// from there), and the file is an input of the run, so a changed file runs
+/// it again.
 fn useTsanSuppressions(b: *std.Build, run: *std.Build.Step.Run) void {
     run.setCwd(b.path("."));
     run.addFileInput(b.path(tsan_suppressions_path));
-    run.setEnvironmentVariable("TSAN_OPTIONS", "suppressions=" ++ tsan_suppressions_path);
 }
+
+/// The variable `useTsanSuppressions`' runs get, through the adapter's
+/// `startupRun` (`env`), never Run.setEnvironmentVariable
+/// (checkNoEnvironmentCopies).
+const tsan_suppressions_environment = [_][2][]const u8{.{ "TSAN_OPTIONS", "suppressions=" ++ tsan_suppressions_path }};
 
 fn instrumentForThreadSanitizer(b: *std.Build, launch: *const TestLaunch) void {
     var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
@@ -1938,17 +1981,24 @@ fn addTestFilesFromDir(
         return;
     }
 
-    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
-        // Directory might not exist yet, skip silently
-        if (err == error.FileNotFound) return;
+    var dir = builder.root.root_dir.handle.openDir(io, dir_path, .{ .iterate = true }) catch |err| {
+        // Directory might not exist yet, skip silently - until it does.
+        if (err == error.FileNotFound) {
+            select.inputs.absent(builder, dir_path);
+            return;
+        }
         return err;
     };
     defer dir.close(io);
 
+    // Every directory the walk lists is an input of the configuration: a test
+    // file added anywhere below `dir_path` changes the root written here.
+    select.inputs.directory(builder, dir_path);
     var files: std.ArrayList([]const u8) = .empty;
     var walker = try dir.walk(allocator);
     defer walker.deinit();
     while (try walker.next(io)) |entry| {
+        if (entry.kind == .directory) select.inputs.directory(builder, builder.fmt("{s}/{s}", .{ dir_path, entry.path }));
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
         try files.append(allocator, try allocator.dupe(u8, entry.path));
@@ -1982,6 +2032,7 @@ fn addTestFilesFromDir(
         try dir.writeFile(io, .{ .sub_path = tmp_name, .data = contents });
         try dir.rename(tmp_name, dir, test_root_name, io);
     }
+    select.inputs.file(builder, root_path);
 
     var name: std.ArrayList(u8) = .empty;
     for (dir_path) |c| try name.append(allocator, if (c == '/') '-' else c);
@@ -2006,7 +2057,7 @@ fn addTestFilesFromDir(
 /// whose imports agree and whose rows allow it (`OneBinary`) become ONE
 /// executable, "tests", rooted at tests/.all_tests.zig; every other member
 /// gets its own executable, as with -Dtest-binaries=dirs.
-fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !void {
+fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary, inputs: *ConfigureInputs) !void {
     const allocator = b.allocator;
     const members = one.members.items;
     if (members.len == 0) return;
@@ -2028,8 +2079,9 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     // keep their own executables.
     var claimed: std.AutoHashMapUnmanaged(usize, void) = .empty;
     {
-        // A configure-time read of the checkout the configure cache cannot track.
-        b.graph.poisonCache();
+        // Each root file read here is an input of the configure cache
+        // (`ConfigureInputs`): an edit that adds or drops such an import
+        // configures again.
         var roots: std.ArrayList(struct { key: usize, path: []const u8 }) = .empty;
         for (members) |m| for (m.imports) |imp| {
             const source = imp.module.root_source_file orelse continue;
@@ -2043,7 +2095,13 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
             var text: ?[]const u8 = null;
             for (roots.items) |inner| {
                 const rel = test_suites.pathFrom(outer.path, inner.path) orelse continue;
-                if (text == null) text = b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20)) catch "";
+                if (text == null) text = if (b.root.root_dir.handle.readFileAlloc(b.graph.io, outer.path, allocator, .limited(16 << 20))) |read| read: {
+                    inputs.file(b, outer.path);
+                    break :read read;
+                } else |_| missing: {
+                    inputs.absent(b, outer.path);
+                    break :missing "";
+                };
                 if (test_suites.importsAsFile(text.?, rel)) try claimed.put(allocator, inner.key, {});
             }
         }
@@ -2075,7 +2133,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
     // only when it changes.
     const contents = try test_suites.oneBinaryRoot(allocator, joined_dirs.items, test_root_name);
     const io = b.graph.io;
-    var tests_dir = try std.Io.Dir.cwd().openDir(io, "tests", .{});
+    var tests_dir = try b.root.root_dir.handle.openDir(io, "tests", .{});
     defer tests_dir.close(io);
     const current = tests_dir.readFileAlloc(io, test_root_name, allocator, .limited(1 << 20)) catch "";
     if (!std.mem.eql(u8, current, contents)) {
@@ -2083,6 +2141,7 @@ fn finishOneBinary(b: *std.Build, launch: *const TestLaunch, one: *OneBinary) !v
         try tests_dir.writeFile(io, .{ .sub_path = tmp_name, .data = contents });
         try tests_dir.rename(tmp_name, tests_dir, test_root_name, io);
     }
+    inputs.file(b, b.fmt("tests/{s}", .{test_root_name}));
 
     var groups: std.ArrayList(SuiteGroup) = .empty;
     var runs_engine = false;
@@ -2221,7 +2280,11 @@ fn addEngineLateRun(b: *std.Build, launch: *const TestLaunch, test_exe: *std.Bui
     run.addArg(b.fmt("--out=tmp/test-launch/{s}.engine-late.jsonl", .{name}));
     run.addArg(b.fmt("--timings=tmp/test-launch/{s}.jsonl", .{name}));
     run.setCwd(b.path("."));
-    run.setEnvironmentVariable("CRANE_TEST_ENGINE_EARLY", "0");
+    // Through the launcher (--child-env), never the Run step's environment:
+    // Zig 0.17 copies the whole configure-time environment into a Run step
+    // that sets one variable, and a cached configuration would hand later
+    // builds that stale environment.
+    run.addArg("--child-env=CRANE_TEST_ENGINE_EARLY=0");
     if (std.mem.eql(u8, launch.seed, "random")) run.has_side_effects = true;
     return run;
 }
@@ -2361,33 +2424,41 @@ fn engineProtocolBinding(
     return facade;
 }
 
-/// The iPhoneOS SDK root: `-Dios-sdk=<path>` when given, else what `xcrun`
-/// names, else null.
+/// The SDK root of this build's target, as `recordSdkRoot` recorded it, or
+/// null for a target that needs none. Every caller here holds only `b`, so
+/// the root is kept by name on the build itself (`named_lazy_paths`).
+fn iosSdkPath(b: *std.Build) ?std.Build.LazyPath {
+    return b.named_lazy_paths.get(sdk_root_name);
+}
+
+/// The name `recordSdkRoot` keeps the SDK root under.
+const sdk_root_name = "crane-sdk-root";
+
+/// Record the SDK root of a target whose libc Zig does not find: the path
+/// `option` (the build option `option_name`) gives, else the root the
+/// machine's SDK tools name for the target, asked at make time (build_probe
+/// sdk-root links it into the cache) - a program's answer is never asked at
+/// configure time (`check-configure-cache`). No SDK fails that step, naming
+/// the option.
 ///
 /// Queried rather than hardcoded: the SDK version moves with Xcode, and a stale
 /// path fails as missing libc headers rather than as a missing SDK. The option
 /// is for a machine whose xcode-select names the Command Line Tools, which
 /// have no iPhoneOS SDK: the pool hosts are set up that way and link their
 /// Xcode's SDK at ~/sdks/iPhoneOS.sdk (`zig build check-ios -Dios-sdk=$HOME/sdks/iPhoneOS.sdk`).
-/// build() declares the option; this reads it, since one option cannot be
-/// declared twice and every caller here holds only `b`.
-fn iosSdkPath(b: *std.Build) ?[]const u8 {
-    if (b.user_input_options.get("ios-sdk")) |option| switch (option) {
-        .scalar => |path| return path,
-        else => {},
+fn recordSdkRoot(b: *std.Build, target: std.Build.ResolvedTarget, option: ?[]const u8, option_name: []const u8, build_probe: *std.Build.Step.Compile) std.Build.LazyPath {
+    const root: std.Build.LazyPath = if (option) |path| .{ .cwd_relative = path } else asked: {
+        const run = b.addRunArtifact(build_probe);
+        run.setName("find the target's SDK");
+        const triple = target.result.zigTriple(b.allocator) catch @panic("OOM");
+        run.addArgs(&.{ "sdk-root", b.fmt("--target={s}", .{triple}), b.fmt("--option={s}", .{option_name}) });
+        const out = run.addOutputDirectoryArg("sdk");
+        // Its answer is the machine's: asked on every build.
+        run.has_side_effects = true;
+        break :asked out.path(b, "root");
     };
-    // A configure-time probe of the machine: the configure cache cannot see
-    // what xcrun answers, so a cached configuration must not be reused.
-    b.graph.poisonCache();
-    var code: u8 = 0;
-    const out = b.runAllowFail(
-        &.{ "xcrun", "--sdk", "iphoneos", "--show-sdk-path" },
-        &code,
-        .ignore,
-    ) catch return null;
-    const path = std.mem.trim(u8, out, " \n\r\t");
-    if (path.len == 0) return null;
-    return b.dupe(path);
+    b.addNamedLazyPath(sdk_root_name, root);
+    return root;
 }
 
 /// Apply the iOS SDK paths to every Compile step reachable from `root`.
@@ -2400,12 +2471,12 @@ fn iosSdkPath(b: *std.Build) ?[]const u8 {
 /// Depth-bounded rather than visited-tracked: the build graph is a DAG, revisiting
 /// a module is idempotent here, and a bound needs no allocation. Real dependency
 /// chains are nowhere near this deep.
-fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?[]const u8) void {
+fn applyIosSdkRecursively(b: *std.Build, root: *std.Build.Step, sdk: ?std.Build.LazyPath) void {
     if (sdk == null) return;
     applyIosSdkStep(b, root, sdk, 0);
 }
 
-fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?[]const u8, depth: u32) void {
+fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?std.Build.LazyPath, depth: u32) void {
     if (depth > 24) return;
     if (step.cast(std.Build.Step.Compile)) |compile| {
         addIosSdkPaths(compile.root_module, sdk);
@@ -2426,23 +2497,11 @@ fn applyIosSdkStep(b: *std.Build, step: *std.Build.Step, sdk: ?[]const u8, depth
 ///
 /// No-op off iOS. Called for every module that compiles or links C, since Zig will
 /// not find them on its own for this target.
-fn addIosSdkPaths(module: *std.Build.Module, sdk: ?[]const u8) void {
+fn addIosSdkPaths(module: *std.Build.Module, sdk: ?std.Build.LazyPath) void {
     const root = sdk orelse return;
-    module.addSystemIncludePath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/usr/include",
-        .{root},
-    ) catch @panic("OOM") });
-    module.addLibraryPath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/usr/lib",
-        .{root},
-    ) catch @panic("OOM") });
-    module.addFrameworkPath(.{ .cwd_relative = std.fmt.allocPrint(
-        module.owner.allocator,
-        "{s}/System/Library/Frameworks",
-        .{root},
-    ) catch @panic("OOM") });
+    module.addSystemIncludePath(root.path(module.owner, "usr/include"));
+    module.addLibraryPath(root.path(module.owner, "usr/lib"));
+    module.addFrameworkPath(root.path(module.owner, "System/Library/Frameworks"));
 }
 
 /// A C header set translated to Zig by the build: what a file's `@cImport`
@@ -2485,7 +2544,7 @@ fn addCImport(b: *std.Build, name: []const u8, target: std.Build.ResolvedTarget,
     for (spec.macros) |macro| translate.defineCMacro(macro[0], macro[1]);
     for (spec.system_libs) |lib| translate.linkSystemLibrary(lib, .{});
     if (target.result.os.tag == .ios) if (iosSdkPath(b)) |sdk| {
-        translate.addSystemIncludePath(.{ .cwd_relative = b.fmt("{s}/usr/include", .{sdk}) });
+        translate.addSystemIncludePath(sdk.path(b, "usr/include"));
     };
     return translate.createModule();
 }
@@ -2907,6 +2966,17 @@ pub fn build(b: *std.Build) void {
     // configures: each step that needs it fails with the adapter's reason.
     const engine = engine_build.choose(b, target);
 
+    // What the configure would ask the machine - a program's answer - is
+    // asked at make time by this tool (tools/build_probe.zig), so that the
+    // configuration never depends on it and Zig's configure cache holds
+    // (`check-configure-cache`). Build-time tool: runs on the host.
+    const build_probe_module = b.createModule(.{
+        .root_source_file = b.path("tools/build_probe.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const build_probe = b.addExecutable(.{ .name = "build_probe", .root_module = build_probe_module });
+
     // Zig 0.16 resolves the macOS SDK for Darwin targets, but NOT the iOS one: a
     // trivial `#include <stdio.h>` for aarch64-ios fails with 'stdio.h' file not
     // found, with or without --sysroot. That surfaces far from the cause, as 15
@@ -2915,11 +2985,12 @@ pub fn build(b: *std.Build) void {
     //
     // Point the compiler and linker at the iPhoneOS SDK explicitly. Queried through
     // `xcrun --sdk iphoneos` rather than hardcoded, because the SDK version moves
-    // with Xcode.
-    // -Dios-sdk: the SDK root iosSdkPath uses before xcrun (declared here once;
+    // with Xcode - asked at make time (recordSdkRoot).
+    // -Dios-sdk: the SDK root used instead of xcrun's (declared here once;
     // check-ios passes it to its sub-build).
-    const ios_sdk_option = b.option([]const u8, "ios-sdk", "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
-    const ios_sdk: ?[]const u8 = if (target.result.os.tag == .ios) iosSdkPath(b) else null;
+    const sdk_option_name = "ios-sdk";
+    const ios_sdk_option = b.option([]const u8, sdk_option_name, "The iPhoneOS SDK root for an aarch64-ios build (default: xcrun --sdk iphoneos)");
+    const ios_sdk: ?std.Build.LazyPath = if (target.result.os.tag == .ios) recordSdkRoot(b, target, ios_sdk_option, sdk_option_name, build_probe) else null;
 
     // -Dsanitize-thread, read before any artifact links the engine: an
     // artifact with instrumented modules says so when it links it
@@ -3132,9 +3203,18 @@ pub fn build(b: *std.Build) void {
     const image_codecs_step = b.step("platform-image-codecs", "Build the testing JPEG/SVG libraries (also for cross targets)");
     if (image_codecs) |codecs| image_codecs_step.dependOn(&b.addInstallArtifact(codecs, .{}).step);
     const static_libcurl: ?StaticLibcurl = if (use_system_curl) null else buildStaticLibcurl(b, target, optimize, enable_http2, null, if (brotli_enabled) brotli else null);
-    // A system libcurl may lack WebSockets. Say so now rather than leaving it to
-    // a runtime CURLE_UNSUPPORTED_PROTOCOL.
-    if (use_system_curl) warnIfSystemCurlLacksWebSockets(b);
+    // A system libcurl may lack WebSockets. Say so when building rather than
+    // leaving it to a runtime CURLE_UNSUPPORTED_PROTOCOL: a warning, asked at
+    // make time (build_probe curl-websockets) by every top-level step - the
+    // end of build() adds it to each.
+    const system_curl_check: ?*std.Build.Step.Run = if (use_system_curl) check: {
+        const run = b.addRunArtifact(build_probe);
+        run.setName("check the system libcurl for WebSockets");
+        run.addArg("curl-websockets");
+        // Its answer is the machine's: asked on every build.
+        run.has_side_effects = true;
+        break :check run;
+    } else null;
 
     // The library, the CLI and the iOS build use the target's platform; the WPT
     // runner and the test tiers use `testing` (docs/platform-protocol.md 1.1).
@@ -3482,7 +3562,7 @@ pub fn build(b: *std.Build) void {
                 list.* = .empty;
                 break :test_exes list;
             },
-            .verify = testVerifySelection(b),
+            .verify = testVerifySelection(b, build_probe),
             .filters = b.option([]const []const u8, "test-filter", "Run only the tests this pattern matches (repeatable: any of them): the whole test name, `*` any run of characters - names start with the file's stem, so 'mutation_test*' is a file and '*removes*' any name holding 'removes'. Selected at run time: nothing recompiles, and a suite with no match runs nothing") orelse &.{},
         };
         break :launch l;
@@ -3499,6 +3579,8 @@ pub fn build(b: *std.Build) void {
         list.* = .empty;
         break :suite_dirs list;
     };
+    test_selection.inputs = b.allocator.create(ConfigureInputs) catch @panic("OOM");
+    test_selection.inputs.* = .{};
 
     // The Crane test runner's many-Browsers neighbour (tests/test_runner/
     // neighbour.zig): its thread and handshake, std only, tested with a fake
@@ -5022,6 +5104,7 @@ pub fn build(b: *std.Build) void {
         .link = tests_engine_link,
         .test_options = startup_tests,
         .prepare_run = if (sanitize_thread_option) &useTsanSuppressions else null,
+        .run_environment = if (sanitize_thread_option) &tsan_suppressions_environment else &.{},
     }) else null;
 
     // ========================================================================
@@ -5739,6 +5822,10 @@ pub fn build(b: *std.Build) void {
     fw_matrix_test_step.dependOn(&run_fw_matrix_tests.step);
     fw_matrix_test_step.dependOn(&fw_matrix_check.step);
 
+    // tools/build_probe.zig: what the configure would ask the machine, asked
+    // at make time.
+    test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = build_probe_module }), "tools-build_probe", null).step);
+
     // tools/test_suites.zig: the configure-time check that every tests/<dir>/
     // with test files is a suite (checkEveryTestDirectoryIsASuite), std-only.
     const test_suites_tests = b.addTest(.{ .root_module = b.createModule(.{
@@ -6038,11 +6125,68 @@ pub fn build(b: *std.Build) void {
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine", suite_engine_line, &.{ plain, sanitized }).step);
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables told they link the engine, in the many-Browsers variant", suite_engine_line, &.{ many, many_sanitized }).step);
         suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "test executables that can run the many-Browsers variant's busy Browser", suite_browser_line, &.{ many, many_sanitized }).step);
+        // And under the sanitizer the engine's startup programs run with the
+        // tests' suppressions: the variable is an argument of their runs
+        // (`env`, the adapter's startupRun), never missing.
+        suite_facts_step.dependOn(&addConfigurationsAgree(b, configurations_agree_exe, "the engine's startup programs run with the tests' TSAN suppressions", tsan_suppressions_environment[0][0] ++ "=" ++ tsan_suppressions_environment[0][1], &.{ sanitized, many_sanitized }).step);
     }
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
         test_step.dependOn(suite_facts_step);
     }
     test_step.dependOn(&addSuiteRun(b, launch, b.addTest(.{ .root_module = configurations_agree_module }), "tools-configurations_agree", null).step);
+
+    // ========================================================================
+    // CHECK: the configuration is cacheable
+    // ========================================================================
+    // Zig 0.17 caches this file's configuration and configures again only
+    // when an input it tracks changes - build.zig and what it imports, the
+    // command line, and the paths the configure declared it read
+    // (`b.dependOnFileContents`, `b.dependOnDirectoryContents`). A configure
+    // that reads anything else - a file or directory it did not declare, a
+    // program's answer - has to poison the cache, and then every `zig build`
+    // configures afresh: 1.1 s and 1.6 s on the pool's two hosts against
+    // 0.03 s and 0.085 s for a cached one (lanes impls9 and cfg1,
+    // 2026-11-17). So nothing
+    // here may poison it: what the configure reads of the checkout is a
+    // tracked input, and what it would ask the machine is asked at make time.
+    // Nor may a cached configuration replay the environment of the build
+    // that made it (checkNoEnvironmentCopies). This check holds both: for
+    // each flag set, a sub-build of this root with `--cache-poison=disallowed`
+    // - under which the configure panics at the first poisoning call, naming
+    // it - builds check-configure-environment, which fails on any Run step
+    // that carries an environment of its own. Nothing else is built.
+    const configure_cache_step = b.step("check-configure-cache", "Check that no configure of this build poisons Zig's configure cache or copies the configure-time environment into a Run step: a sub-build per flag set with --cache-poison=disallowed (nothing is compiled)");
+    const configure_environment_step = b.step("check-configure-environment", "Fail on any Run step this configuration gives an environment of its own (check-configure-cache builds it under each flag set)");
+    // The flag sets: the gates' own, and each one under which the configure
+    // used to read the checkout or ask the machine (the one-binary layout's
+    // module roots, git, the system libcurl's features), with this build's
+    // engine. (A cross target's SDK root is asked at make time as well -
+    // recordSdkRoot - and is held by the platform's build side when that
+    // moves out of this file.)
+    const engine_flag = b.fmt("-Dengine={t}", .{engine.name});
+    for ([_][]const []const u8{
+        &.{engine_flag},
+        &.{ engine_flag, "-Dtest-binaries=engine" },
+        &.{ engine_flag, "-Dsanitize-thread" },
+        &.{ engine_flag, "-Dverify-base=HEAD" },
+        &.{ engine_flag, "-Dsystem-curl" },
+    }) |flags| {
+        const sub_build = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "check-configure-environment", "--cache-poison=disallowed" });
+        sub_build.setName(b.fmt("configure this build with --cache-poison=disallowed {s}", .{std.mem.join(b.allocator, " ", flags) catch @panic("OOM")}));
+        sub_build.addArgs(flags);
+        // The parent's local cache; the global one travels in the
+        // environment (the build command takes no --global-cache-dir).
+        sub_build.addArgs(&.{ "-j2", "--cache-dir" });
+        sub_build.addDirectoryArg2(std.Build.LazyPath.cache_root, .{ .make_absolute = true });
+        sub_build.setCwd(b.path("."));
+        // The sub-build decides; this step always asks it.
+        sub_build.has_side_effects = true;
+        configure_cache_step.dependOn(&sub_build.step);
+    }
+    // Part of the whole test run.
+    if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
+        test_step.dependOn(configure_cache_step);
+    }
 
     // ========================================================================
     // LINT: global state, as a ratchet
@@ -6727,7 +6871,7 @@ pub fn build(b: *std.Build) void {
 
     // Every test executable runs through the launcher; and `test-launch` is
     // the launcher runs `test` makes. Both known here, once every step exists.
-    if (test_selection.one) |one| finishOneBinary(b, launch, one) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
+    if (test_selection.one) |one| finishOneBinary(b, launch, one, test_selection.inputs) catch |err| std.debug.panic("build.zig: the one test executable: {t}", .{err});
     checkEveryTestRunsThroughTheLauncher(b, launch, test_step);
     // Only the generated layer imports an impl: known here, once every
     // module of every step exists. The negative test first: a file in a
@@ -6756,7 +6900,7 @@ pub fn build(b: *std.Build) void {
     // Every tests/<dir>/ with test files is a suite: known here, once every
     // suite has been added - when no -Dspec or -Dtest-file skipped some.
     if ((spec_filter == null or std.mem.eql(u8, spec_filter.?, "all")) and test_selection.file == null) {
-        checkEveryTestDirectoryIsASuite(b, test_selection.suite_dirs.items);
+        checkEveryTestDirectoryIsASuite(b, test_selection.suite_dirs.items, test_selection.inputs);
     }
     if (launch.sanitize_thread) instrumentForThreadSanitizer(b, launch);
     finishTestVerify(b, launch.verify);
@@ -6806,6 +6950,17 @@ pub fn build(b: *std.Build) void {
         thread_local_check.addFileArg(checked.exe.getEmittedBin());
         thread_local_check.expectExitCode(0);
         step.dependOn(&thread_local_check.step);
+    };
+
+    // No Run step replays the configure-time environment from a cached
+    // configuration (checkNoEnvironmentCopies): part of check-configure-cache.
+    checkNoEnvironmentCopies(b, configure_environment_step);
+
+    // -Dsystem-curl: whatever is built, the system libcurl's WebSocket check
+    // runs with it, as the configure-time warning it replaces did - but for
+    // the configuration's own check, which builds nothing.
+    if (system_curl_check) |check| for (b.top_level_steps.values()) |top| {
+        if (&top.step != configure_environment_step) top.step.dependOn(&check.step);
     };
 }
 

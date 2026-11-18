@@ -79,6 +79,49 @@ pub fn topLevelTestFiles(allocator: std.mem.Allocator, io: std.Io, tests: std.Io
     return found.toOwnedSlice(allocator);
 }
 
+/// Every directory a scan of `tests` (opened with iteration) may read, as
+/// "<prefix>" and "<prefix>/<path>", sorted: `tests` itself and each
+/// directory below it at any depth, except the `not_scanned` entries and
+/// what is below them. `dirsWithTests` and `topLevelTestFiles` read no other
+/// directory, so build.zig makes each of these an input of the configure
+/// cache (`checkEveryTestDirectoryIsASuite`): a directory or test file added
+/// where they look configures again, and nothing else does. A symbolic link
+/// is not followed, as the scan does not follow one. Free with `freeList`.
+pub fn scannedDirs(allocator: std.mem.Allocator, io: std.Io, tests: std.Io.Dir, prefix: []const u8) ![][]u8 {
+    var found: std.ArrayList([]u8) = .empty;
+    // Deferred first, so it runs last: the strings go before the list.
+    defer found.deinit(allocator);
+    errdefer freeList(allocator, found.items);
+
+    try appendPath(allocator, &found, "{s}", .{prefix});
+    var it = tests.iterate();
+    while (try it.next(io)) |entry| {
+        if (entry.kind != .directory) continue;
+        if (isNotScanned(entry.name)) continue;
+        try appendPath(allocator, &found, "{s}/{s}", .{ prefix, entry.name });
+        var sub = try tests.openDir(io, entry.name, .{ .iterate = true });
+        defer sub.close(io);
+        var walker = try sub.walk(allocator);
+        defer walker.deinit();
+        while (try walker.next(io)) |below| {
+            if (below.kind != .directory) continue;
+            try appendPath(allocator, &found, "{s}/{s}/{s}", .{ prefix, entry.name, below.path });
+        }
+    }
+    std.mem.sort([]u8, found.items, {}, struct {
+        fn lessThan(_: void, a: []u8, b: []u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+    return found.toOwnedSlice(allocator);
+}
+
+fn appendPath(allocator: std.mem.Allocator, list: *std.ArrayList([]u8), comptime format: []const u8, args: anytype) !void {
+    const path = try std.fmt.allocPrint(allocator, format, args);
+    errdefer allocator.free(path);
+    try list.append(allocator, path);
+}
+
 /// The entries of `dirs` that `suites` lacks, in `dirs`' order. A trailing
 /// "/" on either side does not count. The slice is the caller's to free;
 /// its strings are `dirs`'.
@@ -441,6 +484,80 @@ test "no test file directly in tests/: an empty list" {
     const found = try topLevelTestFiles(testing.allocator, io, tmp.dir, "tests");
     defer testing.allocator.free(found);
     try testing.expectEqual(@as(usize, 0), found.len);
+}
+
+test "the directories a scan may read: tests/ and every directory below it, sorted; not the WPT checkout's" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "zeta");
+    try tmp.dir.writeFile(io, .{ .sub_path = "zeta/x_test.zig", .data = "test {}\n" });
+    try tmp.dir.createDirPath(io, "alpha/sub/deeper");
+    try tmp.dir.writeFile(io, .{ .sub_path = "alpha/sub/deeper/y_test.zig", .data = "test {}\n" });
+    // A directory with no test file is read too: a test file may arrive in it.
+    try tmp.dir.createDirPath(io, "support/fixtures");
+    try tmp.dir.writeFile(io, .{ .sub_path = "support/loopback_listener.zig", .data = "" });
+    try tmp.dir.createDirPath(io, "empty");
+    // The WPT checkout is never read below its name (tests/'s own listing holds that).
+    try tmp.dir.createDirPath(io, "wpt/crane/deep");
+    try tmp.dir.writeFile(io, .{ .sub_path = "wpt/crane/z_test.zig", .data = "" });
+    // Files, at the top or below, are no directories.
+    try tmp.dir.writeFile(io, .{ .sub_path = "top_test.zig", .data = "test {}\n" });
+
+    const scanned = try scannedDirs(testing.allocator, io, tmp.dir, "tests");
+    defer {
+        freeList(testing.allocator, scanned);
+        testing.allocator.free(scanned);
+    }
+    const expected = [_][]const u8{ "tests", "tests/alpha", "tests/alpha/sub", "tests/alpha/sub/deeper", "tests/empty", "tests/support", "tests/support/fixtures", "tests/zeta" };
+    try testing.expectEqual(expected.len, scanned.len);
+    for (expected, scanned) |want, got| try testing.expectEqualStrings(want, got);
+}
+
+test "every directory dirsWithTests and topLevelTestFiles find a test file through is one scannedDirs gives" {
+    // What the configure's check reads must be what build.zig tracks: a
+    // directory dirsWithTests reports, and the path down to each test file
+    // it can find, are each in scannedDirs.
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "a/b/c");
+    try tmp.dir.writeFile(io, .{ .sub_path = "a/b/c/q_test.zig", .data = "" });
+    try tmp.dir.createDirPath(io, "d");
+    try tmp.dir.writeFile(io, .{ .sub_path = "d/r_test.zig", .data = "" });
+    const with_tests = try dirsWithTests(testing.allocator, io, tmp.dir, "tests");
+    defer {
+        freeList(testing.allocator, with_tests);
+        testing.allocator.free(with_tests);
+    }
+    const scanned = try scannedDirs(testing.allocator, io, tmp.dir, "tests");
+    defer {
+        freeList(testing.allocator, scanned);
+        testing.allocator.free(scanned);
+    }
+    const covered = [_][]const u8{ "tests", "tests/a", "tests/a/b", "tests/a/b/c", "tests/d" };
+    for (with_tests) |dir| try testing.expect(contains(scanned, dir));
+    for (covered) |dir| try testing.expect(contains(scanned, dir));
+}
+
+fn contains(list: []const []const u8, item: []const u8) bool {
+    for (list) |entry| if (std.mem.eql(u8, entry, item)) return true;
+    return false;
+}
+
+test "scannedDirs frees what it made when an allocation fails" {
+    const io = testing.io;
+    var tmp = testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "a/deep");
+    try tmp.dir.createDirPath(io, "b");
+    try testing.checkAllAllocationFailures(testing.allocator, struct {
+        fn run(allocator: std.mem.Allocator, dir: std.Io.Dir) !void {
+            const found = try scannedDirs(allocator, testing.io, dir, "tests");
+            freeList(allocator, found);
+            allocator.free(found);
+        }
+    }.run, .{tmp.dir});
 }
 
 test "dirsWithTests frees what it made when an allocation fails" {

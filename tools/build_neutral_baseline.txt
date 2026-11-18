@@ -6,8 +6,8 @@
 # with `zig build lint-build -- --update`. Never raise it by hand.
 build.zig library:brotli code 62
 build.zig library:brotli comment 14
-build.zig library:curl code 165
-build.zig library:curl comment 143
+build.zig library:curl code 153
+build.zig library:curl comment 135
 build.zig library:expat code 11
 build.zig library:jpeg code 23
 build.zig library:jpeg comment 6
@@ -27,16 +27,16 @@ build.zig platform:darwin code 16
 build.zig platform:darwin comment 8
 build.zig platform:homebrew code 5
 build.zig platform:homebrew comment 5
-build.zig platform:ios code 64
-build.zig platform:ios comment 42
-build.zig platform:iphoneos code 4
-build.zig platform:iphoneos comment 7
+build.zig platform:ios code 63
+build.zig platform:ios comment 40
+build.zig platform:iphoneos code 3
+build.zig platform:iphoneos comment 6
 build.zig platform:linux code 30
 build.zig platform:linux comment 26
 build.zig platform:macos code 7
-build.zig platform:macos comment 14
-build.zig platform:xcrun code 3
-build.zig platform:xcrun comment 4
+build.zig platform:macos comment 13
+build.zig platform:xcrun code 2
+build.zig platform:xcrun comment 2
 build.zig target:.abi == code 2
 build.zig target:isDarwin code 4
 build.zig target:os.tag code 27

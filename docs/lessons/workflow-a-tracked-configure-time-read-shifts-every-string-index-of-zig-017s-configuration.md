@@ -1,6 +1,7 @@
 # Workflow: A tracked configure-time read shifts every string index of Zig 0.17's configuration
 
 **Date**: 2026-11-16
+**Status** (2026-11-17, lane cfg1): the Fix's "poison on a failed read" is superseded - a missing file is tracked as the listing of its nearest existing directory (`dependOnDirectoryContents`), which its arrival changes; only a file that is there and cannot be read still poisons. Nothing in build.zig poisons the configure cache now, and `zig build check-configure-cache` holds that ([the lesson](workflow-a-configure-time-read-that-another-calls-poison-covered-goes-stale-when-the-poison-goes.md)).
 **Lesson**: Replacing `b.graph.poisonCache()` with `b.dependOnFileContents(path)` adds a path dependency that Zig 0.17 serializes BEFORE the steps, so its path string is interned first and every string index after it moves by the path's length plus one - a declared change, never a byte-identical one.
 
 **Why**: The build migration proves each commit by the binary configuration (`--print-configuration-path`; tmp/plans/build-protocol-design.md 5.1a). `std/Build/Serialize.zig` writes `graph.configure_dependencies` as `path_deps` first, and each one's sub-path goes into the configuration's string table at that moment; step names, Run arguments and the rest are interned afterwards, in walk order. So a path dependency is not just two more records: it renumbers every string reference that follows. And it changes nothing else - a configure that anything else still poisons is not cached either way.
