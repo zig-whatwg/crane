@@ -222,7 +222,7 @@ fn sweep(navigation: Navigation, rounds: usize) !void {
         failing.has_induced_failure = false;
         failing.fail_index = failing.alloc_index + round * navigation.stride();
         page.runScript(navigation.script()) catch {};
-        _ = browser.runEventLoopBlocking(50) catch {};
+        runRound(browser);
         failing.fail_index = std.math.maxInt(usize);
         const found = frameDocument(page, realm, navigation) catch |err| {
             std.debug.print("{s}: failing allocation {d}: the frame could not be read: {s}\n", .{ @tagName(navigation), round, @errorName(err) });
@@ -633,7 +633,22 @@ fn sweepContentWindow(rounds: usize) !void {
     var counting: CountingAllocator = .{};
     defer counting.deinit();
     const start = counting.live();
-    try sweepContentWindowOn(&counting, rounds);
+    sweepContentWindowOn(&counting, rounds) catch |err| {
+        // Which error, in which round, and where it came from - the test's
+        // thread hands only the error back (a flake under load had nothing
+        // else to go on: impls9, 2026-11-17; lane bugs1). `counting.round`
+        // is the round plus one ("failing allocation <round>" in the lines
+        // above); 9000 is the navigation after the sweep, with memory to
+        // spare; 0 is before the first round.
+        const at = counting.round.load(.monotonic);
+        std.debug.print("sweepContentWindow failed: {t} in {s} {d}\n", .{
+            err,
+            if (at == 9000) "the navigation after the sweep, round" else if (at == 0) "the set-up before the first round, round" else "failing allocation",
+            if (at == 0 or at == 9000) at else at - 1,
+        });
+        if (@errorReturnTrace()) |trace| std.debug.dumpErrorReturnTrace(trace);
+        return err;
+    };
     const end = counting.live();
     var summary: CountingAllocator.Summary = .{};
     if (end.count != start.count or end.bytes != start.bytes) {
@@ -704,7 +719,7 @@ fn sweepContentWindowOn(counting: *CountingAllocator, rounds: usize) !void {
         failing.has_induced_failure = false;
         failing.fail_index = failing.alloc_index + round;
         page.runScript(Navigation.srcdoc.script()) catch {};
-        _ = browser.runEventLoopBlocking(50) catch {};
+        runRound(browser);
         const induced = failing.has_induced_failure;
         if (induced) counting.noteFailure(failing.getStackTrace());
         // Read with memory out still: the frame's document, through the browsing context's active window.
@@ -880,15 +895,41 @@ fn historyLength(page: anytype, realm: runtime.Context) !usize {
     return std.fmt.parseInt(usize, text, 10);
 }
 
+/// One sweep round's loop, with its failing allocation still armed: run until
+/// the round's navigation has nothing left to do - a turn that ran out of
+/// pending work before its 50 ms were up (Browser.runEventLoopBlocking returns
+/// early exactly then), or a full turn that did no work - at most 10 s.
+///
+/// It was one 50 ms turn (lane bugs1, 2026-11-17). Under load a round's
+/// navigation had not reached the allocation the round was to fail when the
+/// turn ended; the round then disarmed the allocator, the navigation finished
+/// with memory to spare, and a round that failed nothing ends a sweep - it
+/// reads as "past the navigation's last allocation". The srcdoc contentWindow
+/// sweep ended at failing allocation 146, before the rounds that stop between
+/// the new realm and its document, and failed NoRoundStoppedBeforeTheDocument
+/// (chat2.local, macOS, beside every tests-html test at batch 1: 1 of 24 alone
+/// runs; impls9's every-test run on chat.local the same way); the policy
+/// container sweeps ended early the same way and passed, having tested less.
+fn runRound(browser: anytype) void {
+    var turns: usize = 0;
+    while (turns < 200) : (turns += 1) {
+        const started = std.Io.Clock.Timestamp.now(testing.io, .awake);
+        const worked = browser.runEventLoopBlocking(50) catch return;
+        const elapsed_ns = started.untilNow(testing.io).raw.nanoseconds;
+        if (!worked or elapsed_ns < 45 * std.time.ns_per_ms) return;
+    }
+}
+
 /// The srcdoc frame navigates with memory to spare: it shows a new document
-/// within two seconds.
+/// within ten seconds (two used to be the bound, which a loaded host can
+/// outrun).
 fn navigatesWithMemoryToSpare(browser: anytype, page: anytype, iframe: *runtime.Instance, bc: anytype) !void {
     bc.navigation_rate_count = 0;
     const before_window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse return error.NoWindow;
     const before = interfaces.Window.get_document(before_window) catch null;
     const before_generation: u64 = if (before) |d| runtime.SlabAllocator.generationOf(d) else 0;
     try page.runScript(Navigation.srcdoc.script());
-    for (0..40) |_| {
+    for (0..200) |_| {
         _ = try browser.runEventLoopBlocking(50);
         const window = (try interfaces.HTMLIFrameElement.get_contentWindow(iframe)) orelse continue;
         const now = interfaces.Window.get_document(window) catch continue;

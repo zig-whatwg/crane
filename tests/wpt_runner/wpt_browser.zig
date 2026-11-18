@@ -230,6 +230,55 @@ pub const WptBrowser = struct {
         return content;
     }
 
+    /// wptrunner's `close_old_windows` (tools/wptrunner/wptrunner/executors/
+    /// executorwebdriver.py), which `do_testharness` runs before each test:
+    /// every window but the runner's own is closed with WebDriver's Close
+    /// Window - HTML "close a top-level traversable" - so no window an earlier
+    /// file opened lives into the next. Here the runner's window is the
+    /// Browser's page, which the next file's navigate replaces; every other
+    /// open top-level traversable - a popup a file opened (window.open, a
+    /// link's or form's target) and left open - is closed through the
+    /// Browser's close, the console's `:close`: beforeunload, unload, its
+    /// documents destroyed and its browsing context closed
+    /// (dom.auxiliary_navigables.definitelyClose).
+    ///
+    /// Before it a popup a file left open lived on into every later file of
+    /// its runner (lane locks1, 2026-11-17: since nav4b2 a restored popup
+    /// kept a shared worker's owner active, so web-locks/bfcache/contention's
+    /// shared-worker variants failed after held.tentative in one runner).
+    /// A closing popup's handlers run script, which may open another: up to
+    /// a few passes, and one still open after them is named, as wptrunner
+    /// raises for "the window remained open after sending the window close
+    /// command".
+    fn closeOldWindows(self: *WptBrowser) void {
+        var ids: [64]u64 = undefined;
+        var pass: usize = 0;
+        while (pass < 4) : (pass += 1) {
+            const host_id = self.browser.hostTraversableId();
+            const count = self.browser.traversableIds(&ids);
+            var closed: usize = 0;
+            for (ids[0..@min(count, ids.len)]) |id| {
+                if (host_id != null and id == host_id.?) continue;
+                self.browser.closeTraversable(id) catch |err| switch (err) {
+                    // Closed meanwhile (an opener's unload closed it).
+                    error.NoSuchTraversable => continue,
+                    else => {
+                        log.warn("could not close the window of traversable {d} a previous file left open: {}", .{ id, err });
+                        continue;
+                    },
+                };
+                closed += 1;
+            }
+            if (closed == 0) return;
+        }
+        const host_id = self.browser.hostTraversableId();
+        const left = self.browser.traversableIds(&ids);
+        for (ids[0..@min(left, ids.len)]) |id| {
+            if (host_id != null and id == host_id.?) continue;
+            log.warn("the window of traversable {d} remained open after closing every window a previous file left", .{id});
+        }
+    }
+
     /// Run an HTML test via HTTP navigation
     ///
     /// Navigates to the test URL, fetches via HTTP, parses HTML, and executes scripts.
@@ -258,6 +307,11 @@ pub const WptBrowser = struct {
         // helpers below take a *?Timer. clock.Timer.start() is infallible, so the
         // optional is now explicit rather than incidental.
         var phase: ?clock.Timer = clock.Timer.start();
+
+        // No window an earlier file opened is still open (wptrunner's
+        // close_old_windows), before anything else of this file's start: a
+        // closing popup's unload handlers run script.
+        self.closeOldWindows();
 
         // Each test file starts with an empty cookie jar and no permission
         // override, as runTest's do.
@@ -358,6 +412,7 @@ pub const WptBrowser = struct {
         defer _ = self.endScriptDeadline();
         var phase: ?clock.Timer = clock.Timer.start();
 
+        self.closeOldWindows();
         self.browser.cookie_jar.clear();
         try self.browser.navigateWithOptions(test_url, .window, .{ .skip_load = true });
         defer self.test_driver.endTest();

@@ -156,7 +156,7 @@ src/html/window/browsing_context.zig next_context_id 1 G I/engine decl:e78eed1e4
 src/html/window/browsing_context.zig next_group_id 1 G I/engine decl:e78eed1e4659a6b5
 src/infra/address_map.zig seed_counter 1 G P-res decl:b7fb2ba249a00055
 src/permissions/status.zig PermissionStatus.next_id 1 G P-res decl:1dfcee87d8da8735
-src/platform/host.zig cached_io 1 G P-res decl:5fde91e1f8769bc9
+src/platform/host.zig cached_io 1 G P-res decl:8a34ae78e49428b7
 src/platform/host.zig init_mutex 1 G P-res decl:ee0617868871b920
 src/platform/host.zig threaded 1 G P-res decl:46f2a8444cfc8e17
 src/process/start.zig state 1 G P-res decl:9aefe5ce61f3dbd3

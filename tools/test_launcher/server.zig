@@ -481,6 +481,47 @@ test "report-only: every failure is printed, marked report-only, and answered pa
     try testing.expect(std.mem.indexOf(u8, text, "report-only: FLAKY a.test.two") != null);
 }
 
+test "a session the build runner asks for no test runs nothing: every selected test stays NOT-RUN" {
+    // What a hand replay with `--listen=-` met (vm1, 2026-11-17): its stdin
+    // closed before any `run_test`, so the run never started. The counts say
+    // NOT-RUN for each selected test, which main.exitStatus fails.
+    const gpa = testing.allocator;
+    const io = testing.io;
+    const names = [_][]const u8{ "a.test.zero", "a.test.one", "a.test.two" };
+    const expects_panic = [_]bool{ false, false, false };
+    const selected = [_]bool{ true, true, true };
+    var plan = try plan_mod.make(gpa, &.{ 0, 1, 2 }, .{ .seed = 1, .shuffle = false, .batch_size = 2 });
+    defer plan.deinit(gpa);
+    var fake: Fake = .{};
+    var session: Session = undefined;
+    var run = try sched.Run.init(gpa, io, &plan, names.len, fake.executor(), .{
+        .jobs = 1,
+        .on_verdict = Session.onVerdict,
+        .on_verdict_ctx = &session,
+    });
+    defer run.deinit();
+    session = try Session.init(gpa, io, &names, &expects_panic, &selected, &run, 0x1);
+    defer session.deinit(gpa);
+
+    // The list, then the pipe ends: no run_test, no exit.
+    var to_server: Io.Writer.Allocating = .init(gpa);
+    defer to_server.deinit();
+    var client: std.zig.Client = .{ .in = undefined, .out = &to_server.writer };
+    try client.serveBodylessMessage(.query_test_metadata);
+    var in: Io.Reader = .fixed(to_server.written());
+    var out: Io.Writer.Allocating = .init(gpa);
+    defer out.deinit();
+    var diag: Io.Writer.Allocating = .init(gpa);
+    defer diag.deinit();
+    try serve(&session, gpa, &in, &out.writer, &diag.writer);
+    session.finish();
+
+    const c = run.counts();
+    try testing.expectEqual(@as(u32, 3), c.not_run);
+    try testing.expectEqual(@as(u32, 0), c.pass);
+    try testing.expectEqual(@as(u32, 0), run.processes.load(.monotonic));
+}
+
 test "statusOf: only PASS passes; SKIP and LAUNCHER-ERROR skip" {
     try testing.expectEqual(TestResults.Status.pass, statusOf(.pass));
     try testing.expectEqual(TestResults.Status.skip, statusOf(.skip));
