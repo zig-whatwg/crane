@@ -2060,6 +2060,18 @@ const Builder = struct {
             // Inline3 §4.2.3.1: Q12 C/S computed split resolves by the spec.
             .baseline_shift => if (v.isKeyword(.baseline)) return Value.px(0),
             .text_align, .text_align_last => return @import("text_values.zig").computeAlignment(l, v, if (self.ctx.is_root) null else self.ctx.parent),
+            // Generated Content 3 §4.1 match-parent: "If the inherited value
+            // is auto, computes to the content language of the parent ...
+            // [which] serializes as match-parent. Otherwise, computes to the
+            // inherited value." A content language is kept as the keyword
+            // match-parent, so a parent's content language is inherited as
+            // one too. The root's inherited value is the initial value, auto.
+            .quotes => if (v.isKeyword(.match_parent)) {
+                const inherited = self.parentValue(l);
+                if (inherited.isKeyword(.auto) or inherited.isKeyword(.match_parent)) return Value.kw(.match_parent);
+                inherited.retain();
+                return inherited;
+            },
             // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp.
             .opacity, .shape_image_threshold => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
