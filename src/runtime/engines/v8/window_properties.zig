@@ -544,19 +544,38 @@ fn indexName(index: u32, buf: []u8) []const u8 {
     return std.fmt.bufPrint(buf, "{d}", .{index}) catch unreachable;
 }
 
+/// WebIDL's named property visibility algorithm (3.9.7) steps 2 and 4-5 for
+/// the array-index name `name`: hidden when the named properties object has
+/// a real own property of that name, or an object on its [[Prototype]] chain
+/// does (`w.Object.prototype[0] = 20` makes wp[0] read 20:
+/// window-named-properties-object.html's visibility subtests). The named
+/// handler gets this from V8's non-masking flag, which indexed handlers do
+/// not take.
+fn indexHidden(info: *const v8.PropertyCallbackInfo, name: []const u8) bool {
+    var units: [10]u16 = undefined;
+    for (name, 0..) |c, i| units[i] = c;
+    return v8.v8_LegacyPlatformObject_NamedPropertyState(@ptrCast(info), &units, @intCast(name.len)) != 0;
+}
+
 fn indexedPropertyGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
-    return getNamed(info, indexName(index, &buf));
+    const name = indexName(index, &buf);
+    if (indexHidden(info, name)) return .kNo;
+    return getNamed(info, name);
 }
 
 fn indexedPropertyQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
-    return queryNamed(info, indexName(index, &buf));
+    const name = indexName(index, &buf);
+    if (indexHidden(info, name)) return .kNo;
+    return queryNamed(info, name);
 }
 
 fn indexedPropertyDescriptor(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
-    return describeNamed(info, indexName(index, &buf));
+    const name = indexName(index, &buf);
+    if (indexHidden(info, name)) return .kNo;
+    return describeNamed(info, name);
 }
 
 /// `desc[key] = value`, releasing the key handle it makes.
