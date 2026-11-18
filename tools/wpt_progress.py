@@ -157,13 +157,20 @@ def engine_label(engine):
 # gate", in full in .claude/rules/wpt-workflow.md): worklist files omitted from the
 # blocking count, each listed with its evidence in tools/wpt_gate_exemptions.txt
 # (its header is the format; the public site, tools/wpt_site/model.zig, reads it by
-# the same rules). Three kinds: `intentional` - ALL THREE of Chrome, Firefox and
+# the same rules). Five kinds: `intentional` - ALL THREE of Chrome, Firefox and
 # Safari intentionally deviate from the spec the file tests (an entry with no kind
 # is this one, as every entry was before kinds) - `test-bug` - the file fails
 # identically in all three because of a test bug filed upstream, exempt until that
-# bug is resolved - and `needs-renderer` - the file fails ONLY because no renderer
+# bug is resolved - `needs-renderer` - the file fails ONLY because no renderer
 # answers geometry (the user, 2026-11-09): it still runs and shows, but does not
-# block 0.1 until a renderer exists. A listed file that would block is EXEMPT:
+# block 0.1 until a renderer exists - and `follows-majority` - the file blocks
+# although Crane's result is the one golden rule 2 says is correct: it equals the
+# browser majority's, subtest by subtest, or a recorded ruling decides it, so no
+# change in Crane can clear it (the user, 2026-11-18 2:36 PM ET: "Add the exemption
+# kind"); it comes off when the browsers change - and `needs-decoder` - like
+# needs-renderer, the file fails ONLY because the platform WPT runs on has no
+# decoder for its media (the user, 2026-11-18 2:53 PM ET); it comes off when a
+# video-capable platform runs WPT. A listed file that would block is EXEMPT:
 # counted in its kind's own group, never as blocking. One that does not block keeps its standing. An invalid
 # entry stops the report - an exemption is never applied, or dropped, silently.
 EXEMPTIONS_FILE = os.path.join(REPO, 'tools', 'wpt_gate_exemptions.txt')
@@ -176,17 +183,34 @@ TEST_BUG_KEYS = ('kind', 'why', 'upstream', 'chrome.result', 'firefox.result', '
 # `why`: why the failing assertion needs a layout box; `assertion`: that assertion,
 # as the run reports it.
 NEEDS_RENDERER_KEYS = ('kind', 'why', 'assertion')
+# `matches`: the browsers whose result Crane's equals, subtest by subtest
+# ("firefox, safari"); `ruling`: the user's ruling, or the golden-rule-2 case,
+# that decides the entry - optional, but required when matches names one browser;
+# `revisit`: when the entry comes off ("when ...").
+FOLLOWS_MAJORITY_KEYS = ('kind', 'why', 'chrome.result', 'firefox.result', 'safari.result', 'matches',
+                         'ruling', 'revisit')
+# `why`: why the test needs a decoder (the wait that never settles, or the <source>
+# skipped); `media`: the media file(s) it plays and their type; `assertion`: the
+# failing wait or assertion, as the run reports it.
+NEEDS_DECODER_KEYS = ('kind', 'why', 'media', 'assertion')
 KIND_KEYS = {'intentional': ('kind',) + EXEMPTION_KEYS, 'test-bug': TEST_BUG_KEYS,
-             'needs-renderer': NEEDS_RENDERER_KEYS}
+             'needs-renderer': NEEDS_RENDERER_KEYS, 'follows-majority': FOLLOWS_MAJORITY_KEYS,
+             'needs-decoder': NEEDS_DECODER_KEYS}
+# The keys of a kind an entry may leave out.
+KIND_OPTIONAL = {'intentional': ('kind',), 'follows-majority': ('ruling',)}
 # What an entry of each kind is missing without one of its keys.
 KIND_NEEDS = {
     'intentional': "an exemption needs the spec and every browser's evidence",
     'test-bug': "a test-bug exemption needs the upstream issue, every browser's result and when to revisit",
     'needs-renderer': 'a needs-renderer exemption needs the failing assertion and why it needs a layout box',
+    'follows-majority': "a follows-majority exemption needs every browser's result, the browsers Crane matches and when to revisit",
+    'needs-decoder': 'a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder',
 }
-ALL_EXEMPTION_KEYS = set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS) | set(NEEDS_RENDERER_KEYS)
+ALL_EXEMPTION_KEYS = (set(EXEMPTION_KEYS) | set(TEST_BUG_KEYS) | set(NEEDS_RENDERER_KEYS) | set(FOLLOWS_MAJORITY_KEYS)
+                      | set(NEEDS_DECODER_KEYS))
 _WPT_ISSUE = re.compile(r'https://github\.com/web-platform-tests/wpt/(issues|pull)/\d+$')
 _REVISIT = re.compile(r'when (\S+) is resolved$')
+_REVISIT_WHEN = re.compile(r'when \S')
 _COUNTS = re.compile(r'wpt\.fyi run \d+: *(\d+/\d+)')
 BROWSERS = (('chrome', 'Chrome'), ('firefox', 'Firefox'), ('safari', 'Safari'))
 _URL = re.compile(r'https?://\S+$')
@@ -197,6 +221,21 @@ EXEMPTIONS = {}
 
 class ExemptionError(Exception):
     pass
+
+
+def matched_browsers(entry):
+    """A follows-majority entry's `matches`, as browser keys in Chrome, Firefox, Safari order."""
+    named = {b.strip() for b in entry.get('matches', '').split(',')}
+    return [b for b, _ in BROWSERS if b in named]
+
+
+def _parse_matches(value):
+    """`matches` -> its browser keys, or None unless it names Chrome, Firefox or Safari, each once."""
+    items = [b.strip() for b in value.split(',')]
+    keys = [b for b, _ in BROWSERS]
+    if not items or any(b not in keys for b in items) or len(set(items)) != len(items):
+        return None
+    return items
 
 
 def parse_exemptions(text, worklist):
@@ -216,10 +255,11 @@ def parse_exemptions(text, worklist):
             if k not in keys:
                 raise ExemptionError(f'line {lines[k]}: [{entry["path"]}]: "{k}" is not a key of {article} {kind} exemption')
         for k in keys:
-            if k != 'kind' and k not in vals:
+            if k != 'kind' and k not in KIND_OPTIONAL.get(kind, ()) and k not in vals:
                 raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: missing \"{k}\" - {KIND_NEEDS[kind]}")
         if kind == 'test-bug':
-            if _REVISIT.match(vals['revisit']).group(1) != vals['upstream']:
+            named = _REVISIT.match(vals['revisit'])
+            if not named or named.group(1) != vals['upstream']:
                 raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
                                      f'"when {vals["upstream"]} is resolved"')
             # "Fails IDENTICALLY in Chrome, Firefox and Safari": the same passes of the same total.
@@ -227,6 +267,21 @@ def parse_exemptions(text, worklist):
             if len(set(counts)) != 1:
                 raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: a test-bug exemption needs the same "
                                      f"result in all three browsers (Chrome {counts[0]}, Firefox {counts[1]}, Safari {counts[2]})")
+        if kind == 'follows-majority':
+            if not _REVISIT_WHEN.match(vals['revisit']):
+                raise ExemptionError(f'line {lines["revisit"]}: [{entry["path"]}]: revisit must read '
+                                     '"when <what ends the exemption>"')
+            matched = matched_browsers(vals)
+            # The user's 2026-11-18 ruling: the browser majority - or a recorded ruling.
+            if len(matched) < 2 and 'ruling' not in vals:
+                raise ExemptionError(f"line {lines['matches']}: [{entry['path']}]: a follows-majority exemption needs at "
+                                     "least two browsers in matches, or a ruling")
+            # Crane's result equals each matched browser's, so theirs are the same.
+            counts = {b: _COUNTS.match(vals[b + '.result']).group(1) for b in matched}
+            if len(set(counts.values())) > 1:
+                shown = ', '.join(f'{label} {counts[b]}' for b, label in BROWSERS if b in counts)
+                raise ExemptionError(f"line {entry['line']}: [{entry['path']}]: the browsers in matches need the same "
+                                     f"result ({shown})")
         out[entry['path']] = dict(vals, kind=kind)
 
     for n, raw in enumerate(text.split('\n'), 1):
@@ -259,12 +314,14 @@ def parse_exemptions(text, worklist):
         if (key == 'spec' or key.endswith('.intent')) and not _URL.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: {key} must be an http(s) URL')
         if key == 'kind' and value not in KIND_KEYS:
-            raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional, test-bug or needs-renderer, not "{value}"')
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: kind must be intentional, test-bug, needs-renderer, '
+                                 f'follows-majority or needs-decoder, not "{value}"')
         if key == 'upstream' and not _WPT_ISSUE.match(value):
             raise ExemptionError(f'line {n}: [{cur["path"]}]: upstream must be a web-platform-tests issue or pull '
                                  'request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)')
-        if key == 'revisit' and not _REVISIT.match(value):
-            raise ExemptionError(f'line {n}: [{cur["path"]}]: revisit must read "when <upstream> is resolved"')
+        if key == 'matches' and _parse_matches(value) is None:
+            raise ExemptionError(f'line {n}: [{cur["path"]}]: matches must name chrome, firefox or safari, '
+                                 'comma-separated, each once')
         cur['values'][key] = value
         cur['lines'][key] = n
     if cur:
@@ -297,6 +354,8 @@ def render_exempt(records, worklist):
     intentional = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'intentional']
     test_bug = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'test-bug']
     needs_renderer = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'needs-renderer']
+    follows_majority = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'follows-majority']
+    needs_decoder = [(p, e) for p, e in EXEMPTIONS.items() if e['kind'] == 'needs-decoder']
     if intentional:
         items = []
         for path, e in intentional:
@@ -357,6 +416,76 @@ def render_exempt(records, worklist):
     2026-11-09). They still run and show. A listed file that does not block keeps its standing.</div>
   <ol>{''.join(items)}</ol>
 </div>"""
+    if needs_decoder:
+        items = []
+        for path, e in needs_decoder:
+            st = status_of(records.get(path), path)
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>media: {html.escape(e["media"])}</li>'
+                f'<li>failing assertion: <code>{html.escape(e["assertion"])}</code></li></ul></li>')
+        n = sum(1 for p, _ in needs_decoder if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
+<div class="panel">
+  <h2 class="panelh">Exempt until a decoder plays its media</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking until a video-capable platform
+    runs WPT: each fails only because the platform has no decoder for its media - a wait on canplay, stalled or playing
+    that never settles, or a typed source skipped because canPlayType answers "" - with the media it needs and the
+    failing assertion below (<code>tools/wpt_gate_exemptions.txt</code>; the user, 2026-11-18). They still run and
+    show. A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
+    if follows_majority:
+        items = []
+        for path, e in follows_majority:
+            rec = records.get(path)
+            st = status_of(rec, path)
+            matched = matched_browsers(e)
+            ev = ''.join(f'<li>{label}: {html.escape(e[key + ".result"])}</li>' for key, label in BROWSERS)
+            ruling = f'<li>ruling: {html.escape(e["ruling"])}</li>' if 'ruling' in e else ''
+            now = crane_counts(rec)
+            want = _COUNTS.match(e[matched[0] + '.result']).group(1)
+            review = '' if now is None or now == want else (
+                f' - no longer the matched browsers\' {html.escape(want)}: <b>review this entry</b>')
+            crane = f'<li>Crane now: {html.escape(now or "not run")}{review}</li>'
+            items.append(
+                f'<li><code>{html.escape(path)}</code> <span class="dim">{html.escape(st)}</span>'
+                f'<div>{html.escape(e["why"])}</div>'
+                f'<ul class="samples"><li>Crane matches: {", ".join(label for key, label in BROWSERS if key in matched)}</li>'
+                f'{crane}{ev}{ruling}<li>revisit: {html.escape(e["revisit"])}</li></ul></li>')
+        n = sum(1 for p, _ in follows_majority if status_of(records.get(p), p) == EXEMPT)
+        out += f"""
+<div class="panel">
+  <h2 class="panelh">Exempt: Crane follows the browser majority</h2>
+  <div class="dim sub2"><b>{n:,}</b> files that would block are not counted as blocking: Crane's result is the one
+    golden rule 2 says is correct - it equals, subtest by subtest, the result of the browsers each entry names (the
+    majority of Chrome, Firefox and Safari, or the browsers a recorded ruling follows), so no change in Crane can
+    clear it (<code>tools/wpt_gate_exemptions.txt</code>; the user, 2026-11-18). When the browsers change, the entry
+    comes off. A listed file that does not block keeps its standing.</div>
+  <ol>{''.join(items)}</ol>
+</div>"""
+    return out
+
+
+def crane_counts(rec):
+    """Crane's '<passes>/<total>' for a record, in wpt.fyi's form, or None when it has no result."""
+    if rec is None:
+        return None
+    total = sum(rec.get(k, 0) for k in ('passed', 'failed', 'timed_out', 'notrun'))
+    return f"{rec.get('passed', 0)}/{total}"
+
+
+def stale_follows_majority(records):
+    """follows-majority entries whose Crane result no longer has the matched browsers' passes/total."""
+    out = []
+    for path, e in EXEMPTIONS.items():
+        if e['kind'] != 'follows-majority':
+            continue
+        now = crane_counts(records.get(path))
+        want = _COUNTS.match(e[matched_browsers(e)[0] + '.result']).group(1)
+        if now is not None and now != want:
+            out.append(f'{path} (Crane {now}, matched {want})')
     return out
 
 
@@ -1467,6 +1596,10 @@ def build(worklist, records, shape=None):
                 areas[a]['exempt_test_bug'] += 1
             elif EXEMPTIONS[path]['kind'] == 'needs-renderer':
                 areas[a]['exempt_needs_renderer'] += 1
+            elif EXEMPTIONS[path]['kind'] == 'follows-majority':
+                areas[a]['exempt_follows_majority'] += 1
+            elif EXEMPTIONS[path]['kind'] == 'needs-decoder':
+                areas[a]['exempt_needs_decoder'] += 1
             areas[a]['sub_pass'] += rec.get('passed', 0)
             areas[a]['sub_fail'] += rec.get('failed', 0)
         elif status in GATING:
@@ -1949,6 +2082,8 @@ def record_generation(worklist, records, areas, previous_records=None, reference
         'exempt': tot['exempt'],
         'exempt_test_bug': tot['exempt_test_bug'],
         'exempt_needs_renderer': tot['exempt_needs_renderer'],
+        'exempt_follows_majority': tot['exempt_follows_majority'],
+        'exempt_needs_decoder': tot['exempt_needs_decoder'],
         # Files the sweep re-ran because they did not fully pass, whose second run
         # disagreed with the first (the runner's --retry-failures: "flaky" in the
         # journal record). The first result is the one counted everywhere else.
@@ -2989,12 +3124,18 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
     # Each kind's own count (the user, 2026-11-08: a test bug filed upstream is
     # the second kind, counted apart from the browsers' intentional deviations).
     # And the third (the user, 2026-11-09): a file that fails only because no
-    # renderer answers geometry.
-    exempt_intentional = tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']
+    # renderer answers geometry. And the fourth (the user, 2026-11-18): a file
+    # whose result is the browser majority's, the one golden rule 2 says is correct.
+    # And the fifth (the user, 2026-11-18): a file that fails only because the
+    # platform has no decoder for its media.
+    exempt_intentional = (tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']
+                          - tot['exempt_follows_majority'] - tot['exempt_needs_decoder'])
     exempt_note = ''.join((
         f' Not counted: {exempt_intentional:,} exempt (all three browsers intentionally deviate).' if exempt_intentional else '',
         f' Not counted: {tot["exempt_test_bug"]:,} exempt until an upstream test bug is fixed.' if tot['exempt_test_bug'] else '',
-        f' Not counted: {tot["exempt_needs_renderer"]:,} exempt until a renderer answers geometry.' if tot['exempt_needs_renderer'] else ''))
+        f' Not counted: {tot["exempt_needs_renderer"]:,} exempt until a renderer answers geometry.' if tot['exempt_needs_renderer'] else '',
+        f' Not counted: {tot["exempt_follows_majority"]:,} exempt: Crane follows the browser majority.' if tot['exempt_follows_majority'] else '',
+        f' Not counted: {tot["exempt_needs_decoder"]:,} exempt until a decoder plays its media.' if tot['exempt_needs_decoder'] else ''))
     reference_html = render_reference(worklist, records, reference)
     doc = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -3161,6 +3302,8 @@ def render(areas, worklist, records, files, out_path, history=None, shape=None, 
   {f'<div class="card"><div class="k">Exempt</div><div class="v">{exempt_intentional:,}</div></div>' if any(e['kind'] == 'intentional' for e in EXEMPTIONS.values()) else ''}
   {f'<div class="card"><div class="k">Exempt: upstream test bug</div><div class="v">{tot["exempt_test_bug"]:,}</div></div>' if any(e['kind'] == 'test-bug' for e in EXEMPTIONS.values()) else ''}
   {f'<div class="card"><div class="k">Exempt: needs a renderer</div><div class="v">{tot["exempt_needs_renderer"]:,}</div></div>' if any(e['kind'] == 'needs-renderer' for e in EXEMPTIONS.values()) else ''}
+  {f'<div class="card"><div class="k">Exempt: follows the browser majority</div><div class="v">{tot["exempt_follows_majority"]:,}</div></div>' if any(e['kind'] == 'follows-majority' for e in EXEMPTIONS.values()) else ''}
+  {f'<div class="card"><div class="k">Exempt: needs a decoder</div><div class="v">{tot["exempt_needs_decoder"]:,}</div></div>' if any(e['kind'] == 'needs-decoder' for e in EXEMPTIONS.values()) else ''}
   <div class="card"><div class="k">Clean files</div><div class="v" style="color:var(--ok)">{clean:,}</div></div>
   <div class="card"><div class="k">Subtests passing</div><div class="v">{sub_passing:,}<span class="dim" style="font-size:14px"> / {sub_targeted:,}</span></div></div>
   <div class="card"><div class="k">Pass rate outside encoding/</div><div class="v">{non_enc_pct:.1f}%</div></div>
@@ -3286,13 +3429,23 @@ def main():
     non_enc_pct, file_mean_pct = alt_rates(worklist, records)
     listed_bug = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'test-bug')
     listed_renderer = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'needs-renderer')
+    listed_majority = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'follows-majority')
+    listed_decoder = sum(1 for e in EXEMPTIONS.values() if e['kind'] == 'needs-decoder')
     print(f"  exempt (all three browsers intentionally deviate; not blocking): "
-          f"{tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer']:,} "
-          f"of {len(EXEMPTIONS) - listed_bug - listed_renderer:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+          f"{tot['exempt'] - tot['exempt_test_bug'] - tot['exempt_needs_renderer'] - tot['exempt_follows_majority'] - tot['exempt_needs_decoder']:,} "
+          f"of {len(EXEMPTIONS) - listed_bug - listed_renderer - listed_majority - listed_decoder:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until an upstream test bug is fixed (not blocking): {tot['exempt_test_bug']:,} "
           f"of {listed_bug:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
     print(f"  exempt until a renderer answers geometry (not blocking): {tot['exempt_needs_renderer']:,} "
           f"of {listed_renderer:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    print(f"  exempt: Crane follows the browser majority (not blocking): {tot['exempt_follows_majority']:,} "
+          f"of {listed_majority:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    print(f"  exempt until a decoder plays its media (not blocking): {tot['exempt_needs_decoder']:,} "
+          f"of {listed_decoder:,} listed in {os.path.relpath(EXEMPTIONS_FILE, REPO)}")
+    stale = stale_follows_majority(records)
+    if stale:
+        print(f"  follows-majority entries whose Crane result no longer equals the matched browsers' - review: "
+              + ', '.join(stale))
     print(f"  of which OK with none passed: {tot['none-passed']:,}  |  pass rate outside encoding/ "
           f"{non_enc_pct:.1f}%  |  mean per-file pass rate {file_mean_pct:.1f}%")
     print('  composition: ' + '  '.join(
@@ -3671,7 +3824,7 @@ def _check_exemption_kinds():
     up = 'upstream = https://github.com/web-platform-tests/wpt/issues/99999'
     rv = 'revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved'
     for frm, to, needle in (
-            ('kind = test-bug', 'kind = testbug', 'kind must be intentional, test-bug or needs-renderer'),
+            ('kind = test-bug', 'kind = testbug', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
             (up, 'upstream = https://bugs.webkit.org/show_bug.cgi?id=1', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt/issues/', 'web-platform-tests issue or pull request'),
             (up, 'upstream = https://github.com/web-platform-tests/wpt.fyi/issues/99999', 'web-platform-tests issue or pull request'),
@@ -3766,7 +3919,7 @@ def _check_needs_renderer_kind():
             ('why = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ', '"upstream" is not a key of a needs-renderer exemption'),
             ('why = ', 'chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ', '"chrome.result" is not a key of a needs-renderer exemption'),
             ('why = ', 'renderer = none\nwhy = ', 'unknown key "renderer"'),
-            ('kind = needs-renderer', 'kind = needs-a-renderer', 'kind must be intentional, test-bug or needs-renderer'),
+            ('kind = needs-renderer', 'kind = needs-a-renderer', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
             ('kind = needs-renderer', 'kind = needs-renderer\nkind = needs-renderer', 'twice'),
             (asrt, 'assertion = \nassertion_ = promise_test', '"assertion" is empty')):
         assert frm in _NEEDS_RENDERER_FIXTURE, frm
@@ -3806,6 +3959,238 @@ def _check_needs_renderer_kind():
         # Without the kind, the other groups render exactly as before.
         EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE, wl)
         assert 'renderer' not in render_exempt(recs, wl)
+    finally:
+        EXEMPTIONS = saved
+
+
+_FOLLOWS_MAJORITY_FIXTURE = """[html/x/majority.html]
+kind = follows-majority
+why = Crane keeps the value as typed, as Firefox and Safari do; only Chrome converts it
+chrome.result = wpt.fyi run 4786307730243584: 4/4
+firefox.result = wpt.fyi run 4877168468033536: 0/4
+safari.result = wpt.fyi run 6479119966273536: 0/4
+matches = firefox, safari
+revisit = when Chrome, Firefox or Safari changes its result
+"""
+
+
+def _check_follows_majority_kind():
+    """The fourth exemption kind (the user, 2026-11-18 2:36 PM ET, "Add the
+    exemption kind"): a file that blocks although Crane's result is the one golden
+    rule 2 says is correct - the browser majority's, subtest by subtest, or one a
+    recorded ruling decides. kind = follows-majority needs why, every browser's
+    wpt.fyi result, matches (the browsers Crane's result equals: at least two, or
+    a ruling; their results the same) and revisit = when <...>; ruling is
+    optional; the same rules tools/wpt_site/model.zig tests. A follows-majority
+    file that would block is EXEMPT, in its own group and its own count."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'html/x/decodes-image-data.html',
+          'html/x/majority.html', 'css/x/other.html']
+    e = parse_exemptions(_FOLLOWS_MAJORITY_FIXTURE, wl)['html/x/majority.html']
+    assert e['kind'] == 'follows-majority', e
+    assert e['matches'] == 'firefox, safari', e
+    assert e['revisit'] == 'when Chrome, Firefox or Safari changes its result', e
+    assert e['chrome.result'] == 'wpt.fyi run 4786307730243584: 4/4', e
+    assert set(e) == {'kind', 'why', 'chrome.result', 'firefox.result', 'safari.result', 'matches', 'revisit'}, e
+    assert matched_browsers(e) == ['firefox', 'safari']
+    # One browser is enough with a ruling that decides it; the order of matches is free.
+    ruled = parse_exemptions(_FOLLOWS_MAJORITY_FIXTURE.replace(
+        'matches = firefox, safari\n',
+        "matches = safari\nruling = the user, 2026-11-14 7:17 AM ET: keep Safari's order\n"), wl)['html/x/majority.html']
+    assert matched_browsers(ruled) == ['safari'] and ruled['ruling'].startswith('the user, 2026-11-14'), ruled
+    every = parse_exemptions(_FOLLOWS_MAJORITY_FIXTURE.replace('4786307730243584: 4/4', '4786307730243584: 0/4')
+                             .replace('matches = firefox, safari', 'matches = safari,chrome , firefox'), wl)
+    assert matched_browsers(every['html/x/majority.html']) == ['chrome', 'firefox', 'safari']
+    four = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE + _FOLLOWS_MAJORITY_FIXTURE, wl)
+    assert [x['kind'] for x in four.values()] == ['intentional', 'test-bug', 'needs-renderer', 'follows-majority']
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    # Every key but ruling is required: without its kind it reads as intentional,
+    # which has no revisit.
+    needs = 'a follows-majority exemption needs every browser\'s result, the browsers Crane matches and when to revisit'
+    for key, needle in (('kind', 'is not a key of an intentional exemption'),
+                        ('why', 'missing "why" - ' + needs),
+                        ('chrome.result', 'missing "chrome.result" - ' + needs),
+                        ('firefox.result', 'missing "firefox.result" - ' + needs),
+                        ('safari.result', 'missing "safari.result" - ' + needs),
+                        ('matches', 'missing "matches" - ' + needs),
+                        ('revisit', 'missing "revisit" - ' + needs)):
+        text = '\n'.join(l for l in _FOLLOWS_MAJORITY_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, needle)
+    m = 'matches = firefox, safari'
+    for frm, to, needle in (
+            (m, 'matches = firefox, edge', 'matches must name chrome, firefox or safari'),
+            (m, 'matches = firefox, firefox', 'matches must name chrome, firefox or safari'),
+            (m, 'matches = firefox,', 'matches must name chrome, firefox or safari'),
+            (m, 'matches = Firefox and Safari', 'matches must name chrome, firefox or safari'),
+            (m, 'matches = safari', 'needs at least two browsers in matches, or a ruling'),
+            ('6479119966273536: 0/4', '6479119966273536: 1/4',
+             'the browsers in matches need the same result (Firefox 0/4, Safari 1/4)'),
+            (m, 'matches = chrome, safari', 'the browsers in matches need the same result (Chrome 4/4, Safari 0/4)'),
+            ('revisit = when Chrome', 'revisit = Chrome', 'revisit must read "when '),
+            ('revisit = when Chrome, Firefox or Safari changes its result', 'revisit = when', 'revisit must read "when '),
+            ('wpt.fyi run 4877168468033536: 0/4', '0/4 on wpt.fyi', 'wpt.fyi run'),
+            ('why = ', 'spec = https://example.org/spec#step\nwhy = ', '"spec" is not a key of a follows-majority exemption'),
+            ('why = ', 'chrome.intent = https://issues.chromium.org/issues/1\nwhy = ', '"chrome.intent" is not a key of a follows-majority exemption'),
+            ('why = ', 'upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ', '"upstream" is not a key of a follows-majority exemption'),
+            ('why = ', 'assertion = promise_test: x\nwhy = ', '"assertion" is not a key of a follows-majority exemption'),
+            ('why = ', 'majority = yes\nwhy = ', 'unknown key "majority"'),
+            ('kind = follows-majority', 'kind = majority', 'kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder'),
+            ('kind = follows-majority', 'kind = follows-majority\nkind = follows-majority', 'twice'),
+            (m, m + '\nruling = a\nruling = b', 'twice'),
+            (m, m + '\nruling = ', '"ruling" is empty')):
+        assert frm in _FOLLOWS_MAJORITY_FIXTURE, frm
+        invalid(_FOLLOWS_MAJORITY_FIXTURE.replace(frm, to), needle)
+    # Its matches and ruling belong to no other kind.
+    for fixture, article in ((_EXEMPTION_FIXTURE, 'an intentional'), (_TEST_BUG_FIXTURE, 'a test-bug'),
+                             (_NEEDS_RENDERER_FIXTURE, 'a needs-renderer')):
+        for line in ('matches = chrome, firefox\n', 'ruling = the user, 2026-11-18\n'):
+            invalid(fixture.replace('why = ', line + 'why = '), f'"{line.split()[0]}" is not a key of {article} exemption')
+    # A test-bug entry's revisit keeps its own form.
+    invalid(_TEST_BUG_FIXTURE.replace('revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved',
+                                      'revisit = when the browsers change'),
+            'revisit must read "when https://github.com/web-platform-tests/wpt/issues/99999 is resolved"')
+    invalid(_FOLLOWS_MAJORITY_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE +
+                                      _FOLLOWS_MAJORITY_FIXTURE, wl)
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        timeout = {'status': 'TIMEOUT', 'passed': 3, 'timed_out': 1, 'notrun': 5}
+        assert gate_status(none_passed, 'html/x/majority.html') == EXEMPT
+        recs = {'css/x/declined.html': none_passed, 'html/x/posts-a-report.https.html': timeout,
+                'html/x/decodes-image-data.html': none_passed, 'html/x/majority.html': none_passed,
+                'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        # All four are exempt, none blocks; each kind has its own count.
+        assert tot['gating'] == 1 and tot['exempt'] == 4, dict(tot)
+        assert tot['exempt_test_bug'] == 1 and tot['exempt_needs_renderer'] == 1, dict(tot)
+        assert tot['exempt_follows_majority'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        head = 'Exempt: Crane follows the browser majority'
+        assert head in html_out, html_out
+        before, group = html_out.split(head, 1)
+        assert 'html/x/majority.html' in group and 'html/x/majority.html' not in before
+        assert 'decodes-image-data' not in group and 'posts-a-report' not in group
+        assert 'Crane matches: Firefox, Safari' in group, group
+        assert 'Chrome: wpt.fyi run 4786307730243584: 4/4' in group, group
+        assert 'revisit: when Chrome, Firefox or Safari changes its result' in group, group
+        assert 'ruling:' not in group, group
+        # Crane's own result beside the browsers'; a changed result asks for review.
+        assert "Crane now: 0/4" in group, group
+        assert 'review this entry' not in group, group
+        changed = dict(recs, **{'html/x/majority.html': {'status': 'OK', 'passed': 0, 'failed': 3}})
+        assert 'review this entry' in render_exempt(changed, wl).split(head, 1)[1]
+        # A listed file that does not block keeps its standing.
+        clean = {'status': 'OK', 'passed': 4, 'failed': 0}
+        assert gate_status(clean, 'html/x/majority.html') == 'OK'
+        # Without the kind, the other groups render exactly as before.
+        EXEMPTIONS = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE, wl)
+        assert 'majority' not in render_exempt(recs, wl)
+    finally:
+        EXEMPTIONS = saved
+
+
+_NEEDS_DECODER_FIXTURE = """[html/x/plays-video.html]
+kind = needs-decoder
+why = the test waits for canplay on a WebM video; the default platform decodes WAV only, so the media element never reaches HAVE_FUTURE_DATA and canplay never fires
+media = /media/movie_5.webm (video/webm; VP8 + Vorbis)
+assertion = TIMEOUT: video plays - Test timed out
+"""
+
+
+def _check_needs_decoder_kind():
+    """The fifth exemption kind (the user, 2026-11-18 2:53 PM ET): like
+    needs-renderer, a file that fails ONLY because the platform WPT runs on has no
+    decoder for its media - a wait on canplay, stalled or playing that never
+    settles, or a typed <source> skipped because canPlayType answers "". kind =
+    needs-decoder needs `why`, `media` (the media file(s) the test needs and their
+    type) and `assertion` (the failing wait or assertion as the run reports it),
+    and no other key; the same rules tools/wpt_site/model.zig tests. It comes off
+    when a video-capable platform runs WPT."""
+    global EXEMPTIONS
+    wl = ['css/x/declined.html', 'html/x/posts-a-report.https.html', 'html/x/decodes-image-data.html',
+          'html/x/majority.html', 'html/x/plays-video.html', 'css/x/other.html']
+    e = parse_exemptions(_NEEDS_DECODER_FIXTURE, wl)['html/x/plays-video.html']
+    assert e['kind'] == 'needs-decoder', e
+    assert e['media'] == '/media/movie_5.webm (video/webm; VP8 + Vorbis)', e
+    assert e['assertion'] == 'TIMEOUT: video plays - Test timed out', e
+    assert set(e) == {'kind', 'why', 'media', 'assertion'}, e
+    five = parse_exemptions(_EXEMPTION_FIXTURE + _TEST_BUG_FIXTURE + _NEEDS_RENDERER_FIXTURE +
+                            _FOLLOWS_MAJORITY_FIXTURE + _NEEDS_DECODER_FIXTURE, wl)
+    assert [x['kind'] for x in five.values()] == ['intentional', 'test-bug', 'needs-renderer', 'follows-majority',
+                                                 'needs-decoder']
+
+    def invalid(text, needle, worklist=wl):
+        try:
+            parse_exemptions(text, worklist)
+        except ExemptionError as err:
+            assert needle in str(err), (needle, str(err))
+            return
+        raise AssertionError('accepted an invalid exemption: ' + needle)
+
+    needs = 'a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder'
+    for key, needle in (('kind', 'is not a key of an intentional exemption'),
+                        ('why', 'missing "why" - ' + needs),
+                        ('media', 'missing "media" - ' + needs),
+                        ('assertion', 'missing "assertion" - ' + needs)):
+        text = '\n'.join(l for l in _NEEDS_DECODER_FIXTURE.split('\n') if not l.startswith(key + ' '))
+        invalid(text, needle)
+    for frm, to, needle in (
+            ('why = ', 'spec = https://example.org/spec#step\nwhy = ', '"spec" is not a key of a needs-decoder exemption'),
+            ('why = ', 'chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ', '"chrome.result" is not a key of a needs-decoder exemption'),
+            ('why = ', 'matches = chrome, firefox\nwhy = ', '"matches" is not a key of a needs-decoder exemption'),
+            ('why = ', 'decoder = vp8\nwhy = ', 'unknown key "decoder"'),
+            ('kind = needs-decoder', 'kind = needs-a-decoder', 'kind must be intentional, test-bug, needs-renderer, '
+             'follows-majority or needs-decoder'),
+            ('kind = needs-decoder', 'kind = needs-decoder\nkind = needs-decoder', 'twice'),
+            ('media = /media', 'media = \nmedia_ = /media', '"media" is empty')):
+        assert frm in _NEEDS_DECODER_FIXTURE, frm
+        invalid(_NEEDS_DECODER_FIXTURE.replace(frm, to), needle)
+    # Its `media` belongs to no other kind.
+    for fixture, article in ((_EXEMPTION_FIXTURE, 'an intentional'), (_TEST_BUG_FIXTURE, 'a test-bug'),
+                             (_NEEDS_RENDERER_FIXTURE, 'a needs-renderer'), (_FOLLOWS_MAJORITY_FIXTURE, 'a follows-majority')):
+        invalid(fixture.replace('why = ', 'media = /media/a.webm (video/webm)\nwhy = '),
+                f'"media" is not a key of {article} exemption')
+    invalid(_NEEDS_DECODER_FIXTURE, 'not in the worklist', ['css/x/other.html'])
+
+    saved = EXEMPTIONS
+    try:
+        EXEMPTIONS = parse_exemptions(_NEEDS_RENDERER_FIXTURE + _NEEDS_DECODER_FIXTURE, wl)
+        timeout = {'status': 'TIMEOUT', 'passed': 0, 'timed_out': 1}
+        none_passed = {'status': 'OK', 'passed': 0, 'failed': 4}
+        assert gate_status(timeout, 'html/x/plays-video.html') == EXEMPT
+        recs = {'html/x/decodes-image-data.html': none_passed, 'html/x/plays-video.html': timeout,
+                'css/x/other.html': none_passed}
+        areas, _, _ = build(wl, recs)
+        tot = collections.Counter()
+        for c in areas.values():
+            tot.update(c)
+        # Both are exempt, each in its own count; the intentional count stays 0.
+        assert tot['gating'] == 1 and tot['exempt'] == 2, dict(tot)
+        assert tot['exempt_needs_renderer'] == 1 and tot['exempt_needs_decoder'] == 1, dict(tot)
+        html_out = render_exempt(recs, wl)
+        head = 'Exempt until a decoder plays its media'
+        assert head in html_out, html_out
+        before, group = html_out.split(head, 1)
+        assert 'html/x/plays-video.html' in group and 'html/x/plays-video.html' not in before
+        assert 'decodes-image-data' not in group
+        assert 'media: /media/movie_5.webm (video/webm; VP8 + Vorbis)' in group, group
+        assert 'failing assertion: <code>TIMEOUT: video plays - Test timed out</code>' in group, group
+        # Without the kind, the other groups render exactly as before.
+        EXEMPTIONS = parse_exemptions(_NEEDS_RENDERER_FIXTURE, wl)
+        assert 'decoder' not in render_exempt(recs, wl)
     finally:
         EXEMPTIONS = saved
 
@@ -4963,6 +5348,8 @@ if __name__ == '__main__':
         _check_exemptions()
         _check_exemption_kinds()
         _check_needs_renderer_kind()
+        _check_follows_majority_kind()
+        _check_needs_decoder_kind()
         _check_revision_high_water()
         _check_subtest_losses()
         _check_loss_dispositions()

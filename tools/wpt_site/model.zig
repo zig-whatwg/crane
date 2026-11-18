@@ -293,6 +293,16 @@ pub const ExemptionKind = enum {
     /// box's size or position (the user, 2026-11-09): it still runs and
     /// shows, but does not block 0.1 until a renderer exists.
     needs_renderer,
+    /// The file blocks although Crane's result is the one golden rule 2 says
+    /// is correct: it equals the browser majority's, subtest by subtest, or a
+    /// recorded ruling decides it, so no change in Crane can clear it (the
+    /// user, 2026-11-18 2:36 PM ET, "Add the exemption kind"). The entry comes
+    /// off when the browsers change.
+    follows_majority,
+    /// Like `needs_renderer`: the file fails ONLY because the platform WPT runs
+    /// on has no decoder for its media (the user, 2026-11-18 2:53 PM ET); the
+    /// entry comes off when a video-capable platform runs WPT.
+    needs_decoder,
 
     /// The word the file spells the kind with.
     pub fn word(k: ExemptionKind) []const u8 {
@@ -300,36 +310,59 @@ pub const ExemptionKind = enum {
             .intentional => "intentional",
             .test_bug => "test-bug",
             .needs_renderer => "needs-renderer",
+            .follows_majority => "follows-majority",
+            .needs_decoder => "needs-decoder",
         };
+    }
+
+    /// The kind a file's `kind` value names, or null.
+    pub fn fromWord(w: []const u8) ?ExemptionKind {
+        inline for (comptime std.enums.values(ExemptionKind)) |k| {
+            if (std.mem.eql(u8, w, k.word())) return k;
+        }
+        return null;
     }
 };
 
 /// One entry of tools/wpt_gate_exemptions.txt: a worklist file omitted from
 /// the blocking count - because all three browsers intentionally deviate from
 /// the spec it tests (`intentional`), because it fails identically in all
-/// three through a test bug filed upstream (`test_bug`), or because it fails
-/// only for want of a renderer to answer geometry (`needs_renderer`). Every
-/// key of the entry's kind is required; slices point into the text.
+/// three through a test bug filed upstream (`test_bug`), because it fails
+/// only for want of a renderer to answer geometry (`needs_renderer`) or of a
+/// decoder for its media (`needs_decoder`), or because Crane's result is the
+/// browser majority's (`follows_majority`). Every key of the entry's kind is
+/// required but a follows-majority entry's ruling; slices point into the text.
 pub const Exemption = struct {
     path: []const u8,
     kind: ExemptionKind = .intentional,
-    /// What the browsers do instead, what is wrong with the test, or why the
-    /// failing assertion needs a layout box.
+    /// What the browsers do instead, what is wrong with the test, why the
+    /// failing assertion needs a layout box or a decoder, or what Crane does
+    /// and which browsers do the same.
     why: []const u8,
     /// `intentional` only: the spec text (and change) the browsers decline.
     spec: []const u8 = "",
-    /// `intentional` and `test_bug`, per `Browser`: "wpt.fyi run <id>:
-    /// <passes>/<total>".
+    /// `intentional`, `test_bug` and `follows_majority`, per `Browser`:
+    /// "wpt.fyi run <id>: <passes>/<total>".
     result: [3][]const u8 = .{ "", "", "" },
     /// `intentional` only, per `Browser`: the standards position, WontFix
     /// bug or objection URL.
     intent: [3][]const u8 = .{ "", "", "" },
     /// `test_bug` only: the web-platform-tests issue or pull request.
     upstream: []const u8 = "",
-    /// `test_bug` only: "when <upstream> is resolved".
+    /// `test_bug`: "when <upstream> is resolved"; `follows_majority`: "when
+    /// ...", what ends the exemption.
     revisit: []const u8 = "",
-    /// `needs_renderer` only: the failing assertion, as the run reports it.
+    /// `needs_renderer` and `needs_decoder`: the failing assertion, as the run
+    /// reports it.
     assertion: []const u8 = "",
+    /// `follows_majority` only, per `Browser`: whether Crane's result equals
+    /// that browser's, subtest by subtest (the `matches` key).
+    matches: [3]bool = .{ false, false, false },
+    /// `follows_majority` only, optional: the user's ruling, or the golden
+    /// rule 2 case, that decides the entry.
+    ruling: []const u8 = "",
+    /// `needs_decoder` only: the media file(s) the test needs and their type.
+    media: []const u8 = "",
 };
 
 /// Where and why the exemptions are invalid. The message lives in `buf`, so
@@ -350,6 +383,8 @@ const exemption_keys = [_][]const u8{
     "safari.result",  "safari.intent",
     "kind",           "upstream",
     "revisit",        "assertion",
+    "matches",        "ruling",
+    "media",
 };
 const key_why = 0;
 const key_spec = 1;
@@ -357,23 +392,52 @@ const key_kind = 8;
 const key_upstream = 9;
 const key_revisit = 10;
 const key_assertion = 11;
+const key_matches = 12;
+const key_ruling = 13;
+const key_media = 14;
 /// The `result` key of each `Browser`, and its `intent` key (the next one).
 const key_result = [3]usize{ 2, 4, 6 };
 
-/// Which keys an entry of `kind` has: every one of them is required, and
-/// no other may appear. `kind` itself is optional for `intentional` (an
-/// entry written before kinds existed has none).
+/// Which keys an entry of `kind` has: every one of them is required but
+/// those `optionalKey` names, and no other may appear.
 fn keyOf(kind: ExemptionKind, ki: usize) bool {
+    const is_result = for (key_result) |r| {
+        if (ki == r) break true;
+    } else false;
     return switch (kind) {
         .intentional => ki <= 7 or ki == key_kind,
-        .test_bug => switch (ki) {
+        .test_bug => is_result or switch (ki) {
             key_why, key_kind, key_upstream, key_revisit => true,
-            else => for (key_result) |r| {
-                if (ki == r) break true;
-            } else false,
+            else => false,
         },
         .needs_renderer => ki == key_why or ki == key_kind or ki == key_assertion,
+        .follows_majority => is_result or switch (ki) {
+            key_why, key_kind, key_matches, key_ruling, key_revisit => true,
+            else => false,
+        },
+        .needs_decoder => ki == key_why or ki == key_kind or ki == key_media or ki == key_assertion,
     };
+}
+
+/// The keys of `kind` an entry may leave out: `kind` itself (an intentional
+/// entry written before kinds existed has none; every other kind names
+/// itself), and a follows-majority entry's ruling.
+fn optionalKey(kind: ExemptionKind, ki: usize) bool {
+    return ki == key_kind or (kind == .follows_majority and ki == key_ruling);
+}
+
+/// A `matches` value: Chrome, Firefox or Safari ("chrome", "firefox",
+/// "safari"), comma-separated, each once; null when it is anything else.
+fn parseMatches(v: []const u8) ?[3]bool {
+    var out: [3]bool = .{ false, false, false };
+    var it = std.mem.splitScalar(u8, v, ',');
+    while (it.next()) |raw| {
+        const name = std.mem.trim(u8, raw, " \t");
+        const b: Browser = if (std.mem.eql(u8, name, "chrome")) .chrome else if (std.mem.eql(u8, name, "firefox")) .firefox else if (std.mem.eql(u8, name, "safari")) .safari else return null;
+        if (out[@backingInt(b)]) return null;
+        out[@backingInt(b)] = true;
+    }
+    return out;
 }
 
 fn isHttpUrl(v: []const u8) bool {
@@ -455,10 +519,7 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
     const v = p.values;
     // No kind: intentional, the one kind there was before the user's
     // 2026-11-08 ruling added the second - every older entry keeps its meaning.
-    const kind: ExemptionKind = if (v[key_kind]) |k|
-        (if (std.mem.eql(u8, k, "test-bug")) .test_bug else if (std.mem.eql(u8, k, "needs-renderer")) .needs_renderer else .intentional)
-    else
-        .intentional;
+    const kind: ExemptionKind = if (v[key_kind]) |k| ExemptionKind.fromWord(k).? else .intentional;
     const article = if (kind == .intentional) "an" else "a";
     // A key of the other kind: the entry mixes them (or names the wrong kind).
     for (v, exemption_keys, 0..) |value, k, ki| {
@@ -466,11 +527,13 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
             return invalid(diag, p.lines[ki], "[{s}]: \"{s}\" is not a key of {s} {s} exemption", .{ p.path, k, article, kind.word() });
     }
     for (v, exemption_keys, 0..) |value, k, ki| {
-        if (ki == key_kind or !keyOf(kind, ki)) continue;
+        if (optionalKey(kind, ki) or !keyOf(kind, ki)) continue;
         if (value == null) return switch (kind) {
             .intentional => invalid(diag, p.line, "[{s}]: missing \"{s}\" - an exemption needs the spec and every browser's evidence", .{ p.path, k }),
             .test_bug => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a test-bug exemption needs the upstream issue, every browser's result and when to revisit", .{ p.path, k }),
             .needs_renderer => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a needs-renderer exemption needs the failing assertion and why it needs a layout box", .{ p.path, k }),
+            .follows_majority => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a follows-majority exemption needs every browser's result, the browsers Crane matches and when to revisit", .{ p.path, k }),
+            .needs_decoder => invalid(diag, p.line, "[{s}]: missing \"{s}\" - a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder", .{ p.path, k }),
         };
     }
     switch (kind) {
@@ -484,8 +547,9 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
         .test_bug => {
             const upstream = v[key_upstream].?;
             const revisit = v[key_revisit].?;
-            const named = revisit[revisit_prefix.len .. revisit.len - revisit_suffix.len];
-            if (!std.mem.eql(u8, named, upstream))
+            const formed = revisit.len > revisit_prefix.len + revisit_suffix.len and
+                std.mem.startsWith(u8, revisit, revisit_prefix) and std.mem.endsWith(u8, revisit, revisit_suffix);
+            if (!formed or !std.mem.eql(u8, revisit[revisit_prefix.len .. revisit.len - revisit_suffix.len], upstream))
                 return invalid(diag, p.lines[key_revisit], "[{s}]: revisit must read \"when {s} is resolved\"", .{ p.path, upstream });
             // "Fails IDENTICALLY in Chrome, Firefox and Safari": the same
             // passes of the same total in each browser's run.
@@ -505,6 +569,54 @@ fn finishExemption(p: PendingExemption, diag: *ExemptionDiag) error{InvalidExemp
             .path = p.path,
             .kind = .needs_renderer,
             .why = v[key_why].?,
+            .assertion = v[key_assertion].?,
+        },
+        .follows_majority => {
+            const revisit = v[key_revisit].?;
+            if (revisit.len <= revisit_prefix.len or !std.mem.startsWith(u8, revisit, revisit_prefix))
+                return invalid(diag, p.lines[key_revisit], "[{s}]: revisit must read \"when <what ends the exemption>\"", .{p.path});
+            const matches = parseMatches(v[key_matches].?).?;
+            var n: usize = 0;
+            for (matches) |m| n += @intFromBool(m);
+            // The user's 2026-11-18 ruling: the browser majority - or a recorded ruling.
+            if (n < 2 and v[key_ruling] == null)
+                return invalid(diag, p.lines[key_matches], "[{s}]: a follows-majority exemption needs at least two browsers in matches, or a ruling", .{p.path});
+            // Crane's result equals each matched browser's, so theirs are the same.
+            var first: ?[]const u8 = null;
+            var differ = false;
+            for (matches, key_result) |m, r| {
+                if (!m) continue;
+                const c = resultCounts(v[r].?);
+                if (first) |f| {
+                    if (!std.mem.eql(u8, f, c)) differ = true;
+                } else first = c;
+            }
+            if (differ) {
+                var shown: [128]u8 = undefined;
+                var len: usize = 0;
+                inline for (comptime std.enums.values(Browser)) |b| {
+                    if (matches[@backingInt(b)]) {
+                        const part = std.fmt.bufPrint(shown[len..], "{s}{s} {s}", .{ if (len == 0) "" else ", ", b.label(), resultCounts(v[key_result[@backingInt(b)]].?) }) catch "";
+                        len += part.len;
+                    }
+                }
+                return invalid(diag, p.line, "[{s}]: the browsers in matches need the same result ({s})", .{ p.path, shown[0..len] });
+            }
+            return .{
+                .path = p.path,
+                .kind = .follows_majority,
+                .why = v[key_why].?,
+                .result = .{ v[2].?, v[4].?, v[6].? },
+                .matches = matches,
+                .ruling = v[key_ruling] orelse "",
+                .revisit = revisit,
+            };
+        },
+        .needs_decoder => return .{
+            .path = p.path,
+            .kind = .needs_decoder,
+            .why = v[key_why].?,
+            .media = v[key_media].?,
             .assertion = v[key_assertion].?,
         },
     }
@@ -548,13 +660,13 @@ pub fn parseExemptions(arena: std.mem.Allocator, text: []const u8, diag: *Exempt
             return invalid(diag, n, "[{s}]: {s} must read \"wpt.fyi run <id>: <passes>/<total>\"", .{ p.path, key });
         if ((std.mem.eql(u8, key, "spec") or std.mem.endsWith(u8, key, ".intent")) and !isHttpUrl(value))
             return invalid(diag, n, "[{s}]: {s} must be an http(s) URL", .{ p.path, key });
-        if (ki == key_kind and !std.mem.eql(u8, value, "intentional") and !std.mem.eql(u8, value, "test-bug") and !std.mem.eql(u8, value, "needs-renderer"))
-            return invalid(diag, n, "[{s}]: kind must be intentional, test-bug or needs-renderer, not \"{s}\"", .{ p.path, value });
+        if (ki == key_kind and ExemptionKind.fromWord(value) == null)
+            return invalid(diag, n, "[{s}]: kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder, not \"{s}\"", .{ p.path, value });
         if (ki == key_upstream and !isWptIssueUrl(value))
             return invalid(diag, n, "[{s}]: upstream must be a web-platform-tests issue or pull request (https://github.com/web-platform-tests/wpt/issues/<n> or /pull/<n>)", .{p.path});
-        if (ki == key_revisit and !(value.len > revisit_prefix.len + revisit_suffix.len and
-            std.mem.startsWith(u8, value, revisit_prefix) and std.mem.endsWith(u8, value, revisit_suffix)))
-            return invalid(diag, n, "[{s}]: revisit must read \"when <upstream> is resolved\"", .{p.path});
+        // (revisit's form is the kind's: checked when the entry is finished.)
+        if (ki == key_matches and parseMatches(value) == null)
+            return invalid(diag, n, "[{s}]: matches must name chrome, firefox or safari, comma-separated, each once", .{p.path});
         p.values[ki] = value;
         p.lines[ki] = n;
     }
@@ -1035,7 +1147,7 @@ test "exemptions: a malformed test-bug entry, or one mixing the kinds' keys, is 
     const a = testing.allocator;
     const cases = [_]struct { []const u8, []const u8, []const u8 }{
         // An unknown kind.
-        .{ "kind = test-bug", "kind = testbug", "kind must be intentional, test-bug or needs-renderer" },
+        .{ "kind = test-bug", "kind = testbug", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
         // Upstream is a web-platform-tests issue or pull request, nothing else.
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://bugs.webkit.org/show_bug.cgi?id=1", "web-platform-tests issue or pull request" },
         .{ "upstream = https://github.com/web-platform-tests/wpt/issues/99999", "upstream = https://github.com/web-platform-tests/wpt/issues/", "web-platform-tests issue or pull request" },
@@ -1151,7 +1263,7 @@ test "exemptions: a needs-renderer entry missing a key, or with any other, is in
         .{ "why = ", "chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ", "\"chrome.result\" is not a key of a needs-renderer exemption" },
         .{ "why = ", "renderer = none\nwhy = ", "unknown key \"renderer\"" },
         // An unknown kind, a kind given twice, an empty assertion.
-        .{ "kind = needs-renderer", "kind = needs-a-renderer", "kind must be intentional, test-bug or needs-renderer" },
+        .{ "kind = needs-renderer", "kind = needs-a-renderer", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
         .{ "kind = needs-renderer", "kind = needs-renderer\nkind = needs-renderer", "twice" },
         .{ "assertion = promise_test", "assertion = \nassertion_ = promise_test", "\"assertion\" is empty" },
     };
@@ -1185,6 +1297,263 @@ test "exemptions: a needs-renderer exempt file counts as exempt, never as blocki
     try known.put(testing.allocator, "html/x/decodes-image-data.html", {});
     try checkExemptionPaths(list, &known, &diag);
     try testing.expectEqual(Gate.exempt, gateOf("OK", .{ .failed = 4 }).exempted());
+}
+
+// The fourth kind (the user, 2026-11-18 2:36 PM ET, "Add the exemption kind"): a
+// file that blocks although Crane's result is the one golden rule 2 says is
+// correct - it equals the browser majority's, subtest by subtest, or a recorded
+// ruling decides it - so no change in Crane can clear it. Its keys: kind, why,
+// each browser's wpt.fyi result, matches (the browsers Crane's result equals),
+// revisit, and an optional ruling.
+const fixture_follows_majority =
+    \\[html/x/majority.html]
+    \\kind = follows-majority
+    \\why = Crane keeps the value as typed, as Firefox and Safari do; only Chrome converts it
+    \\chrome.result = wpt.fyi run 4786307730243584: 4/4
+    \\firefox.result = wpt.fyi run 4877168468033536: 0/4
+    \\safari.result = wpt.fyi run 6479119966273536: 0/4
+    \\matches = firefox, safari
+    \\revisit = when Chrome, Firefox or Safari changes its result
+    \\
+;
+
+test "exemptions: a follows-majority entry parses, with every browser's result, the browsers Crane matches and when to revisit" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_follows_majority, &diag);
+    try testing.expectEqual(@as(usize, 1), list.len);
+    const e = list[0];
+    try testing.expectEqual(ExemptionKind.follows_majority, e.kind);
+    try testing.expectEqualStrings("follows-majority", e.kind.word());
+    try testing.expectEqualStrings("html/x/majority.html", e.path);
+    try testing.expectEqualStrings("Crane keeps the value as typed, as Firefox and Safari do; only Chrome converts it", e.why);
+    try testing.expectEqualStrings("wpt.fyi run 4786307730243584: 4/4", e.result[@backingInt(Browser.chrome)]);
+    try testing.expectEqualStrings("wpt.fyi run 6479119966273536: 0/4", e.result[@backingInt(Browser.safari)]);
+    try testing.expectEqual([3]bool{ false, true, true }, e.matches);
+    try testing.expectEqualStrings("when Chrome, Firefox or Safari changes its result", e.revisit);
+    // The ruling is optional; no other kind's evidence.
+    try testing.expectEqualStrings("", e.ruling);
+    try testing.expectEqualStrings("", e.spec);
+    try testing.expectEqualStrings("", e.upstream);
+    try testing.expectEqualStrings("", e.assertion);
+    for (0..3) |i| try testing.expectEqualStrings("", e.intent[i]);
+    // One browser is enough with a ruling that decides it; the order of matches is free.
+    const ruled = try std.mem.replaceOwned(u8, arena.allocator(), fixture_follows_majority, "matches = firefox, safari\n", "matches = safari\nruling = the user, 2026-11-14 7:17 AM ET: keep Safari's order\n");
+    const one = try parseExemptions(arena.allocator(), ruled, &diag);
+    try testing.expectEqual([3]bool{ false, false, true }, one[0].matches);
+    try testing.expectEqualStrings("the user, 2026-11-14 7:17 AM ET: keep Safari's order", one[0].ruling);
+    const all3 = try std.mem.replaceOwned(u8, arena.allocator(), fixture_follows_majority, "4786307730243584: 4/4", "4786307730243584: 0/4");
+    const every = try parseExemptions(arena.allocator(), try std.mem.replaceOwned(u8, arena.allocator(), all3, "matches = firefox, safari", "matches = safari,chrome , firefox"), &diag);
+    try testing.expectEqual([3]bool{ true, true, true }, every[0].matches);
+    // All four kinds in one file, in the file's order.
+    const four = try std.mem.concat(arena.allocator(), u8, &.{ fixture_exemption, fixture_test_bug, fixture_needs_renderer, fixture_follows_majority });
+    const kinds = try parseExemptions(arena.allocator(), four, &diag);
+    try testing.expectEqual(@as(usize, 4), kinds.len);
+    try testing.expectEqual(ExemptionKind.follows_majority, kinds[3].kind);
+    try testing.expectEqual([3]bool{ false, false, false }, kinds[1].matches);
+}
+
+test "exemptions: a follows-majority entry missing a key is invalid, never a silent exemption" {
+    const missing = [_]struct { []const u8, []const u8 }{
+        // Without its kind it reads as intentional, which has no revisit.
+        .{ "kind =", "is not a key of an intentional exemption" },
+        .{ "why =", "missing \"why\" - a follows-majority exemption needs every browser's result, the browsers Crane matches and when to revisit" },
+        .{ "chrome.result", "missing \"chrome.result\" - a follows-majority exemption" },
+        .{ "firefox.result", "missing \"firefox.result\" - a follows-majority exemption" },
+        .{ "safari.result", "missing \"safari.result\" - a follows-majority exemption" },
+        .{ "matches =", "missing \"matches\" - a follows-majority exemption" },
+        .{ "revisit =", "missing \"revisit\" - a follows-majority exemption" },
+    };
+    for (missing) |m| {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(testing.allocator);
+        var it = std.mem.splitScalar(u8, fixture_follows_majority, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, m[0])) continue;
+            try buf.appendSlice(testing.allocator, line);
+            try buf.append(testing.allocator, '\n');
+        }
+        try expectInvalid(buf.items, m[1]);
+    }
+}
+
+test "exemptions: a malformed follows-majority entry, or one mixing the kinds' keys, is invalid" {
+    const a = testing.allocator;
+    const m = "matches = firefox, safari";
+    const cases = [_]struct { []const u8, []const u8, []const u8 }{
+        // matches names Chrome, Firefox or Safari, each once.
+        .{ m, "matches = firefox, edge", "matches must name chrome, firefox or safari" },
+        .{ m, "matches = firefox, firefox", "matches must name chrome, firefox or safari" },
+        .{ m, "matches = firefox,", "matches must name chrome, firefox or safari" },
+        .{ m, "matches = Firefox and Safari", "matches must name chrome, firefox or safari" },
+        // At least two browsers, or a ruling that decides it.
+        .{ m, "matches = safari", "needs at least two browsers in matches, or a ruling" },
+        // Crane's result equals each matched browser's, so theirs are the same.
+        .{ "6479119966273536: 0/4", "6479119966273536: 1/4", "the browsers in matches need the same result (Firefox 0/4, Safari 1/4)" },
+        .{ m, "matches = chrome, safari", "the browsers in matches need the same result (Chrome 4/4, Safari 0/4)" },
+        // revisit says when the entry comes off.
+        .{ "revisit = when Chrome", "revisit = Chrome", "revisit must read \"when " },
+        .{ "revisit = when Chrome, Firefox or Safari changes its result", "revisit = when", "revisit must read \"when " },
+        // The same wpt.fyi run form as the other kinds'.
+        .{ "wpt.fyi run 4877168468033536: 0/4", "0/4 on wpt.fyi", "wpt.fyi run" },
+        // No other kind's key, and no unknown key.
+        .{ "why = ", "spec = https://example.org/spec#step\nwhy = ", "\"spec\" is not a key of a follows-majority exemption" },
+        .{ "why = ", "chrome.intent = https://issues.chromium.org/issues/1\nwhy = ", "\"chrome.intent\" is not a key of a follows-majority exemption" },
+        .{ "why = ", "upstream = https://github.com/web-platform-tests/wpt/issues/99999\nwhy = ", "\"upstream\" is not a key of a follows-majority exemption" },
+        .{ "why = ", "assertion = promise_test: x\nwhy = ", "\"assertion\" is not a key of a follows-majority exemption" },
+        .{ "why = ", "majority = yes\nwhy = ", "unknown key \"majority\"" },
+        // An unknown kind, a kind or a ruling given twice, an empty ruling.
+        .{ "kind = follows-majority", "kind = majority", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = follows-majority", "kind = follows-majority\nkind = follows-majority", "twice" },
+        .{ m, m ++ "\nruling = a\nruling = b", "twice" },
+        .{ m, m ++ "\nruling = ", "\"ruling\" is empty" },
+    };
+    for (cases) |c| {
+        try testing.expect(std.mem.indexOf(u8, fixture_follows_majority, c[0]) != null);
+        const text = try std.mem.replaceOwned(u8, a, fixture_follows_majority, c[0], c[1]);
+        defer a.free(text);
+        try expectInvalid(text, c[2]);
+    }
+    // Its matches and ruling belong to no other kind.
+    const others = [_]struct { []const u8, []const u8 }{
+        .{ fixture_exemption, "an intentional" },
+        .{ fixture_test_bug, "a test-bug" },
+        .{ fixture_needs_renderer, "a needs-renderer" },
+    };
+    for (others) |o| {
+        for ([_][]const u8{ "matches = chrome, firefox\n", "ruling = the user, 2026-11-18\n" }) |line| {
+            const with = try std.mem.concat(a, u8, &.{ line, "why = " });
+            defer a.free(with);
+            const text = try std.mem.replaceOwned(u8, a, o[0], "why = ", with);
+            defer a.free(text);
+            const key = line[0..std.mem.indexOfScalar(u8, line, ' ').?];
+            const needle = try std.fmt.allocPrint(a, "\"{s}\" is not a key of {s} exemption", .{ key, o[1] });
+            defer a.free(needle);
+            try expectInvalid(text, needle);
+        }
+    }
+    // A test-bug entry's revisit keeps its own form.
+    {
+        const text = try std.mem.replaceOwned(u8, a, fixture_test_bug, "revisit = when https://github.com/web-platform-tests/wpt/issues/99999 is resolved", "revisit = when the browsers change");
+        defer a.free(text);
+        try expectInvalid(text, "revisit must read \"when https://github.com/web-platform-tests/wpt/issues/99999 is resolved\"");
+    }
+}
+
+test "exemptions: a follows-majority exempt file counts as exempt, never as blocking" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_follows_majority, &diag);
+    var known: std.StringHashMapUnmanaged(void) = .empty;
+    defer known.deinit(testing.allocator);
+    try known.put(testing.allocator, "css/x/other.html", {});
+    try testing.expectError(error.InvalidExemption, checkExemptionPaths(list, &known, &diag));
+    try known.put(testing.allocator, "html/x/majority.html", {});
+    try checkExemptionPaths(list, &known, &diag);
+    try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .timed_out = 1 }).exempted());
+}
+
+// The fifth kind (the user, 2026-11-18 2:53 PM ET): like needs-renderer, a file
+// that fails ONLY because the platform WPT runs on has no decoder for its media.
+// Its keys: kind, why, media (the media file(s) and their type) and the failing
+// assertion.
+const fixture_needs_decoder =
+    \\[html/x/plays-video.html]
+    \\kind = needs-decoder
+    \\why = the test waits for canplay on a WebM video; the default platform decodes WAV only, so canplay never fires
+    \\media = /media/movie_5.webm (video/webm; VP8 + Vorbis)
+    \\assertion = TIMEOUT: video plays - Test timed out
+    \\
+;
+
+test "exemptions: a needs-decoder entry parses, with why, the media and the failing assertion and nothing else" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_needs_decoder, &diag);
+    try testing.expectEqual(@as(usize, 1), list.len);
+    const e = list[0];
+    try testing.expectEqual(ExemptionKind.needs_decoder, e.kind);
+    try testing.expectEqualStrings("needs-decoder", e.kind.word());
+    try testing.expectEqualStrings("html/x/plays-video.html", e.path);
+    try testing.expectEqualStrings("/media/movie_5.webm (video/webm; VP8 + Vorbis)", e.media);
+    try testing.expectEqualStrings("TIMEOUT: video plays - Test timed out", e.assertion);
+    try testing.expectEqualStrings("", e.revisit);
+    try testing.expectEqualStrings("", e.ruling);
+    for (0..3) |i| try testing.expectEqualStrings("", e.result[i]);
+    // All five kinds in one file, in the file's order.
+    const five = try std.mem.concat(arena.allocator(), u8, &.{ fixture_exemption, fixture_test_bug, fixture_needs_renderer, fixture_follows_majority, fixture_needs_decoder });
+    const kinds = try parseExemptions(arena.allocator(), five, &diag);
+    try testing.expectEqual(@as(usize, 5), kinds.len);
+    try testing.expectEqual(ExemptionKind.needs_decoder, kinds[4].kind);
+    try testing.expectEqualStrings("", kinds[2].media);
+}
+
+test "exemptions: a needs-decoder entry missing a key, or with any other, is invalid" {
+    const needs = "a needs-decoder exemption needs the media the test plays, the failing assertion and why it needs a decoder";
+    const missing = [_]struct { []const u8, []const u8 }{
+        .{ "kind =", "is not a key of an intentional exemption" },
+        .{ "why =", "missing \"why\" - " ++ needs },
+        .{ "media =", "missing \"media\" - " ++ needs },
+        .{ "assertion =", "missing \"assertion\" - " ++ needs },
+    };
+    for (missing) |m| {
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(testing.allocator);
+        var it = std.mem.splitScalar(u8, fixture_needs_decoder, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, m[0])) continue;
+            try buf.appendSlice(testing.allocator, line);
+            try buf.append(testing.allocator, '\n');
+        }
+        try expectInvalid(buf.items, m[1]);
+    }
+    const a = testing.allocator;
+    const cases = [_]struct { []const u8, []const u8, []const u8 }{
+        .{ "why = ", "spec = https://example.org/spec#step\nwhy = ", "\"spec\" is not a key of a needs-decoder exemption" },
+        .{ "why = ", "chrome.result = wpt.fyi run 5070179567140864: 0/2\nwhy = ", "\"chrome.result\" is not a key of a needs-decoder exemption" },
+        .{ "why = ", "matches = chrome, firefox\nwhy = ", "\"matches\" is not a key of a needs-decoder exemption" },
+        .{ "why = ", "decoder = vp8\nwhy = ", "unknown key \"decoder\"" },
+        .{ "kind = needs-decoder", "kind = needs-a-decoder", "kind must be intentional, test-bug, needs-renderer, follows-majority or needs-decoder" },
+        .{ "kind = needs-decoder", "kind = needs-decoder\nkind = needs-decoder", "twice" },
+        .{ "media = /media", "media = \nmedia_ = /media", "\"media\" is empty" },
+    };
+    for (cases) |c| {
+        try testing.expect(std.mem.indexOf(u8, fixture_needs_decoder, c[0]) != null);
+        const text = try std.mem.replaceOwned(u8, a, fixture_needs_decoder, c[0], c[1]);
+        defer a.free(text);
+        try expectInvalid(text, c[2]);
+    }
+    // Its media belongs to no other kind.
+    const others = [_]struct { []const u8, []const u8 }{
+        .{ fixture_exemption, "an intentional" },
+        .{ fixture_test_bug, "a test-bug" },
+        .{ fixture_needs_renderer, "a needs-renderer" },
+        .{ fixture_follows_majority, "a follows-majority" },
+    };
+    for (others) |o| {
+        const text = try std.mem.replaceOwned(u8, a, o[0], "why = ", "media = /media/a.webm (video/webm)\nwhy = ");
+        defer a.free(text);
+        const needle = try std.fmt.allocPrint(a, "\"media\" is not a key of {s} exemption", .{o[1]});
+        defer a.free(needle);
+        try expectInvalid(text, needle);
+    }
+}
+
+test "exemptions: a needs-decoder exempt file counts as exempt, never as blocking" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    var diag: ExemptionDiag = .{};
+    const list = try parseExemptions(arena.allocator(), fixture_needs_decoder, &diag);
+    var known: std.StringHashMapUnmanaged(void) = .empty;
+    defer known.deinit(testing.allocator);
+    try known.put(testing.allocator, "css/x/other.html", {});
+    try testing.expectError(error.InvalidExemption, checkExemptionPaths(list, &known, &diag));
+    try known.put(testing.allocator, "html/x/plays-video.html", {});
+    try checkExemptionPaths(list, &known, &diag);
+    try testing.expectEqual(Gate.exempt, gateOf("TIMEOUT", .{ .timed_out = 1 }).exempted());
 }
 
 // ============================================================================
