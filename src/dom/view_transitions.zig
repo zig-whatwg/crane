@@ -90,6 +90,8 @@ fn queueSlot(id: u64, buffer: *[64]u8) engine.TracedSlot {
     return .{ .name = std.fmt.bufPrint(buffer, "Document:viewTransitionQueue:{d}", .{id}) catch unreachable };
 }
 
+/// `document`'s state, or null before its first startViewTransition() (or
+/// with no style engine): a read never makes it.
 fn stateOf(document: *runtime.Instance) ?*DocumentState {
     return style_engine.viewTransitionState(document);
 }
@@ -341,7 +343,9 @@ pub fn start(document: *runtime.Instance, transition_instance: *runtime.Instance
         engine.traceValue(transition_instance, callback, Transition.update_slot);
         transition.has_update_callback = true;
     }
-    const state = stateOf(document) orelse {
+    // The document's state is made here, by the first transition: every
+    // other path reads it (stateOf).
+    const state = (try style_engine.ensureViewTransitionState(document)) orelse {
         // A document with no style engine renders nothing: as hidden.
         try skipWithException(transition, "InvalidStateError", "The document is not rendered.");
         return;

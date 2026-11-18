@@ -2858,8 +2858,19 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
 /// CSS View Transitions 1 §7.1.1: `document`'s view transition state, made
 /// with the engine's rare data; null for a document without a style engine.
 pub fn viewTransitionState(document: *runtime.Instance) ?*@import("../view_transitions.zig").DocumentState {
+    // A read: "update the rendering" asks for every document on every
+    // rendering opportunity, so only startViewTransition() makes the rare
+    // record (ensureViewTransitionState).
     const engine = hooks.engineOf(document) orelse return null;
-    const rare = engine.ensureRare() catch return null;
+    const rare = engine.rare orelse return null;
+    return &rare.view_transitions;
+}
+
+/// `document`'s view transition state, made with the rare record if need
+/// be; null when the document has no style engine.
+pub fn ensureViewTransitionState(document: *runtime.Instance) Error!?*@import("../view_transitions.zig").DocumentState {
+    const engine = hooks.engineOf(document) orelse return null;
+    const rare = try engine.ensureRare();
     return &rare.view_transitions;
 }
 
@@ -2867,7 +2878,8 @@ pub fn viewTransitionState(document: *runtime.Instance) ?*@import("../view_trans
 /// `text` (null: no rules). Every cached style is recomputed against it.
 pub fn setViewTransitionSheet(document: *runtime.Instance, text: ?[]const u8) Error!void {
     const engine = hooks.engineOf(document) orelse return;
-    const rare = try engine.ensureRare();
+    // No rules to clear without a rare record: none is made for it.
+    const rare = if (text == null) (engine.rare orelse return) else try engine.ensureRare();
     if (rare.view_transition_sheet == null and text == null) return;
     const made: ?*Contents = if (text) |t| try Contents.parse(engine.allocator, t, .{ .user_agent = true }) else null;
     if (rare.view_transition_sheet) |old| old.destroy();
