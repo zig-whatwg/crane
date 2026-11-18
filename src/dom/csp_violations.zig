@@ -62,8 +62,9 @@ pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) b
 /// element - its nonce when it is nonceable, whether it is a parser-inserted
 /// script.
 ///
-/// For each policy of the element's node document's CSP list, the inline
-/// check of the directive §6.8.4 picks (csp.inline_check); a policy it
+/// For each policy of the element's node document's global object's CSP list
+/// (`inlineCheckScope`), the inline check of the directive §6.8.4 picks
+/// (csp.inline_check); a policy it
 /// blocks reports a violation - the effective directive for inline checks,
 /// resource "inline", the element, a sample under 'report-sample' - and
 /// blocks when it is enforced. A monitored policy reports and lets it
@@ -75,7 +76,8 @@ pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) b
 /// from the parent on an element of a child frame's document reports to the
 /// child frame (securitypolicyviolation/targeting-for-inline-handler-on-
 /// subframe-element.html) - while the parent's script is the current one.
-/// A document with no window reports to no one, and still blocks.
+/// A document with no window reports to its relevant global object, whose
+/// policies it is checked against (`inlineCheckScope`).
 ///
 /// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
 pub fn shouldBlockInline(
@@ -85,13 +87,13 @@ pub fn shouldBlockInline(
     matching: csp.inline_check.Element,
 ) bool {
     // 1. "Assert: element is not null."
-    // "element's Document's global object's CSP list": a Window's is its
-    // associated Document's policy container's (§4.2.2); a document with no
-    // window is read the same way, its own container. One that cannot be
-    // found fails closed (`documentCspList`): an element always has a node
-    // document, and not knowing its policies is not having none.
+    // "element's Document's global object's CSP list" (`inlineCheckScope`).
+    // One that cannot be found fails closed (`documentCspList`): an element
+    // always has a node document, and not knowing its policies is not having
+    // none.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return true;
-    const list = documentCspList(document);
+    const scope = inlineCheckScope(document);
+    const list = scope.list;
     if (list.isEmpty()) return false;
     var eligible = matching;
     // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
@@ -113,7 +115,7 @@ pub fn shouldBlockInline(
             }
         }
     }
-    const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
+    const window = scope.global;
     // A list that could not record a policy blocks everything (fail closed,
     // csp.CSPList.unenforceable).
     if (list.blocksEverything()) return true;
@@ -139,6 +141,47 @@ pub fn shouldBlockInline(
     }
     // 4. Return result.
     return blocked;
+}
+
+/// What §4.2.3 reads of an element's node document `document`: "element's
+/// Document's global object" - to which its violations go - and that
+/// global's CSP list.
+const InlineCheckScope = struct {
+    list: *const csp.CSPList,
+    /// Null: a document whose global cannot be found, which reports to no
+    /// one and still blocks.
+    global: ?*runtime.Instance,
+};
+
+/// A document with a browsing context reads its Window, whose CSP list is
+/// the document's own policy container's (§4.2.2).
+///
+/// A document without one - DOMParser's, createHTMLDocument's, a template's
+/// contents owner, a document whose frame was discarded - has no Window of
+/// its own: its global object is its relevant global object, the global of
+/// the realm it was made in (for DOMParser, createHTMLDocument and template
+/// contents, the creating Window), and that global's policies decide and
+/// receive the violation. So a style attribute parsed into an inert document
+/// is checked against the page that made it, and stays unapplied when the
+/// element is adopted into that page (HTML 3.2.6.5).
+///
+/// Golden rule 2 (no newer spec; HTML gives such a document an empty policy
+/// container and says nothing more): Chrome 157 and Firefox 160 pass
+/// content-security-policy/style-src/style-src-attr-blocked-
+/// {domparser-adopt,createhtmldocument-adopt,template-move}.html 2/2 (wpt.fyi
+/// runs 4786307730243584, 4877168468033536); Safari 27.2 times out 0/2
+/// (6479119966273536), and WebKit has since done the same (322461@main,
+/// StyledElement::styleAttributeChanged checks the policy of
+/// contextDocument(), the document that created the inert one). Blink reads
+/// an inert document's ExecutionContext, which is its creator's window.
+fn inlineCheckScope(document: *runtime.Instance) InlineCheckScope {
+    if (interfaces.Document.get_defaultView(document) catch null) |window| {
+        return .{ .list = documentCspList(document), .global = window };
+    }
+    if (trusted_types.relevantGlobalOf(document)) |global| {
+        if (trusted_types.cspListOf(global)) |list| return .{ .list = list, .global = global };
+    }
+    return .{ .list = documentCspList(document), .global = null };
 }
 
 fn containsDanglingMarkup(value: []const u8) bool {
