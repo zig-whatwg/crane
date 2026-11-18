@@ -127,9 +127,13 @@ fn associateWithAttribute(list: *runtime.Instance, element: *runtime.Instance, l
     {
         internal.supported_tokens = &.{"render"};
     } else if (std.mem.eql(u8, local_name, "rel") and element.stateAs(interfaces.HTMLLinkElement.State) != null) {
-        // HTML link types this engine fetches. Other supported rel tokens
-        // are a separate link-type feature, not implied by token syntax.
-        internal.supported_tokens = &.{ "stylesheet", "preload", "modulepreload", "prefetch" };
+        // HTML link types this engine fetches, and expect, whose internal
+        // resource link this engine processes (HTMLLinkElement's
+        // processExpect: render-blocking until the target element is
+        // parsed; html/dom/render-blocking/link-rel-expect-supported.html,
+        // Safari 27.2 passes). Other supported rel tokens are a separate
+        // link-type feature, not implied by token syntax.
+        internal.supported_tokens = &.{ "stylesheet", "preload", "modulepreload", "prefetch", "expect" };
     } else if (std.mem.eql(u8, local_name, "sandbox") and element.stateAs(interfaces.HTMLIFrameElement.State) != null) {
         // HTML 4.8.5: the sandbox attribute's supported tokens are its
         // allowed values the user agent supports.
