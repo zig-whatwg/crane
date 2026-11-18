@@ -1,7 +1,10 @@
 //! HTML 4.8.11.11.3: out-of-band text track processing.
-//! Scope (media Q10): no text track formats are supported yet. WebVTT parser,
-//! cue ownership and VTTCue/TextTrackCue are the queued follow-up. A real fetch
-//! therefore ends in the specification's unsupported-format error path.
+//! The one text track format is WebVTT (html.webvtt, WebVTT 6.1-6.3): a
+//! fetched resource is parsed once it has arrived, and a file that is
+//! successfully processed makes the track loaded and fires `load`.
+//! TODO(webvtt cues): the parsed cues do not reach the text track's list of
+//! cues yet - VTTCue, TextTrackCue and TextTrackCueList hold no cues (cue
+//! ownership is the queued follow-up of media Q10).
 const std = @import("std");
 const runtime = @import("runtime");
 const engine = @import("engine");
@@ -13,6 +16,7 @@ const hooks = dom.media_elements;
 const same_object = @import("dom").same_object;
 pub const State = interfaces.HTMLTrackElement.State;
 const Kind = enum(u16) { read, failure };
+const webvtt = html.webvtt;
 /// A block of the Browser's runtime arena (`arena`), registered in the
 /// Browser's side table while its element lives: queued tasks may hold it
 /// past its element's deinit (`common.Activity`), so the registry does not
@@ -36,6 +40,9 @@ pub const InternalState = struct {
     read_queued: bool = false,
     fetch_document: ?same_object.Link = null,
     document_abort_pending: ?u64 = null,
+    /// The resource's bytes so far, for the WebVTT parser at its end
+    /// (`activity.allocator`).
+    body: std.ArrayListUnmanaged(u8) = .empty,
 
     fn enabled(self: *InternalState) bool {
         const track = self.track orelse return false;
@@ -48,6 +55,7 @@ pub const InternalState = struct {
     }
     fn stopFetch(self: *InternalState) void {
         self.document_abort_pending = null;
+        self.body.clearAndFree(self.activity.allocator);
         self.resource.stop();
         self.activity.fetching = false;
         self.read_queued = false;
@@ -92,6 +100,38 @@ pub const InternalState = struct {
         if (self.activity.instance == null or self.read_queued) return;
         self.read_queued = true;
         self.queue(.read) catch self.cancel();
+    }
+    /// Step 10, the resource fully fetched: passed to the WebVTT parser. A
+    /// file that is not successfully processed fails in this networking task
+    /// (`failed`); one that is makes the track loaded.
+    fn processResource(self: *InternalState, task: *common.Task) void {
+        var result = webvtt.parse(self.activity.allocator, self.body.items) catch return self.failed(task);
+        defer result.deinit();
+        if (!result.processed) return self.failed(task);
+        // TODO(webvtt cues): add result.cues to the text track list of cues
+        // (WebVTT 6.1 step 14.2) once TextTrackCueList holds VTTCue objects.
+        self.loaded();
+    }
+    /// "If fetching does not fail, and the file was successfully processed,
+    /// then the final task that is queued by the networking task source,
+    /// after it has finished parsing the data, must change the text track
+    /// readiness state to loaded, and fire an event named load at the track
+    /// element." Then steps 11-12, as after a failure: wait for the URL to
+    /// change while the track is enabled (`start`).
+    fn loaded(self: *InternalState) void {
+        const instance = self.activity.instance orelse return;
+        self.stopFetch();
+        hooks.setTrackReadiness(self.track.?, .loaded);
+        self.waiting = true;
+        self.unregister();
+        const generation = self.generation;
+        if (common.Event.init(instance, "load")) |event| {
+            defer event.deinit();
+            event.dispatch();
+        } else |_| {}
+        if (self.activity.instance == null or generation != self.generation) return;
+        self.start() catch self.cancel();
+        self.activity.sync();
     }
     fn failed(self: *InternalState, task: *common.Task) void {
         self.stopFetch();
@@ -140,6 +180,7 @@ fn freeOwner(context: *anyopaque) void {
     const allocator = self.activity.allocator;
     if (self.url) |url| allocator.free(url);
     if (self.selected_url) |url| allocator.free(url);
+    self.body.deinit(allocator);
     self.activity.microtasks.deinit(allocator);
     self.arena.destroy(InternalState, self);
 }
@@ -376,12 +417,25 @@ fn runTask(context: *anyopaque, task: *common.Task) void {
                     if (response.response_type == .@"error" or response.status < 200 or response.status >= 300) {
                         self.queue(.failure) catch self.cancel();
                     } else {
-                        // Step 10: unsupported format found in this networking task.
-                        self.failed(task);
+                        // Step 10: "determine the type of the resource". The
+                        // one format is WebVTT, whose parser checks the file
+                        // signature itself; the response's MIME type does not
+                        // decide, as in Chrome and Firefox (fetch/metadata/
+                        // track.https.sub.html's resource is an untyped
+                        // "WEBVTT": all three browsers fire load, wpt.fyi runs
+                        // 4786307730243584 / 4877168468033536 / 6479119966273536).
+                        // Read on: a buffered body arrives with no further
+                        // notification.
+                        self.body.clearRetainingCapacity();
+                        InternalState.queueRead(self);
                     }
                 },
                 .failed => self.queue(.failure) catch self.cancel(),
-                .bytes, .eof => self.failed(task),
+                .bytes => |bytes| {
+                    self.body.appendSlice(self.activity.allocator, bytes) catch return self.failed(task);
+                    InternalState.queueRead(self);
+                },
+                .eof => self.processResource(task),
             };
         },
     }

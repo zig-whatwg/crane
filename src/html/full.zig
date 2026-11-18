@@ -240,6 +240,9 @@ pub const style_sheet_loading = @import("style_sheet_loading.zig");
 pub const style_block = @import("style_block.zig");
 // Media owner tasks, events and incremental resource fetching.
 pub const media_runtime = @import("media/runtime.zig");
+/// The WebVTT parser (WebVTT 6.1-6.3): what a <track> element's resource is
+/// passed to.
+pub const webvtt = @import("media/webvtt.zig");
 
 /// A Browser's platform state: its BrowserPlatform (docs/platform-protocol.md
 /// section 3).
