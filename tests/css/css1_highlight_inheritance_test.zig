@@ -94,3 +94,28 @@ test "currentColor down the highlight chain is each originating element's color"
     defer grandchild_selection.destroy();
     try expectValue(grandchild_selection, .color, "rgb(1, 2, 3)");
 }
+
+test "a highlight copies font and line-height from its originating element, ignoring its own" {
+    // CSS Pseudo 4 §3.6 (csswg#7591): what the applicable properties need to
+    // resolve - font-size and the other font properties (em and the other
+    // font-relative lengths), line-height (lh), color-scheme - is copied from
+    // the originating element, "ignoring any values specified on the
+    // highlight pseudo-element itself" (WPT highlight-cascade-007.html).
+    const root = try styleOf(null, "font-size: 12px; line-height: 13px", false, null);
+    defer root.destroy();
+    const root_selection = try styleOf(root, "font-size: 42px; line-height: 43px; font-family: monospace; text-shadow: green 1em 0", true, null);
+    defer root_selection.destroy();
+    try expectValue(root_selection, .font_size, "12px");
+    try expectValue(root_selection, .line_height, "13px");
+    try expectValue(root_selection, .text_shadow, "rgb(0, 128, 0) 12px 0px 0px");
+    const child = try styleOf(root, "font-size: 18px; line-height: 19px; font-family: serif", false, null);
+    defer child.destroy();
+    const child_selection = try styleOf(child, "text-decoration-thickness: 1em; font-size: inherit", true, root_selection);
+    defer child_selection.destroy();
+    try expectValue(child_selection, .font_size, "18px");
+    try expectValue(child_selection, .line_height, "19px");
+    try expectValue(child_selection, .font_family, "serif");
+    // The parent highlight's text-shadow is inherited as computed there.
+    try expectValue(child_selection, .text_shadow, "rgb(0, 128, 0) 12px 0px 0px");
+    try expectValue(child_selection, .text_decoration_thickness, "18px");
+}
