@@ -691,7 +691,8 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
 /// one per global (§4.1: "Within a worker", its set entries start empty and
 /// hold what script adds), made on first use.
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    const internal = instance.getState(State).own._internal orelse return error.InvalidStateError;
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const internal = state.own._internal orelse return error.InvalidStateError;
     if (internal.fonts) |set| return set.value;
     const set = try interfaces.FontFaceSet.init(internal.allocator, instance.ctx);
     internal.fonts = .{ .owner = instance, .value = set };
