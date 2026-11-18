@@ -221,7 +221,18 @@ fn prepareScriptElementFor(
     // every other caller MinimumPosition).
     const start: ?engine.SourcePosition = if (parser_document != null) state.start else null;
 
-    // Step 4: If parser document is non-null and el does not have an async attribute,
+    // Steps 4-5 (whatwg/html "HTML streaming methods", the intended
+    // document): "Let intendedDocument be el's intended document. Set el's
+    // intended document to null." A document gone since (a streaming
+    // parser's script target) is no document the element is in.
+    const intended_document: ?*runtime.Instance = if (state.intended_document) |document|
+        (if (runtime.SlabAllocator.generationOf(document) == state.intended_document_generation) document else null)
+    else
+        null;
+    const had_intended_document = state.intended_document != null;
+    state.intended_document = null;
+
+    // Step 6: If parser document is non-null and el does not have an async attribute,
     // then set el's force async to true
     if (parser_document != null and !hasAsyncAttribute(script_element)) {
         // The parser cleared this flag when it created the element. Restore
@@ -271,11 +282,13 @@ fn prepareScriptElementFor(
     state.preparation_time_document = node_document;
     state.preparation_time_document_generation = if (node_document) |doc| runtime.SlabAllocator.generationOf(doc) else 0;
 
-    // Step 17: If parser document is non-null and not equal to preparation-time document, return
-    if (parser_document) |pd| {
-        if (pd != node_document) {
-            return false;
-        }
+    // Step 19: "If intendedDocument is non-null and intendedDocument is not
+    // el's preparation-time document, then return." It replaces the check
+    // of the parser document against the preparation-time document: a
+    // streaming parser's scripts have its private Document as their parser
+    // document and the live document as their intended one.
+    if (had_intended_document and (intended_document == null or intended_document.? != node_document)) {
+        return false;
     }
 
     // Step 18: If scripting is disabled for el, then return
