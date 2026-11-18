@@ -119,6 +119,9 @@ pub const FetchJob = struct {
     /// Main fetch step 23's response, owned until its full body is checked.
     pending_response: ?*InternalResponse = null,
     is_authentication_fetch: bool = false,
+    /// HTTP-network-or-cache fetch's isNewConnectionFetch for the run in
+    /// progress: true once a 421 sent it again on a new connection (step 17).
+    is_new_connection_fetch: bool = false,
     authentication_realm: ?[]u8 = null,
     /// HTTP fetch step 3's call to a service worker, while its answer is
     /// awaited (the job's reference), with step 3.3's serviceWorkerStartTime
@@ -614,6 +617,7 @@ pub const FetchJob = struct {
         const network_start = http_fetch.httpNetworkOrCacheFetchStart(allocator, self.params, .{
             .is_authentication_fetch = self.is_authentication_fetch,
             .authentication_realm = self.authentication_realm,
+            .is_new_connection_fetch = self.is_new_connection_fetch,
         }) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -634,6 +638,7 @@ pub const FetchJob = struct {
         const finished = http_fetch.httpNetworkOrCacheFetchFinish(self.allocator, self.params, .{
             .is_authentication_fetch = self.is_authentication_fetch,
             .authentication_realm = self.authentication_realm,
+            .is_new_connection_fetch = self.is_new_connection_fetch,
         }, network_response) catch |err| {
             return self.httpFetchFailed(err);
         };
@@ -643,8 +648,18 @@ pub const FetchJob = struct {
                 if (self.authentication_realm) |old| self.allocator.free(old);
                 self.authentication_realm = realm;
                 self.is_authentication_fetch = true;
+                // Step 15.4's run is given fetchParams and true: its
+                // isNewConnectionFetch is the default, false.
+                self.is_new_connection_fetch = false;
                 // The normal network step: both drivers schedule it in the
                 // same way as the first request, never inside a curl callback.
+                return self.httpNetworkOrCacheFetch();
+            },
+            .new_connection_retry => {
+                // Step 17.2: HTTP-network-or-cache fetch again, given
+                // fetchParams, isAuthenticationFetch, and true - on a new
+                // connection, scheduled as the first request was.
+                self.is_new_connection_fetch = true;
                 return self.httpNetworkOrCacheFetch();
             },
         };
@@ -656,6 +671,7 @@ pub const FetchJob = struct {
             .manual_redirect => |r| return self.manualRedirect(r),
             .recursive_main_fetch => {
                 self.is_authentication_fetch = false;
+                self.is_new_connection_fetch = false;
                 if (self.authentication_realm) |realm| self.allocator.free(realm);
                 self.authentication_realm = null;
                 // HTTP-redirect fetch steps 20-22: main fetch again, one deeper.

@@ -1,0 +1,8 @@
+[Exposed=Window] interface AbortSignal {};
+dictionary RequestInit {
+  AbortSignal? signal;
+  any window;
+};
+dictionary OtherInit {
+  AbortSignal? signal;
+};

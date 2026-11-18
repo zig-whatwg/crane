@@ -6274,10 +6274,11 @@ fn downloadHyperlink(subject: *runtime.Instance, user_involvement: dom_module.na
         // subject's node navigable."
         dom_module.navigation_api.informAboutAbortingNavigation(window);
     }
-    // Steps 7-9 (fetch the URL and "handle as a download") are not modelled,
-    // stated: Crane has no download manager, so the request is never made and
-    // nothing is saved - the step 7 option ("the user agent may return")
-    // taken for every download.
+    // Step 7's option ("the user agent may return") is not taken. Steps 8-9:
+    // the request, fetched, and its response handled as a download - which
+    // the platform keeps or, as on every default platform, cancels
+    // (html.downloads).
+    html_module.downloads.fetchHyperlink(window, url);
 }
 
 /// The target of the first base element in `document`, in tree order, that
