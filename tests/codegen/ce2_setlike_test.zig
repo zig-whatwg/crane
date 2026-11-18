@@ -52,16 +52,19 @@ test "the generated interface hands the impl's set entries to the binding" {
     try testing.expect(contains(out, "return CustomStateSetImpl.setlikeEntries(instance);"));
 }
 
-test "string values are kept as strings; any other value type is not supported yet" {
+test "string values are kept as strings, interface values are the impl's traced list" {
     try testing.expectEqualStrings("webidl.setlike.Strings", try setlike.entriesType(.{ .type = "DOMString" }));
     try testing.expectEqualStrings("webidl.setlike.Strings", try setlike.entriesType(.{ .type = "USVString" }));
-    // An interface value needs a traced edge per entry (FontFaceSet, Highlight).
-    try testing.expectError(error.UnsupportedSetlikeValueType, setlike.entriesType(.{ .type = "FontFace" }));
+    // An interface value: a view of the list the impl keeps and traces
+    // (lane css1: FontFaceSet's FontFace).
+    try testing.expectEqualStrings("webidl.setlike.PlatformObjects", try setlike.entriesType(.{ .type = "FontFace" }));
     try testing.expectError(error.UnsupportedSetlikeValueType, setlike.entriesType(.{ .type = "DOMString", .nullable = true }));
+    try testing.expectError(error.UnsupportedSetlikeValueType, setlike.entriesType(.{ .type = "FontFace", .nullable = true }));
+    try testing.expectError(error.UnsupportedSetlikeValueType, setlike.entriesType(.{ .type = "long" }));
 }
 
 test "only the interfaces whose impls keep set entries are opted in" {
     try testing.expect(setlike.isImplemented("CustomStateSet"));
-    try testing.expect(!setlike.isImplemented("FontFaceSet"));
+    try testing.expect(setlike.isImplemented("FontFaceSet"));
     try testing.expect(!setlike.isImplemented("Highlight"));
 }

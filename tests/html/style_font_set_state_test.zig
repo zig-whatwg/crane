@@ -6,6 +6,13 @@ const interfaces = @import("interfaces");
 const engine = @import("engine");
 const dom = @import("dom");
 
+/// The set's size, as the binding's setlike `size` reads it (lane css1: the
+/// setlike<FontFace> members replaced the supplementary IDL's size attribute).
+fn setSize(set: *runtime.Instance) !u32 {
+    const entries = interfaces.FontFaceSet.setlikeEntries(set) orelse return error.InvalidStateError;
+    return @intCast(entries.size());
+}
+
 fn exercise() !void {
     const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
     defer browser.deinit();
@@ -24,12 +31,12 @@ fn exercise() !void {
     try std.testing.expect(set == try interfaces.FontFaceSet.call_add(set, first));
     _ = try interfaces.FontFaceSet.call_add(set, first);
     _ = try interfaces.FontFaceSet.call_add(set, second);
-    try std.testing.expectEqual(@as(u32, 2), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 2), try setSize(set));
     try std.testing.expect(try interfaces.FontFaceSet.call_delete(set, first));
     try std.testing.expect(!try interfaces.FontFaceSet.call_delete(set, first));
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     try interfaces.FontFaceSet.call_clear(set);
-    try std.testing.expectEqual(@as(u32, 0), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 0), try setSize(set));
     const ready: engine.Owned = .{ .value = try interfaces.FontFaceSet.get_ready(set) };
     defer ready.release();
     const again: engine.Owned = .{ .value = try interfaces.FontFaceSet.get_ready(set) };
@@ -164,7 +171,7 @@ fn usedTextSelection() !void {
     // Rendering discovers CSS fonts even if script never requested fonts.
     dom.style.engine.resource_loading.updateRendering(document);
     const set = try interfaces.Document.get_fonts(document);
-    _ = try interfaces.FontFaceSet.get_size(set);
+    _ = try setSize(set);
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     try std.testing.expectEqual(@as(usize, 3), state.members.items.len);
     dom.style.engine.resource_loading.updateRendering(document);
@@ -234,7 +241,7 @@ fn automaticFacePromiseIsLazy() !void {
     defer value.release();
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     const set = try interfaces.Document.get_fonts(document);
-    _ = try interfaces.FontFaceSet.get_size(set);
+    _ = try setSize(set);
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     const instance = state.members.items[0].face.instance;
     const face = dom.style.hooks.fontFaceOf(instance) orelse return error.NoFace;
@@ -434,7 +441,7 @@ fn cssConnectedFaces() !void {
     defer value.release();
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     const set = try interfaces.Document.get_fonts(document);
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     const face = state.members.items[0].face.instance;
     // The caller keeps the old face while the stylesheet stops owning it.
@@ -442,7 +449,7 @@ fn cssConnectedFaces() !void {
     defer held.release();
     try std.testing.expect(!try interfaces.FontFaceSet.call_delete(set, face));
     try interfaces.FontFaceSet.call_clear(set);
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     const edited = try browser.evaluateScript("document.getElementById('fonts').sheet.cssRules[0].style.fontWeight = '600'; true");
     edited.release();
     var weight = try interfaces.FontFace.get_weight(face);
@@ -454,11 +461,11 @@ fn cssConnectedFaces() !void {
     try std.testing.expect(engine.toBoolean(realm, reflected.borrow()));
     const removed = try browser.evaluateScript("const cr1Style = document.getElementById('fonts'); cr1Style.remove(); document.head.append(cr1Style); true");
     removed.release();
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     try std.testing.expect(state.members.items[0].face.instance != face);
     // Reinsertion cannot restore the old face's CSS connection.
     _ = try interfaces.FontFaceSet.call_add(set, face);
-    try std.testing.expectEqual(@as(u32, 2), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 2), try setSize(set));
     try std.testing.expect(state.members.items[1].face.instance == face);
     try std.testing.expect(try interfaces.FontFaceSet.call_delete(set, face));
     try std.testing.expectEqual(@as(usize, 0), browser.agent_host.fetches.inFlight());
@@ -479,14 +486,14 @@ fn replacingCssSource() !void {
     defer value.release();
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     const set = try interfaces.Document.get_fonts(document);
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     const old_face = state.members.items[0].face.instance;
     const held = try engine.retainValue(realm, .{ .instance = old_face });
     defer held.release();
     const changed = try browser.evaluateScript("const cr1Rule = document.getElementById('fonts').sheet.cssRules[0]; cr1Rule.style.src = 'url(new.woff2)'; cr1Rule.style.fontWeight = '900'; true");
     changed.release();
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     try std.testing.expect(state.members.items[0].face.instance != old_face);
     var previous = try interfaces.FontFace.get_weight(old_face);
     defer previous.deinit(realm.allocator);
@@ -519,7 +526,7 @@ fn readoptedFontSheet() !void {
     defer value.release();
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     const set = try interfaces.Document.get_fonts(document);
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     const old_face = state.members.items[0].face.instance;
     const held = try engine.retainValue(realm, .{ .instance = old_face });
@@ -534,7 +541,7 @@ fn readoptedFontSheet() !void {
         \\true
     );
     kept.release();
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     try std.testing.expect(state.members.items[0].face.instance == old_face);
     const readopted = try browser.evaluateScript(
         \\document.adoptedStyleSheets = [];
@@ -543,7 +550,7 @@ fn readoptedFontSheet() !void {
         \\true
     );
     readopted.release();
-    try std.testing.expectEqual(@as(u32, 1), try interfaces.FontFaceSet.get_size(set));
+    try std.testing.expectEqual(@as(u32, 1), try setSize(set));
     try std.testing.expect(state.members.items[0].face.instance != old_face);
     var previous = try interfaces.FontFace.get_weight(old_face);
     defer previous.deinit(realm.allocator);
@@ -739,7 +746,7 @@ fn controlFontText() !void {
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     dom.style.engine.resource_loading.updateRendering(document);
     const set = try interfaces.Document.get_fonts(document);
-    _ = try interfaces.FontFaceSet.get_size(set);
+    _ = try setSize(set);
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     try std.testing.expectEqual(@as(usize, 3), state.members.items.len);
     // Q62's three-browser agreement: raw/default child A is not rendered
@@ -774,7 +781,7 @@ fn controlUserEdits() !void {
     const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
     dom.style.engine.resource_loading.updateRendering(document);
     const set = try interfaces.Document.get_fonts(document);
-    _ = try interfaces.FontFaceSet.get_size(set);
+    _ = try setSize(set);
     const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
     const style = dom.style.hooks.engineOf(document) orelse return error.NoStyleEngine;
     const resources = style.resourceState() orelse return error.NoResourceState;
@@ -819,7 +826,7 @@ fn neverStyledControlsAfterReady() !void {
         defer value.release();
         const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
         const set = try interfaces.Document.get_fonts(document);
-        _ = try interfaces.FontFaceSet.get_size(set);
+        _ = try setSize(set);
         const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
         const ready: engine.Owned = .{ .value = try interfaces.FontFaceSet.get_ready(set) };
         defer ready.release();
@@ -887,7 +894,7 @@ fn controlStyleLifetimes() !void {
             defer value.release();
             const document = engine.convertToPlatformObject(realm, value.borrow()) orelse return error.NoDocument;
             const set = try interfaces.Document.get_fonts(document);
-            _ = try interfaces.FontFaceSet.get_size(set);
+            _ = try setSize(set);
             const state = dom.style.hooks.fontSetOf(set) orelse return error.NoFontSetState;
             const ready: engine.Owned = .{ .value = try interfaces.FontFaceSet.get_ready(set) };
             defer ready.release();

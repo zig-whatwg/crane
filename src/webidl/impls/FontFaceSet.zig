@@ -70,8 +70,12 @@ pub fn get_status(instance: *runtime.Instance) anyerror!enums.FontFaceSetLoadSta
     };
 }
 
-pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-    return @intCast((try setOf(instance)).members.items.len);
+/// WebIDL 2.5.12: the set entries the binding's setlike members (size, has,
+/// forEach, keys, values, entries, the iterator) read; null once the set is
+/// gone (and, for now, in a worker: Q16).
+pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {
+    const set = fontSetOf(instance) orelse return null;
+    return set.setlikeView();
 }
 
 pub fn call_add(instance: *runtime.Instance, font: *runtime.Instance) anyerror!*runtime.Instance {

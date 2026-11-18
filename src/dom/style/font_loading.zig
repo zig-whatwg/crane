@@ -2278,6 +2278,9 @@ pub const Set = struct {
     next_id: u64 = 0,
     retired: bool = false,
     environment_pending: bool = true,
+    /// The set entries as the binding's setlike members read them
+    /// (`setlikeView`).
+    entries_view: @import("webidl").setlike.PlatformObjects = undefined,
 
     pub const Member = struct {
         face: InstanceLink,
@@ -2365,6 +2368,46 @@ pub const Set = struct {
             pending.cancel();
             pending.release();
         }
+    }
+
+    /// Font Loading 3 §3: the set entries for WebIDL's setlike members
+    /// (3.7.12: size, has, forEach, keys, values, entries and the iterator;
+    /// add, delete and clear are the interface's own). Each read reconciles
+    /// the CSS-connected faces first, as every other member does (the
+    /// impl's setOf), so the "iteration order" is §3's: the CSS-connected
+    /// faces in document order of their rules, then the others in insertion
+    /// order (`members`, as reconcile keeps it). An iterator is a position
+    /// (webidl.setlike.PlatformObjects: Gecko and WebKit keep an index).
+    pub fn setlikeView(self: *Set) *@import("webidl").setlike.PlatformObjects {
+        self.entries_view = .{ .context = self, .vtable = &entries_vtable };
+        return &self.entries_view;
+    }
+    const entries_vtable: @import("webidl").setlike.PlatformObjects.VTable = .{ .size = entriesSize, .contains = entriesContain, .after = entriesAfter };
+    fn entriesOf(context: *anyopaque) *Set {
+        const self: *Set = @ptrCast(@alignCast(context));
+        // A reconcile that cannot allocate leaves the entries as they were.
+        self.reconcile() catch {};
+        return self;
+    }
+    fn entriesSize(context: *anyopaque) usize {
+        const self = entriesOf(context);
+        var count: usize = 0;
+        for (self.members.items) |member| count += @intFromBool(member.face.isLive());
+        return count;
+    }
+    fn entriesContain(context: *anyopaque, value: *anyopaque) bool {
+        const self = entriesOf(context);
+        return self.indexOf(@ptrCast(@alignCast(value))) != null;
+    }
+    fn entriesAfter(context: *anyopaque, sequence: u64) ?@import("webidl").setlike.PlatformObjects.Entry {
+        const self = entriesOf(context);
+        var index: usize = @intCast(sequence);
+        while (index < self.members.items.len) : (index += 1) {
+            const member = self.members.items[index];
+            if (!member.face.isLive()) continue;
+            return .{ .sequence = index + 1, .value = member.face.instance };
+        }
+        return null;
     }
 
     pub fn liveDocument(self: *const Set) ?*runtime.Instance {

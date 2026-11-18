@@ -24,7 +24,7 @@ const types = @import("types.zig");
 
 /// The setlike interfaces whose impls keep their set entries in a
 /// `webidl.setlike.SetEntries`.
-pub const implemented = [_][]const u8{"CustomStateSet"};
+pub const implemented = [_][]const u8{ "CustomStateSet", "FontFaceSet" };
 
 pub fn isImplemented(interface_name: []const u8) bool {
     for (implemented) |name| {
@@ -35,16 +35,21 @@ pub fn isImplemented(interface_name: []const u8) bool {
 
 /// The Zig type of the set entries of a setlike declaration whose value type
 /// is `value_type`: a string type's set keeps its own copies
-/// (`webidl.setlike.Strings`). Values the binding converts to an interface
-/// (FontFaceSet's FontFace, Highlight's AbstractRange) need a traced edge per
-/// entry, which the set entries do not draw yet: an error, so an interface
-/// listed in `implemented` with one fails the regeneration.
+/// (`webidl.setlike.Strings`); an interface type's set is a view of a list
+/// its impl keeps and traces (`webidl.setlike.PlatformObjects`: FontFaceSet's
+/// FontFace, whose binding converts the values to and from platform
+/// objects). Any other type (nullable, a union, a sequence, a primitive) is
+/// an error, so an interface listed in `implemented` with one fails the
+/// regeneration.
 pub fn entriesType(value_type: types.IDLType) error{UnsupportedSetlikeValueType}![]const u8 {
     if (value_type.nullable or value_type.unionTypes != null or value_type.sequence != null) return error.UnsupportedSetlikeValueType;
     const name = value_type.type;
     for ([_][]const u8{ "DOMString", "USVString", "ByteString", "CSSOMString" }) |string| {
         if (std.mem.eql(u8, name, string)) return "webidl.setlike.Strings";
     }
+    // An interface name: an identifier starting with an uppercase letter
+    // (WebIDL's primitive and built-in types are lowercase keywords).
+    if (name.len != 0 and std.ascii.isUpper(name[0])) return "webidl.setlike.PlatformObjects";
     return error.UnsupportedSetlikeValueType;
 }
 
