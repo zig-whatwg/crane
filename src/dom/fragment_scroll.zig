@@ -3,13 +3,15 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/browsing-the-web.html#scroll-to-the-fragment-identifier
 //!
-//! Crane lays nothing out, so the scrolling itself is the host's; what the
-//! page can observe is the document's target element (`:target`), which this
-//! sets. Ancestor revealing runs through the DOM hook to open closed details;
-//! its hidden-until-found pairs (steps 3.1 and 4.2) are TODO. Scrolling
-//! the target into view is host geometry; the focusing steps and sequential
-//! focus navigation starting point remain TODO(fragment): the focusing steps
-//! change document.activeElement and are not run yet.
+//! Crane lays nothing out. What the page can observe is the document's target
+//! element (`:target`), which this sets, and the viewport's scroll position:
+//! scrolling to the beginning of the document is (0, 0) whatever the layout,
+//! so that scroll is performed (the Window's, dom.window_globals); scrolling
+//! an element into view needs its box, which only a renderer answers.
+//! Ancestor revealing runs through the DOM hook to open closed details; its
+//! hidden-until-found pairs (steps 3.1 and 4.2) are TODO. The focusing steps
+//! and sequential focus navigation starting point remain TODO(fragment): the
+//! focusing steps change document.activeElement and are not run yet.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -32,8 +34,11 @@ pub fn scrollToTheFragment(document: *runtime.Instance) void {
         // target element to null."
         .none => target_element.set(document, null),
         // Step 2: the top of the document - "Set document's target element
-        // to null", and scroll to the beginning of the document (the host's).
-        .top_of_the_document => target_element.set(document, null),
+        // to null. Scroll to the beginning of the document for document."
+        .top_of_the_document => {
+            target_element.set(document, null);
+            scrollToTheBeginningOfTheDocument(document);
+        },
         // Step 3: "Let target be document's indicated part. Set document's
         // target element to target."
         .element => |target| {
@@ -42,6 +47,18 @@ pub fn scrollToTheFragment(document: *runtime.Instance) void {
             @import("ancestor_revealing.zig").reveal(target);
         },
     }
+}
+
+/// CSSOM View "scroll to the beginning of the document" for `document`:
+/// "Let viewport be the viewport associated with document" - its Window's -
+/// and "the scroll position viewport would have by aligning the beginning
+/// edge of the viewport with the beginning edge of document" is (0, 0)
+/// whatever the layout; "perform a scroll of viewport to position"
+/// (dom.window_globals.performScroll, the Window's). A document with no
+/// browsing context (no Window) has no viewport.
+pub fn scrollToTheBeginningOfTheDocument(document: *runtime.Instance) void {
+    const window = (interfaces.Document.get_defaultView(document) catch null) orelse return;
+    @import("window_globals.zig").performScroll(window, 0, 0);
 }
 
 /// "For an HTML document document, its indicated part is the result of

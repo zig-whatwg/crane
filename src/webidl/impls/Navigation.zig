@@ -2220,7 +2220,7 @@ fn finish(instance: *runtime.Instance, internal: *InternalState, record: *EventR
     potentiallyResetFocus(instance, internal, record);
     // 5. "If didFulfill is true, then potentially process scroll behavior
     // given event."
-    if (did_fulfill) potentiallyProcessScroll(record);
+    if (did_fulfill) potentiallyProcessScroll(instance, internal, record);
     // 6.
     record.interception_state = .finished;
 }
@@ -2245,12 +2245,51 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
     // adding its Document-owned node requires the separate holder work.
 }
 
-/// HTML "potentially process scroll behavior": with no layout, processing
-/// it records only that scrolling happened.
-fn potentiallyProcessScroll(record: *EventRecord) void {
+/// HTML "potentially process scroll behavior" given the event `record`.
+fn potentiallyProcessScroll(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
+    // 1. Assert: committed or scrolled. 2.
     if (record.interception_state == .scrolled) return;
+    // 3. "If event's scroll behavior is "manual", then return" - null is
+    // treated as "after-transition".
     if (record.scroll_behavior == .manual) return;
+    // 4.
+    processScrollBehavior(instance, internal, record);
+}
+
+/// HTML "process scroll behavior" given the event `record`.
+fn processScrollBehavior(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
+    // 1. Assert: committed. 2.
     record.interception_state = .scrolled;
+    // 3. "If event's navigationType was initialized to "traverse", then
+    // restore scroll position data given event's relevant global object's
+    // navigable's active session history entry." TODO(scroll-restoration):
+    // Crane's session history entries keep no scroll position data yet
+    // ("persist history entry state" saves none), so there is nothing to
+    // restore - the viewport stays where it is.
+    if (record.navigation_type == .traverse) return;
+    // 4.1. "Let document be event's relevant global object's associated
+    // Document." (A window whose document is no longer fully active has no
+    // viewport to scroll.)
+    const scope = scopeOf(instance, internal) orelse return;
+    const document = scope.document;
+    switch (dom.fragment_scroll.indicatedPart(document)) {
+        // 4.2. "If document's indicated part is null, then scroll to the
+        // beginning of the document given document." Also: the target
+        // element becomes null, as "scroll to the fragment" step 1 sets it
+        // for a null indicated part - by browser majority, where the spec
+        // text keeps the earlier target: Chrome 157 (NavigateEvent::
+        // ProcessScrollBehavior runs FrameLoader's same-document fragment
+        // processing, which clears the CSS target) and WebKit (319068@main,
+        // bug 321498, "This matches Chrome"; Safari Technology Preview 256
+        // passes) clear it; Firefox 160 keeps it.
+        // navigation-api/scroll-behavior/manual-scroll-clears-target-*.html.
+        .none => {
+            dom.target_element.set(document, null);
+            dom.fragment_scroll.scrollToTheBeginningOfTheDocument(document);
+        },
+        // 4.3. "Otherwise, scroll to the fragment given document."
+        else => dom.fragment_scroll.scrollToTheFragment(document),
+    }
 }
 
 /// HTML "abort a NavigateEvent" given `reason` (BORROWED).
@@ -2501,7 +2540,7 @@ fn scrollHook(event: *runtime.Instance) anyerror!void {
     // "InvalidStateError" DOMException."
     if (owner.record.interception_state != .committed) return error.InvalidStateError;
     // 3. "Process scroll behavior given this."
-    owner.record.interception_state = .scrolled;
+    processScrollBehavior(owner.instance, owner.internal, owner.record);
 }
 
 /// Shared checks for `event`, from its navigation: what the event's own

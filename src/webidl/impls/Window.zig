@@ -422,6 +422,7 @@ pub fn installHooks() void {
         .adopt_browsing_context = &replaceBrowsingContext,
         .swap_current_event = &swapCurrentEvent,
         .location = &locationOf,
+        .perform_scroll = &performViewportScroll,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
@@ -2748,6 +2749,17 @@ fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime
     }
     const realm = engine.currentRealm() orelse instance.ctx;
     return (try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined)).take();
+}
+
+/// dom.window_globals.perform_scroll: CSSOM View "perform a scroll" of this
+/// window's viewport to (`x`, `y`) - instant, unbounded beyond the origin,
+/// as scroll() sets it (scrollViewportTo); a window with no viewport left
+/// (closed) keeps its position.
+fn performViewportScroll(window: *runtime.Instance, x: f64, y: f64) void {
+    const internal = getInternal(window) orelse return;
+    if (internal.closed) return;
+    internal.scroll_x = @max(0, normalizeNonFinite(x));
+    internal.scroll_y = @max(0, normalizeNonFinite(y));
 }
 
 /// Operation: resizeTo
