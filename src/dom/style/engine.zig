@@ -1133,6 +1133,11 @@ const Resolution = struct {
     starting: bool = false,
     /// A rule inside @starting-style matched since `starting` was set.
     starting_matched: bool = false,
+    /// CSS Pseudo 4 §3.5: the highlight pseudo-element being resolved
+    /// inherits from `highlight_parent` (css.cascade.Context.highlight), set
+    /// by pseudoStyle around its resolveOne.
+    highlight: bool = false,
+    highlight_parent: ?*const ComputedStyle = null,
     /// Scoped style rules (Cascade 6 3.5), for the subject and sheet being
     /// matched (`beginScopes`): each @scope rule's scopes the subject is in,
     /// found when a rule of it is first a candidate - a span of
@@ -1405,6 +1410,17 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
     }
     var reads: selector_matching.StateReads = .{};
     const previous: ?element_style.Cached = if (state.pseudoCached(p)) |cached| cached.cached else null;
+    // CSS Pseudo 4 §3.5: a highlight pseudo-element inherits from the same
+    // highlight of its originating element's parent element (resolved
+    // first, from the root down, each cached as this one is).
+    const highlight = isHighlightPseudo(p);
+    const highlight_parent: ?*const ComputedStyle = if (highlight) try highlightParentStyle(res, node, p, animation_reader, generation) else null;
+    res.highlight = highlight;
+    res.highlight_parent = highlight_parent;
+    defer {
+        res.highlight = false;
+        res.highlight_parent = null;
+    }
     const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
         .event = styleChangeEvent(previous, res.key, own.@"volatile"),
         .parent_rendered = own.rendered,
@@ -1465,6 +1481,30 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
 /// declarations are empty (CSSOM 7.2 step 5's null obj). Chrome, the one
 /// engine shipping ::picker, answers so
 /// (customizable-select/select-picker-pseudo-box-type.html).
+/// CSS Pseudo 4 §3.1's highlight pseudo-elements, as the style engine
+/// names them (`p`: the name, and ::highlight()'s argument).
+fn isHighlightPseudo(p: []const u8) bool {
+    for ([_][]const u8{ "selection", "target-text", "search-text", "spelling-error", "grammar-error" }) |name| {
+        if (std.mem.eql(u8, p, name)) return true;
+    }
+    return std.mem.startsWith(u8, p, "highlight(");
+}
+
+/// The highlight pseudo-element `p` of the flat-tree parent element of
+/// `node` (whose own style its lineage resolution cached), or null at the
+/// root: what a highlight of `node` inherits from (CSS Pseudo 4 §3.5).
+fn highlightParentStyle(res: *Resolution, node: *NodeBase, p: []const u8, animation_reader: *animations.effect_stack.Reader, generation: *?u64) Error!?*const ComputedStyle {
+    var slotted = false;
+    const parent_node = switch (flatParent(node, &slotted)) {
+        .element => |parent| parent,
+        else => return null,
+    };
+    const parent = instanceOf(parent_node) orelse return null;
+    const parent_state = element_style.existingOf(parent) orelse return null;
+    if (parent_state.cached == null) return null;
+    return (try pseudoStyle(res, parent, parent_node, parent_state, p, animation_reader, generation)).style;
+}
+
 fn hasPseudoElement(element: *runtime.Instance, name: []const u8) bool {
     if (!std.mem.eql(u8, name, "picker")) return true;
     return selectKind(element) == .drop_down;
@@ -1611,6 +1651,9 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .blockify_display = pseudo == null and isHtmlLegend(element),
         // Position 4 §3.1: an element in the top layer, or its ::backdrop.
         .top_layer = res.inTopLayer(element, pseudo),
+        // CSS Pseudo 4 §3.5 highlight inheritance (pseudoStyle).
+        .highlight = res.highlight,
+        .highlight_parent = res.highlight_parent,
     };
     const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();

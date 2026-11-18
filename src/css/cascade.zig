@@ -221,6 +221,18 @@ pub const Context = struct {
     /// Where the cascade records the inputs it read (lane style1 b2: the
     /// matched-properties cache's cacheability). Null: nothing is recorded.
     dependencies: ?*Dependencies = null,
+    /// CSS Pseudo 4 §3.5 highlight inheritance, for a highlight
+    /// pseudo-element (::selection, ::target-text, ::search-text,
+    /// ::spelling-error, ::grammar-error, ::highlight()): every property -
+    /// inherited or not - that the cascade gives no value, or `inherit` or
+    /// `unset`, takes the value of `highlight_parent`, the corresponding
+    /// highlight pseudo-element of the originating element's parent element
+    /// (null at the root, where they take their initial values, except
+    /// color, whose inherited value is currentColor: the originating
+    /// element's color). `parent` stays the originating element's style:
+    /// custom properties "inherit from the originating element".
+    highlight: bool = false,
+    highlight_parent: ?*const ComputedStyle = null,
 };
 
 /// What one cascade read beyond its matched declarations, its parent's
@@ -612,7 +624,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     // Every longhand starts at its default (Cascade 5 7.1) without a
     // per-longhand step: the inherited groups are the parent's, shared, and
     // the others the initial values (computed_style.zig, storage).
-    const style = try ComputedStyle.inheriting(allocator, ctx.parent);
+    const style = if (ctx.highlight)
+        try ComputedStyle.inheritingAll(allocator, ctx.highlight_parent)
+    else
+        try ComputedStyle.inheriting(allocator, ctx.parent);
     builder.style = style;
     errdefer style.destroy();
     if (ctx.registered) |r| {
@@ -1636,6 +1651,14 @@ const Builder = struct {
     }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
+        if (self.ctx.highlight) {
+            if (self.ctx.highlight_parent) |p| return p.get(l);
+            // At the root: "the inherited value of color is currentColor"
+            // - the originating element's color - and every other property's
+            // its initial value.
+            if (l == .color) if (self.ctx.parent) |originating| return originating.get(.color);
+            return computed_mod.initialComputed(l);
+        }
         if (self.ctx.parent) |p| return p.get(l);
         return computed_mod.initialComputed(l);
     }
@@ -1691,7 +1714,9 @@ const Builder = struct {
     }
 
     fn unset(self: *const Builder, l: Longhand) Specified {
-        _ = self;
+        // CSS Pseudo 4 §3.5: in a highlight pseudo-element every property
+        // inherits from the parent's highlight.
+        if (self.ctx.highlight) return .{ .inherit = {} };
         return if (l.inherited()) .{ .inherit = {} } else .{ .initial = {} };
     }
 

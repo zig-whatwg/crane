@@ -397,6 +397,23 @@ pub const ComputedStyle = struct {
         return self;
     }
 
+    /// A style starting with every group of `parent` - inherited or not -
+    /// shared: CSS Pseudo 4 §3.5 highlight inheritance (a null `parent`: the
+    /// initial values).
+    pub fn inheritingAll(allocator: Allocator, parent: ?*const ComputedStyle) Allocator.Error!*ComputedStyle {
+        const self = try allocator.create(ComputedStyle);
+        self.* = .{ .allocator = allocator };
+        const p = parent orelse return self;
+        inline for (0..groups.count) |g| {
+            self.slots[g] = p.slots[g];
+            if (p.held.isSet(g)) {
+                Group.of(p.slots[g]).refs += 1;
+                self.held.set(g);
+            }
+        }
+        return self;
+    }
+
     pub fn destroy(self: *ComputedStyle) void {
         var it = self.held.iterator(.{});
         while (it.next()) |g| Group.of(self.slots[g]).release();
