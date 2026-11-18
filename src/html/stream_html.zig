@@ -305,6 +305,15 @@ const StreamParser = struct {
         return self;
     }
 
+    /// Whether the Document is still the one held: the counted hold keeps
+    /// it, but a forced realm end frees a realm's nodes whatever their counts
+    /// (CountedRef's own net reads the same).
+    fn documentAlive(self: *const StreamParser) bool {
+        if (self.document_ref.base == null) return false;
+        if (runtime.SlabAllocator.generationOf(self.document) != self.document_ref.generation) return false;
+        return !runtime.instance_lifecycle.isCleanupStarted(self.document);
+    }
+
     fn retain(self: *StreamParser) void {
         self.references += 1;
     }
@@ -321,7 +330,7 @@ const StreamParser = struct {
     fn destroy(self: *StreamParser) void {
         // Scripts its Document still queues never run now: discarded while
         // the Document is here (each queue entry's root goes with it).
-        @import("script_execution.zig").discardDocumentScripts(self.document);
+        if (self.documentAlive()) @import("script_execution.zig").discardDocumentScripts(self.document);
         self.discardParser();
         js.disposeOptional(&self.write_error);
         if (self.close_promise) |deferred| deferred.deinit();
@@ -343,7 +352,9 @@ const StreamParser = struct {
         }
         self.fragment_case = null;
         parser.owner = null;
-        dom.document_lifecycle.discardParser(self.document, parser);
+        // A forced realm end can free the Document whatever its counts say;
+        // it then detached its parser and let its reference go itself.
+        if (self.documentAlive()) dom.document_lifecycle.discardParser(self.document, parser);
         parser.release();
     }
 
@@ -407,7 +418,7 @@ const StreamParser = struct {
         const parser = self.parser orelse return;
         // 5.1. The scripts on the stack of open elements: already started.
         self.markOpenScriptsStarted();
-        if (dom.document_scripts.of(self.document)) |scripts| {
+        if (if (self.documentAlive()) dom.document_scripts.of(self.document) else null) |scripts| {
             // 5.2. "If the parser's Document's pending parsing-blocking script
             // is non-null, then unblock rendering on it, and set the parser's
             // Document's pending parsing-blocking script to null."
@@ -603,6 +614,7 @@ const StreamParser = struct {
     }
 
     fn queueDeferredScripts(self: *StreamParser) void {
+        if (!self.documentAlive()) return;
         const scripts = dom.document_scripts.of(self.document) orelse return;
         if (scripts.scripts_to_execute_when_parsing_finished.items.len == 0) return;
         const loop = self.realm.getOptionalEventLoop() orelse return;
@@ -637,8 +649,9 @@ const StreamParser = struct {
     /// resumes this (script_execution's resumeParserDocument). Once none is
     /// left, the scripts' hold on this parser ends.
     fn executeDeferredScripts(self: *StreamParser) void {
-        if (!self.aborted) @import("script_execution.zig").executeScriptsWhenParsingFinished(self.allocator, self.document);
-        const scripts = dom.document_scripts.of(self.document);
+        const alive = self.documentAlive();
+        if (!self.aborted and alive) @import("script_execution.zig").executeScriptsWhenParsingFinished(self.allocator, self.document);
+        const scripts = if (alive) dom.document_scripts.of(self.document) else null;
         const left = if (scripts) |s| s.scripts_to_execute_when_parsing_finished.items.len else 0;
         if ((left == 0 or self.aborted) and self.deferred_hold) {
             self.deferred_hold = false;
