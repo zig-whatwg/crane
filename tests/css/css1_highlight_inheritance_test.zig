@@ -64,3 +64,33 @@ test "an ordinary pseudo-element still inherits only inherited properties" {
     defer child.destroy();
     try expectValue(child, .background_color, "rgba(0, 0, 0, 0)");
 }
+
+test "currentColor down the highlight chain is each originating element's color" {
+    // The root highlight's color is currentColor; a child's highlight with no
+    // color inherits currentColor, so it is the child's own color.
+    const root = try styleOf(null, "color: black", false, null);
+    defer root.destroy();
+    const root_selection = try styleOf(root, "", true, null);
+    defer root_selection.destroy();
+    const link = try styleOf(root, "color: lime", false, null);
+    defer link.destroy();
+    const link_selection = try styleOf(link, "", true, root_selection);
+    defer link_selection.destroy();
+    try expectValue(link_selection, .color, "rgb(0, 255, 0)");
+    // A concrete color is inherited as that color.
+    const blue_selection = try styleOf(root, "color: blue", true, null);
+    defer blue_selection.destroy();
+    const child_selection = try styleOf(link, "", true, blue_selection);
+    defer child_selection.destroy();
+    try expectValue(child_selection, .color, "rgb(0, 0, 255)");
+    // A declared currentcolor is the originating element's, and inherited as
+    // currentColor too.
+    const current_selection = try styleOf(link, "color: currentcolor", true, blue_selection);
+    defer current_selection.destroy();
+    try expectValue(current_selection, .color, "rgb(0, 255, 0)");
+    const grandchild = try styleOf(root, "color: rgb(1, 2, 3)", false, null);
+    defer grandchild.destroy();
+    const grandchild_selection = try styleOf(grandchild, "", true, current_selection);
+    defer grandchild_selection.destroy();
+    try expectValue(grandchild_selection, .color, "rgb(1, 2, 3)");
+}

@@ -354,6 +354,12 @@ pub const ComputedStyle = struct {
     /// what the UA sheet's -internal-auto-base() picks on. Not a property:
     /// no author style reads or sets it (Blink ComputedStyle InBaseAppearance).
     in_base_appearance: bool = false,
+    /// CSS Pseudo 4 §3.5: this highlight pseudo-element's color is
+    /// currentColor - declared, or inherited from the root highlight, whose
+    /// inherited color is currentColor - so it is its originating element's
+    /// color, and a highlight that inherits it takes its own originating
+    /// element's (currentColor computes to itself). Not a property.
+    highlight_current_color: bool = false,
     /// CSS Variables 1 §2: the element's custom properties, computed; shared
     /// by reference with the parent's when this cascade changed none (one
     /// reference held). Null: none has a value.

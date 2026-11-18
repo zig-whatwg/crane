@@ -1652,11 +1652,19 @@ const Builder = struct {
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
         if (self.ctx.highlight) {
+            // At the root: "the inherited value of color is currentColor",
+            // which computes to itself: down the highlight chain it is each
+            // highlight's own originating element's color
+            // (highlight-currentcolor-computed-visited.html, Chrome 12/12).
+            if (l == .color) {
+                const current = if (self.ctx.highlight_parent) |p| p.highlight_current_color else true;
+                if (current) if (self.ctx.parent) |originating| {
+                    self.style.highlight_current_color = true;
+                    return originating.get(.color);
+                };
+            }
             if (self.ctx.highlight_parent) |p| return p.get(l);
-            // At the root: "the inherited value of color is currentColor"
-            // - the originating element's color - and every other property's
-            // its initial value.
-            if (l == .color) if (self.ctx.parent) |originating| return originating.get(.color);
+            // Every other property at the root: its initial value.
             return computed_mod.initialComputed(l);
         }
         if (self.ctx.parent) |p| return p.get(l);
@@ -1957,6 +1965,9 @@ const Builder = struct {
             .math = self.computationContext(l, v, source),
         }) };
         if (v == .color) {
+            // CSS Pseudo 4 §3.5: a highlight's `color: currentcolor` keeps
+            // its currentColor for the highlights that inherit it.
+            if (l == .color and self.ctx.highlight and v.color == .current) self.style.highlight_current_color = true;
             // Color4 §6.4: currentcolor in color inherits. Every other
             // destination keeps it symbolic until the receiving element
             // resolves the value, including nested expression origins.
