@@ -72,7 +72,7 @@ pub fn notifyActivation(document: *Instance) void {
         context.collectDescendants(std.heap.page_allocator, &descendants) catch {};
         for (descendants.items) |descendant| {
             if (descendant == context or descendant.orphaned) continue;
-            if (!descendant.isSameOrigin(context)) continue;
+            if (!activeDocumentSameOrigin(descendant, document)) continue;
             if (count == max_windows) break;
             if (activeWindowOf(descendant)) |w| {
                 windows[count] = w;
@@ -92,6 +92,25 @@ pub fn notifyActivation(document: *Instance) void {
         // window."
         close_watchers.notifyUserActivation(w);
     }
+}
+
+/// Step 4's filter: whether `descendant`'s active document's origin is same
+/// origin with `document`'s - the documents' own origin records
+/// (dom.origin_record "same origin"). The browsing context's `origin` field
+/// is not that: a frame navigated to about:blank after its initial document
+/// (iframe.src = "about:blank", which inherits the initiator's origin) kept
+/// an origin there that no longer matched, and a click in the parent did not
+/// activate the frame (fullscreen/api/element-ready-allowed.html: Chrome 157
+/// and Safari 27.2 pass).
+fn activeDocumentSameOrigin(descendant: *BrowsingContext, document: *Instance) bool {
+    const window = activeWindowOf(descendant) orelse return false;
+    const other = (interfaces.Window.get_document(window) catch null) orelse return false;
+    const a = (dom.document_origin.shareable(document) catch null) orelse return false;
+    const b = (dom.document_origin.shareable(other) catch null) orelse return false;
+    return dom.origin_record.sameOrigin(
+        .{ .serialized = a.serialized orelse "null", .record = a },
+        .{ .serialized = b.serialized orelse "null", .record = b },
+    );
 }
 
 /// HTML 6.4.1 "sticky activation": the current time is at or after the last
