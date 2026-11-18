@@ -10,7 +10,7 @@ const dom = @import("dom");
 const fonts = dom.style.engine.resource_loading.font_loading;
 
 pub const State = interfaces.FontFaceSet.State;
-pub const ImplError = error{ NotImplemented, InvalidStateError, InvalidModificationError };
+pub const ImplError = error{ NotImplemented, InvalidStateError, InvalidModificationError, SyntaxError };
 pub const InternalState = fonts.Set;
 pub const construction_args = .{"font_document"};
 const Registry = runtime.InstanceRegistry(.font_face_set, InternalState);
@@ -97,8 +97,11 @@ pub fn call_load(instance: *runtime.Instance, font: typedefs.CSSOMString, text: 
     return (try set.load(font.asSlice(), if (text.was_passed) text.value.asSlice() else " ")).take();
 }
 
-pub fn call_check(_: *runtime.Instance, _: typedefs.CSSOMString, _: webidl.Opt(typedefs.CSSOMString)) anyerror!bool {
-    return error.NotImplemented;
+/// Font Loading 3 §3.3: whether the font list renders `text` without any
+/// unloaded or loading face; starts no load. A syntax error throws.
+pub fn call_check(instance: *runtime.Instance, font: typedefs.CSSOMString, text: webidl.Opt(typedefs.CSSOMString)) anyerror!bool {
+    const set = try setOf(instance);
+    return set.check(font.asSlice(), if (text.was_passed) text.value.asSlice() else " ");
 }
 
 fn discardRealm(realm: runtime.Context) void {

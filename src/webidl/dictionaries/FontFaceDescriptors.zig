@@ -16,6 +16,7 @@ pub const FontFaceDescriptors = struct {
     ascentOverride: ?typedefs.CSSOMString = null,
     descentOverride: ?typedefs.CSSOMString = null,
     lineGapOverride: ?typedefs.CSSOMString = null,
+    width: ?typedefs.CSSOMString = null,
 
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.

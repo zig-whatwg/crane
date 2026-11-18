@@ -78,7 +78,10 @@ pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, sour
         },
         else => return err,
     };
-    if (dict.stretch) |value| face.setDescriptorValue(.stretch, "font-stretch", value.asSlice()) catch |err| switch (err) {
+    // Font Loading 3 §2: stretch is "a legacy name alias of width" - both
+    // set font-stretch (font-width's other name); width, when given, wins
+    // (it has no default; stretch defaults to "normal").
+    if (dict.width orelse dict.stretch) |value| face.setDescriptorValue(.stretch, "font-stretch", value.asSlice()) catch |err| switch (err) {
         error.SyntaxError => {
             try face.emptyDescriptor("font-stretch");
             invalid = true;
@@ -187,6 +190,14 @@ pub fn get_stretch(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     return descriptor(instance, "font-stretch");
 }
 pub fn set_stretch(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
+    try (try faceOf(instance)).setDescriptorValue(.stretch, "font-stretch", value.asSlice());
+}
+
+/// Font Loading 3 §2: width and stretch "set the same attribute".
+pub fn get_width(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
+    return descriptor(instance, "font-stretch");
+}
+pub fn set_width(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     try (try faceOf(instance)).setDescriptorValue(.stretch, "font-stretch", value.asSlice());
 }
 

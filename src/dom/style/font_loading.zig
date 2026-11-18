@@ -2350,6 +2350,34 @@ pub const Set = struct {
         return result;
     }
 
+    /// Font Loading 3 §3.3 check(font, text), steps 2-3: "find the matching
+    /// font faces" (§3.1, as load() does; Crane's faces are the set's own -
+    /// it has no system font that could load), "If a syntax error was
+    /// returned, throw a SyntaxError"; "If font face list is empty, or all
+    /// fonts in the font face list either have a status attribute of
+    /// "loaded" or are system fonts, return true. Otherwise, return false."
+    /// Starts no load.
+    pub fn check(self: *Set, font: []const u8, text: []const u8) !bool {
+        if (self.retired or !self.ownerLive()) return error.InvalidStateError;
+        var available = try LoadingFaces.init(self);
+        defer available.deinit();
+        var options: css.font_request.Options = .{ .allocator = self.allocator };
+        if (self.liveDocument()) |document| {
+            const media = hooks.mediaValues(document);
+            options.viewport_width = media.width;
+            options.viewport_height = media.height;
+        }
+        const matched = try matchFontForText(options, available.faces.items, font, text) orelse return error.SyntaxError;
+        defer self.allocator.free(matched.indices);
+        for (matched.indices) |index| {
+            const link = available.entries.items[index].face;
+            if (!link.isLive()) continue;
+            const face = hooks.fontFaceOf(link.instance) orelse continue;
+            if (face.status != .loaded) return false;
+        }
+        return true;
+    }
+
     fn detachPendingLoad(self: *Set, pending: *SetLoad) void {
         for (self.pending_loads.items, 0..) |candidate, index| if (candidate == pending) {
             _ = self.pending_loads.orderedRemove(index);
