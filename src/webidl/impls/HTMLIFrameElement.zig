@@ -8809,8 +8809,13 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
         if (!createChildNavigable(instance)) return;
     }
 
-    // The navigable's target name is the element's name attribute, and the
-    // parent's global reaches it by that name.
+    // The navigable's target name is the element's name attribute. The
+    // parent's global reaches it by that name through its named properties
+    // object (WindowProperties: Window's named getter answers its
+    // document-tree child navigables' target names), never an own property:
+    // `Object.getOwnPropertyDescriptor(window, name)` is undefined in Chrome,
+    // Firefox and Safari, and the name goes when the navigable does
+    // (html/browsers/the-window-object/length-attribute.window.js).
     const name: ?[]const u8 = blk: {
         if (internal.name_attr) |n| break :blk n;
         if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
