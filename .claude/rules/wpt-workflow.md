@@ -65,6 +65,27 @@ assertion and why it needs a layout box (e.g. getImageData(0, 0,
 img.clientWidth, img.clientHeight) throws IndexSizeError when clientWidth is 0),
 derived from a production run's messages and checked by hand. A file that also
 fails for any other reason is NOT exempt.
+A fourth exception (the user, 2026-11-18 2:36 PM ET, "Add the exemption kind"): a
+file that blocks although Crane's result is the one golden rule 2 says is correct,
+so no code change in Crane can clear it - Crane's result equals, subtest by
+subtest (the same status and the same failing assertion), that of at least two of
+Chrome, Firefox and Safari, or of the browsers a recorded ruling follows (the
+user's, or the golden-rule-2 case that decides it: a newer spec one browser ships,
+a mechanism-by-mechanism majority) - is `follows-majority`, its own group on the
+page and the site ("Exempt: Crane follows the browser majority"), never blocking.
+Each entry cites every browser's result on the aligned stable wpt.fyi runs at
+Crane's own WPT revision, the browsers Crane matches, the ruling when there is
+one, and when it is revisited; it comes off when the browsers change (or when
+Crane's result moves: the progress page flags that). NOT this kind: a file Crane
+fails like only one browser with no ruling, fails at another step than the
+browsers it would cite, or fails a subtest the majority passes.
+A fifth exception (the user, 2026-11-18 2:53 PM ET): a file that fails ONLY
+because the platform WPT runs on has no decoder for its media - a wait on
+canplay, stalled or playing that never settles, or a typed `<source>` skipped
+because canPlayType answers "" - is exempt like needs-renderer until a
+video-capable platform runs WPT (`needs-decoder`, its own group; its evidence is
+the media the test needs and the failing assertion). A file that also fails for
+any other reason is NOT exempt.
 When a generation sweep lands in `wpt-results/<label>/`, append its line to
 `tools/wpt_generation_hosts.txt` (`<label> <host> <os>-<arch> <runners>`) before
 regenerating the site; an unlisted run shows "not recorded for this generation".
