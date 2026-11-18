@@ -148,8 +148,8 @@
 # - intentional: the 2026-10-17 audit of every stated browser deviation (lane
 #   gr2audit, 108 deviations) found none that all three browsers intentionally
 #   declined with evidence. Add an entry only with that evidence for all three.
-# - test-bug: none until 2026-11-11 (lane site1, 2026-11-09); since then the entry at the end of this file
-#   (editing/other/paste_text_with_text_transform.html, wpt#65067). site1's candidates were
+# - test-bug: none until 2026-11-11 (lane site1, 2026-11-09); since then the entries below (editing/other/
+#   paste_text_with_text_transform.html, wpt#65067; lane nav4's five; lane upstream10's nine). site1's candidates were
 #   html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html and
 #   reporting-to-frame-owner.https.html (wpt#64870, Report.toJSON body ->
 #   DataCloneError). Neither meets the rule. wpt#64870 was resolved on
@@ -1287,3 +1287,101 @@ safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
 matches         = chrome, safari
 ruling          = the user, 2026-10-20: "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; tools/wpt_loss_dispositions.txt, generation 171)
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/scripting-1/the-template-element/template-for/template-for-move-cross-document.html]
+kind            = follows-majority
+why             = Crane fails exactly as Chrome, the one browser that ships template-for, does: after the move, after.previousSibling is the script element, not the "A" text the test expects (wpt#65399); Firefox and Safari do not ship the feature and fail at the move itself
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome
+ruling          = golden rule 2: a browser that does not ship the feature does not count toward a majority - Firefox 160 and Safari 27.2 do not ship template-for streaming (17 of 537 subtests in template-for/, against Chrome 157's 505) - so Chrome is the shipping majority; the file's own bug is wpt#65399 (open), not test-bug because Firefox and Safari fail at an earlier assertion
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+# test-bug (lane upstream10 filed wpt#65400-65403, #65405-65407 on the user's OK, 2026-11-18; entries by lane gate1,
+# 3:07 PM ET): each fails IDENTICALLY in Chrome 157, Firefox 160 and Safari 27.2 on the aligned stable runs at 2358bd4835
+# (the same status and failing assertion in every subtest; reload-service-worker-fetch-event differs only in each
+# engine's TypeError text), and blocks in generation 229. Not here: wpt#65399 template-for-move-cross-document
+# (only Chrome reaches the assertion: a follows-majority entry above) and wpt#65404 promise-resolution-order
+# (Chrome passes; it stays blocking).
+
+[fullscreen/api/document-fullscreen-enabled-setting-allowfullscreen.sub.html]
+kind            = test-bug
+why             = the test uses a same-origin frame, where Permissions Policy's fullscreen default allowlist ('self') allows fullscreen without allowfullscreen, so document.fullscreenEnabled is already true before navigation in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/65400
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65400 is resolved
+
+[fullscreen/api/document-fullscreen-enabled-removing-allowfullscreen.sub.html]
+kind            = test-bug
+why             = the test uses a same-origin frame, where Permissions Policy's fullscreen default allowlist ('self') allows fullscreen without allowfullscreen, so document.fullscreenEnabled stays true after navigation in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/65400
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65400 is resolved
+
+[fullscreen/api/document-fullscreen-enabled-setting-allowfullscreen-timing.sub.html]
+kind            = test-bug
+why             = the test uses a same-origin frame, where Permissions Policy's fullscreen default allowlist ('self') allows fullscreen without allowfullscreen, so document.fullscreenEnabled is true in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/65400
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65400 is resolved
+
+[html/webappapis/scripting/events/event-handler-attributes-no-bc.html]
+kind            = test-bug
+why             = assert_false(window.ran) is checked while window.ran was never set, and assert_false fails on undefined, so no implementation can pass any of the three subtests
+upstream        = https://github.com/web-platform-tests/wpt/issues/65401
+chrome.result   = wpt.fyi run 4786307730243584: 0/3 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65401 is resolved
+
+[html/webappapis/dynamic-markup-insertion/document-write/write-active-document.html]
+kind            = test-bug
+why             = the test expects document.write() on a document that is not active to be ignored; HTML has no such check and no engine ignores it, so every browser fails the same assertion
+upstream        = https://github.com/web-platform-tests/wpt/issues/65402
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65402 is resolved
+
+[html/semantics/scripting-1/the-template-element/template-for/template-for-only-html-001.html]
+kind            = test-bug
+why             = the test loads resources/template-for.xhtml, which stayed in html/dom/partial-updates/tentative/ when the test moved, so the frame loads nothing and every browser fails the same assertion
+upstream        = https://github.com/web-platform-tests/wpt/issues/65403
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65403 is resolved
+
+[html/browsers/the-window-object/open-close/close_script_defer.html]
+kind            = test-bug
+why             = callback = t.step(...) runs assert_unreached at once instead of wrapping it, so the test fails in every browser
+upstream        = https://github.com/web-platform-tests/wpt/issues/65405
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65405 is resolved
+
+[performance-timeline/not-restored-reasons/fetch.window.js]
+kind            = test-bug
+why             = the pagehide listener's parameter shadows wavURL, so the page never fetches long-wav.py, has no fetch in flight when it is hidden, and is cached in every browser ("document unexpectedly BFCached")
+upstream        = https://github.com/web-platform-tests/wpt/issues/65406
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65406 is resolved
+
+[navigation-api/navigation-methods/reload-service-worker-fetch-event.html]
+kind            = test-bug
+why             = the test is served over HTTP (no .https), so navigator.serviceWorker is undefined and getRegistration throws in every browser (its worker also calls event.transitionWhile() instead of respondWith())
+upstream        = https://github.com/web-platform-tests/wpt/issues/65407
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65407 is resolved
