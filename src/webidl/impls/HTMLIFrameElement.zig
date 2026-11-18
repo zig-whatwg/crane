@@ -8580,20 +8580,15 @@ pub fn get_sandbox(instance: *runtime.Instance) anyerror!*runtime.Instance {
     // Associate it with this element and its sandbox attribute, as every
     // reflected DOMTokenList is (dom.token_lists); the association gives it
     // the sandboxing keywords as its supported tokens, for supports().
+    // Nothing more: an associated list reads its tokens from the attribute's
+    // current value (DOM "when a DOMTokenList object is created" runs the
+    // attribute change steps with that value, which set no attribute). It
+    // used to write the attribute back to its own value here - a
+    // [CEReactions] attribute change and a MutationRecord from a getter,
+    // which no browser makes (lane bugs1; Blink HTMLIFrameElement::sandbox,
+    // WebKit HTMLIFrameElement::sandbox and Gecko HTMLIFrameElement::Sandbox
+    // each make a list over the attribute and never set it).
     try dom_module.token_lists.associate(token_list, instance, "sandbox");
-
-    // Initialize the token list from the element's current sandbox attribute value.
-    // This is critical: the attribute may have been set via Element.setAttribute()
-    // before the DOMTokenList was created. Per spec, the DOMTokenList should
-    // reflect the current attribute value.
-    const sandbox_attr_name = runtime.DOMString.initInterned("sandbox");
-    if (interfaces.Element.call_getAttribute(instance, sandbox_attr_name) catch null) |attr_value| {
-        const attr_slice = attr_value.asSlice();
-        if (attr_slice.len > 0) {
-            // Parse the attribute value and populate the token list
-            interfaces.DOMTokenList.set_value(token_list, attr_value) catch {};
-        }
-    }
 
     // Cache for future calls (SameObject semantic)
     internal.sandbox_token_list = token_list;
