@@ -1056,6 +1056,10 @@ fn documentTreeChildAt(window: *runtime.Instance, index: u32) ?*@import("dom").b
     const dom = @import("dom");
     const interfaces = @import("interfaces");
     const navigable = dom.browser_state.browsingContextOf(window) orelse return null;
+    // The list keeps some of the navigable's children: past their number
+    // there is none to find, without walking the document (lane blk3's
+    // focused cost window, 2026-11-18).
+    if (index >= navigable.children.items.len) return null;
     const document = (interfaces.Window.get_document(window) catch null) orelse return null;
     var children = dom.navigables.documentTreeChildNavigables(navigable, document, std.heap.c_allocator);
     defer children.deinit(std.heap.c_allocator);

@@ -1581,6 +1581,12 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
 pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
+    // The document-tree child navigables are some of the navigable's
+    // children: an index past their number names none, answered without
+    // walking the document for the list (every `window[i]` past the frames;
+    // lane blk3's focused cost window, 2026-11-18).
+    const navigable = navigableOf(instance, internal) orelse return null;
+    if (index >= navigable.children.items.len) return null;
     // The document-tree child navigables of this's associated Document: none
     // once it has no navigable (see get_length).
     var children = documentTreeChildNavigables(instance, internal, internal.allocator);
