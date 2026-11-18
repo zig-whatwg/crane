@@ -5,7 +5,7 @@
 
 **Why**: Lane notes often record a candidate as "Crane = Chrome = Firefox" or "the majority fails too". Many of those notes compared pass counts (0/1 against 0/1), or a browser's result at another WPT revision. Two runs that both fail can fail for different reasons. A browser that fails at another step is not doing what Crane does, so it is no evidence that Crane's result is the correct one.
 
-**What Happened**: Lane gate1 checked 46 candidates that lanes had recorded, against generation 229 and the stable runs at 2358bd4835 (the fork's upstream revision, not the 6bdc2d37fd runs some lanes used). 32 held. 14 did not, and each one still blocks:
+**What Happened**: Lane gate1 checked 46 candidates that lanes had recorded, against generation 229 and the stable runs at 2358bd4835 (the fork's upstream revision, not the 6bdc2d37fd runs some lanes used). 33 held (one, xhr/open-url-multi-window-3, only through golden rule 2's mechanism-by-mechanism clause). 13 did not, and each one still blocks:
 - `reload_document_write_onload` failed in all three browsers, but they record 4 entries and Crane records 6.
 - `nested-unload-timing` failed in Chrome and Safari with "got 0", and in Crane with "got 506.25".
 - `multiple-headers-one-invalid` failed in Crane on geometry before it reached the referrer check that Firefox and Safari fail.
