@@ -557,24 +557,37 @@ fn indexHidden(info: *const v8.PropertyCallbackInfo, name: []const u8) bool {
     return v8.v8_LegacyPlatformObject_NamedPropertyState(@ptrCast(info), &units, @intCast(name.len)) != 0;
 }
 
+/// WebIDL's named property visibility algorithm (3.9.7) for the array-index
+/// name `name`, in its order: step 1, "if P is not a supported property name
+/// of O, then return false", first - the common case, every `window[i]` past
+/// the child navigables, answered by Window's lookup alone - and the walk of
+/// steps 2 and 4-5 (`indexHidden`) only for a name that exists (lane blk3's
+/// focused cost window, 2026-11-18: walking it first cost each such miss
+/// about 90 ns).
+fn indexVisible(info: *const v8.PropertyCallbackInfo, name: []const u8) bool {
+    const window = getWindowInstanceFromHolder(info) orelse return false;
+    if (!(Window.isSupportedPropertyName(window, runtime.DOMString.initInterned(name)) catch false)) return false;
+    return !indexHidden(info, name);
+}
+
 fn indexedPropertyGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
     const name = indexName(index, &buf);
-    if (indexHidden(info, name)) return .kNo;
+    if (!indexVisible(info, name)) return .kNo;
     return getNamed(info, name);
 }
 
 fn indexedPropertyQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
     const name = indexName(index, &buf);
-    if (indexHidden(info, name)) return .kNo;
+    if (!indexVisible(info, name)) return .kNo;
     return queryNamed(info, name);
 }
 
 fn indexedPropertyDescriptor(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
     var buf: [10]u8 = undefined;
     const name = indexName(index, &buf);
-    if (indexHidden(info, name)) return .kNo;
+    if (!indexVisible(info, name)) return .kNo;
     return describeNamed(info, name);
 }
 

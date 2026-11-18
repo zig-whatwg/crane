@@ -4394,6 +4394,16 @@ const tree_ordered_map = @import("dom").tree_ordered_map;
 /// exposes nothing.
 fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name: []const u8) ?*runtime.Instance {
     if (name.len == 0) return null;
+    // A document-tree child navigable is one of the navigable's children, and
+    // only one whose target name is `name` can answer: when none of them has
+    // it - every global name a window does not have, as each lookup that
+    // walks past Window.prototype asks - there is nothing to find, without
+    // walking the document for its containers to build the list (lane blk3's
+    // focused cost window, 2026-11-18).
+    const navigable = navigableOf(window, internal) orelse return null;
+    for (navigable.children.items) |child| {
+        if (std.mem.eql(u8, child.target_name, name)) break;
+    } else return null;
     var children = documentTreeChildNavigables(window, internal, internal.allocator);
     defer children.deinit(internal.allocator);
     return childNavigableNamedIn(window, internal, children.items, name);
