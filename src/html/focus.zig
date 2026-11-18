@@ -134,8 +134,14 @@ fn isSummaryForParentDetails(element: *Instance) bool {
     return false;
 }
 
+/// HTML navigable containers (7.3.1.3): iframe and frame, and an object
+/// element - when it has a content navigable, which an object presenting a
+/// document has (HTML 4.8.7: the object's "nested navigable" case). An
+/// object showing an image, a plugin or its fallback has none and is no
+/// container: neither focusable by default nor a tab stop.
 fn isNavigableContainer(element: *Instance) bool {
-    return named(element, "iframe") or named(element, "frame");
+    if (named(element, "iframe") or named(element, "frame")) return true;
+    return named(element, "object") and contentDocumentOf(element) != null;
 }
 
 /// The elements "should be considered as focusable areas and be sequentially
@@ -1040,7 +1046,16 @@ fn sequentialSearch(document: *Instance, starting_point: ?*Instance, direction: 
         if (isNavigableContainer(c)) {
             if (contentDocumentOf(c)) |inner| {
                 if (sequentialSearch(inner, null, direction)) |found| return found;
-                return sequentialSearch(document, c, direction);
+                // Step 2.2 of the spec text continues past a container whose
+                // document has no sequentially focusable area. The browsers
+                // stop at it instead: the container is the candidate, whose
+                // focusing steps focus its content navigable's document
+                // (activeElement the container), and the next request leaves
+                // that document for the area after the container.
+                // html/interaction/focus/chrome-object-tab-focus-bug.html:
+                // Chrome 157, Firefox 160 and Safari 27.2 pass 1/1 (aligned
+                // runs at 2358bd4835) - golden rule 2, the browsers.
+                return c;
             }
         }
     }
