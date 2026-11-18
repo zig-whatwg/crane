@@ -34,6 +34,20 @@ pub const Implementation = struct {
     /// Fragment scripting mode leaves the parser document null. Optional, so
     /// a host that never parses in that mode need not supply it.
     clear_force_async: ?*const fn (element: *runtime.Instance) void = null,
+    /// "Set the element's intended document to" `document` - the parser's
+    /// script target document, when it is not the parser's Document (a
+    /// streaming parser that runs scripts). Optional, as clear_force_async.
+    set_intended_document: ?*const fn (element: *runtime.Instance, document: *runtime.Instance) void = null,
+    /// "Set the element's parser document to null" when it is `document`.
+    /// The invariant it keeps: a script's parser document - a raw back link
+    /// in node state, never counted (lint-refcount; a document and its
+    /// scripts would cycle) - never names a freed Document. A Document that
+    /// can go before the scripts it parsed (a streaming parser's private
+    /// one) is held by an owner that holds those scripts counted
+    /// (dom.node_holds) and resets each one's link through this before it
+    /// lets the Document go (html.parser_script_execution's adapter, at its
+    /// end). Optional.
+    clear_parser_document: ?*const fn (element: *runtime.Instance, document: *runtime.Instance) void = null,
     /// The element's script text, if it is an HTML script element.
     script_text: ?*const fn (element: *runtime.Instance) ?*ScriptText = null,
     /// A prepared HTML script's flag delays its preparation-time document.
@@ -103,6 +117,22 @@ pub fn installSvg(impl: SvgImplementation) void {
 pub fn markParserInserted(element: *runtime.Instance, parser_document: *runtime.Instance) void {
     if (implementation.get()) |impl| impl.mark_parser_inserted(element, parser_document);
     if (svgFlags(element)) |flags| flags.parser_inserted = true;
+}
+
+/// Set `element`'s intended document to `document` ("in head", a script
+/// start tag, step 3, when the parser's script target document is not its
+/// Document). markParserInserted sets it to the parser document first. A
+/// no-op for an element that is no HTML script element.
+pub fn setIntendedDocument(element: *runtime.Instance, document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    if (impl.set_intended_document) |set| set(element, document);
+}
+
+/// Set `element`'s parser document to null if it is `document` (its intended
+/// document too). A no-op for an element that is no HTML script element.
+pub fn clearParserDocument(element: *runtime.Instance, document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    if (impl.clear_parser_document) |clear| clear(element, document);
 }
 
 /// Set `element`'s force async to false, leaving its parser document null

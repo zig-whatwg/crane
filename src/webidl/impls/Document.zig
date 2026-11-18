@@ -2230,36 +2230,43 @@ pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMStrin
     return document;
 }
 
-/// HTML 8.5.2 parseHTMLUnsafe, steps 1–7.
-pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.ParseHTMLUnsafeOptions)) anyerror!*runtime.Instance {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
-    defer converted.deinit();
-    // Step 1: "Let compliantHTML be the result of invoking the get trusted
-    // type compliant string algorithm with TrustedHTML, the current global
-    // object, html, "Document parseHTMLUnsafe", and "script"."
+/// HTML 8.5.2 parseHTMLUnsafe, steps 1–6.
+pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.ParseHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parser_options = @import("html").parser_options;
     const allocator = instance.ctx.allocator;
     const realm = engine.currentRealm() orelse instance.ctx;
-    const compliant = try @import("dom").trusted_types.compliantStringForRealm(allocator, .html, realm, html, "Document parseHTMLUnsafe");
-    defer allocator.free(compliant);
-    // Steps 2-4: "Let document be a new Document, whose content type is
+    // WebIDL conversion of the options' sanitizer member precedes the steps.
+    const given = try parser_options.ParserOptions.fromUnion(realm, if (options.wasPassed()) options.getValue() else null);
+    // Step 1: "Let (compliantHTML, compliantOptions) be the result of
+    // invoking the get trusted type compliant input algorithm with the
+    // current global object, html, options, and "Document parseHTMLUnsafe"."
+    const compliant = try parser_options.compliantInput(allocator, globalOfRealm(realm), @import("dom").trusted_types.inputFrom(html), given, "Document parseHTMLUnsafe", .html, true);
+    defer allocator.free(compliant.html);
+    var compliant_options = compliant.options;
+    defer compliant_options.deinit();
+    // Steps 2-3: "Let document be a new Document, whose content type is
     // "text/html" and origin is this's relevant global object's associated
     // Document's origin" (no browsing context: scripting is disabled); "set
-    // document's allow declarative shadow roots to true"; "parse HTML from a
-    // string given document and compliantHTML" - whose parser takes the
-    // document's allow declarative shadow roots.
+    // document's allow declarative shadow roots to true".
+    // Step 4: "Let sanitizerConfig be the result of getting a sanitizer
+    // config from options given compliantOptions and false."
+    var config = try compliant_options.sanitizerConfig(realm, false);
+    defer if (config) |*held| held.deinit();
+    // Step 5: "Parse HTML from a string given document, compliantHTML, and
+    // sanitizerConfig" - whose parser takes the document's allow
+    // declarative shadow roots. The configuration filters the parsed
+    // document (row 41 review M2/S2: none filters nothing).
     const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant, .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant.html, .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     const document_internals = @import("dom").document_internals;
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try document_internals.setContentType(document, "text/html");
-    // Steps 5–6: configure the sanitizer and filter the parsed document -
-    // only when a sanitizer was given (row 41 review M2/S2: an absent one
-    // filters nothing, so skip the tree walk).
-    if (options.getOrDefault(.{}).sanitizer != null) try @import("html").sanitizer.filterDocument(document, &converted, false);
-    // To script: its first wrapper takes its born reference (refcount7).
+    if (config) |*held| try @import("html").sanitizer.sanitize(document, held, false);
+    // Step 6. To script: its first wrapper takes its born reference
+    // (refcount7).
     @import("dom").refcount.offerDocument(document);
     return document;
 }

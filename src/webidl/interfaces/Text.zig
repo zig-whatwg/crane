@@ -18,15 +18,19 @@ const ObservableEventListenerOptions = @import("dictionaries").ObservableEventLi
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
 const GeometryNode = @import("typedefs").GeometryNode;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const WritableStream = @import("interfaces").WritableStream;
 const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const DOMQuadInit = @import("dictionaries").DOMQuadInit;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
@@ -105,6 +109,18 @@ pub const Text = struct {
             "insertData",
             "deleteData",
             "replaceData",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",

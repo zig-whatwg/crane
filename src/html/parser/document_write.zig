@@ -355,7 +355,21 @@ pub const InputStreamManager = struct {
         release: ?*const fn (context: *anyopaque) void = null,
         after_process: ?*const fn (context: *anyopaque) void = null,
         abort: ?*const fn (context: *anyopaque) void = null,
+        /// The parser's pending parsing-blocking script is ready: how its
+        /// parser resumes when that is not `processInserted` (a fragment
+        /// parser's: "execute the pending parsing-blocking scripts", then
+        /// "run a fragment parser" - HTML "an end tag whose tag name is
+        /// script", the fragment case).
+        resume_after_blocking_script: ?*const fn (context: *anyopaque) void = null,
     };
+
+    /// The pending parsing-blocking script of this stream's parser is ready
+    /// to be parser-executed: the parser resumes, the way its processor
+    /// says, or by processing what was inserted.
+    pub fn resumeAfterBlockingScript(self: *InputStreamManager) void {
+        if (self.processor) |processor| if (processor.resume_after_blocking_script) |resume_parser| return resume_parser(processor.context);
+        self.processInserted();
+    }
 
     /// A stream holding `input`, which is complete.
     pub fn init(allocator: Allocator, input: []const u8) !InputStreamManager {
@@ -412,6 +426,31 @@ pub const InputStreamManager = struct {
         for (self.saved_stops.items) |*mark| shift(mark, at, content.len);
         shift(&self.stop_at, at, content.len);
         self.sync();
+    }
+
+    /// Append `content` to the end of the input stream (HTML "stream HTML"
+    /// step 12.4: a streaming fragment parser's input, which is never
+    /// inserted at an insertion point). Every mark at the old end - the
+    /// insertion point, the saved ones, the limit an ongoing run parses to -
+    /// stays at the end, so a run in progress consumes the new input too.
+    pub fn appendToEnd(self: *InputStreamManager, content: []const u8) !void {
+        if (self.aborted or content.len == 0) return;
+        const end = self.buffer.items.len;
+        try self.buffer.appendSlice(self.allocator, content);
+        const new_end = self.buffer.items.len;
+        if (self.insertion_point) |point| if (point == end) {
+            self.insertion_point = new_end;
+        };
+        for (self.saved_insertion_points.items) |*mark| moveEnd(mark, end, new_end);
+        for (self.saved_stops.items) |*mark| moveEnd(mark, end, new_end);
+        moveEnd(&self.stop_at, end, new_end);
+        self.sync();
+    }
+
+    fn moveEnd(mark: *?usize, end: usize, new_end: usize) void {
+        if (mark.*) |m| {
+            if (m == end) mark.* = new_end;
+        }
     }
 
     fn shift(mark: *?usize, at: usize, len: usize) void {

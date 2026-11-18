@@ -134,6 +134,17 @@ pub const State = struct {
     /// Scripts with non-null parser_document are "parser-inserted"
     parser_document: ?*runtime.Instance,
 
+    /// The intended document (HTML 4.12.1.1, whatwg/html "HTML streaming
+    /// methods"): set by the HTML and XML parsers on the scripts they insert
+    /// to the Document the script is expected to execute in - the parser's
+    /// script target document, else its Document - so a script moved to
+    /// another document before the parser prepares it does not run; reset to
+    /// null when the element is prepared. With its slab generation: a
+    /// streaming parser's script target document can go first.
+    /// Spec: https://html.spec.whatwg.org/#intended-document
+    intended_document: ?*runtime.Instance = null,
+    intended_document_generation: u64 = 0,
+
     /// The preparation-time document - prevents cross-document execution
     /// Spec: https://html.spec.whatwg.org/multipage/scripting.html#preparation-time-document
     preparation_time_document: ?*runtime.Instance,

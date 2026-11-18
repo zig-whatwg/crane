@@ -9,4 +9,5 @@ pub const TrustedTypePolicyOptions = struct {
     createHTML: ?callbacks.CreateHTMLCallback = null,
     createScript: ?callbacks.CreateScriptCallback = null,
     createScriptURL: ?callbacks.CreateScriptURLCallback = null,
+    createParserOptions: ?callbacks.CreateParserOptionsCallback = null,
 };

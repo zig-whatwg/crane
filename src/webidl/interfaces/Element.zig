@@ -33,11 +33,11 @@ const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const EventListener = @import("interfaces").EventListener;
+const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
 const Animation = @import("interfaces").Animation;
 const Event = @import("interfaces").Event;
@@ -51,6 +51,7 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -250,8 +251,18 @@ pub const Element = struct {
             .{ "scrollTo", "call_scrollTo", 0 },
             .{ "scrollBy", "call_scrollBy", 0 },
             .{ "requestFullscreen", "call_requestFullscreen", 0 },
-            .{ "setHTML", "call_setHTML", 1 },
+            .{ "appendHTML", "call_appendHTML", 1 },
+            .{ "prependHTML", "call_prependHTML", 1 },
+            .{ "streamHTML", "call_streamHTML", 0 },
+            .{ "streamAppendHTML", "call_streamAppendHTML", 0 },
+            .{ "streamPrependHTML", "call_streamPrependHTML", 0 },
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
+            .{ "appendHTMLUnsafe", "call_appendHTMLUnsafe", 1 },
+            .{ "prependHTMLUnsafe", "call_prependHTMLUnsafe", 1 },
+            .{ "streamHTMLUnsafe", "call_streamHTMLUnsafe", 0 },
+            .{ "streamAppendHTMLUnsafe", "call_streamAppendHTMLUnsafe", 0 },
+            .{ "streamPrependHTMLUnsafe", "call_streamPrependHTMLUnsafe", 0 },
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "insertAdjacentHTML", "call_insertAdjacentHTML", 2 },
             .{ "setPointerCapture", "call_setPointerCapture", 1 },
@@ -269,6 +280,18 @@ pub const Element = struct {
             .{ "moveBefore", "call_moveBefore", 2 },
             .{ "querySelector", "call_querySelector", 1 },
             .{ "querySelectorAll", "call_querySelectorAll", 1 },
+            .{ "beforeHTML", "call_beforeHTML", 1 },
+            .{ "afterHTML", "call_afterHTML", 1 },
+            .{ "replaceWithHTML", "call_replaceWithHTML", 1 },
+            .{ "streamBeforeHTML", "call_streamBeforeHTML", 0 },
+            .{ "streamAfterHTML", "call_streamAfterHTML", 0 },
+            .{ "streamReplaceWithHTML", "call_streamReplaceWithHTML", 0 },
+            .{ "beforeHTMLUnsafe", "call_beforeHTMLUnsafe", 1 },
+            .{ "afterHTMLUnsafe", "call_afterHTMLUnsafe", 1 },
+            .{ "replaceWithHTMLUnsafe", "call_replaceWithHTMLUnsafe", 1 },
+            .{ "streamBeforeHTMLUnsafe", "call_streamBeforeHTMLUnsafe", 0 },
+            .{ "streamAfterHTMLUnsafe", "call_streamAfterHTMLUnsafe", 0 },
+            .{ "streamReplaceWithHTMLUnsafe", "call_streamReplaceWithHTMLUnsafe", 0 },
             .{ "before", "call_before", 0 },
             .{ "after", "call_after", 0 },
             .{ "replaceWith", "call_replaceWith", 0 },
@@ -319,8 +342,18 @@ pub const Element = struct {
             "scrollTo",
             "scrollBy",
             "requestFullscreen",
-            "setHTML",
+            "appendHTML",
+            "prependHTML",
+            "streamHTML",
+            "streamAppendHTML",
+            "streamPrependHTML",
             "setHTMLUnsafe",
+            "appendHTMLUnsafe",
+            "prependHTMLUnsafe",
+            "streamHTMLUnsafe",
+            "streamAppendHTMLUnsafe",
+            "streamPrependHTMLUnsafe",
+            "setHTML",
             "getHTML",
             "insertAdjacentHTML",
             "setPointerCapture",
@@ -338,6 +371,18 @@ pub const Element = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",
@@ -642,11 +687,17 @@ pub const Element = struct {
         .set_slot = &set_slot,
 
         .call_after = &call_after,
+        .call_afterHTML = &call_afterHTML,
+        .call_afterHTMLUnsafe = &call_afterHTMLUnsafe,
         .call_animate = &call_animate,
         .call_append = &call_append,
+        .call_appendHTML = &call_appendHTML,
+        .call_appendHTMLUnsafe = &call_appendHTMLUnsafe,
         .call_ariaNotify = &call_ariaNotify,
         .call_attachShadow = &call_attachShadow,
         .call_before = &call_before,
+        .call_beforeHTML = &call_beforeHTML,
+        .call_beforeHTMLUnsafe = &call_beforeHTMLUnsafe,
         .call_checkVisibility = &call_checkVisibility,
         .call_closest = &call_closest,
         .call_computedStyleMap = &call_computedStyleMap,
@@ -679,6 +730,8 @@ pub const Element = struct {
         .call_matches = &call_matches,
         .call_moveBefore = &call_moveBefore,
         .call_prepend = &call_prepend,
+        .call_prependHTML = &call_prependHTML,
+        .call_prependHTMLUnsafe = &call_prependHTMLUnsafe,
         .call_pseudo = &call_pseudo,
         .call_querySelector = &call_querySelector,
         .call_querySelectorAll = &call_querySelectorAll,
@@ -689,6 +742,8 @@ pub const Element = struct {
         .call_removeAttributeNode = &call_removeAttributeNode,
         .call_replaceChildren = &call_replaceChildren,
         .call_replaceWith = &call_replaceWith,
+        .call_replaceWithHTML = &call_replaceWithHTML,
+        .call_replaceWithHTMLUnsafe = &call_replaceWithHTMLUnsafe,
         .call_requestFullscreen = &call_requestFullscreen,
         .call_requestPointerLock = &call_requestPointerLock,
         .call_scroll = &call_scroll,
@@ -704,6 +759,18 @@ pub const Element = struct {
         .call_setPointerCapture = &call_setPointerCapture,
         .call_spatialNavigationSearch = &call_spatialNavigationSearch,
         .call_startViewTransition = &call_startViewTransition,
+        .call_streamAfterHTML = &call_streamAfterHTML,
+        .call_streamAfterHTMLUnsafe = &call_streamAfterHTMLUnsafe,
+        .call_streamAppendHTML = &call_streamAppendHTML,
+        .call_streamAppendHTMLUnsafe = &call_streamAppendHTMLUnsafe,
+        .call_streamBeforeHTML = &call_streamBeforeHTML,
+        .call_streamBeforeHTMLUnsafe = &call_streamBeforeHTMLUnsafe,
+        .call_streamHTML = &call_streamHTML,
+        .call_streamHTMLUnsafe = &call_streamHTMLUnsafe,
+        .call_streamPrependHTML = &call_streamPrependHTML,
+        .call_streamPrependHTMLUnsafe = &call_streamPrependHTMLUnsafe,
+        .call_streamReplaceWithHTML = &call_streamReplaceWithHTML,
+        .call_streamReplaceWithHTMLUnsafe = &call_streamReplaceWithHTMLUnsafe,
         .call_toggleAttribute = &call_toggleAttribute,
         .call_webkitMatchesSelector = &call_webkitMatchesSelector,
 
@@ -1885,11 +1952,24 @@ pub const Element = struct {
         return try ElementImpl.call_hasAttributes(instance);
     }
 
+    /// Extended attributes: [NewObject]
+    pub fn call_streamPrependHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ElementImpl.call_streamPrependHTML(instance, options);
+    }
+
     pub fn call_insertAdjacentText(instance: *runtime.Instance, where: runtime.DOMString, data: runtime.DOMString) anyerror!void {
         return try ElementImpl.call_insertAdjacentText(instance, where, data);
     }
 
     pub const call_moveBefore = mixins.ParentNode.call_moveBefore;
+
+    pub const call_streamBeforeHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamBeforeHTMLUnsafe;
+
+    pub const call_beforeHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_beforeHTMLUnsafe;
+
+    pub const call_streamAfterHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamAfterHTMLUnsafe;
 
     /// Extended attributes: [CEReactions]
     pub fn call_insertAdjacentElement(instance: *runtime.Instance, where: runtime.DOMString, element: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -1911,6 +1991,15 @@ pub const Element = struct {
 
     pub fn call_getBoxQuads(instance: *runtime.Instance, options: webidl.Opt(BoxQuadOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_getBoxQuads(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_appendHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ElementImpl.call_appendHTMLUnsafe(instance, html, options);
     }
 
     pub fn call_setPointerCapture(instance: *runtime.Instance, pointerId: i32) anyerror!void {
@@ -1950,7 +2039,7 @@ pub const Element = struct {
         return try ElementImpl.call_getBoundingClientRect(instance);
     }
 
-    pub const call_after = mixins.ChildNode.call_after;
+    pub const call_streamReplaceWithHTML = mixins.NonDocumentTypeChildNode.call_streamReplaceWithHTML;
 
     pub fn call_getElementsByClassName(instance: *runtime.Instance, classNames: runtime.DOMString) anyerror!*runtime.Instance {
         return try ElementImpl.call_getElementsByClassName(instance, classNames);
@@ -1972,15 +2061,36 @@ pub const Element = struct {
         return result;
     }
 
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_streamHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        // [NewObject] - Caller owns the returned object
+
+        const result = ElementImpl.call_streamHTMLUnsafe(instance, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
+    }
+
     pub fn call_convertQuadFromNode(instance: *runtime.Instance, quad: DOMQuadInit, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_convertQuadFromNode(instance, quad, from, options);
     }
 
-    pub const call_remove = mixins.ChildNode.call_remove;
+    pub const call_beforeHTML = mixins.NonDocumentTypeChildNode.call_beforeHTML;
 
     pub fn call_requestPointerLock(instance: *runtime.Instance, options: webidl.Opt(PointerLockOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_requestPointerLock(instance, options);
     }
+
+    pub const call_after = mixins.ChildNode.call_after;
+
+    pub const call_remove = mixins.ChildNode.call_remove;
 
     /// Extended attributes: [CEReactions]
     pub fn call_setAttributeNodeNS(instance: *runtime.Instance, attr: *runtime.Instance) anyerror!?*runtime.Instance {
@@ -1998,6 +2108,10 @@ pub const Element = struct {
         return result;
     }
 
+    pub const call_replaceWithHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_replaceWithHTMLUnsafe;
+
+    pub const call_streamBeforeHTML = mixins.NonDocumentTypeChildNode.call_streamBeforeHTML;
+
     pub fn call_getAttributeNS(instance: *runtime.Instance, namespace: ?runtime.DOMString, localName: runtime.DOMString) anyerror!?runtime.DOMString {
         return try ElementImpl.call_getAttributeNS(instance, namespace, localName);
     }
@@ -2014,12 +2128,30 @@ pub const Element = struct {
         return try ElementImpl.call_getAttributeNodeNS(instance, namespace, localName);
     }
 
-    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
-        return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
+    /// Extended attributes: [CEReactions]
+    pub fn call_appendHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ElementImpl.call_appendHTML(instance, html, options);
     }
 
     pub fn call_scroll(instance: *runtime.Instance, options: webidl.Opt(ScrollToOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scroll(instance, options);
+    }
+
+    pub fn call_getElementsByTagName(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!*runtime.Instance {
+        return try ElementImpl.call_getElementsByTagName(instance, qualifiedName);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_prependHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ElementImpl.call_prependHTML(instance, html, options);
     }
 
     pub fn call_spatialNavigationSearch(instance: *runtime.Instance, dir: SpatialNavigationDirection, options: webidl.Opt(SpatialNavigationSearchOptions)) anyerror!?*runtime.Instance {
@@ -2035,10 +2167,6 @@ pub const Element = struct {
         return try ElementImpl.call_setAttribute(instance, qualifiedName, value);
     }
 
-    pub const call_querySelector = mixins.ParentNode.call_querySelector;
-
-    pub const call_animate = mixins.Animatable.call_animate;
-
     /// Extended attributes: [CEReactions]
     pub fn call_toggleAttribute(instance: *runtime.Instance, qualifiedName: runtime.DOMString, force: webidl.Opt(bool)) anyerror!bool {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -2048,15 +2176,41 @@ pub const Element = struct {
         return try ElementImpl.call_toggleAttribute(instance, qualifiedName, force);
     }
 
+    pub const call_querySelector = mixins.ParentNode.call_querySelector;
+
     pub const call_querySelectorAll = mixins.ParentNode.call_querySelectorAll;
+
+    pub const call_afterHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_afterHTMLUnsafe;
 
     /// Extended attributes: [SameObject]
     pub fn call_computedStyleMap(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try ElementImpl.call_computedStyleMap(instance);
     }
 
+    pub const call_streamReplaceWithHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamReplaceWithHTMLUnsafe;
+
+    pub const call_afterHTML = mixins.NonDocumentTypeChildNode.call_afterHTML;
+
+    pub const call_animate = mixins.Animatable.call_animate;
+
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptions)) anyerror!void {
+    pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ElementImpl.call_prependHTMLUnsafe(instance, html, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamAppendHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ElementImpl.call_streamAppendHTML(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -2066,6 +2220,23 @@ pub const Element = struct {
 
     pub fn call_getAttributeNode(instance: *runtime.Instance, qualifiedName: runtime.DOMString) anyerror!?*runtime.Instance {
         return try ElementImpl.call_getAttributeNode(instance, qualifiedName);
+    }
+
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_streamHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        // [NewObject] - Caller owns the returned object
+
+        const result = ElementImpl.call_streamHTML(instance, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
     }
 
     pub fn call_matches(instance: *runtime.Instance, selectors: runtime.DOMString) anyerror!bool {
@@ -2098,6 +2269,15 @@ pub const Element = struct {
 
     pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
 
+    pub const call_replaceWithHTML = mixins.NonDocumentTypeChildNode.call_replaceWithHTML;
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamAppendHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ElementImpl.call_streamAppendHTMLUnsafe(instance, options);
+    }
+
     pub fn call_convertRectFromNode(instance: *runtime.Instance, rect: *runtime.Instance, from: GeometryNode, options: webidl.Opt(ConvertCoordinateOptions)) anyerror!*runtime.Instance {
         return try ElementImpl.call_convertRectFromNode(instance, rect, from, options);
     }
@@ -2123,6 +2303,13 @@ pub const Element = struct {
 
     pub fn call_requestFullscreen(instance: *runtime.Instance, options: webidl.Opt(FullscreenOptions)) anyerror!runtime.JSValue {
         return try ElementImpl.call_requestFullscreen(instance, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ElementImpl.call_streamPrependHTMLUnsafe(instance, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -2176,6 +2363,8 @@ pub const Element = struct {
     pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
         return try ElementImpl.call_scrollIntoView(instance, arg);
     }
+
+    pub const call_streamAfterHTML = mixins.NonDocumentTypeChildNode.call_streamAfterHTML;
 
     pub fn call_attachShadow(instance: *runtime.Instance, init_data: ShadowRootInit) anyerror!*runtime.Instance {
         return try ElementImpl.call_attachShadow(instance, init_data);
@@ -2363,18 +2552,32 @@ pub const Element = struct {
         "set_ariaValueNow",
         "set_ariaValueText",
         "call_moveBefore",
+        "call_beforeHTMLUnsafe",
         "call_insertAdjacentElement",
         "call_append",
+        "call_appendHTMLUnsafe",
         "call_before",
         "call_setAttributeNS",
-        "call_after",
+        "call_streamReplaceWithHTML",
         "call_setAttributeNode",
+        "call_streamHTMLUnsafe",
+        "call_beforeHTML",
+        "call_after",
         "call_remove",
         "call_setAttributeNodeNS",
+        "call_replaceWithHTMLUnsafe",
+        "call_appendHTML",
+        "call_prependHTML",
         "call_setAttribute",
         "call_toggleAttribute",
+        "call_afterHTMLUnsafe",
+        "call_streamReplaceWithHTMLUnsafe",
+        "call_afterHTML",
+        "call_prependHTMLUnsafe",
         "call_setHTMLUnsafe",
+        "call_streamHTML",
         "call_replaceWith",
+        "call_replaceWithHTML",
         "call_setHTML",
         "call_replaceChildren",
         "call_removeAttribute",

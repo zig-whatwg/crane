@@ -198,11 +198,24 @@ pub const DeclarativeShadow = struct {
     /// Steps 7.4-7.9 from the start tag; null when its shadowrootmode is in
     /// the None state (absent, or not "open" or "closed").
     pub fn fromToken(tag: TagToken) ?DeclarativeShadow {
+        return fromTokenSanitized(tag, null);
+    }
+
+    /// As fromToken, reading only the attributes the parser's sanitizer
+    /// configuration lets the template keep: "in head", a template start
+    /// tag, step 14 reads the created element's attributes, which "create an
+    /// element for a token" step 12 sanitized - a removed shadowrootmode
+    /// leaves an ordinary template.
+    pub fn fromTokenSanitized(tag: TagToken, sanitizer: ?ParserSanitizer) ?DeclarativeShadow {
         var request: DeclarativeShadow = .{ .mode = .open, .template = undefined, .host = undefined };
         var has_mode = false;
         for (tag.attributes.toSlice()) |attribute| {
             const name = attribute.getName();
             const value = attribute.getValue();
+            if (sanitizer) |filter| {
+                const candidate: TreeNode.Attribute = .{ .name = name, .value = value, .namespace = null };
+                if (!filter.allows_attribute(filter.context, "template", .html, &candidate)) continue;
+            }
             if (std.mem.eql(u8, name, "shadowrootmode")) {
                 // An enumerated attribute: "open" and "closed", ASCII
                 // case-insensitively; anything else is the None state.
@@ -276,6 +289,23 @@ pub const ContentPatch = struct {
     start_generation: u64 = 0,
     end: ?*anyopaque = null,
     end_generation: u64 = 0,
+};
+
+/// An entry of HTML's "insertion target redirection map" for the live DOM
+/// adapter (parser_dom_mutation.resolve): the insertion location the node's
+/// insertions go to - a live target parent and reference child, typed
+/// opaquely as html_core does not import runtime, with their slab
+/// generations - and the parser's "invalid reference child steps", run when
+/// the reference child is no longer the target parent's child ("adjusted
+/// insertion location" step 6; the insertion is then dropped).
+pub const InsertionRedirect = struct {
+    parent: *anyopaque,
+    parent_generation: u64,
+    reference: ?*anyopaque = null,
+    reference_generation: u64 = 0,
+    context: ?*anyopaque = null,
+    /// Given the redirect's reference child (typed opaquely).
+    invalid_reference: ?*const fn (context: ?*anyopaque, child: *anyopaque) void = null,
 };
 
 /// What the live DOM has immediately before an adjusted insertion location:
@@ -367,8 +397,17 @@ pub const TreeNode = struct {
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.
     declarative_shadow: ?*DeclarativeShadow = null,
+    /// A script element the input ended inside (HTML "text", an end-of-file
+    /// token: "If the current node is a script element, then set its already
+    /// started to true"): the tree-then-convert path marks its DOM node so.
+    script_already_started: bool = false,
     /// A `<template for>` that patches: its content patch, which it owns.
     content_patch: ?*ContentPatch = null,
+    /// HTML "insertion target redirection map"[this node], for the live DOM
+    /// adapter: insertions into this node go to another insertion location
+    /// (the fragment parser's root `html` element, streaming HTML).
+    /// BORROWED from the parser that set it, which outlives the tree.
+    insertion_redirect: ?*const InsertionRedirect = null,
     /// The form element pointer's form when this element was created, if
     /// "create an element for a token" step 15's parser conditions held: a
     /// form-associated element's name, the pointer set, not parsing template
@@ -814,6 +853,12 @@ pub const TreeBuilder = struct {
     /// `RefPtr<Element> m_scriptToProcess` across that span. A structure, so
     /// each one is held.
     scripts_to_process: infra.List(*TreeNode),
+    /// An external SVG script whose end tag a nested invocation of the
+    /// parser met (a script's document.write()): parser-blocking, as an
+    /// external HTML script is - the end tag of the script that wrote it runs
+    /// it once that script returns, before the parser reads on
+    /// (`runPendingSvgScript`). A structure, so it is held.
+    pending_svg_script: ?*TreeNode = null,
     /// An attribute was added to an element the adapter already made: a
     /// second <html> or <body> start tag's attributes, which "in body" adds
     /// to the existing element. Called with `dom_adapter_context`.
@@ -881,10 +926,18 @@ pub const TreeBuilder = struct {
     /// end tag's step 4: remove the start and end markers. Null - the
     /// tree-then-convert path - runs both over the parser's own tree.
     dom_adapter_prepare_content_patching: ?*const fn (*ContentPatch, InsertionLocation, []const u8, ?*anyopaque) bool = null,
+    /// The live DOM adapter marks a script the input ended inside as already
+    /// started (`TreeNode.script_already_started`).
+    dom_adapter_on_unclosed_script: ?*const fn (*TreeNode, ?*anyopaque) void = null,
     dom_adapter_finish_content_patching: ?*const fn (*ContentPatch, ?*anyopaque) void = null,
 
     /// HTML parser "parser sanitizer configuration" (initially null).
     parser_sanitizer: ?ParserSanitizer = null,
+
+    /// HTML parser "fragment parser abort requested" (initially false): a
+    /// streaming parser's owner (html.stream_html) sets it when the stream
+    /// is aborted while the parser runs, and clears it as the run ends.
+    fragment_parser_abort_requested: bool = false,
 
     /// HTML parser "allow declarative shadow roots" (initially false).
     allow_declarative_shadow_roots: bool = false,
@@ -1268,7 +1321,20 @@ pub const TreeBuilder = struct {
         if (self.input_stream_manager) |stream| stream.aborted = true;
         self.flushPendingText();
         self.pending_table_char_tokens.clear();
-        self.popAllOpenElements();
+        // Step 7: "repeatedly pop the current node off the stack of open
+        // elements until it is empty" - a style element popped mid-text
+        // ("text" insertion mode) is popped as its end tag pops it: its
+        // style block updates (an aborted stream's open <style> applies).
+        while (self.open_elements.len > 0) {
+            const current = self.open_elements.get(self.open_elements.len - 1).?;
+            if (self.insertion_mode == .text and current.node_type == .element and current.hasTagName("style")) {
+                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                self.insertion_mode = self.original_insertion_mode;
+                self.textModePopped(current);
+                continue;
+            }
+            if (self.popCurrentNode() == null) break;
+        }
     }
 
     /// Process a single token.
@@ -1809,13 +1875,72 @@ pub const TreeBuilder = struct {
         if (!self.scripting_enabled) return;
         self.flushPendingText();
         const callback = self.script_execution_callback orelse return;
+        // Deviation, stated (golden rule 2, no newer spec involved): the
+        // spec sets the parser pause flag here, so a document.write() from
+        // the SVG script would only insert - its characters parsed after the
+        // script returns. Chrome, Firefox and Safari all process an SVG
+        // script at its end tag as an HTML one (Blink's HTMLTreeBuilder hands
+        // it to the same HTMLParserScriptRunner::ProcessScriptElement), and
+        // wpt.fyi stable 2026-11-17 has all three 1/1 on both of these
+        // html/semantics/scripting-1/the-script-element/execution-timing/
+        // files:
+        // - 141.html: a written inline SVG script runs during the write,
+        //   before the writing SVG script's next statement - so the flag is
+        //   left as the HTML script end tag leaves it;
+        // - 142.html: a written EXTERNAL SVG script is parser-blocking - "if
+        //   the script nesting level is not zero: set the parser pause flag
+        //   to true, and abort the processing of any nested invocations of
+        //   the tokenizer", and the end tag of the script that wrote it runs
+        //   it once that script returns, before the parser reads on.
+        if (self.script_nesting_level != 0 and self.pending_svg_script == null and isExternalSvgScript(script_element)) {
+            self.pending_svg_script = script_element;
+            self.holdNode(script_element);
+            self.parser_pause_flag = true;
+            return;
+        }
         if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
         self.script_nesting_level += 1;
-        self.parser_pause_flag = true;
         callback(script_element, self.script_execution_context);
+        self.runPendingSvgScript();
         self.script_nesting_level -|= 1;
-        if (self.script_nesting_level == 0) self.parser_pause_flag = false;
+        if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script) self.parser_pause_flag = false;
         if (self.input_stream_manager) |stream| stream.popInsertionPoint();
+    }
+
+    /// The end tag of a script at the outer level (its steps raised the
+    /// script nesting level to one), or the parser running a pending
+    /// parsing-blocking script, runs the external SVG script a
+    /// document.write() of that script left pending - HTML's "Otherwise:
+    /// while the pending parsing-blocking script is not null: ... let the
+    /// insertion point be just before the next input character ... execute
+    /// the script element", for an SVG script (`processSvgScriptEndTag`).
+    /// The end tag's steps restore the old insertion point after this.
+    pub fn runPendingSvgScript(self: *TreeBuilder) void {
+        if (self.script_nesting_level != 1) return;
+        const callback = self.script_execution_callback orelse return;
+        while (self.pending_svg_script) |script| {
+            self.pending_svg_script = null;
+            defer self.releaseNode(script);
+            if (self.input_stream_manager) |stream| {
+                if (stream.aborted) return;
+                stream.setInsertionPointAtNextInputCharacter();
+            }
+            // The pause the nested end tag set ends before the script runs,
+            // so its own document.write() parses at the insertion point.
+            if (!self.waiting_for_parser_blocking_script) self.parser_pause_flag = false;
+            callback(script, self.script_execution_context);
+        }
+    }
+
+    /// Whether `script`, an SVG script element the parser made, is external:
+    /// it has an `href` attribute, or the deprecated `xlink:href` (SVG 2
+    /// 15.2).
+    fn isExternalSvgScript(script: *const TreeNode) bool {
+        for (script.attributes.toSlice()) |attribute| {
+            if (!std.mem.eql(u8, attribute.name, "href")) continue;
+            if (attribute.namespace == null or attribute.namespace == .xlink) return true;
+        }
+        return false;
     }
 
     // =========================================================================
@@ -2216,7 +2341,7 @@ pub const TreeBuilder = struct {
         // Step 7's condition first: a template with no shadowrootmode (in
         // the None state) is step 9's ordinary template - inserted before the
         // marker and modes are pushed, which nothing observes in between.
-        var request = DeclarativeShadow.fromToken(tag) orelse {
+        var request = DeclarativeShadow.fromTokenSanitized(tag, self.parser_sanitizer) orelse {
             // "Keep" step 2: "Otherwise, if template has a for attribute" -
             // only when its shadowrootmode is in the None state; a declarative
             // shadow root's template ignores `for` (template-for-superseded-
@@ -2241,7 +2366,11 @@ pub const TreeBuilder = struct {
         // the current node, the fragment's root there, and so inserts the
         // template; so does this.
         const current = self.currentNode() orelse return self.insertHtmlElementAt(tag, location);
-        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).?)
+        // Also an ordinary template when "the parser's insertion target
+        // redirection map[declarativeShadowHostElement] exists": a host the
+        // sanitizer replaces with its children is never inserted, and a
+        // shadow root attached to it would be lost.
+        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).? or current.insertion_redirect != null)
             return self.insertHtmlElementAt(tag, location);
         // Step 7.2: the declarative shadow host is the adjusted current node.
         const host = self.adjustedCurrentNode() orelse current;
@@ -2830,7 +2959,9 @@ pub const TreeBuilder = struct {
             try self.handleInHeadMode(Token{ .start_tag = tag });
         } else if (std.mem.eql(u8, name, "body")) {
             self.reportError(.invalid_first_character_of_tag_name);
-            if (self.hasTemplateInStack()) return;
+            // "... or if the parser's fragment parser abort requested is
+            // true, then ignore the token."
+            if (self.hasTemplateInStack() or self.fragment_parser_abort_requested) return;
 
             // Add attributes to body element if not already present
             // HTML Standard §13.2.6.4.7: Similar to html element handling
@@ -3330,6 +3461,15 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 self.reportError(.eof_in_tag);
+                // "If the current node is a script element, then set its
+                // already started to true" - it never runs, however it is
+                // later inserted, changed or cloned.
+                if (self.currentNode()) |current| if (current.node_type == .element and current.hasTagName("script") and
+                    (current.namespace == .html or current.namespace == .svg))
+                {
+                    current.script_already_started = true;
+                    if (self.dom_adapter_on_unclosed_script) |callback| callback(current, self.dom_adapter_context);
+                };
                 const popped = self.open_elements.get(self.open_elements.len - 1);
                 _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
                 self.insertion_mode = self.original_insertion_mode;
@@ -3387,6 +3527,7 @@ pub const TreeBuilder = struct {
                                 if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
+                                self.runPendingSvgScript();
                                 self.script_nesting_level -|= 1;
                                 if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script)
                                     self.parser_pause_flag = false;
@@ -3541,6 +3682,10 @@ pub const TreeBuilder = struct {
             const node = self.scripts_to_process.remove(self.scripts_to_process.len - 1) catch break;
             self.releaseNode(node);
         }
+        if (self.pending_svg_script) |node| {
+            self.pending_svg_script = null;
+            self.releaseNode(node);
+        }
     }
 
     /// Whether every tree node's `structure_refs` is the number of the
@@ -3566,6 +3711,7 @@ pub const TreeBuilder = struct {
         if (self.head_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         if (self.form_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         for (self.scripts_to_process.toSlice()) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        if (self.pending_svg_script) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         var it = expected.iterator();
         while (it.next()) |entry| {
             if (entry.key_ptr.*.structure_refs != entry.value_ptr.*) return false;
@@ -5800,10 +5946,22 @@ pub const TreeBuilder = struct {
     /// already present on the [element]. If it is not, add the attribute and
     /// its corresponding value to that element." The element is in the DOM
     /// already, so the adapter hears each one it gains.
+    /// "In body", a start tag whose tag name is "html" or "body": for each
+    /// attribute on the token, 1. skip one the parser sanitizer configuration
+    /// does not allow on `element`, 2. add one `element` does not have.
     fn copyMissingAttributes(self: *TreeBuilder, element: *TreeNode, tag: TagToken) !void {
         const token_attrs = tag.attributes.toSlice();
         for (token_attrs) |attr| {
             const attr_name = attr.getName();
+            // 1. "If the parser's parser sanitizer configuration is not null
+            // and the result of checking if a sanitizer config allows an
+            // attribute given attribute's name, null, attribute's value,
+            // element's local name, element's namespace, and the parser's
+            // parser sanitizer configuration is false, then continue."
+            if (self.parser_sanitizer) |sanitizer| {
+                const candidate: TreeNode.Attribute = .{ .name = attr_name, .value = attr.getValue(), .namespace = null };
+                if (!sanitizer.allows_attribute(sanitizer.context, element.local_name orelse "", element.namespace, &candidate)) continue;
+            }
 
             // Check if attribute already exists on element
             var exists = false;

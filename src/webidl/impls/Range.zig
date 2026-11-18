@@ -1638,16 +1638,26 @@ pub fn call_getBoundingClientRect(instance: *runtime.Instance) anyerror!*runtime
 /// Spec: https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-range-createcontextualfragment
 pub fn call_createContextualFragment(instance: *runtime.Instance, string: typedefs.TrustedHTMLOrDOMString) anyerror!*runtime.Instance {
     const internal = getInternal(instance) orelse return error.InvalidStateError;
-    // Step 1: "Let compliantString be the result of invoking the get trusted
-    // type compliant string algorithm with TrustedHTML, this's relevant
-    // global object, string, "Range createContextualFragment", and
-    // "script"."
     const allocator = instance.ctx.allocator;
-    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Range createContextualFragment");
-    defer allocator.free(compliant);
+    const parser_options = @import("html").parser_options;
 
-    // Step 2: "Let node be this's start node."
+    // Step 1: "Let node be this's start node."
     const node = internal.start_container orelse return error.InvalidStateError;
+
+    // Step 2: "Let (compliantString, compliantOptions) be the result of
+    // invoking the get trusted type compliant input algorithm with this's
+    // relevant global object, string, a new SetHTMLUnsafeOptions dictionary
+    // whose runScripts member is set to true and whose other members are set
+    // to their default values, "Range createContextualFragment", node's node
+    // document's type, and false." A default policy can turn runScripts off.
+    const node_document = if (node.stateAs(interfaces.Document.State) != null) node else try interfaces.Node.get_ownerDocument(node);
+    const is_xml = if (node_document) |d| document_internals.getDocumentType(d) == .xml else false;
+    const options = try parser_options.ParserOptions.fromDictionary(instance.ctx, null, true);
+    const compliant_input = try parser_options.compliantInput(allocator, dom.trusted_types.relevantGlobalOf(instance), dom.trusted_types.inputFrom(string), options, "Range createContextualFragment", if (is_xml) .xml else .html, false);
+    const compliant = compliant_input.html;
+    defer allocator.free(compliant);
+    var compliant_options = compliant_input.options;
+    defer compliant_options.deinit();
 
     // Steps 3-5: "Let element be null. If node implements Element, set
     // element to node. Otherwise, if node implements Text or Comment, set
@@ -1686,9 +1696,9 @@ pub fn call_createContextualFragment(instance: *runtime.Instance, string: typede
     }
 
     // Step 7: "Return the result of invoking the fragment parsing algorithm
-    // steps with element, compliantString, and Fragment." The body made in
-    // step 6 is only the context: nothing keeps it.
-    const fragment = try @import("html").dom_parser.parseFragmentIn(allocator, instance.ctx, compliant, element.?, .fragment);
+    // steps given element, compliantString, compliantOptions, and Legacy."
+    // The body made in step 6 is only the context: nothing keeps it.
+    const fragment = try @import("html").html_insertion.legacyFragmentParsingAlgorithmSteps(element.?, compliant, &compliant_options);
     errdefer dom.node_creation.destroyUninserted(fragment);
     try unwrapContextualFragment(fragment);
     return fragment;

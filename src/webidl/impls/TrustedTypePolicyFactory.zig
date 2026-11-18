@@ -142,10 +142,12 @@ pub fn call_createPolicy(instance: *runtime.Instance, policyName: runtime.DOMStr
         if (given.createHTML) |f| options.html = engine.takeCallbackFunction(@ptrCast(f));
         if (given.createScript) |f| options.script = engine.takeCallbackFunction(@ptrCast(f));
         if (given.createScriptURL) |f| options.script_url = engine.takeCallbackFunction(@ptrCast(f));
+        if (given.createParserOptions) |f| options.parser_options = engine.takeCallbackFunction(@ptrCast(f));
     }
     defer for ([_]Kind{ .html, .script, .script_url }) |kind| {
         if (options.get(kind)) |callback| callback.release();
     };
+    defer if (options.parser_options) |callback| callback.release();
 
     const internal = internalOf(instance) orelse return error.TypeError;
     const name = policyName.asSlice();

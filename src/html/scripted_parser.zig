@@ -311,6 +311,20 @@ pub const DocumentParser = struct {
     document_destroyed: bool = false,
     eof_processed: bool = false,
     on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
+    /// What owns a fragment parser that runs over time (streaming HTML:
+    /// html.stream_html's parser), for its `on_finished`; null for a
+    /// document's own parser.
+    owner: ?*anyopaque = null,
+    /// A fragment parser that runs over time hears when something it waits
+    /// on after its end is ready (a deferred script: html.stream_html's
+    /// "execute the deferred scripts"), its input stream processed again
+    /// after it stopped parsing (`afterProcess`). Null for a document's own.
+    on_resumed_after_end: ?*const fn (*DocumentParser) void = null,
+    /// A fragment parser's owner resumes it once its pending
+    /// parsing-blocking script is ready (html.stream_html: "execute the
+    /// pending parsing-blocking scripts", then "run a fragment parser").
+    /// Null: the input stream's inserted characters are processed again.
+    on_blocking_script_ready: ?*const fn (*DocumentParser) void = null,
 
     pub fn create(
         allocator: Allocator,
@@ -398,6 +412,21 @@ pub const DocumentParser = struct {
         return self;
     }
 
+    /// A script-created parser - it reaches the end of its input only at an
+    /// explicit EOF - for `document`, a fragment parser's Document (HTML
+    /// "initialize an HTML fragment parser" step 5, for streaming HTML): the
+    /// caller sets up the fragment case on its tree builder and tokenizer
+    /// (dom_parser.FragmentCase) and associates it with the document.
+    pub fn createFragment(
+        allocator: Allocator,
+        ctx: runtime.Context,
+        document: *runtime.Instance,
+        scripting_enabled: bool,
+        on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
+    ) !*DocumentParser {
+        return createWithInput(allocator, ctx, document, "", .{ .scripting_enabled = scripting_enabled }, true, on_finished);
+    }
+
     fn navigationFinished(document: *runtime.Instance, self: *DocumentParser) void {
         dom.document_lifecycle.parserFinished(document, self);
     }
@@ -472,6 +501,8 @@ pub const DocumentParser = struct {
             &parser_scripts.domAdapterPrepareContentPatching,
             &parser_scripts.domAdapterFinishContentPatching,
         );
+        // A script the input ended inside is already started.
+        self.tree_builder.dom_adapter_on_unclosed_script = &parser_scripts.domAdapterOnUnclosedScript;
         // The parser's "allow declarative shadow roots" is its document's:
         // navigation's document and document.open (step 16) create it so.
         self.tree_builder.allow_declarative_shadow_roots = document_internals.allowsDeclarativeShadowRoots(document);
@@ -512,6 +543,7 @@ pub const DocumentParser = struct {
             .release = &releaseProcessor,
             .after_process = &afterProcess,
             .abort = &abortProcessor,
+            .resume_after_blocking_script = &resumeAfterBlockingScript,
         };
         errdefer if (self.owned_loader) |*loader| loader.deinit();
         return self;
@@ -778,7 +810,27 @@ pub const DocumentParser = struct {
 
     fn afterProcess(context: *anyopaque) void {
         const self: *DocumentParser = @ptrCast(@alignCast(context));
+        if (self.eof_processed) {
+            if (self.on_resumed_after_end) |resumed| resumed(self);
+            return;
+        }
         self.finishIfPossible() catch |err| log.warn("document.close(): the parser stopped: {}", .{err});
+    }
+
+    fn resumeAfterBlockingScript(context: *anyopaque) void {
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
+        if (self.on_blocking_script_ready) |resumed| return resumed(self);
+        self.input_stream.processInserted();
+    }
+
+    /// HTML "execute the pending parsing-blocking scripts" for this parser,
+    /// alone: the parser does not read on (its owner runs it after).
+    pub fn executePendingParsingBlockingScripts(self: *DocumentParser) void {
+        if (self.trace_failure != null or self.detached or self.eof_processed) return;
+        if (!self.isCurrent()) return;
+        const call = self.protect() catch return;
+        defer call.deinit();
+        parser_scripts.resumeAfterBlockingScript(&self.script_context);
     }
 
     fn abortProcessor(context: *anyopaque) void {

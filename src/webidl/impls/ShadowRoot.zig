@@ -362,16 +362,19 @@ pub fn get_innerHTML(instance: *runtime.Instance) anyerror!runtime.DOMString {
 
 /// InnerHTML.innerHTML setter
 pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrDOMString) anyerror!void {
-    // Step 1: "Let compliantString be the result of invoking the get trusted
-    // type compliant string algorithm with TrustedHTML, this's relevant
-    // global object, the given value, "ShadowRoot innerHTML", and "script"."
+    // Step 1: "Let (compliantString, compliantOptions) be the result of
+    // invoking the get trusted type compliant input algorithm with this's
+    // relevant global object, the given value, a new SetHTMLUnsafeOptions
+    // dictionary, "ShadowRoot innerHTML", this's node document's type, and
+    // false."
     const allocator = instance.ctx.allocator;
-    const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, value, "ShadowRoot innerHTML");
-    defer allocator.free(compliant);
-    // Steps 2–3: parse with this registry and the host's tokenizer context,
-    // then replace all as a single DOM mutation.
+    var compliant = try @import("html").parser_options.legacyCompliantInput(allocator, instance, @import("dom").trusted_types.inputFrom(value), "ShadowRoot innerHTML");
+    defer compliant.deinit(allocator);
+    // Step 2: filter and set HTML given this, compliantString,
+    // compliantOptions and Legacy - parse with this registry and the host's
+    // tokenizer context, then replace all as a single DOM mutation.
     const dom = @import("dom");
-    const fragment = try @import("html").custom_elements.parseFragment(instance, compliant);
+    const fragment = try @import("html").html_insertion.legacyParse(instance, compliant.html, if (compliant.options) |*options| options else null);
     defer dom.node_creation.destroyUninserted(fragment);
     const fragment_base = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
     const shadow_base = dom.instance_bridge.getNodeBase(instance) orelse return error.InvalidStateError;
@@ -468,25 +471,85 @@ pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(dictionarie
     return @import("html").serialization.fragmentWithShadowRoots(instance, given.serializableShadowRoots orelse false, given.shadowRoots orelse &.{});
 }
 
-/// HTML 8.5.2 setHTML: safe filtering with this root's host as context.
+/// HTML 8.5.2 ShadowRoot's setHTML(html, options): filter and set HTML
+/// given this, in Safe mode (this's host is the parser's context).
 pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
-    defer converted.deinit();
-    try @import("html").sanitizer.setHTML(instance, instance, html.asSlice(), &converted, true, true);
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .set, html.asSlice(), &parsed);
 }
 
-/// HTML 8.5.2 setHTMLUnsafe, steps 1–2.
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.SetHTMLUnsafeOptions)) anyerror!void {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
-    defer converted.deinit();
-    // Step 1: "Let compliantHTML be the result of invoking the get trusted
-    // type compliant string algorithm with TrustedHTML, this's relevant
-    // global object, html, "ShadowRoot setHTMLUnsafe", and "script"."
-    const allocator = instance.ctx.allocator;
-    const compliant = try @import("dom").trusted_types.compliantStringFor(allocator, .html, instance, html, "ShadowRoot setHTMLUnsafe");
-    defer allocator.free(compliant);
-    // Step 2: configure, parse, sanitize, and replace the shadow children.
-    try @import("html").sanitizer.setHTML(instance, instance, compliant, &converted, false, options.getOrDefault(.{}).sanitizer != null);
+/// HTML 8.5.2 ShadowRoot's appendHTML(html, options).
+pub fn call_appendHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .append, html.asSlice(), &parsed);
+}
+
+/// HTML 8.5.2 ShadowRoot's prependHTML(html, options).
+pub fn call_prependHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .prepend, html.asSlice(), &parsed);
+}
+
+/// HTML 8.5.2 ShadowRoot's setHTMLUnsafe(html, options): get trusted type
+/// compliant input ("ShadowRoot setHTMLUnsafe"), then filter and set HTML
+/// given this in Unsafe mode.
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .set, @import("dom").trusted_types.inputFrom(html), parsed, "ShadowRoot setHTMLUnsafe");
+}
+
+/// HTML 8.5.2 ShadowRoot's appendHTMLUnsafe(html, options).
+pub fn call_appendHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .append, @import("dom").trusted_types.inputFrom(html), parsed, "ShadowRoot appendHTMLUnsafe");
+}
+
+/// HTML 8.5.2 ShadowRoot's prependHTMLUnsafe(html, options).
+pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .prepend, @import("dom").trusted_types.inputFrom(html), parsed, "ShadowRoot prependHTMLUnsafe");
+}
+
+/// HTML 8.5.3 ShadowRoot's streamHTML(options).
+pub fn call_streamHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .set, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 ShadowRoot's streamAppendHTML(options).
+pub fn call_streamAppendHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .append, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 ShadowRoot's streamPrependHTML(options).
+pub fn call_streamPrependHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .prepend, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 ShadowRoot's streamHTMLUnsafe(options).
+pub fn call_streamHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .set, parsed, "ShadowRoot streamHTMLUnsafe");
+}
+
+/// HTML 8.5.3 ShadowRoot's streamAppendHTMLUnsafe(options).
+pub fn call_streamAppendHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .append, parsed, "ShadowRoot streamAppendHTMLUnsafe");
+}
+
+/// HTML 8.5.3 ShadowRoot's streamPrependHTMLUnsafe(options).
+pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .prepend, parsed, "ShadowRoot streamPrependHTMLUnsafe");
 }
 
 /// getAnimations() (Web Animations 1 6.10): the relevant animations for

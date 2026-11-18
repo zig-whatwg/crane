@@ -41,6 +41,24 @@ pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(runtime.
     return instance;
 }
 
+pub fn installHooks() void {
+    @import("dom").trusted_types.installSanitizerObjects(.{ .create = &createConfigured });
+}
+
+/// Trusted Types "get a sanitizer from dictionary" steps 8-9: a new
+/// Sanitizer in `realm` whose configuration is a copy of the already
+/// configured html.sanitizer.Config at `configuration`.
+fn createConfigured(realm: runtime.Context, configuration: *const anyopaque) anyerror!*runtime.Instance {
+    var config = try @import("html").parser_options.configFromErased(configuration).clone(realm.allocator);
+    errdefer config.deinit();
+    const internal = try realm.allocator.create(InternalState);
+    errdefer realm.allocator.destroy(internal);
+    const instance = try interfaces.Sanitizer.init(realm.allocator, realm);
+    internal.* = .{ .configuration = config, .result_arena = .init(realm.allocator) };
+    instance.getState(State).own._internal = internal;
+    return instance;
+}
+
 fn stateOf(instance: *runtime.Instance) !*InternalState {
     return instance.getState(State).own._internal orelse error.InvalidStateError;
 }

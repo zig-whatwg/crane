@@ -221,7 +221,18 @@ fn prepareScriptElementFor(
     // every other caller MinimumPosition).
     const start: ?engine.SourcePosition = if (parser_document != null) state.start else null;
 
-    // Step 4: If parser document is non-null and el does not have an async attribute,
+    // Steps 4-5 (whatwg/html "HTML streaming methods", the intended
+    // document): "Let intendedDocument be el's intended document. Set el's
+    // intended document to null." A document gone since (a streaming
+    // parser's script target) is no document the element is in.
+    const intended_document: ?*runtime.Instance = if (state.intended_document) |document|
+        (if (runtime.SlabAllocator.generationOf(document) == state.intended_document_generation) document else null)
+    else
+        null;
+    const had_intended_document = state.intended_document != null;
+    state.intended_document = null;
+
+    // Step 6: If parser document is non-null and el does not have an async attribute,
     // then set el's force async to true
     if (parser_document != null and !hasAsyncAttribute(script_element)) {
         // The parser cleared this flag when it created the element. Restore
@@ -271,11 +282,13 @@ fn prepareScriptElementFor(
     state.preparation_time_document = node_document;
     state.preparation_time_document_generation = if (node_document) |doc| runtime.SlabAllocator.generationOf(doc) else 0;
 
-    // Step 17: If parser document is non-null and not equal to preparation-time document, return
-    if (parser_document) |pd| {
-        if (pd != node_document) {
-            return false;
-        }
+    // Step 19: "If intendedDocument is non-null and intendedDocument is not
+    // el's preparation-time document, then return." It replaces the check
+    // of the parser document against the preparation-time document: a
+    // streaming parser's scripts have its private Document as their parser
+    // document and the live document as their intended one.
+    if (had_intended_document and (intended_document == null or intended_document.? != node_document)) {
+        return false;
     }
 
     // Step 18: If scripting is disabled for el, then return
@@ -752,9 +765,12 @@ fn handleScriptSchedulingOf(
             };
             if (delivery == .in_hand) queueMarkAsReady(script_element, doc);
         } else if (has_defer or script_type == .module) {
-            // 35.4: the list of scripts that will execute when the document
-            // has finished parsing; the parser runs it at "the end".
-            if (document_scripts.of(doc)) |scripts| scripts.addWhenParsingFinished(script_element) catch {
+            // 35.4: "Append el to its parser document's list of scripts that
+            // will execute when the document has finished parsing"; the
+            // parser runs it at "the end". (The parser document is the node
+            // document but for a streaming parser's script, whose parser
+            // document is the stream's own.)
+            if (document_scripts.of(parser_document orelse doc)) |scripts| scripts.addWhenParsingFinished(script_element) catch {
                 dom.document_rendering.unblock(script_element);
                 releaseExecutionRoot(script_element);
                 return ScriptExecutionError.OutOfMemory;
@@ -794,7 +810,10 @@ fn handleScriptSchedulingOf(
         // script.
         // Spec: https://html.spec.whatwg.org/multipage/semantics.html#has-a-style-sheet-that-is-blocking-scripts
         if (node_document) |doc| {
-            if (document_scripts.hasStyleSheetBlockingScripts(doc)) {
+            // "el's parser document has a style sheet that is blocking
+            // scripts" - a streaming parser's own Document never does: the
+            // live document's style sheets do not block streamed scripts.
+            if (document_scripts.hasStyleSheetBlockingScripts(parser_document orelse doc)) {
                 // The pending parsing-blocking script is held as 35.5's is
                 // (refcount step 5i): a document's script lists are raw, and
                 // each element on them is counted by its execution hold.
@@ -896,11 +915,43 @@ fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance,
         if (dom.document_internals.getInputStreamManager(document)) |stream| {
             if (!stream.aborted and !stream.isExecutingScript()) stream.processInserted();
         }
-    }
+    } else if (script_element_state.of(script_element)) |current| if (current.parser_document) |parser_document| {
+        // A script whose parser document is not the document it was
+        // prepared in - a streaming fragment parser's private Document,
+        // whose parser inserted it into the live document (HTML "stream
+        // HTML"; the parser's script target document): its parser waits on
+        // it there. Its owner resets the back link before that Document
+        // goes (html.stream_html), so a non-null one is alive.
+        if (parser_document != document) resumeParserDocument(allocator, parser_document, script_element);
+    };
     if ((document_had_engine and !document_realm.hasEngine()) or runtime.SlabAllocator.generationOf(document) != document_generation) return;
     // "The end" step 7 waits for the document's as-soon-as-possible
     // scripts: the drain may have emptied them.
     dom.document_lifecycle.loadDelayMayHaveEnded(document);
+}
+
+/// `script_element`, a script `parser_document`'s parser waits on, is ready
+/// to be parser-executed: as the pending parsing-blocking script, its
+/// parser resumes ("execute the pending parsing-blocking scripts", then "run
+/// a fragment parser" - HTML "an end tag whose tag name is script", the
+/// fragment case); as a deferred script of a parser that has stopped
+/// parsing, the deferred scripts run on ("execute the deferred scripts").
+fn resumeParserDocument(allocator: std.mem.Allocator, parser_document: *runtime.Instance, script_element: *runtime.Instance) void {
+    const stream = dom.document_internals.getInputStreamManager(parser_document) orelse return;
+    if (pendingParsingBlockingScript(parser_document) == script_element) {
+        // Its parser's own steps: a fragment parser executes the pending
+        // parsing-blocking scripts, then runs (stream_html).
+        if (!stream.aborted and !stream.isExecutingScript()) stream.resumeAfterBlockingScript();
+        return;
+    }
+    _ = allocator;
+    if (!stream.eof_processed or stream.aborted) return;
+    const lists = document_scripts.of(parser_document) orelse return;
+    if (lists.scripts_to_execute_when_parsing_finished.items.len == 0) return;
+    if (lists.scripts_to_execute_when_parsing_finished.items[0] != script_element) return;
+    // Its parser, which stopped parsing, runs them on (it owns their order
+    // and its own lifetime: scripted_parser's on_resumed_after_end).
+    stream.processInserted();
 }
 
 /// A queued "mark as ready".

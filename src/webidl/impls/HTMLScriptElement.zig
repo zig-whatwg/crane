@@ -82,6 +82,8 @@ pub fn installHooks() void {
         .mark_parser_inserted = &markParserInsertedStep,
         .mark_already_started = &markAlreadyStartedStep,
         .clear_force_async = &clearForceAsyncStep,
+        .set_intended_document = &setIntendedDocumentStep,
+        .clear_parser_document = &clearParserDocumentStep,
         .script_text = &scriptTextStep,
         .delays_load_event = &scriptsDelayLoadEvent,
     });
@@ -684,13 +686,37 @@ fn cloningSteps(node: *runtime.Instance, copy: *runtime.Instance, subtree: bool)
     target.already_started = source.already_started;
 }
 
-/// dom.script_elements: "Set the element's parser document to the Document,
-/// and set the element's force async to false."
+/// dom.script_elements: "Set the element's parser document to the Document"
+/// and - the parser's script target document being null or its Document -
+/// "set the element's intended document to" it, "and set the element's
+/// force async to false" ("in head", a script start tag, steps 2-4).
 fn markParserInsertedStep(element: *runtime.Instance, parser_document: *runtime.Instance) void {
     if (element.stateAs(State) == null) return;
     const internal = getInternal(element) orelse return;
     internal.parser_document = parser_document;
+    internal.intended_document = parser_document;
+    internal.intended_document_generation = runtime.SlabAllocator.generationOf(parser_document);
     internal.force_async = false;
+}
+
+/// dom.script_elements: the element's parser document - and intended
+/// document - set to null when it is `document`, a Document going before
+/// the element (a streaming parser's private one).
+fn clearParserDocumentStep(element: *runtime.Instance, document: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+    if (internal.parser_document == document) internal.parser_document = null;
+    if (internal.intended_document == document) internal.intended_document = null;
+}
+
+/// dom.script_elements: "set the element's intended document to the
+/// parser's script target document" (step 3, a streaming parser that runs
+/// scripts).
+fn setIntendedDocumentStep(element: *runtime.Instance, document: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+    internal.intended_document = document;
+    internal.intended_document_generation = runtime.SlabAllocator.generationOf(document);
 }
 
 /// dom.script_elements: "set the element's force async to false", with no

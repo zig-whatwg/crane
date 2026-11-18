@@ -224,7 +224,7 @@ pub const Config = struct {
         return fromConverted(allocator, realm, &converted, permissive);
     }
 
-    fn fromConverted(allocator: Allocator, realm: runtime.Context, converted: *const Converted, permissive: bool) !Config {
+    pub fn fromConverted(allocator: Allocator, realm: runtime.Context, converted: *const Converted, permissive: bool) !Config {
         return switch (converted.value) {
             .preset => defaultConfig(allocator),
             .dictionary => |data| fromData(allocator, data, permissive),
@@ -411,7 +411,7 @@ pub const Config = struct {
         return true;
     }
 
-    fn removeUnsafe(self: *Config) !bool {
+    pub fn removeUnsafe(self: *Config) !bool {
         // HTML "remove unsafe", steps 2–7. The known event-handler names,
         // not an arbitrary `on` prefix, form the unsafe attribute list.
         var changed = false;
@@ -443,7 +443,21 @@ pub const Converted = struct {
         self.* = undefined;
     }
 
-    fn fromJS(allocator: Allocator, realm: runtime.Context, input: runtime.JSValue, allow_instance: bool) engine.Error!Converted {
+    /// Whether this is an empty SanitizerConfig: the dictionary arm with no
+    /// member present (Infra "is empty"; Trusted Types 3.6 "needs vetting"
+    /// - "an empty SanitizerConfig does not change the parsed markup").
+    pub fn isEmptyDictionary(self: *const Converted) bool {
+        const data = switch (self.value) {
+            .dictionary => |d| d,
+            else => return false,
+        };
+        inline for (@typeInfo(Data).@"struct".field_names) |name| {
+            if (@field(data, name) != null) return false;
+        }
+        return true;
+    }
+
+    pub fn fromJS(allocator: Allocator, realm: runtime.Context, input: runtime.JSValue, allow_instance: bool) engine.Error!Converted {
         var result = Converted{ .arena = .init(allocator), .value = .{ .dictionary = .{} } };
         errdefer result.deinit();
         const kind = engine.typeOf(realm, input);
@@ -980,59 +994,6 @@ const default_svg_elements =
     \\title
     \\tspan dx dy lengthAdjust rotate textLength x y
 ;
-
-/// HTML "set and filter HTML", steps 1–9. `filtered` is true for setHTML
-/// and for setHTMLUnsafe given a sanitizer: the fragment is then built in an
-/// inert document (lane fraginert's parseFragmentToFilter: nothing fetches,
-/// compiles a handler or constructs a custom element before the filter
-/// runs), and the survivors are adopted on insertion (row 41 Q4/Q12, review
-/// M2). setHTMLUnsafe without a sanitizer parses live and skips the
-/// configuration and the filter, as Blink and Gecko do.
-pub fn setHTML(receiver: *runtime.Instance, target: *runtime.Instance, source: []const u8, converted: *const Converted, safe: bool, filtered: bool) !void {
-    const context = if (receiver.stateAs(interfaces.ShadowRoot.State) != null) try interfaces.ShadowRoot.get_host(receiver) else receiver;
-    if (safe) {
-        const name = dom.node_creation.elementNames(context) orelse return error.InvalidStateError;
-        if (std.mem.eql(u8, name.local_name, "script") and
-            (optionalStringEqual(name.namespace, html_namespace) or optionalStringEqual(name.namespace, svg_namespace))) return;
-    }
-    std.debug.assert(!safe or filtered);
-    const custom_elements = @import("custom_elements.zig");
-    // The configuration, before parsing: the fragment parsing algorithm's
-    // parser sanitizes as it builds (fragment step 9, the parser's sanitizer
-    // configuration; whatwg/html#12756 "Sanitize while parsing", merged
-    // 2026-10-13 with all three engines' interest, and Chrome's streaming
-    // sanitizer ships it - rule 2, the newer spec). Its effective data is
-    // what `sanitize` filters with: safe mode's removeUnsafe applied to a
-    // copy. As far as the parser applies it yet (tree_builder's
-    // ParserSanitizer), the rest is still filtered after the parse.
-    var config: ?Config = if (filtered) try Config.fromConverted(receiver.ctx.allocator, receiver.ctx, converted, !safe) else null;
-    defer if (config) |*held| held.deinit();
-    var safe_config: ?Config = if (config != null and safe) try config.?.clone(receiver.ctx.allocator) else null;
-    defer if (safe_config) |*held| held.deinit();
-    if (safe_config) |*held| _ = try held.removeUnsafe();
-    const filter: ?ParseFilter = if (config) |*held| .{
-        .data = if (safe_config) |*effective| &effective.data else &held.data,
-        .allocator = receiver.ctx.allocator,
-    } else null;
-    // A parser failure other than OOM is a NotSupportedError, as
-    // setHTMLUnsafe mapped it before the Sanitizer (row 41 review N5).
-    const parsed = if (filter) |*parse_filter|
-        custom_elements.parseFragmentToFilter(receiver, source, .inert, parse_filter.parserSanitizer())
-    else
-        custom_elements.parseFragmentUnsafe(receiver, source);
-    const fragment = parsed catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        else => return error.NotSupportedError,
-    };
-    defer dom.node_creation.destroyUninserted(fragment);
-    if (config) |*held| {
-        // Steps 7–8's filter, for what the parser does not sanitize yet.
-        try sanitize(fragment, held, safe);
-    }
-    const parent = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
-    const contents = dom.instance_bridge.getNodeBase(fragment) orelse return error.InvalidStateError;
-    try dom.mutation.replaceAll(@as(?*dom.NodeBase, contents), parent);
-}
 
 /// Document.parseHTML[Unsafe], steps 4–6 after parsing the inactive document.
 pub fn filterDocument(document: *runtime.Instance, converted: *const Converted, safe: bool) !void {

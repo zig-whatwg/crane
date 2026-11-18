@@ -19,6 +19,8 @@ const runtime = @import("runtime");
 const engine = @import("engine");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
+const webidl = @import("webidl");
+const dictionaries = @import("dictionaries");
 const TrustedTypePolicy = interfaces.TrustedTypePolicy;
 
 const Kind = dom.trusted_types.Kind;
@@ -33,11 +35,17 @@ pub const InternalState = struct {
     /// exist; the functions themselves are traced in the slot named after
     /// their option.
     has_option: std.EnumArray(Kind, bool) = .initFill(false),
+    /// Whether options["createParserOptions"] exists (traced in
+    /// `parser_options_slot`).
+    has_parser_options: bool = false,
 };
 
 fn slotFor(kind: Kind) engine.TracedSlot {
     return .{ .name = kind.functionName() };
 }
+
+/// The slot options["createParserOptions"] is traced in.
+const parser_options_slot: engine.TracedSlot = .{ .name = "createParserOptions" };
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -61,6 +69,7 @@ pub fn deinit(instance: *runtime.Instance) void {
         for ([_]Kind{ .html, .script, .script_url }) |kind| {
             if (internal.has_option.get(kind)) engine.forgetTracedChild(instance, slotFor(kind));
         }
+        if (internal.has_parser_options) engine.forgetTracedChild(instance, parser_options_slot);
         internal.allocator.free(internal.name);
         internal.allocator.destroy(internal);
         state.own._internal = null;
@@ -69,7 +78,12 @@ pub fn deinit(instance: *runtime.Instance) void {
 }
 
 pub fn installHooks() void {
-    dom.trusted_types.installPolicy(.{ .create = &create, .policy_value = &policyValue });
+    dom.trusted_types.installPolicy(.{
+        .create = &create,
+        .policy_value = &policyValue,
+        .parser_options_value = &parserOptionsValue,
+        .has_parser_options = &hasParserOptions,
+    });
 }
 
 fn internalOf(instance: *runtime.Instance) ?*InternalState {
@@ -93,7 +107,57 @@ fn create(realm: runtime.Context, name: []const u8, options: dom.trusted_types.P
         engine.traceValue(instance, callback.function.borrow(), slotFor(kind));
         internal.has_option.set(kind, true);
     }
+    if (options.parser_options) |callback| {
+        engine.traceValue(instance, callback.function.borrow(), parser_options_slot);
+        internal.has_parser_options = true;
+    }
     return instance;
+}
+
+/// Whether `policy` has options["createParserOptions"].
+fn hasParserOptions(policy: *runtime.Instance) bool {
+    const internal = internalOf(policy) orelse return false;
+    return internal.has_parser_options;
+}
+
+/// 3.3 "Get Trusted Type policy value" for "TrustedHTMLParserOptions":
+/// steps 1-3 (the function, or null / a TypeError when missing), 5-7 (args
+/// « argument » + `arguments`, invoked with "rethrow"). Step 4's callback
+/// argument is the caller's (html.parser_options). The value as the
+/// callback returned it, OWNED.
+fn parserOptionsValue(
+    policy: *runtime.Instance,
+    argument: runtime.JSValue,
+    arguments: []const runtime.JSValue,
+    throw_if_missing: bool,
+) anyerror!?engine.Owned {
+    const internal = internalOf(policy) orelse return error.TypeError;
+    const realm = policy.ctx;
+    // 2. "Let function be policy's options[functionName]."
+    const function = if (internal.has_parser_options) engine.tracedValue(policy, parser_options_slot) else null;
+    // 3. Missing: a TypeError when throwIfMissing, else null.
+    const held = function orelse {
+        if (throw_if_missing) return error.TypeError;
+        return null;
+    };
+    defer held.release();
+    // 5-6. "Let args be « value »", then each item in arguments.
+    const allocator = realm.allocator;
+    const args = try allocator.alloc(runtime.JSValue, arguments.len + 1);
+    defer allocator.free(args);
+    args[0] = argument;
+    @memcpy(args[1..], arguments);
+    // 7. Invoke function with args and "rethrow".
+    const callback: engine.CallbackFunction = .{ .function = held, .context = null };
+    const completion = try engine.invokeCallbackFunction(realm, &callback, .undefined, args, .rethrow);
+    switch (completion) {
+        .throw => |exception| {
+            defer exception.release();
+            try engine.throwValue(realm, exception.borrow());
+            return error.ExceptionPending;
+        },
+        .normal => |result| return result,
+    }
 }
 
 /// 3.3 "Get Trusted Type policy value": the option for `kind` invoked with
@@ -182,6 +246,14 @@ pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, ar
 /// "TrustedScript".
 pub fn call_createScript(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
     return createTrustedType(instance, .script, input, arguments);
+}
+
+/// createParserOptions(options, ...arguments): create a trusted type with
+/// "TrustedHTMLParserOptions" (3.2 step 3, html.parser_options).
+pub fn call_createParserOptions(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLUnsafeOptions), arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+    if (internalOf(instance) == null) return error.TypeError;
+    const given = options.getOrDefault(.{});
+    return @import("html").parser_options.createForPolicy(instance, given.sanitizer, given.runScripts, arguments);
 }
 
 /// createScriptURL(input, ...arguments): create a trusted type with

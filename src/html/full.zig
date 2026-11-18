@@ -36,6 +36,12 @@ pub const dom_parser = @import("dom_parser.zig");
 pub const xml_document_parser = @import("xml_document_parser.zig");
 pub const xml_document_encoding = core.xml_document_encoding;
 pub const sanitizer = @import("sanitizer.zig");
+/// HTML 8.5.2-8.5.3 parser options and Trusted Types' vetting of them.
+pub const parser_options = @import("parser_options.zig");
+/// HTML 8.5.2 the HTML insertion methods' shared algorithms.
+pub const html_insertion = @import("html_insertion.zig");
+/// HTML 8.5.3 the HTML streaming methods.
+pub const stream_html = @import("stream_html.zig");
 pub const inner_text = @import("inner_text.zig");
 pub const serialization = @import("serialization.zig");
 // The Editing spec's delete and forwardDelete commands (execCommand and the

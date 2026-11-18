@@ -991,11 +991,11 @@ Examples include:
 
 - Setters for
  [`Element`](https://dom.spec.whatwg.org/#element) attributes that accept a URL of the code to load like
- [`HTMLScriptElement.src`](#dom-htmlscriptelement-src),
+ [`HTMLScriptElement.src`](https://html.spec.whatwg.org/multipage/scripting.html#dom-script-src),
 
 - Setters for
  [`Element`](https://dom.spec.whatwg.org/#element) attributes that accept a code to execute like
- [`HTMLScriptElement.text`](#dom-htmlscriptelement-text),
+ [`HTMLScriptElement.text`](https://html.spec.whatwg.org/multipage/scripting.html#dom-script-text),
 
 - Functions that execute code directly like `eval`,
 
@@ -1131,6 +1131,28 @@ the [stringification
 behavior] steps of a TrustedScriptURL object are to return the
 associated [data](#trustedscripturl-data) value.
 
+#### [2.2.4. ][[`TrustedHTMLParserOptions`]]
+The
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) interface represents options that a developer can
+confidently pass into an [injection
+sink](#injection-sink) that
+will parse HTML. These objects are immutable wrappers around a
+[`SetHTMLUnsafeOptions`](https://html.spec.whatwg.org/#sethtmlunsafeoptions) dictionary, constructed via a
+[`TrustedTypePolicy`](#trustedtypepolicy)'s
+[`createParserOptions`](#dom-trustedtypepolicy-createparseroptions) method.
+
+```
+[Exposed=Window]
+interface TrustedHTMLParserOptions ;
+```
+
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) objects have an associated boolean
+[runScripts] and an
+associated
+[`SanitizerConfig`](https://html.spec.whatwg.org/#sanitizerconfig)-or-null [sanitizer
+configuration]. These values are set when the object is created, and will
+never change during its lifetime.
+
 ### [2.3. ][[Policies]]
 Trusted Types can only be created via user-defined and immutable
 policies that define rules for converting a string into a given Trusted
@@ -1219,16 +1241,56 @@ from within a single code block to ascertain that it's called only with
 no attacker-controlled values.
 
 ``` highlight
-(function renderFootnote() {
+(async function renderFootnote() {
  const unsafePolicy = trustedTypes.createPolicy('html', {
  createHTML: input => input,
  });
- const footnote = await fetch('/footnote.html').then(r => r.text());
- footNote.innerHTML = unsafePolicy.createHTML(footnote);
+ const footnoteContent = await fetch('/footnote.html').then(r => r.text());
+ footNote.innerHTML = unsafePolicy.createHTML(footnoteContent);
 })();
 ```
 
-#### [2.3.1. ][[`TrustedTypePolicyFactory`]]
+#### 2.3.1. Using together with a sanitizer
+
+While trusted types are built in a way that allows custom sanitizers to
+be used, the
+[`createParserOptions`](#dom-trustedtypepolicy-createparseroptions) also allows for using them as a way to enforce using
+the built-in sanitizer API.
+
+``` highlight
+(async function renderFootnote() {
+ const footnoteContent = await fetch('/footnote.html').then(r => r.text());
+ const policy = trustedTypes.createPolicy('html', {
+ createParserOptions: options => {
+ const sanitizer = new Sanitizer(options.sanitizer?.get() ?? );
+ sanitizer.removeUnsafe();
+ return {
+ sanitizer,
+ };
+ }
+ });
+ footNote.setHTMLUnsafe(footnoteContent, policy.createParserOptions());
+})();
+```
+
+ When enforcing Trusted Types on HTML injection sinks
+that parse markup (such as
+[`setHTMLUnsafe()`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-sethtmlunsafe) or
+[`innerHTML`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-element-innerhtml)), a
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) object (obtained from
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) or provided by a default policy) allows raw strings to
+be parsed directly, without requiring
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) or a
+[`TrustedHTML`](#trustedhtml) instance. Policy authors typically configure a
+sanitizer in
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) so that untrusted markup is sanitized during parsing.
+For string-only injection sinks that do not support parser options (such
+as
+[`srcdoc`](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#dom-iframe-srcdoc) or `document.write()`), or for XML documents, raw
+strings must still be converted via
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml).
+
+#### [2.3.2. ][[`TrustedTypePolicyFactory`]]
 TrustedTypePolicyFactory creates
 [`policies`](#trustedtypepolicy) and verifies that Trusted Type object instances were
 created via one of the policies.
@@ -1319,7 +1381,7 @@ value is initially « ».
  // a flaw in this code could cause DOM XSS.
  createHTML(input) { return aSanitizer.sanitize(input) },
  createScriptURL(input) {
- const u = new URL(dirty, document.baseURI);
+ const u = new URL(input, document.baseURI);
  if (APPLICATION_CONFIG.scriptOrigins.includes(u.origin)) {
  return u.href;
  }
@@ -1548,7 +1610,7 @@ const dp = trustedTypes.createPolicy('default', );
 trustedTypes.defaultPolicy === dp; // true
 ```
 
-#### [2.3.2. ][[`TrustedTypePolicy`]]
+#### [2.3.3. ][[`TrustedTypePolicy`]]
 Policy objects implement a TrustedTypePolicy interface and define a
 group of functions creating Trusted Type objects. Each of the `create*`
 functions converts a string value to a given Trusted Type variant, or
@@ -1561,6 +1623,7 @@ interface TrustedTypePolicy {
  TrustedHTML createHTML(DOMString input, any... arguments);
  TrustedScript createScript(DOMString input, any... arguments);
  TrustedScriptURL createScriptURL(DOMString input, any... arguments);
+ [Exposed=Window] TrustedHTMLParserOptions createParserOptions(optional SetHTMLUnsafeOptions options = , any... arguments);
 };
 ```
 
@@ -1621,7 +1684,24 @@ describing the actual behavior of the policy.
  arguments
  : arguments
 
-#### [2.3.3. ][[`TrustedTypePolicyOptions`]]
+[`createParserOptions(options, ...arguments)`]
+
+: Returns the result of executing the [create a trusted
+ type](#create-a-trusted-type) algorithm, with the following arguments:
+
+ policy
+ : [this](https://webidl.spec.whatwg.org/#this) value
+
+ trustedTypeName
+ : `"TrustedHTMLParserOptions"`
+
+ value
+ : options
+
+ arguments
+ : arguments
+
+#### [2.3.4. ][[`TrustedTypePolicyOptions`]]
 This dictionary holds author-defined functions for converting string
 values into trusted values. These functions do not create [Trusted
 Type](#trusted-type) object
@@ -1633,13 +1713,15 @@ dictionary TrustedTypePolicyOptions {
  CreateHTMLCallback createHTML;
  CreateScriptCallback createScript;
  CreateScriptURLCallback createScriptURL;
+ CreateParserOptionsCallback createParserOptions;
 };
 callback CreateHTMLCallback = DOMString? (DOMString input, any... arguments);
 callback CreateScriptCallback = DOMString? (DOMString input, any... arguments);
 callback CreateScriptURLCallback = USVString? (DOMString input, any... arguments);
+callback CreateParserOptionsCallback = SetHTMLUnsafeOptions? (SetHTMLUnsafeOptions options, any... arguments);
 ```
 
-#### [2.3.4. ][[Default policy]]
+#### [2.3.5. ][[Default policy]]
 *This section is not normative.*
 
 One of the policies, the policy with a
@@ -1673,7 +1755,7 @@ in a transitional period only, use it to detect and rewrite their
 dependencies that use injection sinks unsafely and eventually phase out
 the usage of the default policy entirely.
 
- See [§ 3.4 Get Trusted Type compliant
+ See [§ 3.5 Get Trusted Type compliant
 string](#get-trusted-type-compliant-string-algorithm) for details on how
 the default policy is applied.
 
@@ -1740,6 +1822,383 @@ their application for enforcing Trusted Types via using the
 modifications of the algorithms in other specifications, see [§ 4
 Integrations](#integrations).
 
+#### 2.4.2. Sanitization enforcement with [`createParserOptions`]
+While
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) relies on sanitizing strings before they are injected
+to the parser using a JS sanitizer, the
+[`createParserOptions`](#dom-trustedtypepolicy-createparseroptions) allows the page's default policy to enforce HTML
+sanitization.
+
+A
+[`createParserOptions`](#dom-trustedtypepolicy-createparseroptions) callback in a default policy runs whenever an HTML
+fragment sink is invoked with unvetted parser options (or default
+options), allowing the policy to vet caller-supplied options and enforce
+sanitization even when the input markup is already an instance of
+[`TrustedHTML`](#trustedhtml).
+
+Enforce Trusted
+Types at the DOM XSS injection sinks.
+
+``` http
+Content-Security-Policy: require-trusted-types-for 'script'
+```
+
+Inject a sanitizer when using an HTML injection sink.
+
+``` highlight
+(async function renderFootnote() {
+ trustedTypes.createPolicy('default', {
+ createParserOptions: options => {
+ const sanitizer = new Sanitizer(options.sanitizer?.get() ?? );
+ sanitizer.removeUnsafe();
+ return { ...options, sanitizer };
+ }
+ });
+
+ const trustedOptions = trustedTypes.createPolicy('trusted', {
+ createParserOptions: options => options
+ }).createParserOptions();
+ const untrustedFootnoteContent = await fetch('/footnote.html').then(r => r.text());
+
+ // This HTML will be sanitized with a "safe" HTML sanitizer, as the default policy injects
+ // a sanitizer with unsafe markup removed.
+ footNote.innerHTML = untrustedFootnoteContent;
+ // or:
+ footNote.setHTMLUnsafe(untrustedFootnoteContent, );
+ const trustedMainContent = await fetch("main.html").then(r => r.text());
+ main.setHTMLUnsafe(trustedMainContent, trustedOptions);
+})();
+```
+
+Apart from sanitization, the default policy can also control whether an
+HTML injection executes scripts by overriding the caller's
+[`runScripts`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-sethtmlunsafeoptions-runscripts) setting. HTML inserted with
+[`runScripts`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-sethtmlunsafeoptions-runscripts) set to false can still insert `script` elements into
+the document, but those scripts are not automatically executed.
+
+``` highlight
+(async function renderFootnote() {
+ trustedTypes.createPolicy('default', {
+ createHTML: string => string,
+ createParserOptions: options => {
+ return { ...options, runScripts: false };
+ }
+ });
+
+ // The default policy would override the runScripts value to false.
+ main.setHTMLUnsafe(someHTMLWithScripts, {runScripts: true});
+
+ // This applies to Range.prototype.createContextualFragment()
+ const fragment = new Range().createContextualFragment("<script>alert(1)</" + "script>");
+ const div = document.createElement('div');
+ // The scripts in the fragment would not be executed, as the default policy overrides runScripts.
+ div.appendChild(fragment);
+})();
+```
+
+#### 2.4.3. Summary of input enforcement
+
+*This section is not normative.*
+
+The following table summarizes the behavior of [get trusted type
+compliant
+input](#get-trusted-type-compliant-input) for various combinations of arguments and default
+policy callbacks under enforcing Content Security Policy:
+
+`documentType`
+
+`options`
+
+`input`
+
+Default policy state / callback
+
+Result
+
+Effective `sanitizer`
+
+Rationale
+
+`"html"`
+
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions)
+
+String or [`TrustedHTML`](#trustedhtml)
+
+(Ignored)
+
+Returns `(stringified |input|, |options|)`.
+
+`options`'s [sanitizer
+configuration](#trustedhtmlparseroptions-sanitizer-configuration)
+
+Caller-supplied
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) explicitly authorizes the parse operation, with script
+execution and sanitization dictated by the policy that minted it.
+
+`"html"`
+
+Dictionary (caller provides `sanitizer`)
+
+[`TrustedHTML`](#trustedhtml)
+
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) returns a dictionary configuring a policy sanitizer
+
+Returns `(stringified |input|, |compliantOptions|)`.
+
+Configured by
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions)
+
+**Policy vets or replaces caller's sanitizer on TrustedHTML:** Even
+though `input` is an attested
+[`TrustedHTML`](#trustedhtml) instance,
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) runs and receives the caller's sanitizer in
+`argument["sanitizer"]`. The policy can inspect, enforce, or replace the
+sanitizer configuration (as well as control script execution), ensuring
+unvetted caller-supplied options cannot bypass policy review.
+
+Dictionary (caller provides `sanitizer`)
+
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) returns `` (omits sanitizer)
+
+Returns `(stringified |input|, |compliantOptions|)`.
+
+`null`
+
+**Policy strips caller's sanitizer:** The default policy determines the
+final parser options. If the policy returns no sanitizer, no
+sanitization is performed during parsing, overriding the caller's
+request.
+
+Dictionary that is not author-supplied or does not [need
+vetting](#parser-options-need-vetting)
+
+No
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) (or no default policy)
+
+Returns `(stringified |input|, |options|)`.
+
+`null`
+
+**TrustedHTML without parser policy:** When no policy defines
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions), an existing
+[`TrustedHTML`](#trustedhtml) instance satisfies Trusted Types directly (bypassing
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml)), as long as author-supplied options do not need
+vetting.
+
+Author-supplied dictionary that [needs
+vetting](#parser-options-need-vetting)
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+**Unvetted options rejected:**
+[`TrustedHTML`](#trustedhtml) can become unsafe with an unvetted sanitizer or script
+execution, so these options need a
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) or a default policy's
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions).
+
+`"html"`
+
+Dictionary
+
+String
+
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) returns a dictionary
+
+Returns `(stringified |input|, |compliantOptions|)`.
+
+Configured by
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) (or null)
+
+**Parsing raw string authorized by parser policy:** The default policy
+returns compliant parser options, authorizing raw string parsing and
+configuring sanitization and script execution without requiring
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml).
+
+Dictionary
+
+String or [`TrustedHTML`](#trustedhtml)
+
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) throws an exception
+
+Rethrows the exception.
+
+N/A
+
+Exceptions in policy callbacks propagate immediately to the caller,
+regardless of whether `input` is a string or
+[`TrustedHTML`](#trustedhtml).
+
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) returns `null` or `undefined`
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+Returning null or undefined from a policy callback rejects the value,
+triggering a CSP violation error, regardless of whether
+`input` is a string or
+[`TrustedHTML`](#trustedhtml).
+
+Author-supplied dictionary that [needs
+vetting](#parser-options-need-vetting)
+
+String
+
+No
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) (or no default policy)
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+**Unvetted options rejected:**
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) is not invoked, as its result would be parsed with
+unvetted options.
+
+Dictionary that is not author-supplied or does not [need
+vetting](#parser-options-need-vetting)
+
+String
+
+No
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions);
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) returns
+[`TrustedHTML`](#trustedhtml)
+
+Returns `(stringified |convertedInput|, |options|)`.
+
+`null`
+
+Provides backwards compatibility: when no policy manages parser options,
+the sink falls back to vetting or sanitizing the markup string via
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml).
+
+No
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions);
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) throws an exception
+
+Rethrows the exception.
+
+N/A
+
+Exceptions in policy callbacks propagate immediately to the caller.
+
+No
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions);
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) returns `null` or `undefined`
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+Rejection by
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) triggers a CSP violation error.
+
+No default policy (or neither callback defined)
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+Under enforcing CSP, a raw string cannot be parsed without a policy
+authorizing either the parser options or the markup string.
+
+`"xml"`
+
+Any
+
+[`TrustedHTML`](#trustedhtml)
+
+(Any)
+
+Returns `(stringified |input|, |options|)`.
+
+None (ignored)
+
+XML sinks require trusted markup; a
+[`TrustedHTML`](#trustedhtml) instance satisfies this requirement directly. XML
+fragment parsing does not support sanitization and never executes
+scripts.
+
+`"xml"`
+
+Any
+
+String
+
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) returns
+[`TrustedHTML`](#trustedhtml)
+
+Returns `(stringified |convertedInput|, |options|)`.
+
+None (ignored)
+
+XML fragment sinks do not support parser options bypass or sanitization;
+markup strings must always be converted via
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml). XML fragment parsing does not support sanitization and
+never executes scripts.
+
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) throws an exception
+
+Rethrows the exception.
+
+N/A
+
+Exceptions in policy callbacks propagate immediately to the caller.
+
+No
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) or no default policy (or returns `null`/`undefined`)
+
+Throws a
+[`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+N/A
+
+Untrusted strings cannot be injected into XML sinks without
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml), regardless of parser options.
+
+**TrustedHTML, runScripts, and sanitization:** Sinks enforcing Trusted
+Types handle options and scripts as follows:
+
+- When `input` is a
+ [`TrustedHTML`](#trustedhtml) instance, a default policy's
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) still vets any caller-supplied options dictionary,
+ allowing the policy to inspect, configure, or override the sanitizer
+ configuration (as well as control script execution) despite the input
+ already being
+ [`TrustedHTML`](#trustedhtml). If
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) throws or returns `null` or `undefined`, the
+ operation is rejected. When
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) is absent, an author-supplied options dictionary that
+ [needs
+ vetting](#parser-options-need-vetting) is rejected, whether `input` is a
+ [`TrustedHTML`](#trustedhtml) instance or a string converted by
+ [`createHTML`](#dom-trustedtypepolicyoptions-createhtml). Options that a sink constructs itself, like
+ [`createContextualFragment()`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-range-createcontextualfragment)'s `runScripts` set to true, are not rejected.
+- When `options` is a
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions), script execution and sanitization are governed by
+ the policy that created the options object. When options are passed as
+ a dictionary, a default policy's
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) determines the final script execution behavior,
+ overriding the caller's requested `runScripts` setting.
+- XML fragment parsing does not support sanitization; any sanitizer
+ configuration is ignored for XML sinks.
+- For streaming HTML fragment parsing, [get trusted type compliant
+ parser
+ options](#get-trusted-type-compliant-parser-options) is invoked directly with `throwIfMissing`
+ set to true. In that context, if
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) is missing, throws, or returns `null` or `undefined`,
+ a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) is thrown (or rethrown) immediately.
+
 ## 3. Algorithms
 
 ### 3.1. Create a Trusted Type Policy
@@ -1772,9 +2231,10 @@ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm-glo
 
 6. Set `policy`'s
  [options](#trustedtypepolicy-options) value to «\[ \"createHTML\" -\>
- `options`\[\"[`createHTML`](#dom-trustedtypepolicyoptions-createhtml)\", \"createScript\" -\>
- `options`\[\"[`createScript`](#dom-trustedtypepolicyoptions-createscript)\", \"createScriptURL\" -\>
- `options`\[\"[`createScriptURL`](#dom-trustedtypepolicyoptions-createscripturl)\" \]».
+ `options`\[\"[`createHTML`](#dom-trustedtypepolicyoptions-createhtml)\"\], \"createScript\" -\>
+ `options`\[\"[`createScript`](#dom-trustedtypepolicyoptions-createscript)\"\], \"createScriptURL\" -\>
+ `options`\[\"[`createScriptURL`](#dom-trustedtypepolicyoptions-createscripturl)\"\], \"createParserOptions\" -\>
+ `options`\[\"[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions)\"\] \]».
 
 7. If the `policyName` is `default`, set the
  `factory`'s [default
@@ -1790,8 +2250,8 @@ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm-glo
 
 To [create a trusted type] given a
 [`TrustedTypePolicy`](#trustedtypepolicy) `policy`, a type name
-`trustedTypeName`, a string `value` and a list
-`arguments`, perform the following steps:
+`trustedTypeName`, a string or dictionary `value`
+and a list `arguments`, perform the following steps:
 
 1. Let `policyValue` be the result of executing [get trusted
  type policy
@@ -1801,13 +2261,41 @@ To [create a trusted type] given a
 2. If the algorithm threw an error, rethrow the error and abort the
  following steps.
 
-3. Let `dataString` be the result of stringifying
+3. If `trustedTypeName` is `"TrustedHTMLParserOptions"`:
+
+ 1. If `policyValue` is null, throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ Returning `null` from a named policy's
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) callback throws a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror) here, whereas returning `null` or `undefined`
+ from
+ [`createHTML`](#dom-trustedtypepolicyoptions-createhtml),
+ [`createScript`](#dom-trustedtypepolicyoptions-createscript), or
+ [`createScriptURL`](#dom-trustedtypepolicyoptions-createscripturl) yields the empty string.
+
+ 2. Let `sanitizerConfig` be the result of [getting a
+ sanitizer
+ configuration](#get-a-sanitizer-config-copy-from-dictionary) from `policy`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) and `policyValue`.
+
+ 3. Let `runScripts` be
+ `policyValue`\[\"runScripts\"\] [with
+ default](https://infra.spec.whatwg.org/#map-with-default) false.
+
+ 4. Return a new instance of
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) in `policy`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) with its [sanitizer
+ configuration](#trustedhtmlparseroptions-sanitizer-configuration) set to `sanitizerConfig`, and its
+ [runScripts](#trustedhtmlparseroptions-runscripts) set to `runScripts`.
+
+4. Let `dataString` be the result of stringifying
  `policyValue`.
 
-4. If `policyValue` is null or undefined, set
+5. If `policyValue` is null or undefined, set
  `dataString` to the empty string.
 
-5. Return a new instance of an interface with a type name
+6. Return a new instance of an interface with a type name
  `trustedTypeName`, with its associated data value set to
  `dataString`.
 
@@ -1815,9 +2303,9 @@ To [create a trusted type] given a
 
 To [get trusted type policy value] given a
 [`TrustedTypePolicy`](#trustedtypepolicy) `policy`, a type name
-`trustedTypeName`, a string `value`, a list
-`arguments`, and a boolean `throwIfMissing`,
-perform the following steps:
+`trustedTypeName`, a string or dictionary `value`,
+a list `arguments`, and a boolean
+`throwIfMissing`, perform the following steps:
 
 1. Let `functionName` be a function name for the given
  `trustedTypeName`, based on the following table:
@@ -1838,6 +2326,10 @@ perform the following steps:
 
  \"TrustedScriptURL\"
 
+ \"createParserOptions\"
+
+ \"TrustedHTMLParserOptions\"
+
 2. Let `function` be `policy`'s
  [options](#trustedtypepolicy-options)\[`functionName`\].
 
@@ -1847,18 +2339,71 @@ perform the following steps:
 
  2. Else return `null`.
 
-4. Let `args` be « `value` ».
+4. If `trustedTypeName` is `"TrustedHTMLParserOptions"`:
 
-5. [Append](https://infra.spec.whatwg.org/#set-append) each item in `arguments` to
+ 1. Set `value` to the result of [creating a parser
+ options callback
+ argument](#create-a-parser-options-callback-argument) given `policy`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) and `value`.
+
+5. Let `args` be « `value` ».
+
+6. [Append](https://infra.spec.whatwg.org/#set-append) each item in `arguments` to
  `args`.
 
-6. Let `policyValue` be the result of
+7. Let `policyValue` be the result of
  [invoking](https://webidl.spec.whatwg.org/#invoke-a-callback-function) `function` with `args` and
  `"rethrow"`.
 
-7. Return `policyValue`.
+8. Return `policyValue`.
 
-### 3.4. Get Trusted Type compliant string
+### 3.4. Get Trusted Type compliant input
+
+ See [§ 2.4.3 Summary of input
+enforcement](#summary-of-input-enforcement) for a summary of this
+algorithm's behavior for various combinations of arguments and default
+policy callbacks.
+
+To [get trusted type compliant input] given a [global
+object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm-global) `global`, a string or
+[`TrustedHTML`](#trustedhtml) `input`, a
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions),
+[`ParseHTMLUnsafeOptions`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#parsehtmlunsafeoptions) or
+[`SetHTMLUnsafeOptions`](https://html.spec.whatwg.org/#sethtmlunsafeoptions) `options`, a string `sink`, an
+optional `"html"` or `"xml"` `documentType` (default
+`"html"`), and an optional boolean `optionsFromAuthor`
+(default true):
+
+1. Let `compliantOptions` be `options`.
+
+2. If `documentType` is `"html"`:
+
+ 1. Set `compliantOptions` to the result of calling [get
+ trusted type compliant parser
+ options](#get-trusted-type-compliant-parser-options), passing `global`,
+ `options`, false, `sink`, and
+ `optionsFromAuthor`.
+
+ Sinks that construct `options`
+ themselves, rather than taking them from the author, pass false
+ for `optionsFromAuthor`. For example,
+ [`createContextualFragment()`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#dom-range-createcontextualfragment) sets `runScripts` to true.
+
+ 2. If `compliantOptions` is an instance of
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions), return (stringified `input`,
+ `compliantOptions`).
+
+3. Let `compliantHTML` be the result of calling [get trusted
+ type compliant
+ string](#get-trusted-type-compliant-string), passing
+ [`TrustedHTML`](#trustedhtml), `global`, `input`,
+ `sink`, and `"script"`.
+
+4. If the algorithm threw an error, rethrow the error.
+
+5. Return (`compliantHTML`, `compliantOptions`).
+
+### 3.5. Get Trusted Type compliant string
 
 This algorithm will return a string that can be used with an [injection
 sink](#injection-sink),
@@ -1900,8 +2445,8 @@ steps:
  1. Let `disposition` be the result of executing [should
  sink type mismatch violation be blocked by content security
  policy?](#should-sink-type-mismatch-violation-be-blocked-by-content-security-policy) algorithm, passing `global`,
- stringified `input` as `source`,
- `sinkGroup` and `sink`.
+ `sink`, `sinkGroup`, and stringified
+ `input` as `source`.
 
  2. If `disposition` is `“Allowed”`, return stringified
  `input` and abort further steps.
@@ -1916,7 +2461,241 @@ steps:
 
 8. Return stringified `convertedInput`.
 
-### 3.5. Process value with a default policy
+### 3.6. Get Trusted Type compliant parser options
+
+ `throwIfMissing` is false when called from
+[get trusted type compliant
+input](#get-trusted-type-compliant-input). Even then, author-supplied options that [need
+vetting](#parser-options-need-vetting) require a default policy with
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions). For synchronous HTML fragment injection sinks, a
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) in the resulting options can satisfy Trusted Types
+enforcement without requiring
+[`createHTML`](#dom-trustedtypepolicyoptions-createhtml) on the input string. When streaming or in contexts
+where the HTML string cannot be validated up front, callers pass true
+for `throwIfMissing` to ensure a default policy with
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) is required. For XML documents, parser options cannot
+satisfy Trusted Types enforcement; XML fragment sinks always require
+compliant string input via [get trusted type compliant
+string](#get-trusted-type-compliant-string).
+
+To [get trusted type compliant parser
+options] given a [global
+object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm-global) `global`, `input`, which is
+either a
+[`TrustedHTMLParserOptions`](#trustedhtmlparseroptions), a
+[`SetHTMLUnsafeOptions`](https://html.spec.whatwg.org/#sethtmlunsafeoptions), or a
+[`ParseHTMLUnsafeOptions`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#parsehtmlunsafeoptions), a boolean `throwIfMissing`, a string
+`sink`, and an optional boolean
+`optionsFromAuthor` (default true):
+
+1. If `input` is an instance of
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions), return `input`.
+
+2. Let `requireTrustedTypes` be the result of executing
+ [Does sink type require trusted
+ types?](#does-sink-type-require-trusted-types) algorithm, passing `global`, `"script"`,
+ and true.
+
+3. If `requireTrustedTypes` is `false`, return
+ `input`.
+
+4. Let `requirePolicy` be `throwIfMissing`.
+
+5. If `optionsFromAuthor` is true and `input`
+ [needs
+ vetting](#parser-options-need-vetting), set `requirePolicy` to true.
+
+ Markup vetted as
+ [`TrustedHTML`](#trustedhtml) can become unsafe when parsed with an unvetted
+ sanitizer (e.g., one that uses `replaceWithChildrenElements`) or
+ with script execution enabled. Such options need to come from a
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) or a default policy's
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions).
+
+6. Let `defaultPolicy` be the value of `global`'s
+ [trusted type policy
+ factory](#window-trusted-type-policy-factory)'s [default
+ policy](#trustedtypepolicyfactory-default-policy).
+
+7. If `defaultPolicy` is null:
+
+ 1. If `requirePolicy` is true:
+
+ 1. Let `disposition` be the result of executing
+ [should sink type mismatch violation be blocked by content
+ security
+ policy?](#should-sink-type-mismatch-violation-be-blocked-by-content-security-policy) algorithm, passing `global`,
+ `sink`, `"script"`, and the empty string as
+ `source`.
+
+ 2. If `disposition` is `“Allowed”`, return
+ `input`.
+
+ 3. Throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 2. Return `input`.
+
+8. Let `function` be `defaultPolicy`'s
+ [options](#trustedtypepolicy-options)\[\"createParserOptions\"\].
+
+9. If `function` is null:
+
+ 1. If `requirePolicy` is true:
+
+ 1. Let `disposition` be the result of executing
+ [should sink type mismatch violation be blocked by content
+ security
+ policy?](#should-sink-type-mismatch-violation-be-blocked-by-content-security-policy) algorithm, passing `global`,
+ `sink`, `"script"`, and the empty string as
+ `source`.
+
+ 2. If `disposition` is `“Allowed”`, return
+ `input`.
+
+ 3. Throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+ 2. Return `input`.
+
+10. Let `argument` be the result of [creating a parser
+ options callback
+ argument](#create-a-parser-options-callback-argument) given `global`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) and `input`.
+
+11. Let `policyValue` be the result of
+ [invoking](https://webidl.spec.whatwg.org/#invoke-a-callback-function) `function` with « `argument`,
+ \"TrustedHTMLParserOptions\", `sink` » and `"rethrow"`.
+
+12. If the algorithm threw an error, rethrow the error and abort the
+ following steps.
+
+13. If `policyValue` is `null` or `undefined`:
+
+ 1. Let `disposition` be the result of executing [should
+ sink type mismatch violation be blocked by content security
+ policy?](#should-sink-type-mismatch-violation-be-blocked-by-content-security-policy) algorithm, passing `global`,
+ `sink`, `"script"`, and the empty string as
+ `source`.
+
+ 2. If `disposition` is `“Allowed”`, return
+ `input`.
+
+ This step assures that the default policy
+ rejection will be reported, but ignored in a report-only mode.
+
+ 3. Throw a
+ [`TypeError`](https://webidl.spec.whatwg.org/#exceptiondef-typeerror).
+
+14. Let `runScripts` be
+ `policyValue`\[\"runScripts\"\], [with
+ default](https://infra.spec.whatwg.org/#map-with-default) false.
+
+ When invoked as a default policy, the
+ [`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) callback determines the final script execution
+ behavior, overriding the caller's requested `runScripts` option.
+
+15. Return a new
+ [`TrustedHTMLParserOptions`](#trustedhtmlparseroptions) in `global`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) whose [sanitizer
+ configuration](#trustedhtmlparseroptions-sanitizer-configuration) is set to the result of [getting a sanitizer
+ configuration](#get-a-sanitizer-config-copy-from-dictionary) from `global`'s [relevant
+ realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-realm) and `policyValue`, and whose
+ [runScripts](#trustedhtmlparseroptions-runscripts) is set to `runScripts`.
+
+A
+[`SetHTMLUnsafeOptions`](https://html.spec.whatwg.org/#sethtmlunsafeoptions) or
+[`ParseHTMLUnsafeOptions`](https://html.spec.whatwg.org/multipage/dynamic-markup-insertion.html#parsehtmlunsafeoptions) `options` [needs
+vetting] if
+`options`\[\"runScripts\"\]
+[exists](https://infra.spec.whatwg.org/#map-exists) and is true, or if
+`options`\[\"sanitizer\"\]
+[exists](https://infra.spec.whatwg.org/#map-exists) and is not an
+[empty](https://infra.spec.whatwg.org/#map-is-empty)
+[`SanitizerConfig`](https://html.spec.whatwg.org/#sanitizerconfig).
+
+ An empty
+[`SanitizerConfig`](https://html.spec.whatwg.org/#sanitizerconfig) does not change the parsed markup.
+
+To [create a parser options callback
+argument] given a
+[realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm) `realm` and a dictionary
+`dictionary`:
+
+1. Let `runScriptsInput` be
+ `dictionary`\[\"runScripts\"\], [with
+ default](https://infra.spec.whatwg.org/#map-with-default) false.
+
+2. Let `argument` be the [ordered
+ map](https://infra.spec.whatwg.org/#ordered-map) «\[ \"runScripts\" → `runScriptsInput`
+ \]».
+
+3. Let `sanitizerInput` be the result of [getting a
+ sanitizer](#get-a-sanitizer-from-dictionary) from `realm` and
+ `dictionary`.
+
+4. If `sanitizerInput` is not null, set
+ `argument`\[\"sanitizer\"\] to
+ `sanitizerInput`.
+
+5. Return `argument`.
+
+To [get a sanitizer from dictionary] given a
+[realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm) `realm` and a dictionary
+`dictionary`:
+
+1. Let `sanitizerInput` be
+ `dictionary`\[\"sanitizer\"\], [defaulting
+ to](https://infra.spec.whatwg.org/#map-with-default) null.
+
+2. If `sanitizerInput` is null, return null.
+
+3. Let `configuration` be null.
+
+4. If `sanitizerInput` is a
+ [`SanitizerPresets`](https://html.spec.whatwg.org/#sanitizerpresets):
+
+ 1. [Assert](https://infra.spec.whatwg.org/#assert): `sanitizerInput` is `"default"`.
+
+ 2. Set `configuration` to the [built-in safe default
+ configuration](https://html.spec.whatwg.org/#built-in-safe-default-configuration).
+
+5. Otherwise, if `sanitizerInput` is a
+ [`Sanitizer`](https://html.spec.whatwg.org/#sanitizer):
+
+ 1. Set `configuration` to `sanitizerInput`'s
+ [configuration](https://html.spec.whatwg.org/#configuration).
+
+6. Otherwise, if `sanitizerInput` is a
+ [`SanitizerConfig`](https://html.spec.whatwg.org/#sanitizerconfig):
+
+ 1. Set `configuration` to `sanitizerInput`.
+
+7. [Assert](https://infra.spec.whatwg.org/#assert): `configuration` is not null.
+
+8. Let `sanitizer` be a new
+ [`Sanitizer`](https://html.spec.whatwg.org/#sanitizer) in `realm`.
+
+9. [Configure](https://html.spec.whatwg.org/#configure-a-sanitizer) `sanitizer` given
+ `configuration` and true.
+
+10. Return `sanitizer`.
+
+To [get a sanitizer config copy from
+dictionary] given a
+[realm](https://html.spec.whatwg.org/multipage/webappapis.html#concept-global-object-realm) `realm` and a dictionary
+`dictionary`:
+
+1. Let `sanitizer` be the result of [getting a
+ sanitizer](#get-a-sanitizer-from-dictionary) from `realm` and
+ `dictionary`.
+
+2. If `sanitizer` is null, return null.
+
+3. Return `sanitizer`'s
+ [configuration](https://html.spec.whatwg.org/#configuration).
+
+### 3.7. Process value with a default policy
 
 This algorithm routes a value to be assigned to an [injection
 sink](#injection-sink)
@@ -1963,11 +2742,11 @@ object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-realm-glo
  `trustedTypeName`, with its associated data value set to
  `dataString`.
 
-### 3.6. Prepare the script text
+### 3.8. Prepare the script text
 
 To [prepare the script text] given an
 [`HTMLScriptElement`](https://html.spec.whatwg.org/multipage/scripting.html#htmlscriptelement) or
-[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement) (`script`), perform the following steps:
+[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement) (`script`), perform the following steps:
 
 1. Let `sink` be \"`HTMLScriptElement text`\" if
  `script` is an
@@ -1980,7 +2759,7 @@ To [prepare the script text] given an
  compliant
  string](#get-trusted-type-compliant-string), with the following arguments:
 
- - [`TrustedScriptURL`](#trustedscripturl) as `expectedType`,
+ - [`TrustedScript`](#trustedscript) as `expectedType`,
 
  - `script`'s
  [`Document`](https://dom.spec.whatwg.org/#document)'s [relevant global
@@ -1995,7 +2774,7 @@ To [prepare the script text] given an
 
  If the algorithm threw an error, rethrow the error.
 
-### 3.7. Get Trusted Type compliant attribute value
+### 3.9. Get Trusted Type compliant attribute value
 
 To [get trusted type compliant attribute
 value] given a string `attributeName`,
@@ -2027,7 +2806,7 @@ following steps:
  [`TrustedScript`](#trustedscript) or
  [`TrustedScriptURL`](#trustedscripturl).
 
- 3. Return `value`'s associated data.
+ 3. Return `newValue`'s associated data.
 
 4. Let `expectedType` be the value of the fourth member of
  `attributeData`.
@@ -2052,7 +2831,7 @@ following steps:
 
 If the algorithm threw an error, rethrow the error.
 
-### 3.8. Get Trusted Type data for attribute
+### 3.10. Get Trusted Type data for attribute
 
 To [get Trusted Type data for
 attribute] given `element`,
@@ -2114,7 +2893,7 @@ better mechanism to identify event handler attributes. See
 
  \"HTMLScriptElement src\"
 
- [`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement)
+ [`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement)
 
  null
 
@@ -2124,7 +2903,7 @@ better mechanism to identify event handler attributes. See
 
  \"SVGScriptElement href\"
 
- [`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement)
+ [`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement)
 
  [XLink
  namespace](https://infra.spec.whatwg.org/#xlink-namespace)
@@ -2170,36 +2949,11 @@ factory](#integration-with-html).
 
 #### 4.1.2. Enforcement for scripts
 
-This document modifies how
-[`HTMLScriptElement`](https://html.spec.whatwg.org/multipage/scripting.html#htmlscriptelement) [child text
-content](https://dom.spec.whatwg.org/#concept-child-text-content) can be set to allow applications to control dynamically
-created scripts. It does so by adding the
-[`innerText`](https://html.spec.whatwg.org/multipage/dom.html#dom-innertext) and
-[`textContent`](https://dom.spec.whatwg.org/#dom-node-textcontent) attributes directly on
-[`HTMLScriptElement`](https://html.spec.whatwg.org/multipage/scripting.html#htmlscriptelement). The behavior of the attributes remains the same as in
-their original counterparts, apart from the additional behavior of
-calling [get trusted type compliant
-string](#get-trusted-type-compliant-string).
-
- Using these IDL attributes is the recommended way of
-dynamically setting the URL or a text of a script. Manipulating
-attribute nodes or text nodes directly will call a default policy on the
-final value when the script is prepared.
-
-```
-partial interface HTMLScriptElement {
- [CEReactions] attribute (TrustedScript or [LegacyNullToEmptyString] DOMString) innerText;
- [CEReactions] attribute (TrustedScript or DOMString)? textContent;
- [CEReactions] attribute (TrustedScriptURL or USVString) src;
- [CEReactions] attribute (TrustedScript or DOMString) text;
-};
-```
-
 ##### 4.1.2.1. Slots with trusted values
 
 An
 [`HTMLScriptElement`](https://html.spec.whatwg.org/multipage/scripting.html#htmlscriptelement) and
-[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement) have:
+[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement) have:
 
 an associated string [script text].
 
@@ -2207,116 +2961,15 @@ an associated string [script text].
  through a compliant sink. Equivalent to script's [child text
  content](https://dom.spec.whatwg.org/#concept-child-text-content). Initially an empty string.
 
-##### 4.1.2.2. The [`innerText` IDL attribute]
-The
-[`innerText`](#dom-htmlscriptelement-innertext) setter steps are:
+##### 4.1.2.2. Update script trustedness algorithm
 
-1. Let `value` be the result of calling [get trusted type
- compliant
- string](#get-trusted-type-compliant-string) with
- [`TrustedScript`](#trustedscript),
- [this](https://webidl.spec.whatwg.org/#this)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global), the given value, `HTMLScriptElement innerText`,
- and `script`.
+To [update script trustedness] for
+[`HTMLScriptElement`](https://html.spec.whatwg.org/multipage/scripting.html#htmlscriptelement) `script` given string `value`:
 
-2. Set [this](https://webidl.spec.whatwg.org/#this)'s [script
+1. Set `script`'s [script
  text](#htmlscriptelement-script-text) value to `value`.
 
-3. Run [set the inner text
- steps](https://html.spec.whatwg.org/#set-the-inner-text-steps) with
- [this](https://webidl.spec.whatwg.org/#this) and `value`.
-
-The
-[`innerText`](#dom-htmlscriptelement-innertext) getter steps are:
-
-1. Return the result of running [get the text
- steps](https://html.spec.whatwg.org/#get-the-text-steps) with
- [this](https://webidl.spec.whatwg.org/#this).
-
-##### 4.1.2.3. The [`textContent` IDL attribute]
-The
-[`textContent`](#dom-htmlscriptelement-textcontent) setter steps are to, if the given value is null, act as
-if it was the empty string instead, and then do as described below:
-
-1. Let `value` be the result of calling [get trusted type
- compliant
- string](#get-trusted-type-compliant-string) with
- [`TrustedScript`](#trustedscript),
- [this](https://webidl.spec.whatwg.org/#this)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global), the given value, `HTMLScriptElement textContent`,
- and `script`.
-
-2. Set [this](https://webidl.spec.whatwg.org/#this)'s [script
- text](#htmlscriptelement-script-text) value to `value`.
-
-3. Run [set text
- content](https://dom.spec.whatwg.org/#set-text-content) with
- [this](https://webidl.spec.whatwg.org/#this) and `value`.
-
-The
-[`textContent`](#dom-htmlscriptelement-textcontent) getter steps are:
-
-1. Return the result of running [get text
- content](https://dom.spec.whatwg.org/#get-text-content) with
- [this](https://webidl.spec.whatwg.org/#this).
-
- Currently we don't add an equivalent to
-[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement). See <https://github.com/w3c/trusted-types/issues/512>.
-
-##### 4.1.2.4. The [`text` IDL attribute]
-Update the
-[`text`](#dom-htmlscriptelement-text) setter steps algorithm as follows.
-
-1. [Let `value` be the result of calling [get trusted type
- compliant
- string](#get-trusted-type-compliant-string) with
- [`TrustedScript`](#trustedscript),
- [this](https://webidl.spec.whatwg.org/#this)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global), the given value, `HTMLScriptElement text`, and
- `script`.]
-
-2. [Set [this](https://webidl.spec.whatwg.org/#this)'s [script
- text](#htmlscriptelement-script-text) value to the given value.]
-
-3. [String replace
- all](https://dom.spec.whatwg.org/#string-replace-all) with the given value within
- [this](https://webidl.spec.whatwg.org/#this).
-
-##### 4.1.2.5. The [`src` IDL attribute]
-The
-[`src`](#dom-htmlscriptelement-src) getter steps are:
-
-1. [Let `element` be the result of running
- [this](https://webidl.spec.whatwg.org/#this)'s get the element.]
-2. [Let `contentAttributeValue` be the result of running
- [this](https://webidl.spec.whatwg.org/#this)'s get the content attribute.]
-3. [If `contentAttributeValue` is null, then return the
- empty string.]
-4. [Let `urlString` be the result of
- encoding-parsing-and-serializing a URL given
- `contentAttributeValue`, relative to
- `element`'s [node
- document](https://dom.spec.whatwg.org/#concept-node-document).]
-5. [If `urlString` is not failure, then return
- `urlString`.]
-6. [Return `contentAttributeValue`, converted to a scalar
- value string.]
-
-The
-[`src`](#dom-htmlscriptelement-src) setter steps are:
-
-1. [Let `value` be the result of calling [get trusted type
- compliant
- string](#get-trusted-type-compliant-string) with
- [`TrustedScriptURL`](#trustedscripturl),
- [this](https://webidl.spec.whatwg.org/#this)'s [relevant global
- object](https://html.spec.whatwg.org/multipage/webappapis.html#concept-relevant-global), the given value, `HTMLScriptElement src`, and
- `script`.]
-2. [Set [this](https://webidl.spec.whatwg.org/#this)'s
- [src](https://html.spec.whatwg.org/#attr-script-src) content attribute to
- `value`.]
-
-##### 4.1.2.6. Setting slot values from parser
+##### 4.1.2.3. Setting slot values from parser
 
 This document modifies the HTML parser to set the [script
 text](#htmlscriptelement-script-text) value when the script is created.
@@ -2349,9 +3002,9 @@ Implementors must ensure they protect against this case. See
 There's no proper definition for the
 processing of SVG script elements. However, implementations must apply a
 similar change to the processing of
-[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement)s.
+[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement)s.
 
-##### 4.1.2.7. Slot value verification
+##### 4.1.2.4. Slot value verification
 
 The first few steps of the [prepare the script
 element](https://html.spec.whatwg.org/#prepare-the-script-element) algorithm are modified as follows:
@@ -2401,7 +3054,7 @@ element](https://html.spec.whatwg.org/#prepare-the-script-element) algorithm are
 (#issue-c38e8ff0①) There's no proper definition for the
 processing of SVG script elements. However, implementations must apply a
 similar change to the processing of
-[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#InterfaceSVGScriptElement)s.
+[`SVGScriptElement`](https://w3c.github.io/svgwg/svg2-draft/interact.html#svgscriptelement)s.
 
 ### 4.2. Integration with Content Security Policy
 
@@ -2835,6 +3488,21 @@ that heavily depends on a global state. We advise against this. The
 policies should be self-contained as much as possible. All objects that
 may alter security decisions a policy makes effectively *become* the
 policy, and should be guarded & reviewed together.
+
+A
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) callback that returns a configuration that does not
+remove unsafe markup (e.g., scripts or event handlers) provides no
+protection against DOM XSS. Policy authors should also carefully inspect
+any caller-supplied sanitizer in the `argument["sanitizer"]` passed to
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions). Blindly trusting or passing through a caller's
+sanitizer allows unvetted configurations to govern parsing. Because
+[`createParserOptions`](#dom-trustedtypepolicyoptions-createparseroptions) executes even when the input markup is an existing
+[`TrustedHTML`](#trustedhtml) instance, the default policy ensures that unvetted
+caller options cannot bypass application-wide sanitization or script
+execution constraints. Without such a callback,
+[`TrustedHTML`](#trustedhtml) cannot be combined with a caller-supplied non-empty
+sanitizer or `runScripts` set to true, since those could make vetted
+markup unsafe.
 
 Refer to the external document on secure
 policy design.

@@ -7,8 +7,8 @@ const enums = @import("enums");
 const SanitizerConfig = @import("SanitizerConfig.zig").SanitizerConfig;
 
 pub const SetHTMLUnsafeOptions = struct {
-    sanitizer: ?runtime.JSValue = null,
     runScripts: ?bool = null,
+    sanitizer: ?runtime.JSValue = null,
 
     /// Inline union members typed runtime.JSValue: one present with the
     /// value null converts to `.null`, for the impl to convert by the union.
@@ -17,7 +17,6 @@ pub const SetHTMLUnsafeOptions = struct {
     /// Optional members' IDL default values: a member the value leaves
     /// unset is written with its default when converted to script.
     pub const member_defaults = .{
-        .{ "sanitizer", .empty_dictionary },
         .{ "runScripts", .{ .boolean = false } },
     };
 };

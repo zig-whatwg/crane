@@ -54,6 +54,7 @@ pub const TreeNode = @import("tree_builder.zig").TreeNode;
 pub const DeclarativeShadow = @import("tree_builder.zig").DeclarativeShadow;
 pub const LiveTextBefore = @import("tree_builder.zig").LiveTextBefore;
 pub const ContentPatch = @import("tree_builder.zig").ContentPatch;
+pub const InsertionRedirect = @import("tree_builder.zig").InsertionRedirect;
 pub const ParserSanitizer = @import("tree_builder.zig").ParserSanitizer;
 pub const SanitizerAction = @import("tree_builder.zig").SanitizerAction;
 pub const QuirksMode = @import("tree_builder.zig").QuirksMode;

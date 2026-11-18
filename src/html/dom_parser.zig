@@ -464,43 +464,6 @@ pub fn parseFragmentWith(
     var attribute_run = dom.element_attributes.ParserRun.begin(context_document, .fragment);
     defer attribute_run.end();
     var conversion = Conversion{ .fragment = true, .registry = registry, .scripting_mode = options.scripting_mode, .attribute_run = &attribute_run };
-    // The context element's local name and namespace. Its HTML-specific
-    // steps below - the tokenizer state, the insertion mode - are for an
-    // element in the HTML namespace; a foreign context (innerHTML on an svg
-    // element) is the parser's adjusted current node instead.
-    var local_name: ?runtime.DOMString = null;
-    defer if (local_name) |*name| name.deinit(ctx.allocator);
-    var namespace: ?runtime.DOMString = null;
-    defer if (namespace) |*name| name.deinit(ctx.allocator);
-    var encoding_owned: ?runtime.DOMString = null;
-    defer if (encoding_owned) |*value| value.deinit(ctx.allocator);
-    var context_namespace: ParserNamespace = .html;
-    if (context_element) |elem| {
-        local_name = interfaces.Element.get_localName(elem) catch return error.InvalidStateError;
-        namespace = interfaces.Element.get_namespaceURI(elem) catch return error.InvalidStateError;
-        encoding_owned = interfaces.Element.call_getAttribute(elem, runtime.DOMString.initInterned("encoding")) catch return error.InvalidStateError;
-        if (namespace) |ns| {
-            if (std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/2000/svg")) context_namespace = .svg;
-            if (std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1998/Math/MathML")) context_namespace = .mathml;
-        }
-    }
-    // A context element in any other namespace (null included) is no HTML
-    // element, so none of the steps keyed on HTML element names applies to
-    // it - an `html` element there is not the html element (the tokenizer
-    // state, step 12; the template mode, step 18; the reset, step 20; the
-    // tree builder's fragment-case name checks). The parser's nodes have
-    // only the HTML, SVG and MathML namespaces, so it stands in as an HTML
-    // element with no name. Deviation, stated: the spec's adjusted current
-    // node is then the context element in its own namespace, whose foreign
-    // content rules make a non-breakout start tag an element in that
-    // namespace; here it is an HTML element. Every break-out tag parses as
-    // the spec says (domparsing/createContextualFragment.html, "<html> in a
-    // different namespace shouldn't be special").
-    const unknown_namespace = context_element != null and context_namespace == .html and
-        !(if (namespace) |ns| std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1999/xhtml") else false);
-    const context_tag: ?[]const u8 = if (local_name) |name| (if (unknown_namespace) "" else name.asSlice()) else null;
-    const context_encoding: ?[]const u8 = if (encoding_owned) |value| value.asSlice() else null;
-
     // Step 1: Create tokenizer with input
     var tokenizer = Tokenizer.init(allocator, html);
     defer tokenizer.deinit();
@@ -512,99 +475,14 @@ pub fn parseFragmentWith(
     // is allowDeclarativeShadowRoots".
     tree_builder.allow_declarative_shadow_roots = options.allow_declarative_shadow_roots;
 
-    // HTML Standard §13.4 "Parsing HTML fragments"
-    // Step 7: Create a root html element and append to document
-    const root = TreeNode.initElement(allocator, "html", .html) catch return error.OutOfMemory;
-    tree_builder.document.appendChild(root);
-
-    // Step 9: Set up stack of open elements with just the root element
-    tree_builder.pushOpenElement(root) catch return error.OutOfMemory;
-
-    // "The adjusted current node is the context element if the parser was
-    // created as part of the HTML fragment parsing algorithm and the stack of
-    // open elements has only one element in it" - the tree builder asks it
-    // for foreign content, so it gets the context's name, namespace and (for
-    // annotation-xml) encoding.
-    const context_node: ?*TreeNode = if (context_tag) |tag| blk: {
-        const node = TreeNode.initElement(allocator, tag, context_namespace) catch return error.OutOfMemory;
-        if (context_encoding) |encoding| node.addAttribute("encoding", encoding, null) catch {
-            node.deinit();
-            return error.OutOfMemory;
-        };
-        break :blk node;
-    } else null;
-    defer if (context_node) |node| node.deinit();
-    tree_builder.fragment_context = context_node;
-
-    // Steps 2-3: the fragment's document takes the mode of the context
-    // element's node document - quirks, or limited-quirks - which the tree
-    // builder reads for its mode-dependent rules.
-    if (context_document) |document| {
-        // Fragment parsing steps 10–11: inherit disabled scripting.
-        tree_builder.scripting_enabled = document_internals.isScriptingEnabled(document) and
-            (interfaces.Document.get_defaultView(document) catch null) != null;
-        // Step 10's Disabled mode, for the scripts: the parser sets their
-        // parser document ("in head", script start tag, step 3), so DOM
-        // insertion never prepares them - none runs, as with Inert's
-        // already started.
-        if (!tree_builder.scripting_enabled) conversion.scripting_mode = .inert;
-        if (document_internals.getMode(document)) |mode| tree_builder.quirks_mode = switch (mode) {
-            .no_quirks => .no_quirks,
-            .quirks => .quirks,
-            .limited_quirks => .limited_quirks,
-        };
-    }
-
-    // Step 4: Set up fragment parsing context
-    if (context_namespace != .html) {
-        tree_builder.insertion_mode = .in_body;
-    } else if (context_tag) |tag| {
-        // HTML fragment parsing step 18.
-        if (std.mem.eql(u8, tag, "template")) tree_builder.template_insertion_modes.append(.in_template) catch return error.OutOfMemory;
-
-        // Step 6: For certain elements, set tokenizer state
-        if (std.mem.eql(u8, tag, "title") or std.mem.eql(u8, tag, "textarea")) {
-            tokenizer.state = .rcdata;
-        } else if (std.mem.eql(u8, tag, "style") or
-            std.mem.eql(u8, tag, "xmp") or
-            std.mem.eql(u8, tag, "iframe") or
-            std.mem.eql(u8, tag, "noembed") or
-            std.mem.eql(u8, tag, "noframes"))
-        {
-            tokenizer.state = .rawtext;
-        } else if (std.mem.eql(u8, tag, "script")) {
-            tokenizer.state = .script_data;
-        } else if (std.mem.eql(u8, tag, "noscript")) {
-            // Depends on scripting flag
-            if (tree_builder.scripting_enabled) {
-                tokenizer.state = .rawtext;
-            }
-        } else if (std.mem.eql(u8, tag, "plaintext")) {
-            tokenizer.state = .plaintext;
-        }
-    } else {
-        // No context element - use in_body mode with root on stack
-        tree_builder.insertion_mode = .in_body;
-    }
-
-    // Fragment steps 20–21. The context is the last node for reset purposes;
-    // the ancestor form is only a pointer, not an entry on the open stack.
-    if (context_node != null) tree_builder.resetInsertionModeAppropriately();
-    var form_context: ?*TreeNode = null;
-    // The form pointer lets go of the context form before it is freed.
-    defer if (form_context) |form| {
-        tree_builder.setFormElement(null);
-        form.deinit();
-    };
-    var ancestor = context_element;
-    while (ancestor) |element| : (ancestor = interfaces.Node.get_parentElement(element) catch null) {
-        if (element.stateAs(interfaces.HTMLFormElement.State) != null) {
-            const form = TreeNode.initElement(allocator, "form", .html) catch return error.OutOfMemory;
-            form_context = form;
-            tree_builder.setFormElement(form);
-            break;
-        }
-    }
+    // HTML "initialize an HTML fragment parser" steps 3-4, 10-11 and 13-19.
+    var fragment_case = try FragmentCase.setUp(allocator, &tree_builder, &tokenizer, context_element, context_document);
+    defer fragment_case.deinit(&tree_builder);
+    // Step 10's Disabled mode, for the scripts: the parser sets their
+    // parser document ("in head", script start tag, step 3), so DOM
+    // insertion never prepares them - none runs, as with Inert's already
+    // started.
+    if (context_document != null and !tree_builder.scripting_enabled) conversion.scripting_mode = .inert;
 
     // Step 9: the parser's sanitizer configuration.
     tree_builder.parser_sanitizer = options.parser_sanitizer;
@@ -660,12 +538,173 @@ pub fn parseFragmentWith(
 
         // Recursively convert children
         try convertChildrenToDom(allocator, ctx, tc, dom_node, owner_doc, childConversion(tc, conversion));
+        finishScript(allocator, tc, dom_node, conversion);
 
         tree_child = tc.next_sibling;
     }
 
     return fragment;
 }
+
+/// HTML "initialize an HTML fragment parser", the steps that set up a tree
+/// builder and its tokenizer for the fragment case given the context
+/// element (null: none - in body) and its node document: the mode of the
+/// context document (steps 3-4), the parser scripting disabled flag (step
+/// 10), the tokenizer state (step 11), the root `html` element appended to
+/// the parser's document and alone on the stack of open elements (steps
+/// 12-14), the template insertion mode (step 16), the context's start tag
+/// (step 17, the tree builder's fragment context), the insertion mode
+/// reset (step 18) and the form element pointer (step 19). Shared by the
+/// HTML fragment parsing algorithm and streaming HTML (html.stream_html).
+/// Keep it until the tree builder is done: it owns the context's and the
+/// form pointer's stand-in nodes.
+pub const FragmentCase = struct {
+    allocator: Allocator,
+    /// The root `html` element, in the tree builder's document.
+    root: *TreeNode,
+    /// The context element's start tag, as a node (the adjusted current
+    /// node while the stack holds only the root), or null.
+    context_node: ?*TreeNode = null,
+    /// The form element pointer's stand-in for an ancestor form, or null.
+    form_context: ?*TreeNode = null,
+
+    pub fn setUp(
+        allocator: Allocator,
+        tree_builder: *TreeBuilder,
+        tokenizer: *Tokenizer,
+        context_element: ?*runtime.Instance,
+        context_document: ?*runtime.Instance,
+    ) ParseError!FragmentCase {
+        const ctx_allocator = if (context_element) |elem| elem.ctx.allocator else allocator;
+        // The context element's local name and namespace. Its HTML-specific
+        // steps below - the tokenizer state, the insertion mode - are for an
+        // element in the HTML namespace; a foreign context (innerHTML on an
+        // svg element) is the parser's adjusted current node instead.
+        var local_name: ?runtime.DOMString = null;
+        defer if (local_name) |*name| name.deinit(ctx_allocator);
+        var namespace: ?runtime.DOMString = null;
+        defer if (namespace) |*name| name.deinit(ctx_allocator);
+        var encoding_owned: ?runtime.DOMString = null;
+        defer if (encoding_owned) |*value| value.deinit(ctx_allocator);
+        var context_namespace: ParserNamespace = .html;
+        if (context_element) |elem| {
+            local_name = interfaces.Element.get_localName(elem) catch return error.InvalidStateError;
+            namespace = interfaces.Element.get_namespaceURI(elem) catch return error.InvalidStateError;
+            encoding_owned = interfaces.Element.call_getAttribute(elem, runtime.DOMString.initInterned("encoding")) catch return error.InvalidStateError;
+            if (namespace) |ns| {
+                if (std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/2000/svg")) context_namespace = .svg;
+                if (std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1998/Math/MathML")) context_namespace = .mathml;
+            }
+        }
+        // A context element in any other namespace (null included) is no
+        // HTML element, so none of the steps keyed on HTML element names
+        // applies to it - an `html` element there is not the html element
+        // (the tokenizer state, step 11; the template mode, step 16; the
+        // reset, step 18; the tree builder's fragment-case name checks). The
+        // parser's nodes have only the HTML, SVG and MathML namespaces, so it
+        // stands in as an HTML element with no name. Deviation, stated: the
+        // spec's adjusted current node is then the context element in its
+        // own namespace, whose foreign content rules make a non-breakout
+        // start tag an element in that namespace; here it is an HTML
+        // element. Every break-out tag parses as the spec says
+        // (domparsing/createContextualFragment.html, "<html> in a different
+        // namespace shouldn't be special").
+        const unknown_namespace = context_element != null and context_namespace == .html and
+            !(if (namespace) |ns| std.mem.eql(u8, ns.asSlice(), "http://www.w3.org/1999/xhtml") else false);
+        const context_tag: ?[]const u8 = if (local_name) |name| (if (unknown_namespace) "" else name.asSlice()) else null;
+        const context_encoding: ?[]const u8 = if (encoding_owned) |value| value.asSlice() else null;
+
+        // Steps 12-13: a root html element, appended to the document.
+        const root = TreeNode.initElement(allocator, "html", .html) catch return error.OutOfMemory;
+        tree_builder.document.appendChild(root);
+        var self: FragmentCase = .{ .allocator = allocator, .root = root };
+        errdefer self.deinit(tree_builder);
+
+        // Step 14: Set up stack of open elements with just the root element
+        tree_builder.pushOpenElement(root) catch return error.OutOfMemory;
+
+        // Step 17. "The adjusted current node is the context element if the
+        // parser was created as part of the HTML fragment parsing algorithm
+        // and the stack of open elements has only one element in it" - the
+        // tree builder asks it for foreign content, so it gets the context's
+        // name, namespace and (for annotation-xml) encoding.
+        if (context_tag) |tag| {
+            const node = TreeNode.initElement(allocator, tag, context_namespace) catch return error.OutOfMemory;
+            self.context_node = node;
+            if (context_encoding) |encoding| node.addAttribute("encoding", encoding, null) catch return error.OutOfMemory;
+        }
+        tree_builder.fragment_context = self.context_node;
+
+        // Steps 3-4: the fragment's document takes the mode of the context
+        // element's node document - quirks, or limited-quirks - which the
+        // tree builder reads for its mode-dependent rules.
+        if (context_document) |document| {
+            // Step 10: parser scripting disabled from the context document.
+            tree_builder.scripting_enabled = document_internals.isScriptingEnabled(document) and
+                (interfaces.Document.get_defaultView(document) catch null) != null;
+            if (document_internals.getMode(document)) |mode| tree_builder.quirks_mode = switch (mode) {
+                .no_quirks => .no_quirks,
+                .quirks => .quirks,
+                .limited_quirks => .limited_quirks,
+            };
+        }
+
+        // Steps 11 and 16: the tokenizer state and template insertion mode.
+        if (context_namespace != .html) {
+            tree_builder.insertion_mode = .in_body;
+        } else if (context_tag) |tag| {
+            if (std.mem.eql(u8, tag, "template")) tree_builder.template_insertion_modes.append(.in_template) catch return error.OutOfMemory;
+            if (std.mem.eql(u8, tag, "title") or std.mem.eql(u8, tag, "textarea")) {
+                tokenizer.state = .rcdata;
+            } else if (std.mem.eql(u8, tag, "style") or
+                std.mem.eql(u8, tag, "xmp") or
+                std.mem.eql(u8, tag, "iframe") or
+                std.mem.eql(u8, tag, "noembed") or
+                std.mem.eql(u8, tag, "noframes"))
+            {
+                tokenizer.state = .rawtext;
+            } else if (std.mem.eql(u8, tag, "script")) {
+                tokenizer.state = .script_data;
+            } else if (std.mem.eql(u8, tag, "noscript")) {
+                if (tree_builder.scripting_enabled) tokenizer.state = .rawtext;
+            } else if (std.mem.eql(u8, tag, "plaintext")) {
+                tokenizer.state = .plaintext;
+            }
+        } else {
+            // No context element - use in_body mode with root on stack
+            tree_builder.insertion_mode = .in_body;
+        }
+
+        // Steps 18-19. The context is the last node for reset purposes; the
+        // ancestor form is only a pointer, not an entry on the open stack.
+        if (self.context_node != null) tree_builder.resetInsertionModeAppropriately();
+        var ancestor = context_element;
+        while (ancestor) |element| : (ancestor = interfaces.Node.get_parentElement(element) catch null) {
+            if (element.stateAs(interfaces.HTMLFormElement.State) != null) {
+                const form = TreeNode.initElement(allocator, "form", .html) catch return error.OutOfMemory;
+                self.form_context = form;
+                tree_builder.setFormElement(form);
+                break;
+            }
+        }
+        return self;
+    }
+
+    /// The form pointer lets go of the context form, and the stand-ins are
+    /// freed (the root is the tree builder's document's).
+    pub fn deinit(self: *FragmentCase, tree_builder: *TreeBuilder) void {
+        if (self.form_context) |form| {
+            tree_builder.setFormElement(null);
+            form.deinit();
+            self.form_context = null;
+        }
+        if (self.context_node) |node| {
+            if (tree_builder.fragment_context == node) tree_builder.fragment_context = null;
+            node.deinit();
+            self.context_node = null;
+        }
+    }
+};
 
 const Conversion = struct {
     fragment: bool = false,
@@ -790,6 +829,22 @@ fn convertChild(
         return error.InvalidStateError;
     };
     try convertChildrenToDom(allocator, ctx, tree_child, dom_node, document, childConversion(tree_child, conversion));
+    finishScript(allocator, tree_child, dom_node, conversion);
+}
+
+/// A script the parser left to run once inserted (Fragment: runScripts) has
+/// its end tag's steps now that its children are converted: Trusted Types
+/// 4.1.2.3, "set script's script text value to its child text content" -
+/// the value "prepare the script text" compares with, when it is prepared
+/// on insertion. (Inert scripts never run: nothing reads theirs.)
+fn finishScript(allocator: Allocator, tree_node: *TreeNode, element: *runtime.Instance, conversion: Conversion) void {
+    if (conversion.scripting_mode != .fragment) return;
+    if (tree_node.node_type != .element or !tree_node.hasTagName("script")) return;
+    if (tree_node.namespace != .html and tree_node.namespace != .svg) return;
+    // A script the input ended inside: "set its already started to true"
+    // (HTML "text", an end-of-file token) - it never runs.
+    if (tree_node.script_already_started) return dom.script_elements.markAlreadyStarted(element);
+    dom.script_elements.setScriptTextToChildTextContent(allocator, element) catch {};
 }
 
 /// Step 6 for the children of `tree_node`: their intended parent is it, so
@@ -906,16 +961,28 @@ fn createElementNode(
             if (owner_document) |doc| dom.script_elements.markParserInserted(element, doc);
             dom.script_elements.markAlreadyStarted(element);
         },
-        // Fragment: step 3 leaves the parser document null - "treats
-        // parser-inserted scripts as if they were not parser-inserted" - and
-        // step 4 sets force async to false; already started stays false, so
-        // the script is prepared when it becomes connected (HTML "the script
-        // element", its post-connection steps).
-        .fragment => dom.script_elements.clearForceAsync(element),
+        // Fragment (runScripts): handled once the attributes are appended,
+        // below.
+        .fragment => {},
     };
 
     // "Append each attribute in the given token to element."
     parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), conversion.attribute_run);
+
+    // Fragment (runScripts): "in head" steps 2-5 give the script its parser
+    // document and force async false, and leave already started false; at
+    // its end tag the parser prepares it, not connected (the fragment
+    // case's note on step 4), and "prepare the script element" step 3 sets
+    // its parser document to null, step 6 its force async to true when it
+    // has no async attribute, and step 9 returns. So it is left a
+    // script-inserted script - async=true unless it says otherwise - that
+    // is prepared when it becomes connected (its post-connection steps):
+    // an external one without async runs as async, not in order
+    // (domparsing/createContextualFragment-external-scripts-async.html, which
+    // Chrome, Firefox and Safari all pass; whatwg/html#13079).
+    if (is_script and conversion.scripting_mode == .fragment) {
+        if (tree_node.getAttribute("async") != null) dom.script_elements.clearForceAsync(element);
+    }
 
     // Step 15, deferred to the end of the conversion: a form keeps its DOM
     // node on its tree node so the controls it was the pointer for find it.

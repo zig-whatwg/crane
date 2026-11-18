@@ -18,7 +18,7 @@
 //!
 //! Spec: https://w3c.github.io/trusted-types/dist/spec/#algorithms
 //!
-//! lint-impls: hook for TrustedTypePolicyFactory, TrustedTypePolicy, TrustedHTML, TrustedScript, TrustedScriptURL
+//! lint-impls: hook for TrustedTypePolicyFactory, TrustedTypePolicy, TrustedHTML, TrustedScript, TrustedScriptURL, TrustedHTMLParserOptions, Sanitizer
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -59,6 +59,9 @@ pub const PolicyOptions = struct {
     html: ?engine.CallbackFunction = null,
     script: ?engine.CallbackFunction = null,
     script_url: ?engine.CallbackFunction = null,
+    /// options["createParserOptions"] (2.3.4), which makes no Trusted Type
+    /// value: TrustedHTMLParserOptions instead (3.2 step 3).
+    parser_options: ?engine.CallbackFunction = null,
 
     pub fn get(self: PolicyOptions, kind: Kind) ?engine.CallbackFunction {
         return switch (kind) {
@@ -88,6 +91,50 @@ pub const PolicyHooks = struct {
         throw_if_missing: bool,
         allocator: std.mem.Allocator,
     ) anyerror!?[]u8,
+    /// 3.3 "get trusted type policy value" for "TrustedHTMLParserOptions":
+    /// `policy`'s createParserOptions invoked with « argument » + `arguments`
+    /// ("rethrow") - `argument` already made by "create a parser options
+    /// callback argument" (3.3 step 4, the caller's). The callback's value,
+    /// OWNED (release it); null when the policy has no createParserOptions
+    /// and `throw_if_missing` is false (a TypeError when true). An exception
+    /// the callback threw is pending on error.ExceptionPending.
+    parser_options_value: *const fn (
+        policy: *runtime.Instance,
+        argument: runtime.JSValue,
+        arguments: []const runtime.JSValue,
+        throw_if_missing: bool,
+    ) anyerror!?engine.Owned,
+    /// Whether `policy` has a createParserOptions option (3.6 step 8-9's
+    /// "function is null" without invoking it).
+    has_parser_options: *const fn (policy: *runtime.Instance) bool,
+};
+
+/// TrustedHTMLParserOptions' associated values (2.2.4), as a sink reads
+/// them: its runScripts, and its sanitizer configuration - an
+/// html.sanitizer.Config the object owns, type-erased here because dom is
+/// below html (only html.parser_options casts it back). Borrowed for as long
+/// as the object lives.
+pub const ParserOptionsValue = struct {
+    run_scripts: bool,
+    sanitizer_configuration: ?*const anyopaque,
+};
+
+/// What TrustedHTMLParserOptions supplies.
+pub const ParserOptionsHooks = struct {
+    /// A new TrustedHTMLParserOptions in `realm` with `run_scripts` and a
+    /// copy of the html.sanitizer.Config at `sanitizer_configuration`
+    /// (BORROWED; null for none).
+    create: *const fn (realm: runtime.Context, run_scripts: bool, sanitizer_configuration: ?*const anyopaque) anyerror!*runtime.Instance,
+    /// `instance`'s values when it is a TrustedHTMLParserOptions, else null.
+    value_of: *const fn (instance: *runtime.Instance) ?ParserOptionsValue,
+};
+
+/// What Sanitizer supplies for 3.6's "get a sanitizer from dictionary" step
+/// 8-9: "a new Sanitizer in realm", configured - its configuration a copy of
+/// the html.sanitizer.Config at `configuration` (type-erased as above,
+/// BORROWED), which the caller already configured.
+pub const SanitizerObjectHooks = struct {
+    create: *const fn (realm: runtime.Context, configuration: *const anyopaque) anyerror!*runtime.Instance,
 };
 
 const Table = struct {
@@ -96,6 +143,8 @@ const Table = struct {
     script_url: ?ValueHooks = null,
     factory: ?FactoryHooks = null,
     policy: ?PolicyHooks = null,
+    parser_options: ?ParserOptionsHooks = null,
+    sanitizer: ?SanitizerObjectHooks = null,
 
     fn values(self: *const Table, kind: Kind) ?ValueHooks {
         return switch (kind) {
@@ -106,8 +155,20 @@ const Table = struct {
     }
 };
 
-// process-wide: hook table written once at process start by the five Trusted Types impls' installHooks; read-only after
+// process-wide: hook table written once at process start by the Trusted Types impls' (and Sanitizer's) installHooks; read-only after
 var table: Hook(Table) = .init(.{});
+
+/// Called by Sanitizer.
+pub fn installSanitizerObjects(hooks: SanitizerObjectHooks) void {
+    table.installField("sanitizer", hooks);
+}
+
+/// A new Sanitizer in `realm` whose configuration is a copy of the
+/// html.sanitizer.Config at `configuration` (SanitizerObjectHooks.create).
+pub fn createSanitizerObject(realm: runtime.Context, configuration: *const anyopaque) anyerror!*runtime.Instance {
+    const hooks = table.read().sanitizer orelse return error.NotImplemented;
+    return hooks.create(realm, configuration);
+}
 
 /// Called by TrustedHTML, TrustedScript and TrustedScriptURL.
 pub fn installValue(kind: Kind, hooks: ValueHooks) void {
@@ -126,6 +187,36 @@ pub fn installFactory(hooks: FactoryHooks) void {
 /// Called by TrustedTypePolicy.
 pub fn installPolicy(hooks: PolicyHooks) void {
     table.installField("policy", hooks);
+}
+
+/// Called by TrustedHTMLParserOptions.
+pub fn installParserOptions(hooks: ParserOptionsHooks) void {
+    table.installField("parser_options", hooks);
+}
+
+/// A new TrustedHTMLParserOptions in `realm` (ParserOptionsHooks.create).
+pub fn createParserOptionsObject(realm: runtime.Context, run_scripts: bool, sanitizer_configuration: ?*const anyopaque) anyerror!*runtime.Instance {
+    const hooks = table.read().parser_options orelse return error.NotImplemented;
+    return hooks.create(realm, run_scripts, sanitizer_configuration);
+}
+
+/// `instance`'s values when it is a TrustedHTMLParserOptions.
+pub fn parserOptionsValueOf(instance: *runtime.Instance) ?ParserOptionsValue {
+    const hooks = table.read().parser_options orelse return null;
+    return hooks.value_of(instance);
+}
+
+/// 3.3 for "TrustedHTMLParserOptions" on `policy` (PolicyHooks
+/// .parser_options_value).
+pub fn parserOptionsPolicyValue(policy: *runtime.Instance, argument: runtime.JSValue, arguments: []const runtime.JSValue, throw_if_missing: bool) anyerror!?engine.Owned {
+    const hooks = table.read().policy orelse return error.NotImplemented;
+    return hooks.parser_options_value(policy, argument, arguments, throw_if_missing);
+}
+
+/// Whether `policy` has a createParserOptions option.
+pub fn policyHasParserOptions(policy: *runtime.Instance) bool {
+    const hooks = table.read().policy orelse return false;
+    return hooks.has_parser_options(policy);
 }
 
 // ============================================================================
@@ -275,6 +366,23 @@ pub fn processValueWithDefaultPolicy(
     // propagates. 4. A null or undefined value is returned as is.
     // 5-6. The data string: the new Trusted Type's data is all a sink reads.
     return hooks.policy_value(policy, expected, input, &arguments, false, allocator);
+}
+
+/// 4.2.4 "Should sink type mismatch violation be blocked by Content
+/// Security Policy?" with `global`, `sink`, `sink_group` and `source`: true
+/// for "Blocked". Violations are reported either way; a global with no CSP
+/// list is "Allowed".
+pub fn sinkTypeMismatchBlocked(allocator: std.mem.Allocator, global: *runtime.Instance, sink: []const u8, sink_group: []const u8, source: []const u8) anyerror!bool {
+    const list = cspListOf(global) orelse return false;
+    const disposition = try csp.directives.shouldSinkTypeMismatchViolationBeBlocked(
+        allocator,
+        list,
+        sink,
+        sink_group,
+        source,
+        csp_violations.reporterFor(global),
+    );
+    return disposition == .blocked;
 }
 
 /// 3.4 "Get Trusted Type compliant string": the string `sink` may use,

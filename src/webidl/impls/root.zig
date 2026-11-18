@@ -1066,6 +1066,7 @@ pub const TransitionEvent = @import("TransitionEvent");
 pub const Translator = @import("Translator");
 pub const TreeWalker = @import("TreeWalker");
 pub const TrustedHTML = @import("TrustedHTML");
+pub const TrustedHTMLParserOptions = @import("TrustedHTMLParserOptions");
 pub const TrustedScript = @import("TrustedScript");
 pub const TrustedScriptURL = @import("TrustedScriptURL");
 pub const TrustedTypePolicy = @import("TrustedTypePolicy");
