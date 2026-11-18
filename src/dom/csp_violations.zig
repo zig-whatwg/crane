@@ -77,8 +77,8 @@ pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) b
 /// from the parent on an element of a child frame's document reports to the
 /// child frame (securitypolicyviolation/targeting-for-inline-handler-on-
 /// subframe-element.html) - while the parent's script is the current one.
-/// A document with no window reports to its relevant global object, whose
-/// policies it is checked against (`inlineCheckScope`).
+/// A document with no window reports to no one, except a style attribute's
+/// check, which its relevant global's policies decide (`inlineCheckScope`).
 ///
 /// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
 pub fn shouldBlockInline(
@@ -93,7 +93,7 @@ pub fn shouldBlockInline(
     // always has a node document, and not knowing its policies is not having
     // none.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return true;
-    const scope = inlineCheckScope(document);
+    const scope = inlineCheckScope(document, inline_type);
     const list = scope.list;
     if (list.isEmpty()) return false;
     var eligible = matching;
@@ -143,29 +143,38 @@ const InlineCheckScope = struct {
 /// the document's own policy container's (§4.2.2).
 ///
 /// A document without one - DOMParser's, createHTMLDocument's, a template's
-/// contents owner, a document whose frame was discarded - has no Window of
-/// its own: its global object is its relevant global object, the global of
-/// the realm it was made in (for DOMParser, createHTMLDocument and template
-/// contents, the creating Window), and that global's policies decide and
-/// receive the violation. So a style attribute parsed into an inert document
-/// is checked against the page that made it, and stays unapplied when the
-/// element is adopted into that page (HTML 3.2.6.5).
+/// contents owner, a document whose frame was discarded - has no Window, and
+/// HTML gives it an empty policy container. The browsers then part by the
+/// inline type, and Crane follows each (golden rule 2, no newer spec):
 ///
-/// Golden rule 2 (no newer spec; HTML gives such a document an empty policy
-/// container and says nothing more): Chrome 157 and Firefox 160 pass
-/// content-security-policy/style-src/style-src-attr-blocked-
-/// {domparser-adopt,createhtmldocument-adopt,template-move}.html 2/2 (wpt.fyi
-/// runs 4786307730243584, 4877168468033536); Safari 27.2 times out 0/2
-/// (6479119966273536), and WebKit has since done the same (322461@main,
-/// StyledElement::styleAttributeChanged checks the policy of
-/// contextDocument(), the document that created the inert one). Blink reads
-/// an inert document's ExecutionContext, which is its creator's window.
-fn inlineCheckScope(document: *runtime.Instance) InlineCheckScope {
+/// - A STYLE ATTRIBUTE is checked against the element's document's relevant
+///   global object - the global of the realm the document was made in, for
+///   DOMParser, createHTMLDocument and template contents the creating Window
+///   - whose policies decide and receive the violation. So a style attribute
+///   parsed into an inert document stays unapplied when the element is
+///   adopted into the page that made it (HTML 3.2.6.5). Chrome 157 and
+///   Firefox 160 pass content-security-policy/style-src/style-src-attr-
+///   blocked-{domparser-adopt,createhtmldocument-adopt,template-move}.html
+///   2/2 (wpt.fyi runs 4786307730243584, 4877168468033536); Safari 27.2 times
+///   out 0/2 (6479119966273536), and WebKit has since done the same
+///   (322461@main: StyledElement::styleAttributeChanged checks the policy of
+///   contextDocument(), the document that created the inert one).
+/// - Everything else - an event handler content attribute above all - reads
+///   the document's own empty list: nothing is blocked or reported. Firefox
+///   160 and Safari 27.2 pass content-security-policy/securitypolicyviolation/
+///   no-violation-for-inline-handler-in-document-without-browsing-context.html
+///   5/5 (Chrome 157 reports on the creator, 0/5, and has since stopped:
+///   Chromium 1728709, "Skip CSP check on inline handler set in document
+///   without window", wpt dcbd71020c). A script or a style element there
+///   never runs or applies: one adopted into a page is checked again there.
+fn inlineCheckScope(document: *runtime.Instance, inline_type: csp.inline_check.InlineType) InlineCheckScope {
     if (interfaces.Document.get_defaultView(document) catch null) |window| {
         return .{ .list = documentCspList(document), .global = window };
     }
-    if (trusted_types.relevantGlobalOf(document)) |global| {
-        if (trusted_types.cspListOf(global)) |list| return .{ .list = list, .global = global };
+    if (inline_type == .style_attribute) {
+        if (trusted_types.relevantGlobalOf(document)) |global| {
+            if (trusted_types.cspListOf(global)) |list| return .{ .list = list, .global = global };
+        }
     }
     return .{ .list = documentCspList(document), .global = null };
 }
