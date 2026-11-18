@@ -77,12 +77,26 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     defer v8.v8_String_Dispose(name);
     v8.v8_FunctionTemplate_SetClassName(tpl, name);
 
-    // NOTE: We do NOT use v8_FunctionTemplate_Inherit here because that would
-    // cause EventTarget's prototype methods to appear as own properties on
-    // WindowProperties instances. Per WebIDL §3.7.4, WindowProperties should
-    // only have named properties as own properties. The prototype chain is
-    // set up manually in insertIntoPrototypeChain() to properly link to
-    // EventTarget.prototype without inheriting its methods as own properties.
+    // WebIDL 3.7.4 "create a named properties object", step 2: "Let proto be
+    // ... the interface prototype object for the inherited interface" -
+    // EventTarget.prototype - and the object is made with proto as its
+    // [[Prototype]], which is immutable from then on. V8's prototype provider
+    // gives that at creation (FunctionTemplate::SetPrototypeProviderTemplate:
+    // an instance's [[Prototype]] is the provider's prototype object in the
+    // instance's context, here the realm's EventTarget.prototype, which
+    // materializeInterfaceObject builds from this same registered template).
+    // Without it the instance's [[Prototype]] was this template's own
+    // prototype object, one more object on every global's chain:
+    // window -> Window.prototype -> WindowProperties -> (that object) ->
+    // EventTarget.prototype (window-prototype-chain.html, cross-global-npo.html
+    // and window-named-properties-object.html's [[SetPrototypeOf]] read it;
+    // Chrome, Firefox and Safari have none). No Inherit(): that would make
+    // this template's prototype object inherit EventTarget's, still one
+    // object too many. A template made where no EventTarget template is
+    // registered keeps the old link, made in insertIntoPrototypeChain.
+    if (@import("template_registry.zig").getTemplateForIsolate("EventTarget", isolate)) |event_target| {
+        v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(tpl, event_target);
+    }
 
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
     defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
@@ -117,11 +131,10 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     // Per WebIDL §3.7.4, the named properties object's prototype is immutable
     v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
 
-    // The template's prototype object is NOT made immutable. It is not the
-    // named properties object - the instance above is, and it is immutable -
-    // but it is the only link after that instance whose [[Prototype]] can
-    // still be set, and insertIntoPrototypeChain points it at
-    // EventTarget.prototype. With both immutable, that step was refused
+    // With no prototype provider (no EventTarget template registered), the
+    // template's own prototype object stands behind the instance; it is NOT
+    // made immutable, so insertIntoPrototypeChain can still point it at
+    // EventTarget.prototype - with both immutable, that step was refused
     // silently and `window instanceof EventTarget` was never true.
 
     return tpl;
@@ -222,13 +235,18 @@ pub fn insertIntoPrototypeChain(
     const wp = create(isolate, context, event_target_proto) orelse return false;
     defer v8.v8_Object_Dispose(wp);
 
-    // WindowProperties -> EventTarget.prototype. The instance's own
-    // [[Prototype]] is immutable (WebIDL), so the link goes on the template's
-    // prototype object behind it: wp -> wp_proto -> EventTarget.prototype.
+    // WindowProperties -> EventTarget.prototype: the instance's own
+    // [[Prototype]], immutable (WebIDL), given at creation by the template's
+    // prototype provider (makeTemplate). Only a template made with no
+    // EventTarget template registered has its own prototype object there
+    // instead; the link then goes on that object: wp -> wp_proto ->
+    // EventTarget.prototype.
     if (v8.v8_Object_GetPrototypeV2(wp)) |wp_proto_val| {
         defer v8.v8_Value_Dispose(wp_proto_val);
-        if (helpers.asObject(wp_proto_val)) |wp_proto| {
-            _ = v8.v8_Object_SetPrototypeV2(wp_proto, context, @ptrCast(event_target_proto));
+        if (!v8.v8_Value_StrictEquals(wp_proto_val, @ptrCast(event_target_proto))) {
+            if (helpers.asObject(wp_proto_val)) |wp_proto| {
+                _ = v8.v8_Object_SetPrototypeV2(wp_proto, context, @ptrCast(event_target_proto));
+            }
         }
     }
 
