@@ -36,6 +36,7 @@ const form_associated = @import("form_associated.zig");
 const focus = @import("focus.zig");
 const user_activation = @import("user_activation.zig");
 const close_watchers = @import("close_watchers.zig");
+const fullscreen = @import("fullscreen.zig");
 const pointer_capture = dom.pointer_capture;
 
 const Instance = runtime.Instance;
@@ -1521,6 +1522,9 @@ pub const Keyboard = struct {
     /// The element a Space keydown armed for keyboard activation: its keyup
     /// clicks it (Blink's HTMLButtonElement / checkbox handling).
     space_armed: ?Weak = null,
+    /// The Esc key held while a fullscreen keyboard lock is active
+    /// (Fullscreen 6: a long press exits; html.fullscreen.escapeKey).
+    escape_hold: fullscreen.EscapeHold = .{},
 };
 
 /// HTML "when a key event is to be routed in a top-level traversable":
@@ -1597,8 +1601,21 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     // keydown's default action (Blink: KeyboardEventManager::
     // DefaultKeyboardEventHandler -> the window's CloseWatcherStack).
     const escape = isKey(key, "Escape");
-    const close_request_document = if (escape) nodeDocument(target) else null;
-    if (close_request_document) |d| if (close_watchers.closeRequestEndsInFullscreen(d)) return;
+    var close_request_document = if (escape) nodeDocument(target) else null;
+    if (close_request_document) |d| {
+        // Fullscreen 6: while a keyboard lock is active the Esc key is no
+        // close request - the page gets it - until it is held for the long
+        // press, which exits fullscreen (html.fullscreen.escapeKey). Either
+        // way the keydown is still fired below.
+        switch (fullscreen.escapeKey(&keyboard.escape_hold, d, if (key.repeat) .repeat else .down)) {
+            .locked, .exited => close_request_document = null,
+            .not_locked => if (close_watchers.closeRequestEndsInFullscreen(d)) return,
+        }
+    } else {
+        // Another key ends an Esc press's hold (Gecko's
+        // PresShell::CleanupFullscreenState for any other key).
+        keyboard.escape_hold = .{};
+    }
     // HTML 6.4.2: keydown is an activation-triggering input event, "provided
     // the key is neither the Esc key nor a shortcut key reserved by the user
     // agent".
@@ -1643,6 +1660,11 @@ pub fn keyUp(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Modi
     // As keyDown: no key is routed for a document that is not fully active.
     if (!isFullyActive(document)) return;
     const target = keyTarget(document) orelse return;
+    // Fullscreen 6: releasing a held Esc key decides its long press too
+    // (html.fullscreen.escapeKey), for a platform that sends no repeats.
+    if (isKey(key, "Escape")) if (nodeDocument(target)) |d| {
+        _ = fullscreen.escapeKey(&keyboard.escape_hold, d, .up);
+    };
     const armed = if (keyboard.space_armed) |weak| weak.get() else null;
     if (isKey(key, " ")) keyboard.space_armed = null;
     const released = fireKeyboardEvent(target, "keyup", key, modifiers, key.key_code, 0);
