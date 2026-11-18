@@ -4221,7 +4221,6 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
     buffer[found.len] = '(';
     @memcpy(buffer[found.len + 1 ..][0..argument.len], argument);
     buffer[total - 1] = ')';
-    _ = lower;
     return buffer[0..total];
 }
 
