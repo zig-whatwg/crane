@@ -928,6 +928,11 @@ pub const TreeBuilder = struct {
     /// HTML parser "parser sanitizer configuration" (initially null).
     parser_sanitizer: ?ParserSanitizer = null,
 
+    /// HTML parser "fragment parser abort requested" (initially false): a
+    /// streaming parser's owner (html.stream_html) sets it when the stream
+    /// is aborted while the parser runs, and clears it as the run ends.
+    fragment_parser_abort_requested: bool = false,
+
     /// HTML parser "allow declarative shadow roots" (initially false).
     allow_declarative_shadow_roots: bool = false,
 
@@ -2897,7 +2902,9 @@ pub const TreeBuilder = struct {
             try self.handleInHeadMode(Token{ .start_tag = tag });
         } else if (std.mem.eql(u8, name, "body")) {
             self.reportError(.invalid_first_character_of_tag_name);
-            if (self.hasTemplateInStack()) return;
+            // "... or if the parser's fragment parser abort requested is
+            // true, then ignore the token."
+            if (self.hasTemplateInStack() or self.fragment_parser_abort_requested) return;
 
             // Add attributes to body element if not already present
             // HTML Standard §13.2.6.4.7: Similar to html element handling
@@ -5876,10 +5883,22 @@ pub const TreeBuilder = struct {
     /// already present on the [element]. If it is not, add the attribute and
     /// its corresponding value to that element." The element is in the DOM
     /// already, so the adapter hears each one it gains.
+    /// "In body", a start tag whose tag name is "html" or "body": for each
+    /// attribute on the token, 1. skip one the parser sanitizer configuration
+    /// does not allow on `element`, 2. add one `element` does not have.
     fn copyMissingAttributes(self: *TreeBuilder, element: *TreeNode, tag: TagToken) !void {
         const token_attrs = tag.attributes.toSlice();
         for (token_attrs) |attr| {
             const attr_name = attr.getName();
+            // 1. "If the parser's parser sanitizer configuration is not null
+            // and the result of checking if a sanitizer config allows an
+            // attribute given attribute's name, null, attribute's value,
+            // element's local name, element's namespace, and the parser's
+            // parser sanitizer configuration is false, then continue."
+            if (self.parser_sanitizer) |sanitizer| {
+                const candidate: TreeNode.Attribute = .{ .name = attr_name, .value = attr.getValue(), .namespace = null };
+                if (!sanitizer.allows_attribute(sanitizer.context, element.local_name orelse "", element.namespace, &candidate)) continue;
+            }
 
             // Check if attribute already exists on element
             var exists = false;

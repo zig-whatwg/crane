@@ -385,7 +385,10 @@ const StreamParser = struct {
         // 5. An abort requested while it ran happens now.
         if (self.abort_requested) {
             self.abort_requested = false;
-            if (self.parser) |p| p.adapter.abort_requested = false;
+            if (self.parser) |p| {
+                p.adapter.abort_requested = false;
+                p.tree_builder.fragment_parser_abort_requested = false;
+            }
             self.abortParser();
         }
     }
@@ -416,7 +419,10 @@ const StreamParser = struct {
         // ends. (2.2's scripts on the stack: inert here - TODO G6.)
         if (self.running) {
             self.abort_requested = true;
-            if (self.parser) |parser| parser.adapter.abort_requested = true;
+            if (self.parser) |parser| {
+                parser.adapter.abort_requested = true;
+                parser.tree_builder.fragment_parser_abort_requested = true;
+            }
             // 2.2. The scripts on the stack of open elements: already
             // started, so none runs.
             self.markOpenScriptsStarted();
@@ -437,19 +443,16 @@ const StreamParser = struct {
         const parser = self.parser orelse return;
         // 5.1. The scripts on the stack of open elements: already started.
         self.markOpenScriptsStarted();
-        if (if (self.documentAlive()) dom.document_scripts.of(self.document) else null) |scripts| {
-            // 5.2. "If the parser's Document's pending parsing-blocking script
-            // is non-null, then unblock rendering on it, and set the parser's
-            // Document's pending parsing-blocking script to null."
-            if (scripts.pending_parsing_blocking_script) |script| {
-                dom.document_rendering.unblock(script);
-                scripts.pending_parsing_blocking_script = null;
-            }
-            // 5.3. "For each script of the parser's Document's list of scripts
-            // that will execute when the document has finished parsing,
-            // unblock rendering on script."
-            for (scripts.scripts_to_execute_when_parsing_finished.items) |script| dom.document_rendering.unblock(script);
-        }
+        // 5.2. "If the parser's Document's pending parsing-blocking script is
+        // non-null, then unblock rendering on it, and set the parser's
+        // Document's pending parsing-blocking script to null." 5.3. "For each
+        // script of the parser's Document's list of scripts that will execute
+        // when the document has finished parsing, unblock rendering on
+        // script." None of them runs now: they leave their queues, which let
+        // their execution holds go, and their fetches are canceled (WPT
+        // domparsing/stream-html-parser-blocking-script.html: "Implementations
+        // may cancel an in-flight script fetch on parser abort").
+        if (self.documentAlive()) @import("script_execution.zig").discardParserScripts(self.document);
         // 3, 7. Throw away the input; pop every open element.
         parser.input_stream.abort();
         // An aborted parser's deferred scripts never run.
@@ -461,14 +464,20 @@ const StreamParser = struct {
     }
 
     /// "For each script element script of the stack of open elements, set
-    /// script's already started to true" (its parser and intended document
-    /// do not matter once it is: "prepare the script element" step 1).
+    /// script's already started to true, its parser document to null, and
+    /// its intended document to null" ("abort a fragment parser" step 2.2,
+    /// "abort a parser" step 5.1). Its parser document is this parser's
+    /// Document, when it is not null; its intended document, the live one,
+    /// is read only by "prepare the script element" steps 4-5, which an
+    /// already started script never reaches (step 1), so it stays.
     fn markOpenScriptsStarted(self: *StreamParser) void {
         const parser = self.parser orelse return;
+        const alive = self.documentAlive();
         for (parser.tree_builder.heldNodes().stack) |tree_node| {
             if (tree_node.node_type != .element or !tree_node.hasTagName("script")) continue;
             const element = parser.adapter.getDomNode(tree_node) orelse continue;
             dom.script_elements.markAlreadyStarted(element);
+            if (alive) dom.script_elements.clearParserDocument(element, self.document);
         }
     }
 
