@@ -356,8 +356,9 @@ fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_con
     var walk = tree_helpers.ShadowIncludingWalk.init(@ptrCast(node));
     _ = walk.next(); // `node` itself: its own steps ran
     while (walk.next()) |descendant| {
-        runRemovingSteps(descendant, old_parent);
+        // Remove steps 14.1-14.2: the callback, then the removing steps.
         if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
+        runRemovingSteps(descendant, old_parent);
     }
 }
 
@@ -938,13 +939,19 @@ fn insertWith(
             };
             defer descendants.deinit();
 
-            // Run insertion steps for each shadow-including inclusive descendant
+            // For each shadow-including inclusive descendant: steps
+            // 7.7.1-7.7.2 (a connected element's connectedCallback or
+            // try-to-upgrade reaction; a scoped registry's document), THEN
+            // step 7.7.3, the insertion steps - so a reaction the insertion
+            // steps enqueue for the same element (the details element's
+            // closing attributeChangedCallback) follows connectedCallback.
+            // whatwg/dom 2026-11-10 "Enqueue lifecycle callbacks before
+            // insertion/removing/moving steps"; Chrome 157 and Firefox 160
+            // pass custom-elements/connected-callback-before-insertion-steps.html
+            // (Safari 27.2 has no customized built-ins).
             for (descendants.toSlice()) |inclusive_descendant| {
-                runInsertionSteps(inclusive_descendant);
-
-                // Steps 7.7.2–7.7.4: only connected elements receive a
-                // connected reaction or a try-to-upgrade reaction.
                 runCustomElementInsertionSteps(inclusive_descendant);
+                runInsertionSteps(inclusive_descendant);
             }
         }
 
@@ -1096,10 +1103,11 @@ pub fn appendChildren(
             };
             defer descendants.deinit();
 
-            // Run insertion steps for each shadow-including inclusive descendant
+            // Steps 7.7.1-7.7.2, then 7.7.3 (the insertion steps), for each
+            // shadow-including inclusive descendant - as in `insert`.
             for (descendants.toSlice()) |inclusive_descendant| {
-                runInsertionSteps(inclusive_descendant);
                 runCustomElementInsertionSteps(inclusive_descendant);
+                runInsertionSteps(inclusive_descendant);
             }
         }
     }
@@ -1227,9 +1235,10 @@ pub fn insertChildrenBefore(
             };
             defer descendants.deinit();
 
+            // Steps 7.7.1-7.7.2, then 7.7.3 (the insertion steps), as in `insert`.
             for (descendants.toSlice()) |inclusive_descendant| {
-                runInsertionSteps(inclusive_descendant);
                 runCustomElementInsertionSteps(inclusive_descendant);
+                runInsertionSteps(inclusive_descendant);
             }
         }
     }
@@ -1588,28 +1597,32 @@ fn removeHeldMoving(
     // node takes a slot out of a shadow tree.
     removingSlotSteps(parent.allocator(), @ptrCast(node), @ptrCast(parent));
 
-    // Step 11: Run the removing steps with node and parent
-    // Spec: DOM §4.2.5 - Specifications may define removing steps
-    runRemovingSteps(node, parent);
-
-    // Steps 12–13: removing steps have run; read the parent's connectedness
-    // now and enqueue disconnectedCallback for each custom descendant.
+    // Steps 11-14 enqueue each disconnectedCallback BEFORE the removing
+    // steps of the same node, so a reaction its removing steps enqueue
+    // follows it (whatwg/dom 2026-11-10 "Enqueue lifecycle callbacks before
+    // insertion/removing/moving steps").
+    //
+    // Step 11: "Let isParentConnected be parent's connected" - read before
+    // any removing step runs.
     const parent_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE;
+
+    // Step 12: a custom node gets disconnectedCallback when isParentConnected.
     if (parent_connected) enqueueCustomElementCallback(node, .disconnected, .none);
 
-    // Step 14: For each shadow-including descendant of node,
-    // in shadow-including tree order, run removing steps
-    // Spec: DOM §4.2.5 step 14
+    // Step 13: Run the removing steps with node, true, and parent.
+    runRemovingSteps(node, parent);
+
+    // Step 14: For each shadow-including descendant of node, in
+    // shadow-including tree order.
     if (tree_helpers.getShadowIncludingDescendants(parent.allocator(), node)) |descendants| {
         var mut_descendants = descendants;
         defer mut_descendants.deinit();
 
-        // Step 14.1: Run removing steps with the original removed ancestor.
-        // Step 14.2: Custom element disconnectedCallback
         for (mut_descendants.items()) |descendant| {
-            runRemovingSteps(descendant, parent);
-
+            // Step 14.1: disconnectedCallback for a custom descendant.
             if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
+            // Step 14.2: its removing steps, with false and parent.
+            runRemovingSteps(descendant, parent);
         }
     } else |_| {
         // The node is already detached: allocation failure must not skip
@@ -2505,10 +2518,11 @@ fn moveLiveRangesAfterAdoption(old_document: *runtime.Instance) void {
 /// Move step 25: "For each shadow-including inclusive descendant
 /// inclusiveDescendant of node, in shadow-including tree order: 1. Let
 /// isSubtreeRoot be true if inclusiveDescendant is node; otherwise false.
-/// 2. Run the moving steps with inclusiveDescendant, isSubtreeRoot, and
-/// oldParent. 3. If inclusiveDescendant is custom and newParent is
-/// connected, then enqueue a custom element callback reaction with
-/// inclusiveDescendant, callback name "connectedMoveCallback", and « »."
+/// 2. If inclusiveDescendant is custom and newParent is connected, then
+/// enqueue a custom element callback reaction with inclusiveDescendant,
+/// callback name "connectedMoveCallback", and « ». 3. Run the moving steps
+/// with inclusiveDescendant, isSubtreeRoot, and oldParent." (whatwg/dom
+/// 2026-11-10 put the callback before the moving steps.)
 ///
 /// The moving-steps callbacks receive oldParent for the subtree root and
 /// null for every descendant: isSubtreeRoot and oldAncestor in one argument
@@ -2543,10 +2557,11 @@ fn nextInSubtree(current: *NodeBase, root: *NodeBase) ?*NodeBase {
     return null;
 }
 
-/// Move steps 25.2-25.3 for one shadow-including inclusive descendant.
+/// Move steps 25.2-25.3 for one shadow-including inclusive descendant: the
+/// connectedMoveCallback, then the moving steps.
 fn runMovingStepsOn(descendant: *NodeBase, old_parent: ?*NodeBase, new_parent_connected: bool) void {
-    runMovingSteps(descendant, old_parent);
     if (new_parent_connected) enqueueCustomElementCallback(descendant, .connected_move, .none);
+    runMovingSteps(descendant, old_parent);
 }
 
 fn hasCustomElementDefinitions(node: anytype) bool {
