@@ -230,7 +230,9 @@ pub const Context = struct {
     /// (null at the root, where they take their initial values, except
     /// color, whose inherited value is currentColor: the originating
     /// element's color). `parent` stays the originating element's style:
-    /// custom properties "inherit from the originating element".
+    /// custom properties "inherit from the originating element", and the
+    /// fonts, line-height and color-scheme are copied from it, whatever the
+    /// highlight declares (§3.6, highlight_copied).
     highlight: bool = false,
     highlight_parent: ?*const ComputedStyle = null,
 };
@@ -447,6 +449,47 @@ const first_letter_longhands: LonghandSet = blk: {
     break :blk set;
 };
 
+/// CSS Pseudo 4 §3.6: "For any properties not listed above, but which are
+/// required to resolve the values of applicable properties, their computed
+/// values are copied from those of the originating element, ignoring any
+/// values specified on the highlight pseudo-element itself" - color-scheme
+/// (system colors), "font-size, font-family, etc." (em and the other
+/// font-relative lengths) and line-height (lh). csswg-drafts#7591; WPT
+/// css-pseudo/highlight-cascade/highlight-cascade-007.html and the
+/// ::selection subtest of css-values/attr-pseudo-elem-invalidation.html;
+/// Blink's StyleResolver::InitStyle clones the parent highlight's style and
+/// then copies the originating style's (CopyHighlightPropertiesFrom). Custom
+/// properties come from the originating element already (Context.highlight).
+const highlight_copied: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initMany(&.{ .color_scheme, .line_height });
+    for (0..Longhand.count) |i| {
+        const l: Longhand = @fromBackingInt(@intCast(i));
+        if (std.mem.startsWith(u8, @tagName(l), "font_")) set.insert(l);
+    }
+    break :blk set;
+};
+
+/// What a highlight pseudo-element's own declarations may set: everything
+/// but what it copies from its originating element.
+const highlight_settable: LonghandSet = highlight_copied.complement();
+
+/// A highlight pseudo-element's starting style: the parent highlight's
+/// values, every property (§3.5), with highlight_copied's the originating
+/// element's (§3.6).
+fn highlightStyle(ctx: Context) Allocator.Error!*ComputedStyle {
+    const style = try ComputedStyle.inheritingAll(ctx.allocator, ctx.highlight_parent);
+    errdefer style.destroy();
+    const originating = ctx.parent orelse return style;
+    var it = highlight_copied.iterator();
+    while (it.next()) |l| {
+        const v = originating.get(l);
+        v.retain();
+        try style.set(l, v);
+    }
+    return style;
+}
+
 /// The longhands that may apply to `pseudo`, or null when every one does.
 /// Only ::first-letter and ::first-line filter, so only they pay.
 fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
@@ -598,7 +641,7 @@ pub const CandidateIndex = struct {
 /// the caller's (`destroy`). Matched blocks must remain stable for this call.
 pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
     const allocator = ctx.allocator;
-    var candidates = try collectCandidates(allocator, matched, appliesTo(ctx.pseudo));
+    var candidates = try collectCandidates(allocator, matched, if (ctx.highlight) &highlight_settable else appliesTo(ctx.pseudo));
     defer candidates.deinit(allocator);
     var stack_links: [64]usize = undefined;
     const links = if (candidates.items.len <= stack_links.len)
@@ -625,7 +668,7 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     // per-longhand step: the inherited groups are the parent's, shared, and
     // the others the initial values (computed_style.zig, storage).
     const style = if (ctx.highlight)
-        try ComputedStyle.inheritingAll(allocator, ctx.highlight_parent)
+        try highlightStyle(ctx)
     else
         try ComputedStyle.inheriting(allocator, ctx.parent);
     builder.style = style;
@@ -1663,6 +1706,9 @@ const Builder = struct {
                     return originating.get(.color);
                 };
             }
+            // §3.6: font-size, line-height and color-scheme (computed early,
+            // through here) are the originating element's.
+            if (highlight_copied.contains(l)) if (self.ctx.parent) |originating| return originating.get(l);
             if (self.ctx.highlight_parent) |p| return p.get(l);
             // Every other property at the root: its initial value.
             return computed_mod.initialComputed(l);
