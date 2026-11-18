@@ -346,6 +346,13 @@ pub const Capabilities = struct {
     /// full-size embed - and never parses the PDF's bytes; drawing it is the
     /// renderer's, as all drawing is (6.9).
     pdf_viewer: Support,
+    /// HTML "handle as a download" step 5.1, "implementation-defined steps to
+    /// save response for later use": whether a download is kept is the
+    /// embedder's. Unsupported, nothing is saved - step 5.2's "the download is
+    /// canceled by the user agent" ends each download once its response
+    /// arrives (html.downloads). The request itself is still made (HTML
+    /// "download the hyperlink" steps 8-9).
+    downloads: Support,
     /// Every image is broken: HTML "update the image data" finds the image
     /// cannot be decoded and fires error.
     image_decoding: Support,

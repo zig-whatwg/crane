@@ -66,6 +66,10 @@ pub const HttpFetchOptions = struct {
     is_authentication_fetch: bool = false,
     /// Borrowed from the FetchJob, which owns the challenge across the retry.
     authentication_realm: ?[]const u8 = null,
+    /// HTTP-network-or-cache fetch's isNewConnectionFetch: this run is step
+    /// 17's retry of a 421, sent on a new connection (HTTP-network fetch's
+    /// forceNewConnection) and never retried again.
+    is_new_connection_fetch: bool = false,
 };
 
 /// What HTTP fetch does with the response HTTP-network-or-cache fetch gave it.
@@ -817,6 +821,9 @@ pub fn httpNetworkOrCacheFetchStart(
         return HttpFetchError.OutOfMemory;
     };
     network_request.require_http2 = require_http2;
+    // HTTP-network fetch step 5: "obtain a connection" given
+    // forceNewConnection - isNewConnectionFetch, as step 11.2 passes it.
+    network_request.force_new_connection = options.is_new_connection_fetch;
     return .{ .network = .{ .request = network_request, .cache = transaction } };
 }
 
@@ -824,6 +831,9 @@ pub const HttpNetworkFinish = union(enum) {
     response: *InternalResponse,
     /// Owns the Basic challenge's realm. The driver schedules Start again.
     authentication_retry: []u8,
+    /// Step 17: a 421 on a connection that was not new. The driver schedules
+    /// Start again with isNewConnectionFetch true (the response is gone).
+    new_connection_retry,
 };
 
 /// HTTP-network-or-cache fetch 15 (formerly 14): a 401 challenge. Consumes
@@ -831,6 +841,7 @@ pub const HttpNetworkFinish = union(enum) {
 pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
     errdefer response.deinit();
     const request = params.request;
+    if (response.status == 421) return misdirectedRequest(allocator, params, options, response);
     if (response.status != 401) return .{ .response = response };
     // Step 15.2.1's replay restriction also applies to a worker's actionable
     // challenge. Chromium URLLoader::OnAuthRequired rejects a Fetch stream
@@ -883,15 +894,8 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams,
     }
     const realm = (try basicChallengeRealm(allocator, &response.header_list)) orelse return .{ .response = response };
     errdefer allocator.free(realm);
-    // 15.2.2: this layer's non-stream uploads are already extracted bytes
-    // (impls/fetch_body.zig), including Blob/FormData. Make a fresh body
-    // before dropping the old one; do not read its borrowed source pointer.
-    if (request.body) |body| if (body == .body) {
-        const replacement = try @import("../internal/body.zig").Body.fromBytes(request.allocator, body.body.getBytes());
-        replacement.source = .{ .bytes = replacement.data.items };
-        body.body.deinit();
-        request.body = .{ .body = replacement };
-    };
+    // 15.2.2: the body safely extracted again from its source.
+    try reextractBody(request);
     if (!request.header_list.contains("Authorization")) if (request.network) |context| if (request.network_partition_key) |partition| {
         const origin = origins.serializedOriginOf(allocator, request.currentUrl()) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
@@ -904,6 +908,56 @@ pub fn httpNetworkOrCacheFetchFinish(allocator: Allocator, params: *FetchParams,
     };
     response.deinit(); // Drops a streaming 401 body before the retry.
     return .{ .authentication_retry = realm };
+}
+
+/// HTTP-network-or-cache fetch step 15.2.2's "set request's body to the body
+/// of the result of safely extracting request's body's source", for a body
+/// that has one (a body made from a ReadableStream has none, and cannot be
+/// sent again). This layer's non-stream uploads are already extracted bytes
+/// (impls/fetch_body.zig), Blob and FormData included: a fresh body of them,
+/// made before the old one goes - never read through its borrowed source.
+fn reextractBody(request: *InternalRequest) HttpFetchError!void {
+    const body = request.body orelse return;
+    if (body != .body) return;
+    const replacement = try @import("../internal/body.zig").Body.fromBytes(request.allocator, body.body.getBytes());
+    replacement.source = .{ .bytes = replacement.data.items };
+    body.body.deinit();
+    request.body = .{ .body = replacement };
+}
+
+/// HTTP-network-or-cache fetch step 17, for a 421 (Misdirected Request) -
+/// the answer of a server that is not authoritative for the request's
+/// origin, as an HTTP/2 connection coalesced across origins can be (RFC 9110
+/// 15.5.20: the client may retry on a different connection):
+///
+/// "If all of the following are true: response's status is 421;
+/// isNewConnectionFetch is false; request's body is null, or request's body
+/// is non-null and request's body's source is non-null, then: 1. If
+/// fetchParams is canceled, then return the appropriate network error for
+/// fetchParams. 2. Set response to the result of running HTTP-network-or-
+/// cache fetch given fetchParams, isAuthenticationFetch, and true."
+///
+/// Consumes `response` on every path. The retry sends the body again, from
+/// its source (reextractBody: the spec says nothing of the body here, but a
+/// second request needs its bytes - step 15.2.2's extraction). Chrome and
+/// Firefox retry (request-upload-421.any.js, wpt.fyi runs 4786307730243584 /
+/// 4877168468033536); Safari does not (6479119966273536).
+fn misdirectedRequest(allocator: Allocator, params: *FetchParams, options: HttpFetchOptions, response: *InternalResponse) HttpFetchError!HttpNetworkFinish {
+    const request = params.request;
+    if (options.is_new_connection_fetch) return .{ .response = response };
+    if (request.body) |body| if (body == .body and body.body.source == .none) return .{ .response = response };
+    // 17.1: "If fetchParams is canceled, then return the appropriate network
+    // error for fetchParams."
+    if (params.isCanceled()) {
+        const failed = if (params.controller.isAborted()) try internal_response.abortedNetworkError(allocator) else try internal_response.networkError(allocator);
+        response.deinit();
+        return .{ .response = failed };
+    }
+    try reextractBody(request);
+    // 17.2: the 421 is replaced by the retry's response (its body, if any is
+    // still arriving, goes with it).
+    response.deinit();
+    return .new_connection_retry;
 }
 
 const URLCredentials = struct {

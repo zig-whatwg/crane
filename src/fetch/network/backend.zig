@@ -114,6 +114,11 @@ pub const NetworkRequest = struct {
     /// refuse it before a byte of it goes out: HTTP-network fetch step 8.3,
     /// for a body with a null source (made from a ReadableStream).
     require_http2: bool = false,
+    /// HTTP-network fetch step 5's forceNewConnection: "obtain a connection"
+    /// with new = "yes" - a new connection, never one from the pool - for
+    /// HTTP-network-or-cache fetch step 17's retry of a 421 (Misdirected
+    /// Request), which a reused (coalesced) connection answered.
+    force_new_connection: bool = false,
     /// Header values the request owns, which `headers` points into - those
     /// fetch adds to the request it sends, such as the `Origin`
     /// HTTP-network-or-cache fetch appends. `http_fetch.freeNetworkRequest`

@@ -1130,17 +1130,22 @@ pub fn functionRealm(value: JSValue) ?Context {
 /// first call for `key` and the same function on every later one.
 ///
 /// Blink's GetCachedSizeFunction (core/streams/queuing_strategy_common.cc):
-/// the function is kept under a private symbol on the realm's global - an
+/// the function is kept under a private symbol by the realm's global - an
 /// edge the collector traces from the global, never a root - so a realm
-/// whose navigable is gone is still collected with it. Stored, as Blink
-/// stores it, through the realm's global PROXY (`context->Global()`): V8
-/// puts a private symbol set on an attached JSGlobalProxy on its global
-/// OBJECT (LookupIterator::GetStoreTarget, lookup-inl.h), and a read through
-/// the proxy finds it there - so a WindowProxy a navigation hands on reaches
-/// the new realm's global object and never carries the old realm's function
-/// into the new one. (V8 >= 14 gives no other path to the global object: the
-/// V1 GetPrototype that did is Object.getPrototypeOf now, crbug.com/333672197,
-/// and answered Window.prototype - design 2.6.) Function::New with ConstructorBehavior::kThrow
+/// whose navigable is gone is still collected with it. Kept on the realm's
+/// RETAINED STORE (realm_global.retainedStore), which the realm's own global
+/// object keeps through its GlobalAnchor - not on the global PROXY: a
+/// private symbol set through `context->Global()` lands on the global object
+/// the proxy is attached to NOW (LookupIterator::GetStoreTarget), so once a
+/// navigation handed the WindowProxy on, the old realm read and stored the
+/// NEW realm's slot - its strategies answered the new realm's function, and
+/// a function the old realm made first became the new realm's
+/// (streams/queuing-strategies-size-function-navigation.window.js, 0/24;
+/// Firefox and Safari 24/24, Chrome 6/24). The store is the realm's own after
+/// a hand-on too (the context's entry keeps the anchor it was attached
+/// with). With no store - no anchor, or its global object gone - the realm's
+/// function is made anew on each call: nothing could keep it but a root.
+/// Function::New with ConstructorBehavior::kThrow
 /// (v8_Function_NewWithData): no [[Construct]] and no "prototype", and not
 /// cached in the context's template instantiation cache. OWNED: a hold of
 /// the function.
@@ -1148,11 +1153,14 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
     const entered = try support.enter(realm);
     defer entered.leave();
     const isolate = entered.isolate;
-    const context = entered.context();
-    const global = ffi.v8_Context_Global(context) orelse return error.OperationFailed;
-    defer ffi.v8_Object_Dispose(global);
+    // The realm's retained store: what its own global object keeps.
+    const store = realm_global.retainedStore(realm);
+    defer if (store) |held| ffi.v8_Global_Dispose(held);
+    const holder: ?*ffi.Object = if (store) |held| @ptrCast(held) else null;
     // The function made for `key` before: the global object keeps it.
-    if (ffi.v8_Object_GetPrivateRef(global, key.ptr, @intCast(key.len))) |made| return support.owned(made);
+    if (holder) |h| {
+        if (ffi.v8_Object_GetPrivateRef(h, key.ptr, @intCast(key.len))) |made| return support.owned(made);
+    }
 
     // 2. Let F be ! CreateBuiltinFunction(steps, length, name, « »,
     //    globalObject's relevant Realm). The steps reach `function` through
@@ -1165,7 +1173,7 @@ pub fn globalBuiltinFunction(realm: Context, key: []const u8, function_name: []c
     defer ffi.v8_String_Dispose(name);
     ffi.v8_Function_SetName(@ptrCast(made), name);
     // 3. Set globalObject's ... function to F: kept by the global object.
-    ffi.v8_Object_SetPrivateRef(global, key.ptr, @intCast(key.len), made);
+    if (holder) |h| ffi.v8_Object_SetPrivateRef(h, key.ptr, @intCast(key.len), made);
     return support.owned(made);
 }
 
