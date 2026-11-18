@@ -291,6 +291,13 @@ pub const StyleEngine = struct {
         /// element inherits from its slot. 1 while the engine has no Rare
         /// (StyleEngine.slotVersion).
         slot_version: u64 = 1,
+        /// CSS View Transitions 1 §7.1.1: the document's view transition
+        /// state (dom.view_transitions) and its "dynamic view transition
+        /// style sheet", a user-agent origin sheet after the global one
+        /// (html.css's View Transitions section), matched for pseudo-elements
+        /// only (`collectMatched`). Null while no transition wrote rules.
+        view_transitions: @import("../view_transitions.zig").DocumentState = .{},
+        view_transition_sheet: ?*Contents = null,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             // Hints its elements still hold live on, uncached.
@@ -305,6 +312,8 @@ pub const StyleEngine = struct {
                 allocator.destroy(registry);
             }
             if (self.registered) |snapshot| snapshot.release();
+            self.view_transitions.deinit(allocator);
+            if (self.view_transition_sheet) |contents| contents.destroy();
             self.media_query_lists.deinit(allocator);
             self.adopting_roots.deinit(allocator);
             if (self.preferred_set_name) |name| allocator.free(name);
@@ -2128,6 +2137,13 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         if (res.engine.rare) |rare| if (rare.fullscreen_rules) {
             try matchContents(res, &matcher, element, keys, ua.fullscreen, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 19, .tree_scope = .{ .serial = own_scope } }, null, null);
         };
+        // View Transitions 1 §7.1.1: the dynamic view transition style sheet,
+        // "in the user-agent origin, ordered after the global view
+        // transition user agent style sheet" (html.css): its rules style the
+        // ::view-transition-* pseudo-elements only.
+        if (pseudo != null) if (res.engine.rare) |rare| if (rare.view_transition_sheet) |dynamic| {
+            try matchContents(res, &matcher, element, keys, dynamic, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = (1 << 19) + (1 << 18), .tree_scope = .{ .serial = own_scope } }, null, null);
+        };
         if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20, .tree_scope = .{ .serial = own_scope } }, null, null);
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
     }
@@ -2779,6 +2795,26 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     const engine = hooks.engineOf(document) orelse return;
     if (!engine.declaresAnimations()) return;
     _ = updateSubtree(engine.allocator, node) catch {};
+}
+
+/// CSS View Transitions 1 §7.1.1: `document`'s view transition state, made
+/// with the engine's rare data; null for a document without a style engine.
+pub fn viewTransitionState(document: *runtime.Instance) ?*@import("../view_transitions.zig").DocumentState {
+    const engine = hooks.engineOf(document) orelse return null;
+    const rare = engine.ensureRare() catch return null;
+    return &rare.view_transitions;
+}
+
+/// Replace `document`'s dynamic view transition style sheet's rules with
+/// `text` (null: no rules). Every cached style is recomputed against it.
+pub fn setViewTransitionSheet(document: *runtime.Instance, text: ?[]const u8) Error!void {
+    const engine = hooks.engineOf(document) orelse return;
+    const rare = try engine.ensureRare();
+    if (rare.view_transition_sheet == null and text == null) return;
+    const made: ?*Contents = if (text) |t| try Contents.parse(engine.allocator, t, .{ .user_agent = true }) else null;
+    if (rare.view_transition_sheet) |old| old.destroy();
+    rare.view_transition_sheet = made;
+    engine.generation +%= 1;
 }
 
 /// Whether `document`'s style engine matches Fullscreen 5.2's user-agent

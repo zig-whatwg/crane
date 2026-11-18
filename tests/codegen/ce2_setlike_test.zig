@@ -66,5 +66,6 @@ test "string values are kept as strings, interface values are the impl's traced 
 test "only the interfaces whose impls keep set entries are opted in" {
     try testing.expect(setlike.isImplemented("CustomStateSet"));
     try testing.expect(setlike.isImplemented("FontFaceSet"));
+    try testing.expect(setlike.isImplemented("ViewTransitionTypeSet"));
     try testing.expect(!setlike.isImplemented("Highlight"));
 }

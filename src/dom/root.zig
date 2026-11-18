@@ -260,6 +260,7 @@ pub const document_last_modified = @import("document_last_modified.zig");
 /// objects wrap.
 /// The style engine: cascade and computed style (src/dom/style/).
 pub const style = @import("style/root.zig");
+pub const view_transitions = @import("view_transitions.zig");
 /// A Document's script lists, currentScript and what the script processing
 /// model asks of it - its ScriptRunner - and its module and import maps.
 pub const document_scripts = @import("document_scripts.zig");
