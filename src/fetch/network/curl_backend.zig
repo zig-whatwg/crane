@@ -423,7 +423,12 @@ pub const LibcurlBackend = struct {
         }
 
         // Connection reuse is the request's network context's share
-        // (CURLOPT_SHARE), set by Transfer.create.
+        // (CURLOPT_SHARE), set by Transfer.create - unless the request asks
+        // for a new connection (NetworkRequest.force_new_connection: Fetch's
+        // 421 retry), which CURLOPT_FRESH_CONNECT makes: this transfer opens
+        // its own, which then joins the pool as any other. (The handle is this
+        // transfer's alone - Transfer.create - so the option ends with it.)
+        if (request.force_new_connection) kit_curl.options.freshConnect(handle);
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {

@@ -232,6 +232,8 @@ pub const ScriptLoaderFn = external_script_loader.ScriptLoaderFn;
 /// HTML "hyperlink auditing": the pings an a or area element's hyperlink
 /// sends when it is followed.
 pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
+/// HTML "download the hyperlink" steps 8-9 and "handle as a download".
+pub const downloads = @import("downloads.zig");
 
 /// A link or style element's style sheet load, with its critical
 /// subresources, and a link's preload.
@@ -240,6 +242,9 @@ pub const style_sheet_loading = @import("style_sheet_loading.zig");
 pub const style_block = @import("style_block.zig");
 // Media owner tasks, events and incremental resource fetching.
 pub const media_runtime = @import("media/runtime.zig");
+/// The WebVTT parser (WebVTT 6.1-6.3): what a <track> element's resource is
+/// passed to.
+pub const webvtt = @import("media/webvtt.zig");
 
 /// A Browser's platform state: its BrowserPlatform (docs/platform-protocol.md
 /// section 3).

@@ -151,6 +151,15 @@ test "pdf_viewer is native on the default platforms, unless -Dplatform-without n
     try testing.expectEqual(platform.Support.native, without.media_decoding);
 }
 
+test "downloads is unsupported on the default platforms: every download is canceled by the user agent" {
+    // HTML "handle as a download" step 5.1's save steps are
+    // implementation-defined: whether a download is kept is the embedder's
+    // call (the integrator, 2026-11-18). No default platform keeps one, so
+    // step 5.2's "the download is canceled by the user agent" ends each
+    // (html.downloads).
+    try testing.expectEqual(platform.Support.unsupported, platform.capabilities.downloads);
+}
+
 test "the platform's declarations: name, identity, browser options" {
     try testing.expect(platform.name.len > 0);
     try testing.expect(platform.identity.native_line_ending.len > 0);

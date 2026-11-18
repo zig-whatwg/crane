@@ -634,14 +634,19 @@ fn isAnyMember(comptime T: type, comptime name: []const u8) bool {
 /// lists the nullable ones in `nullable_members`) whose type converts null
 /// here by its own rule: a string (ToString: "null"), a boolean (false), a
 /// number (ToNumber: 0), an enumeration value ("null": a TypeError unless the
-/// enumeration has it) or an interface (a TypeError). `{mode: null}` for a
-/// LockOptions read as "no mode" (web-locks/acquire.https.any.js).
+/// enumeration has it), an interface (a TypeError), or a sequence, frozen
+/// array or record (a TypeError: WebIDL 3.2.21 step 1 and 3.2.23 step 1, null
+/// is not an Object). `{mode: null}` for a LockOptions read as "no mode"
+/// (web-locks/acquire.https.any.js); `{transfer: null}` for a
+/// StructuredSerializeOptions posted with no transfer list
+/// (webmessaging/with-options/null-transfer.html), and MessageEventInit's
+/// `{ports: null}` made an event with no ports.
 ///
 /// False by default: a required member (it converts null by its type
 /// already), a nullable member, `any`, a `webidl.Opt` member (its presence
 /// is its own), and a type this converter leaves to the impl - a union, a
-/// sequence, a dictionary, a callback - which keeps reading a present null
-/// as not present.
+/// dictionary, a callback - which keeps reading a present null as not
+/// present.
 pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) bool {
     comptime {
         const info = @typeInfo(field.type);
@@ -657,6 +662,10 @@ pub fn presentNullConvertsByType(comptime T: type, comptime field: Zig017Field) 
         if (Payload == *runtime.Instance) return true;
         return switch (@typeInfo(Payload)) {
             .bool, .int, .float, .@"enum" => true,
+            // A sequence<T>, FrozenArray<T> or record<K, V> (a slice of
+            // entries): the slice branch of fromV8ValueAs throws for a value
+            // that is not an Object. ([]const u8 is a string type, above.)
+            .pointer => |pointer| pointer.size == .slice,
             else => false,
         };
     }

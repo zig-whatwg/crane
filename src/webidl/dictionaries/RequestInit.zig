@@ -3,6 +3,7 @@
 //! This file is AUTO-GENERATED. Do not edit manually.
 
 const runtime = @import("runtime");
+const webidl = @import("webidl");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const PrivateToken = @import("PrivateToken.zig").PrivateToken;
@@ -19,7 +20,7 @@ pub const RequestInit = struct {
     redirect: ?enums.RequestRedirect = null,
     integrity: ?runtime.DOMString = null,
     keepalive: ?bool = null,
-    signal: ?*runtime.Instance = null,
+    signal: webidl.Opt(?*runtime.Instance) = .notPassed(),
     duplex: ?enums.RequestDuplex = null,
     priority: ?enums.RequestPriority = null,
     window: ?runtime.JSValue = null,
