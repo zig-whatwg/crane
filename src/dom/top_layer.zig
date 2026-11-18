@@ -163,6 +163,17 @@ pub const State = struct {
         return null;
     }
 
+    /// Position 4 §3.3 "in the top layer": `node` is in the document's top
+    /// layer - a showing popover or picker, a modal dialog or a fullscreen
+    /// element. (Crane removes an element at once: no pending removals.) A
+    /// scoped pin alone is not membership.
+    pub fn inTopLayer(self: *const State, node: *runtime.Instance) bool {
+        for (self.entries.items) |entry| {
+            if ((entry.showing or entry.modal or entry.fullscreen) and entry.node() == node) return true;
+        }
+        return false;
+    }
+
     pub fn findModal(self: *State, node: *runtime.Instance) ?*Entry {
         for (self.entries.items) |entry| {
             if (entry.modal and entry.node() == node) return entry;

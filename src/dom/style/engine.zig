@@ -56,6 +56,7 @@ const slot_helpers = @import("../slot_helpers.zig");
 const custom_elements = @import("../custom_elements.zig");
 const tree_scope = @import("../tree_scope.zig");
 const navigable_container = @import("../navigable_container.zig");
+const top_layer_mod = @import("../top_layer.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
@@ -1130,6 +1131,25 @@ const Resolution = struct {
     scope_spans: std.ArrayList(?ScopeSpan) = .empty,
     activations: std.ArrayList(Activation) = .empty,
     implicit_root: ?ScopeRoot = null,
+    /// The document's top-layer state (dom.top_layer), read once per style
+    /// read (`inTopLayer`): null in a document that never had one.
+    top_layer: ?*top_layer_mod.State = null,
+    top_layer_read: bool = false,
+
+    /// Position 4 §3.1 "Top Layer Styling" applies to an element in its
+    /// node document's top layer and to that element's ::backdrop. Whether
+    /// `element` (pseudo null) or its ::backdrop is one; the cascade's
+    /// adjustments also require the element's overlay to compute to auto
+    /// ("rendered in the top layer", §3.3).
+    fn inTopLayer(self: *Resolution, element: *runtime.Instance, pseudo: ?[]const u8) bool {
+        if (pseudo) |p| if (!std.mem.eql(u8, p, "backdrop")) return false;
+        if (!self.top_layer_read) {
+            self.top_layer_read = true;
+            self.top_layer = top_layer_mod.ofDocument(self.document, false) catch null;
+        }
+        const state = self.top_layer orelse return false;
+        return state.inTopLayer(element);
+    }
 
     fn deinit(self: *Resolution) void {
         self.matched.deinit(self.allocator);
@@ -1580,6 +1600,8 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .appearance_support = appearanceSupport(element, pseudo),
         // A legend's computed display is blockified (css.cascade adjust).
         .blockify_display = pseudo == null and isHtmlLegend(element),
+        // Position 4 §3.1: an element in the top layer, or its ::backdrop.
+        .top_layer = res.inTopLayer(element, pseudo),
     };
     const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();
@@ -1704,8 +1726,11 @@ fn cascadeOrHit(res: *Resolution, ctx: css.cascade.Context, pseudo: ?[]const u8)
     const pseudo_slot = matched_properties_cache.Pseudo.of(pseudo);
     // A legend neither (its blockified display is an input no entry keys on;
     // Blink IsCacheCompatible keys a legend's entry by its element type).
+    // An element in the top layer neither (Position 4 §3.1's adjustments
+    // are an input no entry keys on; a top-layer change recomputes every
+    // style anyway, observeTopLayer).
     const cacheable = ctx.parent != null and !ctx.is_root and ctx.appearance_support == .none and
-        !ctx.blockify_display and pseudo_slot != null;
+        !ctx.blockify_display and !ctx.top_layer and pseudo_slot != null;
     if (cacheable) {
         lookup.pseudo = pseudo_slot.?;
         if (cache.find(lookup)) |held| {
