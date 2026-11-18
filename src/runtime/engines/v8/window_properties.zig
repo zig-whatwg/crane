@@ -127,6 +127,19 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
         .kNonMaskingAndOnlyInterceptStrings,
     );
 
+    // Array-index property names reach the same named steps (the indexed
+    // callbacks below). No setter, enumerator or definer: [[OwnPropertyKeys]]
+    // lists no named property, and a write or a definition with an index
+    // key behaves as it did.
+    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+        instance_tpl,
+        indexedPropertyGetter,
+        null,
+        indexedPropertyQuery,
+        null,
+        indexedPropertyDescriptor,
+    );
+
     // Mark WindowProperties instances as having immutable [[Prototype]]
     // Per WebIDL §3.7.4, the named properties object's prototype is immutable
     v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
@@ -337,11 +350,16 @@ fn namedPropertyGetter(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return getNamed(info, name);
+}
+
+/// [[Get]] for the property name `name` (a string key, or an array index
+/// written as its decimal string).
+fn getNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     // Undefined: no supported property name (Window.call_getter).
     const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
@@ -385,11 +403,15 @@ fn namedPropertyQuery(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return queryNamed(info, name);
+}
+
+/// [[HasProperty]] for the property name `name` (see getNamed).
+fn queryNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     if (Window.isSupportedPropertyName(window, runtime.DOMString.initInterned(name)) catch false) {
         const attributes = v8.v8_Integer_New(isolate, 2); // DontEnum
@@ -464,11 +486,15 @@ fn namedPropertyDescriptor(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return describeNamed(info, name);
+}
+
+/// [[GetOwnProperty]] for the property name `name` (see getNamed).
+fn describeNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
     if (js_val != .undefined) {
@@ -497,6 +523,42 @@ fn namedPropertyDescriptor(
     return .kNo;
 }
 
+// ============================================================================
+// Indexed Property Handler Callbacks
+// ============================================================================
+//
+// WebIDL 3.7.4's named properties object answers every PROPERTY NAME - a
+// string - and an array index is one ("0".."4294967294"): `<div id=0>` and
+// `<iframe name=3>` are named properties too. V8 sends integer keys to
+// indexed interceptors only, so the named handler above never saw them, and
+// `Object.getPrototypeOf(Window.prototype)[0]` read undefined while Chrome,
+// Firefox and Safari answer the element (html/browsers/the-window-object/
+// window-indexed-access-vs-named-access.html, 10/10 in all three). These
+// run the same named steps with the index written as its decimal string.
+// The global's own indexed interceptor (context_manager, the WindowProxy's
+// child navigables) answers first: an index it has no child for reaches the
+// prototype chain, and here.
+
+/// `index` as its decimal string, in `buf`.
+fn indexName(index: u32, buf: []u8) []const u8 {
+    return std.fmt.bufPrint(buf, "{d}", .{index}) catch unreachable;
+}
+
+fn indexedPropertyGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    return getNamed(info, indexName(index, &buf));
+}
+
+fn indexedPropertyQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    return queryNamed(info, indexName(index, &buf));
+}
+
+fn indexedPropertyDescriptor(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    return describeNamed(info, indexName(index, &buf));
+}
+
 /// `desc[key] = value`, releasing the key handle it makes.
 fn setDescriptorField(isolate: *v8.Isolate, context: *v8.Context, desc: *v8.Object, comptime key: []const u8, value: *v8.Value) void {
     const key_str = v8.v8_String_NewFromUtf8(isolate, key.ptr, key.len) orelse return;
@@ -519,6 +581,10 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&namedPropertyEnumerator));
     ext_refs.registerPointer(@intFromPtr(&namedPropertyDefiner));
     ext_refs.registerPointer(@intFromPtr(&namedPropertyDescriptor));
+    // And the indexed ones (array-index property names).
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyQuery));
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyDescriptor));
 }
 
 const testing = std.testing;
