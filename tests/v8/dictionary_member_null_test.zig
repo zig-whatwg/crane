@@ -30,6 +30,11 @@ const dictionaries = struct {
     const LockOptions = @typeInfo(@TypeOf(interfaces.LockManager.call_request__1)).@"fn".param_types[2].?;
     /// new Request(input, init)'s `init`.
     const RequestInit = @FieldType(@typeInfo(@TypeOf(interfaces.Request.call_constructor)).@"fn".param_types[2].?, "value");
+    /// port.postMessage(message, options)'s `options`: `sequence<object>
+    /// transfer = []`.
+    const StructuredSerializeOptions = @FieldType(@typeInfo(@TypeOf(interfaces.MessagePort.call_postMessage__1)).@"fn".param_types[2].?, "value");
+    /// new MessageEvent(type, init)'s `init`: `sequence<MessagePort> ports = []`.
+    const MessageEventInit = @FieldType(@typeInfo(@TypeOf(interfaces.MessageEvent.call_constructor)).@"fn".param_types[2].?, "value");
     /// element.setHTML(html, options)'s `options`: `(Sanitizer or
     /// SanitizerConfig or SanitizerPresets) sanitizer = "default"`, an inline
     /// union typed runtime.JSValue.
@@ -96,17 +101,19 @@ const Shaped = struct {
     pub const interface_members = .{.{ "object", "Node" }};
 };
 
-test "a present null converts by type only for a non-nullable member with a scalar type - the default is not present" {
+test "a present null converts by type only for a non-nullable member with a scalar or sequence type - the default is not present" {
     defer test_agent.close();
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "text")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "flag")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "count")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "kind")));
     try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "object")));
-    // The defaults: listed nullable, `any`, a sequence, a required member.
+    // A sequence (WebIDL 3.2.21 step 1, and a record's 3.2.23 step 1: null is
+    // not an Object - a TypeError).
+    try testing.expect(comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "list")));
+    // The defaults: listed nullable, `any`, a required member.
     try testing.expect(!comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "nullable_text")));
     try testing.expect(!comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "value")));
-    try testing.expect(!comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "list")));
     try testing.expect(!comptime conversions.presentNullConvertsByType(Shaped, field(Shaped, "required")));
 }
 
@@ -148,6 +155,32 @@ test "RequestInit's signal is AbortSignal?: a present null is null" {
     defer ffi.v8_Value_Dispose(object);
     const init = try conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, object);
     try testing.expect(init.signal == null);
+}
+
+test "StructuredSerializeOptions {transfer: null} is a TypeError: null is not a sequence<object>" {
+    defer test_agent.close();
+    // webmessaging/with-options/null-transfer.html: postMessage('', {transfer:
+    // null}) throws a TypeError (WebIDL 3.2.18 step 4.1.4.3 converts the
+    // present null by sequence<object>, whose step 1 throws). Read as absent,
+    // it posted with an empty transfer list.
+    const e = try env();
+    const object = try eval("({ transfer: null })");
+    defer ffi.v8_Value_Dispose(object);
+    try testing.expectError(error.TypeError, conversions.fromV8Value(dictionaries.StructuredSerializeOptions, testing.allocator, e.isolate, e.context, object));
+}
+
+test "MessageEventInit {ports: null} is a TypeError; {transfer: undefined} stays absent" {
+    defer test_agent.close();
+    // html/webappapis/scripting/events/messageevent-constructor.https.html
+    // "Passing null for ports member".
+    const e = try env();
+    const ports = try eval("({ ports: null })");
+    defer ffi.v8_Value_Dispose(ports);
+    try testing.expectError(error.TypeError, conversions.fromV8Value(dictionaries.MessageEventInit, testing.allocator, e.isolate, e.context, ports));
+    const absent = try eval("({ transfer: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const options = try conversions.fromV8Value(dictionaries.StructuredSerializeOptions, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(options.transfer == null);
 }
 
 test "an inline union member typed JSValue keeps a present null apart from absent" {
