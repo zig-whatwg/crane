@@ -4401,6 +4401,25 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
 
 /// The first same-named child decides visibility, even when its origin
 /// prevents exposure. Reuse one document-tree list during enumeration.
+///
+/// HTML's "document-tree child navigable target name property set" step 5
+/// keeps only the children whose active document is same origin with the
+/// window. Golden rule 2, the browsers: Chrome 157 (Blink
+/// WindowProperties::AnonymousNamedGetter: the window can access the child,
+/// OR the name is the child's owner's BrowsingContextContainerName - its
+/// container element's name attribute) and Firefox 160
+/// (WindowNamedPropertiesHandler's ShouldExposeChildWindow: the embedder
+/// element's name attribute is the name asked for) also expose a
+/// cross-origin child whose CONTAINER is named so; Safari 27.2 exposes even
+/// more (FrameTree::scopedChildBySpecifiedName). HTML said the same until the
+/// 2022 navigables rewrite ("... whose browsing context name does not match
+/// the name of its container's name content attribute value", review draft
+/// 2022-01); whatwg/html#12663 (open, 2026-07) asks to put it back, and
+/// chromium 465806322 (pending) works toward step 5 as written.
+/// html/browsers/windows/nested-browsing-contexts/frameElement.sub.html
+/// (C/F/S 4/4) reads frames["iframe_2"] of a cross-origin child named by its
+/// iframe; cross-origin-named-access.sub.html's first subtest, which tests
+/// step 5 as written, fails in all three.
 fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, children: []const @import("dom").navigables.ChildNavigable, name: []const u8) ?*runtime.Instance {
     if (name.len == 0) return null;
     for (children) |entry| {
@@ -4421,9 +4440,18 @@ fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, ch
             .{ .serialized = parent_origin, .record = if (both_opaque) settingsOriginRecord(window) else null },
             .{ .serialized = child_origin, .record = if (both_opaque) settingsOriginRecord(child_window) else null },
         );
-        return if (same_origin) child_window else null;
+        if (same_origin) return child_window;
+        return if (containerNamed(entry.container, name)) child_window else null;
     }
     return null;
+}
+
+/// Whether the navigable container `container`'s name content attribute is
+/// `name` (case-sensitive, as both browsers compare it).
+fn containerNamed(container: *runtime.Instance, name: []const u8) bool {
+    var value = (interfaces.Element.call_getAttribute(container, runtime.DOMString.initInterned("name")) catch return false) orelse return false;
+    defer value.deinit(container.ctx.allocator);
+    return std.mem.eql(u8, value.asSlice(), name);
 }
 
 /// HTML 7.2.2.3 "Named access on the Window object": Window's named getter,
