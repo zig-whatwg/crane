@@ -27,6 +27,7 @@ const CURLOPT_SSL_VERIFYPEER: c_uint = 64;
 const CURLOPT_CAINFO: c_uint = 10065;
 const CURLOPT_SSL_VERIFYHOST: c_uint = 81;
 const CURLOPT_NOPROXY: c_uint = 10177;
+const CURLOPT_FRESH_CONNECT: c_uint = 74;
 const CURLOPT_FORBID_REUSE: c_uint = 75;
 /// CURLOPTTYPE_FUNCTIONPOINT + 108 and CURLOPTTYPE_CBPOINT + 109: the SSL
 /// context callback and its data (tests/fetch/trust_store_test.zig checks
@@ -109,6 +110,14 @@ pub fn forbidReuse(handle: *anyopaque) void {
     _ = curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1));
 }
 
+/// The transfer on `handle` opens a new connection rather than take one from
+/// the pool (CURLOPT_FRESH_CONNECT) - Fetch's HTTP-network fetch "obtain a
+/// connection" with new "yes", for HTTP-network-or-cache fetch step 17's
+/// retry of a 421. The connection it opens joins the pool as any other.
+pub fn freshConnect(handle: *anyopaque) void {
+    _ = curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1));
+}
+
 test "forbidReuse sets curl's option on a handle" {
     const c = struct {
         extern fn curl_easy_init() ?*anyopaque;
@@ -119,4 +128,16 @@ test "forbidReuse sets curl's option on a handle" {
     forbidReuse(handle);
     // CURLE_OK: curl knows the option id and takes a long.
     try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FORBID_REUSE, @as(c_long, 1)));
+}
+
+test "freshConnect sets curl's option on a handle" {
+    const c = struct {
+        extern fn curl_easy_init() ?*anyopaque;
+        extern fn curl_easy_cleanup(curl: ?*anyopaque) void;
+    };
+    const handle = c.curl_easy_init() orelse return error.SkipZigTest;
+    defer c.curl_easy_cleanup(handle);
+    freshConnect(handle);
+    // CURLE_OK: curl knows the option id and takes a long.
+    try std.testing.expectEqual(@as(c_uint, 0), curl_easy_setopt(handle, CURLOPT_FRESH_CONNECT, @as(c_long, 1)));
 }

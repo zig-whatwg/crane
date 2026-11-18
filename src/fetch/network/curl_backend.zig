@@ -428,9 +428,7 @@ pub const LibcurlBackend = struct {
         // 421 retry), which CURLOPT_FRESH_CONNECT makes: this transfer opens
         // its own, which then joins the pool as any other. (The handle is this
         // transfer's alone - Transfer.create - so the option ends with it.)
-        if (request.force_new_connection) {
-            _ = curl.easy_setopt(handle, curl.CURLOPT_FRESH_CONNECT, @as(c_long, 1));
-        }
+        if (request.force_new_connection) kit_curl.options.freshConnect(handle);
 
         // Timeouts
         if (request.connect_timeout_ms > 0) {

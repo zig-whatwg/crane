@@ -17,7 +17,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const dom = @import("dom");
-const sniffing = @import("html_encoding_sniffing");
+const sniffing = @import("html_core").parser.encoding_sniffing;
 
 /// WebVTT cue writing direction.
 pub const WritingDirection = enum { horizontal, vertical_growing_left, vertical_growing_right };
