@@ -660,7 +660,7 @@ pub fn createAgentWithYoungGeneration(options: engine.AgentOptions, young_genera
     // Error.isError answers true for one - V8 asks the embedder for an API
     // wrapper (Chrome 157 and Firefox 160 pass
     // webidl/ecmascript-binding/es-exceptions/DOMException-is-error.any.js).
-    ffi.v8_Isolate_SetNativeErrorInstancePredicate(isolate, @import("conversions.zig").isDOMExceptionInstance);
+    ffi.v8_Isolate_SetNativeErrorInstancePredicate(isolate, &@import("conversions.zig").isDOMExceptionInstance);
 
     // The hooks the host supplied, and only those: a hook left null is the
     // host's choice to have no such behaviour.
