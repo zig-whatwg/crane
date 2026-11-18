@@ -177,6 +177,17 @@ pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: 
     // A removal callback may have reattached it. Normal parser insertion also
     // leaves an element alone if its custom constructor already attached it.
     if ((try interfaces.Node.get_parentNode(node)) != null) return false;
+    // "Insert an element at the adjusted insertion location" steps 6-8: a
+    // fragment parser that inserts into a live target (streaming HTML) pushes
+    // an element queue around the insertion and invokes it right after, so
+    // the reactions of an insertion into a connected target run before
+    // anything the parser does next. (A document's own parser constructs its
+    // custom elements synchronously at creation; its path is unchanged.)
+    const reactions: runtime.CEReactions.Scope = if (comptime @hasField(@TypeOf(adapter.*), "fragment_case"))
+        (if (adapter.fragment_case) runtime.CEReactions.begin(node) else .{})
+    else
+        .{};
+    defer runtime.CEReactions.end(reactions);
     // pre-insert validity includes host edges, reference membership, and the
     // single document-element constraint. Invalid parser moves are dropped.
     _ = interfaces.Node.call_insertBefore(target.parent, node, target.before) catch |err| switch (err) {
