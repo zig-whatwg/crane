@@ -52,7 +52,8 @@ pub fn installHooks() void {
 fn create(realm: runtime.Context, run_scripts: bool, configuration: ?*const anyopaque) anyerror!*runtime.Instance {
     const instance = try TrustedHTMLParserOptions.init(realm.allocator, realm);
     errdefer TrustedHTMLParserOptions.deinit(instance);
-    const internal = instance.getState(State).own._internal.?;
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const internal = state.own._internal orelse return error.InvalidStateError;
     internal.run_scripts = run_scripts;
     if (configuration) |erased| internal.configuration = try html.parser_options.configFromErased(erased).clone(realm.allocator);
     return instance;
@@ -61,7 +62,8 @@ fn create(realm: runtime.Context, run_scripts: bool, configuration: ?*const anyo
 /// `instance`'s values when it is a TrustedHTMLParserOptions.
 fn valueOf(instance: *runtime.Instance) ?dom.trusted_types.ParserOptionsValue {
     if (instance.vtable != &TrustedHTMLParserOptions.vtable) return null;
-    const internal = instance.getState(State).own._internal orelse return null;
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
     return .{
         .run_scripts = internal.run_scripts,
         .sanitizer_configuration = if (internal.configuration) |*configuration| html.parser_options.erasedConfig(configuration) else null,
