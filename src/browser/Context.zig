@@ -147,7 +147,7 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     other.timer = manager.timerInterface();
     const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
     const interval: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
-    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
+    const elsewhere: TimerId = @intCast(try initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
     try std.testing.expect(id != 0 and interval != 0 and elsewhere != 0);
 
     // Both of `realm`'s are held: their window's document went into the
@@ -329,7 +329,7 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
     realm.timer = manager.timerInterface();
     other.timer = manager.timerInterface();
     const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
-    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
+    const elsewhere: TimerId = @intCast(try initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
     try std.testing.expect(id != 0 and elsewhere != 0);
     const armed = TimerMap.of(&realm).get(id).?.getData().current_timer_id;
 
