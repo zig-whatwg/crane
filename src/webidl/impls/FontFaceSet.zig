@@ -28,6 +28,9 @@ pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, compti
     // entries what script adds) is the object's own, made and freed on the
     // worker's thread.
     if (!instance.ctx.isWindow()) {
+        // A realm with no engine (a test's bare context) has no promise to
+        // make: no state, as before.
+        if (!instance.ctx.hasEngine()) return;
         const internal = try allocator.create(InternalState);
         internal.* = fonts.Set.init(instance, null);
         instance.getState(StateType).own._internal = internal;
