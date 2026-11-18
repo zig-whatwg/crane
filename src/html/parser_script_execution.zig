@@ -268,6 +268,11 @@ fn runPendingParsingBlockingScripts(ctx: *ParserScriptContext) void {
         // its frame. Never consult the old document again after cancellation.
         if (!parserContextIsCurrent(ctx)) return;
         if (!executed) break;
+        // An external SVG script the executed script's document.write() met
+        // runs before the parser reads on, as an HTML one would
+        // (TreeBuilder.pending_svg_script).
+        ctx.tree_builder.runPendingSvgScript();
+        if (!parserContextIsCurrent(ctx)) return;
         ctx.tree_builder.parser_pause_flag = false;
     }
     ctx.tree_builder.waiting_for_parser_blocking_script = script_execution.pendingParsingBlockingScript(ctx.document) != null;

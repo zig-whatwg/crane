@@ -853,6 +853,12 @@ pub const TreeBuilder = struct {
     /// `RefPtr<Element> m_scriptToProcess` across that span. A structure, so
     /// each one is held.
     scripts_to_process: infra.List(*TreeNode),
+    /// An external SVG script whose end tag a nested invocation of the
+    /// parser met (a script's document.write()): parser-blocking, as an
+    /// external HTML script is - the end tag of the script that wrote it runs
+    /// it once that script returns, before the parser reads on
+    /// (`runPendingSvgScript`). A structure, so it is held.
+    pending_svg_script: ?*TreeNode = null,
     /// An attribute was added to an element the adapter already made: a
     /// second <html> or <body> start tag's attributes, which "in body" adds
     /// to the existing element. Called with `dom_adapter_context`.
@@ -1869,21 +1875,72 @@ pub const TreeBuilder = struct {
         if (!self.scripting_enabled) return;
         self.flushPendingText();
         const callback = self.script_execution_callback orelse return;
-        if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
-        self.script_nesting_level += 1;
         // Deviation, stated (golden rule 2, no newer spec involved): the
         // spec sets the parser pause flag here, so a document.write() from
         // the SVG script would only insert - its characters parsed after the
-        // script returns. Chrome, Firefox and Safari all parse them during
-        // the write, as for an HTML script, running a written inline script
-        // before the SVG script's next statement (wpt.fyi stable 2026-11-17:
+        // script returns. Chrome, Firefox and Safari all process an SVG
+        // script at its end tag as an HTML one (Blink's HTMLTreeBuilder hands
+        // it to the same HTMLParserScriptRunner::ProcessScriptElement), and
+        // wpt.fyi stable 2026-11-17 has all three 1/1 on both of these
         // html/semantics/scripting-1/the-script-element/execution-timing/
-        // 141.html, 1/1 in all three). So the flag is left as the HTML
-        // script end tag leaves it.
+        // files:
+        // - 141.html: a written inline SVG script runs during the write,
+        //   before the writing SVG script's next statement - so the flag is
+        //   left as the HTML script end tag leaves it;
+        // - 142.html: a written EXTERNAL SVG script is parser-blocking - "if
+        //   the script nesting level is not zero: set the parser pause flag
+        //   to true, and abort the processing of any nested invocations of
+        //   the tokenizer", and the end tag of the script that wrote it runs
+        //   it once that script returns, before the parser reads on.
+        if (self.script_nesting_level != 0 and self.pending_svg_script == null and isExternalSvgScript(script_element)) {
+            self.pending_svg_script = script_element;
+            self.holdNode(script_element);
+            self.parser_pause_flag = true;
+            return;
+        }
+        if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
+        self.script_nesting_level += 1;
         callback(script_element, self.script_execution_context);
+        self.runPendingSvgScript();
         self.script_nesting_level -|= 1;
         if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script) self.parser_pause_flag = false;
         if (self.input_stream_manager) |stream| stream.popInsertionPoint();
+    }
+
+    /// The end tag of a script at the outer level (its steps raised the
+    /// script nesting level to one), or the parser running a pending
+    /// parsing-blocking script, runs the external SVG script a
+    /// document.write() of that script left pending - HTML's "Otherwise:
+    /// while the pending parsing-blocking script is not null: ... let the
+    /// insertion point be just before the next input character ... execute
+    /// the script element", for an SVG script (`processSvgScriptEndTag`).
+    /// The end tag's steps restore the old insertion point after this.
+    pub fn runPendingSvgScript(self: *TreeBuilder) void {
+        if (self.script_nesting_level != 1) return;
+        const callback = self.script_execution_callback orelse return;
+        while (self.pending_svg_script) |script| {
+            self.pending_svg_script = null;
+            defer self.releaseNode(script);
+            if (self.input_stream_manager) |stream| {
+                if (stream.aborted) return;
+                stream.setInsertionPointAtNextInputCharacter();
+            }
+            // The pause the nested end tag set ends before the script runs,
+            // so its own document.write() parses at the insertion point.
+            if (!self.waiting_for_parser_blocking_script) self.parser_pause_flag = false;
+            callback(script, self.script_execution_context);
+        }
+    }
+
+    /// Whether `script`, an SVG script element the parser made, is external:
+    /// it has an `href` attribute, or the deprecated `xlink:href` (SVG 2
+    /// 15.2).
+    fn isExternalSvgScript(script: *const TreeNode) bool {
+        for (script.attributes.toSlice()) |attribute| {
+            if (!std.mem.eql(u8, attribute.name, "href")) continue;
+            if (attribute.namespace == null or attribute.namespace == .xlink) return true;
+        }
+        return false;
     }
 
     // =========================================================================
@@ -3470,6 +3527,7 @@ pub const TreeBuilder = struct {
                                 if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
                                 self.script_nesting_level += 1;
                                 callback(script, self.script_execution_context);
+                                self.runPendingSvgScript();
                                 self.script_nesting_level -|= 1;
                                 if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script)
                                     self.parser_pause_flag = false;
@@ -3624,6 +3682,10 @@ pub const TreeBuilder = struct {
             const node = self.scripts_to_process.remove(self.scripts_to_process.len - 1) catch break;
             self.releaseNode(node);
         }
+        if (self.pending_svg_script) |node| {
+            self.pending_svg_script = null;
+            self.releaseNode(node);
+        }
     }
 
     /// Whether every tree node's `structure_refs` is the number of the
@@ -3649,6 +3711,7 @@ pub const TreeBuilder = struct {
         if (self.head_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         if (self.form_element) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         for (self.scripts_to_process.toSlice()) |node| if (!Named.add(&expected, self.allocator, node)) return true;
+        if (self.pending_svg_script) |node| if (!Named.add(&expected, self.allocator, node)) return true;
         var it = expected.iterator();
         while (it.next()) |entry| {
             if (entry.key_ptr.*.structure_refs != entry.value_ptr.*) return false;
