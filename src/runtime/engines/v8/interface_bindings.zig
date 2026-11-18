@@ -53,7 +53,6 @@ pub const interface_skip_list = .{
     "AuthenticatorResponse", // ArrayBuffer type issues
     "ChapterInformation", // MediaImage array issues
     "DeviceChangeEvent", // MediaDeviceInfo array issues
-    "FontFaceSetLoadEvent", // FontFace array issues
     "GamepadHapticActuator", // GamepadHapticEffectType array issues
     "MediaMetadata", // ChapterInformation array issues
     "Notification", // Missing unsignedlong type
