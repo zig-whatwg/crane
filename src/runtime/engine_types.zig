@@ -207,6 +207,11 @@ pub const ArrayBufferViewDescription = struct {
     detached: bool,
     /// IsSharedArrayBuffer([[ViewedArrayBuffer]]).
     shared: bool,
+    /// IsFixedLengthArrayBuffer([[ViewedArrayBuffer]]) is false: a view over
+    /// a resizable ArrayBuffer or a growable SharedArrayBuffer, which a
+    /// conversion to an IDL type without [AllowResizable] rejects (WebIDL
+    /// 3.2.26). An adapter that cannot tell answers false.
+    resizable: bool = false,
 };
 
 /// An engine-owned set of shared backing stores, independent of every realm

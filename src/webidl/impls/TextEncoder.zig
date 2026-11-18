@@ -163,9 +163,15 @@ pub fn call_encodeInto(instance: *runtime.Instance, source: runtime.USVString, d
 
     // The binding hands `destination` over unconverted: WebIDL's conversion
     // to [AllowShared] Uint8Array is a TypeError for anything that is not a
-    // Uint8Array - another typed array or a DataView included.
+    // Uint8Array - another typed array or a DataView included - and, with
+    // no [AllowResizable], for a view over a growable SharedArrayBuffer or a
+    // resizable ArrayBuffer (3.2.26 step 4). WebIDL's [AllowResizable]
+    // (whatwg/webidl#982, 2021); Safari 27.2 ships the check
+    // (webidl/ecmascript-binding/allow-resizable.html subtest 2), Chrome 157
+    // and Firefox 160 do not yet - golden rule 2: the newer spec.
     const view = engine.describeArrayBufferView(realm, destination) orelse return error.TypeError;
     if (view.view_type != .uint8_array) return error.TypeError;
+    if (view.resizable) return error.TypeError;
     const capacity: u64 = view.byte_length;
 
     // Step 5: source as scalar values. A USVString is valid UTF-8, and the

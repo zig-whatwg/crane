@@ -49,6 +49,7 @@ pub fn describeArrayBufferView(value: JSValue) ?runtime.ArrayBufferViewDescripti
         .byte_length = info.byte_length,
         .detached = info.buffer_detached,
         .shared = info.buffer_shared,
+        .resizable = info.buffer_resizable,
     };
 }
 
