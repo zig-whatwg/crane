@@ -170,3 +170,58 @@ test "a write that ends mid-tag is finished by the markup after the script" {
     defer testing.allocator.free(body);
     try testing.expectEqualStrings("script(A) b(x) ", body);
 }
+
+test "stream HTML appends a chunk at the end of the input stream, and marks at the end follow it" {
+    var stream = try InputStreamManager.init(testing.allocator, "");
+    defer stream.deinit();
+    stream.complete = false;
+    stream.insertion_point = 0;
+    try stream.appendToEnd("<p>a");
+    try testing.expectEqualStrings("<p>a", stream.buffer.items);
+    try testing.expectEqual(@as(?usize, 4), stream.insertion_point);
+    // A script end tag saved the insertion point at the end and set one
+    // earlier; a chunk written meanwhile still goes to the end, and the saved
+    // point - and an ongoing run's limit - follow it.
+    stream.pushInsertionPoint();
+    stream.insertion_point = 1;
+    stream.stop_at = 4;
+    try stream.appendToEnd("b</p>");
+    try testing.expectEqualStrings("<p>ab</p>", stream.buffer.items);
+    try testing.expectEqual(@as(?usize, 1), stream.insertion_point);
+    try testing.expectEqual(@as(?usize, 9), stream.stop_at);
+    stream.popInsertionPoint();
+    try testing.expectEqual(@as(?usize, 9), stream.insertion_point);
+    // An aborted stream takes nothing.
+    stream.aborted = true;
+    try stream.appendToEnd("x");
+    try testing.expectEqualStrings("<p>ab</p>", stream.buffer.items);
+}
+
+test "a parser-blocking script's readiness resumes the parser by its processor's own steps, when it has them" {
+    const Calls = struct {
+        processed: usize = 0,
+        resumed: usize = 0,
+        fn process(context: *anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.processed += 1;
+        }
+        fn resumeParser(context: *anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.resumed += 1;
+        }
+    };
+    var stream = try InputStreamManager.init(testing.allocator, "<p>");
+    defer stream.deinit();
+    var calls: Calls = .{};
+    // A document's parser: its inserted characters are processed again.
+    stream.processor = .{ .context = &calls, .process = &Calls.process };
+    stream.resumeAfterBlockingScript();
+    try testing.expectEqual(@as(usize, 1), calls.processed);
+    try testing.expectEqual(@as(usize, 0), calls.resumed);
+    // A fragment parser: its owner's steps (execute the pending
+    // parsing-blocking scripts, then run a fragment parser), and nothing else.
+    stream.processor = .{ .context = &calls, .process = &Calls.process, .resume_after_blocking_script = &Calls.resumeParser };
+    stream.resumeAfterBlockingScript();
+    try testing.expectEqual(@as(usize, 1), calls.processed);
+    try testing.expectEqual(@as(usize, 1), calls.resumed);
+}
