@@ -77,12 +77,26 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
     defer v8.v8_String_Dispose(name);
     v8.v8_FunctionTemplate_SetClassName(tpl, name);
 
-    // NOTE: We do NOT use v8_FunctionTemplate_Inherit here because that would
-    // cause EventTarget's prototype methods to appear as own properties on
-    // WindowProperties instances. Per WebIDL §3.7.4, WindowProperties should
-    // only have named properties as own properties. The prototype chain is
-    // set up manually in insertIntoPrototypeChain() to properly link to
-    // EventTarget.prototype without inheriting its methods as own properties.
+    // WebIDL 3.7.4 "create a named properties object", step 2: "Let proto be
+    // ... the interface prototype object for the inherited interface" -
+    // EventTarget.prototype - and the object is made with proto as its
+    // [[Prototype]], which is immutable from then on. V8's prototype provider
+    // gives that at creation (FunctionTemplate::SetPrototypeProviderTemplate:
+    // an instance's [[Prototype]] is the provider's prototype object in the
+    // instance's context, here the realm's EventTarget.prototype, which
+    // materializeInterfaceObject builds from this same registered template).
+    // Without it the instance's [[Prototype]] was this template's own
+    // prototype object, one more object on every global's chain:
+    // window -> Window.prototype -> WindowProperties -> (that object) ->
+    // EventTarget.prototype (window-prototype-chain.html, cross-global-npo.html
+    // and window-named-properties-object.html's [[SetPrototypeOf]] read it;
+    // Chrome, Firefox and Safari have none). No Inherit(): that would make
+    // this template's prototype object inherit EventTarget's, still one
+    // object too many. A template made where no EventTarget template is
+    // registered keeps the old link, made in insertIntoPrototypeChain.
+    if (@import("template_registry.zig").getTemplateForIsolate("EventTarget", isolate)) |event_target| {
+        v8.v8_FunctionTemplate_SetPrototypeProviderTemplate(tpl, event_target);
+    }
 
     const instance_tpl = v8.v8_FunctionTemplate_InstanceTemplate(tpl);
     defer v8.v8_ObjectTemplate_Dispose(instance_tpl);
@@ -113,15 +127,27 @@ fn makeTemplate(isolate: *v8.Isolate) *v8.FunctionTemplate {
         .kNonMaskingAndOnlyInterceptStrings,
     );
 
+    // Array-index property names reach the same named steps (the indexed
+    // callbacks below). No setter, enumerator or definer: [[OwnPropertyKeys]]
+    // lists no named property, and a write or a definition with an index
+    // key behaves as it did.
+    v8.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+        instance_tpl,
+        indexedPropertyGetter,
+        null,
+        indexedPropertyQuery,
+        null,
+        indexedPropertyDescriptor,
+    );
+
     // Mark WindowProperties instances as having immutable [[Prototype]]
     // Per WebIDL §3.7.4, the named properties object's prototype is immutable
     v8.v8_ObjectTemplate_SetImmutableProto(instance_tpl);
 
-    // The template's prototype object is NOT made immutable. It is not the
-    // named properties object - the instance above is, and it is immutable -
-    // but it is the only link after that instance whose [[Prototype]] can
-    // still be set, and insertIntoPrototypeChain points it at
-    // EventTarget.prototype. With both immutable, that step was refused
+    // With no prototype provider (no EventTarget template registered), the
+    // template's own prototype object stands behind the instance; it is NOT
+    // made immutable, so insertIntoPrototypeChain can still point it at
+    // EventTarget.prototype - with both immutable, that step was refused
     // silently and `window instanceof EventTarget` was never true.
 
     return tpl;
@@ -222,13 +248,18 @@ pub fn insertIntoPrototypeChain(
     const wp = create(isolate, context, event_target_proto) orelse return false;
     defer v8.v8_Object_Dispose(wp);
 
-    // WindowProperties -> EventTarget.prototype. The instance's own
-    // [[Prototype]] is immutable (WebIDL), so the link goes on the template's
-    // prototype object behind it: wp -> wp_proto -> EventTarget.prototype.
+    // WindowProperties -> EventTarget.prototype: the instance's own
+    // [[Prototype]], immutable (WebIDL), given at creation by the template's
+    // prototype provider (makeTemplate). Only a template made with no
+    // EventTarget template registered has its own prototype object there
+    // instead; the link then goes on that object: wp -> wp_proto ->
+    // EventTarget.prototype.
     if (v8.v8_Object_GetPrototypeV2(wp)) |wp_proto_val| {
         defer v8.v8_Value_Dispose(wp_proto_val);
-        if (helpers.asObject(wp_proto_val)) |wp_proto| {
-            _ = v8.v8_Object_SetPrototypeV2(wp_proto, context, @ptrCast(event_target_proto));
+        if (!v8.v8_Value_StrictEquals(wp_proto_val, @ptrCast(event_target_proto))) {
+            if (helpers.asObject(wp_proto_val)) |wp_proto| {
+                _ = v8.v8_Object_SetPrototypeV2(wp_proto, context, @ptrCast(event_target_proto));
+            }
         }
     }
 
@@ -319,11 +350,16 @@ fn namedPropertyGetter(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return getNamed(info, name);
+}
+
+/// [[Get]] for the property name `name` (a string key, or an array index
+/// written as its decimal string).
+fn getNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     // Undefined: no supported property name (Window.call_getter).
     const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
@@ -367,11 +403,15 @@ fn namedPropertyQuery(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return queryNamed(info, name);
+}
+
+/// [[HasProperty]] for the property name `name` (see getNamed).
+fn queryNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     if (Window.isSupportedPropertyName(window, runtime.DOMString.initInterned(name)) catch false) {
         const attributes = v8.v8_Integer_New(isolate, 2); // DontEnum
@@ -446,11 +486,15 @@ fn namedPropertyDescriptor(
     property: *v8.Name,
     info: *const v8.PropertyCallbackInfo,
 ) callconv(.c) v8.Intercepted {
+    var name_buf: [256]u8 = undefined;
+    const name = nameToNative(info.getIsolate(), property, &name_buf) orelse return .kNo;
+    return describeNamed(info, name);
+}
+
+/// [[GetOwnProperty]] for the property name `name` (see getNamed).
+fn describeNamed(info: *const v8.PropertyCallbackInfo, name: []const u8) v8.Intercepted {
     const isolate = info.getIsolate();
     const window = getWindowInstanceFromHolder(info) orelse return .kNo;
-
-    var name_buf: [256]u8 = undefined;
-    const name = nameToNative(isolate, property, &name_buf) orelse return .kNo;
 
     const js_val = Window.call_getter(window, runtime.DOMString.initInterned(name)) catch return .kNo;
     if (js_val != .undefined) {
@@ -479,6 +523,74 @@ fn namedPropertyDescriptor(
     return .kNo;
 }
 
+// ============================================================================
+// Indexed Property Handler Callbacks
+// ============================================================================
+//
+// WebIDL 3.7.4's named properties object answers every PROPERTY NAME - a
+// string - and an array index is one ("0".."4294967294"): `<div id=0>` and
+// `<iframe name=3>` are named properties too. V8 sends integer keys to
+// indexed interceptors only, so the named handler above never saw them, and
+// `Object.getPrototypeOf(Window.prototype)[0]` read undefined while Chrome,
+// Firefox and Safari answer the element (html/browsers/the-window-object/
+// window-indexed-access-vs-named-access.html, 10/10 in all three). These
+// run the same named steps with the index written as its decimal string.
+// The global's own indexed interceptor (context_manager, the WindowProxy's
+// child navigables) answers first: an index it has no child for reaches the
+// prototype chain, and here.
+
+/// `index` as its decimal string, in `buf`.
+fn indexName(index: u32, buf: []u8) []const u8 {
+    return std.fmt.bufPrint(buf, "{d}", .{index}) catch unreachable;
+}
+
+/// WebIDL's named property visibility algorithm (3.9.7) steps 2 and 4-5 for
+/// the array-index name `name`: hidden when the named properties object has
+/// a real own property of that name, or an object on its [[Prototype]] chain
+/// does (`w.Object.prototype[0] = 20` makes wp[0] read 20:
+/// window-named-properties-object.html's visibility subtests). The named
+/// handler gets this from V8's non-masking flag, which indexed handlers do
+/// not take.
+fn indexHidden(info: *const v8.PropertyCallbackInfo, name: []const u8) bool {
+    var units: [10]u16 = undefined;
+    for (name, 0..) |c, i| units[i] = c;
+    return v8.v8_LegacyPlatformObject_NamedPropertyState(@ptrCast(info), &units, @intCast(name.len)) != 0;
+}
+
+/// WebIDL's named property visibility algorithm (3.9.7) for the array-index
+/// name `name`, in its order: step 1, "if P is not a supported property name
+/// of O, then return false", first - the common case, every `window[i]` past
+/// the child navigables, answered by Window's lookup alone - and the walk of
+/// steps 2 and 4-5 (`indexHidden`) only for a name that exists (lane blk3's
+/// focused cost window, 2026-11-18: walking it first cost each such miss
+/// about 90 ns).
+fn indexVisible(info: *const v8.PropertyCallbackInfo, name: []const u8) bool {
+    const window = getWindowInstanceFromHolder(info) orelse return false;
+    if (!(Window.isSupportedPropertyName(window, runtime.DOMString.initInterned(name)) catch false)) return false;
+    return !indexHidden(info, name);
+}
+
+fn indexedPropertyGetter(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    const name = indexName(index, &buf);
+    if (!indexVisible(info, name)) return .kNo;
+    return getNamed(info, name);
+}
+
+fn indexedPropertyQuery(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    const name = indexName(index, &buf);
+    if (!indexVisible(info, name)) return .kNo;
+    return queryNamed(info, name);
+}
+
+fn indexedPropertyDescriptor(index: u32, info: *const v8.PropertyCallbackInfo) callconv(.c) v8.Intercepted {
+    var buf: [10]u8 = undefined;
+    const name = indexName(index, &buf);
+    if (!indexVisible(info, name)) return .kNo;
+    return describeNamed(info, name);
+}
+
 /// `desc[key] = value`, releasing the key handle it makes.
 fn setDescriptorField(isolate: *v8.Isolate, context: *v8.Context, desc: *v8.Object, comptime key: []const u8, value: *v8.Value) void {
     const key_str = v8.v8_String_NewFromUtf8(isolate, key.ptr, key.len) orelse return;
@@ -501,6 +613,10 @@ pub fn registerExternalReferences() void {
     ext_refs.registerPointer(@intFromPtr(&namedPropertyEnumerator));
     ext_refs.registerPointer(@intFromPtr(&namedPropertyDefiner));
     ext_refs.registerPointer(@intFromPtr(&namedPropertyDescriptor));
+    // And the indexed ones (array-index property names).
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyGetter));
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyQuery));
+    ext_refs.registerPointer(@intFromPtr(&indexedPropertyDescriptor));
 }
 
 const testing = std.testing;

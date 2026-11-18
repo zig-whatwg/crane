@@ -288,6 +288,7 @@ pub fn installHooks() void {
         .scroll = &scrollHook,
         .redirect = &redirectHook,
         .add_handler = &addHandlerHook,
+        .suppresses_normal_scroll_restoration = &suppressesNormalScrollRestorationHook,
     });
 }
 
@@ -1577,21 +1578,21 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
             }
         }
     }
-    // Step 4: "If apiMethodTracker is null: ... set apiMethodTracker to the
-    // result of setting up a navigate/reload API method tracker for this
-    // given undefined and null."
-    if (tracker == null) {
-        tracker = setUpNavigateReloadTracker(instance, internal, runtime.JSValue.jsUndefined, null) catch return true;
-        // Deviation, stated: nobody can hold this tracker's committed
-        // promise, so it is marked as handled - rejecting it when the
-        // navigation is canceled or aborted would otherwise report an
-        // unhandled rejection no browser reports.
-        engine.markPromiseAsHandled(realm, tracker.?.committed.promise);
+    // Step 4: "If apiMethodTracker is not null: Set navigation's ongoing API
+    // method tracker to apiMethodTracker. Set apiMethodTracker's pending to
+    // false." A navigation no API method started - a link, location.hash,
+    // a form - has none: only navigate(), reload() and the traversal
+    // methods set one up. (Crane made one here for every navigation, from
+    // whatwg/html#11952's "always use a method tracker"; the spec since
+    // passes it only from navigate() and reload(), and #13024 made
+    // NavigationPrecommitController's redirect() check for none - its state
+    // then serializes into no entry: navigation-api/precommit-handler/
+    // precommitHandler-redirect-non-api-navigation.html, which Chrome 157
+    // and Firefox 160 pass.)
+    if (tracker) |t| {
+        internal.ongoing_tracker = t;
+        t.pending = false;
     }
-    const api_tracker = tracker.?;
-    // Steps 5-6.
-    internal.ongoing_tracker = api_tracker;
-    api_tracker.pending = false;
 
     // Steps 7-8.
     const navigable = scope.navigable;
@@ -1624,8 +1625,11 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     const form_data: ?*runtime.Instance = if (firing.form_data) |source| formDataIn(realm, source) catch null else null;
     const form_data_generation = if (form_data) |fd| runtime.SlabAllocator.generationOf(fd) else 0;
     defer if (form_data) |fd| fd.releaseIfUnwrapped(form_data_generation);
-    // The tracker's info, read back from the navigation's wrapper.
-    const info = trackerInfo(internal, api_tracker);
+    // Step 18: "If apiMethodTracker is not null, then initialize event's
+    // info to apiMethodTracker's info. Otherwise, initialize it to
+    // undefined." The tracker's info, read back from the navigation's
+    // wrapper.
+    const info: ?engine.Owned = if (tracker) |t| trackerInfo(internal, t) else null;
     defer if (info) |i| i.release();
     // Browsers over step 16's unfiltered sourceElement: Chrome and Safari
     // hide a cross-origin source node. Blink NavigationApi::DispatchNavigateEvent
@@ -1670,7 +1674,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .navigation_type = firing.navigation_type,
         .destination = firing.destination,
         .controller = controller,
-        .tracker = api_tracker,
+        .tracker = tracker,
         .user_involvement = firing.user_involvement,
         .same_document = firing.is_same_document,
     };
@@ -1721,7 +1725,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // were corrected to the spec text). Before, Crane kept the tracker ongoing
     // as Blink does and rejected its promises at the abort.
     if (record.interception_state == .none) {
-        if (!firing.is_same_document) cleanUp(internal, api_tracker);
+        if (!firing.is_same_document) if (tracker) |t| cleanUp(internal, t);
         return true;
     }
 
@@ -2220,7 +2224,7 @@ fn finish(instance: *runtime.Instance, internal: *InternalState, record: *EventR
     potentiallyResetFocus(instance, internal, record);
     // 5. "If didFulfill is true, then potentially process scroll behavior
     // given event."
-    if (did_fulfill) potentiallyProcessScroll(record);
+    if (did_fulfill) potentiallyProcessScroll(instance, internal, record);
     // 6.
     record.interception_state = .finished;
 }
@@ -2245,12 +2249,72 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
     // adding its Document-owned node requires the separate holder work.
 }
 
-/// HTML "potentially process scroll behavior": with no layout, processing
-/// it records only that scrolling happened.
-fn potentiallyProcessScroll(record: *EventRecord) void {
+/// dom.navigation_api: `window`'s navigation API's "suppress normal scroll
+/// restoration during ongoing navigation" - set by "commit a navigate event"
+/// for an intercepted traversal, whose process scroll behavior restores
+/// instead.
+fn suppressesNormalScrollRestorationHook(window: *runtime.Instance) bool {
+    const target = targetOf(window) orelse return false;
+    return target.internal.suppress_scroll;
+}
+
+/// HTML "restore scroll position data" given `entry`, for its document's
+/// `window`: step 2 ("has been scrolled by the user") never holds - Crane
+/// has no user to scroll; step 3 puts the viewport back where the entry's
+/// scroll position data says (joint_history.Entry.scroll_position, saved as
+/// a same-document navigation left the entry). An entry that saved none
+/// has nothing to restore.
+fn restoreScrollPositionData(window: *runtime.Instance, entry: *const joint_history.Entry) void {
+    const position = entry.scroll_position orelse return;
+    dom.window_globals.performScroll(window, position[0], position[1]);
+}
+
+/// HTML "potentially process scroll behavior" given the event `record`.
+fn potentiallyProcessScroll(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
+    // 1. Assert: committed or scrolled. 2.
     if (record.interception_state == .scrolled) return;
+    // 3. "If event's scroll behavior is "manual", then return" - null is
+    // treated as "after-transition".
     if (record.scroll_behavior == .manual) return;
+    // 4.
+    processScrollBehavior(instance, internal, record);
+}
+
+/// HTML "process scroll behavior" given the event `record`.
+fn processScrollBehavior(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
+    // 1. Assert: committed. 2.
     record.interception_state = .scrolled;
+    // 3. "If event's navigationType was initialized to "traverse", then
+    // restore scroll position data given event's relevant global object's
+    // navigable's active session history entry."
+    if (record.navigation_type == .traverse) {
+        const traversed = scopeOf(instance, internal) orelse return;
+        if (traversed.history.currentEntry(traversed.navigable.id)) |entry| restoreScrollPositionData(traversed.window, entry);
+        return;
+    }
+    // 4.1. "Let document be event's relevant global object's associated
+    // Document." (A window whose document is no longer fully active has no
+    // viewport to scroll.)
+    const scope = scopeOf(instance, internal) orelse return;
+    const document = scope.document;
+    switch (dom.fragment_scroll.indicatedPart(document)) {
+        // 4.2. "If document's indicated part is null, then scroll to the
+        // beginning of the document given document." Also: the target
+        // element becomes null, as "scroll to the fragment" step 1 sets it
+        // for a null indicated part - by browser majority, where the spec
+        // text keeps the earlier target: Chrome 157 (NavigateEvent::
+        // ProcessScrollBehavior runs FrameLoader's same-document fragment
+        // processing, which clears the CSS target) and WebKit (319068@main,
+        // bug 321498, "This matches Chrome"; Safari Technology Preview 256
+        // passes) clear it; Firefox 160 keeps it.
+        // navigation-api/scroll-behavior/manual-scroll-clears-target-*.html.
+        .none => {
+            dom.target_element.set(document, null);
+            dom.fragment_scroll.scrollToTheBeginningOfTheDocument(document);
+        },
+        // 4.3. "Otherwise, scroll to the fragment given document."
+        else => dom.fragment_scroll.scrollToTheFragment(document),
+    }
 }
 
 /// HTML "abort a NavigateEvent" given `reason` (BORROWED).
@@ -2501,7 +2565,7 @@ fn scrollHook(event: *runtime.Instance) anyerror!void {
     // "InvalidStateError" DOMException."
     if (owner.record.interception_state != .committed) return error.InvalidStateError;
     // 3. "Process scroll behavior given this."
-    owner.record.interception_state = .scrolled;
+    processScrollBehavior(owner.instance, owner.internal, owner.record);
 }
 
 /// Shared checks for `event`, from its navigation: what the event's own
@@ -2716,6 +2780,12 @@ fn entriesRemovedHook(top_ptr: *anyopaque) void {
         const internal = getInternal(navigation) orelse continue;
         const s = scopeOf(navigation, internal) orelse continue;
         if (s.navigable.getTop() != top) continue;
+        // A frame of a page the back/forward cache keeps is not fully
+        // active: its entries go when the page comes back ("update the
+        // navigation API entries for reactivation", whose dispose events
+        // fire after pageshow - HTMLIFrameElement's restore reactivates each
+        // frame's navigation API), never while it is cached.
+        if (dom.bfcache.holds(@ptrCast(s.window))) continue;
         others.append(std.heap.c_allocator, .{ .instance = navigation, .generation = runtime.SlabAllocator.generationOf(navigation) }) catch return;
     }
     for (others.items) |other| {

@@ -436,6 +436,7 @@ pub fn call_constructor(ctx: runtime.Context, scriptURL: typedefs.TrustedScriptU
         };
         start.csp_relay = try worker_host.CspRelay.create(ctx.allocator, sink, owner_worker);
         fetch_options.csp_violation_reporter = start.csp_relay.?.reporter();
+        fetch_options.timing_reporter = start.csp_relay.?.timingReporter();
         start.request = workers.script_fetch.workerScriptRequest(ctx.allocator, worker_url, fetch_options) catch |err| {
             log.debug("the worker's script request could not be made: {}", .{err});
             queueStartFailure(instance);

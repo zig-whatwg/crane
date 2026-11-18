@@ -124,6 +124,9 @@ pub const Implementation = struct {
     scroll: *const fn (event: *runtime.Instance) anyerror!void,
     redirect: *const fn (event: *runtime.Instance, redirect: *const Redirect) anyerror!void,
     add_handler: *const fn (event: *runtime.Instance, handler: *const anyopaque) anyerror!void,
+    /// `window`'s navigation API's "suppress normal scroll restoration during
+    /// ongoing navigation" (set while an intercepted traversal commits).
+    suppresses_normal_scroll_restoration: ?*const fn (window: *runtime.Instance) bool = null,
 };
 
 var implementation: Hook(?Implementation) = .init(null);
@@ -139,6 +142,15 @@ pub fn install(impl: Implementation) void {
 pub fn sameDocumentNavigation(window: *runtime.Instance, kind: Kind) void {
     const impl = implementation.get() orelse return;
     impl.same_document_navigation(window, kind);
+}
+
+/// Whether `window`'s navigation API suppresses normal scroll restoration
+/// during an ongoing navigation (HTML "restore persisted state" step 1). With
+/// no Navigation object made, nothing suppresses it.
+pub fn suppressesNormalScrollRestoration(window: *runtime.Instance) bool {
+    const impl = implementation.get() orelse return false;
+    const suppresses = impl.suppresses_normal_scroll_restoration orelse return false;
+    return suppresses(window);
 }
 
 /// Update the existing navigation focus flag without creating a Navigation.

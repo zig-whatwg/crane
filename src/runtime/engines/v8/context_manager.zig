@@ -1056,6 +1056,10 @@ fn documentTreeChildAt(window: *runtime.Instance, index: u32) ?*@import("dom").b
     const dom = @import("dom");
     const interfaces = @import("interfaces");
     const navigable = dom.browser_state.browsingContextOf(window) orelse return null;
+    // The list keeps some of the navigable's children: past their number
+    // there is none to find, without walking the document (lane blk3's
+    // focused cost window, 2026-11-18).
+    if (index >= navigable.children.items.len) return null;
     const document = (interfaces.Window.get_document(window) catch null) orelse return null;
     var children = dom.navigables.documentTreeChildNavigables(navigable, document, std.heap.c_allocator);
     defer children.deinit(std.heap.c_allocator);
@@ -1091,6 +1095,37 @@ pub fn windowIndexedPropertyQuery(
     }
     // Invalid index - property doesn't exist
     return .kNo;
+}
+
+/// HTML 7.2.3.6 WindowProxy [[Delete]] (P), step 2.1, for an array index P
+/// on a same-origin WindowProxy (a cross-origin one throws, in
+/// cross_origin.zig): "Let desc be ! this.[[GetOwnProperty]](P). If desc is
+/// undefined, then return true. Return false." - desc is undefined exactly
+/// when P is past the Window's document-tree child navigables (step 2 of
+/// [[GetOwnProperty]], which the query above answers). A false is a
+/// TypeError in strict code, which the interceptor throws (V8 throws nothing
+/// for a deleter's false). Without it V8 deleted nothing and answered true
+/// even while a child existed, and kept that answer:
+/// html/browsers/the-window-object/window-indexed-properties-delete-no-cache.html
+/// (Chrome, Firefox and Safari pass).
+pub fn windowIndexedPropertyDeleter(
+    index: u32,
+    info: *const v8.PropertyCallbackInfo,
+) callconv(.c) v8.Intercepted {
+    // THE Window-receiver rule, as the getter's.
+    const this_obj = info.getHolder() orelse return .kNo;
+    defer v8.v8_Object_Dispose(this_obj);
+    const instance = @import("realm_global.zig").globalOfReceiver(info.getIsolate(), this_obj, .native) orelse return .kNo;
+    const length = @import("interfaces").Window.get_length(instance) catch return .kNo;
+    // 2.1.2: no own property at P - nothing to delete.
+    if (index >= length) {
+        info.setReturnValueBool(true);
+        return .kYes;
+    }
+    // 2.1.3.
+    info.setReturnValueBool(false);
+    if (info.shouldThrowOnError()) @import("conversions.zig").throwTypeError(info.getIsolate(), "Cannot delete a WindowProxy's indexed property");
+    return .kYes;
 }
 
 /// Indexed property enumerator for Window global objects.
@@ -1424,6 +1459,7 @@ pub fn registerExternalReferences() void {
     // Register indexed property handler callbacks for Window global objects
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyGetter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyQuery));
+    ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyDeleter));
     ext_refs.registerPointer(@intFromPtr(&windowIndexedPropertyEnumerator));
     // No named handler on the global: a Window's named properties are its
     // WindowProperties object's (window_properties.zig, HTML 7.3.3). The

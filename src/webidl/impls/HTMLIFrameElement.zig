@@ -4523,8 +4523,14 @@ fn commitInRealm(integration: *IFrameIntegration, record: *Navigation, response:
                 // (and so its reasons) across one: Chromium, the one engine
                 // that ships NotRestoredReasons, resets them, and
                 // performance-navigation-timing-reload.tentative expects
-                // null (Edge 157 passes it on wpt.fyi).
-                .not_restored_reasons = notRestoredReasonsOf(integration, record),
+                // null (Edge 157 passes it on wpt.fyi). Null after a
+                // traversal whose fetch was redirected too: the reasons are
+                // the original page's, not the redirect target's (Chromium
+                // NavigationRequest::OnRedirectChecksComplete resets the
+                // commit's not_restored_reasons at every redirect; HTML says
+                // nothing of it): not-restored-reasons/
+                // redirect-on-history.window.js, which Chrome 157 passes.
+                .not_restored_reasons = if (timing.redirect_count > 0 or response.has_cross_origin_redirects) null else notRestoredReasonsOf(integration, record),
                 // A traversal to the entry it leaves is a reload (as the
                 // navigation API's activation reads it), any other is
                 // back_forward; a push or replace navigates.
@@ -5345,6 +5351,12 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     var pending: ?html_core.navigation.joint_history.SameDocumentNavigation = null;
     if (integration.browsing_context) |bc| {
         if (bc.ensureHistoryEntries(&history_documents.infoOf)) |history| {
+            // The entry left keeps the viewport's scroll position ("save
+            // persisted state", JointHistory.saveScrollPosition).
+            if (bc.getActiveWindow()) |raw| {
+                const frame_window: *runtime.Instance = @ptrCast(@alignCast(raw));
+                history.saveScrollPosition(bc.id, interfaces.Window.get_scrollX(frame_window) catch 0, interfaces.Window.get_scrollY(frame_window) catch 0);
+            }
             const api_state = destination_state.clone(allocator) catch null;
             pending = history.navigateSameDocument(bc.id, url, .null, jointHandling(handling), api_state) catch null;
         } else |_| {}
@@ -7515,8 +7527,8 @@ const KeptDocument = struct {
 ///   the page. Chrome 157 and Safari 27.2 keep a page with a cross-origin
 ///   frame (pagereveal/order-in-bfcache-restore-iframe.html, wpt.fyi stable
 ///   at 2358bd4835).
-/// - Its document came from a GET of an HTTP(S) URL answered 200
-///   (`keepableResponse`, recorded at its commit).
+/// - Its document came from a GET of an HTTP(S) URL, not a network error,
+///   whatever its status (`keepableResponse`, recorded at its commit).
 /// - Its Browser's cache keeps pages (BrowserConfig.back_forward_cache_size).
 ///
 /// Unload listeners do not keep a page out: HTML leaves the choice to the
@@ -7553,11 +7565,19 @@ fn aloneInGroup(bc: *html_core.BrowsingContext) bool {
 }
 
 /// Whether the document `response` makes for `record` may be kept: a GET -
-/// no POST resource - of an HTTP(S) URL, answered 200 (not a network error).
+/// no POST resource - of an HTTP(S) URL, not a network error, whatever its
+/// status. Golden rule 2: HTML has no status rule for the back/forward cache,
+/// and the browsers split - Firefox 160 and Safari 27.2 keep a page served
+/// 404, Chrome 157 does not (its "response-status-not-ok" reason):
+/// performance-timeline/not-restored-reasons/navigation-failure.window.js,
+/// "document unexpectedly BFCached" in Firefox (wpt.fyi run
+/// 4814170760151040) and Safari (5260861921558528). The majority's. (Crane
+/// kept only 200 responses before, Blink's rule, chosen by an earlier lane;
+/// the integrator's ruling of 2026-11-18.)
 fn keepableResponse(record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult, final_url: []const u8) bool {
     if (record.post_body != null) return false;
     if (record.srcdoc != null or record.javascript_url != null) return false;
-    if (response.is_network_error or response.status != 200) return false;
+    if (response.is_network_error) return false;
     const scheme = navigate_steps.schemeOf(final_url);
     return std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
 }
@@ -7997,6 +8017,18 @@ fn restoreFromBfcache(integration: *IFrameIntegration, bc: *html_core.BrowsingCo
     // events queued, to fire after pageshow) - the navigation API's part,
     // which its Navigation object does (dom.navigation_api.reactivate).
     dom_module.navigation_api.reactivate(page.window);
+    // And each of its frames' documents, reactivated with it (bfcache phase
+    // C): each frame's navigation API takes its entry list from the history
+    // as it is now - a push of the top-level page while it was cached pruned
+    // the frame's forward entries, which the cached frame did not hear of
+    // (Navigation's entriesRemovedHook skips a kept page) - and the entries
+    // that went fire dispose after its pageshow. Chrome 157 and Safari 27.2
+    // (and Firefox nightly) dispose them then: navigation-api/
+    // navigation-history-entry/entries-after-bfcache-in-iframe.html.
+    for (page.frames) |frame| {
+        if (runtime.SlabAllocator.generationOf(frame.window) != frame.window_generation) continue;
+        dom_module.navigation_api.reactivate(frame.window);
+    }
 
     // Step 9: "reactivate" - its tasks and timers resume, then pageshow.
     dom_module.bfcache.reactivate(&page);
@@ -8795,8 +8827,13 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
         if (!createChildNavigable(instance)) return;
     }
 
-    // The navigable's target name is the element's name attribute, and the
-    // parent's global reaches it by that name.
+    // The navigable's target name is the element's name attribute. The
+    // parent's global reaches it by that name through its named properties
+    // object (WindowProperties: Window's named getter answers its
+    // document-tree child navigables' target names), never an own property:
+    // `Object.getOwnPropertyDescriptor(window, name)` is undefined in Chrome,
+    // Firefox and Safari, and the name goes when the navigable does
+    // (html/browsers/the-window-object/length-attribute.window.js).
     const name: ?[]const u8 = blk: {
         if (internal.name_attr) |n| break :blk n;
         if (interfaces.Element.call_getAttribute(instance, runtime.DOMString.initInterned("name")) catch null) |attr| break :blk attr.asSlice();
@@ -8807,7 +8844,6 @@ fn iframePostConnectionSteps(node: *NodeBase) void {
             const owned = internal.allocator.dupe(u8, n) catch return;
             defer internal.allocator.free(owned);
             internal.integration.setName(owned) catch {};
-            dom_module.navigables.registerNamedProperty(internal.integration, owned);
         }
     }
 

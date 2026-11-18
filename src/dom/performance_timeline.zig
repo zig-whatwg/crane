@@ -1523,6 +1523,14 @@ pub fn createNavigationTimingEntry(realm: runtime.Context, record: NavigationRec
     // start whenever the response's body was still arriving when the
     // document was made - 8 of 50 runs of that file (lane flaky4).
     if (service_worker_timing) |sw| timing.fetch_start = sw.fetch_event_dispatch_time;
+    // A body still arriving has no end yet: Fetch sets the timing info's end
+    // time at the end of the body ("fetch response handover" step 3), so
+    // responseEnd reads 0 until then (`navigationBodyEnded`), as in Chrome
+    // 157 and Safari 27.2 (navigation-timing/nav2-test-response-end-and-
+    // duration-before-during-and-after-load-event.html: 0 while the body
+    // arrives, its end during the load event). The fetch's own timing info
+    // had its end at the response's headers.
+    if (record.body_arriving) timing.response_end = 0;
     // 1-2, 4-11. A new PerformanceNavigationTiming in global's realm.
     // 11. Its not restored reasons (the hook copies them).
     const entry = try impl.create(realm, &timing, record.redirect_count, record.navigation_type, service_worker_timing, record.not_restored_reasons);
@@ -1554,6 +1562,9 @@ pub fn navigationBodyEnded(realm: runtime.Context, encoded: u64, decoded: u64) v
     const entry = timeline.navigation_entry orelse return;
     timing.encoded_body_size = encoded;
     timing.decoded_body_size = decoded;
+    // The body's end is the response's end (Fetch: the timing info's end
+    // time, set at the end of the body).
+    timing.response_end = now(realm) orelse timing.response_end;
     // Out of memory, the entry keeps the sizes it was made with.
     setupResourceTiming(entry, &timing) catch {};
 }

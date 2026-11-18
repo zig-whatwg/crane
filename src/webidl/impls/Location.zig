@@ -1346,6 +1346,9 @@ fn topLevelFragmentNavigation(
     var pending: ?joint_history.SameDocumentNavigation = null;
     if (dom.browser_state.browsingContextOf(window)) |b| {
         if (b.ensureHistoryEntries(&@import("history_documents").infoOf)) |history| {
+            // The entry left keeps the viewport's scroll position ("save
+            // persisted state", JointHistory.saveScrollPosition).
+            history.saveScrollPosition(b.id, interfaces.Window.get_scrollX(window) catch 0, interfaces.Window.get_scrollY(window) catch 0);
             const api_state = destination_state.clone(allocator) catch null;
             pending = history.navigateSameDocument(b.id, url, .null, if (handling == .push) .push else .replace, api_state) catch null;
         } else |_| {}

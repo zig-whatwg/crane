@@ -3513,6 +3513,25 @@ pub const CspRelay = struct {
         return .{ .context = self, .report = relay };
     }
 
+    /// The request's timing reporter: Fetch "report timing" for the worker's
+    /// script request goes to its client's global - the outside settings',
+    /// on the owner's thread - as its CSP violations do. Chrome 157 reports
+    /// none, Firefox 160 and Safari 27.2 put the entry in the owner's
+    /// timeline (resource-timing/initiator-type/workers.html's classic
+    /// worker, resource_nested_dedicated_worker.worker.js: the parent
+    /// worker's).
+    pub fn timingReporter(self: *CspRelay) fetch_mod.internal.TimingReporter {
+        return .{ .context = self, .report = relayTiming };
+    }
+
+    /// On the fetching thread.
+    fn relayTiming(context: *anyopaque, report: *const fetch_mod.internal.TimingReport) void {
+        const self: *CspRelay = @ptrCast(@alignCast(context));
+        const copy = RelayedTiming.create(self.allocator, self.owner, report) catch return;
+        // A closed sink - the owner's loop has ended - drops it.
+        _ = self.sink.post(.{ .run = RelayedTiming.run, .drop = RelayedTiming.drop, .data = copy });
+    }
+
     /// On the fetching thread.
     fn relay(context: *anyopaque, violation: *const fetch_mod.internal.CspViolation) void {
         const self: *CspRelay = @ptrCast(@alignCast(context));
@@ -3589,6 +3608,92 @@ const RelayedViolation = struct {
         if (self.resource == .url) allocator.free(self.resource.url);
         allocator.free(self.sample);
         if (self.location) |l| allocator.free(l.url);
+        allocator.destroy(self);
+    }
+};
+
+/// A copy of a timing report, from the fetching thread to the owner's: its
+/// timing info (server timing headers included), URL, cache state and body
+/// info strings, all owned.
+const RelayedTiming = struct {
+    allocator: Allocator,
+    owner: OwnerWorker,
+    timing_info: fetch_mod.internal.FetchTimingInfo,
+    url: []u8,
+    initiator_type: fetch_mod.internal.InitiatorType,
+    cache_state: []u8,
+    body_info: fetch_mod.internal.ResponseBodyInfo,
+    content_type: []u8,
+    content_encoding: []u8,
+    response_status: u16,
+    timing_allow_passed: bool,
+
+    fn create(allocator: Allocator, owner: OwnerWorker, report: *const fetch_mod.internal.TimingReport) !*RelayedTiming {
+        var timing_info = report.timing_info.*;
+        timing_info.allocator = allocator;
+        timing_info.server_timing_headers = .empty;
+        errdefer timing_info.deinit();
+        for (report.timing_info.server_timing_headers.items) |header| try timing_info.addServerTimingHeader(header);
+        const url = try allocator.dupe(u8, report.url);
+        errdefer allocator.free(url);
+        const cache_state = try allocator.dupe(u8, report.cache_state);
+        errdefer allocator.free(cache_state);
+        const content_type = try allocator.dupe(u8, report.body_info.content_type);
+        errdefer allocator.free(content_type);
+        const content_encoding = try allocator.dupe(u8, report.body_info.content_encoding);
+        errdefer allocator.free(content_encoding);
+        const self = try allocator.create(RelayedTiming);
+        self.* = .{
+            .allocator = allocator,
+            .owner = owner,
+            .timing_info = timing_info,
+            .url = url,
+            .initiator_type = report.initiator_type,
+            .cache_state = cache_state,
+            .body_info = report.body_info,
+            .content_type = content_type,
+            .content_encoding = content_encoding,
+            .response_status = report.response_status,
+            .timing_allow_passed = report.timing_allow_passed,
+        };
+        self.body_info.content_type = content_type;
+        self.body_info.content_encoding = content_encoding;
+        return self;
+    }
+
+    /// On the owner's thread: "mark resource timing" for the global of the
+    /// realm the worker object lives in, while it is the object it was.
+    fn run(data: ?*anyopaque) void {
+        const self: *RelayedTiming = @ptrCast(@alignCast(data.?));
+        defer self.destroy();
+        const worker = self.owner.live() orelse return;
+        const realm = worker.ctx.getRealm() orelse return;
+        const global: *runtime.Instance = @ptrCast(@alignCast(realm.global_object orelse return));
+        var reporter = @import("dom").performance_timeline.GuardedTimingReporter.forGlobal(global);
+        const report = reporter.reporter();
+        report.report(report.context, &.{
+            .timing_info = &self.timing_info,
+            .url = self.url,
+            .initiator_type = self.initiator_type,
+            .cache_state = self.cache_state,
+            .body_info = self.body_info,
+            .response_status = self.response_status,
+            .timing_allow_passed = self.timing_allow_passed,
+        });
+    }
+
+    /// Never run: its owner's loop has ended. Any thread.
+    fn drop(data: ?*anyopaque) void {
+        destroy(@ptrCast(@alignCast(data.?)));
+    }
+
+    fn destroy(self: *RelayedTiming) void {
+        const allocator = self.allocator;
+        self.timing_info.deinit();
+        allocator.free(self.url);
+        allocator.free(self.cache_state);
+        allocator.free(self.content_type);
+        allocator.free(self.content_encoding);
         allocator.destroy(self);
     }
 };

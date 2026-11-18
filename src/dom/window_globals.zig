@@ -69,6 +69,12 @@ pub const Implementation = struct {
     /// make it with the Window), or null: none made yet, or torn down. A
     /// read: it never makes one. BORROWED: the Window's, for the call.
     location: *const fn (window: *runtime.Instance) ?*runtime.Instance,
+    /// CSSOM View "perform a scroll" of `window`'s viewport to the scroll
+    /// position (`x`, `y`): what "scroll to the beginning of the document"
+    /// (HTML's scroll to the fragment and process scroll behavior) does
+    /// with (0, 0). Instant: Crane lays nothing out, so no scrolling area
+    /// bounds the position beyond its origin (as Window's scroll()).
+    perform_scroll: ?*const fn (window: *runtime.Instance, x: f64, y: f64) void = null,
 };
 
 /// What "Location-object navigate" asks of the navigable's engine.
@@ -164,6 +170,14 @@ pub fn adoptBrowsingContext(window: *runtime.Instance, browsing_context: *anyopa
 pub fn location(window: *runtime.Instance) ?*runtime.Instance {
     const impl = hooks.read().window orelse return null;
     return impl.location(window);
+}
+
+/// See Implementation.perform_scroll. With no Window installed there is no
+/// viewport to scroll.
+pub fn performScroll(window: *runtime.Instance, x: f64, y: f64) void {
+    const impl = hooks.read().window orelse return;
+    const perform = impl.perform_scroll orelse return;
+    perform(window, x, y);
 }
 
 /// See Implementation.swap_current_event. With no Window installed nothing

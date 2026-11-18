@@ -668,7 +668,6 @@ fn ensureNavigable(content: *Content) bool {
     if (attributeValue(element, "name")) |name| {
         if (name.len > 0) {
             integration.setName(name) catch {};
-            dom.navigables.registerNamedProperty(integration, name);
         }
     }
     return true;

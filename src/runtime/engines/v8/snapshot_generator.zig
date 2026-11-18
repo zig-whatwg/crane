@@ -174,12 +174,14 @@ pub fn main(init: std.process.Init) !void {
 
     // Add indexed property handlers for frames[index] access (WindowProxy behavior)
     // These callbacks are registered in external_references via context_manager.registerExternalReferences()
-    v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerFull(
+    v8.ffi.v8_ObjectTemplate_SetIndexedPropertyHandlerWithDefiner(
         global_template,
         context_manager.windowIndexedPropertyGetter,
         null, // setter - not needed for read-only frames access
         context_manager.windowIndexedPropertyQuery,
+        context_manager.windowIndexedPropertyDeleter, // WindowProxy [[Delete]] for an index
         context_manager.windowIndexedPropertyEnumerator,
+        null, // definer - not needed
         null, // descriptor - not needed
     );
     log(allocator, io, "  Global template configured with indexed handlers for frames[index]\\n", .{});
