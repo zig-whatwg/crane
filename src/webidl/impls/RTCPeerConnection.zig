@@ -16,11 +16,25 @@ pub const ImplError = error{
     NotImplemented,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
+/// The internal slots WebRTC 1.0 4.4.1 gives the object and this engine
+/// models: those "close the connection" sets (4.4.1.6). This engine runs no
+/// ICE agent and creates no transceiver, data channel or transport, so
+/// nothing else moves them: an open connection stays in its initial states.
+pub const InternalState = struct {
+    allocator: std.mem.Allocator,
+    /// [[IsClosed]], initially false.
+    is_closed: bool = false,
+    /// [[SignalingState]], initially "stable".
+    signaling_state: enums.RTCSignalingState = ._stable_,
+    /// [[IceConnectionState]], initially "new".
+    ice_connection_state: enums.RTCIceConnectionState = ._new_,
+    /// [[ConnectionState]], initially "new".
+    connection_state: enums.RTCPeerConnectionState = ._new_,
+};
+
+fn getInternal(instance: *runtime.Instance) ?*InternalState {
+    return instance.getState(State).own._internal;
+}
 
 /// Initialize instance (creates the instance)
 pub fn init(
@@ -30,17 +44,30 @@ pub fn init(
     ctx: runtime.Context,
 ) !*runtime.Instance {
     const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
+    errdefer runtime.Instance.deinit(instance);
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .allocator = allocator };
+    instance.getState(State).own._internal = internal;
     return instance;
 }
 
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     // It is no longer one of its Browser's peer connections.
+    forgetConnection(instance);
+    const state = instance.getState(State);
+    if (state.own._internal) |internal| {
+        state.own._internal = null;
+        internal.allocator.destroy(internal);
+    }
+    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+}
+
+/// `instance` is no longer one of its Browser's live peer connections.
+fn forgetConnection(instance: *runtime.Instance) void {
     if (instance.ctx.browserScope()) |scope| {
         if (scope.existing(LiveConnections)) |live| live.remove(instance);
     }
-    // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
 /// The hooks this type owns (src/dom), installed once, at process start, by
@@ -89,9 +116,8 @@ const LiveConnections = struct {
 /// back/forward cache, with Chromium's reason "rtc" (kWebRTC). Chrome 155 and
 /// Firefox 158 keep such a page out and Safari 27 caches it
 /// (webrtc/back-forward-cache-with-open-webrtc-connection.https.window.js:
-/// PASS, PASS, FAIL on wpt.fyi 23b0b89b1a) - the majority. Crane's
-/// RTCPeerConnection cannot be closed yet (close() is not implemented), so
-/// every one counts; one that could be would leave the page cacheable, as
+/// PASS, PASS, FAIL on wpt.fyi 23b0b89b1a) - the majority. A closed one
+/// (close()) is no longer counted: it leaves the page cacheable, as
 /// back-forward-cache-with-closed-webrtc-connection expects in all three.
 fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
     const scope = realm.browserScope() orelse return null;
@@ -102,7 +128,8 @@ fn blocksBfcache(realm: runtime.Context) ?@import("dom").bfcache.Blocked {
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, configuration: webidl.Opt(dictionaries.RTCConfiguration)) !*runtime.Instance {
-    // Create instance through init()
+    // Create instance through init(): the internal slots in their initial
+    // states (WebRTC 4.4.1.1 constructor steps).
     const instance = try init(ctx.allocator, State, &RTCPeerConnection.vtable, ctx);
     errdefer deinit(instance);
 
@@ -152,28 +179,31 @@ pub fn get_pendingRemoteDescription(instance: *runtime.Instance) anyerror!?*runt
     return null;
 }
 
-/// Getter for signalingState
+/// Getter for signalingState: "return the value of [[SignalingState]]".
 pub fn get_signalingState(instance: *runtime.Instance) anyerror!enums.RTCSignalingState {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    return internal.signaling_state;
 }
 
-/// Getter for iceGatheringState
+/// Getter for iceGatheringState: the aggregate of the connection's
+/// RTCIceTransports' gathering states - "new" with none (4.4.4), and this
+/// engine creates none.
 pub fn get_iceGatheringState(instance: *runtime.Instance) anyerror!enums.RTCIceGatheringState {
     _ = instance;
-    return error.NotImplemented;
+    return ._new_;
 }
 
-/// Getter for iceConnectionState
+/// Getter for iceConnectionState: "return the value of
+/// [[IceConnectionState]]".
 pub fn get_iceConnectionState(instance: *runtime.Instance) anyerror!enums.RTCIceConnectionState {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    return internal.ice_connection_state;
 }
 
-/// Getter for connectionState
+/// Getter for connectionState: "return the value of [[ConnectionState]]".
 pub fn get_connectionState(instance: *runtime.Instance) anyerror!enums.RTCPeerConnectionState {
-    _ = instance;
-    return error.NotImplemented;
+    const internal = getInternal(instance) orelse return error.InvalidState;
+    return internal.connection_state;
 }
 
 /// Getter for canTrickleIceCandidates
@@ -448,10 +478,37 @@ pub fn call_createAnswer(instance: *runtime.Instance, options: webidl.Opt(dictio
     return error.NotImplemented;
 }
 
-/// Operation: close
+/// Operation: close (WebRTC 1.0 4.4.2): "close the connection" with this
+/// and false.
 pub fn call_close(instance: *runtime.Instance) anyerror!void {
-    _ = instance;
-    return error.NotImplemented;
+    closeTheConnection(instance);
+}
+
+/// WebRTC 1.0 4.4.1.6 "close the connection" given `connection` (its
+/// `disappear` argument reaches only step 4's transceivers, of which this
+/// engine creates none).
+fn closeTheConnection(connection: *runtime.Instance) void {
+    const internal = getInternal(connection) orelse return;
+    // 1. "If connection.[[IsClosed]] is true, abort these steps."
+    if (internal.is_closed) return;
+    // 2. "Set connection.[[IsClosed]] to true."
+    internal.is_closed = true;
+    // 3. "Set connection.[[SignalingState]] to "closed". This does not fire
+    // any event."
+    internal.signaling_state = ._closed_;
+    // 4-9. The transceivers to stop, the data channels to close, the SCTP
+    // association, the DTLS transports, the ICE agent and its transports:
+    // this engine creates none of them (InternalState says so), so each step
+    // has nothing to act on.
+    // 10. "Set connection.[[IceConnectionState]] to "closed". This does not
+    // fire any event."
+    internal.ice_connection_state = ._closed_;
+    // 11. "Set connection.[[ConnectionState]] to "closed". This does not fire
+    // any event."
+    internal.connection_state = ._closed_;
+    // A closed connection no longer keeps its page out of the back/forward
+    // cache (blocksBfcache).
+    forgetConnection(connection);
 }
 
 /// Operation: getTransceivers
