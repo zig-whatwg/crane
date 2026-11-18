@@ -56,6 +56,15 @@ of what was filed under the user's account, so each can be re-checked (`gh issue
 | wpt#65066 | PR | 2026-11-11 | permissions/worker.https.html undeclared promise | MERGED 2026-11-12 (65989351d1) |
 | wpt#65067 | issue | 2026-11-11 | paste_text_with_text_transform requires window.testRunner | open, 1 comment |
 | wpt#65105 | PR | 2026-11-12 | dynamic-import microtasks: unique module specifier (fixes #64475) | open |
+| wpt#65399 | issue | 2026-11-18 | template-for-move-cross-document: `after.previousSibling` is the script, not "A" | open |
+| wpt#65400 | issue | 2026-11-18 | fullscreen document-fullscreen-enabled-*-allowfullscreen*.sub.html (3 files): frame is same-origin | open |
+| wpt#65401 | issue | 2026-11-18 | event-handler-attributes-no-bc: `assert_false(window.ran)` on a never-set property | open |
+| wpt#65402 | issue | 2026-11-18 | write-active-document: expects writes to an inactive document ignored | open |
+| wpt#65403 | issue | 2026-11-18 | template-for-only-html-001: resources/template-for.xhtml left behind in partial-updates/tentative | open |
+| wpt#65404 | issue | 2026-11-18 | promise-resolution-order: `src="   "` fetches the base URL, never fires error | open |
+| wpt#65405 | issue | 2026-11-18 | close_script_defer: `t.step` instead of `t.step_func` | open |
+| wpt#65406 | issue | 2026-11-18 | not-restored-reasons/fetch.window.js: listener parameter shadows wavURL, long-wav.py never fetched | open |
+| wpt#65407 | issue | 2026-11-18 | reload-service-worker-fetch-event: no `.https`, worker calls `transitionWhile()` | open |
 | wpt.fyi#5128 | issue | 2026-09-30 | Crane test runner registration request | open |
 | w3c/IndexedDB#510 | spec issue | 2026-10-03 | IDBKeyRange.bound() equal keys with an open bound | open, 3 comments |
 | w3c/FileAPI#226 | spec issue | 2026-10-04 | Blob/File serialization drops type | open |
