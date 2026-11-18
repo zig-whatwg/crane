@@ -96,26 +96,43 @@ pub fn install(element: []const u8, steps: Steps) void {
 /// element in `namespace`. The strings live for the process. Idempotent per
 /// change step: installing the same `steps.change` again for the same
 /// (namespace, attribute) updates its reader; a different change step is
-/// another owner's, and both run.
+/// another owner's, and both run. One key's owners are kept adjacent, so a
+/// change stops looking at the first entry after them (`runForAttribute`).
 pub fn installForAttribute(namespace: []const u8, attribute_local_name: []const u8, steps: AttributeSteps) void {
     const tables = entries.installing();
-    for (tables.attributes.mutableSlice()) |*entry| {
-        if (std.mem.eql(u8, entry.attribute, attribute_local_name) and std.mem.eql(u8, entry.element_namespace, namespace) and entry.steps.change == steps.change) {
+    var last_of_key: ?usize = null;
+    for (tables.attributes.mutableSlice(), 0..) |*entry, index| {
+        if (!std.mem.eql(u8, entry.attribute, attribute_local_name) or !std.mem.eql(u8, entry.element_namespace, namespace)) continue;
+        if (entry.steps.change == steps.change) {
             if (!std.meta.eql(entry.steps, steps)) entry.steps = steps;
             return;
         }
+        last_of_key = index;
     }
     tables.attributes.append(.{ .element_namespace = namespace, .attribute = attribute_local_name, .steps = steps });
+    // Another owner's steps for the key: move the new entry right after them.
+    if (last_of_key) |index| {
+        const all = tables.attributes.mutableSlice();
+        std.mem.rotate(AttributeEntry, all[index + 1 ..], all.len - index - 2);
+    }
 }
 
 /// HTML 2.5.6's nonce step applies to both HTML and SVG elements. Compare
 /// the attribute's length and bytes FIRST: ordinary attributes do no
 /// namespace lookup, state lookup or allocation in this hook.
 pub fn runForAttribute(element: *runtime.Instance, element_namespace: []const u8, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
-    for (entries.read().attributes.slice()) |entry| {
+    const all = entries.read().attributes.slice();
+    for (all, 0..) |entry, index| {
         if (!std.mem.eql(u8, entry.attribute, local_name)) continue;
         if (!std.mem.eql(u8, entry.element_namespace, element_namespace)) continue;
         entry.steps.change(element, local_name, old_value, value, namespace);
+        // The key's other owners follow it (installForAttribute): run them,
+        // and look no further.
+        for (all[index + 1 ..]) |next| {
+            if (!std.mem.eql(u8, next.attribute, local_name) or !std.mem.eql(u8, next.element_namespace, element_namespace)) break;
+            next.steps.change(element, local_name, old_value, value, namespace);
+        }
+        return;
     }
 }
 
@@ -210,9 +227,13 @@ test "two owners' steps for one (namespace, attribute) both run, each installed 
         }
     };
     installForAttribute("urn:a", "href", .{ .change = &Test.one });
+    installForAttribute("urn:a", "nonce", .{ .change = &Test.one });
     installForAttribute("urn:a", "href", .{ .change = &Test.two });
     installForAttribute("urn:a", "href", .{ .change = &Test.one });
-    try std.testing.expectEqual(@as(usize, 2), entries.get().attributes.len);
+    try std.testing.expectEqual(@as(usize, 3), entries.get().attributes.len);
+    // The key's owners are adjacent, the other key after them.
+    try std.testing.expectEqualStrings("href", entries.get().attributes.slice()[1].attribute);
+    try std.testing.expectEqualStrings("nonce", entries.get().attributes.slice()[2].attribute);
     var element: runtime.Instance = undefined;
     runForAttribute(&element, "urn:a", "href", null, "x", null);
     try std.testing.expectEqual(@as(usize, 1), Test.first);

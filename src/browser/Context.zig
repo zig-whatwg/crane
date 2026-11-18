@@ -472,9 +472,12 @@ pub fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: 
     // function's own, not the window whose setTimeout scheduled it
     // (frames[0].setTimeout(new frames[1].Function(...)) reports at frames[1]:
     // html/webappapis/timers/settimeout-cross-realm-callback-report-exception
-    // passes in Chrome, Firefox and Safari).
-    const report_realm = callbackRealm(callback) orelse realm;
-    const completion = engine.invokeCallbackFunction(realm, &function, .global_this, args, .{ .report = windowReporter(report_realm) }) catch |err| {
+    // passes in Chrome, Firefox and Safari). The function's realm is looked
+    // up only when there is something to report: the engine calls the
+    // reporter synchronously, inside the invocation, so the borrowed callback
+    // is still alive then.
+    var lazy: CallbackRealmReport = .{ .realm = realm, .callback = callback };
+    const completion = engine.invokeCallbackFunction(realm, &function, .global_this, args, .{ .report = .{ .report = CallbackRealmReport.report, .host = &lazy } }) catch |err| {
         log.debug("a timer or animation frame callback was not invoked: {}", .{err});
         return;
     };
@@ -482,6 +485,21 @@ pub fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: 
         .normal, .throw => |value| value.release(),
     }
 }
+
+/// The reporter of a timer or frame callback's exception: "report an
+/// exception ... for realm's global object", realm being the callback's
+/// associated realm (`callbackRealm`), else the realm it was read in.
+const CallbackRealmReport = struct {
+    realm: runtime.Context,
+    /// BORROWED for the invocation's duration.
+    callback: runtime.JSValue,
+
+    fn report(host: ?*anyopaque, info: *const engine.ErrorInfo) void {
+        const self: *CallbackRealmReport = @ptrCast(@alignCast(host orelse return));
+        const report_realm = callbackRealm(self.callback) orelse self.realm;
+        reportToWindow(realmWindow(report_realm), info);
+    }
+};
 
 /// A callback's associated realm (WebIDL: a function's realm is its
 /// [[Realm]]), when the engine knows it exactly and it is a Window's; null
