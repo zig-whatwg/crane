@@ -63,11 +63,11 @@ const Destination = struct { x: f64, y: f64, w: ?f64, h: ?f64 };
 /// region or compositing operator other than the defaults (identity, 1.0,
 /// none, none, source-over), whose effects are exactly a source-over copy.
 ///
-/// Not modelled, stated: drawing at a different size, or at a fractional
-/// position, needs the spec's filtering ("the user agent may use any
-/// filtering algorithm ... when scaling up ... nearest-neighbor" only with
-/// imageSmoothingEnabled false) - NotSupportedError, until the context has
-/// a resampler (TODO). Video, ImageBitmap, OffscreenCanvas, VideoFrame and
+/// Drawing at a different size, or at a fractional position, resamples
+/// (`paintScaled`): bilinear filtering, imageSmoothingEnabled's default -
+/// "the user agent should attempt to apply a smoothing algorithm to the
+/// image data when it is scaled" (the attribute is not modelled yet, so it is
+/// always true here). Video, ImageBitmap, OffscreenCanvas, VideoFrame and
 /// SVG image sources are not implemented.
 fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, given_source: ?[4]f64, given_destination: Destination) anyerror!void {
     const bitmap = dom.image_sources.outputBitmap(instance) orelse return error.NotImplemented;
@@ -123,10 +123,13 @@ fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, giv
     }
     // 5. "If one of the sw or sh arguments is zero, then return."
     if (sw == 0 or sh == 0) return;
-    // TODO: a resampler. Only a same-size copy at whole-pixel positions is
-    // painted; anything else would need the spec's filtering.
-    if (dw != sw or dh != sh) return error.NotSupportedError;
-    if (!isWhole(sx) or !isWhole(sy) or !isWhole(sw) or !isWhole(sh) or !isWhole(dx) or !isWhole(dy)) return error.NotSupportedError;
+    // A same-size copy at whole-pixel positions is a pixel copy; anything
+    // else is resampled.
+    if (dw != sw or dh != sh or !isWhole(sx) or !isWhole(sy) or !isWhole(sw) or !isWhole(sh) or !isWhole(dx) or !isWhole(dy)) {
+        if (!(try paintScaled(bitmap, source_image, .{ .x = sx, .y = sy, .w = sw, .h = sh }, .{ .x = dx, .y = dy, .w = dw, .h = dh }))) return;
+        if (!source_image.origin_clean) bitmap.origin_clean = false;
+        return;
+    }
     // "When the source rectangle is outside the source image, the source
     // rectangle must be clipped to the source image and the destination
     // rectangle must be clipped in the same proportion" - at scale 1, by the
@@ -161,6 +164,122 @@ fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, giv
     // 7. "If image is not origin-clean, then set the
     //    CanvasRenderingContext2D's origin-clean flag to false."
     if (!source_image.origin_clean) bitmap.origin_clean = false;
+}
+
+const Rect = struct { x: f64, y: f64, w: f64, h: f64 };
+
+/// Step 6 for a scaled or fractional draw: the source rectangle `source`
+/// (positive size) painted onto the destination rectangle `destination`
+/// (positive size). "When the source rectangle is outside the source image,
+/// the source rectangle must be clipped to the source image and the
+/// destination rectangle must be clipped in the same proportion." Each
+/// output pixel whose center lies in the destination rectangle takes the
+/// source sampled at the matching point, bilinearly ("may use any filtering
+/// algorithm ... for example bilinear interpolation"), never reading outside
+/// the clipped source rectangle; edge pixels are not antialiased. False
+/// when nothing is left to paint.
+fn paintScaled(bitmap: *dom.image_sources.OutputBitmap, source_image: dom.image_sources.ImageSource, given_source: Rect, given_destination: Rect) !bool {
+    var source = given_source;
+    var destination = given_destination;
+    const scale_x = destination.w / source.w;
+    const scale_y = destination.h / source.h;
+    const image_width: f64 = @floatFromInt(source_image.width);
+    const image_height: f64 = @floatFromInt(source_image.height);
+    // Clip the source rectangle to the image, the destination in proportion.
+    if (source.x < 0) {
+        destination.x -= source.x * scale_x;
+        destination.w += source.x * scale_x;
+        source.w += source.x;
+        source.x = 0;
+    }
+    if (source.y < 0) {
+        destination.y -= source.y * scale_y;
+        destination.h += source.y * scale_y;
+        source.h += source.y;
+        source.y = 0;
+    }
+    if (source.x + source.w > image_width) {
+        const over = source.x + source.w - image_width;
+        source.w -= over;
+        destination.w -= over * scale_x;
+    }
+    if (source.y + source.h > image_height) {
+        const over = source.y + source.h - image_height;
+        source.h -= over;
+        destination.h -= over * scale_y;
+    }
+    if (source.w <= 0 or source.h <= 0 or destination.w <= 0 or destination.h <= 0) return false;
+    // The source pixels the filter may read: those the clipped source
+    // rectangle touches.
+    const first_column: i64 = @intFromFloat(@floor(source.x));
+    const last_column: i64 = @as(i64, @intFromFloat(@ceil(source.x + source.w))) - 1;
+    const first_row: i64 = @intFromFloat(@floor(source.y));
+    const last_row: i64 = @as(i64, @intFromFloat(@ceil(source.y + source.h))) - 1;
+    // The output pixels whose centers lie in the destination rectangle,
+    // within the bitmap.
+    const bitmap_width: f64 = @floatFromInt(bitmap.width);
+    const bitmap_height: f64 = @floatFromInt(bitmap.height);
+    const x_begin = @max(@ceil(destination.x - 0.5), 0);
+    const x_end = @min(@ceil(destination.x + destination.w - 0.5), bitmap_width);
+    const y_begin = @max(@ceil(destination.y - 0.5), 0);
+    const y_end = @min(@ceil(destination.y + destination.h - 0.5), bitmap_height);
+    if (x_begin >= x_end or y_begin >= y_end) return false;
+    // A canvas drawn onto itself is read from a copy (paint's rule).
+    var pixels = source_image.pixels;
+    var copied: ?[]u8 = null;
+    defer if (copied) |c| bitmap.allocator.free(c);
+    if (pixels.ptr == bitmap.pixels.ptr) {
+        const c = try bitmap.allocator.dupe(u8, pixels);
+        copied = c;
+        pixels = c;
+    }
+    const stride: usize = @as(usize, source_image.width) * 4;
+    var y = y_begin;
+    while (y < y_end) : (y += 1) {
+        // The source point under this pixel's center, in pixel-center
+        // coordinates.
+        const v = source.y + (y + 0.5 - destination.y) / scale_y - 0.5;
+        const row0_f = @floor(v);
+        const fy = v - row0_f;
+        const row0 = std.math.clamp(@as(i64, @intFromFloat(row0_f)), first_row, last_row);
+        const row1 = std.math.clamp(@as(i64, @intFromFloat(row0_f)) + 1, first_row, last_row);
+        var x = x_begin;
+        while (x < x_end) : (x += 1) {
+            const u = source.x + (x + 0.5 - destination.x) / scale_x - 0.5;
+            const column0_f = @floor(u);
+            const fx = u - column0_f;
+            const column0 = std.math.clamp(@as(i64, @intFromFloat(column0_f)), first_column, last_column);
+            const column1 = std.math.clamp(@as(i64, @intFromFloat(column0_f)) + 1, first_column, last_column);
+            const top_left = premultipliedAt(pixels, stride, source_image.alpha, column0, row0);
+            const top_right = premultipliedAt(pixels, stride, source_image.alpha, column1, row0);
+            const bottom_left = premultipliedAt(pixels, stride, source_image.alpha, column0, row1);
+            const bottom_right = premultipliedAt(pixels, stride, source_image.alpha, column1, row1);
+            var sample: [4]u8 = undefined;
+            for (&sample, 0..) |*channel, i| {
+                const top = @as(f64, @floatFromInt(top_left[i])) * (1 - fx) + @as(f64, @floatFromInt(top_right[i])) * fx;
+                const bottom = @as(f64, @floatFromInt(bottom_left[i])) * (1 - fx) + @as(f64, @floatFromInt(bottom_right[i])) * fx;
+                channel.* = @intFromFloat(@round(std.math.clamp(top * (1 - fy) + bottom * fy, 0, 255)));
+            }
+            const to: usize = (@as(usize, @intFromFloat(y)) * bitmap.width + @as(usize, @intFromFloat(x))) * 4;
+            dom.image_sources.sourceOver(bitmap.pixels[to..][0..4], sample);
+        }
+    }
+    return true;
+}
+
+/// The source pixel at (`column`, `row`), premultiplied.
+fn premultipliedAt(pixels: []const u8, stride: usize, alpha: @FieldType(dom.image_sources.ImageSource, "alpha"), column: i64, row: i64) [4]u8 {
+    const at: usize = @as(usize, @intCast(row)) * stride + @as(usize, @intCast(column)) * 4;
+    const s = pixels[at..][0..4];
+    return switch (alpha) {
+        .premultiplied => s.*,
+        .straight => .{
+            dom.image_sources.premultiply(s[0], s[3]),
+            dom.image_sources.premultiply(s[1], s[3]),
+            dom.image_sources.premultiply(s[2], s[3]),
+            s[3],
+        },
+    };
 }
 
 fn isWhole(value: f64) bool {
