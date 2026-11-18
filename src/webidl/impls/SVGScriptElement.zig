@@ -10,8 +10,9 @@
 //!
 //! This impl keeps the element's script element state (parser-inserted,
 //! already started), reached through the dom.script_elements hook, and runs
-//! HTML's triggers for preparing it: becoming connected, and its children
-//! changing while connected.
+//! HTML's triggers for preparing it: becoming connected, its children
+//! changing while connected, and its URL attribute being set where it had
+//! none.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -63,6 +64,8 @@ pub fn installHooks() void {
     // children changing: installed before any SVG script exists.
     dom_module.script_elements.installSvg(.{ .flags = &flagsOf });
     dom_module.cloning_steps.install(&cloningSteps);
+    // HTML's third trigger, for its URL attribute: href or xlink:href.
+    dom_module.attribute_change_steps.installForAttribute(svg_namespace, "href", .{ .change = &hrefChangeSteps });
     // Its states no exit reached - orphaned scripts' - at its Browser's end.
     dom_module.teardown_sweeps.install(.script_elements, &sweepRemaining);
 }
@@ -160,6 +163,32 @@ fn svgScriptOf(node: *NodeBase) ?*runtime.Instance {
 fn insertionSteps(node: *NodeBase) void {
     const instance = svgScriptOf(node) orelse return;
     @import("html").script_execution.svgScriptInsertionOrChildrenChanged(instance.ctx.allocator, instance);
+}
+
+const svg_namespace = "http://www.w3.org/2000/svg";
+const xlink_namespace = "http://www.w3.org/1999/xlink";
+
+/// HTML 4.12.1.1: "When a script element el that is not parser-inserted
+/// experiences one of the events listed in the following list, the user
+/// agent must immediately prepare the script element: ... el has a src
+/// attribute set where previously the element had no src attribute" - for an
+/// SVG script, its URL attribute: an href, or the deprecated xlink:href, set
+/// where it had neither (SVG 2 §15.2). An empty parsed SVG script is not
+/// parser-inserted after its end tag (prepare step 6 returns before step 14
+/// restores the flag), so setting its href runs it
+/// (execution-timing/146-href.html: Chrome 157, Firefox 160, Safari 27.2).
+fn hrefChangeSteps(element: *runtime.Instance, local_name: []const u8, old_value: ?[]const u8, value: ?[]const u8, namespace: ?[]const u8) void {
+    _ = local_name;
+    if (Registry.get(element) == null) return;
+    if (old_value != null or value == null) return;
+    // The URL attribute is href in no namespace or in the XLink namespace.
+    if (namespace) |ns| if (!std.mem.eql(u8, ns, xlink_namespace)) return;
+    // "where previously the element had no" URL attribute: the other one
+    // must be absent too.
+    const data = dom_module.element_data.of(element) orelse return;
+    const other_namespace: ?[]const u8 = if (namespace == null) xlink_namespace else null;
+    if (data.findAttribute(other_namespace, "href") != null) return;
+    @import("html").script_execution.svgScriptInsertionOrChildrenChanged(element.ctx.allocator, element);
 }
 
 /// HTML's script children changed steps: "1. If the script element is not

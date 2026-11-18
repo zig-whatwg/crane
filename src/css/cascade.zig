@@ -183,6 +183,11 @@ pub const Context = struct {
     /// The element's computed display is blockified whatever its parent: an
     /// HTML legend (adjust(), golden rule 2).
     blockify_display: bool = false,
+    /// Position 4 §3.1: the element is in its node document's top layer -
+    /// or, with `pseudo` "backdrop", the originating element is. The
+    /// adjustments apply while the element is "rendered in the top layer"
+    /// (§3.3): its overlay computes to auto as well (adjust()).
+    top_layer: bool = false,
     /// CSS Color Adjustment 1 2.1, the page color scheme: the used color
     /// scheme of the page's supported color schemes - an element whose
     /// color-scheme is `normal` has it.
@@ -2257,6 +2262,30 @@ const Builder = struct {
     /// The adjustments between computed values.
     fn adjust(self: *Builder) Allocator.Error!void {
         const s = self.style;
+        // Position 4 §3.1 "Top Layer Styling", for an element rendered in
+        // the top layer (§3.3: in it, with overlay auto) and its ::backdrop:
+        // "If its specified display property is contents, it computes to
+        // block. If its specified position property is not absolute or
+        // fixed, it computes to absolute." (Blink StyleAdjuster::
+        // AdjustStyleForTopLayer; dialog top-layer-position.html passes in
+        // Chrome 157, Firefox 160, Safari 27.2, fullscreen-display-contents
+        // in Chrome and Firefox - wpt.fyi 6bdc2d37fd.)
+        // Not the root element, and not a display:none box, as Blink's
+        // StyleAdjuster::AdjustComputedStyle (`!is_document_element`, "the
+        // fullscreen.css doesn't apply any style to them"; Gecko's UA sheet
+        // puts only :not(:root):fullscreen in its top layer).
+        const rendered_in_top_layer = self.ctx.top_layer and !self.ctx.is_root and s.display().box != .none and blk: {
+            const overlay = if (self.ctx.pseudo != null)
+                (if (self.ctx.parent) |p| p.keyword(.overlay) else .none)
+            else
+                s.keyword(.overlay);
+            break :blk overlay == .auto;
+        };
+        if (rendered_in_top_layer) {
+            const specified_position = s.keyword(.position);
+            if (specified_position != .absolute and specified_position != .fixed) try s.set(.position, Value.kw(.absolute));
+            if (s.display().box == .contents) try s.set(.display, .{ .display = Display.block_flow });
+        }
         // CSS 2.1 9.7: "if position has the value absolute or fixed, ... the
         // computed value of float is none, and display is set according to
         // the table below" - blockified (Display 4 2.7).
@@ -2660,6 +2689,56 @@ test "blockify_display (a legend) blockifies the computed display, but not conte
     const style = try cascade(.{ .allocator = testing.allocator, .parent = null }, &.{.{ .block = &plain.block, .source = .{ .origin = .author } }});
     defer style.destroy();
     try expectResolved(style, .display, "inline");
+}
+
+test "the top layer (Position 4 3.1): contents computes to block, static and relative to absolute, with overlay auto" {
+    var overlay = try TestBlock.make("overlay: auto !important");
+    defer overlay.deinit();
+    const cases = [_][3][]const u8{
+        .{ "position: static; display: contents", "absolute", "block" },
+        .{ "position: relative; display: inline", "absolute", "block" },
+        .{ "position: sticky", "absolute", "block" },
+        .{ "position: fixed; display: contents", "fixed", "block" },
+        .{ "position: absolute; display: inline-flex", "absolute", "flex" },
+        // Blink leaves a display:none element alone (StyleAdjuster).
+        .{ "display: none", "static", "none" },
+    };
+    for (cases) |case| {
+        var block = try TestBlock.make(case[0]);
+        defer block.deinit();
+        const matched = [_]Matched{
+            .{ .block = &overlay.block, .source = .{ .origin = .user_agent } },
+            .{ .block = &block.block, .source = .{ .origin = .author } },
+        };
+        const style = try cascade(.{ .allocator = testing.allocator, .parent = null, .top_layer = true }, &matched);
+        defer style.destroy();
+        try expectResolved(style, .overlay, "auto");
+        try expectResolved(style, .position, case[1]);
+        try expectResolved(style, .display, case[2]);
+    }
+    // In the top layer but overlay none (its removal requested): no change.
+    var plain = try TestBlock.make("position: relative; display: contents");
+    defer plain.deinit();
+    const outside = try cascade(.{ .allocator = testing.allocator, .parent = null, .top_layer = true }, &.{.{ .block = &plain.block, .source = .{ .origin = .author } }});
+    defer outside.destroy();
+    try expectResolved(outside, .position, "relative");
+    try expectResolved(outside, .display, "contents");
+    // The root element is left alone (Blink: "the fullscreen.css doesn't
+    // apply any style to them").
+    const matched_root = [_]Matched{
+        .{ .block = &overlay.block, .source = .{ .origin = .user_agent } },
+        .{ .block = &plain.block, .source = .{ .origin = .author } },
+    };
+    const root = try cascade(.{ .allocator = testing.allocator, .parent = null, .is_root = true, .top_layer = true }, &matched_root);
+    defer root.destroy();
+    try expectResolved(root, .position, "relative");
+    // ::backdrop: its originating element's overlay decides.
+    const originating = try cascade(.{ .allocator = testing.allocator, .parent = null, .top_layer = true }, &.{.{ .block = &overlay.block, .source = .{ .origin = .user_agent } }});
+    defer originating.destroy();
+    const backdrop = try cascade(.{ .allocator = testing.allocator, .parent = originating, .pseudo = "backdrop", .top_layer = true }, &.{.{ .block = &plain.block, .source = .{ .origin = .author } }});
+    defer backdrop.destroy();
+    try expectResolved(backdrop, .position, "absolute");
+    try expectResolved(backdrop, .display, "block");
 }
 
 test "text values are shared, not leaked" {

@@ -639,6 +639,116 @@ pub fn matchesFullscreenPseudoClass(element: *Instance) bool {
 // The close request (section 4)
 // ============================================================================
 
+// ============================================================================
+// Keyboard locking (section 6)
+// ============================================================================
+
+/// How long the Esc key must be held to exit a keyboard-locked fullscreen:
+/// Fullscreen 6 "user agents that use the Esc key to exit fullscreen use
+/// keyboard lock to prevent immediate exit on key press, and instead require
+/// a long press to exit fullscreen". Firefox's long press is 1.5 s
+/// (dom.fullscreen.keyboard_lock.long_press_interval), measured from the
+/// first Escape keydown to a repeat keydown or the keyup.
+pub const long_press_ms: i64 = 1500;
+
+/// One keyboard's Esc press while a keyboard lock is active: when its first
+/// keydown came (the platform's monotonic clock, ms), until a repeat or the
+/// release decides it. Kept by the keyboard of a top-level traversable
+/// (user_input.Keyboard), as Gecko keeps it on the root's PresShell.
+pub const EscapeHold = struct {
+    first_down_ms: ?i64 = null,
+};
+
+/// What an Esc keydown, repeat or keyup is, given keyboard lock.
+pub const EscapeOutcome = enum {
+    /// No keyboard lock is active: the Esc key is a close request.
+    not_locked,
+    /// A keyboard lock is active and the key has not been held long enough:
+    /// it is no close request - the page gets the key.
+    locked,
+    /// Held for the long press: fullscreen was fully exited.
+    exited,
+};
+
+pub const EscapePhase = enum { down, repeat, up };
+
+/// The Esc key pressed (`down`), auto-repeating (`repeat`) or released
+/// (`up`) with the focus in `document`. A document "has keyboard lock
+/// active when its fullscreen element is not null and the fullscreen
+/// element's keyboard lock flag is set" (section 2); the document asked is
+/// the fullscreen leaf of the top-level traversable's active document - the
+/// innermost document of its chain of fullscreen iframes - as Gecko's
+/// PresShell::EventHandler::MaybeHandleKeyboardEventBeforeDispatch asks
+/// Document::GetFullscreenLeaf (Firefox passes the four keyboard-lock files:
+/// fullscreen/api/document-fullscreen-keyboard-lock-*.window.js and
+/// keyboard-lock-cross-origin-iframe.sub.html).
+pub fn escapeKey(hold: *EscapeHold, document: *Instance, phase: EscapePhase) EscapeOutcome {
+    const top = topLevelDocumentOf(document);
+    const leaf = fullscreenLeafOf(top) orelse {
+        hold.first_down_ms = null;
+        return .not_locked;
+    };
+    if (!keyboardLockActive(leaf)) {
+        hold.first_down_ms = null;
+        return .not_locked;
+    }
+    const now = @import("platform").monotonicMillis();
+    switch (phase) {
+        // A new press: remember when it began; it exits nothing yet.
+        .down => {
+            hold.first_down_ms = now;
+            return .locked;
+        },
+        // Held: a repeat, or the release (for a platform that sends no
+        // repeats), exits once the press has lasted the long press.
+        .repeat, .up => {
+            const first = hold.first_down_ms orelse {
+                if (phase == .repeat) hold.first_down_ms = now;
+                return .locked;
+            };
+            if (phase == .up) hold.first_down_ms = null;
+            if (now - first < long_press_ms) return .locked;
+            hold.first_down_ms = null;
+            fullyExitFullscreen(top);
+            return .exited;
+        },
+    }
+}
+
+/// The innermost document of `top`'s chain of fullscreen elements: `top`
+/// when its fullscreen element is not an iframe whose document is
+/// fullscreen too. Null when `top` has no fullscreen element.
+fn fullscreenLeafOf(top: *Instance) ?*Instance {
+    var current = top;
+    var element = fullscreenElementOf(current) orelse return null;
+    var descendants = dom.navigables.inclusiveDescendantDocuments(top, top.ctx.allocator);
+    defer descendants.deinit(top.ctx.allocator);
+    var depth: usize = 0;
+    outer: while (depth < 64) : (depth += 1) {
+        for (descendants.items) |entry| {
+            if (runtime.SlabAllocator.generationOf(entry.document) != entry.generation) continue;
+            if (entry.document == current) continue;
+            if (containerOf(entry.document) != element) continue;
+            const inner = fullscreenElementOf(entry.document) orelse break :outer;
+            current = entry.document;
+            element = inner;
+            continue :outer;
+        }
+        break;
+    }
+    return current;
+}
+
+/// Section 2: "A document has keyboard lock active when its fullscreen
+/// element is not null and the fullscreen element's keyboard lock flag is
+/// set".
+fn keyboardLockActive(document: *Instance) bool {
+    const state = (layer.ofDocument(document, false) catch null) orelse return false;
+    const element = state.fullscreenElement() orelse return false;
+    const entry = state.fullscreenEntry(element) orelse return false;
+    return entry.keyboard_lock;
+}
+
 /// HTML close request steps step 1, given `document`: "If document's
 /// fullscreen element is not null: fully exit fullscreen given document's
 /// node navigable's top-level traversable's active document, and return."
