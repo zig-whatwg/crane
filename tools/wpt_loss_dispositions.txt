@@ -2228,3 +2228,36 @@ kind = user-ruling
 why = 9 -> 8: the upstream test bug wpt#64475, not Crane - tests 2 and 3 build their module specifier from Date.now(), so when test 2 finishes inside the same millisecond test 3's "new" module is already in the module map and "import() should drain the microtask queue when fetching a new module" fails (listed PASS|FAIL with upstream wpt#64475 in tools/wpt_build_differences.txt). Its sixth flip (flake dispositions at generations 179, 185, 194, 195, 197), so the one-flake rule refuses a seventh flake entry; it cannot be timing-bound either (alone it never fails). Isolated pairs, the file alone, server1 2026-11-16 about 3:09 AM ET: generation 225's runner (~/crane-frozen/main-86a8281a83) 9/9 and generation 226's (~/crane-frozen/main-4d4cedb50d) 9/9 in each of three pairs. The user accepted the loss as this upstream test bug, standing for this file until wpt#64475 is fixed upstream.
 date = 2026-11-16
 decision = The user, 2026-11-16 7:25 AM ET: "accept" (asked whether generation 226 may publish with this loss recorded as the user's ruling for the upstream test bug wpt#64475).
+
+[navigation-timing/nav2-test-redirect-server.html]
+generation = 228
+kind = timing-bound
+why = Re-measured after lane blk3 touched its paths (HTMLIFrameElement.zig, performance_timeline.zig: the generation 225 entry went STALE): unchanged cause - startTime is the time origin, the navigation's start (navigate() entry), and redirectStart the first hop's fetch start, both read from the monotonic clock and coarsened to the 125 us tick with nothing waiting between them, so redirectStart is 0 unless the gap crosses a tick. A diagnostic production runner of d9d57fc822e (one debug line with the gap in createNavigationTimingEntry plus lane flaky7's timing marks, never committed) on server1 in a closed, quiet window (load 0.61), the file alone, 60 runs, a fresh process per run: the iframe navigation's gap min 51 / p50 56 / max 97 us, 33 passes of 60 where the tick model (gap/125 per run, summed) predicts 29.0. Evidence: tmp/plans/blk3-evidence/timing-bound-final-d9d57fc822e.log. Chrome and Safari pass through process hops of milliseconds; Firefox fails 2 of 3 (the generation 225 entry).
+tick_us = 125
+gap_us = min 51 / p50 56 / max 97
+pass_rate = 33/60
+condition = the file alone in a fresh runner process: an iframe's same-origin server redirect whose first fetch starts 51-97 us after the navigation's start, within its 125 us tick unless that gap crosses a tick boundary
+measured_at = d9d57fc822e
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/fetch/algorithms/http_fetch.zig, src/dom/performance_timeline.zig
+
+[navigation-timing/secure-connection-start-non-zero.https.html]
+generation = 228
+kind = timing-bound
+why = Re-measured after lane blk3 touched its paths (HTMLIFrameElement.zig, performance_timeline.zig: the generation 205 entry went STALE): unchanged cause - on a connection reused from an earlier https file in the runner process every connection time is fetchStart (Fetch "clamp and coarsen connection timing info" step 1; Blink, Gecko and WebKit return fetchStart too), so secureConnectionStart > 0 only when the navigation's fetch starts in a later 125 us tick than its time origin, the navigation's start. A diagnostic production runner of d9d57fc822e (one debug line with the navigate() -> fetch-start gap in createNavigationTimingEntry, never committed) on server1 in a closed, quiet window: content-encoding.https.html then this file in one fresh process, 30 runs - 25 pass, 5 fail (runs 17, 18, 19, 25 and 27: "secureConnectionStart is non-zero expected a number greater than 0 but got 0", gaps 28-35 us); the gap over all 30 runs min 26 / p50 30 / max 59 us. The tick model over every run predicts 8.5 passes, not 25, because only some runs reuse the connection (a fresh TLS handshake puts secureConnectionStart past fetchStart, a pass whatever the gap): 5 failures at about 0.76 failing per reusing run means about 7 of 30 reused it. At 15b8fbd90ee the same 30-run check never reused it (30/30 pass). Evidence: tmp/plans/blk3-evidence/timing-bound-final-d9d57fc822e.log.
+tick_us = 125
+gap_us = min 26 / p50 30 / max 59
+pass_rate = 25/30
+condition = navigation-timing/content-encoding.https.html first in the same runner process, so the navigation may reuse its connection to web-platform.test:8443 (some runs reuse it, and only those can fail)
+measured_at = d9d57fc822e
+paths = src/webidl/impls/HTMLIFrameElement.zig, src/html/navigation/fetch_integration.zig, src/fetch/algorithms/async_fetch.zig, src/fetch/algorithms/main_fetch.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/navigation-timing-extended.https.html]
+generation = 228
+kind = timing-bound
+why = Re-measured after lane blk3 touched performance_timeline.zig (the generation 214 entry went STALE): unchanged cause - the assert that fails, "fetchStart should be marked before the Fetch event handler is called", compares the fetch event dispatch time (Service Workers "Create Fetch Event and Dispatch" step 17.4.12, Navigation Timing's fetchStart under a service worker) with the handler's first performance.now(), dispatched at step 17.4.13 with nothing between, so the two are equal on the 125 us grid unless that gap crosses a tick (lesson spec-compliance-a-strict-order-between-coarse-marks-is-a-bet-on-time.md). A diagnostic production runner of d9d57fc822e (lane flaky7's tmp/flaky7/diag-nt2.patch marks, never committed) on server1 in a closed, quiet window, the file alone in a fresh runner process per run: unloaded, fetchStart -> handler min 13 / p50 63 / max 182 us, 30/60 pass (tick model 30.4); under --load=28 (a 32-runner sweep's load) min 6 / p50 35 / max 102 us, 10/40 pass (tick model 13.0). Evidence: tmp/plans/blk3-evidence/timing-bound-final-d9d57fc822e.log. No browser passes the file (the generation 214 entry); nothing to fix without a delay between two spec steps (no invented paths).
+tick_us = 125
+gap_us = min 6 / p50 35 / max 102
+pass_rate = 10/40
+condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 30/60 (gap min 13 / p50 63 / max 182 us)
+measured_at = d9d57fc822e
+paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig

@@ -422,6 +422,7 @@ pub fn installHooks() void {
         .adopt_browsing_context = &replaceBrowsingContext,
         .swap_current_event = &swapCurrentEvent,
         .location = &locationOf,
+        .perform_scroll = &performViewportScroll,
     });
     // A hyperlink's or form's target that names no frame: the popups this
     // window keeps, or a new one (the rules for choosing a navigable).
@@ -1580,6 +1581,12 @@ pub fn get_length(instance: *runtime.Instance) anyerror!u32 {
 /// Spec: https://html.spec.whatwg.org/#windowproxy-getownproperty
 pub fn call_getter__1(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Instance {
     const internal = getInternal(instance) orelse return null;
+    // The document-tree child navigables are some of the navigable's
+    // children: an index past their number names none, answered without
+    // walking the document for the list (every `window[i]` past the frames;
+    // lane blk3's focused cost window, 2026-11-18).
+    const navigable = navigableOf(instance, internal) orelse return null;
+    if (index >= navigable.children.items.len) return null;
     // The document-tree child navigables of this's associated Document: none
     // once it has no navigable (see get_length).
     var children = documentTreeChildNavigables(instance, internal, internal.allocator);
@@ -2748,6 +2755,17 @@ fn scrollViewportTo(instance: *runtime.Instance, left: ?f64, top: ?f64) !runtime
     }
     const realm = engine.currentRealm() orelse instance.ctx;
     return (try engine.createResolvedPromise(realm, runtime.JSValue.jsUndefined)).take();
+}
+
+/// dom.window_globals.perform_scroll: CSSOM View "perform a scroll" of this
+/// window's viewport to (`x`, `y`) - instant, unbounded beyond the origin,
+/// as scroll() sets it (scrollViewportTo); a window with no viewport left
+/// (closed) keeps its position.
+fn performViewportScroll(window: *runtime.Instance, x: f64, y: f64) void {
+    const internal = getInternal(window) orelse return;
+    if (internal.closed) return;
+    internal.scroll_x = @max(0, normalizeNonFinite(x));
+    internal.scroll_y = @max(0, normalizeNonFinite(y));
 }
 
 /// Operation: resizeTo
@@ -4382,6 +4400,16 @@ const tree_ordered_map = @import("dom").tree_ordered_map;
 /// exposes nothing.
 fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name: []const u8) ?*runtime.Instance {
     if (name.len == 0) return null;
+    // A document-tree child navigable is one of the navigable's children, and
+    // only one whose target name is `name` can answer: when none of them has
+    // it - every global name a window does not have, as each lookup that
+    // walks past Window.prototype asks - there is nothing to find, without
+    // walking the document for its containers to build the list (lane blk3's
+    // focused cost window, 2026-11-18).
+    const navigable = navigableOf(window, internal) orelse return null;
+    for (navigable.children.items) |child| {
+        if (std.mem.eql(u8, child.target_name, name)) break;
+    } else return null;
     var children = documentTreeChildNavigables(window, internal, internal.allocator);
     defer children.deinit(internal.allocator);
     return childNavigableNamedIn(window, internal, children.items, name);
@@ -4389,6 +4417,25 @@ fn childNavigableNamed(window: *runtime.Instance, internal: *InternalState, name
 
 /// The first same-named child decides visibility, even when its origin
 /// prevents exposure. Reuse one document-tree list during enumeration.
+///
+/// HTML's "document-tree child navigable target name property set" step 5
+/// keeps only the children whose active document is same origin with the
+/// window. Golden rule 2, the browsers: Chrome 157 (Blink
+/// WindowProperties::AnonymousNamedGetter: the window can access the child,
+/// OR the name is the child's owner's BrowsingContextContainerName - its
+/// container element's name attribute) and Firefox 160
+/// (WindowNamedPropertiesHandler's ShouldExposeChildWindow: the embedder
+/// element's name attribute is the name asked for) also expose a
+/// cross-origin child whose CONTAINER is named so; Safari 27.2 exposes even
+/// more (FrameTree::scopedChildBySpecifiedName). HTML said the same until the
+/// 2022 navigables rewrite ("... whose browsing context name does not match
+/// the name of its container's name content attribute value", review draft
+/// 2022-01); whatwg/html#12663 (open, 2026-07) asks to put it back, and
+/// chromium 465806322 (pending) works toward step 5 as written.
+/// html/browsers/windows/nested-browsing-contexts/frameElement.sub.html
+/// (C/F/S 4/4) reads frames["iframe_2"] of a cross-origin child named by its
+/// iframe; cross-origin-named-access.sub.html's first subtest, which tests
+/// step 5 as written, fails in all three.
 fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, children: []const @import("dom").navigables.ChildNavigable, name: []const u8) ?*runtime.Instance {
     if (name.len == 0) return null;
     for (children) |entry| {
@@ -4409,9 +4456,18 @@ fn childNavigableNamedIn(window: *runtime.Instance, internal: *InternalState, ch
             .{ .serialized = parent_origin, .record = if (both_opaque) settingsOriginRecord(window) else null },
             .{ .serialized = child_origin, .record = if (both_opaque) settingsOriginRecord(child_window) else null },
         );
-        return if (same_origin) child_window else null;
+        if (same_origin) return child_window;
+        return if (containerNamed(entry.container, name)) child_window else null;
     }
     return null;
+}
+
+/// Whether the navigable container `container`'s name content attribute is
+/// `name` (case-sensitive, as both browsers compare it).
+fn containerNamed(container: *runtime.Instance, name: []const u8) bool {
+    var value = (interfaces.Element.call_getAttribute(container, runtime.DOMString.initInterned("name")) catch return false) orelse return false;
+    defer value.deinit(container.ctx.allocator);
+    return std.mem.eql(u8, value.asSlice(), name);
 }
 
 /// HTML 7.2.2.3 "Named access on the Window object": Window's named getter,

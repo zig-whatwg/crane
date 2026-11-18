@@ -146,6 +146,12 @@ pub const Entry = struct {
     history_policy_container: ?PolicyContainer = null,
     /// "Scroll restoration mode" is "manual".
     scroll_restoration_manual: bool = false,
+    /// "Scroll position data": the viewport's scroll position (x, y) when
+    /// the entry's document last left it in a same-document navigation;
+    /// null until then. Crane lays nothing out, so its only restorable
+    /// scrollable region is the viewport, read and written through the
+    /// Window's scroll position.
+    scroll_position: ?[2]f64 = null,
     /// Its document's referrer policy was "no-referrer" or "origin" when the
     /// document went (`forgetDocument`): a NavigationHistoryEntry for it,
     /// read from another document, has a null url (HTML
@@ -740,6 +746,18 @@ pub const JointHistory = struct {
             }
         }
         return self.listedCurrentEntry(navigable);
+    }
+
+    /// "Save persisted state" (HTML 7.4.6.5 step 1) to the entry `navigable`
+    /// shows: its scroll position data becomes (`x`, `y`). Run as a
+    /// same-document navigation leaves the entry - the URL and history update
+    /// steps, a fragment navigation - before the new entry is made, as
+    /// browsers save it (navigation-api/scroll-behavior/
+    /// after-transition-intercept-handler-modifies.html: "state should be
+    /// saved before intercept handlers run", Chrome, Firefox and Safari 1/1).
+    pub fn saveScrollPosition(self: *JointHistory, navigable: u64, x: f64, y: f64) void {
+        const entry = self.displayedEntry(navigable) orelse return;
+        entry.scroll_position = .{ x, y };
     }
 
     /// The entry `navigable`'s document shows as it last had its view written

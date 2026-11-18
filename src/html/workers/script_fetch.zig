@@ -103,6 +103,10 @@ pub const WorkerScriptFetchOptions = struct {
     /// Where the fetch client's global hears of the CSP violations the
     /// request causes (CSP 2.4.2). BORROWED; null: nobody hears them.
     csp_violation_reporter: ?fetch.internal.CspViolationReporter = null,
+    /// Where the request's resource timing goes (Fetch "report timing"):
+    /// the outside settings' global - fetchClient's - as a worker's script
+    /// request is made from them ("fetch a classic worker script" step 1).
+    timing_reporter: ?fetch.internal.TimingReporter = null,
     /// A blob: URL's blob URL entry, as the URL parser resolved it when the
     /// URL was parsed (`captureBlobScript`): scheme fetch "blob" reads the
     /// request's URL's entry, not the store's current answer, so the script
@@ -436,6 +440,14 @@ pub fn workerScriptRequest(
     }
     // Its violations are its client's (CSP 2.4.2).
     internal_request.csp_violation_reporter = options.csp_violation_reporter;
+    // And its timing: Fetch reports a request with an initiator type to its
+    // client's global - the outside settings', whose timeline gets the
+    // worker script's entry (Resource Timing; initiator type "other"). A
+    // module worker's top-level script is "other" too, by browser majority:
+    // "fetch a single module script" would make it "script", which Firefox
+    // 160 and Safari 27.2 do not (both report "other"; Chrome 157 reports
+    // no entry) - resource-timing/initiator-type/workers.html.
+    if (!options.is_import_scripts) internal_request.timing_reporter = options.timing_reporter;
     // Its client's Browser's network.
     internal_request.network = options.network;
     // HTML "fetch a classic worker script" step 1: the client is the

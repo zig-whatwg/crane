@@ -718,6 +718,10 @@ fn urlAndHistoryUpdate(
     // one (the URL and history update steps do not carry it over) - made the
     // navigable's active entry, pending in the joint history, and the
     // document's History index and length its best guess.
+    // The entry left keeps the viewport's scroll position ("save persisted
+    // state", JointHistory.saveScrollPosition) - before the navigation API's
+    // handlers run (the update below), as browsers save it.
+    history.saveScrollPosition(bc.id, interfaces.Window.get_scrollX(window) catch 0, interfaces.Window.get_scrollY(window) catch 0);
     const nav = try history.navigateSameDocument(bc.id, new_url, owned, effective, .undefined);
     // Step 8: "Restore the history object state" - the next read deserializes
     // the new entry's state.
@@ -878,6 +882,8 @@ fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry:
     const allocator = internal.allocator;
     const new_url = allocator.dupe(u8, entry.url) catch return;
     defer allocator.free(new_url);
+    const scroll_position = entry.scroll_position;
+    const scroll_restoration_manual = entry.scroll_restoration_manual;
 
     setDocumentUrl(window, new_url);
     // 6.3: "Restore the history object state given document and entry."
@@ -897,6 +903,19 @@ fn applySameDocumentEntry(window: *runtime.Instance, old_url: []const u8, entry:
     const generation = runtime.SlabAllocator.generationOf(event);
     _ = @import("dom").fire_event.dispatchTrusted(window, event) catch {};
     event.releaseIfUnwrapped(generation);
+
+    // 6.4.4: "Restore persisted state given entry": "If entry's scroll
+    // restoration mode is "auto", and entry's document's relevant global
+    // object's navigation API's suppress normal scroll restoration during
+    // ongoing navigation is false, then restore scroll position data given
+    // entry" - the viewport goes back where the entry's scroll position
+    // data says (JointHistory.saveScrollPosition saved it as a
+    // same-document navigation left the entry; "has been scrolled by the
+    // user" never holds here). The popstate handlers may have navigated: the
+    // entry's position was copied first.
+    if (!scroll_restoration_manual and !@import("dom").navigation_api.suppressesNormalScrollRestoration(window)) {
+        if (scroll_position) |position| @import("dom").window_globals.performScroll(window, position[0], position[1]);
+    }
 
     // 6.4.5: hashchange, when the fragment changed.
     const old_fragment = navigate_steps.fragmentOf(old_url) orelse "";
