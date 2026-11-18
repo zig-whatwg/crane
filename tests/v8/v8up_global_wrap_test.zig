@@ -14,8 +14,10 @@
 //! tests/wpt/crane/v8up-old-realm-contextual-window.html carries the rows that need a document.
 //!
 //! 2.6: a realm's built-in functions (Streams' size functions, engine.globalBuiltinFunction) are kept by its
-//! global object through the WindowProxy, as Blink keeps them (queuing_strategy_common.cc
-//! GetCachedSizeFunction: a private on `context->Global()`), never on the object V1 GetPrototype answers.
+//! own global object - on its retained store, which the global keeps through its GlobalAnchor - never through
+//! the WindowProxy: a private set through `context->Global()` lands on whichever global object the proxy is
+//! attached to now, so after a navigation handed the proxy on the old realm read and wrote the NEW realm's
+//! slot (streams/queuing-strategies-size-function-navigation.window.js 0/24; Firefox and Safari 24/24).
 
 const std = @import("std");
 const test_process = @import("test_process.zig");
@@ -120,7 +122,7 @@ test "2.3: a function of a realm whose WindowProxy went on reads its own Window'
     try expectOk(keeper, "delete globalThis.reader ? 'ok' : 'not deleted'");
 }
 
-test "2.6: a realm's count queuing strategy size function is kept by its global object, which its WindowProxy reaches" {
+test "2.6: a realm's count queuing strategy size function is one function, kept by its global object" {
     test_process.start();
     const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
     defer protocol.destroyAgent(agent);
@@ -130,14 +132,64 @@ test "2.6: a realm's count queuing strategy size function is kept by its global 
     try expectOk(realm,
         \\const a = new CountQueuingStrategy({ highWaterMark: 1 }).size;
         \\const b = new CountQueuingStrategy({ highWaterMark: 2 }).size;
-        \\a === b && typeof a === "function" ? "ok" : "not one function per realm"
+        \\a === b && typeof a === "function" && Object.getPrototypeOf(a) === Function.prototype ? "ok" : "not one function of this realm"
     );
-    const context: *ffi.Context = @ptrCast(@alignCast(realm.engine_ctx.?));
-    const proxy = ffi.v8_Context_Global(context) orelse return error.NoGlobal;
-    defer ffi.v8_Object_Dispose(proxy);
-    const key = "crane:count queuing strategy size function";
-    const kept = ffi.v8_Object_GetPrivateRef(proxy, key.ptr, key.len) orelse return error.NotKeptByTheGlobalObject;
-    ffi.v8_Value_Dispose(kept);
+}
+
+test "2.6: after a navigation hands the WindowProxy on, each realm's size functions are its own" {
+    test_process.start();
+    const agent = try protocol.createAgent(.{ .can_block = false, .from_snapshot = false, .hooks = &no_hooks, .host = null });
+    defer protocol.destroyAgent(agent);
+    // The page that keeps the old realm's strategies, as a parent keeps a frame's.
+    const keeper = try windowRealm(agent, .new_window_proxy);
+    defer protocol.destroyWindowRealm(keeper, .global_detached);
+
+    const old = try windowRealm(agent, .new_window_proxy);
+    {
+        // One strategy whose size the old realm reads before the hand-on (cached), and one it reads
+        // first after it (lazy), for each kind.
+        const held = try evalOwned(old,
+            \\({ proto: Function.prototype,
+            \\   cachedCount: new CountQueuingStrategy({ highWaterMark: 1 }),
+            \\   lazyCount: new CountQueuingStrategy({ highWaterMark: 1 }),
+            \\   lazyBytes: new ByteLengthQueuingStrategy({ highWaterMark: 1 }),
+            \\   before: new CountQueuingStrategy({ highWaterMark: 1 }).size })
+        );
+        defer held.release();
+        const keeper_global = try evalOwned(keeper, "globalThis");
+        defer keeper_global.release();
+        try protocol.setProperty(keeper, keeper_global.value, "held", held.value);
+    }
+
+    // The navigation's new Window behind the same WindowProxy; the old realm ends as a navigation's does.
+    const new = try windowRealm(agent, .{ .window_proxy_of = old });
+    defer protocol.destroyWindowRealm(new, .global_detached);
+    protocol.destroyWindowRealm(old, .global_detached);
+
+    // The old realm reads first (the WPT's "independent of pre-navigation instance" order) ...
+    try expectOk(keeper,
+        \\const failures = [];
+        \\function check(name, got) { if (!got) failures.push(name); }
+        \\const count = held.cachedCount.size, lazy = held.lazyCount.size, bytes = held.lazyBytes.size;
+        \\check("the cached count size is the old realm's one function", count === held.before);
+        \\check("a lazy count size is the old realm's one function", lazy === held.before);
+        \\check("the old count size's prototype is the old realm's", Object.getPrototypeOf(count) === held.proto);
+        \\check("the old byte length size's prototype is the old realm's", Object.getPrototypeOf(bytes) === held.proto);
+        \\check("the old byte length size still measures", bytes({ byteLength: 17 }) === 17);
+        \\failures.join("; ") || "ok"
+    );
+    // ... and the new realm's are its own, not the old realm's.
+    try expectOk(new,
+        \\const count = new CountQueuingStrategy({ highWaterMark: 1 }).size;
+        \\const bytes = new ByteLengthQueuingStrategy({ highWaterMark: 1 }).size;
+        \\Object.getPrototypeOf(count) === Function.prototype && Object.getPrototypeOf(bytes) === Function.prototype &&
+        \\  count === new CountQueuingStrategy({ highWaterMark: 2 }).size ? "ok" : "the new realm got another realm's size function"
+    );
+    try expectOk(keeper,
+        \\const before = held.before;
+        \\delete globalThis.held;
+        \\typeof before === "function" ? "ok" : "lost"
+    );
 }
 
 /// A frame's Window realm, made inside its parent's script as HTML makes a navigable's (protocol.runInRealm):
