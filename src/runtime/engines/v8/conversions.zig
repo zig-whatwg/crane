@@ -2351,11 +2351,13 @@ fn convertValueAs(
         };
 
         // Buffer source arms: BufferSource (its flattened member types are
-        // ArrayBuffer, DataView and the typed arrays) or ArrayBufferView
-        // (DataView and the typed arrays).
+        // ArrayBuffer, DataView and the typed arrays), AllowSharedBufferSource
+        // (those and SharedArrayBuffer, with [AllowShared] views - WebCodecs'
+        // ImageBufferSource = (AllowSharedBufferSource or ReadableStream)) or
+        // ArrayBufferView (DataView and the typed arrays).
         const buffer_source_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                if (field.type == typedefs.BufferSource) break :blk i;
+                if (field.type == typedefs.BufferSource or field.type == typedefs.AllowSharedBufferSource) break :blk i;
             }
             break :blk null;
         };

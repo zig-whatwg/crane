@@ -43,14 +43,43 @@ pub fn deinit(instance: *runtime.Instance) void {
 /// Constructor implementation
 /// This is called when the interface is constructed from JavaScript
 pub fn call_constructor(ctx: runtime.Context, init_data: dictionaries.ImageDecoderInit) !*runtime.Instance {
+    // WebCodecs ImageDecoder constructor step 1: "If init is not valid
+    // ImageDecoderInit, throw a TypeError." Firefox 160 throws it for a type
+    // "invalid" (webidl/ecmascript-binding/allow-shared.https.html), as the
+    // spec says; Chrome 157 does not.
+    if (!isValidImageDecoderInit(ctx, &init_data)) return error.TypeError;
+
     // Create instance through init()
     const instance = try init(ctx.allocator, State, &ImageDecoder.vtable, ctx);
     errdefer deinit(instance);
 
-    _ = init_data;
-    // TODO: Implement constructor logic with parameters
+    // TODO: Implement the constructor's remaining steps (the decoder).
 
     return instance;
+}
+
+/// WebCodecs "valid ImageDecoderInit" steps 1, 4 and 5: a valid image MIME
+/// type, and desiredWidth and desiredHeight both present or both absent.
+/// Steps 2-3 (a disturbed or locked ReadableStream, a detached or empty
+/// BufferSource) are not checked yet: they need the data's state, which the
+/// stub constructor does not read (TODO with the decoder).
+fn isValidImageDecoderInit(ctx: runtime.Context, init_data: *const dictionaries.ImageDecoderInit) bool {
+    // 1. "If type is not a valid image MIME type, return false."
+    if (!isValidImageMimeType(ctx.allocator, init_data.type.asSlice())) return false;
+    // 4-5.
+    if ((init_data.desiredWidth == null) != (init_data.desiredHeight == null)) return false;
+    return true;
+}
+
+/// WebCodecs: "A string is a valid image MIME type if it is a valid MIME type
+/// string and, when parsed, the MIME type's type is image."
+fn isValidImageMimeType(allocator: std.mem.Allocator, text: []const u8) bool {
+    var mime = (@import("mimesniff").mime_type.parseMimeType(allocator, text) catch return false) orelse return false;
+    defer mime.deinit();
+    const image = "image";
+    if (mime.type.len != image.len) return false;
+    for (mime.type, image) |unit, byte| if (unit != byte) return false;
+    return true;
 }
 
 /// Getter for type
