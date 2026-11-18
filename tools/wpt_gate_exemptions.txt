@@ -1,5 +1,5 @@
 # The 0.1 gate's exemptions: worklist files omitted from the blocking count
-# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Three kinds:
+# (AGENTS.md "The 0.1 gate", in full in .claude/rules/wpt-workflow.md). Five kinds:
 #
 #   intentional  ALL THREE of Chrome, Firefox and Safari intentionally deviate
 #                from the spec the file tests (the user, 2026-10-17; golden rule
@@ -18,25 +18,55 @@
 #                and the file revisited. Every failure of the file must be one a
 #                renderer would answer: a file that also fails for any other
 #                reason is not this kind.
+#   needs-decoder  like needs-renderer: the file fails ONLY because the
+#                platform WPT runs on has no decoder for its media - a wait on
+#                canplay, stalled or playing never settles, or a typed <source>
+#                is skipped because canPlayType answers "" (the user, 2026-11-18
+#                2:53 PM ET; Crane decodes no media itself, the platform
+#                supplies decoders, and the default platform decodes WAV only).
+#                It still runs and shows, but does not block 0.1 until a
+#                video-capable platform runs WPT; then the entry is removed and
+#                the file revisited. A file that also fails for any other reason
+#                is not this kind.
+#   follows-majority  the file blocks, but Crane's result is the one golden
+#                rule 2 says is correct, so no change in Crane can clear it (the
+#                user, 2026-11-18 2:36 PM ET, "Add the exemption kind"): Crane's
+#                result equals, subtest by subtest, that of at least two of
+#                Chrome, Firefox and Safari - the browser majority where the
+#                spec and the browsers disagree with no newer spec involved - or
+#                of the browsers a recorded ruling follows (a user ruling, or the
+#                golden-rule-2 case that decides it: a newer spec one browser
+#                ships, a mechanism-by-mechanism majority). The entry comes off
+#                when the browsers change: re-check it against each new aligned
+#                wpt.fyi run, and whenever Crane's own result moves.
 #
 # Read by tools/wpt_progress.py (the progress page) and tools/wpt_site/
 # (the public results site). A listed file that would block is counted in its
 # kind's own group - "exempt (all three browsers intentionally deviate)",
-# "exempt until an upstream test bug is fixed" or "exempt until a renderer
-# answers geometry" - never as blocking; a listed file that does not block keeps
-# its own standing. Both tools stop with an error on an
-# invalid entry - never a silent exemption.
+# "exempt until an upstream test bug is fixed", "exempt until a renderer
+# answers geometry", "exempt until a decoder plays its media" or "exempt:
+# Crane follows the browser majority" - never as blocking; a listed file that
+# does not block keeps its own standing. Both tools stop with an error on an
+# invalid entry - never a silent exemption. The progress page shows a
+# follows-majority file's current passes/total beside the browsers' and asks for
+# a review when it no longer equals the matched browsers'.
 #
 # NOT exempt: a file every browser merely fails, a file only some browsers
-# decline, a file the browsers fail because they lag a newer spec, a file where
-# the spec text is old and simply never implemented (golden rule 2's "no newer
-# spec" case: Crane follows the browsers there, and the file blocks), a file the
-# browsers fail DIFFERENTLY (one fails at an earlier step, or one passes), and a
-# test bug whose upstream issue is already resolved.
+# decline, a file the browsers fail because they lag a newer spec (Crane
+# implements the newer spec: golden rule 2), a test bug the browsers fail
+# DIFFERENTLY (one fails at an earlier step, or one passes), a test bug whose
+# upstream issue is already resolved, and a follows-majority candidate whose
+# result equals only one browser's with no ruling deciding it, or where Crane
+# fails at a different step than the browsers it would cite, or fails a subtest
+# the majority passes. (Since 2026-11-18 a file where the spec text is old and
+# simply never implemented - golden rule 2's "no newer spec" case, Crane doing
+# what the browsers do - IS exempt, as follows-majority, when Crane's result
+# equals the majority's.)
 #
 # Format: one entry per worklist path, a [path] line followed by key = value
 # lines. Blank lines and lines starting with # are ignored. Every key of the
-# entry's kind is required, exactly once; no other key may appear.
+# entry's kind is required (but a follows-majority entry's ruling), exactly once;
+# no other key may appear.
 #
 # An intentional entry (its `kind` line is optional: an entry without one is
 # intentional, as every entry was before the second kind):
@@ -72,15 +102,45 @@
 #   assertion       = the failing assertion as the run reports it, e.g.
 #                     promise_test: Unhandled rejection with value: object "IndexSizeError: IndexSizeError"
 #
+# A needs-decoder entry (the user, 2026-11-18):
+#
+#   [html/example/file.html]
+#   kind            = needs-decoder
+#   why             = one line: why the test needs a decoder - the wait that never settles, or the
+#                     <source> skipped because canPlayType answers ""
+#   media           = the media file(s) the test needs and their type, e.g. /media/movie_5.webm (video/webm)
+#   assertion       = the failing wait or assertion as the run reports it, e.g. TIMEOUT: ... - Test timed out
+#
+# A follows-majority entry (the user, 2026-11-18):
+#
+#   [html/example/file.html]
+#   kind            = follows-majority
+#   why             = one line: what Crane does, which browsers do the same, and what the others do
+#   chrome.result   = wpt.fyi run <run id>: <passes>/<total>
+#   firefox.result  = wpt.fyi run <run id>: <passes>/<total>
+#   safari.result   = wpt.fyi run <run id>: <passes>/<total>
+#   matches         = chrome, safari  (the browsers whose result Crane's equals, subtest by subtest -
+#                     the same status and the same failing assertion in each subtest)
+#   ruling          = OPTIONAL: the user's ruling (with its date) or the golden-rule-2 case that decides
+#                     the entry; required when matches names only one browser
+#   revisit         = when <what ends the exemption>, e.g. when Chrome, Firefox or Safari changes its result
+#
+#   The results are the aligned stable runs at Crane's own WPT revision (tests/wpt's
+#   .crane-upstream-revision), so the browsers ran the file Crane runs.
+#
 # (Each value is one line; the examples above wrap only here.)
 #
 # Rules the tools check: the path is in tests/wpt_0_1_worklist.txt and is
-# listed once; kind is intentional, test-bug or needs-renderer; spec and every *.intent value is
-# an http(s) URL; every *.result value names a wpt.fyi run ("wpt.fyi run <id>:
-# <passes>/<total>", a note may follow); upstream is a web-platform-tests issue
-# or pull request URL; revisit reads "when <upstream> is resolved" with the
-# entry's own upstream URL; a test-bug entry's three results have the same
-# <passes>/<total>; no key of another kind, and no unknown key, appears.
+# listed once; kind is intentional, test-bug, needs-renderer, follows-majority
+# or needs-decoder; spec and every *.intent value is an http(s) URL; every
+# *.result value names a wpt.fyi run ("wpt.fyi run <id>: <passes>/<total>", a
+# note may follow); upstream is a web-platform-tests issue or pull request URL;
+# a test-bug entry's revisit reads "when <upstream> is resolved" with the
+# entry's own upstream URL, and its three results have the same
+# <passes>/<total>; a follows-majority entry's matches names chrome, firefox or
+# safari, comma-separated, each once, at least two of them unless the entry has a
+# ruling, the browsers it names have the same <passes>/<total>, and its revisit
+# starts "when "; no key of another kind, and no unknown key, appears.
 # The tools cannot see whether an upstream issue is still open: check it before
 # adding an entry, and whenever the entry is reviewed.
 #
@@ -100,8 +160,14 @@
 #   FIXED test. That test needs Report and ReportBody as dictionaries
 #   (w3c/reporting#284), which no stable browser ships yet; WebKit trunk does
 #   (bug 330301). The forms1 test-driver cases (select-pick-option-dirtiness,
-#   select-picker-hover-after-picking) have no upstream issue, and Firefox 159
-#   fails them earlier than Chrome and Safari do.
+#   select-picker-hover-after-picking) have upstream issues since lane sel1
+#   (wpt#64927, wpt#64928), but Firefox fails them earlier than Chrome and Safari
+#   do, so they are not test-bug: they are follows-majority entries (Crane =
+#   Chrome = Safari).
+# - needs-decoder: none yet (the user, 2026-11-18 2:53 PM ET).
+# - follows-majority: since 2026-11-18 (lane gate1), the block at the end of this
+#   file, each verified subtest by subtest against generation 229 and the aligned
+#   stable runs at 2358bd4835; the candidates that did not hold are listed there.
 
 # needs-renderer (the user, 2026-11-09, choice (b); lane wptcfg batch 1): the 130 files whose every failure in
 # the production run (validation 2026-11-09 21:57 UTC, server1) is common/security-features' read-back of an
@@ -886,3 +952,338 @@ assertion = assert_not_equals: the drag should have created a selection got disa
 kind      = needs-renderer
 why       = every click is geometry: popover-utils clickOn() clicks the centre of element.getBoundingClientRect(), which with no renderer is a 0x0 rect at (0,0), so "clicking on" the popover or the dialog lands outside both and light-dismisses what the test means to click inside; all six subtests fail at their first click assertion. Their Escape steps are not geometry and pass on their own: tests/wpt/crane/blk2-dialog-popover-closedby-escape.html runs the same six setups and Escape sequences (with test_driver.bless() for the user activation the upstream clicks give) - 6/6 on blk2-l-bins/r4
 assertion = assert_true: clicking on popover should always leave everything open expected true got false (3 subtests); assert_true: clicking on dialog should always leave everything open / popover should stay open expected true got false (3 subtests)
+
+# follows-majority (the user, 2026-11-18 2:36 PM ET, "Add the exemption kind"; lane gate1, 3:04 PM ET): files that
+# block although Crane's result is the one golden rule 2 says is correct. Each was verified subtest by subtest
+# (status and failing assertion) against generation 229 (wpt-results/sweep-499dbc7841, main 499dbc7841f) and the
+# aligned stable wpt.fyi runs at Crane's own WPT revision 2358bd4835 (Chrome 157 run 4786307730243584, Firefox 160
+# run 4877168468033536, Safari 27.2 run 6479119966273536); evidence from lanes blk2, blk3, nav2, nav4, nav7, sw1,
+# sel1, forms1, editing5, codex-xhr, codex-shadowfocus, gr2audit and the loss dispositions.
+# Candidates that did NOT hold (they stay blocking):
+# - html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-resolution-order.html:
+#   Crane times out as Firefox does, but Safari fails at an assertion (another order) and Chrome passes - one
+#   browser, no ruling.
+# - html/browsers/browsing-the-web/unloading-documents/004.html: Crane = Firefox only ("ABGHIJKLMN"); Chrome fails
+#   differently ("ABGLMN"), Safari times out; no ruling.
+# - html/browsers/browsing-the-web/navigating-across-documents/grandparent_location_aboutsrcdoc.sub.window.js: a
+#   test bug (wpt#65241, open: it compares Chrome's exact SecurityError text), but Chrome passes 6/6, so it is not
+#   test-bug (not identical in all three), and Crane's harness error (another message) equals no browser's.
+# - navigation-api/navigate-event/intercept-cross-origin-focus-without-user-activation.html: subtest 2, which
+#   Chrome and Firefox pass, needs test_driver.click routed into the cross-origin frame (pointer routing, in-scope
+#   work, not geometry), and Crane's harness times out where all three finish OK.
+# - navigation-api/navigate-event/intercepted-navigation-after-bfcache-restore.html: Crane = Safari only (Chrome
+#   passes, Firefox times out); no ruling.
+# - html/browsers/history/the-location-interface/reload_document_write_onload.html: all three browsers coalesce
+#   the two reloads (4 entries); Crane runs both (6) - Crane fails differently from every browser.
+# - navigation-timing/prefetch-transfer-size-executor.html: Chrome and Firefox pass; Crane reports 0 (a top-level
+#   navigation does not go through the HTTP cache).
+# - navigation-timing/nested-unload-timing.html: Crane fails "< 500 but got 506.25", Chrome and Safari ">= 100 but
+#   got 0", Firefox passes - no browser fails as Crane does.
+# - performance-timeline/not-restored-reasons/same-origin-bfcache.window.js: Crane = Safari only; Chrome and Firefox
+#   fail at other assertions; no ruling.
+# - editing/other/shadow_root_iteration_in_block_style.html: Chrome passes; Firefox and Safari fail with other
+#   markup than Crane's.
+# - referrer-policy/generic/multiple-headers-one-invalid.html: Crane fails first on geometry (IndexSizeError), not
+#   on the referrer check where Firefox and Safari fail.
+# - service-workers/service-worker/ServiceWorkerGlobalScope/error-message-event.https.html: Crane fails at
+#   captureStream (NotSupportedError), Chrome and Firefox at DataCloneError; Safari passes.
+# - shadow-dom/leaktests/selection.html: Chrome and Safari pass.
+# - xhr/open-url-multi-window-3.htm: Crane = Safari only (send() does not throw); Chrome throws NetworkError and
+#   Firefox passes, so the mechanism majority throws.
+
+[html/semantics/forms/the-input-element/email-value-idn.html]
+kind            = follows-majority
+why             = Crane keeps an email input's IDN domain as typed - HTML's value sanitization for type=email strips newlines and leading and trailing whitespace only - as Firefox and Safari do (all four subtests fail at the same assertion); only Chrome converts the domain to punycode
+chrome.result   = wpt.fyi run 4786307730243584: 4/4 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/4 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/4 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/the-button-element/command-and-commandfor/event-dispatch-shadow.html]
+kind            = follows-majority
+why             = Crane fires the command event with composed false - HTML's command steps initialize only command, source and cancelable - as Firefox and Safari do; only Chrome makes it composed when source is set
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/interactive-elements/the-dialog-element/dialog-focusability.html]
+kind            = follows-majority
+why             = Crane's sequential focus reaches the open dialog element itself at step 2 before its first button, as Firefox and Safari do (the same focus-order mismatch); only Chrome skips the dialog
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/document-metadata/the-meta-element/pragma-directives/http-equiv-lang-whitespace-start.html]
+kind            = follows-majority
+why             = Crane sets no pragma-set default language from a content-language value that starts with whitespace, as Chrome and Safari do; only Firefox skips the whitespace as HTML's steps read (an old step, no newer spec: golden rule 2 follows the browser majority)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/document-metadata/the-meta-element/pragma-directives/http-equiv-lang-whitespace-end.html]
+kind            = follows-majority
+why             = Crane sets no pragma-set default language from a content-language value that ends with whitespace, as Chrome and Safari do; only Firefox ignores the whitespace as HTML's steps read (an old step, no newer spec: golden rule 2 follows the browser majority)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[fullscreen/api/element-ready-check-containing-iframe.html]
+kind            = follows-majority
+why             = Crane denies the fullscreen request because the containing iframe fails Fullscreen's element ready check (a sibling frame's activation does not reach it: spec), as Firefox does (TypeError) and Safari does (it rejects with InvalidStateError); only Chrome grants it
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-event-during-parse.html]
+kind            = follows-majority
+why             = Crane fires the unhandledrejection for a parse-time rejected promise after readystatechange complete - DOMContentLoaded and load run in the task in which the parser stops - exactly as Safari does; Chrome fires it before interactive (a different failure) and Firefox between interactive and complete
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = the user, 2026-11-14 7:17 AM ET, by prompt: option b, keep Safari's order (after the user's 2026-11-12 ruling that DOMContentLoaded and load run in the parser's task, as all three browsers do; tools/wpt_loss_dispositions.txt, generation 225)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/browsing-the-web/back-forward-cache/eligibility/inflight-fetch-1.html]
+kind            = follows-majority
+why             = a fetch whose response headers arrived before the page entered the bfcache fails with a TypeError when the page is cached, as in Safari ("Load failed"); Firefox does not cache the page at all (PRECONDITION_FAILED) and Chrome keeps the fetch alive
+chrome.result   = wpt.fyi run 4786307730243584: 2/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = golden rule 2 with no majority, mechanism by mechanism: each mechanism's majority is Safari's (the integrator's ruling, 2026-11-14 7:08 PM ET, lane nav4: follow the Safari mechanism)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/browsing-the-web/back-forward-cache/eligibility/inflight-fetch-2.html]
+kind            = follows-majority
+why             = a fetch still in flight when the page enters the bfcache fails with a TypeError when the page is cached, as in Safari ("Load failed"); Firefox does not cache the page at all (PRECONDITION_FAILED) and Chrome keeps the fetch alive
+chrome.result   = wpt.fyi run 4786307730243584: 3/3 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = golden rule 2 with no majority, mechanism by mechanism: each mechanism's majority is Safari's (the integrator's ruling, 2026-11-14 7:08 PM ET, lane nav4: follow the Safari mechanism)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/browsing-the-web/back-forward-cache/service-worker-unregister.https.html]
+kind            = follows-majority
+why             = Crane keeps a page in the bfcache when the service worker controlling it is unregistered (the test's not-cached check fails), as Chrome and Safari do; only Firefox evicts it
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/browsing-the-web/history-traversal/browsing_context_name_cross_origin.html]
+kind            = follows-majority
+why             = the navigation the iframe's load handler starts replaces the entry, as in Chrome and Firefox, so the traversal restores the first name ("expected 2 but got 1" in all three); Safari times out
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/browsing-the-web/navigating-across-documents/abort-document-window-stop.sub.window.js]
+kind            = follows-majority
+why             = when the child page stops its own load with window.stop(), the old document's unload handler reads the frame's location as the old common/blank.html, as in Firefox and Safari; Chrome times out
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/history/the-history-interface/history_go_undefined.html]
+kind            = follows-majority
+why             = history.forward() lands where it does in Chrome and Firefox (the pages opened read [3, 2, 3] in all three, the test expects [3, 2, 2]); Safari times out
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/history/the-location-interface/scripted_click_location_assign_during_load.html]
+kind            = follows-majority
+why             = a location.assign() made from a scripted click during load replaces the current entry, as in Chrome and Firefox ("expected 2 but got 1" in all three); Safari fails at a different count (3 expected, 2)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/the-window-object/accessing-other-browsing-contexts/indexed-browsing-contexts-03.html]
+kind            = follows-majority
+why             = an <object> that is not being rendered (a display:none ancestor) shows its fallback and has no content window (HTML's object steps), so window[0] is the iframe's, as in Chrome and Safari; only Firefox gives the hidden object a browsing context
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/windows/clear-window-name.https.html]
+kind            = follows-majority
+why             = 11 of 12 subtests pass; the last sets document.domain to location.host with its port, which the setter rejects (not a registrable domain suffix), so the helper never reports and it times out, as in Chrome and Safari; only Firefox passes it, and Chrome also fails three reset cases Crane passes
+chrome.result   = wpt.fyi run 4786307730243584: 8/12 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 12/12 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 11/12 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = safari
+ruling          = golden rule 2 with no majority (Chrome 8/12, Firefox 12/12, Safari 11/12), mechanism by mechanism: each subtest's majority is Crane's outcome - the three window.name-reset cases pass as in Firefox and Safari, the document.domain case times out as in Chrome and Safari - and together they are Safari's result (AGENTS.md golden rule 2, the user, 2026-10-17)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[navigation-timing/prefetch-transfer-size-iframe.html]
+kind            = follows-majority
+why             = the prefetched iframe navigation reports the transferSize of its fetch (342 bytes) rather than 0, as in Chrome and Firefox ("expected 0 but got 342" in all three); Safari times out
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 TIMEOUT (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/browsers/the-window-object/named-access-on-the-window-object/cross-origin-named-access.sub.html]
+kind            = follows-majority
+why             = a cross-origin child is exposed by the name its container gives it, so all three subtests fail exactly as in Firefox; Chrome passes the changed-name case and Safari fails it at an earlier assertion
+chrome.result   = wpt.fyi run 4786307730243584: 1/3 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 (Safari 27.2, 2358bd4835)
+matches         = firefox
+ruling          = the integrator's golden-rule-2 ruling (a), 2026-11-18, lane blk3 (merge a819ad6550d): cross-origin child navigables named by their container stay exposed by name, the Chrome and Firefox mechanism (HTML before the 2022 navigables rewrite; whatwg/html#12663 asks to restore it)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[performance-timeline/not-restored-reasons/navigation-failure.window.js]
+kind            = follows-majority
+why             = Crane keeps the 404 page in the bfcache ("document unexpectedly BFCached"), as Firefox and Safari do; only Chrome refuses a non-200 page and reports the reason
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = the integrator's golden-rule-2 ruling (b), 2026-11-18 4:06 AM ET, lane blk3: the bfcache keeps a page whose response was not 200 (the Firefox and Safari majority)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[navigation-api/ordering-and-transition/currententrychange-before-popstate-intercept.html]
+kind            = follows-majority
+why             = for an intercepted back() and forward(), popstate fires before currententrychange, as in Chrome and Firefox (the same assertion fails); only Safari fires currententrychange first, as HTML's update document for history step application step 6.4 orders it - the order the test has expected since 2022, not a newer spec, so golden rule 2 follows the majority
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[navigation-api/navigate-event/intercept-stops-ongoing-cross-document-navigation.html]
+kind            = follows-majority
+why             = an intercepted navigate() does not stop the cross-document navigation it replaces, and the test times out, as in Chrome and Firefox; only Safari passes (WebKit added the test with its own fix on 2026-10-31: wpt 5395057e7c)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[content-security-policy/securitypolicyviolation/blockeduri-ws-wss-scheme.html]
+kind            = follows-majority
+why             = the violation's blockedURI keeps the ws:/wss: scheme and the redirect case times out, exactly as in Chrome, Firefox and Safari (all four subtests, the same assertions)
+chrome.result   = wpt.fyi run 4786307730243584: 0/4 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/4 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/4 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = the integrator's golden-rule-2 ruling, 2026-10-17 (lane gr2audit): a WebSocket violation reports the ws/wss URL as all three browsers do; the http(s) text is from 2016 (whatwg/fetch ce16adc5), no engine shipped it or has a bug open, and w3c/webappsec-csp#735 is open
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[dom/nodes/insertion-removing-steps/Node-appendChild-script-and-default-style-meta-from-fragment.html]
+kind            = follows-majority
+why             = the alternate style sheet a <meta http-equiv=default-style> selects is not applied yet when the later-inserted script runs, as in Firefox and Safari; only Chrome passes, because Blink loads data: style sheets synchronously
+chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[editing/other/cefalse-boundaries-deletion.html]
+kind            = follows-majority
+why             = selectAll then delete leaves the contenteditable=false elements at the boundaries of the editing host in place - the Editing spec's delete skips non-editable nodes - as Chrome and Safari do; only Firefox removes them
+chrome.result   = wpt.fyi run 4786307730243584: 0/3 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 3/3 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/3 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/forms/the-select-element/customizable-select/select-pick-option-dirtiness.html]
+kind            = follows-majority
+why             = test_driver.click on a picker option follows WebDriver Element Click step 8 for an option (events at the select, selectedness set) and never runs pick an option, so the picker stays open, exactly as in Chrome and Safari; Firefox does not ship base-select and fails earlier (wpt#64927)
+chrome.result   = wpt.fyi run 4786307730243584: 0/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/semantics/forms/the-select-element/customizable-select/select-picker-hover-after-picking.html]
+kind            = follows-majority
+why             = test_driver.click on a picker option follows WebDriver Element Click step 8 for an option and never runs pick an option, so the picker stays open, exactly as in Chrome and Safari; Firefox does not ship base-select and stops at its appearance check (wpt#64928)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[html/syntax/parsing/DOMContentLoaded-defer.html]
+kind            = follows-majority
+why             = DOMContentLoaded fires in the task in which the parser stops, before a task a defer script queued, as in Chrome, Firefox and Safari (Blink Document::FinishedParsing, WebKit Document::finishedParsing, Gecko's script runner) - the same assertion fails in all four
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = the user, 2026-11-12 6:29 AM ET, by prompt (option B): DOMContentLoaded fires in the task in which the parser stops and load right after, as all three browsers do, accepting this file's loss (tools/wpt_loss_dispositions.txt, generation 225)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[selection/script-and-style-elements.html]
+kind            = follows-majority
+why             = Selection.toString() leaves out the line break before a <style> and <script> made display:block, as Chrome and Safari do (the same string); only Firefox passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[service-workers/service-worker/update-recovery.https.html]
+kind            = follows-majority
+why             = the frame whose navigation the bad service worker fails gets the error document and its load event (HTML fires load for a failed frame navigation's error document), as in Chrome and Firefox (the same rejection); only Safari passes
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[xhr/open-url-multi-window-4.htm]
+kind            = follows-majority
+why             = aborting the document discards the fetch's tasks, so no event reaches the test and it times out, as in Chrome and Firefox; only Safari passes, and the test's own comment says it follows an unmerged xhr#3 text
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 TIMEOUT (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 TIMEOUT (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[xhr/open-url-multi-window-6.htm]
+kind            = follows-majority
+why             = open() in a document that is not fully active throws, from the realm the test calls wrong, as in Firefox and Safari (the same assertion); Chrome does not throw
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+[websockets/cookies/cross-origin-cookie-set.html]
+kind            = follows-majority
+why             = the cross-site WebSocket handshake's Set-Cookie has no SameSite attribute, so under Lax-by-default it is not stored, and the test's cookie check fails as in Chrome and Safari; only Firefox stores it
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, safari
+ruling          = the user, 2026-10-20: "Restore Lax-by-default" for cookies without SameSite (Chrome's behaviour; tools/wpt_loss_dispositions.txt, generation 171)
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
