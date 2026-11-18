@@ -386,8 +386,16 @@ fn prepareScriptElementFor(
         const src = getSrcAttribute(script_element);
 
         // Step 33.3: If src is the empty string, queue an element task to fire
-        // error at el, and return.
-        if (src.len == 0) {
+        // error at el, and return. Browsers over the spec's text (golden rule
+        // 2, no newer spec involved): a src of ASCII whitespace alone counts as
+        // empty - Blink's ScriptLoader::PrepareScript reads src through
+        // StripLeadingAndTrailingHtmlSpaces before its empty test, WebKit's
+        // ScriptElement::requestClassicScript strips it too - where the spec
+        // would fetch the document's own URL as script. Chrome 157 and Safari
+        // 27.2 fire the error event for src="   ", Firefox 160 does not
+        // (unhandled-rejections/promise-resolution-order.html: Chrome passes,
+        // Safari fails only on an unrelated event order, Firefox times out).
+        if (std.mem.trim(u8, src, "\t\n\x0C\r ").len == 0) {
             queueErrorEventTask(script_element);
             return false;
         }
