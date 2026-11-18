@@ -232,6 +232,8 @@ pub const ScriptLoaderFn = external_script_loader.ScriptLoaderFn;
 /// HTML "hyperlink auditing": the pings an a or area element's hyperlink
 /// sends when it is followed.
 pub const hyperlink_auditing = @import("hyperlink_auditing.zig");
+/// HTML "download the hyperlink" steps 8-9 and "handle as a download".
+pub const downloads = @import("downloads.zig");
 
 /// A link or style element's style sheet load, with its critical
 /// subresources, and a link's preload.
