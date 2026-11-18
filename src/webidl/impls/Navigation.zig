@@ -288,6 +288,7 @@ pub fn installHooks() void {
         .scroll = &scrollHook,
         .redirect = &redirectHook,
         .add_handler = &addHandlerHook,
+        .suppresses_normal_scroll_restoration = &suppressesNormalScrollRestorationHook,
     });
 }
 
@@ -2248,6 +2249,26 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
     // adding its Document-owned node requires the separate holder work.
 }
 
+/// dom.navigation_api: `window`'s navigation API's "suppress normal scroll
+/// restoration during ongoing navigation" - set by "commit a navigate event"
+/// for an intercepted traversal, whose process scroll behavior restores
+/// instead.
+fn suppressesNormalScrollRestorationHook(window: *runtime.Instance) bool {
+    const target = targetOf(window) orelse return false;
+    return target.internal.suppress_scroll;
+}
+
+/// HTML "restore scroll position data" given `entry`, for its document's
+/// `window`: step 2 ("has been scrolled by the user") never holds - Crane
+/// has no user to scroll; step 3 puts the viewport back where the entry's
+/// scroll position data says (joint_history.Entry.scroll_position, saved as
+/// a same-document navigation left the entry). An entry that saved none
+/// has nothing to restore.
+fn restoreScrollPositionData(window: *runtime.Instance, entry: *const joint_history.Entry) void {
+    const position = entry.scroll_position orelse return;
+    dom.window_globals.performScroll(window, position[0], position[1]);
+}
+
 /// HTML "potentially process scroll behavior" given the event `record`.
 fn potentiallyProcessScroll(instance: *runtime.Instance, internal: *InternalState, record: *EventRecord) void {
     // 1. Assert: committed or scrolled. 2.
@@ -2265,11 +2286,12 @@ fn processScrollBehavior(instance: *runtime.Instance, internal: *InternalState, 
     record.interception_state = .scrolled;
     // 3. "If event's navigationType was initialized to "traverse", then
     // restore scroll position data given event's relevant global object's
-    // navigable's active session history entry." TODO(scroll-restoration):
-    // Crane's session history entries keep no scroll position data yet
-    // ("persist history entry state" saves none), so there is nothing to
-    // restore - the viewport stays where it is.
-    if (record.navigation_type == .traverse) return;
+    // navigable's active session history entry."
+    if (record.navigation_type == .traverse) {
+        const traversed = scopeOf(instance, internal) orelse return;
+        if (traversed.history.currentEntry(traversed.navigable.id)) |entry| restoreScrollPositionData(traversed.window, entry);
+        return;
+    }
     // 4.1. "Let document be event's relevant global object's associated
     // Document." (A window whose document is no longer fully active has no
     // viewport to scroll.)

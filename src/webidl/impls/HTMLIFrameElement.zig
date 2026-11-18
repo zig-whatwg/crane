@@ -5351,6 +5351,12 @@ fn navigateToFragment(integration: *IFrameIntegration, url: []const u8, old_url:
     var pending: ?html_core.navigation.joint_history.SameDocumentNavigation = null;
     if (integration.browsing_context) |bc| {
         if (bc.ensureHistoryEntries(&history_documents.infoOf)) |history| {
+            // The entry left keeps the viewport's scroll position ("save
+            // persisted state", JointHistory.saveScrollPosition).
+            if (bc.getActiveWindow()) |raw| {
+                const frame_window: *runtime.Instance = @ptrCast(@alignCast(raw));
+                history.saveScrollPosition(bc.id, interfaces.Window.get_scrollX(frame_window) catch 0, interfaces.Window.get_scrollY(frame_window) catch 0);
+            }
             const api_state = destination_state.clone(allocator) catch null;
             pending = history.navigateSameDocument(bc.id, url, .null, jointHandling(handling), api_state) catch null;
         } else |_| {}
