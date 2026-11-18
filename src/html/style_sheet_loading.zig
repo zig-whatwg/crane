@@ -507,7 +507,18 @@ pub fn potentiallyRenderBlocking(element: *runtime.Instance, implicitly: bool) b
 fn unblockRenderingFor(load: *Load) void {
     if (!load.render_blocking) return;
     load.render_blocking = false;
-    if (load.elementIsLive() and load.documentIsLive()) dom.document_rendering.remove(load.document, load.element);
+    if (!load.elementIsLive() or !load.documentIsLive()) return;
+    // The render-blocking element set holds the ELEMENT: a link whose href
+    // changed blocked rendering again for its new fetch (block is
+    // idempotent), and the superseded load's end must not unblock what the
+    // new one still blocks - "unblock rendering on el" belongs to the
+    // processing of the fetch that is current. Chrome 157 and Safari 27.2
+    // keep it blocked (html/dom/render-blocking/stylesheet-link-href-change-
+    // keeps-blocking.html; Firefox 160 fails).
+    for (loadsIn(load.realm)) |other| {
+        if (other != load and other.element == load.element and other.render_blocking and other.elementIsLive()) return;
+    }
+    dom.document_rendering.remove(load.document, load.element);
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
