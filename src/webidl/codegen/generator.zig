@@ -2946,6 +2946,12 @@ fn dictionaryMemberKeepsPresence(dictionary_name: []const u8, member: types.Dict
     // default keeps its presence - reaches 82 members of 50 dictionaries and
     // their impls; queued in tmp/plans/lane-anim1-handoff.md.
     if (std.mem.eql(u8, dictionary_name, "ComputedEffectTiming")) return true;
+    // A dictionary whose steps ask whether a nullable member EXISTS: Fetch's
+    // Request constructor, "If init["signal"] exists, then set signal to it"
+    // (step 29) - `{signal: null}` removes the input Request's signal - and a
+    // present member makes init non-empty (step 13).
+    // fetch/api/abort/general.any.js "Signal removed by setting to null".
+    if (std.mem.eql(u8, dictionary_name, "RequestInit") and std.mem.eql(u8, member.name, "signal")) return true;
     return if (member.default) |value| value != .null else false;
 }
 

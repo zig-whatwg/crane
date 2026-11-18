@@ -381,7 +381,8 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
         init_opts.redirect == null and
         init_opts.integrity == null and
         init_opts.keepalive == null and
-        init_opts.signal == null and
+        // A member that exists - `{signal: null}` too - makes init non-empty.
+        !init_opts.signal.wasPassed() and
         init_opts.duplex == null and
         init_opts.priority == null);
 
@@ -639,9 +640,11 @@ pub fn call_constructor(ctx: runtime.Context, input: typedefs.RequestInfo, init_
     // leak its InternalState here.)
     errdefer runtime.Instance.deinit(instance);
 
-    // Step 29 (with step 13's "If init["signal"] exists, then set signal to
-    // it"): signals is « signal » if signal is non-null; otherwise « ».
-    if (init_opts.signal) |init_signal| signal = init_signal;
+    // Step 29: "If init["signal"] exists, then set signal to it" - a present
+    // null too, which removes input's signal (RequestInit keeps the member's
+    // presence: codegen's dictionaryMemberKeepsPresence). Step 30: signals is
+    // « signal » if signal is non-null; otherwise « ».
+    if (init_opts.signal.wasPassed()) signal = init_opts.signal.getValue();
     const signals: []const *runtime.Instance = if (signal) |s| &.{s} else &.{};
     // Step 30: this's signal is a dependent abort signal from signals.
     state.own.signal = try abort_algorithms.createDependent(ctx, signals);
