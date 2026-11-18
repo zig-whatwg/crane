@@ -33,7 +33,8 @@ pub const InternalState = struct {
 };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return instance.getState(State).own._internal;
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// Initialize instance (creates the instance)
