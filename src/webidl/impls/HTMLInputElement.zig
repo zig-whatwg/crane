@@ -647,6 +647,15 @@ fn attributeChangeSteps(
     } else if (std.mem.eql(u8, local_name, "name")) {
         // The radio button group rule: the name changed.
         if (internal.checkedness and typeOf(instance) == .radio) uncheckOthersInGroup(instance);
+    } else if (std.mem.eql(u8, local_name, "form")) {
+        // The radio button group rule: "the element's form owner changes" -
+        // setting, changing or removing the form attribute resets the form
+        // owner (4.10.18.3). The owner is computed when read
+        // (form_associated.formOwner), so the rule runs on every such
+        // change: with an unchanged owner the group is unchanged and its
+        // other members are unchecked already. (radio-form-owner.html:
+        // Chrome 157, Firefox 160, Safari 27.2 pass.)
+        if (internal.checkedness and typeOf(instance) == .radio) uncheckOthersInGroup(instance);
     }
 }
 

@@ -507,7 +507,18 @@ pub fn potentiallyRenderBlocking(element: *runtime.Instance, implicitly: bool) b
 fn unblockRenderingFor(load: *Load) void {
     if (!load.render_blocking) return;
     load.render_blocking = false;
-    if (load.elementIsLive() and load.documentIsLive()) dom.document_rendering.remove(load.document, load.element);
+    if (!load.elementIsLive() or !load.documentIsLive()) return;
+    // The render-blocking element set holds the ELEMENT: a link whose href
+    // changed blocked rendering again for its new fetch (block is
+    // idempotent), and the superseded load's end must not unblock what the
+    // new one still blocks - "unblock rendering on el" belongs to the
+    // processing of the fetch that is current. Chrome 157 and Safari 27.2
+    // keep it blocked (html/dom/render-blocking/stylesheet-link-href-change-
+    // keeps-blocking.html; Firefox 160 fails).
+    for (loadsIn(load.realm)) |other| {
+        if (other != load and other.element == load.element and other.render_blocking and other.elementIsLive()) return;
+    }
+    dom.document_rendering.remove(load.document, load.element);
 }
 
 /// HTML "fetch and process the linked resource" for `element`, a link
@@ -564,12 +575,9 @@ pub fn startModulePreload(element: *runtime.Instance, options: LinkOptions, dest
         complete(load);
         return id;
     }
-    const document_allocator = load.document.ctx.allocator;
     // Steps 4-5: encoding-parse the href relative to the node document;
     // failure is no fetch.
-    const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| document_allocator.free(b);
-    const url = resolve(element, options.href, base) orelse {
+    const url = encodingParse(element, load.document, options.href) orelse {
         release(load, .settled);
         return null;
     };
@@ -653,13 +661,10 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
     load.fetch_render_blocking = kind == .stylesheet and fetchRenderBlocking(load, options.parser_created);
     // `complete` can free the load: what is read after it is taken first.
     const id = load.id;
-    const document_allocator = load.document.ctx.allocator;
     // Step 2: "Let url be the result of encoding-parsing a URL given
     // options's href, relative to options's base URL." Step 3: failure is
     // no request.
-    const base = interfaces.Node.get_baseURI(load.document) catch null;
-    defer if (base) |b| document_allocator.free(b);
-    const url = resolve(element, options.href, base) orelse {
+    const url = encodingParse(element, load.document, options.href) orelse {
         release(load, .settled);
         return null;
     };
@@ -1276,6 +1281,19 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
         }
         startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), .{ .href = url }, .style);
     }
+}
+
+/// "Encoding-parsing a URL" `href` for a link request (HTML "create a link
+/// request" step 2, and modulepreload's steps 4-5): relative to the node
+/// document's base URL - options's base URL - with the query encoded in the
+/// document's character encoding, so a windows-1252 document's
+/// `?test=\u00DF` is `%DF` (stylesheet-encoding-parse.html: Chrome 157,
+/// Firefox 160, Safari 27.2; the spec passing a base URL instead of the
+/// document is whatwg/html#9715). Serialized, owned by `element`'s context
+/// allocator; null when it does not parse.
+fn encodingParse(element: *runtime.Instance, document: *runtime.Instance, href: []const u8) ?[]u8 {
+    const url = (dom.encoding_parse.encodingParseAndSerializeWithAllocator(element.ctx.allocator, document, href) catch return null) orelse return null;
+    return @constCast(url);
 }
 
 /// `url` parsed relative to `base` and serialized, owned by `element`'s

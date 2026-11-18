@@ -197,6 +197,12 @@ pub fn isHostInert(node: *Instance) bool {
     return false;
 }
 
+/// Whether `node` is inert (HTML 6.3, with CSS UI 4's interactivity): what
+/// a command's Disabled State reads (html.access_keys).
+pub fn isInertNode(node: *Instance) bool {
+    return isInert(node);
+}
+
 /// CSS UI 4 §6.3 adds target computed inertness after HTML's own rule.
 /// A modal's authoritative host escape does not bypass its own CSS value.
 fn isInert(node: *Instance) bool {
