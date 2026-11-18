@@ -61,7 +61,7 @@ const routes = [_]http.Route{
     .{ .path = "/frame.html", .content_type = "text/html", .body = page("frame", "") ++ "<iframe srcdoc='<p>child'></iframe>" },
     // A page with an RTCPeerConnection (Chromium's "rtc").
     .{ .path = "/rtc.html", .content_type = "text/html", .body = page("rtc", "var pc = new RTCPeerConnection();") },
-    // A page that a 404 answers.
+    // A page that a 404 answers: kept (Firefox and Safari), whatever its status.
     .{ .path = "/missing.html", .content_type = "text/html", .body = page("missing", ""), .fail_first = 1000 },
     // A page that runs a dedicated worker, and one that connects to a shared worker.
     .{ .path = "/worker.html", .content_type = "text/html", .body = page("worker", "var w = new Worker('/w.js');") },
@@ -420,7 +420,7 @@ test "the eligibility matrix: a page that holds a lock, one with a frame (phase 
     try testing.expect(!try keptAfterLeaving("/rtc.html", "/b.html"));
 }
 
-test "the eligibility matrix: a 404, a POST's response and a page still loading are not kept" {
+test "the eligibility matrix: a 404 is kept, a POST's response and a page still loading are not" {
     {
         const fixture = try Fixture.start(.{});
         defer fixture.stop();
@@ -436,7 +436,10 @@ test "the eligibility matrix: a 404, a POST's response and a page still loading 
             try fixture.turn(10);
         }
         try fixture.goTo(bc, "location.href = '/b.html'", "/b.html");
-        try testing.expectEqual(@as(usize, 0), fixture.cached());
+        // HTML has no status rule; Firefox 160 and Safari 27.2 keep a page
+        // served 404 (not-restored-reasons/navigation-failure.window.js),
+        // Chrome 157 does not - the majority's (golden rule 2).
+        try testing.expectEqual(@as(usize, 1), fixture.cached());
     }
     {
         // /post.html submits to /a.html: the page left is a POST's. Waited

@@ -7521,8 +7521,8 @@ const KeptDocument = struct {
 ///   the page. Chrome 157 and Safari 27.2 keep a page with a cross-origin
 ///   frame (pagereveal/order-in-bfcache-restore-iframe.html, wpt.fyi stable
 ///   at 2358bd4835).
-/// - Its document came from a GET of an HTTP(S) URL answered 200
-///   (`keepableResponse`, recorded at its commit).
+/// - Its document came from a GET of an HTTP(S) URL, not a network error,
+///   whatever its status (`keepableResponse`, recorded at its commit).
 /// - Its Browser's cache keeps pages (BrowserConfig.back_forward_cache_size).
 ///
 /// Unload listeners do not keep a page out: HTML leaves the choice to the
@@ -7559,11 +7559,19 @@ fn aloneInGroup(bc: *html_core.BrowsingContext) bool {
 }
 
 /// Whether the document `response` makes for `record` may be kept: a GET -
-/// no POST resource - of an HTTP(S) URL, answered 200 (not a network error).
+/// no POST resource - of an HTTP(S) URL, not a network error, whatever its
+/// status. Golden rule 2: HTML has no status rule for the back/forward cache,
+/// and the browsers split - Firefox 160 and Safari 27.2 keep a page served
+/// 404, Chrome 157 does not (its "response-status-not-ok" reason):
+/// performance-timeline/not-restored-reasons/navigation-failure.window.js,
+/// "document unexpectedly BFCached" in Firefox (wpt.fyi run
+/// 4814170760151040) and Safari (5260861921558528). The majority's. (Crane
+/// kept only 200 responses before, Blink's rule, chosen by an earlier lane;
+/// the integrator's ruling of 2026-11-18.)
 fn keepableResponse(record: *const Navigation, response: *const navigation_fetch.NavigationFetchResult, final_url: []const u8) bool {
     if (record.post_body != null) return false;
     if (record.srcdoc != null or record.javascript_url != null) return false;
-    if (response.is_network_error or response.status != 200) return false;
+    if (response.is_network_error) return false;
     const scheme = navigate_steps.schemeOf(final_url);
     return std.mem.eql(u8, scheme, "http") or std.mem.eql(u8, scheme, "https");
 }
