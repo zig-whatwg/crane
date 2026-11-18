@@ -167,6 +167,8 @@ pub const policy_containers = @import("policy_containers.zig");
 /// CSP 5.5 report a violation: the securitypolicyviolation event at the
 /// global's side.
 pub const csp_violations = @import("csp_violations.zig");
+/// HTML 2.5.6 nonce hiding for the parser's html/body attribute merge.
+pub const nonce_hiding = @import("nonce_hiding.zig");
 pub const sri_reporting = @import("sri_reporting.zig");
 pub const coep_reporting = @import("coep_reporting.zig");
 pub const coop_reporting = @import("coop_reporting.zig");

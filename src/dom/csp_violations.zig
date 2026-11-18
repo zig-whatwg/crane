@@ -33,6 +33,7 @@ const webidl = @import("webidl");
 const csp = @import("csp");
 const fire_event = @import("fire_event.zig");
 const policy_containers = @import("policy_containers.zig");
+const rare_data = @import("node_rare_data.zig");
 const trusted_types = @import("trusted_types.zig");
 const reporting = @import("reporting.zig");
 const fetch = @import("fetch");
@@ -96,25 +97,10 @@ pub fn shouldBlockInline(
     const list = scope.list;
     if (list.isEmpty()) return false;
     var eligible = matching;
-    // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
-    // cannot authorize a script with dangling markup in an attribute. Read
-    // the native attribute list, without creating Attr wrappers. Blink's
-    // ContentSecurityPolicy::IsNonceableElement uses the same scan; Chrome
-    // and Firefox pass non-nonceable-elements.html (10/10, cc74d2669f).
-    // Step 3's duplicate-attribute parse flag is not supplied by HTML yet.
-    if (inline_type == .script and eligible.nonce != null) {
-        const attributes = @import("element_attributes.zig");
-        for (0..attributes.count(element)) |index| {
-            const attribute = attributes.at(element, index) orelse continue;
-            if (containsDanglingMarkup(attribute.local_name) or
-                containsDanglingMarkup(attribute.value) or
-                (if (attribute.prefix) |prefix| containsDanglingMarkup(prefix) else false))
-            {
-                eligible.nonce = null;
-                break;
-            }
-        }
-    }
+    // §6.7.3.1 "Is element nonceable?", reached by §6.7.3.3 step 2: a
+    // supplied nonce (step 1: the element has one) cannot authorize an
+    // element that is not nonceable.
+    if (eligible.nonce != null and !isNonceable(element, inline_type == .script)) eligible.nonce = null;
     const window = scope.global;
     // A list that could not record a policy blocks everything (fail closed,
     // csp.CSPList.unenforceable).
@@ -182,6 +168,74 @@ fn inlineCheckScope(document: *runtime.Instance) InlineCheckScope {
         if (trusted_types.cspListOf(global)) |list| return .{ .list = list, .global = global };
     }
     return .{ .list = documentCspList(document), .global = null };
+}
+
+/// CSP §6.7.3.1 "Is element nonceable?" steps 2-4 for `element`, which has
+/// a nonce attribute (step 1 is the caller's: it supplies a nonce only for
+/// an element with one). `is_script` is step 2's "element is a script
+/// element" (an HTML or SVG script).
+///
+/// Step 2: a script with dangling markup in an attribute's name or value is
+/// not nonceable. The native attribute list is read, without creating Attr
+/// wrappers. Blink's ContentSecurityPolicy::IsNonceableElement uses the same
+/// scan; Chrome and Firefox pass non-nonceable-elements.html (10/10,
+/// cc74d2669f).
+///
+/// Step 3: an element whose token had a duplicate-attribute parse error is
+/// not nonceable - the parser's record (`markParsedDuplicateAttribute`; HTML
+/// has yet to name the hook, whatwg/html#3257).
+pub fn isNonceable(element: *runtime.Instance, is_script: bool) bool {
+    // 2.
+    if (is_script) {
+        const attributes = @import("element_attributes.zig");
+        for (0..attributes.count(element)) |index| {
+            const attribute = attributes.at(element, index) orelse continue;
+            if (containsDanglingMarkup(attribute.local_name) or
+                containsDanglingMarkup(attribute.value) or
+                (if (attribute.prefix) |prefix| containsDanglingMarkup(prefix) else false))
+            {
+                return false;
+            }
+        }
+    }
+    // 3.
+    if (rare_data.flag(rare_data.of(element), .parsed_duplicate_attribute)) return false;
+    // 4. "Return "Nonceable"."
+    return true;
+}
+
+/// The cryptographic nonce a script element's fetch carries (HTML "prepare
+/// the script element": the script fetch options' cryptographic nonce, its
+/// [[CryptographicNonce]]): `nonce`, or "" when the element is not
+/// nonceable (`isNonceable`), so no nonce-source can match its request.
+///
+/// Golden rule 2 (no newer spec): HTML hands the slot to the fetch as it
+/// is, and CSP asks 6.7.3.1 only for inline checks; Chrome 157, Firefox 160
+/// and Safari 27.2 all apply it to an external script's nonce too -
+/// content-security-policy/script-src/nonce-enforce-blocked.html expects
+/// its seven external scripts with dangling markup or a duplicate attribute
+/// blocked and reported, 1/1 in all three (wpt.fyi 4786307730243584,
+/// 4877168468033536, 6479119966273536). Blink's ScriptLoader takes the
+/// fetch's nonce from ScriptElementBase::GetNonceForElement, which is empty
+/// for an element IsNonceableElement rejects.
+pub fn nonceableScriptNonce(element: *runtime.Instance, nonce: []const u8) []const u8 {
+    if (nonce.len == 0) return nonce;
+    return if (isNonceable(element, true)) nonce else "";
+}
+
+/// HTML's parser, once it has appended the attributes of an element made
+/// for a token with a duplicate-attribute parse error: remember it for
+/// §6.7.3.1 step 3. A flag never makes a block, and an element with no
+/// block has no nonce - its nonce attribute's change steps make the block's
+/// `nonce` field - so step 1 already answers "Not Nonceable" for it.
+/// Stated deviation: a nonce script gives such an element later is not
+/// refused by step 3. Script that can set a nonce attribute can run script
+/// already: step 3 guards against dangling markup that merges into a
+/// parsed tag, which this records.
+pub fn markParsedDuplicateAttribute(element: *runtime.Instance) void {
+    const a = rare_data.access(element) orelse return;
+    if (a.holder.block == null) return;
+    rare_data.setFlag(a.holder, .parsed_duplicate_attribute, true);
 }
 
 fn containsDanglingMarkup(value: []const u8) bool {

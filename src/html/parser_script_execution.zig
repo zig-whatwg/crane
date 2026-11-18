@@ -314,6 +314,12 @@ pub fn resumeAfterBlockingScript(ctx: *ParserScriptContext) void {
 /// HTMLTreeBuilder script start position). Read when the parser prepares
 /// it, for its errors' lines and its CSP violation's location.
 pub fn recordStartPosition(element: *runtime.Instance, document: *runtime.Instance) void {
+    // An SVG script keeps its own (dom.script_elements.ScriptFlags).
+    if (dom.script_elements.svgFlags(element)) |flags| {
+        const at = @import("script_element.zig").parserPosition(document) orelse return;
+        flags.start = .{ .line = at.line, .column = at.column };
+        return;
+    }
     const state = @import("script_element.zig").of(element) orelse return;
     state.start = @import("script_element.zig").parserPosition(document);
 }
@@ -331,7 +337,17 @@ pub fn styleStart(local_name: []const u8, document: *runtime.Instance) ?dom.styl
 /// the given token to element" - at once, the list from the cache of the
 /// parser `run`'s document (dom.element_attributes.setParsed: shared with
 /// every element whose set is equal; lane nd2 batches 4 and 5).
-pub fn appendParsedAttributes(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
+/// The attributes of `tree_node`, the token's, appended to `element`, the
+/// DOM element made for it - and, when its token had a duplicate-attribute
+/// parse error, that recorded on the element afterwards (the nonce
+/// attribute's change steps have made its rare block by then:
+/// dom.csp_violations.markParsedDuplicateAttribute).
+pub fn appendParsedAttributes(element: *runtime.Instance, tree_node: *const TreeNode, run: ?*dom.element_attributes.ParserRun) void {
+    appendParsedAttributeList(element, tree_node.attributes.toSlice(), run);
+    if (tree_node.had_duplicate_attribute) dom.csp_violations.markParsedDuplicateAttribute(element);
+}
+
+fn appendParsedAttributeList(element: *runtime.Instance, attrs: []const html_core.parser.TreeNode.Attribute, run: ?*dom.element_attributes.ParserRun) void {
     // The conversion buffer is declared without ReleaseSafe's 0xaa fill -
     // over a kilobyte written for every element with an attribute, on the
     // parser's path (the user's approval of 2026-11-06 for hot-path buffer
@@ -360,13 +376,34 @@ fn appendParsedAttributesIn(stack: *[16]dom.element_attributes.Attribute, elemen
     dom.element_attributes.setParsed(element, converted, if (run) |r| r.blocks() else null) catch |err| log.debug("parser attributes not appended: {}", .{err});
 }
 
+/// "In body", a start tag whose tag name is "html" or "body": an attribute
+/// of the token that the element the parser made for the first such tag did
+/// not have, added to that element - which is connected already.
+///
+/// A nonce attribute is hidden once added: it never "becomes
+/// browsing-context connected", where HTML 2.5.6 hides one, so dangling
+/// markup that opens a second <body> or <html> before a nonced script would
+/// otherwise put the script's nonce in a selector's reach. Not in HTML,
+/// stated (golden rule 2, the three browsers agree): Chrome 157, Firefox 160
+/// and Safari 27.2 pass content-security-policy/nonce-hiding/
+/// dangling-html-or-body.html 2/2 (wpt.fyi 4786307730243584,
+/// 4877168468033536, 6479119966273536). WebKit's
+/// HTMLConstructionSite::mergeAttributesFromTokenIntoElement skips the nonce
+/// when the element has a nonce attribute or a nonempty
+/// [[CryptographicNonce]], and otherwise sets it and calls hideNonce.
 pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.TreeNode.Attribute) void {
+    const is_nonce = attr.namespace == null and std.mem.eql(u8, attr.name, "nonce");
+    if (is_nonce and dom.nonce_hiding.hasNonce(element)) return;
     dom.element_attributes.append(element, .{
         .namespace = if (attr.namespace) |ns| ns.uri() else null,
         .prefix = attr.prefix,
         .local_name = attr.name,
         .value = attr.value,
-    }) catch |err| log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
+    }) catch |err| {
+        log.debug("parser attribute {s} not appended: {}", .{ attr.name, err });
+        return;
+    };
+    if (is_nonce) dom.nonce_hiding.hide(element);
 }
 
 /// The SVG script end-tag step's "process the SVG script element", or the
@@ -1407,7 +1444,7 @@ pub const DomTreeAdapter = struct {
             dom.finish_parsing_children.createdByParser(element, local_name);
         }
 
-        appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_run);
+        appendParsedAttributes(element, tree_node, &self.attribute_run);
 
         // HTML 4.2.7 records the token's stylesheet relationship and enabled
         // state at creation, before its post-connection steps start a fetch.
