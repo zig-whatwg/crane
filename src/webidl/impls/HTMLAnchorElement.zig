@@ -311,9 +311,28 @@ fn reflectReferrerPolicy(instance: *runtime.Instance) !runtime.DOMString {
     return runtime.DOMString.initEmpty();
 }
 
-/// dom.activation: every a element has activation behaviour.
+/// dom.activation: an a element has activation behaviour when it has an
+/// href attribute - when it is a hyperlink.
+///
+/// Browsers over the spec's wording (golden rule 2): HTML 4.6.4 gives every
+/// a element activation behaviour whose first step returns when there is no
+/// href, which would make a hrefless a the DOM dispatch's activationTarget
+/// and keep an ancestor's activation (a summary's, a button's, a label's)
+/// from running. All three browsers let the click fall through to the
+/// ancestor instead: Blink's HTMLAnchorElement::DefaultEventHandler handles
+/// only a link click (IsLinkClick && IsLiveLink) and the summary's
+/// DefaultEventHandler toggles; Gecko's HTMLAnchorElement::PostHandleEvent
+/// acts only for IsLink(); WebKit's HTMLAnchorElement::defaultEventHandler
+/// checks isLinkClick && isLink. html/semantics/interactive-elements/
+/// the-summary-element/anchor-without-link.html passes 2/2 in Chrome 157,
+/// Firefox 160 and Safari 27.2 (wpt.fyi 6bdc2d37fd). Blink's IsLiveLink is
+/// also false for an editable link, which runActivationBehavior below
+/// already does not follow: such a click falls through too.
 fn hasActivationBehavior(target: *runtime.Instance) bool {
-    return target.stateAs(State) != null;
+    if (target.stateAs(State) == null) return false;
+    const data = element_data.of(target) orelse return false;
+    if (element_data.getAttributeByNamespaceAndLocalName(data, null, "href") == null) return false;
+    return !(interfaces.HTMLElement.get_isContentEditable(target) catch false);
 }
 
 /// dom.activation: the a element's activation behaviour (HTML 4.6.4): "if

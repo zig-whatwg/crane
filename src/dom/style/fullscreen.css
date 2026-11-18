@@ -41,6 +41,17 @@
  object-fit:contain;
 }
 
+/* Position 4 §3.3 "add an element to the top layer" step 4: "at the UA
+   !important cascade origin, add a rule targeting el containing an overlay:
+   auto declaration" - fullscreen an element adds it to the top layer, as
+   showModal() and showPopover() do (html.css's dialog:modal rule). Blink's
+   fullscreen.css matches every :fullscreen element the same way; a shadow
+   host that matches :fullscreen by retargeting is not in the top layer, and
+   css/cascade.zig's top-layer adjustments read the membership too. */
+:fullscreen, svg|svg:fullscreen, math|math:fullscreen {
+ overlay: auto !important;
+}
+
 iframe:fullscreen {
  border:none !important;
  padding:0 !important;
