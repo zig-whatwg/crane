@@ -21,11 +21,24 @@ pub fn installHooks() void {
     dom.document_fetches.install(.{ .discard = discardRealm });
 }
 
-pub fn initOwn(instance: *runtime.Instance, _: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
     instance.getState(StateType).own._internal = null;
-    // Q16: the BrowserScope registry is window-thread-only. Worker font
-    // sources are a separately assigned capability and do not enter it.
-    if (!instance.ctx.isWindow()) return;
+    // Q16: the BrowserScope registry is window-thread-only. A worker's set
+    // (Font Loading 3 §4.1, "Worker FontFaceSources": no document, its set
+    // entries what script adds) is the object's own, made and freed on the
+    // worker's thread.
+    if (!instance.ctx.isWindow()) {
+        const internal = try allocator.create(InternalState);
+        internal.* = fonts.Set.init(instance, null);
+        instance.getState(StateType).own._internal = internal;
+        errdefer {
+            internal.deinit();
+            allocator.destroy(internal);
+            instance.getState(StateType).own._internal = null;
+        }
+        try internal.ready.ensure(instance);
+        return;
+    }
     const document: ?*runtime.Instance = if (@hasField(@TypeOf(args), "font_document")) args.font_document else null;
     const internal = try Registry.createIn(instance, runtime.arenaOf(instance));
     internal.* = fonts.Set.init(instance, document);
@@ -40,14 +53,25 @@ pub fn initOwn(instance: *runtime.Instance, _: std.mem.Allocator, comptime State
 }
 
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    if (!instance.ctx.isWindow()) return;
+    if (!instance.ctx.isWindow()) {
+        const state = instance.stateAs(State) orelse return;
+        const internal = state.own._internal orelse return;
+        state.own._internal = null;
+        const allocator = internal.allocator;
+        internal.deinit();
+        allocator.destroy(internal);
+        return;
+    }
     if (Registry.get(instance)) |internal| internal.deinit();
     if (instance.stateAs(State)) |state| state.own._internal = null;
     Registry.remove(instance);
 }
 
 fn fontSetOf(instance: *runtime.Instance) ?*fonts.Set {
-    if (!instance.ctx.isWindow()) return null;
+    if (!instance.ctx.isWindow()) {
+        const state = instance.stateAs(State) orelse return null;
+        return state.own._internal;
+    }
     return Registry.get(instance);
 }
 
@@ -72,7 +96,7 @@ pub fn get_status(instance: *runtime.Instance) anyerror!enums.FontFaceSetLoadSta
 
 /// WebIDL 2.5.12: the set entries the binding's setlike members (size, has,
 /// forEach, keys, values, entries, the iterator) read; null once the set is
-/// gone (and, for now, in a worker: Q16).
+/// gone.
 pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {
     const set = fontSetOf(instance) orelse return null;
     return set.setlikeView();
