@@ -1751,3 +1751,8 @@ assertion = assert_equals: expected 0 but got NaN (both subtests)
 kind      = needs-renderer
 why       = the iframe document's @media (min-width: 300px) is evaluated against the iframe's viewport, the iframe element's laid-out content box (200px, then 400px after frame.style.width changes); with no renderer every viewport is 1024px, so the animation runs from the start and the first assertion (no animation yet, red) fails
 assertion = assert_equals: expected "rgb(255, 0, 0)" but got "rgb(0, 128, 0)" (both subtests, the first assertion)
+
+[css/css-properties-values-api/at-property-media-query.html]
+kind      = needs-renderer
+why       = the @media (min-width: 200px) wrapping the second @property rules is evaluated against an iframe's viewport, the iframe element's laid-out width (100px, then 300px); with no renderer the iframe's viewport is 1024px, so the conditional registrations apply from the start. The non-geometry half - an unmatched @media's @property is not registered, a condition change re-registers - passes: crane/css1-at-property-conditional.html (lane css1)
+assertion = assert_equals: expected "1px" but got "4px" (the first assertion)
