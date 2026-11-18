@@ -16,6 +16,8 @@ const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const Document = @import("interfaces").Document;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
@@ -23,8 +25,10 @@ const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
 const Element = @import("interfaces").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const WritableStream = @import("interfaces").WritableStream;
 const DOMString = @import("typedefs").DOMString;
 
 pub const ProcessingInstruction = struct {
@@ -99,6 +103,18 @@ pub const ProcessingInstruction = struct {
             "insertData",
             "deleteData",
             "replaceData",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",

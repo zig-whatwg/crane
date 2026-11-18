@@ -10,10 +10,12 @@ const mixins = @import("mixins");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
+const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const TrustedScript = @import("interfaces").TrustedScript;
-const TrustedScriptURL = @import("interfaces").TrustedScriptURL;
+const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const DOMString = @import("typedefs").DOMString;
+const TrustedHTMLParserOptions = @import("interfaces").TrustedHTMLParserOptions;
 
 pub const TrustedTypePolicy = struct {
     pub const Meta = struct {
@@ -43,6 +45,7 @@ pub const TrustedTypePolicy = struct {
             .{ "createHTML", "call_createHTML", 1 },
             .{ "createScript", "call_createScript", 1 },
             .{ "createScriptURL", "call_createScriptURL", 1 },
+            .{ "createParserOptions", "call_createParserOptions", 0 },
         };
 
         /// Methods defined/overridden by this interface
@@ -50,6 +53,7 @@ pub const TrustedTypePolicy = struct {
             "createHTML",
             "createScript",
             "createScriptURL",
+            "createParserOptions",
         };
 
         /// Methods inherited from parent/mixins (rely on V8 prototype chain)
@@ -64,6 +68,10 @@ pub const TrustedTypePolicy = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+        /// Member-level [Exposed] overrides; unlisted members inherit the interface.
+        pub const exposed_members = .{
+            .{ "createParserOptions", .{"Window"} },
+        };
     };
 
     pub const State = runtime.FlattenedState(
@@ -78,6 +86,7 @@ pub const TrustedTypePolicy = struct {
         .get_name = &get_name,
 
         .call_createHTML = &call_createHTML,
+        .call_createParserOptions = &call_createParserOptions,
         .call_createScript = &call_createScript,
         .call_createScriptURL = &call_createScriptURL,
 
@@ -171,6 +180,11 @@ pub const TrustedTypePolicy = struct {
 
     pub fn get_name(instance: *runtime.Instance) anyerror!runtime.DOMString {
         return try TrustedTypePolicyImpl.get_name(instance);
+    }
+
+    /// Extended attributes: [Exposed=Window]
+    pub fn call_createParserOptions(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptions), arguments: []const runtime.JSValue) anyerror!*runtime.Instance {
+        return try TrustedTypePolicyImpl.call_createParserOptions(instance, options, arguments);
     }
 
     pub fn call_createHTML(instance: *runtime.Instance, input: runtime.DOMString, arguments: []const runtime.JSValue) anyerror!*runtime.Instance {

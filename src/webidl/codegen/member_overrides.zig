@@ -33,10 +33,20 @@ const editing_exec_command = "The editing spec (https://w3c.github.io/editing/do
     "insertHTML command as itself; webref's html.idl keeps optional DOMString, so " ++
     "specs/supplementary/execcommand.idl restates the editing spec's declaration";
 
+const html_parser_options = "HTML 8.5.2 (https://html.spec.whatwg.org/#html-parsing-and-insertion-methods) now takes " ++
+    "(SetHTMLUnsafeOptions or TrustedHTMLParserOptions) for setHTMLUnsafe and (ParseHTMLUnsafeOptions or " ++
+    "TrustedHTMLParserOptions) for parseHTMLUnsafe; the pinned webref snapshot keeps the dictionary alone " ++
+    "(webref curated eefdec10ced, 2026-11-18, has the new declarations), so " ++
+    "specs/supplementary/html-insertion-streaming.idl restates them - delete these entries with that file " ++
+    "at the next webref snapshot update";
+
 pub const table = [_]Override{
     .{ .interface = "HTMLScriptElement", .member = "src", .file = "trusted-types-script.idl", .reason = trusted_types_script },
     .{ .interface = "HTMLScriptElement", .member = "text", .file = "trusted-types-script.idl", .reason = trusted_types_script },
     .{ .interface = "Document", .member = "execCommand", .file = "execcommand.idl", .reason = editing_exec_command },
+    .{ .interface = "Element", .member = "setHTMLUnsafe", .file = "html-insertion-streaming.idl", .reason = html_parser_options },
+    .{ .interface = "ShadowRoot", .member = "setHTMLUnsafe", .file = "html-insertion-streaming.idl", .reason = html_parser_options },
+    .{ .interface = "Document", .member = "parseHTMLUnsafe", .file = "html-insertion-streaming.idl", .reason = html_parser_options },
 };
 
 /// The override for `interface`'s `member`, in `entries`.
@@ -58,4 +68,7 @@ test "the table names each replaced member once, with its file and reason" {
     try std.testing.expectEqualStrings("trusted-types-script.idl", find(&table, "HTMLScriptElement", "text").?.file);
     try std.testing.expect(find(&table, "HTMLScriptElement", "async") == null);
     try std.testing.expectEqualStrings("execcommand.idl", find(&table, "Document", "execCommand").?.file);
+    try std.testing.expectEqualStrings("html-insertion-streaming.idl", find(&table, "Element", "setHTMLUnsafe").?.file);
+    try std.testing.expectEqualStrings("html-insertion-streaming.idl", find(&table, "Document", "parseHTMLUnsafe").?.file);
+    try std.testing.expect(find(&table, "Element", "setHTML") == null);
 }

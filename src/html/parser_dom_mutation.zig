@@ -7,7 +7,14 @@ const engine = @import("engine");
 const TreeBuilder = @import("html_core").parser.TreeBuilder;
 const TreeNode = @import("html_core").parser.TreeNode;
 
-pub const Location = struct { parent: *runtime.Instance, before: ?*runtime.Instance };
+pub const Location = struct {
+    parent: *runtime.Instance,
+    before: ?*runtime.Instance,
+    /// HTML "insert an element at the adjusted insertion location" step 4:
+    /// the reference child is no longer the target parent's child, so the
+    /// insertion is dropped (a redirected location only).
+    dropped: bool = false,
+};
 
 // An Owned value keeps a wrapper alive, but realm teardown can still free its
 // native Instance (engine protocol's Instance contract). Keep the context and
@@ -30,17 +37,28 @@ const SavedNode = struct {
 /// Appropriate place steps 3–6: the on-stack table's LIVE parent wins.
 /// If that parent is a template, discard the reference and use its content.
 pub fn resolve(adapter: anytype, location: TreeBuilder.InsertionLocation) !Location {
-    var parent = adapter.getDomNode(location.parent) orelse return error.InvalidStateError;
-    var before = if (location.before) |node| adapter.getDomNode(node) else null;
+    // HTML "adjusted insertion location" steps 3-7: a node the insertion
+    // target redirection map names (the fragment parser's root html
+    // element) sends its insertions to the redirect's live location.
+    if (location.foster_table == null) if (location.parent.insertion_redirect) |redirect| return redirected(redirect);
+    var parent: *runtime.Instance = undefined;
+    var before: ?*runtime.Instance = null;
     if (location.foster_table) |node| {
+        // Foster parenting: the table's live parent, before the table - or,
+        // with none, the element above it on the stack, which may be a
+        // redirected one (the fragment parser's root).
         const table = adapter.getDomNode(node) orelse return error.InvalidStateError;
         if (try interfaces.Node.get_parentNode(table)) |live_parent| {
             parent = live_parent;
             before = table;
         } else {
-            parent = adapter.getDomNode(location.foster_fallback.?) orelse return error.InvalidStateError;
-            before = null;
+            const fallback = location.foster_fallback.?;
+            if (fallback.insertion_redirect) |redirect| return redirected(redirect);
+            parent = adapter.getDomNode(fallback) orelse return error.InvalidStateError;
         }
+    } else {
+        parent = adapter.getDomNode(location.parent) orelse return error.InvalidStateError;
+        before = if (location.before) |node| adapter.getDomNode(node) else null;
     }
     // Step 6 can only apply to a template: the TreeNode parent is an HTML
     // template, or - foster parenting - the table's live parent, which script
@@ -56,6 +74,25 @@ pub fn resolve(adapter: anytype, location: TreeBuilder.InsertionLocation) !Locat
     const target = try dom.template_contents.insertionTarget(parent);
     if (target != parent) before = null;
     return .{ .parent = target, .before = before };
+}
+
+/// HTML "adjusted insertion location" steps 4-7 for a redirected target
+/// parent: (redirectedParent, redirectedReferenceChild), after the parser's
+/// invalid reference child steps when that child is no longer
+/// redirectedParent's child - an insertion there is dropped ("insert an
+/// element at the adjusted insertion location" step 4).
+fn redirected(redirect: *const @import("html_core").parser.InsertionRedirect) !Location {
+    const parent = liveNode(redirect.parent, redirect.parent_generation) orelse return error.InvalidStateError;
+    const reference = if (redirect.reference) |node| liveNode(node, redirect.reference_generation) orelse return error.InvalidStateError else null;
+    const child = reference orelse return .{ .parent = parent, .before = null };
+    const child_base = dom.instance_bridge.getNodeBase(child) orelse return error.InvalidStateError;
+    const parent_base = dom.instance_bridge.getNodeBase(parent);
+    if (child_base.parent_node == parent_base) return .{ .parent = parent, .before = child };
+    // 6. "Run the parser's invalid reference child steps given
+    // redirectedReferenceChild" (they error the stream and abort the
+    // parser), then 7. return the location, whose insertion is dropped.
+    if (redirect.invalid_reference) |steps| steps(redirect.context);
+    return .{ .parent = parent, .before = child, .dropped = true };
 }
 
 /// The shadow root the live adapter attached for `template`, a declarative
@@ -98,6 +135,7 @@ pub fn remove(node: *runtime.Instance) !void {
 pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: *TreeNode) !bool {
     // Adoption steps 4.14–4.16 compute the location BEFORE removing lastNode.
     const target = try resolve(adapter, location);
+    if (target.dropped) return false;
     const node = adapter.getDomNode(child) orelse return false;
     const saved_node = SavedNode.init(node);
     const saved_parent = SavedNode.init(target.parent);

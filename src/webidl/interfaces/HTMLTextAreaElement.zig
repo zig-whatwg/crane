@@ -28,16 +28,16 @@ const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCallback;
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
 const Animation = @import("interfaces").Animation;
+const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const ValidityState = @import("interfaces").ValidityState;
@@ -52,11 +52,12 @@ const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const SelectionMode = @import("enums").SelectionMode;
-const DOMRectList = @import("interfaces").DOMRectList;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
 const StartViewTransitionOptions = @import("dictionaries").StartViewTransitionOptions;
 const EditContext = @import("interfaces").EditContext;
+const DOMRectList = @import("interfaces").DOMRectList;
 const DOMRect = @import("interfaces").DOMRect;
 const ElementInternals = @import("interfaces").ElementInternals;
 const ViewTransition = @import("interfaces").ViewTransition;
@@ -208,8 +209,18 @@ pub const HTMLTextAreaElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
-            "setHTML",
+            "appendHTML",
+            "prependHTML",
+            "streamHTML",
+            "streamAppendHTML",
+            "streamPrependHTML",
             "setHTMLUnsafe",
+            "appendHTMLUnsafe",
+            "prependHTMLUnsafe",
+            "streamHTMLUnsafe",
+            "streamAppendHTMLUnsafe",
+            "streamPrependHTMLUnsafe",
+            "setHTML",
             "getHTML",
             "insertAdjacentHTML",
             "setPointerCapture",
@@ -227,6 +238,18 @@ pub const HTMLTextAreaElement = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",

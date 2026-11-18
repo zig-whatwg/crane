@@ -1683,9 +1683,11 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // Step 1: "Let compliantString be the result of invoking the get trusted
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, the given value, "Element innerHTML", and "script"."
-    const compliant = try dom.trusted_types.compliantStringFor(runtime.allocatorOf(instance), .html, instance, value, "Element innerHTML");
-    defer runtime.allocatorOf(instance).free(compliant);
-    const html_string: []const u8 = compliant;
+    // HTML 8.5.5: (compliantString, compliantOptions), with a new
+    // SetHTMLUnsafeOptions, this's node document's type, and false.
+    var compliant = try @import("html").parser_options.legacyCompliantInput(runtime.allocatorOf(instance), instance, dom.trusted_types.inputFrom(value), "Element innerHTML");
+    defer compliant.deinit(runtime.allocatorOf(instance));
+    const html_string: []const u8 = compliant.html;
 
     const target = try dom.template_contents.insertionTarget(instance);
     const element_base = dom.instance_bridge.getNodeBase(target) orelse return error.InvalidStateError;
@@ -1693,7 +1695,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // HTML fragment parsing steps 18 and 21 still create head/body for an
     // HTML html-element context at EOF. Keep the empty-fragment shortcut
     // only for other contexts (as Blink's SetInnerHTMLInternal does).
-    if (html_string.len == 0 and
+    if (html_string.len == 0 and compliant.options == null and
         !(internal.data.name.is(.html, "html") and isHtmlElementInHtmlDocument(instance, internal)))
     {
         try dom.mutation.replaceAll(@as(?*dom.NodeBase, null), element_base);
@@ -1702,7 +1704,7 @@ pub fn set_innerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
 
     // Step 1: "Let fragment be the result of invoking the fragment parsing
     // algorithm steps with context and compliantString."
-    const fragment = @import("html").custom_elements.parseFragment(instance, html_string) catch |err| switch (err) {
+    const fragment = @import("html").html_insertion.legacyParse(instance, html_string, if (compliant.options) |*options| options else null) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         // The XML fragment parsing algorithm's step 7.
         error.SyntaxError => return error.SyntaxError,
@@ -1732,8 +1734,8 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     // invoking the get trusted type compliant string algorithm with
     // TrustedHTML, this's relevant global object, the given value, "Element
     // outerHTML", and "script"."
-    const compliant = try dom.trusted_types.compliantStringFor(runtime.allocatorOf(instance), .html, instance, value, "Element outerHTML");
-    defer runtime.allocatorOf(instance).free(compliant);
+    var compliant = try @import("html").parser_options.legacyCompliantInput(runtime.allocatorOf(instance), instance, dom.trusted_types.inputFrom(value), "Element outerHTML");
+    defer compliant.deinit(runtime.allocatorOf(instance));
 
     // Steps 2–4: only a detached element is a no-op; a Document parent is
     // specifically NoModificationAllowedError, not HierarchyRequestError.
@@ -1761,12 +1763,7 @@ pub fn set_outerHTML(instance: *runtime.Instance, value: typedefs.TrustedHTMLOrD
     } else parent;
 
     // Step 6: parse with the adjusted parent as context.
-    const fragment = @import("html").dom_parser.parseFragment(
-        runtime.allocatorOf(instance),
-        instance.ctx,
-        compliant,
-        context,
-    ) catch |err| switch (err) {
+    const fragment = @import("html").html_insertion.legacyParse(context, compliant.html, if (compliant.options) |*options| options else null) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         // The XML fragment parsing algorithm's step 7.
         error.SyntaxError => return error.SyntaxError,
@@ -2508,29 +2505,88 @@ pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: we
     return error.NotImplemented;
 }
 
-/// HTML 8.5.2 setHTML, steps 1–2: template contents, then safe filtering.
+/// HTML 8.5.2 Element's setHTML(html, options): the target for HTML
+/// insertion given this, then filter and set HTML in Safe mode.
 pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
-    defer converted.deinit();
-    const target = try dom.template_contents.insertionTarget(instance);
-    try @import("html").sanitizer.setHTML(instance, target, html.asSlice(), &converted, true, true);
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .set, html.asSlice(), &parsed);
 }
 
-/// HTML 8.5.2 setHTMLUnsafe, steps 1–3.
-pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(dictionaries.SetHTMLUnsafeOptions)) anyerror!void {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, false);
-    defer converted.deinit();
-    // Step 1: "Let compliantHTML be the result of invoking the get trusted
-    // type compliant string algorithm with TrustedHTML, this's relevant
-    // global object, html, "Element setHTMLUnsafe", and "script"."
-    const allocator = instance.ctx.allocator;
-    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, html, "Element setHTMLUnsafe");
-    defer allocator.free(compliant);
-    // Step 2: "Let target be this's template contents if this is a template
-    // element; otherwise this."
-    const target = try dom.template_contents.insertionTarget(instance);
-    // Step 3: configure, parse, sanitize, and replace children.
-    try @import("html").sanitizer.setHTML(instance, target, compliant, &converted, false, options.getOrDefault(.{}).sanitizer != null);
+/// HTML 8.5.2 Element's appendHTML(html, options): the target for HTML
+/// insertion given this, then filter and pre-insert HTML before null.
+pub fn call_appendHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .append, html.asSlice(), &parsed);
+}
+
+/// HTML 8.5.2 Element's prependHTML(html, options): the target for HTML
+/// insertion given this, then filter and pre-insert HTML before its first
+/// child.
+pub fn call_prependHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    var parsed = try insertion.ParserOptions.fromDictionary(instance.ctx, options.getOrDefault(.{}).sanitizer, null);
+    defer parsed.deinit();
+    try insertion.containerSafe(instance, .prepend, html.asSlice(), &parsed);
+}
+
+/// HTML 8.5.2 Element's setHTMLUnsafe(html, options): get trusted type
+/// compliant input ("Element setHTMLUnsafe"), the target for HTML
+/// insertion, then filter and set HTML in Unsafe mode.
+pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .set, dom.trusted_types.inputFrom(html), parsed, "Element setHTMLUnsafe");
+}
+
+/// HTML 8.5.2 Element's appendHTMLUnsafe(html, options).
+pub fn call_appendHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .append, dom.trusted_types.inputFrom(html), parsed, "Element appendHTMLUnsafe");
+}
+
+/// HTML 8.5.2 Element's prependHTMLUnsafe(html, options).
+pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: typedefs.TrustedHTMLOrDOMString, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+    const insertion = @import("html").html_insertion;
+    const parsed = try insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    try insertion.containerUnsafe(instance, .prepend, dom.trusted_types.inputFrom(html), parsed, "Element prependHTMLUnsafe");
+}
+
+/// HTML 8.5.3 Element's streamHTML(options).
+pub fn call_streamHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .set, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 Element's streamAppendHTML(options).
+pub fn call_streamAppendHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .append, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 Element's streamPrependHTML(options).
+pub fn call_streamPrependHTML(instance: *runtime.Instance, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
+    return @import("html").stream_html.containerSafe(instance, .prepend, options.getOrDefault(.{}).sanitizer);
+}
+
+/// HTML 8.5.3 Element's streamHTMLUnsafe(options).
+pub fn call_streamHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .set, parsed, "Element streamHTMLUnsafe");
+}
+
+/// HTML 8.5.3 Element's streamAppendHTMLUnsafe(options).
+pub fn call_streamAppendHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .append, parsed, "Element streamAppendHTMLUnsafe");
+}
+
+/// HTML 8.5.3 Element's streamPrependHTMLUnsafe(options).
+pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(typedefs.SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+    const parsed = try @import("html").html_insertion.ParserOptions.fromUnion(instance.ctx, if (options.wasPassed()) options.getValue() else null);
+    return @import("html").stream_html.containerUnsafe(instance, .prepend, parsed, "Element streamPrependHTMLUnsafe");
 }
 
 /// Operation: scrollIntoView
@@ -2855,8 +2911,8 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     // type compliant string algorithm with TrustedHTML, this's relevant
     // global object, string, "Element insertAdjacentHTML", and "script"."
     const allocator = instance.ctx.allocator;
-    const compliant = try dom.trusted_types.compliantStringFor(allocator, .html, instance, string, "Element insertAdjacentHTML");
-    defer allocator.free(compliant);
+    var compliant = try @import("html").parser_options.legacyCompliantInput(allocator, instance, dom.trusted_types.inputFrom(string), "Element insertAdjacentHTML");
+    defer compliant.deinit(allocator);
     // HTML 8.5.6 steps 2–3: choose a context or throw before parsing.
     const Position = enum { beforebegin, afterbegin, beforeend, afterend };
     const where: Position = blk: {
@@ -2889,7 +2945,7 @@ pub fn call_insertAdjacentHTML(instance: *runtime.Instance, position: runtime.DO
     }
 
     // Step 5: the existing fragment parser owns parsing and upgrades.
-    const fragment = try @import("html").dom_parser.parseFragment(allocator, instance.ctx, compliant, context);
+    const fragment = try @import("html").html_insertion.legacyParse(context, compliant.html, if (compliant.options) |*options| options else null);
     defer dom.node_creation.destroyUninserted(fragment);
     const fragment_base = dom.instance_bridge.getNodeBase(@ptrCast(fragment)) orelse return error.InvalidStateError;
 

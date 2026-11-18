@@ -16,14 +16,18 @@ const ChildNode = @import("mixins").ChildNode;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Document = @import("interfaces").Document;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const NodeList = @import("interfaces").NodeList;
 const USVString = @import("typedefs").USVString;
-const Event = @import("interfaces").Event;
 const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
 const Element = @import("interfaces").Element;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
+const WritableStream = @import("interfaces").WritableStream;
 const DOMString = @import("typedefs").DOMString;
 
 pub const CharacterData = struct {
@@ -60,6 +64,18 @@ pub const CharacterData = struct {
             .{ "insertData", "call_insertData", 2 },
             .{ "deleteData", "call_deleteData", 2 },
             .{ "replaceData", "call_replaceData", 3 },
+            .{ "beforeHTML", "call_beforeHTML", 1 },
+            .{ "afterHTML", "call_afterHTML", 1 },
+            .{ "replaceWithHTML", "call_replaceWithHTML", 1 },
+            .{ "streamBeforeHTML", "call_streamBeforeHTML", 0 },
+            .{ "streamAfterHTML", "call_streamAfterHTML", 0 },
+            .{ "streamReplaceWithHTML", "call_streamReplaceWithHTML", 0 },
+            .{ "beforeHTMLUnsafe", "call_beforeHTMLUnsafe", 1 },
+            .{ "afterHTMLUnsafe", "call_afterHTMLUnsafe", 1 },
+            .{ "replaceWithHTMLUnsafe", "call_replaceWithHTMLUnsafe", 1 },
+            .{ "streamBeforeHTMLUnsafe", "call_streamBeforeHTMLUnsafe", 0 },
+            .{ "streamAfterHTMLUnsafe", "call_streamAfterHTMLUnsafe", 0 },
+            .{ "streamReplaceWithHTMLUnsafe", "call_streamReplaceWithHTMLUnsafe", 0 },
             .{ "before", "call_before", 0 },
             .{ "after", "call_after", 0 },
             .{ "replaceWith", "call_replaceWith", 0 },
@@ -73,6 +89,18 @@ pub const CharacterData = struct {
             "insertData",
             "deleteData",
             "replaceData",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",
@@ -141,13 +169,25 @@ pub const CharacterData = struct {
         .set_data = &set_data,
 
         .call_after = &call_after,
+        .call_afterHTML = &call_afterHTML,
+        .call_afterHTMLUnsafe = &call_afterHTMLUnsafe,
         .call_appendData = &call_appendData,
         .call_before = &call_before,
+        .call_beforeHTML = &call_beforeHTML,
+        .call_beforeHTMLUnsafe = &call_beforeHTMLUnsafe,
         .call_deleteData = &call_deleteData,
         .call_insertData = &call_insertData,
         .call_remove = &call_remove,
         .call_replaceData = &call_replaceData,
         .call_replaceWith = &call_replaceWith,
+        .call_replaceWithHTML = &call_replaceWithHTML,
+        .call_replaceWithHTMLUnsafe = &call_replaceWithHTMLUnsafe,
+        .call_streamAfterHTML = &call_streamAfterHTML,
+        .call_streamAfterHTMLUnsafe = &call_streamAfterHTMLUnsafe,
+        .call_streamBeforeHTML = &call_streamBeforeHTML,
+        .call_streamBeforeHTMLUnsafe = &call_streamBeforeHTMLUnsafe,
+        .call_streamReplaceWithHTML = &call_streamReplaceWithHTML,
+        .call_streamReplaceWithHTMLUnsafe = &call_streamReplaceWithHTMLUnsafe,
         .call_substringData = &call_substringData,
 
         .deinit = &deinit,
@@ -258,17 +298,21 @@ pub const CharacterData = struct {
 
     pub const get_nextElementSibling = mixins.NonDocumentTypeChildNode.get_nextElementSibling;
 
-    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: runtime.DOMString) anyerror!void {
-        return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
-    }
-
     pub const call_before = mixins.ChildNode.call_before;
 
-    pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
-        return try CharacterDataImpl.call_deleteData(instance, offset, count);
-    }
+    pub const call_replaceWithHTML = mixins.NonDocumentTypeChildNode.call_replaceWithHTML;
+
+    pub const call_afterHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_afterHTMLUnsafe;
+
+    pub const call_streamReplaceWithHTML = mixins.NonDocumentTypeChildNode.call_streamReplaceWithHTML;
 
     pub const call_remove = mixins.ChildNode.call_remove;
+
+    pub const call_afterHTML = mixins.NonDocumentTypeChildNode.call_afterHTML;
+
+    pub const call_beforeHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_beforeHTMLUnsafe;
+
+    pub const call_streamAfterHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamAfterHTMLUnsafe;
 
     pub const call_after = mixins.ChildNode.call_after;
 
@@ -284,7 +328,27 @@ pub const CharacterData = struct {
         return try CharacterDataImpl.call_insertData(instance, offset, data);
     }
 
+    pub const call_beforeHTML = mixins.NonDocumentTypeChildNode.call_beforeHTML;
+
+    pub fn call_replaceData(instance: *runtime.Instance, offset: u32, count: u32, data: runtime.DOMString) anyerror!void {
+        return try CharacterDataImpl.call_replaceData(instance, offset, count, data);
+    }
+
+    pub const call_replaceWithHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_replaceWithHTMLUnsafe;
+
+    pub fn call_deleteData(instance: *runtime.Instance, offset: u32, count: u32) anyerror!void {
+        return try CharacterDataImpl.call_deleteData(instance, offset, count);
+    }
+
+    pub const call_streamBeforeHTML = mixins.NonDocumentTypeChildNode.call_streamBeforeHTML;
+
+    pub const call_streamAfterHTML = mixins.NonDocumentTypeChildNode.call_streamAfterHTML;
+
     pub const call_replaceWith = mixins.ChildNode.call_replaceWith;
+
+    pub const call_streamBeforeHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamBeforeHTMLUnsafe;
+
+    pub const call_streamReplaceWithHTMLUnsafe = mixins.NonDocumentTypeChildNode.call_streamReplaceWithHTMLUnsafe;
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
     /// (bit i = argument i; an attribute setter's value is bit 0).
@@ -298,8 +362,16 @@ pub const CharacterData = struct {
     /// pending.
     pub const ce_reactions = .{
         "call_before",
+        "call_replaceWithHTML",
+        "call_afterHTMLUnsafe",
+        "call_streamReplaceWithHTML",
         "call_remove",
+        "call_afterHTML",
+        "call_beforeHTMLUnsafe",
         "call_after",
+        "call_beforeHTML",
+        "call_replaceWithHTMLUnsafe",
         "call_replaceWith",
+        "call_streamReplaceWithHTMLUnsafe",
     };
 };

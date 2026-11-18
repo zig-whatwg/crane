@@ -7,6 +7,7 @@ pub const BlobCallback = @import("BlobCallback.zig").BlobCallback;
 pub const CatchCallback = @import("CatchCallback.zig").CatchCallback;
 pub const CreateHTMLCallback = @import("CreateHTMLCallback.zig").CreateHTMLCallback;
 pub const CreateMonitorCallback = @import("CreateMonitorCallback.zig").CreateMonitorCallback;
+pub const CreateParserOptionsCallback = @import("CreateParserOptionsCallback.zig").CreateParserOptionsCallback;
 pub const CreateScriptCallback = @import("CreateScriptCallback.zig").CreateScriptCallback;
 pub const CreateScriptURLCallback = @import("CreateScriptURLCallback.zig").CreateScriptURLCallback;
 pub const CustomElementConstructor = @import("CustomElementConstructor.zig").CustomElementConstructor;

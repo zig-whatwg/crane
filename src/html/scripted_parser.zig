@@ -311,6 +311,10 @@ pub const DocumentParser = struct {
     document_destroyed: bool = false,
     eof_processed: bool = false,
     on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
+    /// What owns a fragment parser that runs over time (streaming HTML:
+    /// html.stream_html's parser), for its `on_finished`; null for a
+    /// document's own parser.
+    owner: ?*anyopaque = null,
 
     pub fn create(
         allocator: Allocator,
@@ -396,6 +400,21 @@ pub const DocumentParser = struct {
         body.handTo(.{ .context = self, .alive = &NetworkInput.holds });
         pipe.consumer = .{ .context = self, .notify = &NetworkInput.notify };
         return self;
+    }
+
+    /// A script-created parser - it reaches the end of its input only at an
+    /// explicit EOF - for `document`, a fragment parser's Document (HTML
+    /// "initialize an HTML fragment parser" step 5, for streaming HTML): the
+    /// caller sets up the fragment case on its tree builder and tokenizer
+    /// (dom_parser.FragmentCase) and associates it with the document.
+    pub fn createFragment(
+        allocator: Allocator,
+        ctx: runtime.Context,
+        document: *runtime.Instance,
+        scripting_enabled: bool,
+        on_finished: *const fn (*runtime.Instance, *DocumentParser) void,
+    ) !*DocumentParser {
+        return createWithInput(allocator, ctx, document, "", .{ .scripting_enabled = scripting_enabled }, true, on_finished);
     }
 
     fn navigationFinished(document: *runtime.Instance, self: *DocumentParser) void {

@@ -198,11 +198,24 @@ pub const DeclarativeShadow = struct {
     /// Steps 7.4-7.9 from the start tag; null when its shadowrootmode is in
     /// the None state (absent, or not "open" or "closed").
     pub fn fromToken(tag: TagToken) ?DeclarativeShadow {
+        return fromTokenSanitized(tag, null);
+    }
+
+    /// As fromToken, reading only the attributes the parser's sanitizer
+    /// configuration lets the template keep: "in head", a template start
+    /// tag, step 14 reads the created element's attributes, which "create an
+    /// element for a token" step 12 sanitized - a removed shadowrootmode
+    /// leaves an ordinary template.
+    pub fn fromTokenSanitized(tag: TagToken, sanitizer: ?ParserSanitizer) ?DeclarativeShadow {
         var request: DeclarativeShadow = .{ .mode = .open, .template = undefined, .host = undefined };
         var has_mode = false;
         for (tag.attributes.toSlice()) |attribute| {
             const name = attribute.getName();
             const value = attribute.getValue();
+            if (sanitizer) |filter| {
+                const candidate: TreeNode.Attribute = .{ .name = name, .value = value, .namespace = null };
+                if (!filter.allows_attribute(filter.context, "template", .html, &candidate)) continue;
+            }
             if (std.mem.eql(u8, name, "shadowrootmode")) {
                 // An enumerated attribute: "open" and "closed", ASCII
                 // case-insensitively; anything else is the None state.
@@ -276,6 +289,22 @@ pub const ContentPatch = struct {
     start_generation: u64 = 0,
     end: ?*anyopaque = null,
     end_generation: u64 = 0,
+};
+
+/// An entry of HTML's "insertion target redirection map" for the live DOM
+/// adapter (parser_dom_mutation.resolve): the insertion location the node's
+/// insertions go to - a live target parent and reference child, typed
+/// opaquely as html_core does not import runtime, with their slab
+/// generations - and the parser's "invalid reference child steps", run when
+/// the reference child is no longer the target parent's child ("adjusted
+/// insertion location" step 6; the insertion is then dropped).
+pub const InsertionRedirect = struct {
+    parent: *anyopaque,
+    parent_generation: u64,
+    reference: ?*anyopaque = null,
+    reference_generation: u64 = 0,
+    context: ?*anyopaque = null,
+    invalid_reference: ?*const fn (context: ?*anyopaque) void = null,
 };
 
 /// What the live DOM has immediately before an adjusted insertion location:
@@ -369,6 +398,11 @@ pub const TreeNode = struct {
     declarative_shadow: ?*DeclarativeShadow = null,
     /// A `<template for>` that patches: its content patch, which it owns.
     content_patch: ?*ContentPatch = null,
+    /// HTML "insertion target redirection map"[this node], for the live DOM
+    /// adapter: insertions into this node go to another insertion location
+    /// (the fragment parser's root `html` element, streaming HTML).
+    /// BORROWED from the parser that set it, which outlives the tree.
+    insertion_redirect: ?*const InsertionRedirect = null,
     /// The form element pointer's form when this element was created, if
     /// "create an element for a token" step 15's parser conditions held: a
     /// form-associated element's name, the pointer set, not parsing template
@@ -1811,10 +1845,18 @@ pub const TreeBuilder = struct {
         const callback = self.script_execution_callback orelse return;
         if (self.input_stream_manager) |stream| stream.pushInsertionPoint();
         self.script_nesting_level += 1;
-        self.parser_pause_flag = true;
+        // Deviation, stated (golden rule 2, no newer spec involved): the
+        // spec sets the parser pause flag here, so a document.write() from
+        // the SVG script would only insert - its characters parsed after the
+        // script returns. Chrome, Firefox and Safari all parse them during
+        // the write, as for an HTML script, running a written inline script
+        // before the SVG script's next statement (wpt.fyi stable 2026-11-17:
+        // html/semantics/scripting-1/the-script-element/execution-timing/
+        // 141.html, 1/1 in all three). So the flag is left as the HTML
+        // script end tag leaves it.
         callback(script_element, self.script_execution_context);
         self.script_nesting_level -|= 1;
-        if (self.script_nesting_level == 0) self.parser_pause_flag = false;
+        if (self.script_nesting_level == 0 and !self.waiting_for_parser_blocking_script) self.parser_pause_flag = false;
         if (self.input_stream_manager) |stream| stream.popInsertionPoint();
     }
 
@@ -2216,7 +2258,7 @@ pub const TreeBuilder = struct {
         // Step 7's condition first: a template with no shadowrootmode (in
         // the None state) is step 9's ordinary template - inserted before the
         // marker and modes are pushed, which nothing observes in between.
-        var request = DeclarativeShadow.fromToken(tag) orelse {
+        var request = DeclarativeShadow.fromTokenSanitized(tag, self.parser_sanitizer) orelse {
             // "Keep" step 2: "Otherwise, if template has a for attribute" -
             // only when its shadowrootmode is in the None state; a declarative
             // shadow root's template ignores `for` (template-for-superseded-

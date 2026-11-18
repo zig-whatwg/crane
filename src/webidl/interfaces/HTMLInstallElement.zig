@@ -29,6 +29,7 @@ const FocusableAreasOption = @import("dictionaries").FocusableAreasOption;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const CSSStyleProperties = @import("interfaces").CSSStyleProperties;
+const WritableStream = @import("interfaces").WritableStream;
 const CSSPseudoElement = @import("interfaces").CSSPseudoElement;
 const ShowPopoverOptions = @import("dictionaries").ShowPopoverOptions;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
@@ -36,10 +37,9 @@ const ViewTransitionUpdateCallback = @import("callbacks").ViewTransitionUpdateCa
 const Node = @import("interfaces").Node;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
 const ActivationBlockersMixinBlockerReason = @import("enums").ActivationBlockersMixinBlockerReason;
-const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Range = @import("interfaces").Range;
-const Event = @import("interfaces").Event;
 const Animation = @import("interfaces").Animation;
+const Event = @import("interfaces").Event;
 const FocusOptions = @import("dictionaries").FocusOptions;
 const TrustedTypeOrDOMString = @import("typedefs").TrustedTypeOrDOMString;
 const DOMString = @import("typedefs").DOMString;
@@ -52,6 +52,7 @@ const ScrollToOptions = @import("dictionaries").ScrollToOptions;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const DOMRectList = @import("interfaces").DOMRectList;
 const StylePropertyMapReadOnly = @import("interfaces").StylePropertyMapReadOnly;
 const DOMTokenList = @import("interfaces").DOMTokenList;
@@ -177,8 +178,18 @@ pub const HTMLInstallElement = struct {
             "scrollBy",
             "scrollBy",
             "requestFullscreen",
-            "setHTML",
+            "appendHTML",
+            "prependHTML",
+            "streamHTML",
+            "streamAppendHTML",
+            "streamPrependHTML",
             "setHTMLUnsafe",
+            "appendHTMLUnsafe",
+            "prependHTMLUnsafe",
+            "streamHTMLUnsafe",
+            "streamAppendHTMLUnsafe",
+            "streamPrependHTMLUnsafe",
+            "setHTML",
             "getHTML",
             "insertAdjacentHTML",
             "setPointerCapture",
@@ -196,6 +207,18 @@ pub const HTMLInstallElement = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",

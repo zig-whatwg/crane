@@ -1058,6 +1058,7 @@ pub const TransitionEvent = @import("TransitionEvent.zig").TransitionEvent;
 pub const Translator = @import("Translator.zig").Translator;
 pub const TreeWalker = @import("TreeWalker.zig").TreeWalker;
 pub const TrustedHTML = @import("TrustedHTML.zig").TrustedHTML;
+pub const TrustedHTMLParserOptions = @import("TrustedHTMLParserOptions.zig").TrustedHTMLParserOptions;
 pub const TrustedScript = @import("TrustedScript.zig").TrustedScript;
 pub const TrustedScriptURL = @import("TrustedScriptURL.zig").TrustedScriptURL;
 pub const TrustedTypePolicy = @import("TrustedTypePolicy.zig").TrustedTypePolicy;

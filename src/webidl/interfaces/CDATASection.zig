@@ -11,28 +11,32 @@ const typedefs = @import("typedefs");
 const enums = @import("enums");
 const dictionaries = @import("dictionaries");
 const Text = @import("interfaces").Text;
-const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
-const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const Document = @import("interfaces").Document;
+const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const HTMLSlotElement = @import("interfaces").HTMLSlotElement;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
 const DOMQuad = @import("interfaces").DOMQuad;
-const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const DOMPointInit = @import("dictionaries").DOMPointInit;
-const Node = @import("interfaces").Node;
-const NodeList = @import("interfaces").NodeList;
-const USVString = @import("typedefs").USVString;
 const GeometryNode = @import("typedefs").GeometryNode;
-const Observable = @import("interfaces").Observable;
-const Event = @import("interfaces").Event;
+const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
-const DOMPoint = @import("interfaces").DOMPoint;
 const BoxQuadOptions = @import("dictionaries").BoxQuadOptions;
 const EventListenerOptions = @import("dictionaries").EventListenerOptions;
+const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
+const WritableStream = @import("interfaces").WritableStream;
+const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
+const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
+const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
+const DOMQuadInit = @import("dictionaries").DOMQuadInit;
+const Node = @import("interfaces").Node;
+const NodeList = @import("interfaces").NodeList;
+const Observable = @import("interfaces").Observable;
+const Event = @import("interfaces").Event;
+const DOMPoint = @import("interfaces").DOMPoint;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
-const ConvertCoordinateOptions = @import("dictionaries").ConvertCoordinateOptions;
 
 pub const CDATASection = struct {
     pub const Meta = struct {
@@ -85,6 +89,18 @@ pub const CDATASection = struct {
             "insertData",
             "deleteData",
             "replaceData",
+            "beforeHTML",
+            "afterHTML",
+            "replaceWithHTML",
+            "streamBeforeHTML",
+            "streamAfterHTML",
+            "streamReplaceWithHTML",
+            "beforeHTMLUnsafe",
+            "afterHTMLUnsafe",
+            "replaceWithHTMLUnsafe",
+            "streamBeforeHTMLUnsafe",
+            "streamAfterHTMLUnsafe",
+            "streamReplaceWithHTMLUnsafe",
             "before",
             "after",
             "replaceWith",

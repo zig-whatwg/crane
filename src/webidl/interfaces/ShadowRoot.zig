@@ -16,6 +16,7 @@ const Document = @import("interfaces").Document;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const HTMLCollection = @import("interfaces").HTMLCollection;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
@@ -23,13 +24,13 @@ const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
+const WritableStream = @import("interfaces").WritableStream;
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
 const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
-const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const Animation = @import("interfaces").Animation;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
@@ -90,16 +91,36 @@ pub const ShadowRoot = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
-            .{ "setHTML", "call_setHTML", 1 },
+            .{ "appendHTML", "call_appendHTML", 1 },
+            .{ "prependHTML", "call_prependHTML", 1 },
+            .{ "streamHTML", "call_streamHTML", 0 },
+            .{ "streamAppendHTML", "call_streamAppendHTML", 0 },
+            .{ "streamPrependHTML", "call_streamPrependHTML", 0 },
             .{ "setHTMLUnsafe", "call_setHTMLUnsafe", 1 },
+            .{ "appendHTMLUnsafe", "call_appendHTMLUnsafe", 1 },
+            .{ "prependHTMLUnsafe", "call_prependHTMLUnsafe", 1 },
+            .{ "streamHTMLUnsafe", "call_streamHTMLUnsafe", 0 },
+            .{ "streamAppendHTMLUnsafe", "call_streamAppendHTMLUnsafe", 0 },
+            .{ "streamPrependHTMLUnsafe", "call_streamPrependHTMLUnsafe", 0 },
+            .{ "setHTML", "call_setHTML", 1 },
             .{ "getHTML", "call_getHTML", 0 },
             .{ "getAnimations", "call_getAnimations", 0 },
         };
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
-            "setHTML",
+            "appendHTML",
+            "prependHTML",
+            "streamHTML",
+            "streamAppendHTML",
+            "streamPrependHTML",
             "setHTMLUnsafe",
+            "appendHTMLUnsafe",
+            "prependHTMLUnsafe",
+            "streamHTMLUnsafe",
+            "streamAppendHTMLUnsafe",
+            "streamPrependHTMLUnsafe",
+            "setHTML",
             "getHTML",
             "getAnimations",
         };
@@ -190,10 +211,20 @@ pub const ShadowRoot = struct {
         .set_innerHTML = &set_innerHTML,
         .set_onslotchange = &set_onslotchange,
 
+        .call_appendHTML = &call_appendHTML,
+        .call_appendHTMLUnsafe = &call_appendHTMLUnsafe,
         .call_getAnimations = &call_getAnimations,
         .call_getHTML = &call_getHTML,
+        .call_prependHTML = &call_prependHTML,
+        .call_prependHTMLUnsafe = &call_prependHTMLUnsafe,
         .call_setHTML = &call_setHTML,
         .call_setHTMLUnsafe = &call_setHTMLUnsafe,
+        .call_streamAppendHTML = &call_streamAppendHTML,
+        .call_streamAppendHTMLUnsafe = &call_streamAppendHTMLUnsafe,
+        .call_streamHTML = &call_streamHTML,
+        .call_streamHTMLUnsafe = &call_streamHTMLUnsafe,
+        .call_streamPrependHTML = &call_streamPrependHTML,
+        .call_streamPrependHTMLUnsafe = &call_streamPrependHTMLUnsafe,
 
         .deinit = &deinit,
     };
@@ -386,8 +417,11 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.get_pointerLockElement(instance);
     }
 
-    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try ShadowRootImpl.call_getAnimations(instance);
+    /// Extended attributes: [NewObject]
+    pub fn call_streamAppendHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ShadowRootImpl.call_streamAppendHTMLUnsafe(instance, options);
     }
 
     /// Extended attributes: [CEReactions]
@@ -400,7 +434,47 @@ pub const ShadowRoot = struct {
     }
 
     /// Extended attributes: [CEReactions]
-    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptions)) anyerror!void {
+    pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_prependHTMLUnsafe(instance, html, options);
+    }
+
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_streamHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        // [NewObject] - Caller owns the returned object
+
+        const result = ShadowRootImpl.call_streamHTMLUnsafe(instance, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ShadowRootImpl.call_streamPrependHTMLUnsafe(instance, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamAppendHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ShadowRootImpl.call_streamAppendHTML(instance, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_setHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
         const ce_scope = runtime.CEReactions.begin(instance);
         defer runtime.CEReactions.end(ce_scope);
@@ -408,8 +482,63 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html, options);
     }
 
+    /// Extended attributes: [CEReactions], [NewObject]
+    pub fn call_streamHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        // [NewObject] - Caller owns the returned object
+
+        const result = ShadowRootImpl.call_streamHTML(instance, options) catch |err| {
+            runtime.CEReactions.end(ce_scope);
+            return err;
+        };
+        // A result the reactions freed (its realm ended) is not returned.
+        const result_generation = runtime.SlabAllocator.generationOf(result);
+        runtime.CEReactions.end(ce_scope);
+        if (runtime.SlabAllocator.generationOf(result) != result_generation) return error.InvalidStateError;
+        return result;
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_appendHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_appendHTMLUnsafe(instance, html, options);
+    }
+
     pub fn call_getHTML(instance: *runtime.Instance, options: webidl.Opt(GetHTMLOptions)) anyerror!runtime.DOMString {
         return try ShadowRootImpl.call_getHTML(instance, options);
+    }
+
+    pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {
+        return try ShadowRootImpl.call_getAnimations(instance);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_appendHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_appendHTML(instance, html, options);
+    }
+
+    /// Extended attributes: [CEReactions]
+    pub fn call_prependHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_prependHTML(instance, html, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamPrependHTML(instance: *runtime.Instance, options: webidl.Opt(SetHTMLOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ShadowRootImpl.call_streamPrependHTML(instance, options);
     }
 
     /// WebIDL [LegacyNullToEmptyString]: the values null converts to "" for
@@ -428,6 +557,12 @@ pub const ShadowRoot = struct {
     pub const ce_reactions = .{
         "set_innerHTML",
         "call_setHTML",
+        "call_prependHTMLUnsafe",
+        "call_streamHTMLUnsafe",
         "call_setHTMLUnsafe",
+        "call_streamHTML",
+        "call_appendHTMLUnsafe",
+        "call_appendHTML",
+        "call_prependHTML",
     };
 };

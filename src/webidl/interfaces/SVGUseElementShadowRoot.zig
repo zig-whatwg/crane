@@ -15,6 +15,7 @@ const Document = @import("interfaces").Document;
 const ObservableEventListenerOptions = @import("dictionaries").ObservableEventListenerOptions;
 const GetHTMLOptions = @import("dictionaries").GetHTMLOptions;
 const HTMLCollection = @import("interfaces").HTMLCollection;
+const SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
 const USVString = @import("typedefs").USVString;
 const Element = @import("interfaces").Element;
 const ShadowRootMode = @import("enums").ShadowRootMode;
@@ -22,6 +23,7 @@ const EventListenerOptions = @import("dictionaries").EventListenerOptions;
 const TrustedHTMLOrDOMString = @import("typedefs").TrustedHTMLOrDOMString;
 const EventListener = @import("interfaces").EventListener;
 const StyleSheetList = @import("interfaces").StyleSheetList;
+const WritableStream = @import("interfaces").WritableStream;
 const EventHandler = @import("typedefs").EventHandler;
 const AddEventListenerOptions = @import("dictionaries").AddEventListenerOptions;
 const CSSStyleSheet = @import("interfaces").CSSStyleSheet;
@@ -29,11 +31,10 @@ const SetHTMLOptions = @import("dictionaries").SetHTMLOptions;
 const TrustedHTML = @import("interfaces").TrustedHTML;
 const Node = @import("interfaces").Node;
 const NodeList = @import("interfaces").NodeList;
-const SetHTMLUnsafeOptions = @import("dictionaries").SetHTMLUnsafeOptions;
 const CustomElementRegistry = @import("interfaces").CustomElementRegistry;
+const Animation = @import("interfaces").Animation;
 const Observable = @import("interfaces").Observable;
 const Event = @import("interfaces").Event;
-const Animation = @import("interfaces").Animation;
 const GetRootNodeOptions = @import("dictionaries").GetRootNodeOptions;
 const DOMString = @import("typedefs").DOMString;
 const SlotAssignmentMode = @import("enums").SlotAssignmentMode;
@@ -91,8 +92,18 @@ pub const SVGUseElementShadowRoot = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
-            "setHTML",
+            "appendHTML",
+            "prependHTML",
+            "streamHTML",
+            "streamAppendHTML",
+            "streamPrependHTML",
             "setHTMLUnsafe",
+            "appendHTMLUnsafe",
+            "prependHTMLUnsafe",
+            "streamHTMLUnsafe",
+            "streamAppendHTMLUnsafe",
+            "streamPrependHTMLUnsafe",
+            "setHTML",
             "getHTML",
             "getAnimations",
         };

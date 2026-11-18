@@ -1,0 +1,97 @@
+// HTML 8.5.2 "HTML parsing and insertion methods" and 8.5.3 "HTML streaming
+// methods" (https://html.spec.whatwg.org/#html-streaming-methods), with the
+// Trusted Types parser options they take (Trusted Types 2.2.4
+// TrustedHTMLParserOptions, https://w3c.github.io/trusted-types/dist/spec/#trusted-html-parser-options).
+//
+// Crane's own copy of definitions the pinned webref snapshot (specs/idl,
+// curated bfbec43f445, 2026-09-17) predates. webref's curated branch already
+// has every one of them - curated eefdec10ced985fc386c3fcc3414a1ba1d7c5c6d
+// (2026-11-18), ed/idl/html.idl and ed/idl/trusted-types.idl - and the text
+// below is theirs. DELETE THIS FILE at the next webref snapshot update, and
+// its entries in src/webidl/codegen/member_overrides.zig with it
+// (specs/idl/WEBREF.md, "Updating").
+//
+// What it changes against the pinned snapshot:
+// - Element, ShadowRoot: appendHTML, prependHTML, the stream* methods and
+//   the Unsafe counterparts; setHTMLUnsafe's options become
+//   (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) - REPLACES html.idl's
+//   setHTMLUnsafe (member_overrides.zig).
+// - NonDocumentTypeChildNode: beforeHTML, afterHTML, replaceWithHTML, their
+//   stream and Unsafe counterparts.
+// - Document.parseHTMLUnsafe's options become (ParseHTMLUnsafeOptions or
+//   TrustedHTMLParserOptions) - REPLACES html.idl's (member_overrides.zig).
+// - SetHTMLUnsafeOptions.sanitizer and ParseHTMLUnsafeOptions.sanitizer lose
+//   their `= {}` default: absent now means "no sanitizer" (HTML 8.6 "get a
+//   sanitizer config from options" step 4). A partial dictionary member
+//   replaces the same-named member (src/webidl/codegen/ir.zig).
+// - TrustedHTMLParserOptions; TrustedTypePolicy.createParserOptions;
+//   TrustedTypePolicyOptions.createParserOptions and its callback type.
+
+partial interface Element {
+  [CEReactions] undefined appendHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions] undefined prependHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions, NewObject] WritableStream streamHTML(optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamAppendHTML(optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamPrependHTML(optional SetHTMLOptions options = {});
+  [CEReactions] undefined setHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined appendHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined prependHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions, NewObject] WritableStream streamHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamAppendHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamPrependHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+};
+
+partial interface ShadowRoot {
+  [CEReactions] undefined appendHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions] undefined prependHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions, NewObject] WritableStream streamHTML(optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamAppendHTML(optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamPrependHTML(optional SetHTMLOptions options = {});
+  [CEReactions] undefined setHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined appendHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined prependHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions, NewObject] WritableStream streamHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamAppendHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamPrependHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+};
+
+partial interface mixin NonDocumentTypeChildNode {
+  [CEReactions] undefined beforeHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions] undefined afterHTML(DOMString html, optional SetHTMLOptions options = {});
+  [CEReactions] undefined replaceWithHTML(DOMString html, optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamBeforeHTML(optional SetHTMLOptions options = {});
+  [NewObject] WritableStream streamAfterHTML(optional SetHTMLOptions options = {});
+  [CEReactions, NewObject] WritableStream streamReplaceWithHTML(optional SetHTMLOptions options = {});
+  [CEReactions] undefined beforeHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined afterHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions] undefined replaceWithHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamBeforeHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [NewObject] WritableStream streamAfterHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+  [CEReactions, NewObject] WritableStream streamReplaceWithHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+};
+
+partial interface Document {
+  static Document parseHTMLUnsafe((TrustedHTML or DOMString) html, optional (ParseHTMLUnsafeOptions or TrustedHTMLParserOptions) options = {});
+};
+
+partial dictionary SetHTMLUnsafeOptions {
+  (Sanitizer or SanitizerConfig or SanitizerPresets) sanitizer;
+};
+
+partial dictionary ParseHTMLUnsafeOptions {
+  (Sanitizer or SanitizerConfig or SanitizerPresets) sanitizer;
+};
+
+[Exposed=Window]
+interface TrustedHTMLParserOptions {
+};
+
+partial interface TrustedTypePolicy {
+  [Exposed=Window] TrustedHTMLParserOptions createParserOptions(optional SetHTMLUnsafeOptions options = {}, any... arguments);
+};
+
+partial dictionary TrustedTypePolicyOptions {
+  CreateParserOptionsCallback createParserOptions;
+};
+
+callback CreateParserOptionsCallback = SetHTMLUnsafeOptions? (SetHTMLUnsafeOptions options, any... arguments);

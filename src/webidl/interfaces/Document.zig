@@ -53,11 +53,11 @@ const Event = @import("interfaces").Event;
 const PermissionsPolicy = @import("interfaces").PermissionsPolicy;
 const XPathNSResolver = @import("interfaces").XPathNSResolver;
 const DocumentType = @import("interfaces").DocumentType;
-const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
+const DOMString = @import("typedefs").DOMString;
 const DocumentFragment = @import("interfaces").DocumentFragment;
 const OnErrorEventHandler = @import("typedefs").OnErrorEventHandler;
-const ParseHTMLUnsafeOptions = @import("dictionaries").ParseHTMLUnsafeOptions;
-const DOMString = @import("typedefs").DOMString;
+const ParseHTMLUnsafeOptionsOrTrustedHTMLParserOptions = @import("typedefs").ParseHTMLUnsafeOptionsOrTrustedHTMLParserOptions;
+const HTMLAllCollection = @import("interfaces").HTMLAllCollection;
 const FontFaceSet = @import("interfaces").FontFaceSet;
 const DOMQuad = @import("interfaces").DOMQuad;
 const DOMRectReadOnly = @import("interfaces").DOMRectReadOnly;
@@ -2195,7 +2195,7 @@ pub const Document = struct {
         return try DocumentImpl.call_elementsFromPoint(instance, x, y);
     }
 
-    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(ParseHTMLUnsafeOptions)) anyerror!*runtime.Instance {
+    pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(ParseHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
         return try DocumentImpl.call_static_parseHTMLUnsafe(instance, html, options);
     }
 

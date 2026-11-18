@@ -55,6 +55,10 @@ them.
    rm specs/idl/*.idl && cp "$tmp"/webref-$sha/ed/idl/*.idl specs/idl/ && rm -rf "$tmp"
    ```
 
+   Then delete every `specs/supplementary/` file whose header says to delete it at the next
+   snapshot update (it restates definitions webref has since gained - today
+   `html-insertion-streaming.idl`), with its entries in `src/webidl/codegen/member_overrides.zig`.
+
 2. Record the full SHA and its commit date above.
 3. Regenerate from both sources in one invocation (see src/webidl/AGENTS.md, "WebIDL codegen"). If codegen
    stops with "duplicate definition of X", a name is now defined in more than one file: find
