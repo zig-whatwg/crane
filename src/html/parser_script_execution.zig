@@ -180,6 +180,17 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
     dom.script_elements.setScriptTextToChildTextContent(ctx.allocator, script_element) catch {};
 
     if (isSvgScript(script_tree_node)) {
+        // "An end tag whose tag name is "script", if the current node is an
+        // SVG script element": processed only if script's node document is
+        // the parser's script target document if that is non-null
+        // (streaming HTML with runScripts), otherwise the parser's Document,
+        // and script is connected - a streamed SVG script whose target moved
+        // to another document does not run.
+        if (ctx.adapter.script_target_document) |target| {
+            const script_document = (interfaces.Node.get_ownerDocument(script_element) catch return) orelse return;
+            if (script_document != target) return;
+            if (!(interfaces.Node.get_isConnected(script_element) catch return)) return;
+        }
         script_execution.processSvgScriptElement(ctx.allocator, script_element);
         return;
     }
@@ -412,6 +423,12 @@ pub fn domAdapterOnInserted(location: TreeBuilder.InsertionLocation, child: *Tre
 /// processed): one counted reference on its DOM node (refcount step 5a;
 /// WebKit's HTMLStackItem `RefPtr<ContainerNode> m_node`). Passed to
 /// tree_builder.setDomAdapterStructureHoldCallbacks().
+pub fn domAdapterOnUnclosedScript(tree_node: *TreeNode, context: ?*anyopaque) void {
+    const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    const element = adapter.getDomNode(tree_node) orelse return;
+    dom.script_elements.markAlreadyStarted(element);
+}
+
 pub fn domAdapterOnStructureHold(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     adapter.holdForStructures(tree_node);
@@ -445,6 +462,7 @@ fn freeOrphan(dom_node: *runtime.Instance) void {
 pub fn domAdapterOnRemoved(node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
     const instance = adapter.getDomNode(node) orelse return;
+    if (adapter.abort_requested) return;
     parser_mutation.remove(instance) catch return;
     if (adapter.getDomNode(node) == null) return;
     if (!engine.hasWrapper(instance)) adapter.addOrphan(node) catch {};
@@ -463,9 +481,9 @@ pub fn domAdapterOnChildrenMoved(source: *TreeNode, destination: *TreeNode, cont
 pub fn domAdapterTextBefore(location: TreeBuilder.InsertionLocation, context: ?*anyopaque) html_core.parser.LiveTextBefore {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return .unknown));
     const target = parser_mutation.resolve(adapter, location) catch return .unknown;
-    // A dropped insertion (a redirected reference child gone): the text is
-    // not appended anywhere.
-    if (target.dropped) return .none;
+    // A dropped insertion (a redirected reference child gone, or an abort
+    // requested): the text is not appended anywhere.
+    if (target.dropped or adapter.abort_requested) return .none;
     const parent = dom.instance_bridge.getNodeBase(target.parent) orelse return .unknown;
     const previous_sibling = if (target.before) |before| blk: {
         const reference = dom.instance_bridge.getNodeBase(before) orelse return .unknown;
@@ -493,6 +511,9 @@ pub fn domAdapterTextBefore(location: TreeBuilder.InsertionLocation, context: ?*
 pub fn domAdapterPrepareContentPatching(patch: *html_core.parser.ContentPatch, location: TreeBuilder.InsertionLocation, marker_name: []const u8, context: ?*anyopaque) bool {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return false));
     if (!adapter.isAlive()) return false;
+    // "In head", a template start tag, step 11: "If the parser's fragment
+    // parser abort requested is true, then return" - no patching.
+    if (adapter.abort_requested) return false;
     // Step 2.1: (scope, referenceChild), the adjusted insertion location.
     const resolved = parser_mutation.resolve(adapter, location) catch return false;
     var scope = resolved.parent;
@@ -565,6 +586,12 @@ pub fn domAdapterPrepareContentPatching(patch: *html_core.parser.ContentPatch, l
 /// tree_builder.setDomAdapterContentPatchingCallbacks().
 pub fn domAdapterFinishContentPatching(patch: *html_core.parser.ContentPatch, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    // A fragment parser whose abort is requested mutates the DOM no more:
+    // the markers stay (the holds still end).
+    if (adapter.abort_requested) {
+        adapter.releasePatch(patch);
+        return;
+    }
     // Steps 4.4-4.5.
     const end_generation = patch.end_generation;
     const end = patch.end;
@@ -658,6 +685,7 @@ fn isTheBodyElement(node: *runtime.Instance) bool {
 /// This is passed to tree_builder.setDomAdapterCallbacks().
 pub fn domAdapterOnTextContentChanged(tree_node: *TreeNode, context: ?*anyopaque) void {
     const adapter: *DomTreeAdapter = @ptrCast(@alignCast(context orelse return));
+    if (adapter.abort_requested) return;
     adapter.onTextContentChanged(tree_node) catch {};
 }
 
@@ -825,6 +853,12 @@ pub const DomTreeAdapter = struct {
         tree_node: *TreeNode,
     };
 
+    /// A script a streaming parser made (`parser_scripts`).
+    pub const ParserScript = struct {
+        element: *runtime.Instance,
+        ref: dom.node_holds.CountedRef = .{},
+    };
+
     /// A patching `<template for>`'s live nodes - its insertion target and
     /// markers - held counted from "prepare content patching" until the
     /// template's end tag (or the adapter's end): Blink keeps the patch's
@@ -894,6 +928,11 @@ pub const DomTreeAdapter = struct {
     /// The parser has a fragment context element (streaming HTML): "create
     /// an element for a token" never executes script for it (step 17).
     fragment_case: bool = false,
+    /// HTML "fragment parser abort requested": the tree construction steps
+    /// that mutate the DOM check it first - from here the parser changes the
+    /// live DOM no more (its elements are dropped, created where they have
+    /// no side effects), until the abort happens at the end of the run.
+    abort_requested: bool = false,
     /// A fragment parser's script target document when it is not the
     /// parser's Document (streaming HTML with runScripts: HTML "initialize an
     /// HTML fragment parser" step 9 - the context element's node document):
@@ -901,6 +940,11 @@ pub const DomTreeAdapter = struct {
     /// 3), so they run there. With its slab generation; null otherwise.
     script_target_document: ?*runtime.Instance = null,
     script_target_generation: u64 = 0,
+    /// The scripts such a parser made, held counted: their parser document
+    /// is this adapter's Document, which goes before them; at its end the
+    /// adapter resets their back link (dom.script_elements
+    /// .clearParserDocument's invariant) before letting them go.
+    parser_scripts: std.ArrayListUnmanaged(ParserScript) = .empty,
 
     /// The parser's sanitizer configuration, when it sanitizes as it parses
     /// into the live DOM (streaming HTML): an element it removes or replaces
@@ -913,7 +957,7 @@ pub const DomTreeAdapter = struct {
     /// invalid reference child steps they run.
     sanitizer_redirects: std.ArrayListUnmanaged(*html_core.parser.InsertionRedirect) = .empty,
     invalid_reference_context: ?*anyopaque = null,
-    invalid_reference: ?*const fn (context: ?*anyopaque) void = null,
+    invalid_reference: ?*const fn (context: ?*anyopaque, child: *anyopaque) void = null,
 
     pub fn init(
         allocator: Allocator,
@@ -956,6 +1000,15 @@ pub const DomTreeAdapter = struct {
         self.pending.deinit(self.allocator);
         for (self.patch_holds.items) |*held| held.release();
         self.patch_holds.deinit(self.allocator);
+        // The scripts this parser's Document is the parser document of: the
+        // Document goes after this adapter, so the back link goes first.
+        for (self.parser_scripts.items) |*held| {
+            if (held.ref.base != null and runtime.SlabAllocator.generationOf(held.element) == held.ref.generation and
+                !runtime.instance_lifecycle.isCleanupStarted(held.element))
+                dom.script_elements.clearParserDocument(held.element, self.document);
+            held.ref.release(held.element);
+        }
+        self.parser_scripts.deinit(self.allocator);
         for (self.sanitizer_redirects.items) |redirect| self.allocator.destroy(redirect);
         self.sanitizer_redirects.deinit(self.allocator);
         self.attribute_run.end();
@@ -1244,7 +1297,7 @@ pub const DomTreeAdapter = struct {
         // reference child gone), is created in the document's appropriate
         // template contents owner document: it is never inserted, and must
         // not load anything.
-        const dropped = if (intended_location) |location| location.dropped else false;
+        const dropped = self.abort_requested or (if (intended_location) |location| location.dropped else false);
         const sanitizer_action = self.sanitizerAction(tree_node);
         if (dropped or sanitizer_action != .keep) {
             if (owner.stateAs(interfaces.Document.State) != null) owner = dom.template_contents.ownerDocument(owner) catch owner;
@@ -1331,6 +1384,11 @@ pub const DomTreeAdapter = struct {
             dom.script_elements.markParserInserted(element, self.document);
             if (self.script_target_document) |target| {
                 if (runtime.SlabAllocator.generationOf(target) == self.script_target_generation) dom.script_elements.setIntendedDocument(element, target);
+                // Held until this adapter's end (`parser_scripts`).
+                try self.parser_scripts.ensureUnusedCapacity(self.allocator, 1);
+                const held = self.parser_scripts.addOneAssumeCapacity();
+                held.* = .{ .element = element };
+                held.ref.take(element, dom.instance_bridge.getNodeBase(element));
             }
             // Where its text starts: the parser's position after its start
             // tag, for its errors and a CSP violation to report.

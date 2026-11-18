@@ -91,7 +91,7 @@ fn redirected(redirect: *const @import("html_core").parser.InsertionRedirect) !L
     // 6. "Run the parser's invalid reference child steps given
     // redirectedReferenceChild" (they error the stream and abort the
     // parser), then 7. return the location, whose insertion is dropped.
-    if (redirect.invalid_reference) |steps| steps(redirect.context);
+    if (redirect.invalid_reference) |steps| steps(redirect.context, child);
     return .{ .parent = parent, .before = child, .dropped = true };
 }
 
@@ -135,7 +135,9 @@ pub fn remove(node: *runtime.Instance) !void {
 pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: *TreeNode) !bool {
     // Adoption steps 4.14–4.16 compute the location BEFORE removing lastNode.
     const target = try resolve(adapter, location);
-    if (target.dropped) return false;
+    // A dropped insertion, or a fragment parser whose abort is requested
+    // ("insert an element at the adjusted insertion location" step 4).
+    if (target.dropped or adapter.abort_requested) return false;
     const node = adapter.getDomNode(child) orelse return false;
     const saved_node = SavedNode.init(node);
     const saved_parent = SavedNode.init(target.parent);
@@ -185,6 +187,8 @@ pub fn insert(adapter: anytype, location: TreeBuilder.InsertionLocation, child: 
 }
 
 pub fn moveChildren(adapter: anytype, source: *TreeNode, destination: *TreeNode) !void {
+    // A fragment parser whose abort is requested mutates the DOM no more.
+    if (adapter.abort_requested) return;
     const from = adapter.getDomNode(source) orelse return;
     const to = adapter.getDomNode(destination) orelse return;
     const saved_from = SavedNode.init(from);

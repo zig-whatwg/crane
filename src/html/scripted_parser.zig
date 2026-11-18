@@ -315,6 +315,11 @@ pub const DocumentParser = struct {
     /// html.stream_html's parser), for its `on_finished`; null for a
     /// document's own parser.
     owner: ?*anyopaque = null,
+    /// A fragment parser that runs over time hears when something it waits
+    /// on after its end is ready (a deferred script: html.stream_html's
+    /// "execute the deferred scripts"), its input stream processed again
+    /// after it stopped parsing (`afterProcess`). Null for a document's own.
+    on_resumed_after_end: ?*const fn (*DocumentParser) void = null,
 
     pub fn create(
         allocator: Allocator,
@@ -491,6 +496,8 @@ pub const DocumentParser = struct {
             &parser_scripts.domAdapterPrepareContentPatching,
             &parser_scripts.domAdapterFinishContentPatching,
         );
+        // A script the input ended inside is already started.
+        self.tree_builder.dom_adapter_on_unclosed_script = &parser_scripts.domAdapterOnUnclosedScript;
         // The parser's "allow declarative shadow roots" is its document's:
         // navigation's document and document.open (step 16) create it so.
         self.tree_builder.allow_declarative_shadow_roots = document_internals.allowsDeclarativeShadowRoots(document);
@@ -797,6 +804,10 @@ pub const DocumentParser = struct {
 
     fn afterProcess(context: *anyopaque) void {
         const self: *DocumentParser = @ptrCast(@alignCast(context));
+        if (self.eof_processed) {
+            if (self.on_resumed_after_end) |resumed| resumed(self);
+            return;
+        }
         self.finishIfPossible() catch |err| log.warn("document.close(): the parser stopped: {}", .{err});
     }
 

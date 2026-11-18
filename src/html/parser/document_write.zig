@@ -628,3 +628,29 @@ test "DocumentWriteState - ignore destructive writes during unload" {
     try documentWrite(&state, "ignored");
     try std.testing.expectEqualStrings("", getWriteBuffer(&state));
 }
+
+test "InputStreamManager.appendToEnd - stream HTML chunks go to the end, and marks at the end follow" {
+    var stream = try InputStreamManager.init(std.testing.allocator, "");
+    defer stream.deinit();
+    stream.complete = false;
+    stream.insertion_point = 0;
+    try stream.appendToEnd("<p>a");
+    try std.testing.expectEqualStrings("<p>a", stream.buffer.items);
+    try std.testing.expectEqual(@as(?usize, 4), stream.insertion_point);
+    // A script end tag saved the insertion point at the end and set one
+    // earlier; a chunk written meanwhile still goes to the end, and the saved
+    // point - and an ongoing run's limit - follow it.
+    stream.pushInsertionPoint();
+    stream.insertion_point = 1;
+    stream.stop_at = 4;
+    try stream.appendToEnd("b</p>");
+    try std.testing.expectEqualStrings("<p>ab</p>", stream.buffer.items);
+    try std.testing.expectEqual(@as(?usize, 1), stream.insertion_point);
+    try std.testing.expectEqual(@as(?usize, 9), stream.stop_at);
+    stream.popInsertionPoint();
+    try std.testing.expectEqual(@as(?usize, 9), stream.insertion_point);
+    // An aborted stream takes nothing.
+    stream.aborted = true;
+    try stream.appendToEnd("x");
+    try std.testing.expectEqualStrings("<p>ab</p>", stream.buffer.items);
+}

@@ -304,7 +304,8 @@ pub const InsertionRedirect = struct {
     reference: ?*anyopaque = null,
     reference_generation: u64 = 0,
     context: ?*anyopaque = null,
-    invalid_reference: ?*const fn (context: ?*anyopaque) void = null,
+    /// Given the redirect's reference child (typed opaquely).
+    invalid_reference: ?*const fn (context: ?*anyopaque, child: *anyopaque) void = null,
 };
 
 /// What the live DOM has immediately before an adjusted insertion location:
@@ -396,6 +397,10 @@ pub const TreeNode = struct {
     /// 7): on its template, which owns it, and - in the tree-then-convert
     /// path - on its host. Null for every other node.
     declarative_shadow: ?*DeclarativeShadow = null,
+    /// A script element the input ended inside (HTML "text", an end-of-file
+    /// token: "If the current node is a script element, then set its already
+    /// started to true"): the tree-then-convert path marks its DOM node so.
+    script_already_started: bool = false,
     /// A `<template for>` that patches: its content patch, which it owns.
     content_patch: ?*ContentPatch = null,
     /// HTML "insertion target redirection map"[this node], for the live DOM
@@ -915,6 +920,9 @@ pub const TreeBuilder = struct {
     /// end tag's step 4: remove the start and end markers. Null - the
     /// tree-then-convert path - runs both over the parser's own tree.
     dom_adapter_prepare_content_patching: ?*const fn (*ContentPatch, InsertionLocation, []const u8, ?*anyopaque) bool = null,
+    /// The live DOM adapter marks a script the input ended inside as already
+    /// started (`TreeNode.script_already_started`).
+    dom_adapter_on_unclosed_script: ?*const fn (*TreeNode, ?*anyopaque) void = null,
     dom_adapter_finish_content_patching: ?*const fn (*ContentPatch, ?*anyopaque) void = null,
 
     /// HTML parser "parser sanitizer configuration" (initially null).
@@ -2283,7 +2291,11 @@ pub const TreeBuilder = struct {
         // the current node, the fragment's root there, and so inserts the
         // template; so does this.
         const current = self.currentNode() orelse return self.insertHtmlElementAt(tag, location);
-        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).?)
+        // Also an ordinary template when "the parser's insertion target
+        // redirection map[declarativeShadowHostElement] exists": a host the
+        // sanitizer replaces with its children is never inserted, and a
+        // shadow root attached to it would be lost.
+        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).? or current.insertion_redirect != null)
             return self.insertHtmlElementAt(tag, location);
         // Step 7.2: the declarative shadow host is the adjusted current node.
         const host = self.adjustedCurrentNode() orelse current;
@@ -3372,6 +3384,15 @@ pub const TreeBuilder = struct {
             },
             .eof => {
                 self.reportError(.eof_in_tag);
+                // "If the current node is a script element, then set its
+                // already started to true" - it never runs, however it is
+                // later inserted, changed or cloned.
+                if (self.currentNode()) |current| if (current.node_type == .element and current.hasTagName("script") and
+                    (current.namespace == .html or current.namespace == .svg))
+                {
+                    current.script_already_started = true;
+                    if (self.dom_adapter_on_unclosed_script) |callback| callback(current, self.dom_adapter_context);
+                };
                 const popped = self.open_elements.get(self.open_elements.len - 1);
                 _ = self.open_elements.remove(self.open_elements.len - 1) catch {};
                 self.insertion_mode = self.original_insertion_mode;

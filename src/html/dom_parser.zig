@@ -841,6 +841,9 @@ fn finishScript(allocator: Allocator, tree_node: *TreeNode, element: *runtime.In
     if (conversion.scripting_mode != .fragment) return;
     if (tree_node.node_type != .element or !tree_node.hasTagName("script")) return;
     if (tree_node.namespace != .html and tree_node.namespace != .svg) return;
+    // A script the input ended inside: "set its already started to true"
+    // (HTML "text", an end-of-file token) - it never runs.
+    if (tree_node.script_already_started) return dom.script_elements.markAlreadyStarted(element);
     dom.script_elements.setScriptTextToChildTextContent(allocator, element) catch {};
 }
 

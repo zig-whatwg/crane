@@ -214,6 +214,9 @@ const StreamParser = struct {
     invalid_reference_steps: bool = false,
     /// Whether its script target document is the context's document.
     run_scripts: bool = false,
+    /// The deferred scripts' reference on this parser, while any is left
+    /// to run after its end.
+    deferred_hold: bool = false,
     /// HTML "fragment parser running", "fragment parser abort requested",
     /// and "aborted".
     running: bool = false,
@@ -316,6 +319,9 @@ const StreamParser = struct {
     /// lets its reference go), the stand-in nodes, the holds and the
     /// configuration.
     fn destroy(self: *StreamParser) void {
+        // Scripts its Document still queues never run now: discarded while
+        // the Document is here (each queue entry's root goes with it).
+        @import("script_execution.zig").discardDocumentScripts(self.document);
         self.discardParser();
         js.disposeOptional(&self.write_error);
         if (self.close_promise) |deferred| deferred.deinit();
@@ -367,6 +373,7 @@ const StreamParser = struct {
         // 5. An abort requested while it ran happens now.
         if (self.abort_requested) {
             self.abort_requested = false;
+            if (self.parser) |p| p.adapter.abort_requested = false;
             self.abortParser();
         }
     }
@@ -379,6 +386,7 @@ const StreamParser = struct {
         // ends. (2.2's scripts on the stack: inert here - TODO G6.)
         if (self.running) {
             self.abort_requested = true;
+            if (self.parser) |parser| parser.adapter.abort_requested = true;
             // 2.2. The scripts on the stack of open elements: already
             // started, so none runs.
             self.markOpenScriptsStarted();
@@ -399,11 +407,26 @@ const StreamParser = struct {
         const parser = self.parser orelse return;
         // 5.1. The scripts on the stack of open elements: already started.
         self.markOpenScriptsStarted();
-        // 5.2. "If the parser's Document's pending parsing-blocking script is
-        // non-null, then unblock rendering on it, and set ... to null."
-        if (dom.document_scripts.of(self.document)) |scripts| scripts.pending_parsing_blocking_script = null;
+        if (dom.document_scripts.of(self.document)) |scripts| {
+            // 5.2. "If the parser's Document's pending parsing-blocking script
+            // is non-null, then unblock rendering on it, and set the parser's
+            // Document's pending parsing-blocking script to null."
+            if (scripts.pending_parsing_blocking_script) |script| {
+                dom.document_rendering.unblock(script);
+                scripts.pending_parsing_blocking_script = null;
+            }
+            // 5.3. "For each script of the parser's Document's list of scripts
+            // that will execute when the document has finished parsing,
+            // unblock rendering on script."
+            for (scripts.scripts_to_execute_when_parsing_finished.items) |script| dom.document_rendering.unblock(script);
+        }
         // 3, 7. Throw away the input; pop every open element.
         parser.input_stream.abort();
+        // An aborted parser's deferred scripts never run.
+        if (self.deferred_hold) {
+            self.deferred_hold = false;
+            self.release();
+        }
         // A pending close never settles from here: the stream rejects it.
     }
 
@@ -425,14 +448,19 @@ const StreamParser = struct {
 
     /// Step 11's "invalid reference child steps" given referenceChild, as
     /// the redirect (parser_dom_mutation.resolve) and step 12.2 run them.
-    fn invalidReferenceChild(context: ?*anyopaque) void {
+    fn invalidReferenceChild(context: ?*anyopaque, child: *anyopaque) void {
         const self: *StreamParser = @ptrCast(@alignCast(context orelse return));
+        // 1. "If child is not referenceChild, or referenceChild's parent is
+        // target, then return" - a sanitizer's redirect whose own reference
+        // (a foster-parenting table) moved drops its insertion, and nothing
+        // more.
+        const reference = self.reference_child orelse return;
+        if (@as(*anyopaque, reference) != child or !self.referenceChildMoved()) return;
         self.invalidReferenceChildSteps();
     }
 
     fn invalidReferenceChildSteps(self: *StreamParser) void {
-        // 1. Only while referenceChild's parent is not target (the callers
-        // checked) - and only once:
+        // Only once: step 2 sets the steps to null.
         if (!self.invalid_reference_steps) return;
         // 2. "Set parser's invalid reference child steps to null."
         self.invalid_reference_steps = false;
@@ -578,6 +606,14 @@ const StreamParser = struct {
         const scripts = dom.document_scripts.of(self.document) orelse return;
         if (scripts.scripts_to_execute_when_parsing_finished.items.len == 0) return;
         const loop = self.realm.getOptionalEventLoop() orelse return;
+        // The deferred scripts keep their parser - and its Document, their
+        // parser document - until the last has run, whatever becomes of the
+        // stream.
+        if (!self.deferred_hold) {
+            self.deferred_hold = true;
+            self.retain();
+        }
+        if (self.parser) |parser| parser.on_resumed_after_end = &deferredScriptReady;
         self.retain();
         loop.queueTask(.{ .callback = &runDeferredScripts, .context = self, .drop = &dropDeferredScripts });
     }
@@ -585,7 +621,29 @@ const StreamParser = struct {
     fn runDeferredScripts(context: ?*anyopaque) void {
         const self: *StreamParser = @ptrCast(@alignCast(context.?));
         defer self.release();
-        @import("script_execution.zig").executeScriptsWhenParsingFinished(self.allocator, self.document);
+        self.executeDeferredScripts();
+    }
+
+    /// A deferred script became ready to be parser-executed after the end.
+    fn deferredScriptReady(parser: *DocumentParser) void {
+        const self: *StreamParser = @ptrCast(@alignCast(parser.owner orelse return));
+        self.retain();
+        defer self.release();
+        self.executeDeferredScripts();
+    }
+
+    /// HTML "execute the deferred scripts" given the parser's Document: the
+    /// ready ones in order; the rest wait for their "mark as ready", which
+    /// resumes this (script_execution's resumeParserDocument). Once none is
+    /// left, the scripts' hold on this parser ends.
+    fn executeDeferredScripts(self: *StreamParser) void {
+        if (!self.aborted) @import("script_execution.zig").executeScriptsWhenParsingFinished(self.allocator, self.document);
+        const scripts = dom.document_scripts.of(self.document);
+        const left = if (scripts) |s| s.scripts_to_execute_when_parsing_finished.items.len else 0;
+        if ((left == 0 or self.aborted) and self.deferred_hold) {
+            self.deferred_hold = false;
+            self.release();
+        }
     }
 
     fn dropDeferredScripts(context: ?*anyopaque) void {

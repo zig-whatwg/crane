@@ -109,6 +109,10 @@ pub const DomTreeAdapter = struct {
     /// Set to false during fragment parsing
     execute_scripts: bool,
 
+    /// HTML "fragment parser abort requested" (parser_dom_mutation reads
+    /// it): never set for this adapter's parses.
+    abort_requested: bool = false,
+
     /// Initialize a new DOM tree adapter.
     ///
     /// @param allocator Memory allocator for internal data structures

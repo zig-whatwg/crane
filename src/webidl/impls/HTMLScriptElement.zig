@@ -83,6 +83,7 @@ pub fn installHooks() void {
         .mark_already_started = &markAlreadyStartedStep,
         .clear_force_async = &clearForceAsyncStep,
         .set_intended_document = &setIntendedDocumentStep,
+        .clear_parser_document = &clearParserDocumentStep,
         .script_text = &scriptTextStep,
         .delays_load_event = &scriptsDelayLoadEvent,
     });
@@ -696,6 +697,16 @@ fn markParserInsertedStep(element: *runtime.Instance, parser_document: *runtime.
     internal.intended_document = parser_document;
     internal.intended_document_generation = runtime.SlabAllocator.generationOf(parser_document);
     internal.force_async = false;
+}
+
+/// dom.script_elements: the element's parser document - and intended
+/// document - set to null when it is `document`, a Document going before
+/// the element (a streaming parser's private one).
+fn clearParserDocumentStep(element: *runtime.Instance, document: *runtime.Instance) void {
+    if (element.stateAs(State) == null) return;
+    const internal = getInternal(element) orelse return;
+    if (internal.parser_document == document) internal.parser_document = null;
+    if (internal.intended_document == document) internal.intended_document = null;
 }
 
 /// dom.script_elements: "set the element's intended document to the
