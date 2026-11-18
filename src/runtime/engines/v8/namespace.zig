@@ -577,16 +577,25 @@ pub fn V8Namespace(comptime Namespace: type) type {
                     var call_realm: CallRealm = .{};
                     defer call_realm.end();
 
-                    // Calculate required params: count params before variadic slice
+                    // WebIDL 3.7.x overload resolution: fewer arguments than
+                    // the operation's required ones is a TypeError. An
+                    // optional argument (webidl.Opt) is not required: a
+                    // missing one is "not passed" - console.count(),
+                    // console.time() and the other optional-label console
+                    // methods threw "Not enough arguments" when called with
+                    // none (console/console-count-logging.html,
+                    // -countReset-logging, -timing-logging).
                     const argc = info.length();
                     const required_params = comptime blk: {
                         var count: usize = 0;
                         for (zig017ParamsOf(fn_type_info)) |param| {
                             const ParamType = param.type.?;
-                            // Stop counting at variadic parameters or runtime.Context
+                            // Variadic parameters and runtime.Context take
+                            // no required argument; nor does an optional one.
                             if (ParamType == []const *const anyopaque or
                                 ParamType == []const runtime.ConsoleValue or
-                                ParamType == runtime.Context)
+                                ParamType == runtime.Context or
+                                interface.isOptionalWrapper(ParamType))
                             {
                                 continue;
                             }
