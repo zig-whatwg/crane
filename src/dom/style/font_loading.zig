@@ -207,10 +207,10 @@ pub const Face = struct {
         };
     }
 
-    /// CSS-connected faces retain native status until script asks for the
-    /// promise (WebKit FontFace::loadedForBindings/loadForBindings). Creating
-    /// an unseen rejected JS promise during font selection would report an
-    /// unhandled rejection. The explicit constructor still ensures eagerly.
+    /// A face keeps its native status until script asks for the promise
+    /// (WebKit FontFace::loadedForBindings/loadForBindings). Creating an
+    /// unseen rejected JS promise - during font selection, or for a
+    /// constructor's syntax error - would report an unhandled rejection.
     pub fn loadedPromise(self: *Face) !engine.Owned {
         try self.loaded.ensure(self.owner);
         try self.settleLoaded();
