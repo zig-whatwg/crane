@@ -355,7 +355,21 @@ pub const InputStreamManager = struct {
         release: ?*const fn (context: *anyopaque) void = null,
         after_process: ?*const fn (context: *anyopaque) void = null,
         abort: ?*const fn (context: *anyopaque) void = null,
+        /// The parser's pending parsing-blocking script is ready: how its
+        /// parser resumes when that is not `processInserted` (a fragment
+        /// parser's: "execute the pending parsing-blocking scripts", then
+        /// "run a fragment parser" - HTML "an end tag whose tag name is
+        /// script", the fragment case).
+        resume_after_blocking_script: ?*const fn (context: *anyopaque) void = null,
     };
+
+    /// The pending parsing-blocking script of this stream's parser is ready
+    /// to be parser-executed: the parser resumes, the way its processor
+    /// says, or by processing what was inserted.
+    pub fn resumeAfterBlockingScript(self: *InputStreamManager) void {
+        if (self.processor) |processor| if (processor.resume_after_blocking_script) |resume_parser| return resume_parser(processor.context);
+        self.processInserted();
+    }
 
     /// A stream holding `input`, which is complete.
     pub fn init(allocator: Allocator, input: []const u8) !InputStreamManager {
@@ -653,4 +667,33 @@ test "InputStreamManager.appendToEnd - stream HTML chunks go to the end, and mar
     stream.aborted = true;
     try stream.appendToEnd("x");
     try std.testing.expectEqualStrings("<p>ab</p>", stream.buffer.items);
+}
+
+test "InputStreamManager.resumeAfterBlockingScript - a processor's own resumption replaces processing the inserted characters" {
+    const Calls = struct {
+        processed: usize = 0,
+        resumed: usize = 0,
+        fn process(context: *anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.processed += 1;
+        }
+        fn resumeParser(context: *anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.resumed += 1;
+        }
+    };
+    var stream = try InputStreamManager.init(std.testing.allocator, "<p>");
+    defer stream.deinit();
+    var calls: Calls = .{};
+    // A document's parser: its inserted characters are processed again.
+    stream.processor = .{ .context = &calls, .process = &Calls.process };
+    stream.resumeAfterBlockingScript();
+    try std.testing.expectEqual(@as(usize, 1), calls.processed);
+    try std.testing.expectEqual(@as(usize, 0), calls.resumed);
+    // A fragment parser: its owner's steps (execute the pending
+    // parsing-blocking scripts, then run a fragment parser), and nothing else.
+    stream.processor = .{ .context = &calls, .process = &Calls.process, .resume_after_blocking_script = &Calls.resumeParser };
+    stream.resumeAfterBlockingScript();
+    try std.testing.expectEqual(@as(usize, 1), calls.processed);
+    try std.testing.expectEqual(@as(usize, 1), calls.resumed);
 }

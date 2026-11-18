@@ -274,6 +274,7 @@ const StreamParser = struct {
         const parser = try DocumentParser.createFragment(allocator, realm, document, run_scripts, &parserFinished);
         self.parser = parser;
         parser.owner = self;
+        parser.on_blocking_script_ready = &blockingScriptReady;
         if (!dom.document_lifecycle.associateParser(document, parser)) return error.InvalidStateError;
         // 6, 10-19: the fragment case (dom_parser.FragmentCase), its parser
         // scripting disabled flag from contextDocument.
@@ -387,6 +388,24 @@ const StreamParser = struct {
             if (self.parser) |p| p.adapter.abort_requested = false;
             self.abortParser();
         }
+    }
+
+    /// HTML "an end tag whose tag name is script", the fragment case: the
+    /// task its parser queued once its pending parsing-blocking script is
+    /// ready (the spec's task spins the event loop until then; Crane runs
+    /// its steps when the script's "mark as ready" finds it the pending one:
+    /// script_execution's resumeParserDocument).
+    fn blockingScriptReady(parser: *DocumentParser) void {
+        const self: *StreamParser = @ptrCast(@alignCast(parser.owner orelse return));
+        // An ongoing run executes it as it reads on.
+        if (self.running) return;
+        self.retain();
+        defer self.release();
+        // 1. "Execute the pending parsing-blocking scripts for this parser."
+        parser.executePendingParsingBlockingScripts();
+        // 2. "If this parser's aborted is false, then run a fragment parser
+        // given this parser."
+        if (!self.aborted) self.run();
     }
 
     /// HTML "abort a fragment parser" given this parser.

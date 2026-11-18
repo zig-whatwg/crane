@@ -320,6 +320,11 @@ pub const DocumentParser = struct {
     /// "execute the deferred scripts"), its input stream processed again
     /// after it stopped parsing (`afterProcess`). Null for a document's own.
     on_resumed_after_end: ?*const fn (*DocumentParser) void = null,
+    /// A fragment parser's owner resumes it once its pending
+    /// parsing-blocking script is ready (html.stream_html: "execute the
+    /// pending parsing-blocking scripts", then "run a fragment parser").
+    /// Null: the input stream's inserted characters are processed again.
+    on_blocking_script_ready: ?*const fn (*DocumentParser) void = null,
 
     pub fn create(
         allocator: Allocator,
@@ -538,6 +543,7 @@ pub const DocumentParser = struct {
             .release = &releaseProcessor,
             .after_process = &afterProcess,
             .abort = &abortProcessor,
+            .resume_after_blocking_script = &resumeAfterBlockingScript,
         };
         errdefer if (self.owned_loader) |*loader| loader.deinit();
         return self;
@@ -809,6 +815,22 @@ pub const DocumentParser = struct {
             return;
         }
         self.finishIfPossible() catch |err| log.warn("document.close(): the parser stopped: {}", .{err});
+    }
+
+    fn resumeAfterBlockingScript(context: *anyopaque) void {
+        const self: *DocumentParser = @ptrCast(@alignCast(context));
+        if (self.on_blocking_script_ready) |resumed| return resumed(self);
+        self.input_stream.processInserted();
+    }
+
+    /// HTML "execute the pending parsing-blocking scripts" for this parser,
+    /// alone: the parser does not read on (its owner runs it after).
+    pub fn executePendingParsingBlockingScripts(self: *DocumentParser) void {
+        if (self.trace_failure != null or self.detached or self.eof_processed) return;
+        if (!self.isCurrent()) return;
+        const call = self.protect() catch return;
+        defer call.deinit();
+        parser_scripts.resumeAfterBlockingScript(&self.script_context);
     }
 
     fn abortProcessor(context: *anyopaque) void {

@@ -939,7 +939,9 @@ fn markReadyNow(allocator: std.mem.Allocator, script_element: *runtime.Instance,
 fn resumeParserDocument(allocator: std.mem.Allocator, parser_document: *runtime.Instance, script_element: *runtime.Instance) void {
     const stream = dom.document_internals.getInputStreamManager(parser_document) orelse return;
     if (pendingParsingBlockingScript(parser_document) == script_element) {
-        if (!stream.aborted and !stream.isExecutingScript()) stream.processInserted();
+        // Its parser's own steps: a fragment parser executes the pending
+        // parsing-blocking scripts, then runs (stream_html).
+        if (!stream.aborted and !stream.isExecutingScript()) stream.resumeAfterBlockingScript();
         return;
     }
     _ = allocator;
