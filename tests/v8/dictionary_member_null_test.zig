@@ -148,13 +148,22 @@ test "a non-nullable DOMString member's null is the string \"null\"; a nullable 
     try testing.expect(shaped.nullable_text == null);
 }
 
-test "RequestInit's signal is AbortSignal?: a present null is null" {
+test "RequestInit's signal is AbortSignal?: a present null is passed, with the value null; an absent one is not passed" {
     defer test_agent.close();
+    // Fetch's Request constructor step 29: "If init["signal"] exists, then
+    // set signal to it" - {signal: null} removes the input's signal
+    // (fetch/api/abort/general.any.js "Signal removed by setting to null").
     const e = try env();
     const object = try eval("({ signal: null })");
     defer ffi.v8_Value_Dispose(object);
     const init = try conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, object);
-    try testing.expect(init.signal == null);
+    try testing.expect(init.signal.wasPassed());
+    try testing.expect(init.signal.getValue() == null);
+
+    const absent = try eval("({ signal: undefined })");
+    defer ffi.v8_Value_Dispose(absent);
+    const omitted = try conversions.fromV8Value(dictionaries.RequestInit, testing.allocator, e.isolate, e.context, absent);
+    try testing.expect(!omitted.signal.wasPassed());
 }
 
 test "StructuredSerializeOptions {transfer: null} is a TypeError: null is not a sequence<object>" {
