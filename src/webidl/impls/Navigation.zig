@@ -1577,21 +1577,21 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
             }
         }
     }
-    // Step 4: "If apiMethodTracker is null: ... set apiMethodTracker to the
-    // result of setting up a navigate/reload API method tracker for this
-    // given undefined and null."
-    if (tracker == null) {
-        tracker = setUpNavigateReloadTracker(instance, internal, runtime.JSValue.jsUndefined, null) catch return true;
-        // Deviation, stated: nobody can hold this tracker's committed
-        // promise, so it is marked as handled - rejecting it when the
-        // navigation is canceled or aborted would otherwise report an
-        // unhandled rejection no browser reports.
-        engine.markPromiseAsHandled(realm, tracker.?.committed.promise);
+    // Step 4: "If apiMethodTracker is not null: Set navigation's ongoing API
+    // method tracker to apiMethodTracker. Set apiMethodTracker's pending to
+    // false." A navigation no API method started - a link, location.hash,
+    // a form - has none: only navigate(), reload() and the traversal
+    // methods set one up. (Crane made one here for every navigation, from
+    // whatwg/html#11952's "always use a method tracker"; the spec since
+    // passes it only from navigate() and reload(), and #13024 made
+    // NavigationPrecommitController's redirect() check for none - its state
+    // then serializes into no entry: navigation-api/precommit-handler/
+    // precommitHandler-redirect-non-api-navigation.html, which Chrome 157
+    // and Firefox 160 pass.)
+    if (tracker) |t| {
+        internal.ongoing_tracker = t;
+        t.pending = false;
     }
-    const api_tracker = tracker.?;
-    // Steps 5-6.
-    internal.ongoing_tracker = api_tracker;
-    api_tracker.pending = false;
 
     // Steps 7-8.
     const navigable = scope.navigable;
@@ -1624,8 +1624,11 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     const form_data: ?*runtime.Instance = if (firing.form_data) |source| formDataIn(realm, source) catch null else null;
     const form_data_generation = if (form_data) |fd| runtime.SlabAllocator.generationOf(fd) else 0;
     defer if (form_data) |fd| fd.releaseIfUnwrapped(form_data_generation);
-    // The tracker's info, read back from the navigation's wrapper.
-    const info = trackerInfo(internal, api_tracker);
+    // Step 18: "If apiMethodTracker is not null, then initialize event's
+    // info to apiMethodTracker's info. Otherwise, initialize it to
+    // undefined." The tracker's info, read back from the navigation's
+    // wrapper.
+    const info: ?engine.Owned = if (tracker) |t| trackerInfo(internal, t) else null;
     defer if (info) |i| i.release();
     // Browsers over step 16's unfiltered sourceElement: Chrome and Safari
     // hide a cross-origin source node. Blink NavigationApi::DispatchNavigateEvent
@@ -1670,7 +1673,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
         .navigation_type = firing.navigation_type,
         .destination = firing.destination,
         .controller = controller,
-        .tracker = api_tracker,
+        .tracker = tracker,
         .user_involvement = firing.user_involvement,
         .same_document = firing.is_same_document,
     };
@@ -1721,7 +1724,7 @@ fn innerFire(instance: *runtime.Instance, internal: *InternalState, scope: navig
     // were corrected to the spec text). Before, Crane kept the tracker ongoing
     // as Blink does and rejected its promises at the abort.
     if (record.interception_state == .none) {
-        if (!firing.is_same_document) cleanUp(internal, api_tracker);
+        if (!firing.is_same_document) if (tracker) |t| cleanUp(internal, t);
         return true;
     }
 
