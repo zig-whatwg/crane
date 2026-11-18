@@ -594,6 +594,7 @@ pub fn V8Namespace(comptime Namespace: type) type {
                             // no required argument; nor does an optional one.
                             if (ParamType == []const *const anyopaque or
                                 ParamType == []const runtime.ConsoleValue or
+                                ParamType == []const runtime.JSValue or
                                 ParamType == runtime.Context or
                                 interface.isOptionalWrapper(ParamType))
                             {
