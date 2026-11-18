@@ -294,6 +294,9 @@ pub const serializable_objects = @import("serializable_objects.zig");
 /// Agents and their host hooks; the code generation checks' reading of
 /// V8's source (stringCompilationOf).
 pub const protocol_agents = @import("protocol_agents.zig");
+/// The agent's node wrappers (the wrapper redesign); tests/v8 runs a realm's
+/// end's first step through it (`releaseRealm`).
+pub const node_wrappers = @import("node_wrappers.zig");
 
 /// Bfcache (Back-Forward Cache) Frozen Context Manager
 pub const frozen_context_manager = @import("frozen_context_manager.zig");

@@ -196,9 +196,10 @@ test "templates parsed by innerHTML keep their contents through a collection" {
 fn contentOutlivesItsTemplateWhileHeld() !void {
     const browser = try open();
     defer browser.deinit();
-    // Refcount step 7a's net (lane refcount9, feature queue "REFCOUNT step 7b"): the realm's forced teardown can
-    // free the held content under its live template, and the template's count is left with the content's hold.
-    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&browser.agent_host.deferred_teardown, "the forced realm teardown frees a held template content under its live template (step 7b)");
+    // Under refcount step 7a the realm's forced teardown could free the held
+    // content under its live template, leaving the template's count with the
+    // content's hold, and this test opted out of the agent-end check; since
+    // step 7b (lane rc7b) a realm's end frees nothing whatever its counts.
     // Script holds the content and drops the template: the content stays a
     // working fragment while script holds it.
     const held = try browser.evaluateScript(

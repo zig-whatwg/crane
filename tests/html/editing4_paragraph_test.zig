@@ -77,9 +77,10 @@ const hr_cases = [_]Case{
 fn paragraphs() !void {
     const page = try helpers.Page.open();
     defer page.close();
-    // A finding of refcount step 7 (lane refcount9), queued in the feature queue: insertParagraph leaves ten
-    // never-wrapped DocumentFragments still holding their creator reference, which the final sweep frees.
-    @import("dom").refcount_teardown.allowLiveNodesAtAgentEnd(&page.browser.agent_host.deferred_teardown, "insertParagraph leaves never-wrapped fragments holding their creator reference (feature queue)");
+    // A finding of refcount step 7 (lane refcount9): insertParagraph left ten
+    // never-wrapped DocumentFragments holding their creator reference - the
+    // subfragments Range's extract appends to a clone and drops (lane rc7b
+    // releases them) - which the final sweep freed.
     try page.run(harness.setup_script);
     try harness.runCases(page, &paragraph_cases);
 }

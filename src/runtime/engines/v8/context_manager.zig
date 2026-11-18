@@ -712,17 +712,17 @@ pub fn removeContextByKey(key: usize) void {
     // conditions the collector's second pass had. A teardown may end another
     // realm (an iframe in the tree), which drains its own.
     if (state.contexts.get(key)) |entry| {
+        // The references its collected node wrappers still owe go first
+        // (the agent's drain would release them at its next safe point):
+        // they are counts like any other, and the trees they leave with no
+        // hold are this realm's garbage below (refcount step 7b).
+        @import("node_wrappers.zig").releaseRealm(&entry.runtime_ctx);
         if (entry.runtime_ctx.getV8WrapperCacheStorage()) |cache_storage| {
             const cache: *@import("wrapper_cache.zig").WrapperCache = @ptrCast(@alignCast(cache_storage));
             cache.drainDeferred();
             // And the garbage its trees left (refcount step 7: counts decide).
             cache.drainRealmGarbage(&entry.runtime_ctx);
         }
-        // Then its orphans - subtrees its removals left with no wrapper
-        // reaching them, which no tree teardown and no collector reaches -
-        // under the same conditions (runtime.orphan_roots, [wrap_tracking]).
-        // They stayed until the Browser ended.
-        runtime.orphan_roots.drain(&entry.runtime_ctx);
     }
 
     if (state.contexts.fetchRemove(key)) |kv| {
@@ -816,6 +816,20 @@ pub fn removeContextByKey(key: usize) void {
                 deinitWindow(wi);
             }
 
+            // The agent's deferred teardown queue, which the realm's garbage
+            // is queued on (the realm's end runs with its agent entered).
+            const garbage_queue: ?*runtime.gc.DeferredTeardown = if (v8.v8_Isolate_GetCurrent()) |isolate|
+                protocol_agents.deferredTeardownOf(isolate)
+            else
+                null;
+            // What the Window's end let go of - its document, its close
+            // watchers, its parser, its document's tasks - left garbage
+            // wherever nothing else holds it: freed now, inside this
+            // teardown, where the Window used to free its document's tree
+            // whatever counted it (refcount step 7b). A tree another realm
+            // still holds stays, whole.
+            if (garbage_queue) |queue| @import("dom").refcount_teardown.drainRealm(queue, ctx_data);
+
             // Clean up V8 wrapper cache
             // Now safe because:
             // 1. Children are already cleaned up (no stale child pointers)
@@ -860,12 +874,25 @@ pub fn removeContextByKey(key: usize) void {
             // its Pins dispose their handles in the agent still entered.
             if (free_last_global) runtime.gc.onObjectFreed(last_global.?);
 
+            // The cache's sweep freed the realm's other platform objects, and
+            // with them the counted holds they had on nodes (an event's
+            // targets, a record's nodes, a range's boundaries): what that
+            // left garbage of this realm goes now, before the realm's event
+            // loop and realm record (refcount step 7b).
+            if (garbage_queue) |queue| @import("dom").refcount_teardown.drainRealm(queue, ctx_data);
+
             // Clean up V8 event loop
             coordinator.cleanupPhase(.event_loop);
             if (entry.event_loop) |ev_loop| {
                 ev_loop.deinit();
                 ctx_data.getAllocator().destroy(ev_loop);
             }
+            // An ended realm has no event loop (refcount step 7b): a tree of
+            // it another realm still holds is freed after this end, and its
+            // teardown queues no task into the realm nor reads a loop that
+            // may end before it (the Browser's ends before the agent's last
+            // drain).
+            ctx_data.event_loop = null;
 
             // Clean up realm
             if (entry.realm) |realm| {

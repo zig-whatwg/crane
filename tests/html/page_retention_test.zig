@@ -14,9 +14,10 @@
 //! 4. a wrapped node of a detached wrapped tree, when the wrapper cache's
 //!    end reaches the node before its root.
 //!
-//! Each test churns pages in one Browser and requires every type's live slab
-//! slots after each page to be the first page's: a page's count must not
-//! include the pages before it. The count is read from the slab by vtable
+//! Each test churns pages in one Browser and requires, after each page, no
+//! more slab slots of ENDED realms than after the first page: a page's count
+//! must not include the pages before it (`Census.grewSince` says why the
+//! live page's own count is not compared). The count is read from the slab by vtable
 //! name, so an object torn down with its slot still issued counts. The
 //! Browser runs on std.testing.allocator, so whatever is freed must be freed
 //! exactly once, and each test runs on a thread of its own (tests/html is one
@@ -36,6 +37,9 @@ const Census = struct {
     counts: [512]usize = undefined,
     wrapped: [512]usize = undefined,
     torn_down: [512]usize = undefined,
+    /// Of a realm that ended (no engine realm behind it any more): what an
+    /// ended page left, as against the current page's own.
+    ended: [512]usize = undefined,
     len: usize = 0,
 
     fn of(browser: *browser_mod.Browser) Census {
@@ -60,12 +64,14 @@ const Census = struct {
             self.counts[self.len] = 0;
             self.wrapped[self.len] = 0;
             self.torn_down[self.len] = 0;
+            self.ended[self.len] = 0;
             self.len += 1;
             break :blk self.len - 1;
         };
         self.counts[k] += 1;
         if (runtime.instance_lifecycle.wasWrapped(instance)) self.wrapped[k] += 1;
         if (runtime.instance_lifecycle.isCleanupStarted(instance)) self.torn_down[k] += 1;
+        if (!instance.ctx.hasEngine()) self.ended[k] += 1;
     }
 
     fn count(self: *const Census, name: []const u8) usize {
@@ -75,14 +81,30 @@ const Census = struct {
         return 0;
     }
 
-    /// Print every type with more slots than in `first`; true if any.
+    fn endedCount(self: *const Census, name: []const u8) usize {
+        for (self.names[0..self.len], 0..) |known, k| {
+            if (std.mem.eql(u8, known, name)) return self.ended[k];
+        }
+        return 0;
+    }
+
+    /// Print every type with more slots OF ENDED REALMS than in `first`;
+    /// true if any. What an ended page leaves is exactly what a realm that
+    /// ended still holds. The live page's own count is not compared: its
+    /// objects - its frames' Performance at the frame's first event, say -
+    /// are made as its work reaches them, so their number depends on how far
+    /// the page got before the census. Under load the first page's frames had
+    /// made theirs only after it, and the test failed on a page that left
+    /// nothing (lane rc7b, chat.local, 1 run in 60 at 12 at once: 'page 2:
+    /// Performance 1 -> 3 (wrapped 3, torn down 0, of an ended realm 0)' -
+    /// the queued page_retention flake, four sightings since 2026-11-14).
     fn grewSince(self: *const Census, first: *const Census, page: usize) bool {
         var grew = false;
         for (self.names[0..self.len], 0..) |name, k| {
             if (stillRetained(name)) continue;
             const before = first.count(name);
-            if (self.counts[k] > before) {
-                std.debug.print("page {d}: {s} {d} -> {d} (wrapped {d}, torn down {d})\n", .{ page, name, before, self.counts[k], self.wrapped[k], self.torn_down[k] });
+            if (self.ended[k] > first.endedCount(name)) {
+                std.debug.print("page {d}: {s} {d} -> {d} (wrapped {d}, torn down {d}, of an ended realm {d})\n", .{ page, name, before, self.counts[k], self.wrapped[k], self.torn_down[k], self.ended[k] });
                 grew = true;
             }
         }

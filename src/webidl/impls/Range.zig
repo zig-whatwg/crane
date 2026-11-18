@@ -1156,7 +1156,7 @@ fn processContents(comptime action: ContentsAction, allocator: std.mem.Allocator
                 const sub: Bounds = .{ .start_node = start_node, .start_offset = start_offset, .end_node = first, .end_offset = getNodeLength(first) };
                 if (try enterContentsLevel(action, allocator, &levels, sub, .first_child, null)) |subfragment| {
                     // Step 17.5 / 14.4: "Append subfragment to clone."
-                    _ = try interfaces.Node.call_appendChild(clone, subfragment);
+                    try appendSubfragment(clone, subfragment);
                 }
             },
             .contained => {
@@ -1193,7 +1193,7 @@ fn processContents(comptime action: ContentsAction, allocator: std.mem.Allocator
                 const sub: Bounds = .{ .start_node = last, .start_offset = 0, .end_node = end_node, .end_offset = end_offset };
                 if (try enterContentsLevel(action, allocator, &levels, sub, .last_child, null)) |subfragment| {
                     // Step 20.5 / 17.4.
-                    _ = try interfaces.Node.call_appendChild(clone, subfragment);
+                    try appendSubfragment(clone, subfragment);
                 }
             },
             .done => {
@@ -1206,10 +1206,26 @@ fn processContents(comptime action: ContentsAction, allocator: std.mem.Allocator
                 const parent = &levels.items[levels.items.len - 1];
                 const clone = parent.clone orelse return error.InvalidStateError;
                 parent.clone = null;
-                _ = try interfaces.Node.call_appendChild(clone, fragment);
+                try appendSubfragment(clone, fragment);
             },
         }
     }
+}
+
+/// "Append subfragment to clone" (extract steps 17.5 and 20.5, clone the
+/// contents steps 14.4 and 17.4): the subfragment's children move into
+/// `clone`, and the subfragment itself - empty, in no tree, made for this
+/// step alone - lets go of its born reference, so the counts free it (refcount
+/// step 7; WebKit's `Ref<DocumentFragment> subfragment` ends at scope exit,
+/// Source/WebCore/dom/Range.cpp processContents). Kept, each one was a held
+/// node of its document that no one would ever release: since a realm's end
+/// frees by counts (step 7b) it kept the whole document alive to the
+/// Browser's end (tests/html/editing4_paragraph_test.zig). A wrapped one is
+/// its wrapper's (dom.node_creation.releaseIfUnwrapped).
+fn appendSubfragment(clone: *runtime.Instance, subfragment: *runtime.Instance) !void {
+    const generation = runtime.SlabAllocator.generationOf(subfragment);
+    _ = try interfaces.Node.call_appendChild(clone, subfragment);
+    @import("dom").node_creation.releaseIfUnwrapped(subfragment, generation);
 }
 
 /// Steps 1-15 of "extract" (1-11 of "clone the contents") for one level.

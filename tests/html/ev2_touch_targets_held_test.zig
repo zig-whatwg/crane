@@ -39,15 +39,23 @@
 //! 2026-11-16: the second dispatch read "NEWCOMER"): between two dispatches
 //! nothing kept the host the event's own touch target list named.
 //!
-//! THE THIRD TEST is the list's teardown net: a forced realm end - here a
-//! removed iframe's - still frees its nodes whatever counts them (refcount
-//! step 7a keeps that free, and the holders' generation nets for it:
-//! dom.refcount's header), so the list's reference alone left the host of a
-//! removed frame freed (server1, with the list counted and no net: the
-//! third dispatch read "NEWCOMER"). When refcount step 7b lands (a realm's
-//! end by counts, as WebKit and Blink keep a referenced node past its
-//! frame) the host survives and this test's third entry becomes
-//! 'x:fhost:false'.
+//! THE THIRD TEST is a realm's end by counts (refcount step 7b): the frame's
+//! realm ends - its iframe removed, the collector takes the realm - while
+//! only the event's list (a holder of THIS realm) names the frame's host.
+//! Under step 7a the realm's end freed its document's tree whatever counted
+//! it, so the list's reference alone left the host freed (server1, with the
+//! list counted and no net: the third dispatch read "NEWCOMER"), and the
+//! list emptied itself through a generation net. Since 7b the realm's end
+//! drops only the realm's own references and the counts decide: the list's
+//! reference keeps the host, and with it its whole tree (decisions D1 and
+//! D6 - Blink traces a node's parent, Gecko's mParent is owning; HTML
+//! "destroy a document" removes no child), so the host is still in the
+//! frame's Document and reads connected: 'x:fhost:true'. The three browsers
+//! agree (probe, 2026-11-17, Chrome 157, Firefox 159, Safari 27 - TouchEvent
+//! is not exposed on desktop, so the holders were a script reference, a
+//! StaticRange and a Range): a shadow host of a removed iframe's document,
+//! read after the frame's removal and a collection, is connected, its
+//! parent the frame's body, its document's defaultView null.
 
 const std = @import("std");
 const testing = std.testing;
@@ -284,19 +292,49 @@ fn eventListAfterItsHostsRealmWent() !void {
     );
     try turn(page);
     try page.run(
-        \\// The frame's realm has ended, and its end freed the frame's nodes
-        \\// whatever held them - the host too, under the list's reference
-        \\// (until refcount step 7b: then 'x:fhost:false').
-        \\// The dispatch finds the list naming a freed node and empties it:
-        \\// the touch's target reads as its own, the span.
+        \\// The frame's realm has ended. Its end let go of what the realm
+        \\// itself held, and the counts decided the rest: the event's list
+        \\// still counts the host, which is alive in its whole tree - still
+        \\// in the frame's Document, so connected.
         \\document.getElementById('x').dispatchEvent(keptEvent);
-        \\expect(log, ['fx:fhost:true', 'x:fhost:true', 'x:ft:true'], 'the third dispatch');
+        \\expect(log, ['fx:fhost:true', 'x:fhost:true', 'x:fhost:true'], 'the third dispatch');
+        \\expect(frameTouchNode.isConnected, true, 'the span is this document\'s');
+        \\0;
+    );
+    try turn(page);
+    // The frame's realm ended: its Window's teardown ran. The host it left
+    // to the list's count, and its document, are still the nodes they were.
+    try page.run(
+        \\(() => {
+        \\  // Outside a dispatch a Touch's target is its own (the span); the
+        \\  // host is read through the list, in a listener.
+        \\  let host = null;
+        \\  const x = document.getElementById('x');
+        \\  const take = (event) => { host = event.touches[0].target; };
+        \\  x.addEventListener('ping', take);
+        \\  x.dispatchEvent(keptEvent);
+        \\  x.removeEventListener('ping', take);
+        \\  log.length = 3;
+        \\  expect(host.id, 'fhost', 'the host itself');
+        \\  const fdoc = host.ownerDocument;
+        \\  expect(fdoc.nodeType, 9, 'its document');
+        \\  expect(fdoc.getElementById('fx').localName, 'p', 'its tree, whole');
+        \\  expect(fdoc.defaultView, null, 'a destroyed document has no window');
+        \\})();
+        \\0;
+    );
+    // The event goes: the list's reference with it, and the frame's tree is
+    // the counts' to free - the agent's end finds no node alive (the page's
+    // close runs dom.refcount_teardown.agentEnded).
+    try page.run(
+        \\keptEvent = null;
+        \\collect();
         \\0;
     );
     try turn(page);
 }
 
-test "a TouchEvent's touch target list is emptied, and never names a newcomer, once the frame its host came from was removed and its realm ended" {
+test "a TouchEvent's touch target list keeps the shadow host of a removed frame alive, in its whole tree, after that frame's realm ended" {
     try onFreshThread(eventListAfterItsHostsRealmWent);
 }
 

@@ -234,6 +234,7 @@ pub fn installHooks() void {
         .associate_parser = &lifecycleAssociateParser,
         .discard_parser = &lifecycleDiscardParser,
         .drop_unobserved_lifecycle_tasks = &lifecycleDropUnobservedTasks,
+        .release_own_references = &lifecycleReleaseOwnReferences,
         .parser_finished = &lifecycleParserFinished,
         .finish_without_parser = &lifecycleFinishWithoutParser,
         .parsing_stopped = &lifecycleParsingStopped,
@@ -4609,13 +4610,21 @@ fn recordSuspension(document: *runtime.Instance, internal: *InternalState) void 
     internal.suspended_timer_handles = handles;
 }
 
-/// dom.document_lifecycle: HTML "destroy" `document` (§7.5.5), the steps
-/// that are the document's own. Step 2: "Set document's salvageable state to
-/// false." Step 7: "Set document's browsing context to null." Not modelled
-/// here, stated: steps 1 and 3-6 and 8-9 - its descendants' documents are
-/// the navigable's to destroy (they are destroyed first), its tasks are
-/// dropped by the event loop's fully-active check, and its message ports,
-/// fetches and worker owner sets are not tracked per document.
+/// dom.document_lifecycle: HTML "destroy" `document` (§7.5.10), the steps
+/// that are the document's own. Step 3: "Set document's salvageable state to
+/// false." Step 5: "Remove any tasks whose document is document from any
+/// task queue (without running those tasks)" - now, so what they hold (a
+/// counted reference on an element) goes with the document and not at the
+/// event loop's next turn (refcount step 7b: a realm's end lets go of its
+/// own references before the counts decide). Step 6: "Set document's
+/// browsing context to null" (the window's end, or the navigation that
+/// replaces the document, clears its default view). Not modelled here,
+/// stated: steps 1-2, 4 and 7-9 - its descendants' documents are the
+/// navigable's to destroy (they are destroyed first), and its message ports,
+/// fetches and worker owner sets are not tracked per document. The global
+/// tasks queued given its window (a task that names the Window) are the
+/// window's, which a navigation may reuse for the next document: they go
+/// with the window (Window's end).
 fn lifecycleDestroy(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
     internal.script_delivery_continuation_suppressed = true;
@@ -4625,6 +4634,27 @@ fn lifecycleDestroy(document: *runtime.Instance) void {
     internal.kept_in_bfcache = false;
     @import("html").script_execution.discardDocumentScripts(document);
     discardDocumentParser(internal);
+    // Step 5.
+    if (document.ctx.getOptionalEventLoop()) |loop| loop.discardDocumentTasks(document, runtime.SlabAllocator.generationOf(document));
+}
+
+/// dom.document_lifecycle: a destroyed document nothing outside its own work
+/// holds lets go of its own state's references on its nodes (refcount step
+/// 7b): its autofocus candidates and its top layer, as its own teardown
+/// (`deinitOwn`) lets them go - a destroyed document runs no script, so no
+/// event fires. Nothing for a document that was not destroyed.
+fn lifecycleReleaseOwnReferences(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    if (!internal.destroyed) return;
+    if (autofocusState(document, false)) |state| state.clear();
+    // Its dialogs still open or modal let go of the nodes their own state
+    // keeps (dom.dialog.releaseSavedNodes) before the top layer that lists
+    // them empties.
+    if (internal.interaction_state) |shared| if (shared.top_layer) |layer| {
+        for (layer.open_dialogs.items) |entry| if (entry.element.get()) |dialog| @import("dom").dialog.releaseSavedNodes(dialog);
+        for (layer.entries.items) |entry| if (entry.modal) if (entry.node()) |dialog| @import("dom").dialog.releaseSavedNodes(dialog);
+    };
+    internal.clearTopLayer();
 }
 
 /// dom.document_lifecycle: whether "destroy a document" has run on

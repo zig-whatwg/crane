@@ -43,7 +43,6 @@
 //! ```
 
 const std = @import("std");
-const orphan_roots_mod = @import("orphan_roots.zig");
 const Logger = @import("logger.zig").Logger;
 const LoggerConfig = @import("logger.zig").LoggerConfig;
 const infra = @import("infra");
@@ -291,10 +290,6 @@ pub const ContextData = struct {
     /// This enables proper cross-realm TypeError throwing, object creation, etc.
     realm: ?*Realm,
 
-    /// The roots of subtrees removed from their trees while no wrapper
-    /// reached them, which this realm's end frees (runtime.orphan_roots).
-    orphan_roots: orphan_roots_mod.List = .{},
-
     /// HTML "report an exception" step 6: whether this realm's global is in
     /// error reporting mode (html.report_exception) - the global's own flag,
     /// set while an error event fires at it. It was eight process-wide slots
@@ -440,7 +435,6 @@ pub const ContextData = struct {
         self.clearDocumentUrl();
         self.console_state.deinit(self.allocator);
         self.logger.deinit();
-        self.orphan_roots.deinit(self.allocator);
         // Its timers' records and its objects are their owners', gone by now;
         // what is left is the storage of the realm's own tables.
         self.active_timers.deinit(self.allocator);

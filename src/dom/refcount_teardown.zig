@@ -256,10 +256,11 @@ pub fn documentDereffed(document: *NodeBase) void {
     const instance = instanceOf(document) orelse return;
     if (runtime.instance_lifecycle.isCleanupStarted(instance)) return;
     const internal = @import("document_internals.zig").getInternal(instance) orelse return;
-    // Only a document with a parser to detach or lifecycle tasks to drop -
-    // and nothing outside its own pending work holding it.
+    // Only a document with a parser to detach, lifecycle tasks to drop or -
+    // destroyed - references of its own state to end, and nothing outside
+    // its own pending work holding it.
     const own_work = ownWorkReferences(instance);
-    if (internal.active_parser == null and own_work == 0) return;
+    if (internal.active_parser == null and own_work == 0 and !(internal.destroyed and holdsOwnReferences(internal))) return;
     if (@import("refcount.zig").count(document) > own_work) return;
     const queue = queueOf(instance) orelse return;
     _ = queue.push(.{
@@ -294,7 +295,23 @@ fn runDocumentUnreferenced(item: *DeferredTeardown.Item, budget: usize) Deferred
     // Its pending lifecycle tasks go too when nothing listens to it (the
     // integrator's ruling (c)): their holds were the last on it.
     document_lifecycle.dropUnobservedLifecycleTasks(instance);
+    // A destroyed document's own state lets go of its nodes (refcount step
+    // 7b): the references would keep its tree - and through its tree the
+    // document - alive for ever, a cycle only the realm's forced free used
+    // to break.
+    document_lifecycle.releaseOwnReferences(instance);
     return done;
+}
+
+/// Whether `internal`, a document's state, keeps references on its own nodes:
+/// its top layer (its popovers, modal dialogs and fullscreen elements, the
+/// fullscreen events still pending, its pointer and hint targets, its open
+/// dialogs) or its autofocus candidates. Each is a counted hold on a node of
+/// the document's tree, or of a subtree removed from it (a foreign hold,
+/// decision D6) - so the document keeps itself alive through them.
+fn holdsOwnReferences(internal: *const @import("document_state.zig").InternalState) bool {
+    const shared = internal.interaction_state orelse return false;
+    return shared.top_layer != null or shared.autofocus != null;
 }
 
 /// A Browser's agent ended (Browser.deinit, after its last realm's end and
@@ -340,14 +357,24 @@ fn reportPredictions(queue: *const DeferredTeardown) void {
     log.warn("dying trees: {d} tree(s) predicted dead at a collection's end of marking ({d} B), {d} of them alive at their release; {d} B put back into the figure", .{ books.predicted, books.predicted_bytes, books.mispredicted, books.put_back_bytes });
 }
 
+/// Up to `limit` live nodes of `scope`'s Browser, each with what holds it,
+/// as warnings (the agent-end report's lines): a test that finds nodes it
+/// expected freed says which.
+pub fn describeLiveNodes(scope: *runtime.BrowserScope, limit: usize) void {
+    instance_bridge.visitNodes(scope, limit, {}, describeLiveNode);
+}
+
 /// One node alive at the agent's end, for the report: what holds it.
 fn describeLiveNode(_: void, node: *NodeBase) void {
     const refcount = @import("refcount.zig");
     var depth: usize = 0;
     var up: *NodeBase = node;
     while (up.parent_node) |p| : (depth += 1) up = p;
-    log.warn("  alive: type {d} count {d} subtree_holds {d} depth {d} root type {d} root holds {d} garbage {} creator {} removal_held {} hosted {} wrapped {}", .{
+    const instance = instanceOf(node);
+    log.warn("  alive: {s} type {d} realm ended {} count {d} subtree_holds {d} depth {d} root type {d} root holds {d} garbage {} creator {} removal_held {} hosted {} wrapped {}", .{
+        if (instance) |i| i.vtable.name else "?",
         node.node_type,
+        if (instance) |i| !i.ctx.hasEngine() else false,
         refcount.count(node),
         node.subtree_holds,
         depth,

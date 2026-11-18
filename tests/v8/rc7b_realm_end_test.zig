@@ -1,35 +1,28 @@
-//! Refcount step 7a's ended-realm net, and the hole in it (lane wr1 batch 11,
-//! R3; tmp/plans/feature-queue.md "THE 7a NET'S HOLE", lane v8up b7).
+//! Refcount step 7b: a realm's end frees no node whatever its counts (lane
+//! rc7b; tmp/plans/refcount9-design.md B4). This file was lane wr1 batch
+//! 11's tests of step 7a's ended-realm net and its hole (node_wrappers.zig
+//! `endedRealmNet`, `endRealm`): a detached tree of a realm that ended,
+//! still held by a counted reference, was freed whatever its counts once no
+//! wrapper reached it. 7b removes the net: the realm's end lets go of the
+//! realm's OWN references (its Window's, its documents' tasks, its watchers)
+//! and the counts decide the rest - a counted reference another realm holds
+//! (here the test's `CountedRef`, as an event's touch target list or a
+//! record of another realm would) keeps its tree, whole, past the realm's
+//! end, and the tree is freed by the agent's deferred teardown queue when
+//! that reference ends. WebKit and Blink keep such a node past its frame.
 //!
-//! The net (node_wrappers.zig `endedRealmNet`, `endRealm`): a detached tree of
-//! a realm that ENDED, still held by its own pending work's counted reference
-//! - an <img>'s image update, a dialog's close watcher: work only the realm's
-//! end would have let go - is freed whatever its counts once no wrapper
-//! reaches it. A holder that counted a node there forgets it (its generation
-//! net: dom.node_holds.CountedRef.release).
-//!
-//! The net looked at such a tree at two moments only: when a wrapper's
-//! release ran (`endedRealmNet`), and at the realm's end for the releases
-//! still waiting for the drain (`endRealm`). A tree whose last wrapper was
-//! released while its realm was ALIVE met neither: the first look declined
-//! (the realm lives: its pending work may still end by itself), and nothing
-//! looked again at the realm's end. It stayed to the agent's end. WHEN a
-//! collection's releases run decided which case a tree fell in - which is why
-//! node wrappers' releases kept V8's second-pass timing while every other
-//! finalizer moved to the first pass (v8_wrapper.cpp
-//! `noteNodeWrappersCollected`), at a cost of 19 MB on dom.clone-node.
-//!
-//! What these pin:
-//! 1. the hole: released while the realm lives, then the realm ends - the
-//!    tree is freed at that end (a root, and a tree held through a child);
-//! 2. the order the net always handled: the wrapper outlives the realm;
-//! 3. the net never frees a tree a wrapper still reaches, at either look:
-//!    since the redesign's P7 a wrapped node wraps no ancestor, so the ROOT's
-//!    empty slot does not answer for its tree (dom.wrapper_tracing
-//!    .holdsWrapper does);
-//! 4. a wrapper released inside a shadow tree answers for its HOST's tree
-//!    (the host-including tree is what the counts and the walk keep);
-//! 5. the remembered roots are bounded by the trees that still wait.
+//! What these pin, in the shapes the net's tests had:
+//! 1. a detached root (and a tree held through a child) whose wrapper was
+//!    released while the realm lived outlives the realm's end, and goes
+//!    when its hold does;
+//! 2. the wrapper outlives the realm: its release leaves the tree to the
+//!    hold;
+//! 3. a tree a wrapper reaches stays whole through the realm's end, a root
+//!    whose release was still owed at the end included (the end runs the
+//!    realm's owed releases first: node_wrappers.releaseRealm);
+//! 4. a wrapper inside a shadow tree answers for its host's tree;
+//! 5. many held trees: every one outlives the realm's end, and every one is
+//!    freed when its hold ends.
 //!
 //! Each test has its own agent with two Window realms: `page`, which keeps
 //! the agent alive, and a frame that ends inside the test. The collections
@@ -219,20 +212,7 @@ const WrapAgain = struct {
     }
 };
 
-/// The adapter's counter `name` now (engine.diagnosticCounters), read with
-/// the fixture's isolate entered.
-fn counterOf(fx: Fixture, name: []const u8) !i64 {
-    const entered = ffi.v8_Isolate_GetCurrent() != fx.isolate();
-    if (entered) ffi.v8_Isolate_Enter(fx.isolate());
-    defer if (entered) ffi.v8_Isolate_Exit(fx.isolate());
-    const counters = try engine.diagnosticCounters(testing.allocator);
-    defer testing.allocator.free(counters);
-    for (counters) |c| if (std.mem.eql(u8, c.name, name)) return c.value;
-    std.debug.print("the adapter reports no counter named {s}\n", .{name});
-    return error.CounterMissing;
-}
-
-test "the hole: a detached root its realm's pending work holds, whose wrapper was released while the realm lived, is freed at that realm's end" {
+test "a detached root another holder counts, its wrapper released while its realm lived, outlives the realm's end and is freed when the hold ends" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -243,12 +223,10 @@ test "the hole: a detached root its realm's pending work holds, whose wrapper wa
 
     const div = try nodeOf(frame, "globalThis.d = new Document(); globalThis.x = d.createElement('div'); x");
     queue.drainAll();
-    // The realm's pending work: an image update's hold on its element, a
-    // close watcher's on its dialog - a counted reference that ends by
-    // itself only if the work does.
-    var pending: dom.node_holds.CountedRef = .{};
-    pending.take(div.watched.instance, div.node);
-    defer pending.release(div.watched.instance);
+    // A counted reference the realm does not own: another realm's holder.
+    var held: dom.node_holds.CountedRef = .{};
+    held.take(div.watched.instance, div.node);
+    defer held.release(div.watched.instance);
     defer queue.drainAll();
     try testing.expectEqual(@as(u32, 2), dom.refcount.count(div.node));
 
@@ -261,17 +239,22 @@ test "the hole: a detached root its realm's pending work holds, whose wrapper wa
     try testing.expectEqual(@as(u32, 1), dom.refcount.count(div.node));
     try testing.expect(queue.isEmpty());
 
-    // The realm ends: no script of it runs again and its pending work never
-    // ends by itself. The net frees the tree.
+    // The realm ends: no script of it runs again. The hold is not the
+    // realm's, so the tree stays.
     engine.destroyWindowRealm(frame, .global_detached);
     frame_ended = true;
     queue.drainAll();
+    try testing.expect(div.watched.alive());
+    try testing.expectEqual(dom.NodeBase.ELEMENT_NODE, div.node.node_type);
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(div.node));
+
+    // The hold ends: the counts free the tree, in a slice of the queue.
+    held.release(div.watched.instance);
+    queue.drainAll();
     try testing.expect(!div.watched.alive());
-    // The work's own end, later, finds its element gone and lets nothing go
-    // twice (`pending.release` above: an underflow would be an error log).
 }
 
-test "the hole: a detached tree held through a child - the root never held - is freed at its realm's end" {
+test "a detached tree another holder counts through a child - the root never held - outlives its realm's end and is freed when the hold ends" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -284,14 +267,14 @@ test "the hole: a detached tree held through a child - the root never held - is 
     const img = try nodeOf(frame, "globalThis.d = new Document(); globalThis.x = d.createElement('div').appendChild(d.createElement('img')); x");
     const root = try nodeOf(frame, "x.parentNode");
     queue.drainAll();
-    var pending: dom.node_holds.CountedRef = .{};
-    pending.take(img.watched.instance, img.node);
-    defer pending.release(img.watched.instance);
+    var held: dom.node_holds.CountedRef = .{};
+    held.take(img.watched.instance, img.node);
+    defer held.release(img.watched.instance);
     defer queue.drainAll();
 
     try run(frame, "globalThis.x = null;");
     fx.collect();
-    // Both wrappers went; the update's hold on the img keeps the tree.
+    // Both wrappers went; the hold on the img keeps the tree.
     try testing.expect(root.watched.alive());
     try testing.expect(img.watched.alive());
     try testing.expect(runtime.lifetime.slotOf(root.node).isEmpty());
@@ -301,11 +284,17 @@ test "the hole: a detached tree held through a child - the root never held - is 
     engine.destroyWindowRealm(frame, .global_detached);
     frame_ended = true;
     queue.drainAll();
+    try testing.expect(img.watched.alive());
+    try testing.expect(root.watched.alive());
+    try testing.expect(img.node.parent_node == root.node);
+
+    held.release(img.watched.instance);
+    queue.drainAll();
     try testing.expect(!img.watched.alive());
     try testing.expect(!root.watched.alive());
 }
 
-test "the order the net always handled: the wrapper outlives its realm, and its release frees the tree the realm's pending work holds" {
+test "a wrapper that outlives its realm leaves the tree to another holder's count when it goes, and that count's end frees it" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -316,25 +305,31 @@ test "the order the net always handled: the wrapper outlives its realm, and its 
 
     const div = try nodeOf(frame, "globalThis.d = new Document(); globalThis.x = d.createElement('div'); x");
     queue.drainAll();
-    var pending: dom.node_holds.CountedRef = .{};
-    pending.take(div.watched.instance, div.node);
-    defer pending.release(div.watched.instance);
+    var held: dom.node_holds.CountedRef = .{};
+    held.take(div.watched.instance, div.node);
+    defer held.release(div.watched.instance);
     defer queue.drainAll();
 
     // The realm ends with the wrapper still there (its global held it).
     engine.destroyWindowRealm(frame, .global_detached);
     frame_ended = true;
-    // The collections after it take the wrapper; its release meets a tree of
-    // an ended realm that only that realm's work holds: freed, in a slice.
+    // The collections after it take the wrapper; its release leaves the
+    // tree to the hold.
     var turns: usize = 0;
-    while (turns < 6 and div.watched.alive()) : (turns += 1) {
+    while (turns < 6 and !runtime.lifetime.slotOf(div.node).isEmpty()) : (turns += 1) {
         fx.collect();
         queue.drainAll();
     }
+    try testing.expect(runtime.lifetime.slotOf(div.node).isEmpty());
+    try testing.expect(div.watched.alive());
+    try testing.expectEqual(@as(u32, 1), dom.refcount.count(div.node));
+
+    held.release(div.watched.instance);
+    queue.drainAll();
     try testing.expect(!div.watched.alive());
 }
 
-test "a tree the net declined is not freed at its realm's end while a wrapper reaches it again; that wrapper's release frees it" {
+test "a tree a wrapper reaches stays whole through its realm's end; once the wrapper and the hold are gone the counts free it" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -346,12 +341,12 @@ test "a tree the net declined is not freed at its realm's end while a wrapper re
     const span = try nodeOf(frame, "globalThis.d = new Document(); globalThis.x = d.createElement('div').appendChild(d.createElement('span')); x");
     const root = try nodeOf(frame, "x.parentNode");
     queue.drainAll();
-    var pending: dom.node_holds.CountedRef = .{};
-    pending.take(span.watched.instance, span.node);
-    defer pending.release(span.watched.instance);
+    var held: dom.node_holds.CountedRef = .{};
+    held.take(span.watched.instance, span.node);
+    defer held.release(span.watched.instance);
     defer queue.drainAll();
 
-    // Declined: both wrappers released while the realm lives.
+    // Both wrappers released while the realm lives.
     try run(frame, "globalThis.x = null;");
     fx.collect();
     try testing.expect(runtime.lifetime.slotOf(root.node).isEmpty());
@@ -373,18 +368,23 @@ test "a tree the net declined is not freed at its realm's end while a wrapper re
     try testing.expect(span.watched.alive());
     try testing.expectEqual(dom.NodeBase.ELEMENT_NODE, span.node.node_type);
 
-    // When that wrapper goes, the net frees what only the ended realm's
-    // work holds.
+    // The wrapper goes: the hold still keeps the tree.
     var turns: usize = 0;
-    while (turns < 6 and root.watched.alive()) : (turns += 1) {
+    while (turns < 6 and !runtime.lifetime.slotOf(span.node).isEmpty()) : (turns += 1) {
         fx.collect();
         queue.drainAll();
     }
+    try testing.expect(runtime.lifetime.slotOf(span.node).isEmpty());
+    try testing.expect(root.watched.alive());
+    try testing.expect(span.node.parent_node == root.node);
+
+    held.release(span.watched.instance);
+    queue.drainAll();
     try testing.expect(!root.watched.alive());
     try testing.expect(!span.watched.alive());
 }
 
-test "a root whose release waits at its realm's end is not freed while a wrapper reaches a child of it" {
+test "a root whose release was still owed at its realm's end stays whole while a wrapper reaches a child of it" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -434,7 +434,7 @@ test "a root whose release waits at its realm's end is not freed while a wrapper
     try testing.expect(!span.watched.alive());
 }
 
-test "a wrapper released inside a shadow tree answers for its host's tree: the net frees the host-including tree of an ended realm" {
+test "a wrapper inside a shadow tree keeps its host's whole tree through its realm's end; with it and the hold gone the counts free the tree" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
@@ -443,8 +443,8 @@ test "a wrapper released inside a shadow tree answers for its host's tree: the n
     var frame_ended = false;
     defer if (!frame_ended) engine.destroyWindowRealm(frame, .global_detached);
 
-    // A detached host <div> the realm's pending work holds, with a shadow
-    // root and a <span> in it.
+    // A detached host <div> another holder counts, with a shadow root and a
+    // <span> in it.
     const host = try nodeOf(frame,
         \\globalThis.d = new Document();
         \\globalThis.h = d.createElementNS('http://www.w3.org/1999/xhtml', 'div');
@@ -453,9 +453,9 @@ test "a wrapper released inside a shadow tree answers for its host's tree: the n
     );
     const span = try nodeOf(frame, "x");
     queue.drainAll();
-    var pending: dom.node_holds.CountedRef = .{};
-    pending.take(host.watched.instance, host.node);
-    defer pending.release(host.watched.instance);
+    var held: dom.node_holds.CountedRef = .{};
+    held.take(host.watched.instance, host.node);
+    defer held.release(host.watched.instance);
     defer queue.drainAll();
 
     // Every wrapper of the tree goes while the realm lives.
@@ -478,63 +478,59 @@ test "a wrapper released inside a shadow tree answers for its host's tree: the n
     try testing.expect(host.watched.alive());
     try testing.expect(span.watched.alive());
 
-    // Then that wrapper goes. Its release names a node whose root is a
-    // shadow root: the tree to look at is its host's.
+    // Then that wrapper goes: the hold on the host keeps the tree.
     var turns: usize = 0;
-    while (turns < 6 and host.watched.alive()) : (turns += 1) {
+    while (turns < 6 and !runtime.lifetime.slotOf(span.node).isEmpty()) : (turns += 1) {
         fx.collect();
         queue.drainAll();
     }
+    try testing.expect(runtime.lifetime.slotOf(span.node).isEmpty());
+    try testing.expect(host.watched.alive());
+    try testing.expect(span.watched.alive());
+
+    held.release(host.watched.instance);
+    queue.drainAll();
     try testing.expect(!host.watched.alive());
     try testing.expect(!span.watched.alive());
 }
 
-test "the roots the net remembers are bounded by the trees that still wait, not by how many it ever declined" {
+test "many held detached trees all outlive their realm's end, and each is freed when its hold ends" {
     var queue = DeferredTeardown.init(testing.allocator);
     defer queue.deinit();
     const fx = try Fixture.open(&queue);
     defer fx.close();
     const frame = try fx.frame();
-    defer engine.destroyWindowRealm(frame, .global_detached);
+    var frame_ended = false;
+    defer if (!frame_ended) engine.destroyWindowRealm(frame, .global_detached);
     try run(frame, "globalThis.d = new Document();");
     queue.drainAll();
 
-    // 150 trees that wait at once: each declined while the realm lives, its
-    // pending work still holding it. All of them are remembered.
-    const waiting = 150;
-    var pending: [waiting]dom.node_holds.CountedRef = @splat(.{});
-    var nodes: [waiting]Made = undefined;
+    const count = 150;
+    var holds: [count]dom.node_holds.CountedRef = @splat(.{});
+    var nodes: [count]Made = undefined;
     try run(frame, "globalThis.xs = []; for (let i = 0; i < 150; i++) xs.push(d.createElement('div'));");
-    for (&pending, &nodes, 0..) |*hold, *made, i| {
+    for (&holds, &nodes, 0..) |*hold, *made, i| {
         var source: [32]u8 = undefined;
         made.* = try nodeOf(frame, try std.fmt.bufPrint(&source, "xs[{d}]", .{i}));
         hold.take(made.watched.instance, made.node);
     }
+    defer for (&holds, nodes) |*hold, made| hold.release(made.watched.instance);
+    defer queue.drainAll();
     try run(frame, "globalThis.xs = null;");
     fx.collect();
     for (nodes) |made| try testing.expect(made.watched.alive());
-    try testing.expectEqual(@as(i64, waiting), try counterOf(fx, "node_wrapper_net_waiting"));
 
-    // Their work ends: the counts free every one of them.
-    for (&pending, nodes) |*hold, made| hold.release(made.watched.instance);
+    engine.destroyWindowRealm(frame, .global_detached);
+    frame_ended = true;
+    queue.drainAll();
+    for (nodes) |made| try testing.expect(made.watched.alive());
+
+    // Half the holds end: exactly those trees go.
+    for (holds[0 .. count / 2], nodes[0 .. count / 2]) |*hold, made| hold.release(made.watched.instance);
+    queue.drainAll();
+    for (nodes[0 .. count / 2]) |made| try testing.expect(!made.watched.alive());
+    for (nodes[count / 2 ..]) |made| try testing.expect(made.watched.alive());
+    for (holds[count / 2 ..], nodes[count / 2 ..]) |*hold, made| hold.release(made.watched.instance);
     queue.drainAll();
     for (nodes) |made| try testing.expect(!made.watched.alive());
-
-    // 400 more, one at a time, each declined and then let go by its work.
-    var round: usize = 0;
-    while (round < 400) : (round += 1) {
-        const div = try nodeOf(frame, "globalThis.x = d.createElement('div'); x");
-        var hold: dom.node_holds.CountedRef = .{};
-        hold.take(div.watched.instance, div.node);
-        try run(frame, "globalThis.x = null;");
-        ffi.v8_Isolate_RequestGarbageCollection(fx.isolate());
-        try testing.expect(div.watched.alive());
-        try testing.expect(runtime.lifetime.slotOf(div.node).isEmpty());
-        hold.release(div.watched.instance);
-        queue.drainAll();
-        try testing.expect(!div.watched.alive());
-    }
-    // Nothing waits now. 550 roots were declined; what is remembered is the
-    // remainder since the last sweep, never the history.
-    try testing.expect(try counterOf(fx, "node_wrapper_net_waiting") <= 64);
 }

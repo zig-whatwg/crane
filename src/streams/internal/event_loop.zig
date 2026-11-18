@@ -187,6 +187,16 @@ pub const EventLoop = struct {
         ///
         /// Implementations should use an arena allocator for simple bulk deallocation.
         promiseAllocator: *const fn (ptr: *anyopaque) std.mem.Allocator,
+
+        /// HTML "destroy a document" step 5: "Remove any tasks whose
+        /// document is document from any task queue (without running those
+        /// tasks)" - every task this loop holds whose `document` is
+        /// `document` at `generation`, each one's `drop` run now, so what it
+        /// carries (a counted hold on a node) goes with the document's
+        /// destruction and not at the loop's next turn. Safe while the loop
+        /// runs a task. Null for a loop whose tasks name no document (a
+        /// worker's, a test's): `discardDocumentTasks` then does nothing.
+        discardDocumentTasks: ?*const fn (ptr: *anyopaque, document: *anyopaque, generation: u64) void = null,
     };
 
     /// Queue a microtask for execution
@@ -260,6 +270,15 @@ pub const EventLoop = struct {
     /// ```
     pub fn promiseAllocator(self: EventLoop) std.mem.Allocator {
         return self.vtable.promiseAllocator(self.ptr);
+    }
+
+    /// HTML "destroy a document" step 5 for `document` (its slab generation
+    /// `generation`): the tasks this loop holds for it are removed without
+    /// running, their `drop` run now (VTable.discardDocumentTasks). Nothing
+    /// for a loop that keeps no task with a document.
+    pub fn discardDocumentTasks(self: EventLoop, document: *anyopaque, generation: u64) void {
+        const discard = self.vtable.discardDocumentTasks orelse return;
+        discard(self.ptr, document, generation);
     }
 
     /// Run the event loop until all work is complete

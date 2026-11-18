@@ -2344,10 +2344,10 @@ pub const WrapperCache = struct {
         self.finalizePending();
 
         log.debug("[wrapper_cache.deinit] Summary: processed={}, skipped_cleaned={}, skipped_started={}", .{ processed, skipped_cleaned, skipped_started });
-        // The realm's detached wrapped trees: their wrappers are the agent's
-        // (node_wrappers), and the net this sweep made for them while they
-        // were its entries is theirs now (refcount step 7a).
-        node_wrappers.endRealm(@ptrCast(self));
+        // The realm's node wrappers are the agent's (node_wrappers): their
+        // owed releases ran before the realm's teardown judged its trees
+        // (context_manager.removeContextByKey), and no node is freed here
+        // (refcount step 7b).
         self.endStorage();
     }
 
