@@ -2302,6 +2302,176 @@ test "site: an invalid needs-renderer exemption stops the site" {
     try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"assertion\"") != null);
 }
 
+fn fixtureFollowsMajority(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\kind = follows-majority
+        \\why = Crane keeps the value as typed, as Firefox and Safari do; only Chrome converts it
+        \\chrome.result = wpt.fyi run 4786307730243584: 2/2
+        \\firefox.result = wpt.fyi run 4877168468033536: 0/2
+        \\safari.result = wpt.fyi run 6479119966273536: 0/2
+        \\matches = firefox, safari
+        \\ruling = the user, 2026-11-18 2:36 PM ET
+        \\revisit = when Chrome, Firefox or Safari changes its result
+        \\
+    ;
+}
+
+test "site: a follows-majority exemption is its own group, with the browsers Crane matches, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // b.html (TIMEOUT) needs a renderer, c.any.js (NONE-PASSED) follows the majority: neither blocks.
+    const text = comptime fixtureNeedsRenderer("dom/b.html") ++ fixtureFollowsMajority("dom/nodes/c.any.js");
+    _ = try runFixtureExempt(gpa, &f, "majority", text, &diag);
+
+    const index = try readOut(gpa, &f, "majority/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
+    // Its own group, after the needs-renderer group and before the contents.
+    try expectBefore(index, "id=\"exempt-needs-renderer\"", "id=\"exempt-follows-majority\"");
+    try expectBefore(index, "id=\"exempt-follows-majority\"", "id=\"contents\"");
+    try expectHas(index, "<h2 id=\"exempt-follows-majority-h\">Exempt: Crane follows the browser majority</h2>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-follows-majority\"").?;
+    const renderer = index[std.mem.indexOf(u8, index, "id=\"exempt-needs-renderer\"").?..at];
+    try testing.expect(std.mem.indexOf(u8, renderer, "c.any.js") == null);
+    const group = index[at..std.mem.indexOf(u8, index, "id=\"contents\"").?];
+    try expectHas(group, "<a href=\"dom/nodes/#c.any.js\"><code>dom/nodes/c.any.js</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(group, "Crane keeps the value as typed, as Firefox and Safari do; only Chrome converts it");
+    try expectHas(group, "<dt>Crane matches</dt><dd>Firefox, Safari</dd>");
+    try expectHas(group, "<dt>Chrome</dt><dd>wpt.fyi run 4786307730243584: 2/2</dd>");
+    try expectHas(group, "<dt>Firefox</dt><dd>wpt.fyi run 4877168468033536: 0/2</dd>");
+    try expectHas(group, "<dt>Safari</dt><dd>wpt.fyi run 6479119966273536: 0/2</dd>");
+    try expectHas(group, "<dt>Ruling</dt><dd>the user, 2026-11-18 2:36 PM ET</dd>");
+    try expectHas(group, "<dt>Revisit</dt><dd>when Chrome, Firefox or Safari changes its result</dd>");
+    try testing.expect(std.mem.indexOf(u8, group, "dom/b.html") == null);
+    try testing.expect(std.mem.indexOf(u8, group, "<dt>Failing assertion</dt>") == null);
+    // The status counts it on its own, and links its group; the legend names it.
+    try expectHas(index, " Nor is 1 file that would block, <a href=\"#exempt-follows-majority\">exempt because Crane follows the browser majority</a>: Crane already does what the majority of Chrome, Firefox and Safari does there (or what a recorded ruling decides), so no change in Crane can clear it.");
+    try expectHas(index, "<dd>would block, but it fails only because no renderer answers geometry, or Crane&rsquo;s result is the browser majority&rsquo;s</dd>");
+
+    // The file's own section says which kind, with its evidence.
+    const dir = try readOut(gpa, &f, "majority/dom/nodes/index.html");
+    defer gpa.free(dir);
+    try expectHas(dir, "<p class=\"note-label\">Exempt from the 0.1 gate: Crane follows the browser majority</p>");
+    try expectHas(dir, "<dt>Crane matches</dt><dd>Firefox, Safari</dd>");
+    try expectHas(dir, "<details class=\"tf\" id=\"c.any.js\" data-gate=\"exempt\"");
+}
+
+test "site: follows-majority exemptions alone write only their own group; no ruling, no Ruling row" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const no_ruling = comptime blk: {
+        @setEvalBranchQuota(20000);
+        const full = fixtureFollowsMajority("dom/nodes/c.any.js") ++ fixtureFollowsMajority("dom/b.html");
+        var out: []const u8 = "";
+        var it = std.mem.splitScalar(u8, full, '\n');
+        while (it.next()) |line| {
+            if (std.mem.startsWith(u8, line, "ruling")) continue;
+            out = out ++ line ++ "\n";
+        }
+        break :blk out;
+    };
+    _ = try runFixtureExempt(gpa, &f, "majorityonly", no_ruling, &diag);
+    const index = try readOut(gpa, &f, "majorityonly/index.html");
+    defer gpa.free(index);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt\"") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt-test-bug\"") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "id=\"exempt-needs-renderer\"") == null);
+    try expectHas(index, "id=\"exempt-follows-majority\"");
+    try expectHas(index, "Not counted among them: 2 files that would block are <a href=\"#exempt-follows-majority\">exempt because Crane follows the browser majority</a>: Crane already does what the majority of Chrome, Firefox and Safari does there (or what a recorded ruling decides), so no change in Crane can clear them.");
+    try expectHas(index, "<dd>would block, but Crane&rsquo;s result is the browser majority&rsquo;s</dd>");
+    try testing.expect(std.mem.indexOf(u8, index, "<dt>Ruling</dt>") == null);
+    try testing.expect(std.mem.indexOf(u8, index, "all three browsers") == null);
+}
+
+test "site: an invalid follows-majority exemption stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // One browser and no ruling.
+    const lone = comptime blk: {
+        const full = fixtureFollowsMajority("dom/nodes/c.any.js");
+        const m = std.mem.indexOf(u8, full, "matches = firefox, safari\nruling = the user, 2026-11-18 2:36 PM ET\n").?;
+        break :blk full[0..m] ++ "matches = safari\n" ++ full[m + "matches = firefox, safari\nruling = the user, 2026-11-18 2:36 PM ET\n".len ..];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-majority", lone, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "needs at least two browsers in matches, or a ruling") != null);
+    // Missing its revisit.
+    diag = .{};
+    const no_revisit = comptime blk: {
+        const full = fixtureFollowsMajority("dom/nodes/c.any.js");
+        break :blk full[0..std.mem.indexOf(u8, full, "revisit =").?];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-majority2", no_revisit, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"revisit\"") != null);
+}
+
+fn fixtureNeedsDecoder(comptime path: []const u8) []const u8 {
+    return "[" ++ path ++ "]\n" ++
+        \\kind = needs-decoder
+        \\why = the test waits for canplay on a WebM video; the default platform decodes WAV only, so canplay never fires
+        \\media = /media/movie_5.webm (video/webm; VP8 + Vorbis)
+        \\assertion = TIMEOUT: video plays - Test timed out
+        \\
+    ;
+}
+
+test "site: a needs-decoder exemption is its own group, with its media and failing assertion, never blocking" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    // b.html (TIMEOUT) needs a decoder, c.any.js (NONE-PASSED) follows the majority: neither blocks.
+    const text = comptime fixtureNeedsDecoder("dom/b.html") ++ fixtureFollowsMajority("dom/nodes/c.any.js");
+    _ = try runFixtureExempt(gpa, &f, "decoder", text, &diag);
+
+    const index = try readOut(gpa, &f, "decoder/index.html");
+    defer gpa.free(index);
+    try expectHas(index, "<div><dt>Blocking files</dt><dd>0</dd>");
+    try expectHas(index, "<dt><span class=\"key key-exempt\"></span>Exempt</dt><dd>2</dd>");
+    // Its own group, after the status and before the follows-majority group.
+    try expectBefore(index, "id=\"status\"", "id=\"exempt-needs-decoder\"");
+    try expectBefore(index, "id=\"exempt-needs-decoder\"", "id=\"exempt-follows-majority\"");
+    try expectHas(index, "<h2 id=\"exempt-needs-decoder-h\">Exempt until a decoder plays its media</h2>");
+    const at = std.mem.indexOf(u8, index, "id=\"exempt-needs-decoder\"").?;
+    const group = index[at..std.mem.indexOf(u8, index, "id=\"exempt-follows-majority\"").?];
+    try expectHas(group, "<a href=\"dom/#b.html\"><code>dom/b.html</code></a> <span class=\"gate gate-exempt\">Exempt</span>");
+    try expectHas(group, "the test waits for canplay on a WebM video; the default platform decodes WAV only, so canplay never fires");
+    try expectHas(group, "<dt>Media</dt><dd>/media/movie_5.webm (video/webm; VP8 + Vorbis)</dd>");
+    try expectHas(group, "<dt>Failing assertion</dt><dd>TIMEOUT: video plays - Test timed out</dd>");
+    try testing.expect(std.mem.indexOf(u8, group, "c.any.js") == null);
+    // The status counts each group on its own; the legend names both.
+    try expectHas(index, "Not counted among them: 1 file that would block is <a href=\"#exempt-needs-decoder\">exempt until a decoder plays its media</a>: it fails only because the platform Crane&rsquo;s WPT runs on has no decoder for its media.");
+    try expectHas(index, " Nor is 1 file that would block, <a href=\"#exempt-follows-majority\">exempt because Crane follows the browser majority</a>");
+    try expectHas(index, "<dd>would block, but it fails only because the platform has no decoder for its media, or Crane&rsquo;s result is the browser majority&rsquo;s</dd>");
+
+    // The file's own section says which kind, with its media.
+    const dir = try readOut(gpa, &f, "decoder/dom/index.html");
+    defer gpa.free(dir);
+    try expectHas(dir, "<p class=\"note-label\">Exempt from the 0.1 gate until a decoder plays its media</p>");
+    try expectHas(dir, "<dt>Media</dt><dd>/media/movie_5.webm (video/webm; VP8 + Vorbis)</dd>");
+}
+
+test "site: an invalid needs-decoder exemption stops the site" {
+    const gpa = testing.allocator;
+    var f = try Fixture.init(fixture_stream);
+    defer f.deinit();
+    var diag: model.ExemptionDiag = .{};
+    const no_media = comptime blk: {
+        const full = fixtureNeedsDecoder("dom/b.html");
+        const m = std.mem.indexOf(u8, full, "media =").?;
+        const end = m + std.mem.indexOfScalar(u8, full[m..], '\n').? + 1;
+        break :blk full[0..m] ++ full[end..];
+    };
+    try testing.expectError(error.InvalidExemption, runFixtureExempt(gpa, &f, "bad-decoder", no_media, &diag));
+    try testing.expect(std.mem.indexOf(u8, diag.message, "missing \"media\"") != null);
+}
+
 // Generations whose results came from runs named in the history: generation 3's
 // largest run is its sweep, beside a smaller targeted run.
 const fixture_history_hosts =
