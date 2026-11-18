@@ -396,7 +396,39 @@ pub fn parsePseudoElement(allocator: Allocator, value: ?[]const u8) error{ Synta
         const out = try allocator.dupe(u8, name);
         return out;
     };
+    // CSS View Transitions 1 §3.2: ::view-transition and the named view
+    // transition pseudo-elements are effect targets in all three browsers
+    // (getAnimations-pseudoElement-option-on-view-transition.html: Chrome
+    // and Safari answer [] for them, Firefox their animations - none throws
+    // a SyntaxError). Kept as written, lowercased name.
+    if (try viewTransitionPseudoElement(allocator, text)) |canonical| return canonical;
     return error.SyntaxError;
+}
+
+/// `text` as a view transition pseudo-element selector -
+/// "::view-transition", or a named one with its argument - lowercased to
+/// its name; null when it is not one.
+fn viewTransitionPseudoElement(allocator: Allocator, text: []const u8) error{OutOfMemory}!?[]u8 {
+    if (text.len < 2 or text[0] != ':' or text[1] != ':') return null;
+    if (std.ascii.eqlIgnoreCase(text, "::view-transition")) return try allocator.dupe(u8, "::view-transition");
+    const selector = @import("selector");
+    var list = selector.parse(allocator, text) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return null,
+    };
+    defer list.deinit();
+    if (list.selectors.len != 1 or list.selectors[0].combinators.len != 0) return null;
+    for (list.selectors[0].compound.simple_selectors) |*simple| switch (simple.*) {
+        .PseudoElement => |*pseudo| if (pseudo.isNamedViewTransition()) {
+            const open = std.mem.indexOfScalar(u8, text, '(') orelse return null;
+            const out = try allocator.dupe(u8, text);
+            _ = std.ascii.lowerString(out[0..open], out[0..open]);
+            return out;
+        } else return null,
+        .Universal => {},
+        else => return null,
+    };
+    return null;
 }
 
 /// getTiming()'s fill, direction and duration as the dictionary types.
