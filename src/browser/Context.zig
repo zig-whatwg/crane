@@ -467,13 +467,31 @@ pub fn invokeReporting(realm: runtime.Context, callback: runtime.JSValue, args: 
     // BORROWED: the timer or frame entry keeps the function. No callback
     // context was recorded when it was converted.
     const function = engine.CallbackFunction{ .function = .{ .value = callback }, .context = null };
-    const completion = engine.invokeCallbackFunction(realm, &function, .global_this, args, .{ .report = windowReporter(realm) }) catch |err| {
+    // WebIDL "invoke" step 5 and step 14.6.2: the exception is reported "for
+    // realm's global object", where realm is F's ASSOCIATED realm - the
+    // function's own, not the window whose setTimeout scheduled it
+    // (frames[0].setTimeout(new frames[1].Function(...)) reports at frames[1]:
+    // html/webappapis/timers/settimeout-cross-realm-callback-report-exception
+    // passes in Chrome, Firefox and Safari).
+    const report_realm = callbackRealm(callback) orelse realm;
+    const completion = engine.invokeCallbackFunction(realm, &function, .global_this, args, .{ .report = windowReporter(report_realm) }) catch |err| {
         log.debug("a timer or animation frame callback was not invoked: {}", .{err});
         return;
     };
     switch (completion) {
         .normal, .throw => |value| value.release(),
     }
+}
+
+/// A callback's associated realm (WebIDL: a function's realm is its
+/// [[Realm]]), when the engine knows it exactly and it is a Window's; null
+/// otherwise, and the caller keeps the realm it read the callback in.
+fn callbackRealm(callback: runtime.JSValue) ?runtime.Context {
+    if (comptime engine.capabilities.exact_function_realm == .unsupported) return null;
+    const function_realm = engine.functionRealm(callback) orelse return null;
+    const window = realmWindow(function_realm) orelse return null;
+    if (window.stateAs(interfaces.Window.State) == null) return null;
+    return function_realm;
 }
 
 /// "Clean up after running script" at the end of a timer or frame task: the
