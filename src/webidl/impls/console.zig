@@ -41,8 +41,8 @@ fn groupDepth(ctx: runtime.Context) usize {
 /// Browser's developer console when its host shows one
 /// (dom.developer_console: the browser console), else to stderr, the console
 /// namespace's output.
-fn writeOut(ctx: runtime.Context, level: Level, bytes: []const u8) void {
-    if (reportToDeveloperConsole(ctx, level, bytes)) return;
+fn writeOut(ctx: runtime.Context, level: Level, bytes: []const u8, data: []const runtime.JSValue) void {
+    if (reportToDeveloperConsole(ctx, level, bytes, data)) return;
     var buffer: [256]u8 = undefined;
     const stderr = std.debug.lockStderr(&buffer);
     defer std.debug.unlockStderr();
@@ -52,9 +52,9 @@ fn writeOut(ctx: runtime.Context, level: Level, bytes: []const u8) void {
 /// `bytes` (lines, each ending in a newline) reported to the realm's
 /// Browser's developer console, without the last newline: whether one took
 /// it.
-fn reportToDeveloperConsole(ctx: runtime.Context, level: Level, bytes: []const u8) bool {
+fn reportToDeveloperConsole(ctx: runtime.Context, level: Level, bytes: []const u8, data: []const runtime.JSValue) bool {
     const text = if (std.mem.endsWith(u8, bytes, "\n")) bytes[0 .. bytes.len - 1] else bytes;
-    return developer_console.report(&.{ .realm = ctx, .kind = .console, .level = level, .text = text });
+    return developer_console.report(&.{ .realm = ctx, .kind = .console, .level = level, .text = text, .args = data });
 }
 
 /// Print a message of the console's own (a count, a timer's warning), at
@@ -69,12 +69,12 @@ fn printIndented(ctx: runtime.Context, level: Level, comptime fmt: []const u8, a
         var buffer: [512]u8 = undefined;
         var fixed = std.Io.Writer.fixed(&buffer);
         if (writeIndentedMessage(&fixed, groupDepth(ctx), fmt, args)) {
-            if (reportToDeveloperConsole(ctx, level, fixed.buffered())) return;
+            if (reportToDeveloperConsole(ctx, level, fixed.buffered(), &.{})) return;
         } else |_| {
             var line: std.Io.Writer.Allocating = .init(ctx.allocator);
             defer line.deinit();
             writeIndentedMessage(&line.writer, groupDepth(ctx), fmt, args) catch return;
-            if (reportToDeveloperConsole(ctx, level, line.written())) return;
+            if (reportToDeveloperConsole(ctx, level, line.written(), &.{})) return;
         }
     }
     var buffer: [256]u8 = undefined;
@@ -93,7 +93,7 @@ fn printConsoleValues(ctx: runtime.Context, level: Level, data: []const runtime.
     var line: std.Io.Writer.Allocating = .init(ctx.allocator);
     defer line.deinit();
     printer.printLogged(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
-    writeOut(ctx, level, line.written());
+    writeOut(ctx, level, line.written(), data);
 }
 
 /// Printer(logLevel, data) (Console 2.3) alone, without the Formatter.
@@ -101,7 +101,7 @@ fn printValuesOnly(ctx: runtime.Context, level: Level, data: []const runtime.JSV
     var line: std.Io.Writer.Allocating = .init(ctx.allocator);
     defer line.deinit();
     printer.printValues(ctx.allocator, ctx, data, groupDepth(ctx), &line.writer) catch return;
-    writeOut(ctx, level, line.written());
+    writeOut(ctx, level, line.written(), data);
 }
 
 /// `text` as a string argument, borrowed.

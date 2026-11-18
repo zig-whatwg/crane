@@ -295,11 +295,13 @@ pub const TestDriver = struct {
 /// `test_driver_internal.bidi.log.entry_added` listeners get the event object
 /// (resources/testdriver-vendor.js parses the JSON this sends).
 ///
-/// Deviations, stated: the entry's `args` is empty (no remote value
-/// serialization) and its `text` is what the Printer printed, which equals
-/// the console steps' text (the arguments, formatted, joined with spaces)
-/// outside console.group's indentation; events of a context's realm alone
-/// (a global subscription: the realms of the subscriber's agent); no buffering of log events from before the subscription.
+/// Deviations, stated: the entry's `args` carry primitives' values and other
+/// values' types alone (`writeRemoteValue`); its `text` is what the Printer
+/// printed, which equals the console steps' text (the arguments, formatted,
+/// joined with spaces) outside console.group's indentation; only the
+/// subscribed contexts' realms are heard (a global subscription: the realms
+/// of the subscriber's agent); and no log event from before the
+/// subscription is buffered.
 const LogSubscription = struct {
     driver: *TestDriver,
     /// The subscriber's realm, where `emit` is called, and its window.
@@ -421,8 +423,68 @@ fn consoleEntryJson(allocator: std.mem.Allocator, message: *const dom.developer_
     try writeJsonString(w, level);
     try w.writeAll(",\"text\":");
     try writeJsonString(w, message.text);
-    try w.print(",\"timestamp\":{d},\"source\":{{\"realm\":\"{x}\"}},\"args\":[]}}", .{ clock.wallMillis(), @intFromPtr(message.realm) });
+    try w.print(",\"timestamp\":{d},\"source\":{{\"realm\":\"{x}\"}},\"args\":[", .{ clock.wallMillis(), @intFromPtr(message.realm) });
+    // Steps 7-9: each argument serialized as a remote value.
+    for (message.args, 0..) |arg, i| {
+        if (i > 0) try w.writeByte(',');
+        try writeRemoteValue(w, allocator, message.realm, arg);
+    }
+    try w.writeAll("]}");
     return out.toOwnedSlice();
+}
+
+/// WebDriver BiDi "serialize as a remote value" (7.6.3.2) for a console
+/// argument, as far as the remote end can without running script (the
+/// developer console's host runs none): a primitive's type and value
+/// (script.PrimitiveProtocolValue), and for a symbol, a bigint or an object
+/// its type alone - no handle, no properties (a stated deviation).
+fn writeRemoteValue(w: *std.Io.Writer, allocator: std.mem.Allocator, realm: runtime.Context, value: JSValue) !void {
+    switch (value) {
+        .undefined => return w.writeAll("{\"type\":\"undefined\"}"),
+        .null => return w.writeAll("{\"type\":\"null\"}"),
+        .boolean => |b| return w.print("{{\"type\":\"boolean\",\"value\":{}}}", .{b}),
+        .number => |n| return writeNumberValue(w, n),
+        .string => |text| {
+            try w.writeAll("{\"type\":\"string\",\"value\":");
+            try writeJsonString(w, text.data);
+            return w.writeByte('}');
+        },
+        .instance => return w.writeAll("{\"type\":\"object\"}"),
+        .handle => {},
+    }
+    switch (engine.typeOf(realm, value)) {
+        .undefined => try w.writeAll("{\"type\":\"undefined\"}"),
+        .null => try w.writeAll("{\"type\":\"null\"}"),
+        .string => {
+            // A string primitive converts with no script.
+            const text = engine.convertToDOMString(realm, value, allocator) catch return w.writeAll("{\"type\":\"string\"}");
+            defer allocator.free(text);
+            try w.writeAll("{\"type\":\"string\",\"value\":");
+            try writeJsonString(w, text);
+            try w.writeByte('}');
+        },
+        .symbol => try w.writeAll("{\"type\":\"symbol\"}"),
+        .bigint => try w.writeAll("{\"type\":\"bigint\"}"),
+        .boolean => try w.writeAll("{\"type\":\"boolean\"}"),
+        .number => try w.writeAll("{\"type\":\"number\"}"),
+        .object => try w.writeAll(if (engine.isCallable(realm, value)) "{\"type\":\"function\"}" else "{\"type\":\"object\"}"),
+    }
+}
+
+/// A number's remote value: NaN, -0 and the infinities as their special
+/// strings (script.SpecialNumber), every other value as a JSON number.
+fn writeNumberValue(w: *std.Io.Writer, n: f64) !void {
+    try w.writeAll("{\"type\":\"number\",\"value\":");
+    if (std.math.isNan(n)) {
+        try w.writeAll("\"NaN\"");
+    } else if (std.math.isInf(n)) {
+        try w.writeAll(if (n > 0) "\"Infinity\"" else "\"-Infinity\"");
+    } else if (n == 0 and std.math.signbit(n)) {
+        try w.writeAll("\"-0\"");
+    } else {
+        try w.print("{d}", .{n});
+    }
+    try w.writeByte('}');
 }
 
 fn writeJsonString(w: *std.Io.Writer, text: []const u8) !void {
