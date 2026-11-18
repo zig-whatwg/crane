@@ -1310,7 +1310,20 @@ pub const TreeBuilder = struct {
         if (self.input_stream_manager) |stream| stream.aborted = true;
         self.flushPendingText();
         self.pending_table_char_tokens.clear();
-        self.popAllOpenElements();
+        // Step 7: "repeatedly pop the current node off the stack of open
+        // elements until it is empty" - a style element popped mid-text
+        // ("text" insertion mode) is popped as its end tag pops it: its
+        // style block updates (an aborted stream's open <style> applies).
+        while (self.open_elements.len > 0) {
+            const current = self.open_elements.get(self.open_elements.len - 1).?;
+            if (self.insertion_mode == .text and current.node_type == .element and current.hasTagName("style")) {
+                _ = self.open_elements.remove(self.open_elements.len - 1) catch break;
+                self.insertion_mode = self.original_insertion_mode;
+                self.textModePopped(current);
+                continue;
+            }
+            if (self.popCurrentNode() == null) break;
+        }
     }
 
     /// Process a single token.
