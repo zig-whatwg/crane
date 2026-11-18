@@ -37,6 +37,7 @@ const focus = @import("focus.zig");
 const user_activation = @import("user_activation.zig");
 const close_watchers = @import("close_watchers.zig");
 const fullscreen = @import("fullscreen.zig");
+const access_keys = @import("access_keys.zig");
 const pointer_capture = dom.pointer_capture;
 
 const Instance = runtime.Instance;
@@ -1629,11 +1630,19 @@ pub fn keyDown(keyboard: *Keyboard, document: *Instance, key: Key, modifiers: Mo
     if (!modifiers.ctrl and !modifiers.alt and !modifiers.meta) {
         if (nodeDocument(target)) |d| focus.noteInputModality(d, false);
     }
+    // HTML 6.7: a key pressed with the access key combination triggers the
+    // command of the element whose assigned access key it is - before the
+    // keydown is dispatched, and then the key does nothing else (Blink
+    // KeyboardEventManager::KeyEvent, WebKit EventHandler::internalKeyEvent:
+    // `matchedAnAccessKey`).
+    const access_key_matched = !escape and access_keys.isAccessKeyCombination(modifiers) and
+        if (nodeDocument(target)) |d| access_keys.handle(d, key.key, modifiers) else false;
     if (!fireKeyboardEvent(target, "keydown", key, modifiers, key.key_code, 0)) {
         // A cancelled keydown has no default action, and disarms Space.
         keyboard.space_armed = null;
         return;
     }
+    if (access_key_matched) return;
     // The close request steps 6-9: the keydown was not canceled. A close
     // watcher that closed something consumed the key.
     if (close_request_document) |d| if (close_watchers.closeRequestSteps(d)) return;
