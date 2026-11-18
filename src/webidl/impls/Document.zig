@@ -293,7 +293,7 @@ pub fn installHooks() void {
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
     // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea });
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .get_start = &sequentialStart, .set_start = &setSequentialStart });
     // HTML removing steps step 2: a removed focused area becomes the
     // viewport at the removal (html.focus.removingSteps).
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
@@ -637,6 +637,21 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
     const internal = getInternal(document) orelse return;
     internal.active_element = if (designation) |d| d.element else null;
     internal.active_element_generation = if (designation) |d| d.generation else 0;
+}
+
+/// dom.focused_area: `document`'s sequential focus navigation starting point
+/// kept apart from its focused area, or null.
+fn sequentialStart(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
+    const internal = getInternal(document) orelse return null;
+    const element = internal.sequential_start orelse return null;
+    return .{ .element = element, .generation = internal.sequential_start_generation };
+}
+
+/// dom.focused_area: keep (null: drop) `document`'s starting point.
+fn setSequentialStart(document: *runtime.Instance, start: ?@import("dom").focused_area.Designation) void {
+    const internal = getInternal(document) orelse return;
+    internal.sequential_start = if (start) |s| s.element else null;
+    internal.sequential_start_generation = if (start) |s| s.generation else 0;
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.

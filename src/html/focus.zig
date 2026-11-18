@@ -330,10 +330,21 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
     if (designatedAreaOf(document)) |element| {
         if (isFocusableArea(element)) return element;
         const generation = runtime.SlabAllocator.generationOf(document);
+        const element_generation = runtime.SlabAllocator.generationOf(element);
         focusUpdateSteps(focusChain(element), focusChain(document), document);
         // A blur listener can navigate or choose a new focus target. The
         // existing update steps preserve that target; do not clear it here.
         if (runtime.SlabAllocator.generationOf(document) != generation) return null;
+        // The element that lost the focus stays the sequential focus
+        // navigation starting point (HTML 6.6.5), unless a listener moved
+        // the focus on: Tab after a focused button is disabled goes to the
+        // control after it (html/interaction/focus/sequential-focus-
+        // navigation-after-disabled.html, selection/selection-focused-element-
+        // becomes-nonfocusable.html's disabled case: Chrome 157, Firefox 160
+        // and Safari 27.2 pass the first, Chrome and Firefox the second).
+        if (designatedAreaOf(document) == null and runtime.SlabAllocator.generationOf(element) == element_generation) {
+            dom.focused_area.setStartPoint(document, element);
+        }
         if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
         return designatedAreaOf(document);
     }
@@ -1077,6 +1088,18 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
         if (picker.ownerSelect(starting_point)) |select| {
             if (picker.isListbox(select) and picker.baseOptions(select)) {
                 starting_point = picker.firstFocusable(select, true) orelse starting_point;
+            }
+        }
+    }
+    // Step 2: "If there is a sequential focus navigation starting point
+    // defined and it is inside starting point, then let starting point be the
+    // sequential focus navigation starting point instead" - the element the
+    // focus fixup took the focus from, while the focused area is the
+    // viewport of the document it is still in.
+    if (isDocument(starting_point)) {
+        if (dom.focused_area.startPoint(starting_point)) |kept| {
+            if (kept.isLive() and (interfaces.Node.get_isConnected(kept.element) catch false) and nodeDocument(kept.element) == starting_point) {
+                starting_point = kept.element;
             }
         }
     }

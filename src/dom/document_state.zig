@@ -358,6 +358,12 @@ pub const InternalState = struct {
     /// (dom.focused_area.Designation): a removed element can be collected
     /// while the document still names it.
     active_element_generation: u64 = 0,
+    /// HTML 6.6.5's sequential focus navigation starting point, when the
+    /// user agent keeps one apart from the focused area: the element the
+    /// focus fixup took the focus from (dom.focused_area.startPoint), with
+    /// its slab generation - a weak link, never a count.
+    sequential_start: ?*runtime.Instance = null,
+    sequential_start_generation: u64 = 0,
 
     // === StyleSheetList (DocumentOrShadowRoot mixin) ===
     /// The StyleSheetList (made on first use, [SameObject]) and its wrapper,
