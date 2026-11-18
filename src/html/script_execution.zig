@@ -1490,12 +1490,17 @@ pub fn executeScriptElement(
     }
 }
 
-/// Run a classic script: el's result, in el's realm.
+/// Run a classic script: el's result, in the realm of el's node document.
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 ///
-/// Deviation, stated: the script runs in el's realm, not in the relevant realm
-/// of el's node document - the same realm unless el was adopted from another
-/// realm's document before it was prepared. Module scripts do the same
+/// "Prepare the script element" creates the script with "el's node document's
+/// relevant settings object" (step 33.2 / 34.2), and "execute the script
+/// element" step 2 returns unless that document is still the preparation-time
+/// document - so the script runs in `document`'s realm, which differs from
+/// el's own realm when el was created in another document and inserted here
+/// (Chrome 157, Firefox 160 and Safari 27.2 pass
+/// WebCryptoAPI/algorithm-discards-context.https.window.js 13/13, whose child
+/// scripts are created in the top-level document). Module scripts do the same
 /// (`moduleEnvironment`).
 fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instance, from_external: bool) void {
     const state = script_element_state.of(script_element) orelse return;
@@ -1527,8 +1532,9 @@ fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance,
 }
 
 /// "Create a classic script" from `source` with `base_url`, and "run a classic
-/// script" with rethrow errors false, in the realm of `element` (an HTML or SVG
-/// script): the engine's operation, which prepares to run script, reports a
+/// script" with rethrow errors false, in the realm of `document`, the node
+/// document of `element` (an HTML or SVG script) - its settings object's: the
+/// engine's operation, which prepares to run script, reports a
 /// parse error or a thrown exception through `reportClassicScriptError`, and
 /// cleans up after running script - the microtask checkpoint, when the
 /// JavaScript execution context stack is then empty. `url` is the script's
@@ -1536,7 +1542,9 @@ fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance,
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 fn runClassicScriptSource(element: *runtime.Instance, document: *runtime.Instance, source: engine.ScriptSource, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
-    const realm = element.ctx;
+    // Create-a-classic-script's settings object: the node document's
+    // relevant settings object, whose realm is the document's own.
+    const realm = document.ctx;
     // Create-classic step 1 sanitizes a muted script's import base, while
     // its resource name remains the response URL for error reporting.
     // HTML PR 5753 (2020-07-24), WPT 23560: Chrome 155 ships it; Firefox 158
@@ -2040,7 +2048,11 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
     const module_allocator = document_modules.allocator(document) orelse return null;
     return .{
         .allocator = module_allocator,
-        .context_instance = script_element,
+        // The settings object is el's node document's relevant settings
+        // object ("fetch an inline module script graph", "fetch an external
+        // module script graph"): records are made, and run, in the
+        // document's realm - not in el's, when el was created elsewhere.
+        .context_instance = document,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
         .resolveIntegrityFn = &documentResolveIntegrity,
