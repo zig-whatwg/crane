@@ -856,3 +856,23 @@ assertion = assert_unreached: Lazy-loading iframe far from viewport should not l
 kind      = needs-renderer
 why       = the frame sits 10000vh (or far to the side) inside a 100 px scroller; only layout says it does not intersect the viewport, and with no renderer Crane's lazy-load check treats every frame as being rendered (intersecting), so the lazy frame loads (horizontal scroller); the frame's load then calls iframe_onload, which the test never defines (it defines img_onload), so the harness reports an ERROR - reached only because the frame loads; with layout the frame would not load and the file passes
 assertion = harness ERROR: ReferenceError: iframe_onload is not defined (its one subtest passes)
+
+[html/semantics/interactive-elements/the-dialog-element/focus-after-close.html]
+kind      = needs-renderer
+why       = 6 of 7 subtests pass; the 7th focuses a button positioned at top: innerHeight + 10px and waits for the scroll event focus() causes when it scrolls the button into view (documentElement.scrollTop > 0), then checks dialog.close() restores focus without scrolling; scrolling an element into view needs its layout box, and with no renderer focus() scrolls nothing, so the scroll event never comes and the file times out
+assertion = TIMEOUT: Focus should not scroll if the previously focused element is outside the viewport (6/7 pass)
+
+[html/semantics/interactive-elements/the-details-element/auto-expand-details-element-fragment.html]
+kind      = needs-renderer
+why       = navigating to #target opens the closed details element (that assertion passes); the second assertion reads window.pageYOffset after the fragment scroll, which needs the target's layout position below a 2000px spacer - with no renderer the scroll position stays 0
+assertion = assert_not_equals: The page should be scrolled down to the <details> element. got disallowed value 0
+
+[html/semantics/forms/the-input-element/range-drag-after-selection.html]
+kind      = needs-renderer
+why       = each subtest first drags the pointer from a paragraph across the slider to another paragraph and expects that drag to select text; a pointer drag selects text by hit-testing laid-out text (a caret position from a point), which needs a renderer (pointer interactions on laid-out text are out of scope without one); the drag of the slider's thumb that follows also maps pointer x to a value through the slider's 200px box
+assertion = assert_not_equals: the drag should have created a selection got disallowed value "" (both subtests)
+
+[html/semantics/interactive-elements/the-dialog-element/dialog-popover-closedby-simple.html]
+kind      = needs-renderer
+why       = every click is geometry: popover-utils clickOn() clicks the centre of element.getBoundingClientRect(), which with no renderer is a 0x0 rect at (0,0), so "clicking on" the popover or the dialog lands outside both and light-dismisses what the test means to click inside; all six subtests fail at their first click assertion. Their Escape steps are not geometry and pass on their own: tests/wpt/crane/blk2-dialog-popover-closedby-escape.html runs the same six setups and Escape sequences (with test_driver.bless() for the user activation the upstream clicks give) - 6/6 on blk2-l-bins/r4
+assertion = assert_true: clicking on popover should always leave everything open expected true got false (3 subtests); assert_true: clicking on dialog should always leave everything open / popover should stay open expected true got false (3 subtests)
