@@ -352,14 +352,30 @@ fn runPostConnectionStepsForTrees(allocator: std.mem.Allocator, roots: []const *
 /// (lane crash1 batch 3); its next node is read before a node's steps run,
 /// as the recursion read a node's children after them - a fallback for when
 /// no list can be allocated, whose steps run no script.
-fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_connected: bool) void {
+fn runRemovingStepsForDescendants(node: anytype, old_parent: anytype, parent_connected: bool, resets_form_controls: bool) void {
     var walk = tree_helpers.ShadowIncludingWalk.init(@ptrCast(node));
     _ = walk.next(); // `node` itself: its own steps ran
     while (walk.next()) |descendant| {
         // Remove steps 14.1-14.2: the callback, then the removing steps.
         if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
+        if (resets_form_controls) resetRemovedFormControl(descendant);
         runRemovingSteps(descendant, old_parent);
     }
+}
+
+/// HTML's element removing steps for a removed form-associated custom
+/// element: "reset the form owner" (4.10.18.3), which enqueues its
+/// formAssociatedCallback when the owner changes - run among the node's own
+/// removing steps, so after the disconnectedCallback remove steps 12 and
+/// 14.1 enqueued for it (whatwg/dom 2026-11-10;
+/// custom-elements/form-associated/form-associated-callback-order.html,
+/// Chrome 157 and Firefox 160). The rest of a removal's form bookkeeping -
+/// parser associations, past names, the elements whose form attribute named
+/// an ID in the subtree - stays in `formSubtreeMoved`.
+fn resetRemovedFormControl(node: *NodeBase) void {
+    if (node.node_type != ELEMENT_NODE) return;
+    const object = instance_bridge.getInstance(node) orelse return;
+    custom_elements.refreshForm(@ptrCast(@alignCast(object)));
 }
 
 /// Set the is_connected flag of a node and all its shadow-including
@@ -1606,10 +1622,16 @@ fn removeHeldMoving(
     // any removing step runs.
     const parent_connected = parent.is_connected or parent.node_type == DOCUMENT_NODE;
 
+    // Whether a form-associated custom element can be in the subtree: its
+    // form owner reset, part of its HTML element removing steps, then runs
+    // per node after its disconnectedCallback (`resetRemovedFormControl`).
+    const resets_form_controls = hasCustomElementDefinitions(parent);
+
     // Step 12: a custom node gets disconnectedCallback when isParentConnected.
     if (parent_connected) enqueueCustomElementCallback(node, .disconnected, .none);
 
     // Step 13: Run the removing steps with node, true, and parent.
+    if (resets_form_controls) resetRemovedFormControl(node);
     runRemovingSteps(node, parent);
 
     // Step 14: For each shadow-including descendant of node, in
@@ -1622,12 +1644,13 @@ fn removeHeldMoving(
             // Step 14.1: disconnectedCallback for a custom descendant.
             if (parent_connected) enqueueCustomElementCallback(descendant, .disconnected, .none);
             // Step 14.2: its removing steps, with false and parent.
+            if (resets_form_controls) resetRemovedFormControl(descendant);
             runRemovingSteps(descendant, parent);
         }
     } else |_| {
         // The node is already detached: allocation failure must not skip
         // shadow descendant cleanup or repeat the root's removing steps.
-        runRemovingStepsForDescendants(node, parent, parent_connected);
+        runRemovingStepsForDescendants(node, parent, parent_connected, resets_form_controls);
     }
 
     // Step 15: transient registered observers on node, for every observer
