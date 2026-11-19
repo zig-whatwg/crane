@@ -2261,3 +2261,11 @@ pass_rate = 10/40
 condition = a sweep's load: the file alone in a fresh runner process with 28 busy threads beside it on server1's 32 (wpt_runner --repeat=40 --load=28); unloaded it passes 30/60 (gap min 13 / p50 63 / max 182 us)
 measured_at = d9d57fc822e
 paths = src/service_worker/fetch_event.zig, src/service_worker/registry.zig, src/hr_time/time_origin.zig, src/hr_time/coarsen.zig, src/dom/performance_timeline.zig
+
+[service-workers/service-worker/client-url-creation-url.https.html]
+generation = 231
+kind = flake
+why = Its first recorded flake disposition, though it has repeated under sweep load before: the next one is a bug (the one-flake rule), owner lane bugs2. The generation sweep of main 412c03b927 (server1, 32 runners, 2026-11-19 about 5:45 AM ET) ran it TIMEOUT 0/10 at its first run: "No navigation creation URL is same as window URL" TIMEOUT ("Test timed out"), the other 9 subtests NOTRUN; the sweep's retry ran it OK 10/10 in 305 ms ("flaky": true), and the bug-finding sweep of the same tree ran it OK 10/10. Earlier sweep-load timeouts of the same file: css2's FULL A/B (bug-finding TIMEOUT, alone OK 5/5), flk1's control (main's runner, 2 of 3 on a 747-file list), ab1's A/B and net2's window. Isolated pairs, the file alone, one runner (cd <frozen dir> && ~/crane-measure.sh run flake-<side>-<n> 1 ./zig-out/bin/wpt_runner service-workers/service-worker/client-url-creation-url.https.html --wpt-root=tests/wpt --parallel=1 --output=~/crane-frozen/main-412c03b927/flake-pairs/<side>-<n>), base and tip alternating, server1 2026-11-19 5:53 AM ET: BASE ~/crane-frozen/main-499dbc7841 (generation 229's production runner), TIP ~/crane-frozen/main-412c03b927 (this generation's); every run OK 10/10 in 253-258 ms. Evidence: ~/crane-frozen/main-412c03b927/flake-pairs/ and compare.txt on server1. The known build difference (tools/wpt_build_differences.txt, owner bugs2) records the same flake.
+pair.1 = base 10/10; tip 10/10
+pair.2 = base 10/10; tip 10/10
+pair.3 = base 10/10; tip 10/10
