@@ -39,6 +39,14 @@ const br_cases = [_]harness.Case{
     .{ .input = "<br>{}", .commands = &.{.{ "inserttext", "a" }}, .expected = "<br>a" },
 };
 
+/// insertText on a selection types into the text that follows the
+/// deletion, and never into an emptied link (inserttext.html; PPP).
+const insertion_cases = [_]harness.Case{
+    .{ .input = "<div>abc[<b><i>de]f</i></b>ghi</div>", .commands = &.{ .{ "inserttext", "d" }, .{ "inserttext", "e" } }, .expected = "<div>abc<b><i>def</i></b>ghi</div>" },
+    .{ .input = "<div>abc{<b><i>de]f</i></b>ghi</div>", .commands = &.{ .{ "inserttext", "d" }, .{ "inserttext", "e" } }, .expected = "<div>abc<b><i>def</i></b>ghi</div>" },
+    .{ .input = "foo<a href=http://www.google.com>[bar</a>baz]", .commands = &.{.{ "inserttext", "a" }}, .expected = "fooa" },
+};
+
 fn typingCases() !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -46,6 +54,7 @@ fn typingCases() !void {
     try harness.runCases(page, &typing_cases);
     try harness.runCases(page, &order_cases);
     try harness.runCases(page, &br_cases);
+    try harness.runCases(page, &insertion_cases);
 }
 
 test "a deletion leaves the deleted text's style for typing, as Chrome does" {
