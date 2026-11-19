@@ -397,6 +397,13 @@ pub const slot = struct {
     pub const tee_branch2: engine.TracedSlot = .{ .name = "streams:teeBranch2" };
     /// A writable controller's [[abortController]].
     pub const abort_controller: engine.TracedSlot = .{ .name = "streams:abortController" };
+    /// A cross-realm transform's (Streams 8.2): its controller keeps the
+    /// MessagePort its algorithms post to, and the port keeps the controller
+    /// its message handler runs - Blink's CrossRealmTransformReadable and
+    /// ...Writable trace message_port_ and controller_, its listeners the
+    /// transform (core/streams/transferable_streams.cc).
+    pub const port: engine.TracedSlot = .{ .name = "streams:port" };
+    pub const cross_realm_controller: engine.TracedSlot = .{ .name = "streams:crossRealmController" };
     /// The algorithms' JavaScript values: the underlying source's, sink's or
     /// transformer's `this` and callbacks, and the strategy's size function.
     pub const this: engine.TracedSlot = .{ .name = "streams:algorithms:this" };

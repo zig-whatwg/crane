@@ -583,27 +583,26 @@ pub const RealmEnvironment = struct {
         const port_message = message.message orelse return;
         message.message = null;
         defer port_message.destroy();
-        // The transferred ports, received here (their transfer-receiving
-        // steps), then 4.5.3 StructuredDeserializeWithTransfer.
-        var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-        defer ports.deinit(self.allocator);
-        const ends = port_message.takeEnds();
-        defer port_message.allocator.free(ends);
-        for (ends) |shipped| {
-            const port = dom.message_ports.receive(realm, @ptrCast(shipped)) catch continue;
-            ports.append(self.allocator, port) catch continue;
-        }
-        const data = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = ports.items, .shared_memory = port_message.shared_memory }) catch {
-            // "If this throws an exception, catch it, fire an event named
-            // messageerror at destination, using MessageEvent, with its
-            // origin initialized to origin and the source attribute
-            // initialized to source."
+        // 4.5.3 StructuredDeserializeWithTransfer: the transferred objects
+        // received here first (their transfer-receiving steps, the one
+        // shared step: dom.transferables). "If this throws an exception,
+        // catch it, fire an event named messageerror at destination, using
+        // MessageEvent, with its origin initialized to origin and the source
+        // attribute initialized to source."
+        const holders = port_message.takeHolders();
+        defer port_message.allocator.free(holders);
+        var received = dom.transferables.receiveAll(realm, holders, self.allocator) catch {
+            fireContainerMessage(realm, destination, "messageerror", runtime.JSValue.jsNull, origin, source, &.{});
+            return;
+        };
+        defer received.deinit();
+        const data = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = received.values, .shared_memory = port_message.shared_memory }) catch {
             fireContainerMessage(realm, destination, "messageerror", runtime.JSValue.jsNull, origin, source, &.{});
             return;
         };
         defer data.release();
-        // 4.5.4-4.5.6.
-        fireContainerMessage(realm, destination, "message", data.value, origin, source, ports.items);
+        // 4.5.4-4.5.6, with the transferred MessagePorts.
+        fireContainerMessage(realm, destination, "message", data.value, origin, source, received.ports);
     }
 
     /// The realm's navigator's ServiceWorkerContainer, made if the realm

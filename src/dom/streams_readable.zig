@@ -46,6 +46,10 @@ pub const Stream = struct {
     /// instance; a traced edge both ways (js.slot.controller, .stream).
     controller: ?*runtime.Instance = null,
     disturbed: bool = false,
+    /// HTML [[Detached]] (a transferable object's): set once the stream is
+    /// transferred (StructuredSerializeWithTransfer step 5.6); its transfer
+    /// pipe may end and release its lock, but it never transfers again.
+    detached: bool = false,
 
     pub fn deinit(self: *Stream) void {
         js.disposeOptional(&self.stored_error);

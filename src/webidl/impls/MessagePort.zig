@@ -17,7 +17,15 @@
 //! another window's or a worker's: StructuredSerializeWithTransfer at the
 //! sender, a task on the receiving end's port message queue, and there
 //! StructuredDeserializeWithTransfer into the receiver's realm and a `message`
-//! event fired at the port. Both halves go through the engine protocol.
+//! event fired at the port. Both halves go through the engine protocol. The
+//! transfer list's platform objects - ports, streams - are transferred and
+//! received by the one shared step every carrier runs (dom.transferables).
+//!
+//! A stream's cross-realm transform (Streams 8.2) listens and posts on ports
+//! of its own, which script never sees (`hidden`): their messages go the same
+//! way, and at the receiving port run the transform's native message and
+//! messageerror steps instead of firing events - WebKit's
+//! MessagePort::setMessageHandler, Blink's native listeners.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -74,11 +82,20 @@ pub const InternalState = struct {
     /// active waits in its realm's loop (`EnableWhenActive`).
     enable_queued: bool = false,
 
+    /// A port a cross-realm transform made (Streams 8.2, dom.message_ports
+    /// `hidden`): what reaches it runs these native steps instead of firing
+    /// `message` or `messageerror` - script never holds the port, so no
+    /// listener could hear them. Told when the port goes (`released`).
+    native: ?message_ports.NativeReceiver = null,
+
     pub fn deinit(self: *InternalState) void {
         // The port goes, and its end with it: disentangled (its peer hears
         // `close`), its queue dropped.
         if (self.end) |end| end.discard();
         self.end = null;
+        // Its cross-realm transform hears that the port is gone.
+        if (self.native) |receiver| receiver.released(receiver.ctx);
+        self.native = null;
     }
 
     /// HTML's MessagePort transfer steps (value = this port): set its "has
@@ -110,6 +127,9 @@ pub fn installHooks() void {
         .receive = receive,
         .adopt = adopt,
         .discard = discard,
+        .hidden = hidden,
+        .post = postFromHidden,
+        .disentangle = disentangle,
     });
     dom.unloading_cleanup.install(&disentangleIn);
 }
@@ -339,12 +359,13 @@ pub fn call_postMessage__1(instance: *runtime.Instance, message: runtime.JSValue
 /// Whether a platform object in a transfer list from `source` (a MessagePort)
 /// can be transferred: HTML 2.7.5 steps 2.1 and 5.2, and the message port post
 /// message steps' step 2 ("If transfer contains sourcePort, then throw a
-/// DataCloneError").
+/// DataCloneError"). Any transferable platform object - a port, a stream -
+/// answers through the one shared step (dom.transferables).
 fn transferableFrom(source: ?*anyopaque, instance: *runtime.Instance) runtime.TransferableState {
     if (source) |s| {
         if (@as(*runtime.Instance, @ptrCast(@alignCast(s))) == instance) return .not_transferable;
     }
-    return transferableState(instance);
+    return dom.transferables.transferableState(instance);
 }
 
 // ============================================================================
@@ -389,6 +410,27 @@ fn adopt(realm: runtime.Context, end: *anyopaque) anyerror!*runtime.Instance {
     return initWithEnd(realm.allocator, State, &MessagePort.vtable, realm, channel_end);
 }
 
+/// A port for a cross-realm transform (Streams 8.2): a MessagePort of
+/// `realm` on `end` - the transfer-receiving steps of a stream's [[port]],
+/// or port1 of its transfer steps - whose message and messageerror handlers
+/// are `receiver`'s native steps, with its port message queue enabled
+/// (SetUpCrossRealmTransformReadable step 5, ...Writable step 6). Being
+/// enabled and entangled, it is kept while its channel lives, as any started
+/// port is (`syncPendingActivity`). `receiver.released` runs at its deinit.
+fn hidden(realm: runtime.Context, end: *anyopaque, receiver: message_ports.NativeReceiver) anyerror!*runtime.Instance {
+    const port = try adopt(realm, end);
+    const internal = getInternal(port).?;
+    internal.native = receiver;
+    enableQueue(port);
+    return port;
+}
+
+/// Streams PackAndPostMessage steps 4-6 from a cross-realm transform's
+/// port: the message port post message steps with an empty transfer list.
+fn postFromHidden(port: *runtime.Instance, message: runtime.JSValue) anyerror!void {
+    return postMessageSteps(port, message, &.{});
+}
+
 /// The message port post message steps, given this, the entangled port (if
 /// any), message and options["transfer"].
 fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfer: []const runtime.JSValue) anyerror!void {
@@ -402,28 +444,28 @@ fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfe
 
     // Steps 2 and 5: StructuredSerializeWithTransfer(message, transfer) -
     // which throws a DataCloneError when transfer contains sourcePort
-    // (`transferableFrom`), and ships every port in transfer.
+    // (`transferableFrom`) - and, step 5.5, the transfer steps of every
+    // platform object in transfer, in order: one shared step for every
+    // carrier (dom.transferables) - a port ships its end, a stream pipes to
+    // a cross-realm transform and ships its other port's end.
     var result = try engine.structuredSerializeWithTransfer(source.ctx, message, transfer, transferableFrom, source, allocator);
     defer result.deinit(allocator);
-    var ends: std.ArrayListUnmanaged(*End) = .empty;
-    // Ends no message took go with the list.
-    defer {
-        for (ends.items) |shipped| shipped.discard();
-        ends.deinit(allocator);
-    }
+    const holders = try dom.transferables.transferAll(source.ctx, result.platform_objects, allocator);
+    var holders_taken = false;
+    // Holders no message took are discarded.
+    defer if (!holders_taken) {
+        for (holders) |holder| holder.discard();
+        allocator.free(holders);
+    };
     // Step 3-4: doomed when targetPort is in transfer: its end is shipped
     // with the message posted to it, and the channel is lost.
     var doomed = false;
-    for (result.platform_objects) |port| {
-        const port_internal = getInternal(port) orelse continue;
-        const shipped = port_internal.transfer() orelse continue;
-        syncPendingActivity(port);
-        if (end) |e| {
-            if (e.isEntangledWith(shipped)) doomed = true;
-        }
-        ends.append(allocator, shipped) catch |err| {
-            shipped.discard();
-            return err;
+    if (end) |e| {
+        for (holders) |holder| switch (holder) {
+            .message_port => |shipped| if (e.isEntangledWith(shipped)) {
+                doomed = true;
+            },
+            else => {},
         };
     }
 
@@ -432,12 +474,8 @@ fn postMessageSteps(source: *runtime.Instance, message: runtime.JSValue, transfe
 
     // 7. Add a task to targetPort's port message queue: the message waits on
     // the entangled end, in order, until that end's port enables its queue.
-    const owned_ends = try ends.toOwnedSlice(allocator);
-    const port_message = PortMessage.create(allocator, &result, owned_ends) catch |err| {
-        for (owned_ends) |shipped| shipped.discard();
-        allocator.free(owned_ends);
-        return err;
-    };
+    const port_message = try PortMessage.create(allocator, &result, holders);
+    holders_taken = true;
     end.?.post(port_message);
 }
 
@@ -560,41 +598,42 @@ const EnableWhenActive = struct {
 };
 
 /// Step 7 of the message port post message steps, in the receiving port's
-/// realm: deserialize, make the transferred ports, fire `message`.
+/// realm: deserialize, make the transferred objects, fire `message` - or,
+/// at a cross-realm transform's port, run its native message steps.
 fn deliver(port: *runtime.Instance, message: *PortMessage) void {
     const ctx = port.ctx;
     const allocator = ctx.allocator;
+    const native = if (getInternal(port)) |internal| internal.native else null;
 
     // 7.3-7.4: StructuredDeserializeWithTransfer(serializeWithTransferResult,
-    // targetRealm). The transferred ports first (their transfer-receiving
-    // steps): new MessagePorts of targetRealm on the shipped ends.
-    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer ports.deinit(allocator);
-    const ends = message.takeEnds();
-    defer message.allocator.free(ends);
-    for (ends) |end| {
-        const received = receive(ctx, @ptrCast(end)) catch continue;
-        ports.append(allocator, received) catch continue;
-    }
-
-    // On an exception, fire `messageerror` at messageEventTarget - also when
-    // a port's transfer-receiving steps failed (StructuredDeserializeWithTransfer
-    // step 3.4.4 throws then): the value's references are by place in the
-    // transfer list. The value refers to the transferred ports it contained
-    // as the new ones (memory, StructuredDeserializeWithTransfer step 3.5).
-    if (ports.items.len != ends.len) {
+    // targetRealm). The transferred objects first (their transfer-receiving
+    // steps, step 3): made in targetRealm from their data holders - a port
+    // on its shipped end, a stream on its [[port]] (dom.transferables). On
+    // an exception - also when a transfer-receiving step failed (step 3.4.4
+    // throws then: the value's references are by place in the transfer
+    // list) - fire `messageerror` at messageEventTarget. The value refers to
+    // the transferred objects it contained as the new ones (memory, step 3.5).
+    const holders = message.takeHolders();
+    defer message.allocator.free(holders);
+    var received = dom.transferables.receiveAll(ctx, holders, allocator) catch {
+        if (native) |receiver| return receiver.message_error(receiver.ctx);
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
-    }
-    const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
+    };
+    defer received.deinit();
+    const clone = engine.structuredDeserializeWithOptions(ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
+        if (native) |receiver| return receiver.message_error(receiver.ctx);
         fire(port, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
     defer clone.release();
 
+    // A cross-realm transform's port: its message handler (Streams 8.2),
+    // with the data of the message.
+    if (native) |receiver| return receiver.message(receiver.ctx, clone.value);
     // 7.5-7.7: fire `message` at messageEventTarget, with data messageClone
-    // and ports a frozen array of the transferred ports.
-    fire(port, "message", clone.value, ports.items);
+    // and ports a frozen array of the transferred MessagePorts.
+    fire(port, "message", clone.value, received.ports);
 }
 
 /// Fire a MessageEvent named `event_type` at `port`. `data` is borrowed: the
@@ -628,6 +667,11 @@ fn fireCloseSteps(data: ?*anyopaque) void {
     // Its peer closed: it is no longer entangled, so no longer active - but
     // the `close` event is dispatched first, while it is still held.
     defer syncPendingActivity(port);
+    // A cross-realm transform's port has no close handler (Streams 8.2 adds
+    // message and messageerror handlers only), and no script can listen.
+    if (getInternal(port)) |internal| {
+        if (internal.native != null) return;
+    }
     if (!documentIsFullyActive(port)) return;
     const event = interfaces.Event.call_constructor(
         port.ctx,

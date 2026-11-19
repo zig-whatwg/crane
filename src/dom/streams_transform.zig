@@ -37,6 +37,9 @@ pub const Stream = struct {
     writable: ?*runtime.Instance = null,
     /// The startPromise both sides' start algorithms return.
     start_promise: ?Deferred = null,
+    /// HTML [[Detached]]: set once the stream is transferred
+    /// (StructuredSerializeWithTransfer step 5.6).
+    detached: bool = false,
 
     pub fn deinit(self: *Stream) void {
         if (self.backpressure_change_promise) |d| d.deinit();
@@ -773,6 +776,32 @@ fn noDeinit(_: ?*anyopaque, _: std.mem.Allocator) void {}
 fn attachSide(ctx: ?*anyopaque, controller: *runtime.Instance) void {
     const stream_instance: *runtime.Instance = @ptrCast(@alignCast(ctx.?));
     engine.traceChild(controller, stream_instance, js.slot.source);
+}
+
+/// TransformStream's transfer-receiving steps 3-5 (§ 6.2.5): a new
+/// TransformStream of `ctx` whose [[readable]] and [[writable]] are the sides
+/// already received in this realm, with [[backpressure]],
+/// [[backpressureChangePromise]] and [[controller]] undefined - no
+/// transformer runs here; the transform happens where the original is. Each
+/// side's controller keeps it, as an initialized stream's sides do
+/// (`attachSide`), and that edge makes its wrapper: the wrapper cache owns it.
+pub fn newWithSides(ctx: runtime.Context, readable: *runtime.Instance, writable: *runtime.Instance) !*runtime.Instance {
+    const stream_instance = try newStream(ctx);
+    const generation = runtime.SlabAllocator.generationOf(stream_instance);
+    const stream = streamSlots(stream_instance);
+    // Steps 3-4.
+    stream.readable = readable;
+    stream.writable = writable;
+    engine.traceChild(stream_instance, writable, js.slot.writable);
+    engine.traceChild(stream_instance, readable, js.slot.readable);
+    // Step 5: backpressure, its promise and the controller stay undefined.
+    if (srd.streamOf(readable)) |side| if (side.controller) |controller| engine.traceChild(controller, stream_instance, js.slot.source);
+    if (sw.streamOf(writable)) |side| if (side.controller) |controller| engine.traceChild(controller, stream_instance, js.slot.source);
+    if (!engine.hasWrapper(stream_instance)) {
+        stream_instance.releaseIfUnwrapped(generation);
+        return error.OutOfMemory;
+    }
+    return stream_instance;
 }
 
 // ============================================================================

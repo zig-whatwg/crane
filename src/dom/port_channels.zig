@@ -37,9 +37,11 @@
 //! notification outlives the loop it was posted to with anything of it.
 //!
 //! Everything a message carries is engine-neutral: the serialization's bytes,
-//! the transferred ArrayBuffers' contents (copied), the transferred ports'
-//! ends. Its memory is the channel's allocator's, which must be thread-safe:
-//! the receiving thread frees what the sending thread made.
+//! the transferred ArrayBuffers' contents (copied), the transferred platform
+//! objects' data holders (`TransferDataHolder`: channel ends - a port's own,
+//! a stream's cross-realm transform's). Its memory is the channel's
+//! allocator's, which must be thread-safe: the receiving thread frees what
+//! the sending thread made.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -48,9 +50,43 @@ const TaskSink = runtime.TaskSink;
 
 const log = std.log.scoped(.port_channels);
 
+/// A transferred platform object's data holder (HTML 2.7.8
+/// StructuredSerializeWithTransfer step 5.5: what its transfer steps put in
+/// dataHolder, which its transfer-receiving steps take back in the receiving
+/// realm). Every transferable platform object Crane has is carried by channel
+/// ends, so a holder is free of any realm, agent or thread and crosses all
+/// three inside a PortMessage:
+/// - a MessagePort's own end (its port message queue and its entanglement,
+///   HTML 9.4.3's transfer steps);
+/// - a ReadableStream's or WritableStream's [[port]] (Streams 4.2.6 and 5.2.5
+///   step 9: StructuredSerializeWithTransfer(port2, « port2 »), whose only
+///   content is port2's own end - the other end of the channel its
+///   cross-realm transform listens on);
+/// - a TransformStream's [[readable]] and [[writable]] (Streams 6.2.5 steps
+///   5-6), each a stream's holder.
+/// HELD by whoever has it: received (`dom.transferables.receive`), or
+/// discarded - its ends' entangled ports then hear `close`.
+pub const TransferDataHolder = union(enum) {
+    message_port: *End,
+    readable_stream: *End,
+    writable_stream: *End,
+    transform_stream: struct { readable: *End, writable: *End },
+
+    /// Let the holder go: no realm will receive it.
+    pub fn discard(self: TransferDataHolder) void {
+        switch (self) {
+            .message_port, .readable_stream, .writable_stream => |end| end.discard(),
+            .transform_stream => |sides| {
+                sides.readable.discard();
+                sides.writable.discard();
+            },
+        }
+    }
+};
+
 /// One message on its way: what the message port post message steps
-/// serialized (step 5), with the transferred ports' ends. OWNED by the queue
-/// it waits on, then by the receiver.
+/// serialized (step 5), with the transferred platform objects' data
+/// holders. OWNED by the queue it waits on, then by the receiver.
 pub const PortMessage = struct {
     allocator: Allocator,
     /// The engine's serialization. Owned.
@@ -59,21 +95,22 @@ pub const PortMessage = struct {
     array_buffers: [][]u8,
     /// OWNED shared backing stores; safe to release on any drop thread.
     shared_memory: ?*runtime.SharedMemory = null,
-    /// The transferred ports' ends, in transfer-list order: each held by this
-    /// message until the receiver takes them (`takeEnds`), discarded with it
-    /// otherwise.
-    ends: []*End,
+    /// The transferred platform objects' data holders, in transfer-list order
+    /// (StructuredSerializeWithTransfer's [[TransferDataHolders]]): held by
+    /// this message until the receiver takes them (`takeHolders`), discarded
+    /// with it otherwise.
+    holders: []TransferDataHolder,
 
     /// A message of `result` (taken: its serialization and buffers - its
-    /// platform object list is the caller's) and `ends` (taken).
-    pub fn create(allocator: Allocator, result: *runtime.SerializedWithTransfer, ends: []*End) Allocator.Error!*PortMessage {
+    /// platform object list is the caller's) and `holders` (taken).
+    pub fn create(allocator: Allocator, result: *runtime.SerializedWithTransfer, holders: []TransferDataHolder) Allocator.Error!*PortMessage {
         const self = try allocator.create(PortMessage);
         self.* = .{
             .allocator = allocator,
             .serialized = result.serialized,
             .array_buffers = result.array_buffers,
             .shared_memory = result.shared_memory,
-            .ends = ends,
+            .holders = holders,
         };
         result.serialized = &.{};
         result.array_buffers = &.{};
@@ -81,18 +118,18 @@ pub const PortMessage = struct {
         return self;
     }
 
-    /// The ends, which the caller now holds (each one to bind or discard).
-    /// OWNED slice (`allocator`).
-    pub fn takeEnds(self: *PortMessage) []*End {
-        const ends = self.ends;
-        self.ends = &.{};
-        return ends;
+    /// The data holders, which the caller now holds (each one to receive or
+    /// discard). OWNED slice (`allocator`).
+    pub fn takeHolders(self: *PortMessage) []TransferDataHolder {
+        const holders = self.holders;
+        self.holders = &.{};
+        return holders;
     }
 
-    /// Free the message, discarding any end still in it.
+    /// Free the message, discarding any data holder still in it.
     pub fn destroy(self: *PortMessage) void {
-        for (self.ends) |end| end.discard();
-        self.allocator.free(self.ends);
+        for (self.holders) |holder| holder.discard();
+        self.allocator.free(self.holders);
         self.allocator.free(self.serialized);
         for (self.array_buffers) |contents| self.allocator.free(contents);
         self.allocator.free(self.array_buffers);

@@ -89,6 +89,8 @@ pub const SharedWorkerManager = @import("shared_worker_manager.zig").SharedWorke
 // The implicit ports' channel, whose ends cross threads.
 const port_channels = @import("dom").port_channels;
 const PortMessage = port_channels.PortMessage;
+/// The one transfer step every carrier of a transfer list runs.
+const transferables = @import("dom").transferables;
 
 // ============================================================================
 // Timers (HTML § 8.6)
@@ -2103,47 +2105,39 @@ pub const WorkerHost = struct {
 /// The message port post message steps' steps 2-5 for a worker's implicit
 /// port or a Worker's outside port, from either side: serialize `message`
 /// with `transfer` in `realm` (StructuredSerializeWithTransfer), running the
-/// transfer steps of every MessagePort in `transfer` - each ships its channel
-/// end. OWNED (`PortMessage.destroy`, or posted to an end, which takes it).
+/// transfer steps of every platform object in `transfer` - the one shared
+/// step (dom.transferables): a MessagePort ships its channel end, a stream
+/// pipes to a cross-realm transform and ships its other port's end. OWNED
+/// (`PortMessage.destroy`, or posted to an end, which takes it).
 pub fn serializePortMessage(
     realm: runtime.Context,
     message: runtime.JSValue,
     transfer: []const runtime.JSValue,
     allocator: Allocator,
 ) !*PortMessage {
-    var result = try engine.structuredSerializeWithTransfer(realm, message, transfer, transferablePort, null, allocator);
+    var result = try engine.structuredSerializeWithTransfer(realm, message, transfer, transferables.check, null, allocator);
     // What the message does not take: the platform object list, or all of
     // it on failure.
     defer result.deinit(allocator);
 
-    // The transfer steps for each MessagePort: its end - queue and
-    // entanglement - is the data holder. An end shipped and then not taken
-    // by a message is discarded (its peer hears `close`).
-    var ends: std.ArrayListUnmanaged(*port_channels.End) = .empty;
-    defer {
-        for (ends.items) |shipped| shipped.discard();
-        ends.deinit(allocator);
-    }
-    try ends.ensureTotalCapacity(allocator, result.platform_objects.len);
-    for (result.platform_objects) |port| {
-        const shipped = message_ports.ship(port) orelse return error.DataCloneError;
-        ends.appendAssumeCapacity(@ptrCast(@alignCast(shipped)));
-    }
-    const owned = try ends.toOwnedSlice(allocator);
-    return PortMessage.create(allocator, &result, owned) catch |err| {
-        for (owned) |shipped| shipped.discard();
-        allocator.free(owned);
+    // Step 5.5: each transferred object's data holder. A holder made and
+    // then not taken by a message is discarded (a port's peer hears
+    // `close`).
+    const holders = try transferables.transferAll(realm, result.platform_objects, allocator);
+    return PortMessage.create(allocator, &result, holders) catch |err| {
+        for (holders) |holder| holder.discard();
+        allocator.free(holders);
         return err;
     };
 }
 
 /// The message port post message steps' step 7 at `target` in `realm`, for
 /// a message that reached a worker's implicit port or a Worker's outside
-/// port: the transferred ports received into `realm` (their
+/// port: the transferred objects received into `realm` (their
 /// transfer-receiving steps), StructuredDeserializeWithTransfer, and
-/// `message` fired - or `messageerror`, when it does not deserialize. Call
-/// with `realm` entered. The message's ends are taken; the message is the
-/// caller's to destroy.
+/// `message` fired with the transferred MessagePorts - or `messageerror`,
+/// when it does not deserialize. Call with `realm` entered. The message's
+/// holders are taken; the message is the caller's to destroy.
 pub fn deliverPortMessage(
     realm: runtime.Context,
     target: *runtime.Instance,
@@ -2151,27 +2145,20 @@ pub fn deliverPortMessage(
     fire: *const fn (realm: runtime.Context, target: *runtime.Instance, event_type: []const u8, data: runtime.JSValue, ports: []const *runtime.Instance) void,
 ) void {
     const allocator = message.allocator;
-    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer ports.deinit(allocator);
-    const ends = message.takeEnds();
-    defer allocator.free(ends);
-    for (ends) |end| {
-        const port = message_ports.receive(realm, @ptrCast(end)) catch continue;
-        ports.append(allocator, port) catch continue;
-    }
+    const holders = message.takeHolders();
+    defer allocator.free(holders);
+    var received = transferables.receiveAll(realm, holders, allocator) catch {
+        fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
+        return;
+    };
+    defer received.deinit();
 
-    const data = engine.structuredDeserializeWithOptions(realm, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
+    const data = engine.structuredDeserializeWithOptions(realm, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
         fire(realm, target, "messageerror", runtime.JSValue.jsUndefined, &.{});
         return;
     };
     defer data.release();
-    fire(realm, target, "message", data.value, ports.items);
-}
-
-/// Which platform objects a worker's postMessage can transfer: MessagePorts
-/// that are not detached.
-fn transferablePort(_: ?*anyopaque, instance: *runtime.Instance) runtime.TransferableState {
-    return message_ports.transferableState(instance);
+    fire(realm, target, "message", data.value, received.ports);
 }
 
 /// Fire a MessageEvent named `event_type` at `target`, made in `realm`. `data`

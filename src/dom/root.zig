@@ -63,6 +63,10 @@ pub const message_ports = @import("message_ports.zig");
 /// message queues and entanglement MessagePort and a worker's implicit
 /// ports share.
 pub const port_channels = @import("port_channels.zig");
+/// HTML 2.7's transfer steps and transfer-receiving steps of every
+/// transferable platform object, as the one step every carrier of a
+/// transfer list runs.
+pub const transferables = @import("transferables.zig");
 pub const cloning_steps = @import("cloning_steps.zig");
 pub const selection = @import("selection.zig");
 pub const range_boundaries = @import("range_boundaries.zig");
@@ -186,6 +190,8 @@ pub const streams_readable = @import("streams_readable.zig");
 pub const streams_writable = @import("streams_writable.zig");
 pub const streams_transform = @import("streams_transform.zig");
 pub const streams_from = @import("streams_from.zig");
+/// Transferable streams: their transfer steps and cross-realm transforms.
+pub const streams_transfer = @import("streams_transfer.zig");
 pub const text_stream = @import("text_stream.zig");
 /// A CharacterData node's data, read in place by the tree's own algorithms.
 pub const character_data = @import("character_data.zig");
