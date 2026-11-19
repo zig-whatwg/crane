@@ -1383,15 +1383,15 @@ fn fail(load: *Load) void {
 /// Fetch the @import rules of `text`, the sheet `sheet` fetched (null: the
 /// style element's own), resolving them against `base`.
 fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8) void {
-    const urls = css.import_rules.importUrls(load.allocator, text) catch {
+    const requests = css.import_rules.importRequests(load.allocator, text) catch {
         load.failed = true;
         return;
     };
-    defer css.import_rules.freeUrls(load.allocator, urls);
-    for (urls, 0..) |raw, index| {
+    defer css.import_rules.freeRequests(load.allocator, requests);
+    for (requests, 0..) |request, index| {
         // CSS Values "fetch a style resource" step 1: "If that failed,
         // return" - an import whose URL does not parse is not fetched.
-        const url = resolve(load.element, raw, base) orelse continue;
+        const url = resolve(load.element, request.url, base) orelse continue;
         defer load.element.ctx.allocator.free(url);
         if (sheet) |parent| {
             if (parent.chainHas(url) or parent.depth + 1 > max_import_depth) {
@@ -1399,8 +1399,25 @@ fn fetchImports(load: *Load, sheet: ?*Sheet, text: []const u8, base: ?[]const u8
                 continue;
             }
         }
-        startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), .{ .href = url }, .style);
+        startFetchImport(load, url, sheet, @intCast(@min(index, std.math.maxInt(u16))), importOptions(url, request.modifiers), .style);
     }
+}
+
+/// CSS Values 4 §4.5.4 step 5 for an @import: its url()'s Values 5 §4.1.1
+/// request modifier steps - cross-origin() makes the request "cors" with
+/// credentials "same-origin" (anonymous) or "include" (use-credentials),
+/// integrity() sets its integrity metadata, referrer-policy() its referrer
+/// policy. With none, steps 3-4's "no-cors" and "include" stand.
+fn importOptions(url: []const u8, modifiers: css.style_values.RequestModifiers) LinkOptions {
+    return .{
+        .href = url,
+        .cors = if (modifiers.cross_origin) |value| switch (value) {
+            .anonymous => .anonymous,
+            .use_credentials => .use_credentials,
+        } else .no_cors,
+        .integrity = modifiers.integrity orelse "",
+        .referrer_policy = if (modifiers.referrer_policy) |value| fetch.internal.policy_container.parseReferrerPolicyHeader(value.name()) else .empty,
+    };
 }
 
 /// "Encoding-parsing a URL" `href` for a link request (HTML "create a link

@@ -34,6 +34,12 @@ const cases = [_]Case{
     .{ .property = "filter", .input = "drop-shadow(currentcolor 1px 2px) url(picture.svg)", .specified = "drop-shadow(currentcolor 1px 2px) url(\"picture.svg\")", .computed = "drop-shadow(rgb(0, 0, 0) 1px 2px 0px) url(\"https://old.test/css/picture.svg\")" },
     .{ .property = "background-image", .input = "image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
     .{ .property = "content", .input = "\"prefix\" image-set(url(\"a.png\") 1x, \"b.png\" 2x)", .specified = "\"prefix\" image-set(url(\"a.png\") 1x, url(\"b.png\") 2x)", .computed = "\"prefix\" image-set(url(\"https://old.test/css/a.png\") 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
+    // CSS Values 5 §4.1.1 (lane maj1, the request URL modifiers row that
+    // replaced Q81's opaque fallback): request modifiers stay typed, in the
+    // grammar's order, beside the frozen computed URL.
+    .{ .property = "background-image", .input = "image-set(url(\"a.png\" cross-origin(anonymous)) 1x, \"b.png\" 2x)", .specified = "image-set(url(\"a.png\" cross-origin(anonymous)) 1x, url(\"b.png\") 2x)", .computed = "image-set(url(\"https://old.test/css/a.png\" cross-origin(anonymous)) 1dppx, url(\"https://old.test/css/b.png\") 2dppx)" },
+    .{ .property = "background-image", .input = "url(\"picture.svg\" referrer-policy(origin) integrity(\"sha256-x\"))", .specified = "url(\"picture.svg\" integrity(\"sha256-x\") referrer-policy(origin))", .computed = "url(\"https://old.test/css/picture.svg\" integrity(\"sha256-x\") referrer-policy(origin))" },
+    .{ .property = "content", .input = "url(\"picture.svg\" cross-origin(use-credentials)) 'tail'", .specified = "url(\"picture.svg\" cross-origin(use-credentials)) \"tail\"", .computed = "url(\"https://old.test/css/picture.svg\" cross-origin(use-credentials)) \"tail\"" },
 };
 
 fn checkCase(allocator: Allocator, case: Case) !void {
@@ -136,52 +142,13 @@ test "authored and computed URLs retain independent ownership through every allo
     for (cases) |case| try testing.checkAllAllocationFailures(testing.allocator, checkCase, .{case});
 }
 
-const ModifierChecks = if (@hasDecl(css, "resolved_urls")) struct {
-    fn check(allocator: Allocator) !void {
-        const text = "image-set(url(\"a.png\" cross-origin(anonymous)) 1x, \"b.png\" 2x)";
-        var resolver = Resolver{};
-        var block = css.declarations.DeclarationBlock.init(allocator);
-        defer block.deinit();
-        const ok = try block.setProperty(.{ .allocator = allocator, .url_resolver = .{ .context = &resolver, .resolve = Resolver.resolve } }, "background-image", text, "");
-        if (resolver.oom) return error.OutOfMemory;
-        try testing.expect(ok);
-        const urls = block.get(.background_image).?.value.value.resourceUrls();
-        try testing.expectEqual(@as(usize, 2), urls.len);
-        const first = urls[0].argument_range orelse return error.ExpectedArgumentRange;
-        const second = urls[1].argument_range orelse return error.ExpectedArgumentRange;
-        try testing.expectEqualStrings("\"a.png\"", text[first.start..first.end]);
-        try testing.expectEqualStrings("\"b.png\"", text[second.start..second.end]);
-        try testing.expectEqualStrings("url(\"a.png\" cross-origin(anonymous))", text[urls[0].range.start..urls[0].range.end]);
-        const offset: usize = "prefix ".len;
-        var copies: std.ArrayList(css.style_values.ResourceUrl) = .empty;
-        defer {
-            for (copies.items) |url| url.deinit(allocator);
-            copies.deinit(allocator);
-        }
-        try copies.ensureTotalCapacity(allocator, urls.len);
-        for (urls) |url| copies.appendAssumeCapacity(try url.clone(allocator, offset));
-        const cloned = copies.items;
-        try testing.expectEqual(first.start + offset, cloned[0].argument_range.?.start);
-        try testing.expectEqual(first.end + offset, cloned[0].argument_range.?.end);
-        try testing.expectEqual(second.start + offset, cloned[1].argument_range.?.start);
-        var different = urls[0];
-        different.argument_range.?.end -= 1;
-        try testing.expect(!urls[0].eql(different));
-        const prefixed = try std.mem.concat(allocator, u8, &.{ "prefix ", text });
-        defer allocator.free(prefixed);
-        var out: std.ArrayList(u8) = .empty;
-        defer out.deinit(allocator);
-        const calls = resolver.calls;
-        resolver.prefix = "https://changed.test/";
-        try css.resolved_urls.append(prefixed, cloned, &out, allocator);
-        try testing.expectEqualStrings("prefix image-set(url(\"https://old.test/css/a.png\" cross-origin(anonymous)) 1x, \"https://old.test/css/b.png\" 2x)", out.items);
-        try testing.expectEqual(calls, resolver.calls);
-    }
-} else struct {};
-
-test "computed URL replacement preserves modifiers string options and cloned argument ranges" {
-    if (comptime !@hasDecl(css, "resolved_urls")) return error.ComputedUrlSerializerNotImplemented;
-    try testing.checkAllAllocationFailures(testing.allocator, ModifierChecks.check, .{});
+test "request URL modifiers stay typed beside the frozen computed URL" {
+    // Q81's interim opaque path for a quoted url() with a tail is gone: the
+    // modifiers parse, and every browser rejects an unknown one
+    // (css/css-values/urls/url-request-modifiers-invalid.sub.html).
+    try checkCase(testing.allocator, cases[15]);
+    try checkCase(testing.allocator, cases[16]);
+    try checkCase(testing.allocator, cases[17]);
 }
 
 test "font-face src descriptor retains authored text without calling the property resolver" {

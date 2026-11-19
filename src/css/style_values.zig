@@ -34,6 +34,8 @@ pub const RgbaColor = color_mod.Color;
 pub const Content = @import("generated_content.zig").Content;
 pub const ResourceSource = resources.ResourceSource;
 pub const ResourceUrl = resources.ResourceUrl;
+pub const RequestModifiers = resources.RequestModifiers;
+pub const SkippingTokenizer = resources.SkippingTokenizer;
 
 // ============================================================================
 // Keywords

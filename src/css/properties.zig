@@ -2922,16 +2922,22 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
                     return null;
                 }
                 const s = stream.next();
-                const closing = if (s.token_type == .string) stream.next().token_type else s.token_type;
-                // Syntax3 §5.5.10: EOF closes the quoted URL function.
-                if (s.token_type != .string or (closing != .right_paren and closing != .eof)) {
+                if (s.token_type != .string) {
                     stream.restore(m);
                     return null;
                 }
+                // Values 5 §4.1.1: the request modifiers after the string,
+                // through the function's ")" (Syntax3 §5.5.10: EOF closes
+                // the quoted URL function).
+                var modifiers = (try resources.RequestModifiers.consume(options.allocator, stream)) orelse {
+                    stream.restore(m);
+                    return null;
+                };
+                defer modifiers.deinitOwned(options.allocator);
                 if (urlRangeTainted(options, .{ .start = begin, .end = stream.tok.pos })) return null;
                 const raw = try tokenizer_mod.decode(options.allocator, s.stringContents());
                 defer options.allocator.free(raw);
-                return try urlValue(options, raw);
+                return try urlValueModified(options, raw, modifiers);
             }
             for (image_functions) |f| {
                 if (!tokenizer_mod.nameEql(t.value, f)) continue;
@@ -2967,15 +2973,29 @@ pub fn parseImageLeaf(options: ParseOptions, stream: *Stream) Allocator.Error!?V
 }
 
 pub fn urlValue(options: ParseOptions, raw: []const u8) Allocator.Error!Value {
+    return urlValueModified(options, raw, .{});
+}
+
+/// A url() image with Values 5 §4.1.1 request modifiers, written after the
+/// string in the grammar's order and kept (borrowed here, cloned by the
+/// shared text) on its resource URL.
+pub fn urlValueModified(options: ParseOptions, raw: []const u8, modifiers: resources.RequestModifiers) Allocator.Error!Value {
     const resolved: ?[]u8 = if (options.url_resolver) |r| r.resolve(r.context, options.allocator, raw) else null;
     defer if (resolved) |r| options.allocator.free(r);
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
     try out.appendSlice(options.allocator, "url(");
+    const argument_start = out.items.len;
     // Values4 §4.5: keep authored text separate from frozen resolution.
     try values.appendString(raw, &out, options.allocator);
+    const argument_end = out.items.len;
+    try modifiers.serialize(&out, options.allocator);
     try out.append(options.allocator, ')');
-    const url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
+    var url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
+    url.modifiers = modifiers;
+    // A computed value replaces only the string, keeping the modifiers
+    // (resolved_urls.append).
+    if (!modifiers.isEmpty()) url.argument_range = .{ .start = argument_start, .end = argument_end };
     const shared = try SharedText.createWithResources(options.allocator, out.items, &.{url});
     shared.image_kind = .url;
     return .{ .text = shared };
