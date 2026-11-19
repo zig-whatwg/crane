@@ -43,10 +43,10 @@ pub const InternalState = struct {
     direction: enums.NotificationDirection,
     /// The navigation URL, image URL, icon URL and badge URL, serialized;
     /// null where the notification has none.
-    navigation_url: ?[]u8 = null,
-    image_url: ?[]u8 = null,
-    icon_url: ?[]u8 = null,
-    badge_url: ?[]u8 = null,
+    navigation_url: ?[]const u8 = null,
+    image_url: ?[]const u8 = null,
+    icon_url: ?[]const u8 = null,
+    badge_url: ?[]const u8 = null,
     /// The vibration pattern: a list of durations, validated and normalized.
     vibration_pattern: []u32,
     timestamp: typedefs.EpochTimeStamp,
@@ -143,7 +143,7 @@ fn apiBaseURL(ctx: runtime.Context) ?[]u8 {
 
 /// URL's "parse `text` using `base`": the result serialized, or null on
 /// failure (the create-a-notification steps then leave the URL unset).
-fn parseUrl(allocator: std.mem.Allocator, text: []const u8, base: ?[]const u8) !?[]u8 {
+fn parseUrl(allocator: std.mem.Allocator, text: []const u8, base: ?[]const u8) !?[]const u8 {
     const api_parser = @import("api_parser");
     var parsed_base: ?@import("url_record").URLRecord = null;
     defer if (parsed_base) |*b| b.deinit();
