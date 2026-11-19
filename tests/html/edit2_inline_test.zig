@@ -109,7 +109,7 @@ const push_down_cases = [_]Case{
     // bold and the background colors nest (Firefox and the data; Chrome and
     // Safari split), and no browser splits a block.
     .{ .input = "<span style=\"font-weight: 100\">foo[bar]baz</span>", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "<span style=\"font-weight:100\">foo<b>bar</b>baz</span>" },
-    .{ .input = "fo[o<span style=background-color:tan>b]ar</span>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"backcolor\",\"#00FFFF\"]]", .expected = "fo<span style=\"background-color:rgb(0, 255, 255)\">o</span><span style=\"background-color:rgb(210, 180, 140)\"><span style=\"background-color:rgb(0, 255, 255)\">b</span>ar</span>baz" },
+    .{ .input = "fo[o<span style=background-color:tan>b]ar</span>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"backcolor\",\"#00FFFF\"]]", .expected = "fo<span style=\"background-color:rgb(0, 255, 255)\">o</span><span style=\"background-color:tan\"><span style=\"background-color:rgb(0, 255, 255)\">b</span>ar</span>baz" },
     .{ .input = "<p style=\"font-size: medium\">foo[bar]baz</p>", .commands = "[[\"stylewithcss\",\"false\"],[\"fontsize\",\"4\"]]", .expected = "<p style=\"font-size:medium\">foo<font size=\"4\">bar</font>baz</p>" },
     // A simple modifiable element that push down removes gives its other
     // children copies of itself (all three; strikethrough.html, italic.html).

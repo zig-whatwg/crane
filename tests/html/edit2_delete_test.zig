@@ -104,11 +104,12 @@ test "after a block join the caret ends the start line, inside its inline style"
 
 /// A joining line keeps what its block gave it (delete step 34.3 records
 /// the moved children's values; the CSS rows pass in Chrome and Safari, the
-/// non-CSS ones are the data's spec <font>).
+/// non-CSS ones are the data's spec <font>). This harness does not
+/// normalize colors as the WPT one does: the span carries "brown".
 const values_cases = [_]harness.Case{
-    .{ .input = "<p style=color:blue>foo<p style=color:brown>[]bar", .commands = &.{ .{ "stylewithcss", "true" }, .{ "delete", "" } }, .expected = "<p style=\"color:blue\">foo<span style=\"color: rgb(165, 42, 42);\">bar</span></p>" },
+    .{ .input = "<p style=color:blue>foo<p style=color:brown>[]bar", .commands = &.{ .{ "stylewithcss", "true" }, .{ "delete", "" } }, .expected = "<p style=\"color:blue\">foo<span style=\"color: brown;\">bar</span></p>" },
     .{ .input = "<p>foo<p style=color:brown>[]bar", .commands = &.{ .{ "stylewithcss", "false" }, .{ "delete", "" } }, .expected = "<p>foo<font color=\"#a52a2a\">bar</font></p>" },
-    .{ .input = "<p>foo[]<p style=color:brown>bar", .commands = &.{ .{ "stylewithcss", "true" }, .{ "forwarddelete", "" } }, .expected = "<p>foo<span style=\"color: rgb(165, 42, 42);\">bar</span></p>" },
+    .{ .input = "<p>foo[]<p style=color:brown>bar", .commands = &.{ .{ "stylewithcss", "true" }, .{ "forwarddelete", "" } }, .expected = "<p>foo<span style=\"color: brown;\">bar</span></p>" },
 };
 
 fn valuesCases() !void {

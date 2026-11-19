@@ -639,8 +639,10 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     // Firefox nests as the spec does, and the data keeps the spec (bold.html
     // "<span style=font-weight:100>foo[bar]baz</span>", backcolor.html
     // "fo[o<span style=background-color:tan>b]ar</span>baz": FPF), so
-    // splitting there would trade ~46 passing subtests for none; nobody
-    // splits a block (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
+    // splitting there would trade ~46 passing subtests for none - following
+    // the Chrome + Safari majority there needs the user's ruling (OPEN, lane
+    // edit2's report, 2026-11-19); nobody splits a block
+    // (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
     // the value above IS the new one the spec's steps below stand (bold.html
     // "<b id=purple>bar [baz] qoz</b>": the data keeps the spec's result).
     if (new_value != null) {
