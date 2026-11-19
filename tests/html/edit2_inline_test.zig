@@ -121,6 +121,8 @@ const push_down_cases = [_]Case{
     .{ .input = "<s>foo[bar]baz</s>", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "<s>foo</s>bar<s>baz</s>" },
     .{ .input = "foo<em>b[a]r</em>baz", .commands = "[[\"stylewithcss\",\"false\"],[\"italic\",\"\"]]", .expected = "foo<em>b</em>a<em>r</em>baz" },
     .{ .input = "foo<em>b[a]r</em>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"italic\",\"\"]]", .expected = "foo<em>b</em>a<em>r</em>baz" },
+    // Not for another command: underline clears an underlined s (the data).
+    .{ .input = "foo<s style=\"text-decoration: underline\">b[a]r</s>baz", .commands = "[[\"stylewithcss\",\"false\"],[\"underline\",\"\"]]", .expected = "foo<u>b</u>a<u>r</u>baz" },
 };
 
 const exact_wrap_cases = [_]Case{
