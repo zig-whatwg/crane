@@ -2854,7 +2854,8 @@ pub const TreeBuilder = struct {
     }
 
     fn handleAfterHeadAnythingElse(self: *TreeBuilder) !void {
-        // Insert implicit body element
+        // "Insert an HTML element for a "body" start tag token with no
+        // attributes."
         const body = try TreeNode.initElement(self.allocator, "body", .html);
 
         // Notify DOM adapter of element creation
@@ -2865,6 +2866,12 @@ pub const TreeBuilder = struct {
 
         self.insertAtAppropriatePlace(body);
         try self.pushOpenElement(body);
+        // "Set the frameset-ok flag to "ok"." A template in head set it to
+        // "not ok"; the implied body puts it back, so `<template></template>
+        // <p><frameset>` still gets its frameset (html5lib template.dat;
+        // Chrome, Firefox and Safari pass it, wpt.fyi 2358bd4835).
+        self.frameset_ok = true;
+        // "Switch the insertion mode to "in body"."
         self.insertion_mode = .in_body;
     }
 
@@ -5421,11 +5428,14 @@ pub const TreeBuilder = struct {
         return false;
     }
 
-    /// Pop elements until tag name.
+    /// "Pop elements from the stack of open elements until an HTML element
+    /// with the same tag name has been popped": every caller names an HTML
+    /// element (a template, a cell, a caption, ...), so an SVG or MathML
+    /// element of that name - `<svg><template>` - is popped past.
     fn popUntilTagName(self: *TreeBuilder, tag_name: []const u8) void {
         while (self.open_elements.len > 0) {
             const node = self.popCurrentNode() orelse break;
-            if (node.hasTagName(tag_name)) break;
+            if (node.namespace == .html and node.hasTagName(tag_name)) break;
         }
     }
 
@@ -5838,10 +5848,11 @@ pub const TreeBuilder = struct {
 
     /// Clear the stack back to a table context.
     /// HTML Standard: Pop until table, template, or html.
+    /// The elements it stops at are HTML elements.
     fn clearStackBackToTableContext(self: *TreeBuilder) void {
         while (self.open_elements.len > 0) {
             const node = self.currentNode() orelse break;
-            if (node.hasTagName("table") or node.hasTagName("template") or node.hasTagName("html")) {
+            if (node.namespace == .html and (node.hasTagName("table") or node.hasTagName("template") or node.hasTagName("html"))) {
                 break;
             }
             if (self.popCurrentNode() == null) break;
@@ -5850,14 +5861,15 @@ pub const TreeBuilder = struct {
 
     /// Clear the stack back to a table body context.
     /// HTML Standard: Pop until tbody, tfoot, thead, template, or html.
+    /// The elements it stops at are HTML elements.
     fn clearStackBackToTableBodyContext(self: *TreeBuilder) void {
         while (self.open_elements.len > 0) {
             const node = self.currentNode() orelse break;
-            if (node.hasTagName("tbody") or
+            if (node.namespace == .html and (node.hasTagName("tbody") or
                 node.hasTagName("tfoot") or
                 node.hasTagName("thead") or
                 node.hasTagName("template") or
-                node.hasTagName("html"))
+                node.hasTagName("html")))
             {
                 break;
             }
@@ -5867,10 +5879,11 @@ pub const TreeBuilder = struct {
 
     /// Clear the stack back to a table row context.
     /// HTML Standard: Pop until tr, template, or html.
+    /// The elements it stops at are HTML elements.
     fn clearStackBackToTableRowContext(self: *TreeBuilder) void {
         while (self.open_elements.len > 0) {
             const node = self.currentNode() orelse break;
-            if (node.hasTagName("tr") or node.hasTagName("template") or node.hasTagName("html")) {
+            if (node.namespace == .html and (node.hasTagName("tr") or node.hasTagName("template") or node.hasTagName("html"))) {
                 break;
             }
             if (self.popCurrentNode() == null) break;
@@ -5884,6 +5897,11 @@ pub const TreeBuilder = struct {
         while (i > 0) {
             i -= 1;
             const node = self.open_elements.get(i) orelse continue;
+            // HTML 13.2.4.2: the target is an HTML element with the tag name
+            // (a MathML tbody or an SVG td is no cell or row group), and
+            // table scope's list is "html, table, template in the HTML
+            // namespace".
+            if (node.namespace != .html) continue;
             if (node.hasTagName(tag_name)) return true;
 
             if (node.local_name) |name| {
