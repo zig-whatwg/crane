@@ -93,6 +93,8 @@ fn getInternal(instance: *runtime.Instance) ?*InternalState {
 /// by crane.Process through the generated interface (docs/instances.md).
 pub fn installHooks() void {
     style_sheet_loading.installDocumentAbort();
+    // CSSOM insertRule()'s @import: the loader fetches its sheet.
+    style_sheet_loading.installImportInserted();
     dom_module.attribute_change_steps.install("link", &attributeChangeSteps);
     dom_module.style_sheet_owners.installLoadDelay(.{ .delays = &style_sheet_loading.delaysLoadEvent, .blocks_scripts = &style_sheet_loading.blocksScripts });
     dom_module.style_sheet_owners.installLinkParserSteps(&createdByParser);
