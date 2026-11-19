@@ -633,12 +633,21 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     // it losing the value - Blink ApplyStyleCommand::SplitTextElementAtStart
     // / SplitTextElementAtEnd (apply_style_command.cc), Gecko
     // HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges
-    // (HTMLEditor.cpp). Golden rule 2, no newer spec. Where the value above
-    // IS the new one the spec's steps below stand (bold.html "<b id=purple>
-    // bar [baz] qoz</b>": the data keeps the spec's result there).
+    // (HTMLEditor.cpp). Golden rule 2, no newer spec. Only where all three
+    // split: fontSize, fontName and foreColor, inline ancestors. For bold,
+    // italic, backColor and hiliteColor Chrome and Safari split too but
+    // Firefox nests as the spec does, and the data keeps the spec (bold.html
+    // "<span style=font-weight:100>foo[bar]baz</span>", backcolor.html
+    // "fo[o<span style=background-color:tan>b]ar</span>baz": FPF), so
+    // splitting there would trade ~46 passing subtests for none; nobody
+    // splits a block (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
+    // the value above IS the new one the spec's steps below stand (bold.html
+    // "<b id=purple>bar [baz] qoz</b>": the data keeps the spec's result).
     if (new_value != null) {
         const top_parent = (try common.parent(ancestor_list.items[ancestor_list.items.len - 1])) orelse return;
         if (!areLooselyEquivalent(edit, command, try effectiveValue(edit, top_parent, command), new_value)) {
+            if (!splitsLikeTheBrowsers(command)) return;
+            for (ancestor_list.items) |ancestor| if (!common.isInlineNode(ancestor)) return;
             return try splitDifferingAncestors(edit, node, ancestor_list.items, command, propagated_value);
         }
     }
@@ -650,17 +659,66 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
         var children: std.ArrayList(*Instance) = .empty;
         var child = try common.firstChild(ancestor);
         while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
-        if ((try specifiedValue(edit, ancestor, command)) != null) _ = try clearValue(edit, ancestor, command);
+        // A simple modifiable ancestor that clearing removes gives its other
+        // children copies of itself, not new elements: all three browsers
+        // keep `<s>foo[bar]baz</s>` + strikethrough as `<s>foo</s>bar<s>baz
+        // </s>` and `foo<em>b[a]r</em>baz` + italic as `foo<em>b</em>a<em>r
+        // </em>baz`, in CSS mode too, where force the value makes a strike,
+        // an i or a span (editing/run/strikethrough.html, italic.html: PPP at
+        // wpt.fyi 2358bd4835; the data's two spec rows `<u>foo[bar]baz</u>`
+        // and `<strike>foo[bar]baz</strike>` in CSS mode no browser passes).
+        // Mechanism: Blink PushDownInlineStyleAroundNode wraps the children
+        // in clones of the elements it pushes down; Gecko splits the element
+        // (SplitAncestorStyledInlineElementsAtRangeEdges). Golden rule 2, no
+        // newer spec.
+        var copy_of: ?*Instance = null;
+        if ((try specifiedValue(edit, ancestor, command)) != null) {
+            // The removed element itself is what each run copies.
+            if (try isSimpleModifiableElement(edit, ancestor)) copy_of = ancestor;
+            _ = try clearValue(edit, ancestor, command);
+        }
+        var run_copy: ?*Instance = null;
         for (children.items) |c| {
-            if (c == node) continue;
-            if (common.isElement(c)) {
-                const specified = try specifiedValue(edit, c, command);
-                if (specified != null and !areEquivalent(edit, command, specified, propagated_value)) continue;
+            const wraps = blk: {
+                if (c == node) break :blk false;
+                if (common.isElement(c)) {
+                    const specified = try specifiedValue(edit, c, command);
+                    if (specified != null and !areEquivalent(edit, command, specified, propagated_value)) break :blk false;
+                }
+                if (ancestor_list.items.len > 0 and c == ancestor_list.items[ancestor_list.items.len - 1]) break :blk false;
+                break :blk true;
+            };
+            if (!wraps) {
+                run_copy = null;
+                continue;
             }
-            if (ancestor_list.items.len > 0 and c == ancestor_list.items[ancestor_list.items.len - 1]) continue;
-            try forceValue(edit, c, command, propagated_value);
+            const template = copy_of orelse {
+                try forceValue(edit, c, command, propagated_value);
+                continue;
+            };
+            // Consecutive children share one copy.
+            if (run_copy) |copy| {
+                if ((try common.nextSibling(copy)) == c) {
+                    try edit.movePreservingRanges(c, copy, try common.childCount(copy));
+                    continue;
+                }
+            }
+            const c_parent = (try common.parent(c)) orelse continue;
+            const copy = try copyWithoutId(template);
+            try edit.insertBefore(c_parent, copy, c);
+            try edit.movePreservingRanges(c, copy, 0);
+            run_copy = copy;
         }
     }
+}
+
+/// The commands whose differing ancestors all three browsers split where
+/// the spec's push down values step 10 gives up (see pushDownValues).
+fn splitsLikeTheBrowsers(command: Command) bool {
+    return switch (command) {
+        .font_size, .font_name, .fore_color => true,
+        else => false,
+    };
 }
 
 /// The browsers' push down where the spec's step 10 gives up (see
