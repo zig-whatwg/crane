@@ -3678,6 +3678,21 @@ fn navigationParamsPolicyContainer(integration: *IFrameIntegration, record: *Nav
         // a double deinit on out of memory.
         try result.inheritUpgradeInsecureNavigations(container);
     }
+    // "Create navigation params by fetching" step 14: coopEnforcementResult
+    // starts with the navigable's active document's opener policy, and only
+    // a top-level traversable's responses enforce theirs (step 21.12) - so a
+    // child navigable's new document has its active document's opener
+    // policy as navigationParams's ("create and initialize a Document
+    // object" step 9): the one its initial about:blank took from its
+    // creator's top-level document ("create a new browsing context and
+    // document" step 19.3). The rules for choosing a navigable step 8.4
+    // read it: a nested document cross-origin with its top-level one under
+    // "same-origin" opens popups with noopener.
+    if (integration.browsing_context) |bc| if (bc.parent != null) {
+        if (activeDocumentOf(integration)) |active| if (dom_module.policy_containers.of(active)) |active_container| {
+            try result.setOpenerPolicy(.{ .value = active_container.openerPolicy().value, .report_only_value = active_container.openerPolicy().report_only_value });
+        };
+    };
     return result;
 }
 
@@ -7062,12 +7077,14 @@ fn inheritPolicyContainer(document: *runtime.Instance, from: *runtime.Instance) 
 /// creator's origin is same origin with creator's relevant settings
 /// object's top-level origin, then set document's opener policy to
 /// creator's browsing context's top-level browsing context's active
-/// document's opener policy." Only a popup's (a top-level context's) initial
-/// document asks: a child navigable's documents never read their opener
-/// policy. The policy rides on the document's container (policy_container.zig),
-/// which its clone (step 19.2) left at a new opener policy.
+/// document's opener policy." A popup's initial document and a child
+/// navigable's alike: a child navigable's documents keep it (its
+/// navigations enforce no response's: navigationParamsPolicyContainer), and
+/// the rules for choosing a navigable step 8.4 read it. The policy rides on
+/// the document's container (policy_container.zig), which its clone (step
+/// 19.2) left at a new opener policy.
 fn inheritOpenerPolicy(document: *runtime.Instance, creator: *runtime.Instance, browsing_context: *html_core.BrowsingContext) void {
-    if (browsing_context.parent != null) return;
+    _ = browsing_context;
     const own = dom_module.policy_containers.of(document) orelse return;
     const top_document = topLevelOpenerPolicySource(creator) orelse return;
     const top_container = dom_module.policy_containers.of(top_document) orelse return;
