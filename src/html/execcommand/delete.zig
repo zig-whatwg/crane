@@ -1542,7 +1542,8 @@ pub fn deleteAction(edit: *Edit) !bool {
     // Step 16: the general block merge - down to the previous block's end,
     // past non-editable atoms (see removeAtomsBefore).
     while (try common.childBefore(start.node, start.offset)) |child| {
-        if ((try common.isEditable(child)) and try common.isInvisible(child)) {
+        if ((try common.isEditable(child)) and ((try common.isInvisible(child)) or try isEmptyBlock(child))) {
+            if (point.node == start.node and point.offset >= start.offset) point.offset -= 1;
             try edit.removeNode(child);
             start.offset -= 1;
         } else if (common.isBlockNode(child) and try isNonEditableAtom(child)) {
@@ -1719,7 +1720,7 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
     // Step 14: down to the next block's start, past non-editable atoms (see
     // removeAtomsAfter).
     while (try common.childAt(end.node, end.offset)) |child| {
-        if ((try common.isEditable(child)) and try common.isInvisible(child)) {
+        if ((try common.isEditable(child)) and ((try common.isInvisible(child)) or try isEmptyBlock(child))) {
             try edit.removeNode(child);
         } else if (common.isBlockNode(child) and try isNonEditableAtom(child)) {
             _ = try removeAtomsAfter(edit, &end);
@@ -1795,6 +1796,20 @@ fn hasVisibleContentAfter(point: Point, host: *Instance) !bool {
 
 fn isElementDisplayNone(node: *Instance) bool {
     return common.isElement(node) and common.displayIsNone(node);
+}
+
+/// An element with no children that is a block: it draws no line, so the
+/// block merge walks past it to the next line, removing it. Chrome 157,
+/// Firefox (Delete) and Safari 27.2 join `<div>foo[]</div><div></div><div>
+/// bar</div>` into `<div>foobar</div>` (forwarddelete.html PPP, delete.html
+/// PFP at wpt.fyi 2358bd4835), where the spec, which counts every block as
+/// visible, joins the empty div and leaves bar. Blink and Gecko see no
+/// line box in it. Golden rule 2, no newer spec.
+fn isEmptyBlock(node: *Instance) !bool {
+    if (!common.isElement(node) or !common.isBlockNode(node)) return false;
+    if (try common.hasChildren(node)) return false;
+    // Not the void block elements, which are content.
+    return !try common.isHtmlElementIn(node, &.{ "hr", "img", "input", "textarea", "select", "iframe", "video", "audio", "canvas", "object", "embed", "table" });
 }
 
 const RunDirection = enum { forward, backward };

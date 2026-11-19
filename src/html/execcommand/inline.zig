@@ -1187,6 +1187,8 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
     // editable node effectively contained.
     const bounds = (try activeBounds(edit)) orelse return;
     const nodes = try effectivelyContainedNodes(edit, bounds, .editable);
+    const inner_start = try common.lastEquivalentPoint(bounds.start);
+    const inner_end = try common.firstEquivalentPoint(bounds.end);
     for (nodes) |node| {
         try pushDownValues(edit, node, command, new_value);
         // An element the whole range lies inside (an inclusive ancestor of
@@ -1197,7 +1199,11 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
         // </i>ghi" and "abc<i>{def}</i>ghi" with styleWithCSS false:
         // Chrome 156, Firefox 158 and Safari 27 pass, wpt.fyi f4febe305a /
         // 5af3c135c9 / 1ec6aacb4e). Golden rule 2, no newer spec.
-        if (common.isElement(node) and common.isInclusiveDescendantOf(bounds.start.node, node) and common.isInclusiveDescendantOf(bounds.end.node, node)) continue;
+        // The range's ends are read at their innermost equivalent points
+        // (`abc<i>[def</i>]ghi` ends inside the i too: bold gives `abc<i><b>
+        // def</b></i>ghi` in all three, bold.html ?3001-last, PPP at wpt.fyi
+        // 2358bd4835 - Blink reads the selection's visible positions).
+        if (common.isElement(node) and common.isInclusiveDescendantOf(inner_start.node, node) and common.isInclusiveDescendantOf(inner_end.node, node)) continue;
         if (try isAllowedChildOfName(node, "span")) try forceValue(edit, node, command, new_value);
     }
 }

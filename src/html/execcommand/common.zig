@@ -1016,6 +1016,12 @@ fn brFollowsLineBoundary(br: *Instance) !bool {
     while (current) |c| {
         if (c == block or !isDescendantOf(c, block)) return true;
         if (isBlockNode(c)) return true;
+        // Content inside a block before the br - the walk reached it through
+        // that block's end - is on another line: `<ol><li>foo</ol><br><ol>`
+        // has its br alone on a line, which every browser shows and deletes
+        // on its own (delete.html, forwarddelete.html, PPP at wpt.fyi
+        // 2358bd4835).
+        if ((try blockNodeOf(c)) != block) return true;
         if (try hasDisplayNoneInclusiveAncestor(c)) {
             current = try previousInTreeOrder(c);
             continue;
