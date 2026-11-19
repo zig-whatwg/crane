@@ -106,13 +106,6 @@ pub fn shouldSkipInterface(comptime name: []const u8) bool {
     };
 }
 
-/// Whether interface `T` is exposed in a Window realm (WebIDL "exposed",
-/// step 1: its exposure set is `*` or names Window; the conditions of steps
-/// 2-3 are each realm's, hideSecureContextInterfaceObjects').
-fn exposedOnWindow(comptime T: type) bool {
-    return comptime helpers.isExposedIn(T, .Window);
-}
-
 /// Is `name` in the -Dinterfaces allow-list?
 ///
 /// An empty allow-list means "everything", which is the default and is exactly the
@@ -330,19 +323,6 @@ pub fn registerAllInterfaces(
             };
             if (has_legacy_namespace) continue;
 
-            // WebIDL 3.7: an interface object exists on the global of a realm
-            // the interface is exposed in - "if construct's exposure set is
-            // not *, and realm.[[GlobalObject]] does not implement an
-            // interface that is in construct's exposure set, then return
-            // false" (3.3.x "exposed", step 1). A Window implements Window
-            // alone, so WorkerGlobalScope, WorkerNavigator, FileReaderSync,
-            // the service worker events and the worklet scopes have none here
-            // (as in Chrome, Firefox and Safari: html/dom/idlharness,
-            // service-workers/idlharness, FileAPI/idlharness at wpt.fyi
-            // 2358bd4835). A wrapper of one still finds its template
-            // (template_registry, made on demand).
-            if (comptime !exposedOnWindow(InterfaceType)) continue;
-
             // Register the interface as a global constructor using fast path
             const Binding = V8Interface(InterfaceType);
             Binding.registerGlobalFast(isolate, context, global, decl.name);
@@ -441,11 +421,6 @@ pub fn registerAllTemplatesOnly(
                 break :blk false;
             };
             if (has_legacy_namespace) continue;
-
-            // WebIDL 3.7: no interface object for an interface a Window
-            // realm does not expose (registerAllInterfaces, which made the
-            // snapshot, made none either); its template is made on demand.
-            if (comptime !exposedOnWindow(InterfaceType)) continue;
 
             // CRITICAL: Skip Window interface - do NOT reinstall it from snapshot!
             // The global object's prototype chain already points to Window.prototype from
