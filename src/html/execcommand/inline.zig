@@ -694,7 +694,11 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
         var copy_of: ?*Instance = null;
         if ((try specifiedValue(edit, ancestor, command)) != null) {
             // The removed element itself is what each run copies.
-            if ((try isSimpleModifiableElement(edit, ancestor)) and try isNamedIn(ancestor, &.{ "s", "em" })) copy_of = ancestor;
+            // Only for its own command: an s styled to underline is cleared
+            // by underline as the spec says (underline.html's `foo<s style=
+            // "text-decoration: underline">b[a]r</s>baz` rows, FFF).
+            const own = (command == .strikethrough and try isNamed(ancestor, "s")) or (command == .italic and try isNamed(ancestor, "em"));
+            if (own and try isSimpleModifiableElement(edit, ancestor)) copy_of = ancestor;
             _ = try clearValue(edit, ancestor, command);
         }
         var run_copy: ?*Instance = null;
