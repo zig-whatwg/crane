@@ -229,6 +229,14 @@ pub fn insertHorizontalRuleAction(edit: *Edit) !bool {
 /// element named `tag`.
 const NewContainerContext = struct {
     tag: []const u8,
+    /// The line break that ended the previous line stays before the new
+    /// container: Chrome 157 and Safari 27.2 keep `foo<br>` when
+    /// insertParagraph wraps the line after it (`foo<br>bar[]<br><span>baz
+    /// </span>` -> `foo<br><div>bar</div><div><br><span>baz</span></div>`;
+    /// editing/run/insertparagraph.html, 22 subtests PFP at wpt.fyi
+    /// 2358bd4835), where wrap's step 16 removes it as extraneous (Firefox
+    /// 160 too). Golden rule 2, no newer spec: the majority.
+    pub const keep_line_break_before = true;
     pub fn siblingCriteria(_: NewContainerContext, _: *Instance) anyerror!bool {
         return false;
     }
