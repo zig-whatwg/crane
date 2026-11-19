@@ -471,10 +471,24 @@ pub const ScopeData = struct {
     parent: ?u32,
 };
 
+/// One conditional group rule around a rule: an @media rule's list, or an
+/// @container rule's conditions (CSS Conditional 5 5.4), in the rule tree.
 pub const Condition = struct {
-    /// The @media rule's list, in the rule tree.
-    media: *const MediaQueryList,
+    /// The @media rule's list; null for an @container rule.
+    media: ?*const MediaQueryList = null,
+    /// The @container rule's conditions; null for an @media rule.
+    container: ?*const css.container_queries.List = null,
     parent: ?u32,
+};
+
+/// The element whose style is being resolved, as an @container condition
+/// asks (CSS Conditional 5 5.4: "filtered by its condition to only match
+/// when the container query is true for their element's query container"):
+/// `holds` selects that element's query container for the condition and
+/// evaluates the query against it.
+pub const ContainerQueries = struct {
+    context: *anyopaque,
+    holds: *const fn (context: *anyopaque, conditions: *const css.container_queries.List) bool,
 };
 
 /// A CSS-connected font rule and its existing conditional-rule chain.
@@ -605,12 +619,35 @@ pub const Contents = struct {
         a.destroy(self);
     }
 
-    /// Whether the condition chain ending at `condition` holds.
+    /// Whether the condition chain ending at `condition` holds, for a
+    /// name-defining rule (@font-face, @property, @keyframes): an @container
+    /// rule around it does not constrain it (CSS Conditional 5 5.4: "Global,
+    /// name-defining at-rules ... defined inside container queries are not
+    /// constrained by the container query conditions").
     pub fn conditionHolds(self: *const Contents, condition: ?u32, values: *const MediaValues) bool {
         var current = condition;
         while (current) |index| {
             const c = &self.conditions.items[index];
-            if (!c.media.matches(values)) return false;
+            if (c.media) |media| if (!media.matches(values)) return false;
+            current = c.parent;
+        }
+        return true;
+    }
+
+    /// Whether the condition chain ending at `condition` holds for a style
+    /// rule matched against the element `queries` answers for: every @media
+    /// list matches, and every @container condition is true for that
+    /// element's query container (5.4: nested container queries "apply when
+    /// all of the wrapping container queries are true for that element").
+    pub fn conditionHoldsFor(self: *const Contents, condition: ?u32, values: *const MediaValues, queries: ?ContainerQueries) bool {
+        var current = condition;
+        while (current) |index| {
+            const c = &self.conditions.items[index];
+            if (c.media) |media| if (!media.matches(values)) return false;
+            if (c.container) |conditions| {
+                const q = queries orelse return false;
+                if (!q.holds(q.context, conditions)) return false;
+            }
             current = c.parent;
         }
         return true;
@@ -671,10 +708,15 @@ const Compiler = struct {
                 try self.ruleList(style.children.items, condition, layer);
             },
             .nested_declarations => try self.styleRule(rule, condition, layer),
-            // Container query evaluation needs the host's real container
-            // facts; until that capability arrives, its body is not compiled
-            // as an unconditional style rule.
-            .container => {},
+            // CSS Conditional 5 5.4: its style rules match only where its
+            // conditions are true for the element's query container
+            // (`Contents.conditionHoldsFor`); name-defining rules inside
+            // are not constrained (`conditionHolds`).
+            .container => |*c| {
+                const index: u32 = @intCast(self.contents.conditions.items.len);
+                try self.contents.conditions.append(self.contents.allocator, .{ .container = &c.conditions, .parent = condition });
+                try self.ruleList(c.children.items, index, layer);
+            },
             // Cascade 6 3.5: the style rules inside are scoped style rules
             // (3.5.3), the @scope rule's own scope index recorded on each;
             // name-defining rules inside "are not scoped or otherwise

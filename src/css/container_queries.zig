@@ -451,3 +451,190 @@ fn appendSource(a: Allocator, out: *Out, text: []const u8) Allocator.Error!void 
         }
     }
 }
+
+// ============================================================================
+// Evaluation (CSS Conditional 5 5.4, 6): a serialized <container-query>
+// against the query container its element selected.
+// ============================================================================
+
+/// Three-valued, as media queries and if() conditions are (Media Queries 4
+/// 3.2; Conditional 5 5.4: "As with media queries, <general-enclosed>
+/// evaluates to unknown").
+pub const Truth = @import("if_function.zig").Truth;
+
+/// What a query asks of its query container (5.4: the container "is
+/// selected from among the element's ancestor query containers that are
+/// established as a valid query container for all the container features in
+/// the <container-query>").
+pub const Needs = struct {
+    /// A size feature: a size container (container-type size or
+    /// inline-size, 5.1).
+    size: bool = false,
+    /// A scroll-state() query: a scroll-state container.
+    scroll_state: bool = false,
+    /// An unknown or unsupported feature, <general-enclosed> included: "no
+    /// query container will be selected for that <container-condition>".
+    unknown: bool = false,
+};
+
+/// The answers a query container gives: its style() queries' (6.2), each
+/// with the <style-query> body as `parse` serialized it.
+pub const Evaluator = struct {
+    context: *anyopaque,
+    style: *const fn (context: *anyopaque, body: []const u8) Allocator.Error!Truth,
+};
+
+/// `needs` for a <container-query> as `parse` serialized it (`Condition.query`).
+pub fn needsOf(a: Allocator, text: []const u8) Allocator.Error!Needs {
+    var needs: Needs = .{};
+    const items = try components(a, text) orelse return .{ .unknown = true };
+    defer a.free(items);
+    try collectNeeds(a, text, items, &needs, 0);
+    return needs;
+}
+
+fn collectNeeds(a: Allocator, text: []const u8, items: []const Component, needs: *Needs, depth: u32) Allocator.Error!void {
+    if (depth >= max_nesting) {
+        needs.unknown = true;
+        return;
+    }
+    for (items) |item| {
+        if (item.token.token_type == .ident) continue; // not, and, or
+        const span = item.inner orelse {
+            needs.unknown = true;
+            continue;
+        };
+        const body = text[span.start..span.end];
+        if (item.token.token_type == .function) {
+            if (tokenizer.nameEql(item.token.value, "style")) continue;
+            if (tokenizer.nameEql(item.token.value, "scroll-state")) {
+                needs.scroll_state = true;
+                continue;
+            }
+            needs.unknown = true;
+            continue;
+        }
+        if (item.token.token_type != .left_paren) {
+            needs.unknown = true;
+            continue;
+        }
+        const nested = try components(a, body) orelse {
+            needs.unknown = true;
+            continue;
+        };
+        defer a.free(nested);
+        if (isNestedQuery(nested)) {
+            try collectNeeds(a, body, nested, needs, depth + 1);
+            continue;
+        }
+        var scratch: Out = .empty;
+        defer scratch.deinit(a);
+        if (try feature(a, body, nested, .size, &scratch)) {
+            needs.size = true;
+        } else needs.unknown = true;
+    }
+}
+
+/// `( <container-query> )` rather than `( <size-feature> )` or
+/// <general-enclosed>: its first component is `not` or a parenthesized or
+/// functional block.
+fn isNestedQuery(items: []const Component) bool {
+    if (items.len == 0) return false;
+    if (items[0].is("not")) return true;
+    return items[0].token.token_type == .left_paren or items[0].token.token_type == .function;
+}
+
+/// The <container-query> `text`, as `parse` serialized it, against its query
+/// container: style() through `evaluator`; a size feature and a
+/// scroll-state() query unknown - their answers are the container's layout
+/// and scroll state, which no renderer gives Crane yet (Conditional 5 6.1,
+/// 6.3) - and <general-enclosed> unknown (5.4).
+pub fn evaluate(a: Allocator, text: []const u8, evaluator: Evaluator) Allocator.Error!Truth {
+    const items = try components(a, text) orelse return .unknown;
+    defer a.free(items);
+    return evaluateQuery(a, text, items, evaluator, 0);
+}
+
+fn evaluateQuery(a: Allocator, text: []const u8, items: []const Component, evaluator: Evaluator, depth: u32) Allocator.Error!Truth {
+    if (items.len == 0 or depth >= max_nesting) return .unknown;
+    if (items[0].is("not")) {
+        if (items.len != 2) return .unknown;
+        return negate(try evaluateInParens(a, text, items[1], evaluator, depth));
+    }
+    var result = try evaluateInParens(a, text, items[0], evaluator, depth);
+    var i: usize = 1;
+    while (i + 1 < items.len) : (i += 2) {
+        const operand = try evaluateInParens(a, text, items[i + 1], evaluator, depth);
+        if (items[i].is("and")) {
+            result = conjunction(result, operand);
+        } else if (items[i].is("or")) {
+            result = disjunction(result, operand);
+        } else return .unknown;
+    }
+    return result;
+}
+
+fn evaluateInParens(a: Allocator, text: []const u8, item: Component, evaluator: Evaluator, depth: u32) Allocator.Error!Truth {
+    const span = item.inner orelse return .unknown;
+    const body = text[span.start..span.end];
+    if (item.token.token_type == .function) {
+        if (tokenizer.nameEql(item.token.value, "style")) return evaluator.style(evaluator.context, body);
+        return .unknown;
+    }
+    if (item.token.token_type != .left_paren) return .unknown;
+    const nested = try components(a, body) orelse return .unknown;
+    defer a.free(nested);
+    if (isNestedQuery(nested)) return evaluateQuery(a, body, nested, evaluator, depth + 1);
+    return .unknown;
+}
+
+fn negate(value: Truth) Truth {
+    return switch (value) {
+        .true => .false,
+        .false => .true,
+        .unknown => .unknown,
+    };
+}
+
+fn conjunction(x: Truth, y: Truth) Truth {
+    if (x == .false or y == .false) return .false;
+    if (x == .unknown or y == .unknown) return .unknown;
+    return .true;
+}
+
+fn disjunction(x: Truth, y: Truth) Truth {
+    if (x == .true or y == .true) return .true;
+    if (x == .unknown or y == .unknown) return .unknown;
+    return .false;
+}
+
+const EvaluationTest = struct {
+    fn style(context: *anyopaque, body: []const u8) Allocator.Error!Truth {
+        _ = context;
+        if (std.mem.eql(u8, body, "--yes")) return .true;
+        if (std.mem.eql(u8, body, "--no")) return .false;
+        return .unknown;
+    }
+};
+
+test "a container query's style() leaves are the evaluator's; size features and general-enclosed are unknown" {
+    const a = std.testing.allocator;
+    var context: u8 = 0;
+    const evaluator: Evaluator = .{ .context = &context, .style = EvaluationTest.style };
+    try std.testing.expectEqual(Truth.true, try evaluate(a, "style(--yes)", evaluator));
+    try std.testing.expectEqual(Truth.false, try evaluate(a, "not style(--yes)", evaluator));
+    try std.testing.expectEqual(Truth.true, try evaluate(a, "(style(--no)) or (not (style(--no)))", evaluator));
+    try std.testing.expectEqual(Truth.false, try evaluate(a, "style(--yes) and style(--no)", evaluator));
+    try std.testing.expectEqual(Truth.unknown, try evaluate(a, "(width > 100px)", evaluator));
+    try std.testing.expectEqual(Truth.unknown, try evaluate(a, "(foo(bar)) or (not (foo(bar)))", evaluator));
+    try std.testing.expectEqual(Truth.true, try evaluate(a, "style(--yes) or (width > 100px)", evaluator));
+}
+
+test "what a container query needs of its container" {
+    const a = std.testing.allocator;
+    try std.testing.expectEqual(Needs{}, try needsOf(a, "style(--x: y)"));
+    try std.testing.expectEqual(Needs{ .size = true }, try needsOf(a, "(width > 100px) and style(--x)"));
+    try std.testing.expectEqual(Needs{ .scroll_state = true }, try needsOf(a, "scroll-state(stuck: top)"));
+    try std.testing.expectEqual(Needs{ .unknown = true }, try needsOf(a, "(foo(bar)) or (not (foo(bar)))"));
+    try std.testing.expectEqual(Needs{}, try needsOf(a, "not ((style(--a)) or (style(--b)))"));
+}
