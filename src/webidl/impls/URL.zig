@@ -704,8 +704,14 @@ pub fn set_search(instance: *runtime.Instance, value: runtime.USVString) anyerro
         return;
     };
 
-    // Step 6: Set this's query object's list to the result of parsing input
-    try updateQueryObjectList(internal, input);
+    // Step 6: "Set this's query object's list to the result of parsing url's
+    // query" - the query the parser left, whose ASCII tabs and newlines it
+    // removed - not `input`. Golden rule 2, the newer spec: whatwg/url
+    // changed step 6 from "parsing input" to "parsing url's query", and
+    // Firefox and Safari ship it (wpt.fyi 2358bd4835,
+    // url/url-setters-stripping.any.html "updates previously obtained
+    // searchParams": Firefox and Safari PASS, Chrome FAIL).
+    try updateQueryObjectList(internal, internal.url_record.query() orelse "");
 }
 
 /// Helper to update the query object's list when URL.search is set

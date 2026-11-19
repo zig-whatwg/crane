@@ -2734,7 +2734,16 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     // Step 1: the caller has checked the null attribute namespace.
     if (!std.mem.startsWith(u8, local_name, "on") or local_name.len <= 2) return;
     const internal = getInternal(instance) orelse return;
-    if (!internal.data.name.isHtml()) return;
+    // Step 1, "the name of an event handler content attribute on element":
+    // HTML elements have them (HTML 8.1.8.2), and so do MathML elements
+    // (MathML Core 2.1.4: "All MathML elements support event handler content
+    // attributes, as described in [...] HTML") and SVG elements (SVG 2 15.8,
+    // event attributes, "the same requirements as for event handler content
+    // attributes"). Chrome, Firefox and Safari compile them on all three
+    // (wpt.fyi 2358bd4835: mathml/relations/html5-tree/
+    // math-global-event-handlers.html passes in all three). An element of any
+    // other namespace has none.
+    if (!eventHandlerContentAttributeNamespace(internal.data.name.namespace)) return;
     const window_reflecting = (instance.stateAs(interfaces.HTMLBodyElement.State) != null or
         instance.stateAs(interfaces.HTMLFrameSetElement.State) != null) and
         dom.event_handlers.isWindowReflecting(local_name);
@@ -2755,6 +2764,21 @@ fn eventHandlerAttributeChangeSteps(instance: *runtime.Instance, local_name: []c
     defer document.ctx.allocator.free(url);
     // Steps 5.2-5.6: the map copies body/location and activates the listener.
     dom.event_handlers.setRaw(target, event_type, .{ .body = body, .url = url }) catch {};
+}
+
+fn isSvgElement(target: *runtime.Instance) bool {
+    const internal = getInternal(target) orelse return false;
+    return internal.data.name.namespace == .svg;
+}
+
+/// Whether an element of `namespace` has event handler content attributes:
+/// its interface includes GlobalEventHandlers (HTMLElement, SVGElement,
+/// MathMLElement).
+fn eventHandlerContentAttributeNamespace(namespace: dom.element_name.Namespace) bool {
+    return switch (namespace) {
+        .html, .svg, .mathml => true,
+        else => false,
+    };
 }
 
 /// Check content-attribute names natively, without wrapping the element or
@@ -2805,7 +2829,16 @@ fn compileRawEventHandler(target: *runtime.Instance, event_type: []const u8, raw
         .name = local_name,
         .url = raw.url,
         .lineno = raw.lineno,
-        .parameters = if (is_window and std.mem.eql(u8, local_name, "onerror")) .onerror else .event,
+        // Step 3.6's parameter list. An SVG element's handler names its one
+        // parameter `evt` (SVG 2 15.8, "evt as an alias to event"): Blink's
+        // EventParameterName, Gecko's nsContentUtils::GetEventArgNames and
+        // WebKit's JSLazyEventListener all take `evt` for an SVG element.
+        .parameters = if (is_window and std.mem.eql(u8, local_name, "onerror"))
+            .onerror
+        else if (!is_window and isSvgElement(target))
+            .evt
+        else
+            .event,
         .document = if (is_window) null else document,
         .form_owner = if (!is_window and
             (@import("html").form_associated.isListed(target) or target.stateAs(interfaces.HTMLImageElement.State) != null))

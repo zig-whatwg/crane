@@ -102,6 +102,7 @@ test "the [Serializable] interfaces with steps are exactly this batch's" {
     // Not [Serializable], or no steps: not in the table.
     try std.testing.expect(v8.serializable_objects.stepsFor("Response") == null);
     try std.testing.expect(v8.serializable_objects.stepsFor("MessagePort") == null);
+    // [Transferable] only.
     try std.testing.expect(v8.serializable_objects.stepsFor("OffscreenCanvas") == null);
 }
 

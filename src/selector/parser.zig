@@ -563,6 +563,11 @@ pub const PseudoClassKind = union(enum) {
     FirstChild,
     LastChild,
     OnlyChild,
+    /// :only-child after a named view transition pseudo-element, which tests
+    /// that pseudo-element in its pseudo-element tree (View Transitions 1
+    /// §3.1: ":only-child matches" a descendant of the pseudo-element root
+    /// with no siblings), not its originating element.
+    PseudoElementOnlyChild,
     FirstOfType,
     LastOfType,
     OnlyOfType,
@@ -908,6 +913,10 @@ const Context = struct {
     /// the SUBJECT of a logical combination's argument. Explicit type
     /// and universal selectors, and ancestor compounds, still receive it.
     resist_default_namespace: bool = false,
+    /// The argument of a logical combination that follows a named view
+    /// transition pseudo-element: its :only-child tests that pseudo-element
+    /// (PseudoElementOnlyChild).
+    after_view_transition: bool = false,
 };
 
 /// An end-of-input token, what reading past a range returns.
@@ -1541,6 +1550,12 @@ pub const Parser = struct {
                 // The UA-only pseudo-classes are unknown to author style.
                 if (kind == .InternalListBox and !self.user_agent) return error.InvalidSelector;
                 if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
+                // View Transitions 1 §3.1: after a named view transition
+                // pseudo-element - or in a logical combination after one -
+                // :only-child tests that pseudo-element in its tree.
+                const follows_view_transition = ctx.after_view_transition or
+                    (if (after_pseudo_element) |pseudo| isNamedViewTransitionName(pseudo) else false);
+                if (kind == .OnlyChild and follows_view_transition) return .{ .PseudoClass = .{ .kind = .PseudoElementOnlyChild } };
                 return .{ .PseudoClass = .{ .kind = kind } };
             },
             .function => {
@@ -1549,7 +1564,11 @@ pub const Parser = struct {
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
-                const kind = try self.functionalPseudoClass(token.value, args, ctx);
+                var inner = ctx;
+                if (after_pseudo_element) |pseudo| {
+                    if (isNamedViewTransitionName(pseudo)) inner.after_view_transition = true;
+                }
+                const kind = try self.functionalPseudoClass(token.value, args, inner);
                 var selector = PseudoClassSelector{ .kind = kind };
                 if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
                     selector.deinit(self.allocator);
@@ -1617,7 +1636,20 @@ pub const Parser = struct {
     /// by any combination of the logical combination pseudo-classes and the
     /// user action pseudo-classes." ::part() (CSS Shadow Parts) also allows
     /// the pseudo-classes that are not tree-structural.
+    ///
+    /// The view transition pseudo-elements allow no user action
+    /// pseudo-class, and the named ones :only-child (View Transitions 1
+    /// §3.1, the pseudo-element tree). Chrome, Firefox and Safari agree
+    /// (wpt.fyi 2358bd4835, css/css-view-transitions/parsing/
+    /// pseudo-elements-{valid,valid-with-classes,invalid}.html): Blink's
+    /// IsPseudoClassValidAfterPseudoElement takes only :only-child for them.
     fn allowedAfterPseudoElement(pseudo_element: []const u8, kind: PseudoClassKind) bool {
+        const view_transition_root = std.mem.eql(u8, pseudo_element, "view-transition");
+        if (view_transition_root or isNamedViewTransitionName(pseudo_element)) return switch (kind) {
+            .Is, .Where, .Not => true,
+            .OnlyChild => !view_transition_root,
+            else => false,
+        };
         switch (kind) {
             .Hover, .Active, .Focus, .FocusVisible, .FocusWithin, .Is, .Where, .Not => return true,
             .FirstChild, .LastChild, .OnlyChild, .FirstOfType, .LastOfType, .OnlyOfType, .Empty, .Root, .NthChild, .NthLastChild, .NthOfType, .NthLastOfType, .Has, .Scope, .Host => return false,
@@ -1628,7 +1660,7 @@ pub const Parser = struct {
     /// A functional pseudo-class `name(` over its arguments `args`.
     fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
         const real = Context{ .real = true, .in_has = ctx.in_has };
-        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true };
+        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_view_transition = ctx.after_view_transition };
         if (std.ascii.eqlIgnoreCase(name, "not")) {
             // 4.3: :not(<complex-real-selector-list>).
             return .{ .Not = try self.boxedList(args, logical, .{ .forgiving = false, .relative = false }) };
