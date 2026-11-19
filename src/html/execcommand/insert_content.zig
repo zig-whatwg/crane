@@ -495,6 +495,66 @@ fn replaceWithText(edit: *Edit, fragment: *Instance, start_node: *Instance) !voi
     }
 }
 
+/// Before insertImage inserts its img: the editable inline elements around
+/// the collapsed active range are split at it, emptied ones removed, and
+/// the range moved between the halves up to the nearest block or editing
+/// host, so the img is inserted beside them - all three browsers give
+/// `foo<b>[bar]</b>baz` -> `foo<img>baz`, `<div><b>A[]B</b></div>` ->
+/// `<div><b>A</b><img><b>B</b></div>` and `<b>foo[bar</b><i>baz]quz</i>`
+/// -> `<b>foo</b><img><i>quz</i>` (editing/run/insertimage.html: 15
+/// subtests PPP or PFP at wpt.fyi 2358bd4835), where the spec's insertNode
+/// puts the img inside the (possibly emptied) element. Mechanism: Blink's
+/// ReplaceSelectionCommand inserts the fragment at the position it moves
+/// out of the inline ancestors (PositionAvoidingPrecedingNodes) and
+/// splits the tree to it (SplitTreeToNode); Gecko's
+/// HTMLEditor::InsertElementAtSelectionAsAction splits the inline
+/// ancestors at the point (InsertNodeIntoProperAncestorWithTransaction).
+/// Golden rule 2, no newer spec.
+fn splitInlinesForInsertion(edit: *Edit) !void {
+    if (!try edit.rangeCollapsed()) return;
+    var point = (try edit.rangeStart()) orelse return;
+    // A Text node splits at the point; the point then lies between its
+    // halves in the parent.
+    if (common.isText(point.node)) {
+        const p = (try common.parent(point.node)) orelse return;
+        const index = try common.indexOf(point.node);
+        const length = try common.nodeLength(point.node);
+        if (point.offset == 0) {
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset == length) {
+            point = .{ .node = p, .offset = index + 1 };
+        } else {
+            _ = try interfaces.Text.call_splitText(point.node, point.offset);
+            edit.modified = true;
+            point = .{ .node = p, .offset = index + 1 };
+        }
+    }
+    while (common.isElement(point.node) and common.isInlineNode(point.node) and (try common.isEditable(point.node)) and !try common.isEditingHost(point.node)) {
+        const element = point.node;
+        const p = (try common.parent(element)) orelse break;
+        if (!try common.isEditableOrEditingHost(p)) break;
+        const index = try common.indexOf(element);
+        const count = try common.childCount(element);
+        if (count == 0) {
+            try edit.removeNode(element);
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset == 0) {
+            point = .{ .node = p, .offset = index };
+        } else if (point.offset >= count) {
+            point = .{ .node = p, .offset = index + 1 };
+        } else {
+            const after = try common.cloneNode(element, false);
+            if (try common.hasAttribute(after, "id")) try common.removeAttribute(after, "id");
+            try edit.insertBefore(p, after, try common.nextSibling(element));
+            while (try common.childAt(element, point.offset)) |child| {
+                try edit.movePreservingRanges(child, after, try common.childCount(after));
+            }
+            point = .{ .node = p, .offset = index + 1 };
+        }
+    }
+    try edit.collapse(point.node, point.offset);
+}
+
 /// The insertImage action.
 pub fn insertImage(edit: *Edit, value: []const u8) !bool {
     // Step 1: "If value is the empty string, return false."
@@ -505,6 +565,12 @@ pub fn insertImage(edit: *Edit, value: []const u8) !bool {
 fn insertImageSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Step 2: "Delete the selection, with strip wrappers false."
     try delete.deleteTheSelection(edit, true, false, .forward);
+    // The img goes between the inline elements around the insertion point,
+    // not into them (see splitInlinesForInsertion) - before step 3 takes
+    // the active range.
+    if (try edit.rangeStart()) |point| {
+        if (try common.isEditableOrEditingHost(point.node)) try splitInlinesForInsertion(edit);
+    }
     // Step 3: "Let range be the active range."
     const range = (try edit.activeRange()) orelse return true;
     // Step 4: "If the active range's start node is neither editable nor an
