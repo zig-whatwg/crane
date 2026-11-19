@@ -458,14 +458,22 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
         // Whether step 10.1 takes away a container of another name (see
         // step 10.3 below).
         var dissolved_other_name = false;
+        // A container step 10.1 took away whose attributes the new block
+        // takes over (see below), and its children's recorded values.
+        var dissolved_with_attributes: ?*Instance = null;
+        var child_values: overrides.Values = .{};
         if (try dissolvesForFormatBlock(first)) {
             dissolved_other_name = !try common.localNameIs(first, name);
             // Step 10.1: a single-line container gives way to its children.
             var child = try common.firstChild(first);
             while (child) |c| : (child = try common.nextSibling(c)) try sublist.append(edit.allocator, c);
-            const child_values = try overrides.recordTheValues(edit, sublist.items);
+            child_values = try overrides.recordTheValues(edit, sublist.items);
             try split_parent.removePreservingDescendants(edit, first);
-            try overrides.restoreTheValues(edit, child_values);
+            if (try hasAttributes(first)) {
+                dissolved_with_attributes = first;
+            } else {
+                try overrides.restoreTheValues(edit, child_values);
+            }
             index += 1;
         } else {
             // Step 10.2: a run of consecutive siblings, up to a single-line
@@ -498,14 +506,52 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
         //   on "p"; Firefox also keeps a div host's span and a p host on
         //   "div"; editing/run/formatblock.html at wpt.fyi 5af3c135c9).
         if (sublist.items.len == 0) continue;
-        if (!dissolved_other_name and try nearestFormatBlockIsNamed(sublist.items[0], name)) continue;
-        if (!try nameIsAllowedInHost(sublist.items[0], name)) continue;
-        if (try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name })) |result| {
-            try fixDisallowedAncestors(edit, result);
+        // A container with attributes that was taken away hands them to the
+        // new block, as all three browsers do (`<div style=color:blue>[foo]
+        // </div>` + "p" -> `<p style="color:blue">foo</p>`, where the spec
+        // restores the color on a span or font inside: editing/run/
+        // formatblock.html, PPP at wpt.fyi 2358bd4835; Gecko's
+        // ReplaceContainerAndCloneAttributesWithTransaction, Blink's
+        // ReplaceElementWithSpanPreservingChildrenAndAttributes-style
+        // replacement). When no new block takes them, the values are
+        // restored as step 10.1 says.
+        var wrapped: ?*Instance = null;
+        skip: {
+            if (!dissolved_other_name and try nearestFormatBlockIsNamed(sublist.items[0], name)) break :skip;
+            if (!try nameIsAllowedInHost(sublist.items[0], name)) break :skip;
+            wrapped = try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name });
         }
+        if (dissolved_with_attributes) |old| {
+            if (wrapped != null and !try hasAttributes(wrapped.?) and (try common.firstChild(wrapped.?)) == sublist.items[0]) {
+                try copyAttributes(old, wrapped.?);
+            } else {
+                try overrides.restoreTheValues(edit, child_values);
+            }
+        }
+        if (wrapped) |result| try fixDisallowedAncestors(edit, result);
     }
     // Step 11.
     return true;
+}
+
+fn hasAttributes(element: *Instance) !bool {
+    const attributes = try interfaces.Element.get_attributes(element);
+    return (try interfaces.NamedNodeMap.get_length(attributes)) > 0;
+}
+
+/// Copy every attribute of `from` onto `to`.
+fn copyAttributes(from: *Instance, to: *Instance) !void {
+    const attributes = try interfaces.Element.get_attributes(from);
+    const count = try interfaces.NamedNodeMap.get_length(attributes);
+    var i: u32 = 0;
+    while (i < count) : (i += 1) {
+        const attr = (try interfaces.NamedNodeMap.call_item(attributes, i)) orelse continue;
+        var attr_name = try interfaces.Attr.get_name(attr);
+        defer attr_name.deinit(from.ctx.allocator);
+        var value = try interfaces.Attr.get_value(attr);
+        defer value.deinit(from.ctx.allocator);
+        try common.setAttribute(to, attr_name.asSlice(), value.asSlice());
+    }
 }
 
 /// "allowed child" with a string parent (the spec's steps 1-5 and 9-14;
