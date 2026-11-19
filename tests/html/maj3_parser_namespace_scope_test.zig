@@ -173,3 +173,64 @@ test "after head's implied body sets frameset-ok to ok: a template in head does 
         \\
     );
 }
+
+/// The first element named `name` under `node`, in tree order.
+fn find(node: *TreeNode, name: []const u8) ?*TreeNode {
+    var child = node.first_child;
+    while (child) |c| : (child = c.next_sibling) {
+        if (c.node_type == .element and c.hasTagName(name)) return c;
+        if (find(c, name)) |found| return found;
+    }
+    return null;
+}
+
+fn attributeOfFirstInput(input: []const u8) ![]u8 {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, input);
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    try builder.parse();
+    const element = find(builder.document, "input") orelse return error.NoInput;
+    return allocator.dupe(u8, element.getAttribute("value") orelse return error.NoValue);
+}
+
+test "a CR in an attribute value is a newline, and a later LF that does not follow it is one too" {
+    // HTML 13.2.3.5: a CR not followed by an LF becomes an LF; only "a U+000D
+    // CARRIAGE RETURN (CR) code point followed by a U+000A LINE FEED (LF)"
+    // pair is one newline. Characters between them break the pair.
+    // (html/syntax/parsing/newline-normalization-cr-then-lf.html: Chrome,
+    // Firefox and Safari PASS at wpt.fyi 2358bd4835.)
+    for ([_][]const u8{ "<body><input value='before\rABCDEF\nafter'>", "<body><input value=\"before\rABCDEF\nafter\">" }) |input| {
+        const value = try attributeOfFirstInput(input);
+        defer testing.allocator.free(value);
+        try testing.expectEqualStrings("before\nABCDEF\nafter", value);
+    }
+    // A CR LF pair is still one newline.
+    const pair = try attributeOfFirstInput("<body><input value='before\r\nafter'>");
+    defer testing.allocator.free(pair);
+    try testing.expectEqualStrings("before\nafter", pair);
+}
+
+fn documentMode(input: []const u8) !parser.QuirksMode {
+    var tokenizer = Tokenizer.init(testing.allocator, input);
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(testing.allocator, &tokenizer);
+    defer builder.deinit();
+    try builder.parse();
+    return builder.quirks_mode;
+}
+
+test "an HTML 4.01 Frameset or Transitional DOCTYPE with an empty system identifier is quirks, as with none" {
+    // HTML 13.2.6.4.1 (whatwg/html#12023): "The system identifier is missing
+    // or the empty string, and the public identifier starts with:
+    // "-//W3C//DTD HTML 4.01 Frameset//"" - and Transitional - sets quirks
+    // mode; a system identifier that is "neither missing nor the empty
+    // string" sets limited-quirks. Chrome and Safari ship it
+    // (html/syntax/parsing/doctype-system-identifier-distinction.html,
+    // wpt.fyi 2358bd4835; Firefox not yet): golden rule 2, the newer spec.
+    try testing.expectEqual(parser.QuirksMode.quirks, try documentMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \"\"><p>"));
+    try testing.expectEqual(parser.QuirksMode.quirks, try documentMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" ''><p>"));
+    try testing.expectEqual(parser.QuirksMode.quirks, try documentMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\"><p>"));
+    try testing.expectEqual(parser.QuirksMode.limited_quirks, try documentMode("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01 Frameset//EN\" \"http://www.w3.org/TR/html4/frameset.dtd\"><p>"));
+}
