@@ -7,6 +7,7 @@ const std = @import("std");
 const types = @import("types.zig");
 const parser = @import("parser.zig");
 const setlike_mod = @import("setlike.zig");
+const maplike_mod = @import("maplike.zig");
 const writer = @import("writer.zig");
 const files = @import("files.zig");
 const refs = @import("refs.zig");
@@ -1612,9 +1613,23 @@ fn generateInterfaceFile(
     var iterable_member: ?types.Iterable = null;
     var async_iterable_member: ?types.AsyncIterable = null;
     var setlike_member: ?types.Setlike = null;
+    var maplike_member: ?types.Maplike = null;
 
     for (interface.members) |member| {
         switch (member.type) {
+            .maplike => {
+                // WebIDL 2.5.11: the binding defines the members over the
+                // impl's map entries (maplike.zig), for an interface whose
+                // impl keeps them; the others keep their old parser
+                // placeholder, as unimplemented setlike declarations do.
+                if (maplike_mod.isImplemented(interface.name)) {
+                    maplike_member = member.maplike;
+                } else try own_constants.append(allocator, .{
+                    .name = "_skipped",
+                    .idlType = .{ .type = "void" },
+                    .value = .null,
+                });
+            },
             .setlike => {
                 // WebIDL 2.5.12: the binding defines the members over the
                 // impl's set entries (setlike.zig), for an interface whose
@@ -1818,6 +1833,7 @@ fn generateInterfaceFile(
         own_overload_ops.items, // Every overload, for each method's `length`
         &special,
         setlike_member, // Setlike declaration if present (and implemented)
+        maplike_member, // Maplike declaration if present (and implemented)
         type_registry, // Meta.same_object_attributes: which getters return an engine value
     );
     // HTML 3.2.3: an [HTMLConstructor] constructor's steps are HTML's.
@@ -1936,6 +1952,11 @@ fn generateInterfaceFile(
     // The set entries of a setlike declaration, for the binding's members.
     if (setlike_member) |set| {
         try setlike_mod.writeEntriesDelegate(w, impl_name, set);
+    }
+
+    // The map entries of a maplike declaration, for the binding's members.
+    if (maplike_member) |map| {
+        try maplike_mod.writeEntriesDelegate(w, impl_name, map);
     }
 
     // WebIDL 2.5.6.2: an interface that declares a named property getter

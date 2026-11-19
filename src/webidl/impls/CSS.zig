@@ -83,6 +83,25 @@ fn windowWorklet(ctx: runtime.Context, comptime kind: @TypeOf(.enum_literal), co
     return .{ .instance = worklet };
 }
 
+/// CSS Custom Highlight API 1 §2.3: "The highlight registry is accessed via
+/// the highlights attribute of the CSS namespace" - one per Window, made on
+/// first read and kept by the Window (a traced edge, as a worklet is), so a
+/// later read answers the same registry. Blink keeps it as a supplement of
+/// the LocalDOMWindow (HighlightRegistry::From).
+pub fn get_highlights(ctx: runtime.Context) anyerror!runtime.JSValue {
+    const record = ctx.getRealm() orelse return error.InvalidStateError;
+    const window: *runtime.Instance = @ptrCast(@alignCast(record.global_object orelse return error.InvalidStateError));
+    if (window.stateAs(interfaces.Window.State) == null) return error.InvalidStateError;
+    const slot: engine.TracedSlot = .{ .name = "CSS.highlights" };
+    if (engine.tracedValue(window, slot)) |held| {
+        defer held.release();
+        if (engine.convertToPlatformObject(ctx, held.value)) |registry| return .{ .instance = registry };
+    }
+    const registry = try interfaces.HighlightRegistry.init(ctx.allocator, ctx);
+    engine.traceChild(window, registry, slot);
+    return .{ .instance = registry };
+}
+
 // Not implemented yet: each answers NotImplemented (an operation throws).
 
 pub fn call_parseDeclarationList(ctx: runtime.Context, css: runtime.JSValue, options: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {

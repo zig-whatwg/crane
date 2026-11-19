@@ -51,6 +51,10 @@ pub const HighlightRegistry = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Maplike declaration (WebIDL 2.5.11): the binding defines its members
+        /// (3.7.11) over the impl's map entries (`maplikeEntries`).
+        pub const maplike = .{ .key_type = "DOMString", .value_type = "Highlight", .readonly = false };
     };
 
     pub const State = runtime.FlattenedState(
@@ -60,10 +64,6 @@ pub const HighlightRegistry = struct {
             _internal: ?*HighlightRegistryImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .call_highlightsFromPoint = &call_highlightsFromPoint,
@@ -166,4 +166,10 @@ pub const HighlightRegistry = struct {
     pub const restricted_floats = .{
         .{ "call_highlightsFromPoint", 0b11 },
     };
+
+    /// The map entries of this maplike object (WebIDL 2.5.11), for the
+    /// binding's maplike members.
+    pub fn maplikeEntries(instance: *runtime.Instance) ?*webidl.maplike.PlatformObjects {
+        return HighlightRegistryImpl.maplikeEntries(instance);
+    }
 };

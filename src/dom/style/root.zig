@@ -21,6 +21,7 @@ pub const typed_om = @import("typed_om.zig");
 pub const content_visibility = @import("content_visibility.zig");
 pub const font_hints = @import("font_hints.zig");
 pub const matched_properties_cache = @import("matched_properties_cache.zig");
+pub const highlights = @import("highlights.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
