@@ -85,13 +85,14 @@ const data_slot: engine.TracedSlot = .{ .name = "data" };
 const actions_slot: engine.TracedSlot = .{ .name = "actions" };
 
 fn getInternal(instance: *runtime.Instance) ?*InternalState {
-    return instance.getState(State).own._internal;
+    const state = instance.stateAs(State) orelse return null;
+    return state.own._internal;
 }
 
 /// Notification's own teardown: the generated chain runs EventTarget's after
 /// it.
 pub fn deinitOwn(instance: *runtime.Instance) void {
-    const state = instance.getState(State);
+    const state = instance.stateAs(State) orelse return;
     const internal = state.own._internal orelse return;
     // The [SameObject] values an object freed before it was wrapped still
     // waits to hand to its wrapper.
@@ -391,7 +392,11 @@ pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options_
 
     // 4. Associate this with notification.
     const instance = try Notification.init(ctx.allocator, ctx);
-    instance.getState(State).own._internal = notification;
+    const state = instance.stateAs(State) orelse {
+        instance.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(instance));
+        return error.InvalidStateError;
+    };
+    state.own._internal = notification;
 
     // 5. Run these steps in parallel:
     //    1. If the result of getting the notifications permission state is
