@@ -2183,10 +2183,10 @@ const QueryContainer = struct {
 /// @container rule's <container-condition>#, "true if any of its component
 /// <container-condition>s are true" (5.4), each selecting its own query
 /// container. Out of memory, a condition is not true.
-fn containerHolds(context: *anyopaque, conditions: *const css.container_queries.List) bool {
+fn containerHolds(context: *anyopaque, compiled: *const css.container_queries.Compiled) bool {
     const res: *Resolution = @ptrCast(@alignCast(context));
     const subject = res.query_subject orelse return false;
-    for (conditions.conditions) |condition| {
+    for (compiled.conditions) |condition| {
         if (containerConditionHolds(res, subject, condition) catch false) return true;
     }
     return false;
@@ -2201,14 +2201,12 @@ fn containerHolds(context: *anyopaque, conditions: *const css.container_queries.
 /// to just those with a matching query container name." With no eligible
 /// ancestor the query is unknown; with no <container-query> the container
 /// is eligible "as long as the <container-name> matches".
-fn containerConditionHolds(res: *Resolution, subject: QuerySubject, condition: css.container_queries.Condition) Allocator.Error!bool {
-    const needs: css.container_queries.Needs = if (condition.query.len == 0) .{} else try css.container_queries.needsOf(res.allocator, condition.query);
-    if (needs.unknown) return false;
-    const container = queryContainer(subject, condition.name, needs) orelse return false;
-    if (condition.query.len == 0) return true;
+fn containerConditionHolds(res: *Resolution, subject: QuerySubject, condition: css.container_queries.CompiledCondition) anyerror!bool {
+    if (condition.needs.unknown) return false;
+    const container = queryContainer(subject, condition.name, condition.needs) orelse return false;
+    const query = condition.query orelse return true;
     var evaluation: ContainerEvaluation = .{ .res = res, .container = container };
-    const truth = try css.container_queries.evaluate(res.allocator, condition.query, .{ .context = &evaluation, .style = ContainerEvaluation.style });
-    return truth == .true;
+    return (try css.container_queries.Compiled.evaluate(query, &evaluation)) == .true;
 }
 
 /// The nearest flat-tree ancestor - the originating element first for a
@@ -2248,10 +2246,8 @@ const ContainerEvaluation = struct {
     res: *Resolution,
     container: QueryContainer,
 
-    fn style(context: *anyopaque, body: []const u8) Allocator.Error!css.container_queries.Truth {
-        const self: *ContainerEvaluation = @ptrCast(@alignCast(context));
-        var query = (try css.if_function.parseStyleQuery(self.res.allocator, body)) orelse return .unknown;
-        defer query.deinit();
+    /// A style() query of the compiled condition (container_queries.Node).
+    pub fn styleQuery(self: *ContainerEvaluation, query: *const css.if_function.StyleQuery) anyerror!css.container_queries.Truth {
         return query.evaluate(self) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             else => .false,

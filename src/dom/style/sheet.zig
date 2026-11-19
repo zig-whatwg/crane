@@ -476,8 +476,9 @@ pub const ScopeData = struct {
 pub const Condition = struct {
     /// The @media rule's list; null for an @container rule.
     media: ?*const MediaQueryList = null,
-    /// The @container rule's conditions; null for an @media rule.
-    container: ?*const css.container_queries.List = null,
+    /// The @container rule's conditions, compiled for evaluation when the
+    /// sheet is (OWNED: Contents.destroy frees it); null for an @media rule.
+    container: ?*css.container_queries.Compiled = null,
     parent: ?u32,
 };
 
@@ -488,7 +489,7 @@ pub const Condition = struct {
 /// evaluates the query against it.
 pub const ContainerQueries = struct {
     context: *anyopaque,
-    holds: *const fn (context: *anyopaque, conditions: *const css.container_queries.List) bool,
+    holds: *const fn (context: *anyopaque, conditions: *const css.container_queries.Compiled) bool,
 };
 
 /// A CSS-connected font rule and its existing conditional-rule chain.
@@ -606,6 +607,10 @@ pub const Contents = struct {
         self.property_rules.deinit(a);
         self.keyframes_rules.deinit(a);
         self.rules.deinit(a);
+        for (self.conditions.items) |c| if (c.container) |compiled| {
+            compiled.deinit();
+            a.destroy(compiled);
+        };
         self.conditions.deinit(a);
         for (self.layers.items) |name| a.free(name);
         self.layers.deinit(a);
@@ -713,8 +718,13 @@ const Compiler = struct {
             // (`Contents.conditionHoldsFor`); name-defining rules inside
             // are not constrained (`conditionHolds`).
             .container => |*c| {
+                const a = self.contents.allocator;
                 const index: u32 = @intCast(self.contents.conditions.items.len);
-                try self.contents.conditions.append(self.contents.allocator, .{ .container = &c.conditions, .parent = condition });
+                try self.contents.conditions.ensureUnusedCapacity(a, 1);
+                const compiled = try a.create(css.container_queries.Compiled);
+                errdefer a.destroy(compiled);
+                compiled.* = try css.container_queries.compile(a, &c.conditions);
+                self.contents.conditions.appendAssumeCapacity(.{ .container = compiled, .parent = condition });
                 try self.ruleList(c.children.items, index, layer);
             },
             // Cascade 6 3.5: the style rules inside are scoped style rules
