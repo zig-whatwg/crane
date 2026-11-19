@@ -1317,6 +1317,11 @@ const Matcher = struct {
             .FirstChild => previousElementSibling(node) == null,
             .LastChild => nextElementSibling(node) == null,
             .OnlyChild => previousElementSibling(node) == null and nextElementSibling(node) == null,
+            // View Transitions 1 §3.1: the view transition pseudo-element the
+            // style engine resolves (pseudo_target) has no sibling in the
+            // view transition tree. It follows only a named view transition
+            // pseudo-element, whose originating element is `node`.
+            .PseudoElementOnlyChild => if (self.pseudo_target) |wanted| @import("style/hooks.zig").viewTransitionOnlyChild(element, wanted) else false,
             .FirstOfType => self.typeIndex(node, data, false) == 1,
             .LastOfType => self.typeIndex(node, data, true) == 1,
             .OnlyOfType => self.typeIndex(node, data, false) == 1 and self.typeIndex(node, data, true) == 1,

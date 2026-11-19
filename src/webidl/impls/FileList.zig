@@ -30,6 +30,10 @@
 //! carries the File's slab generation and realm (KeptInstance): only the
 //! teardown net, so a File a realm's teardown freed reads as absent, never
 //! as a freed or reissued object.
+//!
+//! A FileList is [Serializable] (File API 5): its record is its Files, each
+//! a sub-serialization, and a deserialized list keeps the Files made for it
+//! in the target realm the same way.
 
 const std = @import("std");
 const runtime = @import("runtime");
@@ -152,4 +156,58 @@ pub fn call_item(instance: *runtime.Instance, index: u32) anyerror!?*runtime.Ins
     const internal = getInternal(instance) orelse return null;
     if (index >= internal.files.items.len) return null;
     return internal.files.items[index].get();
+}
+
+// ============================================================================
+// Serializable objects (HTML 2.7.1; File API 5: FileList is [Serializable])
+// ============================================================================
+
+/// File API, FileList's serialization steps, given `value` and `serialized`:
+///
+/// 1. Set serialized.[[Files]] to an empty list.
+/// 2. For each file in value, append the sub-serialization of file to
+///    serialized.[[Files]].
+///
+/// [[Files]] is written as its length, then each File handed to the adapter
+/// as a sub-serialization - StructuredSerializeInternal with the same
+/// memory, so a File the message also holds elsewhere stays one object. The
+/// Files are this list's own (it keeps each), so they outlive the steps, as
+/// a sub-serialization must. A File the list no longer holds (its realm
+/// ended under it: `KeptInstance.get`) is not in the list, as `item()`
+/// answers.
+pub fn serializationSteps(value: *runtime.Instance, serialized: *runtime.SerializationRecord) !void {
+    const files: []const KeptInstance = if (getInternal(value)) |internal| internal.files.items else &.{};
+    var count: u32 = 0;
+    for (files) |kept| {
+        if (kept.get() != null) count += 1;
+    }
+    // Step 1.
+    try serialized.writeUint32(count);
+    // Step 2.
+    for (files) |kept| {
+        const file = kept.get() orelse continue;
+        try serialized.subSerialize(.{ .instance = file });
+    }
+}
+
+/// File API, FileList's deserialization steps, given `serialized` and
+/// `value`:
+///
+/// 1. For each file of serialized.[[Files]], add the sub-deserialization of
+///    file to value.
+///
+/// Each sub-deserialization is a File of `target_realm` (wrapped there by
+/// the adapter); the list keeps it as it keeps any File it is given
+/// (`append`: an edge from the list's wrapper, drawn when the list is
+/// wrapped). Anything but a File did not come from the steps above: a
+/// DataCloneError.
+pub fn deserializationSteps(serialized: *runtime.DeserializationRecord, value: *runtime.Instance, target_realm: runtime.Context) !void {
+    const count = try serialized.readUint32();
+    // Step 1.
+    for (0..count) |_| {
+        const sub_value = try serialized.subDeserialize();
+        const file = engine.convertToPlatformObject(target_realm, sub_value) orelse return error.DataCloneError;
+        if (!file.implements(interfaces.File.State)) return error.DataCloneError;
+        try append(value, file);
+    }
 }
