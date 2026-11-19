@@ -570,9 +570,9 @@ pub const Compiled = struct {
     style_queries: []*@import("if_function.zig").StyleQuery,
 
     pub fn deinit(self: *Compiled) void {
-        for (self.style_queries) |query| {
-            query.deinit();
-            self.allocator.destroy(query);
+        for (self.style_queries) |style_query| {
+            style_query.deinit();
+            self.allocator.destroy(style_query);
         }
         self.arena.deinit();
         self.* = undefined;
@@ -584,7 +584,7 @@ pub const Compiled = struct {
     pub fn evaluate(node: *const Node, context: anytype) anyerror!Truth {
         return switch (node.*) {
             .unknown => .unknown,
-            .style => |query| try context.styleQuery(query),
+            .style => |style_query| try context.styleQuery(style_query),
             .not => |operand| negate(try evaluate(operand, context)),
             .all => |operands| blk: {
                 var result: Truth = .true;
@@ -604,9 +604,9 @@ pub const Compiled = struct {
 pub fn compile(allocator: Allocator, list: *const List) Allocator.Error!Compiled {
     var builder: Builder = .{ .arena = std.heap.ArenaAllocator.init(allocator), .allocator = allocator };
     errdefer {
-        for (builder.style_queries.items) |query| {
-            query.deinit();
-            allocator.destroy(query);
+        for (builder.style_queries.items) |style_query| {
+            style_query.deinit();
+            allocator.destroy(style_query);
         }
         builder.style_queries.deinit(allocator);
         builder.arena.deinit();
@@ -617,7 +617,7 @@ pub fn compile(allocator: Allocator, list: *const List) Allocator.Error!Compiled
         out.* = .{ .name = condition.name, .needs = .{}, .query = null };
         if (condition.query.len == 0) continue;
         out.needs = try needsOf(allocator, condition.query);
-        out.query = try builder.query(condition.query, 0);
+        out.query = try builder.parseQuery(condition.query, 0);
     }
     const style_queries = try arena.dupe(*@import("if_function.zig").StyleQuery, builder.style_queries.items);
     builder.style_queries.deinit(allocator);
@@ -635,7 +635,7 @@ const Builder = struct {
         return out;
     }
 
-    fn query(self: *Builder, text: []const u8, depth: u32) Allocator.Error!*const Node {
+    fn parseQuery(self: *Builder, text: []const u8, depth: u32) Allocator.Error!*const Node {
         const items = try components(self.allocator, text) orelse return self.make(.unknown);
         defer self.allocator.free(items);
         return self.queryItems(text, items, depth);
@@ -704,15 +704,15 @@ fn disjunction(x: Truth, y: Truth) Truth {
 }
 
 const EvaluationTest = struct {
-    fn styleQuery(self: *const EvaluationTest, query: *const @import("if_function.zig").StyleQuery) anyerror!Truth {
+    fn styleQuery(self: *const EvaluationTest, style_query: *const @import("if_function.zig").StyleQuery) anyerror!Truth {
         _ = self;
-        return query.evaluate(Feature{});
+        return style_query.evaluate(Feature{});
     }
 
     const Feature = struct {
-        pub fn evaluate(self: Feature, feature: @import("if_function.zig").StyleFeature) anyerror!Truth {
+        pub fn evaluate(self: Feature, leaf: @import("if_function.zig").StyleFeature) anyerror!Truth {
             _ = self;
-            const name = switch (feature) {
+            const name = switch (leaf) {
                 .boolean => |n| n,
                 else => return .unknown,
             };
