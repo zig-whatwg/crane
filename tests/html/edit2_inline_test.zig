@@ -134,6 +134,16 @@ const exact_wrap_cases = [_]Case{
     .{ .input = "<font color=#ff0000>a[b]c</font>", .commands = "[[\"styleWithCSS\",\"false\"],[\"fontSize\",\"7\"]]", .expected = "<font color=\"#ff0000\">a<font size=\"7\">b</font>c</font>" },
 };
 
+const decoration_cases = [_]Case{
+    // Firefox and Safari.
+    .{ .input = "foo<span style=\"text-decoration: underline\">[bar]</span>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "foo<span style=\"text-decoration:underline line-through\">bar</span>baz" },
+    .{ .input = "foo<ins>[bar]</ins>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "foo<ins style=\"text-decoration:underline line-through\">bar</ins>baz" },
+    .{ .input = "foo<del>[bar]</del>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"underline\",\"\"]]", .expected = "foo<del style=\"text-decoration:underline line-through\">bar</del>baz" },
+    // All three: the color and style go.
+    .{ .input = "abc<span style=\"text-decoration:underline blue dotted\">[def]</span>ghi", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "abc<span style=\"text-decoration:underline line-through\">def</span>ghi" },
+    .{ .input = "abc<span style=\"text-decoration:underline line-through blue dotted\">[def]</span>ghi", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "abc<span style=\"text-decoration:underline\">def</span>ghi" },
+};
+
 fn runCases(list: []const Case) !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -178,4 +188,12 @@ fn exactWrapCases() !void {
 
 test "a <font> or <span> wrapping exactly the node takes the new value" {
     try helpers.onFreshThread(exactWrapCases);
+}
+
+fn decorationCases() !void {
+    try runCases(&decoration_cases);
+}
+
+test "strikethrough and underline in CSS mode join the wrapper's text-decoration" {
+    try helpers.onFreshThread(decorationCases);
 }
