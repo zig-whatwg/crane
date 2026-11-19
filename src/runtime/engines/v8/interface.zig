@@ -8065,11 +8065,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
         const css_attribute_count = if (has_css_property_attributes) Interface.css_property_attributes.len else 0;
         const css_attribute_name_ptrs: [css_attribute_count][*]const u8 = if (has_css_property_attributes) blk: {
+            @setEvalBranchQuota(100_000);
             var out: [css_attribute_count][*]const u8 = undefined;
             for (0..css_attribute_count) |i| out[i] = Interface.css_property_attributes[i].ptr;
             break :blk out;
         } else .{};
         const css_attribute_name_lens: [css_attribute_count]usize = if (has_css_property_attributes) blk: {
+            @setEvalBranchQuota(100_000);
             var out: [css_attribute_count]usize = undefined;
             for (0..css_attribute_count) |i| out[i] = Interface.css_property_attributes[i].len;
             break :blk out;
