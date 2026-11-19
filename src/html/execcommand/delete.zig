@@ -1281,6 +1281,11 @@ pub fn deleteAction(edit: *Edit) !bool {
         // Step 4.1.
         if (point.offset == 0) {
             if (try common.previousSibling(point.node)) |previous| {
+                // A br alone between two blocks goes alone (brBetweenBlocks).
+                if (try brBetweenBlocks(previous)) {
+                    try edit.removeNode(previous);
+                    return true;
+                }
                 if ((try common.isEditable(previous)) and try common.isInvisible(previous)) {
                     try edit.removeNode(previous);
                     continue;
@@ -1616,6 +1621,11 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         // Step 4.1.
         if (point.offset == length) {
             if (try common.nextSibling(point.node)) |next| {
+                // A br alone between two blocks goes alone (brBetweenBlocks).
+                if (try brBetweenBlocks(next)) {
+                    try edit.removeNode(next);
+                    return true;
+                }
                 if ((try common.isEditable(next)) and try common.isInvisible(next)) {
                     try edit.removeNode(next);
                     continue;
