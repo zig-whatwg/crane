@@ -315,9 +315,19 @@ pub fn call_go(instance: *runtime.Instance, delta: webidl.Opt(i32)) anyerror!voi
     // - (a) history.go(0) while an earlier delta traversal that takes it to
     //   another document is pending is ignored (go0_middle, go0_last);
     // - (b) a delta traversal appended while a history.go(0) reload of it is
-    //   queued or running cancels the reload (go0_first).
-    // location.reload(), navigation.reload() and child navigables keep the
-    // spec's queue (integrator, 2026-10-28, lane nav2 C2).
+    //   queued or running cancels the reload (go0_first);
+    // - (c) location.reload() while an earlier location.reload() of it is
+    //   queued or running replaces that one (apply_history_step.reload): the
+    //   two reloads html/browsers/history/the-location-interface/
+    //   reload_document_write_onload.html makes in a row load the page once
+    //   more, not twice, in Chrome 157, Firefox 160 and Safari 27.2 alike
+    //   (all three: "lengths differ ... length 4" at wpt.fyi 2358bd4835,
+    //   4786307730243584, 4877168468033536, 6479119966273536; a new
+    //   navigation replaces the one in flight). Golden rule 2, the browsers
+    //   agreeing with no newer spec; it supersedes the 2026-10-28 line
+    //   (integrator, lane nav2 C2) that kept location.reload() on the spec's
+    //   queue (the integrator, 2026-11-19 9:50 AM ET, lane blk4).
+    // navigation.reload() and child navigables keep the spec's queue.
     if (delta_val == 0) {
         if (bc == top and apply_history_step.pendingCrossDocumentDelta(top, null) != null) return;
         // Step 3: "reload document's node navigable". Reload step 1: not
@@ -467,7 +477,9 @@ fn reloadNavigableWithNavigationApiState(window: *runtime.Instance, bc: *Browsin
 fn reloadWindow(window: *runtime.Instance, user_involvement: UserInvolvement) void {
     const bc = @import("dom").browser_state.browsingContextOf(window) orelse return;
     if (initialDocumentAwaitsNavigation(window, bc)) return;
-    reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, .reload);
+    // location.reload() (userInvolvement "none"): the reload rule (c) in
+    // call_go.
+    reloadNavigableWithNavigationApiState(window, bc, null, user_involvement, if (user_involvement == .none) .location_reload else .reload);
 }
 
 /// Whether `window`'s document is its navigable's initial about:blank while
