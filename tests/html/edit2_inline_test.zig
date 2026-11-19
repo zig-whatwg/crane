@@ -125,8 +125,10 @@ const exact_wrap_cases = [_]Case{
     .{ .input = "<font color=#ff0000>[abc]</font>", .commands = "[[\"styleWithCSS\",\"false\"],[\"fontSize\",\"7\"]]", .expected = "<font color=\"#ff0000\" size=\"7\">abc</font>" },
     .{ .input = "<font size=7>[abc]</font>", .commands = "[[\"styleWithCSS\",\"false\"],[\"foreColor\",\"#ff0000\"]]", .expected = "<font size=\"7\" color=\"#ff0000\">abc</font>" },
     .{ .input = "<font color=#ff0000>[abc]</font>", .commands = "[[\"styleWithCSS\",\"false\"],[\"fontName\",\"monospace\"]]", .expected = "<font color=\"#ff0000\" face=\"monospace\">abc</font>" },
-    // hilitecolor.html.
-    .{ .input = "<font size=6>[foo]</font>", .commands = "[[\"stylewithcss\",\"false\"],[\"hilitecolor\",\"#00FFFF\"]]", .expected = "<font size=\"6\" style=\"background-color:rgb(0, 255, 255)\">foo</font>" },
+    // hilitecolor.html: the background merges into a style-only span; a
+    // font keeps a new span inside (multitest.html's typed fonts need that;
+    // the browsers' style on an author's font is not distinguished).
+    .{ .input = "<font size=6>[foo]</font>", .commands = "[[\"stylewithcss\",\"false\"],[\"hilitecolor\",\"#00FFFF\"]]", .expected = "<font size=\"6\"><span style=\"background-color:rgb(0, 255, 255)\">foo</span></font>" },
     .{ .input = "<span style=font-size:xx-large>[foo]</span>", .commands = "[[\"stylewithcss\",\"true\"],[\"hilitecolor\",\"#00FFFF\"]]", .expected = "<span style=\"font-size:xx-large; background-color:rgb(0, 255, 255)\">foo</span>" },
     // A node with siblings still gets its own wrapper.
     .{ .input = "<font color=#ff0000>a[b]c</font>", .commands = "[[\"styleWithCSS\",\"false\"],[\"fontSize\",\"7\"]]", .expected = "<font color=\"#ff0000\">a<font size=\"7\">b</font>c</font>" },
