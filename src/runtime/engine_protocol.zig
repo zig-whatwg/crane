@@ -2732,6 +2732,55 @@ pub inline fn tracedValue(owner: *Instance, slot: TracedSlot) ?Owned {
     return impl.tracedValue(owner, slot);
 }
 
+/// `owner` keeps EXACTLY `values` in `slot` - the JavaScript values it holds
+/// for script that can reach back to it: an EventTarget's listeners'
+/// callbacks and its event handlers' functions, an observed node's registered
+/// observers - as edges from `owner`'s wrapper the collector traces, never
+/// roots, as `traceValue` keeps one (and in its namespace). The set REPLACES
+/// what the slot held - an empty one ends the slot's edges - and a value may
+/// be in it more than once (one function, two listeners). `values` is
+/// BORROWED; a platform object is kept as its wrapper in its relevant realm.
+/// An owner script has not seen yet keeps them strongly until its wrapper is
+/// made, as `traceValue`'s do.
+///
+/// Answers whether the engine keeps them: true when the edges are drawn or
+/// wait for the owner's wrapper; false when there is nothing to hang them on
+/// (the owner's realm has no engine realm left, its wrapper cache is tearing
+/// down) or the engine keeps no traced values - and the caller then keeps its
+/// own holds strong. A caller that keeps each value itself pairs this with
+/// `holdWeakly`: the hold says WHICH value, the edge KEEPS it.
+///
+/// Refcount decision D7 (tmp/plans/refcount-design.md 3): WebKit's
+/// JSEventListener holds its function weakly (`JSC::Weak<JSC::JSObject>
+/// m_jsFunction`) and marks it from the target's wrapper
+/// (EventTarget::visitJSEventListeners -> visitJSFunctionInGCThread), and its
+/// JSMutationObserver marks its callback the same way; Blink traces them from
+/// the target (EventTarget::Trace -> EventListenerMap ->
+/// RegisteredEventListener -> the listener's TraceWrapperV8Reference) and
+/// keeps an observer from each node it observes (MutationObserverRegistration
+/// `Member<MutationObserver> observer_`). V8: one private property on the
+/// owner's wrapper (its retained store, for a Window) holding the value, or
+/// an Array of them; JavaScriptCore and QuickJS: false. Never call it while
+/// the collector runs.
+pub inline fn traceValues(owner: *Instance, values: []const JSValue, slot: TracedSlot) bool {
+    return impl.traceValues(owner, values, slot);
+}
+
+/// `hold` stops keeping its value alive: from here the collector may take
+/// the value once nothing else keeps it - an edge `traceValues` drew is what
+/// keeps it - and the hold then reads EMPTY: `retainValue` of it fails, and
+/// an invocation through it (invokeCallbackFunction, callUserObjectOperation)
+/// is a TypeError, so a collected listener does not fire, as WebKit's does
+/// not once its JSC::Weak is cleared. The hold is still the caller's and is
+/// released exactly once, empty or not. Only for a hold the caller made with
+/// `traceValues` answering true for its value; calling it again is a no-op.
+/// V8: Global::SetWeak() with no callback (a phantom handle V8 resets).
+/// JavaScriptCore and QuickJS: nothing (their `traceValues` answers false,
+/// so it is never reached).
+pub inline fn holdWeakly(hold: Owned) void {
+    impl.holdWeakly(hold);
+}
+
 // Node tracing's opaque root (refcount design 2.2, section 7 step 4). WebKit
 // keeps a node's wrapper alive while the node's opaque root - its
 // shadow-including root - is reachable (JSNodeOwner::isReachableFromOpaqueRoots,
