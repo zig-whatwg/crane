@@ -917,11 +917,13 @@ const Command = struct {
         const element = knownElement(self.element) orelse return staleElement();
         const document = nodeDocumentOf(element) orelse return staleElement();
         self.key_document = Weak.of(document);
-        // Step 6: a File Upload input takes file paths - none exist here.
+        // Step 6: "Let file be true if element is input element in the file
+        // upload state". With strict file interactability false (the
+        // default), step 7 is skipped for it and step 8 selects the files.
         if (html.form_associated.isInput(element)) {
             var buffer: [16]u8 = undefined;
             if (std.mem.eql(u8, html.form_associated.inputType(element, &buffer), "file")) {
-                return .{ .code = "invalid argument", .message = "no files can be selected" };
+                return self.selectFiles(element);
             }
         }
         // Step 7.6: "If element is not keyboard-interactable": an element
@@ -940,6 +942,68 @@ const Command = struct {
         const id = allocator.dupe(u8, "__send_keys") catch return outOfMemory();
         self.own_key_source = id;
         return self.dispatchActionsForString(id);
+    }
+
+    /// Element Send Keys step 8, "file is true": the files `text` names - on
+    /// this host, where the runner and the WPT server run, as the server's
+    /// fs_path() substitution gives them - become `element`'s selected files.
+    fn selectFiles(self: *Command, element: *Instance) ?Failure {
+        const allocator = self.driver.allocator;
+        const host = @import("host");
+        // 8.1. "Let files be the result of splitting text on the newline
+        // (\n) character."
+        var paths: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer paths.deinit(allocator);
+        var split = std.mem.splitScalar(u8, self.text, '\n');
+        while (split.next()) |path| paths.append(allocator, path) catch return outOfMemory();
+        // 8.2. "If files is of 0 length, return an error with error code
+        // invalid argument."
+        if (paths.items.len == 0) return .{ .code = "invalid argument", .message = "no file was named" };
+        // 8.3-8.4. Without a multiple attribute, exactly one file.
+        const multiple = interfaces.Element.call_hasAttribute(element, runtime.DOMString.initInterned("multiple")) catch false;
+        if (!multiple and paths.items.len != 1) return .{ .code = "invalid argument", .message = "the input takes one file" };
+        // 8.5. "Verify that each file given by the user exists": each is read
+        // whole now, before any is selected.
+        const contents = allocator.alloc([]u8, paths.items.len) catch return outOfMemory();
+        var read: usize = 0;
+        defer {
+            for (contents[0..read]) |bytes| allocator.free(bytes);
+            allocator.free(contents);
+        }
+        for (paths.items, contents) |path, *bytes| {
+            if (path.len == 0 or !std.fs.path.isAbsolute(path)) return .{ .code = "invalid argument", .message = "a file path must be absolute" };
+            bytes.* = host.cwd().readFileAlloc(host.io(), path, allocator, .limited(256 * 1024 * 1024)) catch |err| switch (err) {
+                error.OutOfMemory => return outOfMemory(),
+                else => return .{ .code = "invalid argument", .message = "a named file does not exist" },
+            };
+            read += 1;
+        }
+        // 8.6. "Complete implementation specific steps equivalent to setting
+        // the selected files on the input element. If multiple is true files
+        // are be appended to element's selected files." Each is a File named
+        // by its path's last component, of the type "" (no platform MIME
+        // mapping is consulted), in the input's realm.
+        const realm = element.ctx;
+        const list = (interfaces.HTMLInputElement.get_files(element) catch return outOfMemory()) orelse
+            return .{ .code = "invalid argument", .message = "the input has no selected files list" };
+        if (!multiple) dom.file_lists.clear(list) catch return .{ .code = "unknown error", .message = "FileList is not installed" };
+        for (paths.items, contents) |path, bytes| {
+            const buffer = engine.createArrayBuffer(realm, bytes) catch return outOfMemory();
+            defer buffer.release();
+            const parts = engine.createSequenceOfValues(realm, &.{buffer.value}) catch return outOfMemory();
+            defer parts.release();
+            const file = interfaces.File.call_constructor(realm, parts.value, std.fs.path.basename(path), .notPassed()) catch return outOfMemory();
+            const generation = runtime.SlabAllocator.generationOf(file);
+            defer file.releaseIfUnwrapped(generation);
+            dom.file_lists.append(list, file) catch return outOfMemory();
+        }
+        // 8.7. "Fire these events in order on element: input, change" - as
+        // the user agent's file selection does (HTML 4.10.5.1.18: input
+        // bubbles and is composed, change bubbles).
+        html.form_associated.fireSimpleEvent(element, "input", .{ .bubbles = true, .composed = true }) catch {};
+        html.form_associated.fireSimpleEvent(element, "change", .{ .bubbles = true }) catch {};
+        // 8.8. "Return success with data null."
+        return null;
     }
 
     /// WebDriver "dispatch actions for a string", as ticks: the typeable

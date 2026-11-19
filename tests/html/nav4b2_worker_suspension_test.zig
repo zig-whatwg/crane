@@ -492,8 +492,8 @@ test "a request that cannot be granted, or a query, tells the holders of the loc
     defer registry.deinit();
     var holder: Holder = .{};
     var asker: Holder = .{};
-    const client_holder = try registry.register(&realm_a, &realm_a, origin, holder.delivery());
-    const client_asker = try registry.register(&realm_b, &realm_b, origin, asker.delivery());
+    const client_holder = try registry.register(&realm_a, &realm_a, origin, null, holder.delivery());
+    const client_asker = try registry.register(&realm_b, &realm_b, origin, null, asker.delivery());
 
     _ = try registry.request(client_holder, "res", .{});
     try testing.expectEqual(@as(usize, 0), holder.contended);
@@ -515,7 +515,7 @@ test "a request that cannot be granted, or a query, tells the holders of the loc
     // Shared with shared is grantable: no contention.
     var shared_holder: Holder = .{};
     var realm_c: u8 = 0;
-    const client_shared = try registry.register(&realm_c, &realm_c, origin, shared_holder.delivery());
+    const client_shared = try registry.register(&realm_c, &realm_c, origin, null, shared_holder.delivery());
     _ = try registry.request(client_shared, "shared", .{ .mode = .shared });
     _ = try registry.request(client_asker, "shared", .{ .mode = .shared });
     try testing.expectEqual(@as(usize, 0), shared_holder.contended);
@@ -529,8 +529,8 @@ test "locks1: a doomed holder's lock breaks at once - a request, an ifAvailable 
     defer registry.deinit();
     var holder: Holder = .{};
     var asker: Holder = .{};
-    const client_holder = try registry.register(&realm_a, &realm_a, origin, holder.delivery());
-    const client_asker = try registry.register(&realm_b, &realm_b, origin, asker.delivery());
+    const client_holder = try registry.register(&realm_a, &realm_a, origin, null, holder.delivery());
+    const client_asker = try registry.register(&realm_b, &realm_b, origin, null, asker.delivery());
 
     _ = try registry.request(client_holder, "res", .{});
     _ = try registry.request(client_holder, "kept", .{});
@@ -564,7 +564,7 @@ test "locks1: a doomed holder's lock breaks at once - a request, an ifAvailable 
     holder.doomed = true;
     var third: Holder = .{};
     var realm_c: u8 = 0;
-    const client_third = try registry.register(&realm_c, &realm_c, origin, third.delivery());
+    const client_third = try registry.register(&realm_c, &realm_c, origin, null, third.delivery());
     _ = try registry.request(client_third, "kept", .{});
     try testing.expectEqual(@as(usize, 2), asker.granted);
     try testing.expectEqual(@as(usize, 0), third.granted);
