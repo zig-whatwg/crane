@@ -667,7 +667,11 @@ fn dissolvesForFormatBlock(node: *Instance) !bool {
 /// A block holding other blocks is the value too: all three report "div"
 /// for `<div><ol><li>[foo]</ol></div>` and `<div><table><tr><td>[foo]
 /// </table></div>` (the data expects that after formatBlock, but the spec's
-/// "" before it: Crane follows the browsers). Mechanism: Blink
+/// "" before it: Crane follows the browsers). The 4 rows that trades - the
+/// value BEFORE on `<div>[foo<p>bar]</p></div>` and `<div><table><tr><td>
+/// [foo]</table></div>`, both separators, FFF: all three report "div" - are
+/// accepted for the 40 this gains (the user's ruling, 2026-11-19, lane
+/// edit2; tools/wpt_loss_dispositions.txt kind user-ruling). Mechanism: Blink
 /// ValueFormatBlock (editor_command.cc) over FirstEphemeralRangeOf(the
 /// VisibleSelection) and FormatBlockCommand::ElementForFormatBlockCommand
 /// (format_block_command.cc). Golden rule 2, no newer spec.
