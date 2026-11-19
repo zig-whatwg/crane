@@ -73,7 +73,7 @@ test "only the interfaces whose impls keep set entries are opted in" {
 }
 
 test "only HighlightRegistry's maplike declaration is opted in" {
-    const maplike = @import("codegen").maplike;
+    const maplike = codegen.maplike;
     try testing.expect(maplike.isImplemented("HighlightRegistry"));
     try testing.expect(!maplike.isImplemented("EventCounts"));
     try testing.expect(!maplike.isImplemented("AudioParamMap"));
