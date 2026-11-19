@@ -667,22 +667,26 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
         var children: std.ArrayList(*Instance) = .empty;
         var child = try common.firstChild(ancestor);
         while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
-        // A simple modifiable ancestor that clearing removes gives its other
-        // children copies of itself, not new elements: all three browsers
-        // keep `<s>foo[bar]baz</s>` + strikethrough as `<s>foo</s>bar<s>baz
-        // </s>` and `foo<em>b[a]r</em>baz` + italic as `foo<em>b</em>a<em>r
-        // </em>baz`, in CSS mode too, where force the value makes a strike,
-        // an i or a span (editing/run/strikethrough.html, italic.html: PPP at
-        // wpt.fyi 2358bd4835; the data's two spec rows `<u>foo[bar]baz</u>`
-        // and `<strike>foo[bar]baz</strike>` in CSS mode no browser passes).
-        // Mechanism: Blink PushDownInlineStyleAroundNode wraps the children
-        // in clones of the elements it pushes down; Gecko splits the element
-        // (SplitAncestorStyledInlineElementsAtRangeEdges). Golden rule 2, no
-        // newer spec.
+        // An s or em ancestor that clearing removes gives its other inline
+        // children copies of itself, not the strike, i or span force the
+        // value would make: all three browsers keep `<s>foo[bar]baz</s>` +
+        // strikethrough as `<s>foo</s>bar<s>baz</s>` and `foo<em>b[a]r</em>
+        // baz` + italic as `foo<em>b</em>a<em>r</em>baz`, in CSS mode too
+        // (editing/run/strikethrough.html, italic.html: PPP at wpt.fyi
+        // 2358bd4835). Mechanism: Blink PushDownInlineStyleAroundNode wraps
+        // the children in clones of the elements it pushes down; Gecko
+        // splits the element (SplitAncestorStyledInlineElementsAtRangeEdges).
+        // Golden rule 2, no newer spec. The browsers copy b, i, u, strike and
+        // styled spans the same way, but there the data still expects the
+        // spec's new elements in CSS mode (`<u>foo[bar]baz</u>`, `foo[<b>b]ar
+        // </b>baz`, `<strike>foo[bar]baz</strike>`...: ~30 rows FFF that Crane
+        // passes), so copying them would trade passing subtests - an OPEN
+        // ruling candidate (lane edit2's report, 2026-11-19); outside CSS mode
+        // force the value remakes the same b, i, u or strike anyway.
         var copy_of: ?*Instance = null;
         if ((try specifiedValue(edit, ancestor, command)) != null) {
             // The removed element itself is what each run copies.
-            if (try isSimpleModifiableElement(edit, ancestor)) copy_of = ancestor;
+            if ((try isSimpleModifiableElement(edit, ancestor)) and try isNamedIn(ancestor, &.{ "s", "em" })) copy_of = ancestor;
             _ = try clearValue(edit, ancestor, command);
         }
         var run_copy: ?*Instance = null;
@@ -704,6 +708,12 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
                 try forceValue(edit, c, command, propagated_value);
                 continue;
             };
+            // A block child is not copied around: its contents are forced.
+            if (!try isAllowedChildOfName(c, "span")) {
+                run_copy = null;
+                try forceValue(edit, c, command, propagated_value);
+                continue;
+            }
             // Consecutive children share one copy.
             if (run_copy) |copy| {
                 if ((try common.nextSibling(copy)) == c) {

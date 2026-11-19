@@ -53,6 +53,15 @@ pub const Edit = struct {
     /// collapsed selection (their steps after step 1): the browser rules for
     /// a user's range (delete.zig rangeKeepsChildBlock) do not apply.
     range_from_caret: bool = false,
+    /// The delete or forwardDelete command is running: after a join the
+    /// caret goes into the start line's inline content (delete.zig, before
+    /// step 41). Commands that replace the selection with content
+    /// (insertImage, insertHTML, insertText) keep the spec's caret at the
+    /// join: all three browsers insert `<p><b>foo[bar</b><p>baz]quz` +
+    /// insertImage outside the b (editing/run/insertimage.html, PPP at
+    /// wpt.fyi 2358bd4835; Blink ReplaceSelectionCommand's
+    /// PositionAvoidingPrecedingNodes).
+    caret_into_joined_line: bool = false,
     /// An arena for the values one command produces - effective and
     /// specified command values, recorded overrides and recorded values -
     /// set by root.zig for exactly the command, query or key action and

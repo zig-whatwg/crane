@@ -455,10 +455,11 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
         const first = node_list.items[index];
         var sublist: std.ArrayList(*Instance) = .empty;
         defer sublist.deinit(edit.allocator);
-        // Step 10.3's first browser case is decided on the line as it was,
-        // before step 10.1 takes its container away (see below).
-        const already_named = try lineFormatBlockIsNamed(first, name);
+        // Whether step 10.1 takes away a container of another name (see
+        // step 10.3 below).
+        var dissolved_other_name = false;
         if (try dissolvesForFormatBlock(first)) {
+            dissolved_other_name = !try common.localNameIs(first, name);
             // Step 10.1: a single-line container gives way to its children.
             var child = try common.firstChild(first);
             while (child) |c| : (child = try common.nextSibling(c)) try sublist.append(edit.allocator, c);
@@ -482,22 +483,22 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
             }
         }
         // Step 10.3, with two cases the browsers leave alone:
-        // - a line whose nearest formattable block - its own container
-        //   included, as it was before step 10.1 - is already a `name`
+        // - a line whose nearest formattable block is already a `name`
         //   (`<div><ol><li>[foo]</ol></div>` + "div" is unchanged in Chrome
         //   156, Firefox 158 and Safari 27; Gecko
         //   FormatBlockContainerWithTransaction finds the format block in
-        //   place), while a line in another block inside one is wrapped
-        //   (`<blockquote><p>[foo]<p>bar</blockquote>` + "blockquote" ->
-        //   `<blockquote><blockquote>foo</blockquote><p>bar</p></blockquote>`,
-        //   PPP at wpt.fyi 2358bd4835), and
+        //   place) - unless the line's own container, of another name, was
+        //   just taken away: that line is wrapped (`<blockquote><p>[foo]<p>
+        //   bar</blockquote>` + "blockquote" -> `<blockquote><blockquote>foo
+        //   </blockquote><p>bar</p></blockquote>`, PPP at wpt.fyi
+        //   2358bd4835), and
         // - a line where no ancestor in the editing host can hold a `name`,
         //   which fix disallowed ancestors could not repair (all three keep
         //   `<p contenteditable=false><span contenteditable>[foo]</span></p>`
         //   on "p"; Firefox also keeps a div host's span and a p host on
         //   "div"; editing/run/formatblock.html at wpt.fyi 5af3c135c9).
         if (sublist.items.len == 0) continue;
-        if (already_named) continue;
+        if (!dissolved_other_name and try nearestFormatBlockIsNamed(sublist.items[0], name)) continue;
         if (!try nameIsAllowedInHost(sublist.items[0], name)) continue;
         if (try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name })) |result| {
             try fixDisallowedAncestors(edit, result);
@@ -582,10 +583,10 @@ fn nameIsAllowedInHost(node: *Instance, name_in: []const u8) !bool {
     return false;
 }
 
-/// Whether the nearest editable element with a formattable block name at or
+/// Whether the nearest editable element with a formattable block name
 /// around `node`, inside its editing host, is named `name`.
-fn lineFormatBlockIsNamed(node: *Instance, name: []const u8) !bool {
-    var current: ?*Instance = node;
+fn nearestFormatBlockIsNamed(node: *Instance, name: []const u8) !bool {
+    var current = try common.parent(node);
     while (current) |c| : (current = try common.parent(c)) {
         if (!try common.isEditable(c)) return false;
         if (try common.isHtmlElementIn(c, &formattable_block_names)) return try common.localNameIs(c, name);

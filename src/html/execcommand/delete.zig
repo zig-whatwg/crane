@@ -467,11 +467,11 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // CanonicalPosition); the spec's first equivalent point is that place.
     // Golden rule 2, no newer spec. Before step 41, which keys the restored
     // overrides to the selection.
-    if (joined) {
+    if (joined and edit.caret_into_joined_line) {
         if (try edit.rangeCollapsed()) {
             if (try edit.rangeStart()) |caret| {
                 if (caret.node == sb) {
-                    const deepest = try common.firstEquivalentPoint(caret);
+                    const deepest = try joinCaretPoint(caret);
                     if (!deepest.eql(caret)) try edit.collapse(deepest.node, deepest.offset);
                 }
             }
@@ -479,6 +479,22 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     }
     // Step 41.
     try overrides.restoreTypingStyle(edit, recorded);
+}
+
+/// The caret's place after a join: the spec's first equivalent point -
+/// down into the inline content before it - but never into a link, so text
+/// typed next does not extend it (all three browsers type `<a href>foo</a>
+/// XY` after joining a line to a link's: editing/other/typing-around-link-
+/// element-after-joining-paragraphs.html, 16/16 at wpt.fyi 2358bd4835;
+/// Blink's InsertTextCommand moves the insertion out of the anchor,
+/// PositionAvoidingSpecialElementBoundary).
+fn joinCaretPoint(caret: Point) !Point {
+    var point = caret;
+    while (try common.previousEquivalentPoint(point)) |previous| {
+        if (previous.node != point.node and try common.isHtmlElementNamed(previous.node, "a")) break;
+        point = previous;
+    }
+    return point;
 }
 
 /// Steps 21.3 and 30.1: collapse the selection to its start - at the range's
@@ -1234,6 +1250,7 @@ fn hasMergeableListAncestor(node: *Instance) !bool {
 
 /// The "delete" command's action. Returns the action's result.
 pub fn deleteAction(edit: *Edit) !bool {
+    edit.caret_into_joined_line = true;
     // Step 1.
     if (!try edit.rangeCollapsed()) {
         try deleteTheSelection(edit, true, true, .forward);
@@ -1541,6 +1558,7 @@ pub fn deleteAction(edit: *Edit) !bool {
 
 /// The "forwardDelete" command's action.
 pub fn forwardDeleteAction(edit: *Edit) !bool {
+    edit.caret_into_joined_line = true;
     // Step 1.
     if (!try edit.rangeCollapsed()) {
         try deleteTheSelection(edit, true, true, .forward);
@@ -1808,6 +1826,10 @@ fn isNonEditableAtom(node: *Instance) !bool {
 /// Golden rule 2, no newer spec.
 fn isIgnoredContentElement(node: *Instance) !bool {
     if (!try common.isHtmlElementIn(node, &.{ "object", "iframe", "embed", "meter", "progress", "video", "audio", "canvas" })) return false;
+    // An object with no data renders its fallback content, which editing
+    // reaches like any other (`<object>abc</object>[]def` -> `<object>ab
+    // </object>def`, PPP; Blink's HTMLObjectElement uses fallback content).
+    if ((try common.isHtmlElementNamed(node, "object")) and !try common.hasAttribute(node, "data")) return false;
     if (!try common.isEditable(node)) return false;
     return try common.isVisible(node);
 }
