@@ -1243,7 +1243,7 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
 /// compile a raw content-attribute handler on first use, in the target's
 /// current document, or return the already compiled value.
 pub fn eventHandler(comptime Handler: type, target: *runtime.Instance, event_type: []const u8) Handler {
-    const address = (currentHandlerValue(target, event_type) orelse return null).address;
+    const address = getHandlerAddress(target, event_type) orelse return null;
     // The address is the function's Global (conversions.zig stores it
     // untagged, aligned as a function pointer must be). No pointer cast turns
     // it into the callback type, so it is copied byte for byte, as
@@ -1279,7 +1279,15 @@ pub fn setEventHandler(comptime Handler: type, target: *runtime.Instance, event_
 }
 
 fn getHandlerAddress(target: *runtime.Instance, event_type: []const u8) ?usize {
-    return (currentHandlerValue(target, event_type) orelse return null).address;
+    const value = currentHandlerValue(target, event_type) orelse return null;
+    // The getter's value is null for a function the collector took (refcount
+    // step 8): the list holds it weakly, the target's wrapper keeps it, so it
+    // is gone only when the wrapper that kept it died and the target - kept
+    // natively - was wrapped again; WebKit's JSEventListener answers null the
+    // same way once its JSC::Weak is cleared. An empty hold fails to retain.
+    const held = engine.retainValue(target.ctx, value.callback.function.value) catch return null;
+    held.release();
+    return value.address;
 }
 
 /// Content attribute change steps 5.2-5.6: store an owned raw body and
