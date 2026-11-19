@@ -438,6 +438,9 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
                     .observer_generation = runtime.SlabAllocator.generationOf(instance),
                     .options = reg_options,
                 }) catch return error.OutOfMemory;
+                // Registered: the target keeps this observer from its
+                // wrapper (`traceListed`).
+                traceListed(target, nodebase);
             }
         }
     } else {
@@ -457,9 +460,6 @@ pub fn call_observe(instance: *runtime.Instance, target: *runtime.Instance, opti
             internal.node_list.append(internal.allocator, weak) catch return error.OutOfMemory;
         }
     }
-
-    // Registered: the target keeps this observer from its wrapper.
-    if (!found_existing) traceListed(target, target_nodebase.?);
 }
 
 /// The slot an observer's wrapper keeps its callback in.

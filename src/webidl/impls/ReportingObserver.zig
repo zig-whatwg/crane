@@ -52,10 +52,20 @@ pub fn installHooks() void {
     @import("dom").unloading_cleanup.installGlobalTeardown(&reporting.endRegistrations);
 }
 
+/// The slot the observer's wrapper keeps its callback in (refcount step 8,
+/// decision D7): the observer's hold of the callback is weak, its wrapper
+/// keeps the function - as WebKit marks an observer's callback from its
+/// wrapper and Blink traces it - so a callback that closes over its
+/// observer keeps it no longer than the observer's own keep while it
+/// observes does. Strong on an engine with no traced values.
+const callback_slot: engine.TracedSlot = .{ .name = "callback" };
+
 /// Deinitialize instance
 pub fn deinit(instance: *runtime.Instance) void {
     const state = instance.getState(State);
     const internal = state.own._internal orelse return;
+    // An observer freed before its wrapper was made leaves no edge waiting.
+    engine.forgetTracedChild(instance, callback_slot);
     internal.observer.deinit();
     internal.allocator.destroy(internal);
     state.own._internal = null;
@@ -73,6 +83,7 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.ReportingObser
     errdefer runtime.Instance.deinit(instance);
     const observer = try observerOf(instance);
     observer.callback = owned_callback;
+    if (engine.traceValues(instance, &.{owned_callback.function.value}, callback_slot)) engine.holdWeakly(owned_callback.function);
     const value: dictionaries.ReportingObserverOptions = if (options.was_passed) options.value else .{};
     observer.buffered = value.buffered orelse false;
     if (value.types) |types| {
