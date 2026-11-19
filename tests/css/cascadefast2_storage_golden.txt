@@ -412,6 +412,37 @@ scrollbar-width: auto
 d: none
 stroke-dasharray: none
 quotes: auto
+fill-opacity: 1
+fill-rule: nonzero
+stroke-opacity: 1
+stroke-linecap: butt
+stroke-linejoin: miter
+stroke-miterlimit: 4
+stroke-dashoffset: 0px
+stop-color: rgb(0, 0, 0)
+stop-opacity: 1
+flood-opacity: 1
+color-interpolation: srgb
+shape-rendering: auto
+text-anchor: start
+vector-effect: none
+buffered-rendering: auto
+paint-order: normal
+x: 0px
+y: 0px
+cx: 0px
+cy: 0px
+r: 0px
+rx: auto
+ry: auto
+math-depth: 0
+math-shift: normal
+math-style: normal
+touch-action: auto
+border-start-start-radius: 0px
+border-start-end-radius: 0px
+border-end-start-radius: 0px
+border-end-end-radius: 0px
 == initial root and child / 0
 display: block
 == initial root and child / 1
@@ -464,6 +495,7 @@ row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -8.44928, 59.4358)
 -webkit-text-stroke-color: rgb(255, 0, 0)
 -webkit-text-fill-color: rgb(255, 0, 0)
+border-start-start-radius: 3px 4px
 == inherited and counted values / 1
 border-block-end-color: rgb(255, 0, 0)
 border-block-start-color: rgb(255, 0, 0)
@@ -574,6 +606,7 @@ row-rule-color: rgb(0, 0, 255)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 -webkit-text-stroke-color: rgb(0, 0, 255)
 -webkit-text-fill-color: rgb(0, 0, 255)
+border-start-start-radius: 3px 4px
 == explicit inherit initial unset / 1
 background-color: rgb(0, 128, 0)
 border-block-start-style: solid
@@ -907,6 +940,7 @@ row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 -webkit-text-stroke-color: rgb(255, 0, 0)
 -webkit-text-fill-color: rgb(255, 0, 0)
+border-start-end-radius: 3px 4px
 == all / 1
 background-image: url("b.png"), radial-gradient(rgb(255, 0, 0), rgb(255, 0, 0))
 border-block-end-color: rgb(255, 0, 0)
@@ -951,6 +985,7 @@ row-rule-color: rgb(255, 0, 0)
 transform: matrix(0.984808, 0.173648, -0.173648, 0.984808, -6.3655, 47.6181)
 -webkit-text-stroke-color: rgb(255, 0, 0)
 -webkit-text-fill-color: rgb(255, 0, 0)
+border-start-end-radius: 3px 4px
 == all / 2
 border-block-end-color: rgb(0, 128, 0)
 border-block-start-color: rgb(0, 128, 0)
