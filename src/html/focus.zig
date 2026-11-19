@@ -1222,6 +1222,12 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
             focusingSteps(candidate, null, .keyboard);
             return;
         }
+        // Step 7: "Otherwise, unset the sequential focus navigation starting
+        // point" - the next navigation starts from the document again, not
+        // from a point nothing follows (Blink's FocusController::
+        // AdvanceFocusInDocumentOrder sets it to null when it finds no
+        // element and hands the focus to the browser or a parent frame).
+        dom.focused_area.unsetStartPoint(starting_document);
         // Step 8: at the top-level traversable, focus would move to the user
         // agent's own controls; a headless one has none, and stays put.
         const container = containerOf(starting_document) orelse return;

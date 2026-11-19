@@ -73,11 +73,17 @@ pub const DocumentRareData = struct {
     pointed_element: ?same_object.Link = null,
     /// HTML 6.6.5's sequential focus navigation starting point: a live
     /// Range selecting the contents of the element last focused
-    /// (dom.focused_area.set), which the removal steps move to where it was
-    /// (Blink's Document keeps one the same way). The document's for its
-    /// whole life, traced from its wrapper; released with the rare data
-    /// (document_state's teardown).
+    /// (dom.focused_area.set), or of the node an algorithm moved the point
+    /// to, which the removal steps move to where it was (Blink's Document
+    /// keeps one the same way). The document's for its whole life, traced
+    /// from its wrapper; released with the rare data (document_state's
+    /// teardown).
     sequential_start: same_object.KeptChild = .{},
+    /// The point is unset (dom.focused_area.unsetStartPoint) although the
+    /// range stays: Blink drops its Range there, and Crane keeps the one
+    /// Range the document made for its whole life instead, so it needs no
+    /// second hand-out.
+    sequential_start_unset: bool = false,
     activated_element: ?same_object.Link = null,
 
     /// The pointer lock element (Pointer Lock 2.0) and the

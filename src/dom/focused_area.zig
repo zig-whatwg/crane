@@ -51,9 +51,12 @@ pub const Implementation = struct {
     /// the live Range the document keeps for it (`selectStart`), or null
     /// before any element of the document was focused.
     start_range: ?*const fn (document: *runtime.Instance) ?*runtime.Instance = null,
-    /// Make the starting point select the contents of `element`, an element
-    /// of `document`: the document's one Range for it, made on first use.
-    select_start: ?*const fn (document: *runtime.Instance, element: *runtime.Instance) void = null,
+    /// Make the starting point select the contents of `node`, a node of
+    /// `document`: the document's one Range for it, made on first use.
+    select_start: ?*const fn (document: *runtime.Instance, node: *runtime.Instance) void = null,
+    /// Unset the starting point: `start_range` answers null until the next
+    /// `select_start`.
+    clear_start: ?*const fn (document: *runtime.Instance) void = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -87,7 +90,7 @@ pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
     // contents (Document::SetSequentialFocusNavigationStartingPoint, called
     // from SetFocusedElement), which the DOM's removal steps move to where a
     // removed element was; `selectStart` is that range.
-    if (element) |e| if (impl.select_start) |select_start| select_start(document, e);
+    if (element) |e| moveStartPoint(document, e);
     // The focus fixup runs at the next rendering opportunity: a focused
     // element asks for one, and its document is watched
     // (dom.update_the_rendering).
@@ -102,6 +105,24 @@ pub fn startRange(document: *runtime.Instance) ?*runtime.Instance {
     const impl = implementation.get() orelse return null;
     const start_range = impl.start_range orelse return null;
     return start_range(document);
+}
+
+/// HTML "move the sequential focus navigation starting point to" `node`, a
+/// node of `document`, without focusing it ("potentially reset the focus"
+/// step 12, after a focusing step whose fallback was the viewport). The
+/// Document itself is the start of its own tree, which an unset point
+/// already means (6.6.5 "sequential navigation" step 1).
+pub fn moveStartPoint(document: *runtime.Instance, node: *runtime.Instance) void {
+    if (node == document) return unsetStartPoint(document);
+    const impl = implementation.get() orelse return;
+    if (impl.select_start) |select_start| select_start(document, node);
+}
+
+/// HTML "unset the sequential focus navigation starting point" of `document`
+/// (6.6.5 "sequential navigation" step 7: no candidate was found from it).
+pub fn unsetStartPoint(document: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    if (impl.clear_start) |clear_start| clear_start(document);
 }
 
 test "without an installed implementation a document's focused area is its viewport" {

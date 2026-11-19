@@ -293,7 +293,7 @@ pub fn installHooks() void {
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
     // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .start_range = &sequentialStartRange, .select_start = &selectSequentialStart });
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .start_range = &sequentialStartRange, .select_start = &selectSequentialStart, .clear_start = &clearSequentialStart });
     // HTML removing steps step 2: a removed focused area becomes the
     // viewport at the removal (html.focus.removingSteps).
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
@@ -644,12 +644,23 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
 fn sequentialStartRange(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;
+    if (rare.sequential_start_unset) return null;
     return rare.sequential_start.get();
 }
 
-/// dom.focused_area: `element` was focused, and is `document`'s sequential
-/// focus navigation starting point from now on: the document's one live
-/// Range for it, made on the first focus, selects the element's contents -
+/// dom.focused_area: unset `document`'s sequential focus navigation
+/// starting point (HTML 6.6.5 "sequential navigation" step 7). The range
+/// stays the document's; it reads as no point until the next select.
+fn clearSequentialStart(document: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    const rare = internal.rareData() orelse return;
+    rare.sequential_start_unset = true;
+}
+
+/// dom.focused_area: `element` was focused (or an algorithm moved the point
+/// to it), and is `document`'s sequential focus navigation starting point
+/// from now on: the document's one live Range for it, made on first use,
+/// selects the element's contents -
 /// so the DOM's removal steps move it to where the element was when the
 /// element, or an ancestor, is removed (Blink: Document::
 /// SetSequentialFocusNavigationStartingPoint, which keeps a Range and calls
@@ -672,6 +683,7 @@ fn selectSequentialStart(document: *runtime.Instance, element: *runtime.Instance
     };
     rare.sequential_start.handOut(document, range, .{ .name = "sequentialFocusStart" });
     interfaces.Range.call_selectNodeContents(range, element) catch {};
+    rare.sequential_start_unset = false;
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.
