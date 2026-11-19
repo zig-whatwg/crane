@@ -21,7 +21,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const css = @import("css");
-const Hook = @import("hook.zig").Hook;
 const image_sources = @import("image_sources.zig");
 
 /// A CSS color as a 2D context keeps it: sRGB with 8-bit channels and 8-bit
@@ -112,37 +111,30 @@ pub const OffscreenSteps = struct {
     set_bitmap_dimensions: *const fn (context: *runtime.Instance, width: u64, height: u64) anyerror!void,
 };
 
-const Providers = struct {
-    element: ?StateOf = null,
-    offscreen: ?OffscreenSteps = null,
-};
-
-// process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
-var providers: Hook(Providers) = .init(.{});
-
-/// CanvasRenderingContext2D's installHooks.
+/// CanvasRenderingContext2D's installHooks (the step lives in
+/// dom.image_sources' one hook table).
 pub fn installElementContext(state_of: StateOf) void {
-    providers.installField("element", state_of);
+    image_sources.installElementContextState(state_of);
 }
 
 /// OffscreenCanvasRenderingContext2D's installHooks.
 pub fn installOffscreenContext(steps: OffscreenSteps) void {
-    providers.installField("offscreen", steps);
+    image_sources.installOffscreenContextSteps(steps);
 }
 
 /// The OffscreenCanvas width and height setters' steps for its 2d context
 /// `context`.
 pub fn resizeOffscreen(context: *runtime.Instance, width: u64, height: u64) !void {
-    const offscreen = providers.read().offscreen orelse return error.NotSupported;
+    const offscreen = image_sources.installed().offscreen_context orelse return error.NotSupported;
     return offscreen.set_bitmap_dimensions(context, width, height);
 }
 
 /// `context`'s state: a CanvasRenderingContext2D's or an
 /// OffscreenCanvasRenderingContext2D's; null for anything else.
 pub fn stateOf(context: *runtime.Instance) ?*Context2D {
-    const installed = providers.read();
-    if (installed.element) |element| if (element(context)) |state| return state;
-    const offscreen = installed.offscreen orelse return null;
+    const table = image_sources.installed();
+    if (table.element_context_state) |element| if (element(context)) |state| return state;
+    const offscreen = table.offscreen_context orelse return null;
     return offscreen.state_of(context);
 }
 

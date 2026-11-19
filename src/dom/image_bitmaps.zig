@@ -20,7 +20,6 @@ const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const platform = @import("platform");
 const mimesniff = @import("mimesniff");
-const Hook = @import("hook.zig").Hook;
 const image_sources = @import("image_sources.zig");
 
 /// An ImageBitmap's bitmap data (8.11.2): `width` x `height` RGBA8 pixels,
@@ -123,28 +122,32 @@ pub const OffscreenCanvasSteps = struct {
     receive: *const fn (realm: runtime.Context, holder: *CanvasHolder) anyerror!*runtime.Instance,
 };
 
-const Installed = struct {
-    image_bitmap: ?ImageBitmapSteps = null,
-    offscreen_canvas: ?OffscreenCanvasSteps = null,
-};
-
-// process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
-var installed: Hook(Installed) = .init(.{});
-
-/// ImageBitmap's installHooks, once, at process start.
+/// ImageBitmap's installHooks, once, at process start (the steps live in
+/// dom.image_sources' one hook table).
 pub fn installImageBitmap(steps: ImageBitmapSteps) void {
-    installed.installField("image_bitmap", steps);
+    image_sources.installImageBitmapTransfer(steps);
 }
 
 /// OffscreenCanvas's installHooks, once, at process start.
 pub fn installOffscreenCanvas(steps: OffscreenCanvasSteps) void {
-    installed.installField("offscreen_canvas", steps);
+    image_sources.installOffscreenCanvasTransfer(steps);
 }
+
+/// The steps their owners installed, as dom.image_sources' table holds them.
+const Installed = struct {
+    image_bitmap: ?ImageBitmapSteps,
+    offscreen_canvas: ?OffscreenCanvasSteps,
+
+    fn read() Installed {
+        const table = image_sources.installed();
+        return .{ .image_bitmap = table.image_bitmap_transfer, .offscreen_canvas = table.offscreen_canvas_transfer };
+    }
+};
 
 /// Whether `instance` is a transferable ImageBitmap or OffscreenCanvas
 /// (StructuredSerializeWithTransfer step 2.1), and a detached one (5.2).
 pub fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
-    const steps = installed.read();
+    const steps = Installed.read();
     if (steps.image_bitmap) |owner| {
         const state = owner.state(instance);
         if (state != .not_transferable) return state;
@@ -164,7 +167,7 @@ pub const Holder = union(enum) {
 /// interface's transfer steps (5.5) and [[Detached]] set (5.6, by them).
 /// null when `instance` is neither.
 pub fn transfer(instance: *runtime.Instance) !?Holder {
-    const steps = installed.read();
+    const steps = Installed.read();
     if (steps.image_bitmap) |owner| switch (owner.state(instance)) {
         .not_transferable => {},
         .detached => return error.DataCloneError,
@@ -181,7 +184,7 @@ pub fn transfer(instance: *runtime.Instance) !?Holder {
 /// The transfer-receiving steps of an ImageBitmap's data holder in
 /// `realm`. Takes `bitmap`, also on failure.
 pub fn receiveImageBitmap(realm: runtime.Context, bitmap: *Bitmap) !*runtime.Instance {
-    const owner = installed.read().image_bitmap orelse {
+    const owner = Installed.read().image_bitmap orelse {
         bitmap.destroy();
         return error.NotSupported;
     };
@@ -191,7 +194,7 @@ pub fn receiveImageBitmap(realm: runtime.Context, bitmap: *Bitmap) !*runtime.Ins
 /// The transfer-receiving steps of an OffscreenCanvas's data holder in
 /// `realm`. Takes `holder`, also on failure.
 pub fn receiveOffscreenCanvas(realm: runtime.Context, holder: *CanvasHolder) !*runtime.Instance {
-    const owner = installed.read().offscreen_canvas orelse {
+    const owner = Installed.read().offscreen_canvas orelse {
         holder.destroy();
         return error.NotSupported;
     };
