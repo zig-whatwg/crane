@@ -1,9 +1,9 @@
 //! The style system through the real binding (lane style1): an element's
 //! `style` (CSSStyleProperties) and getComputedStyle()'s object, whose
-//! camel-cased and dashed CSS attributes are the V8 adapter's named
-//! interceptor for BOTH CSSStyleDeclaration and CSSStyleProperties; the
-//! interceptor declines a name that is no CSS property, so `cssText`,
-//! `length` and an expando reach the ordinary [[Set]] and [[Get]]. And the
+//! camel-cased and dashed CSS attributes are accessors on
+//! CSSStyleProperties.prototype (lane css3; tests/v8/css3_style_attributes_test.zig),
+//! so `cssText`, `length` and an expando reach the ordinary [[Set]] and
+//! [[Get]]. And the
 //! style engine (dom.style) over documents script builds: the UA sheet, a
 //! <style> element's rules and the style attribute cascade into each
 //! element's computed style, cached and resolved again when an input moves.
@@ -155,7 +155,7 @@ test "element.style: camel-cased and dashed attributes, cssText through the sett
     try page.expect("String(div.style === s)", "true");
 }
 
-test "getComputedStyle: the same interceptor, read-only, empty without a browsing context" {
+test "getComputedStyle: the same attributes, read-only, empty without a browsing context" {
     dom.style.ua_sheet.build();
     const page = try Page.open();
     defer page.close();
@@ -309,6 +309,11 @@ const ArraySteps = struct {
 };
 
 test "an observable array of platform objects: values converted, the owner's steps run, its backing list read and replaced" {
+    // The counts start at zero in every run: verify mode runs a test ten
+    // times in one process.
+    ArraySteps.sets = 0;
+    ArraySteps.deletes = 0;
+    ArraySteps.last_changed = 0;
     dom.style.ua_sheet.build();
     const page = try Page.open();
     defer page.close();

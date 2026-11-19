@@ -11211,6 +11211,15 @@ bool v8_FunctionCallbackInfo_IsConstructCall(const FunctionCallbackInfo<Value>* 
 }
 
 // FunctionCallbackInfo - get callback data
+/// The function template's data as an unsigned 32-bit integer, with no
+/// handle made; UINT32_MAX when it is not one (CSSOM's CSS property
+/// attributes keep each accessor's index there).
+uint32_t v8_FunctionCallbackInfo_DataUint32(const FunctionCallbackInfo<Value>* info) {
+    Local<Value> data = info->DataV2().As<Value>();
+    if (data.IsEmpty() || !data->IsUint32()) return UINT32_MAX;
+    return data.As<Uint32>()->Value();
+}
+
 Global<Value>* v8_FunctionCallbackInfo_Data(const FunctionCallbackInfo<Value>* info) {
     Isolate* isolate = info->GetIsolate();
     HandleScope handle_scope(isolate);
@@ -11670,6 +11679,55 @@ void v8_ObjectTemplate_SetAccessorPropertyChecked(
         setter ? setter_tpl : Local<FunctionTemplate>(),
         static_cast<PropertyAttribute>(attributes)
     );
+}
+
+/// CSSOM 6.6.2's CSS property attributes: `count` accessor properties on
+/// `tpl`, the i-th named names[i] (lengths[i] bytes, one-byte), with one
+/// getter FunctionTemplate of `getter` and one setter FunctionTemplate of
+/// `setter` each, whose data is the Integer i - the callbacks are shared, and
+/// read which attribute they run for from it. As every attribute: the
+/// functions are named "get <name>" and "set <name>", of lengths 0 and 1,
+/// and the property is enumerable and configurable. The templates are the
+/// isolate's; V8 makes a function from one only when script reads it from
+/// the accessor pair (an AccessorPair holds the template until then).
+void v8_ObjectTemplate_SetIndexedAccessorProperties(
+    Global<ObjectTemplate>* tpl,
+    const char* const* names,
+    const size_t* lengths,
+    size_t count,
+    FunctionCallback getter,
+    FunctionCallback setter
+) {
+    // None in the snapshot. Every TemplateInfo and Name a context snapshot
+    // reaches is serialized into the STARTUP object cache (V8
+    // src/snapshot/context-serializer.cc ShouldBeInTheStartupObjectCache),
+    // which every isolate restored from the blob deserializes and keeps as a
+    // root for its whole life - and the snapshot's CSSStyleProperties
+    // interface object is never script's: a restored realm reinstalls its
+    // interface objects from the templates the runtime makes
+    // (interface_bindings.registerAllTemplatesOnly). With the accessors in
+    // the blob, each isolate held the ~2,000 templates and their names twice
+    // and each realm a second, unreachable prototype of ~1,000 accessors
+    // (lane css2's cost window: +1.2 MB per isolate, +50 KB per realm).
+    if (g_snapshot_mode) return;
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    Local<ObjectTemplate> local_tpl = tpl->Get(isolate);
+    for (size_t i = 0; i < count; ++i) {
+        HandleScope item_scope(isolate);
+        std::string name(names[i], lengths[i]);
+        Local<String> key = String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(name.data()), NewStringType::kInternalized, static_cast<int>(name.size())).ToLocalChecked();
+        Local<Integer> data = Integer::NewFromUnsigned(isolate, static_cast<uint32_t>(i));
+        Local<FunctionTemplate> getter_tpl = FunctionTemplate::New(isolate, getter, data);
+        std::string getter_name = std::string("get ") + name;
+        getter_tpl->SetClassName(String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(getter_name.data()), NewStringType::kNormal, static_cast<int>(getter_name.size())).ToLocalChecked());
+        getter_tpl->SetLength(0);
+        Local<FunctionTemplate> setter_tpl = FunctionTemplate::New(isolate, setter, data);
+        std::string setter_name = std::string("set ") + name;
+        setter_tpl->SetClassName(String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(setter_name.data()), NewStringType::kNormal, static_cast<int>(setter_name.size())).ToLocalChecked());
+        setter_tpl->SetLength(1);
+        local_tpl->SetAccessorProperty(key.As<Name>(), getter_tpl, setter_tpl, PropertyAttribute::None);
+    }
 }
 
 // v8::Intercepted as V8 defines it, for the Zig side's pin (ffi.Intercepted;

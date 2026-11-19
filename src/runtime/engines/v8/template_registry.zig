@@ -336,7 +336,10 @@ pub fn wrapInstanceAsV8Object(
     // [interface_prototypes] A realm that builds its interface objects when
     // script first reads them builds this one first, so the prototype has
     // everything WebIDL puts on it whether or not script read the global.
-    if (entry.interface_objects.lazy) ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
+    // An interface the isolate makes on first use has a lazy interface
+    // object in every realm (interface_bindings.madeOnFirstUse).
+    if (entry.interface_objects.lazy or @import("interface_bindings.zig").madeOnFirstUse(interface_name))
+        ensureInterfaceObjectBuilt(entry, template, interface_name, isolate, context);
     const v8_object = v8.v8_FunctionTemplate_NewWrapper(template, context) orelse {
         return error.ObjectCreationFailed;
     };
