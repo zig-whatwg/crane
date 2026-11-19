@@ -844,16 +844,21 @@ pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions
     // Recursive pseudo-classes can add inner spans before their outer An+B.
     std.mem.sort(AnBRewrite, rewrites.items, {}, struct {
         fn less(_: void, a: AnBRewrite, b: AnBRewrite) bool {
-            return a.start < b.start;
+            // An insertion (start == end) goes before a replacement that
+            // starts where it is.
+            return a.start < b.start or (a.start == b.start and a.end < b.end);
         }
     }.less);
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(allocator);
     var cursor: usize = 0;
+    var previous: ?AnBRewrite = null;
     for (rewrites.items) |rewrite| {
         // compoundArgument validates once, then parses its one-selector
         // list. Its duplicate successful spans are identical.
         if (rewrite.start < cursor) continue;
+        if (previous) |p| if (p.start == rewrite.start and p.end == rewrite.end) continue;
+        previous = rewrite;
         try out.appendSlice(allocator, source[cursor..rewrite.start]);
         var buffer: [64]u8 = undefined;
         try out.appendSlice(allocator, rewrite.text(&buffer));
@@ -870,6 +875,28 @@ pub fn parseCssomOwned(allocator: Allocator, source: []u8, options: ParseOptions
     return .{ .text = text, .selectors = list };
 }
 
+/// A span of the source CSSOM's serialization replaces: an An+B (CSS Syntax 3
+/// 9.1), the implicit `& ` of a nested style rule, or `literal` - what CSSOM
+/// 5.2 "serialize a selector" writes for that part (lane maj1: combinators,
+/// list separators, attribute selectors, namespace prefixes, legacy
+/// pseudo-elements). Literal texts live in the parse's scratch memory.
+/// CSSOM "serialize a string": in double quotes, U+0000 as U+FFFD, a
+/// control character as an escape followed by a space, '"' and '\'
+/// escaped.
+fn appendCssString(allocator: Allocator, out: *std.ArrayList(u8), value: []const u8) Allocator.Error!void {
+    try out.append(allocator, '"');
+    for (value) |c| switch (c) {
+        0 => try out.appendSlice(allocator, "\u{FFFD}"),
+        0x01...0x1F, 0x7F => try out.print(allocator, "\\{x} ", .{c}),
+        '"', '\\' => {
+            try out.append(allocator, '\\');
+            try out.append(allocator, c);
+        },
+        else => try out.append(allocator, c),
+    };
+    try out.append(allocator, '"');
+}
+
 const AnBRewrite = struct {
     start: usize,
     end: usize,
@@ -877,9 +904,11 @@ const AnBRewrite = struct {
     b: i32 = 0,
     has_of: bool = false,
     prefix: bool = false,
+    literal: ?[]const u8 = null,
 
     /// CSS Syntax 3 section 9.1, steps 1–5.
     fn text(self: AnBRewrite, buffer: *[64]u8) []const u8 {
+        if (self.literal) |literal| return literal;
         if (self.prefix) return "& ";
         var written: usize = 0;
         if (self.a == 0) {
@@ -913,10 +942,12 @@ const Context = struct {
     /// the SUBJECT of a logical combination's argument. Explicit type
     /// and universal selectors, and ancestor compounds, still receive it.
     resist_default_namespace: bool = false,
-    /// The argument of a logical combination that follows a named view
-    /// transition pseudo-element: its :only-child tests that pseudo-element
+    /// The argument of a logical combination that follows a pseudo-element
+    /// (its name): it may hold only the pseudo-classes that may follow that
+    /// pseudo-element (Selectors 4 3.6.3), and after a named view
+    /// transition pseudo-element its :only-child tests that pseudo-element
     /// (PseudoElementOnlyChild).
-    after_view_transition: bool = false,
+    after_pseudo_element: ?[]const u8 = null,
 };
 
 /// An end-of-input token, what reading past a range returns.
@@ -1070,6 +1101,11 @@ pub const Parser = struct {
                         if (!kind.forgiving or self.support_check or self.too_deep) return err;
                     },
                 }
+                // CSSOM 5.2 "serialize a group of selectors": "serialize a
+                // comma-separated list" - each item without the whitespace
+                // around it, then ", " (a forgiven item keeps its text).
+                try self.trimSpan(piece);
+                if (at_comma) try self.serializeAs(tokens[i].start, tokens[i].end, ", ");
                 if (i >= tokens.len) break;
                 i += 1;
                 piece_start = i;
@@ -1155,9 +1191,17 @@ pub const Parser = struct {
         var initial_combinator: ?Combinator = null;
         if (relative) {
             initial_combinator = combinatorOf(stream.peek()) orelse .Descendant;
-            if (combinatorOf(stream.peek()) != null) {
+            if (combinatorOf(stream.peek())) |explicit| {
+                const written = stream.peek();
                 stream.advance();
                 _ = stream.skipWhitespace();
+                // CSSOM 5.2: the combinator, then one space.
+                if (!stream.atEnd()) try self.serializeAs(written.start, stream.peek().start, switch (explicit) {
+                    .Child => "> ",
+                    .NextSibling => "+ ",
+                    .SubsequentSibling => "~ ",
+                    else => " ",
+                });
             }
         }
 
@@ -1173,6 +1217,7 @@ pub const Parser = struct {
                 return err;
             };
 
+            const left_end = stream.tokens[stream.pos - 1].end;
             const had_whitespace = stream.skipWhitespace();
             if (stream.atEnd()) break;
             // 3.6.5: a combinator after a pseudo-element is invalid (none of
@@ -1186,6 +1231,9 @@ pub const Parser = struct {
             } else if (had_whitespace) .Descendant else return error.InvalidSelector;
             // A combinator with no compound after it.
             if (stream.atEnd()) return error.InvalidSelector;
+            // CSSOM 5.2 step 3: a single space, the combinator and another
+            // space - one space for the descendant combinator.
+            try self.serializeAs(left_end, stream.peek().start, combinatorText(combinator));
             try ltr_combinators.append(self.scratch, combinator);
         }
 
@@ -1267,6 +1315,14 @@ pub const Parser = struct {
         errdefer for (simples.items) |*simple| simple.deinit(self.allocator);
 
         const type_selector = try self.parseTypeSelector(stream);
+        // Selectors 4 3.6.3: after a pseudo-element only pseudo-classes may
+        // follow - in a logical combination's argument too (`after`).
+        const after_element = ctx.after_pseudo_element;
+        if (type_selector != null and after_element != null) {
+            var dropped = type_selector.?.simple;
+            dropped.deinit(self.allocator);
+            return error.InvalidSelector;
+        }
         if (type_selector) |resolved| {
             try simples.append(self.scratch, resolved.simple);
             if (resolved.uri) |uri| try simples.append(self.scratch, .{ .NamespaceURI = .{ .uri = uri } });
@@ -1280,35 +1336,42 @@ pub const Parser = struct {
                 .hash => blk: {
                     // <id-selector> = <hash-token>, whose value "must be an
                     // identifier".
-                    if (!token.hash_is_id or pseudo_element != null) return error.InvalidSelector;
+                    if (!token.hash_is_id or pseudo_element != null or after_element != null) return error.InvalidSelector;
                     stream.advance();
                     break :blk .{ .Id = .{ .id = token.value } };
                 },
                 .delim => blk: {
                     if (token.delim == '&') {
-                        if (pseudo_element != null) return error.InvalidSelector;
+                        if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                         stream.advance();
                         break :blk if (self.preserve_nesting) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
                     }
                     // <class-selector> = '.' <ident-token>
                     if (token.delim != '.') break;
-                    if (pseudo_element != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                     const name = stream.peekAt(1);
                     if (name.tag != .ident) return error.InvalidSelector;
                     stream.pos += 2;
                     break :blk .{ .Class = .{ .class_name = name.value } };
                 },
                 .lbracket => blk: {
-                    if (pseudo_element != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                     // An attribute selector is a [] block: past
                     // `max_nested_blocks` it is an invalid item (Firefox
                     // 159: ':is(' x 75 + '[id]' parses, matching nothing -
                     // the unentered block's "]" leaves the ")"s paired).
                     if (self.block_depth >= max_nested_blocks) return error.InvalidSelector;
+                    const open = stream.pos;
                     const close = try self.matchingClose(stream.tokens, stream.pos);
                     const contents = stream.tokens[stream.pos + 1 .. close];
                     stream.pos = if (close < stream.tokens.len) close + 1 else close;
-                    break :blk try self.parseAttribute(contents);
+                    var parsed = try self.parseAttribute(contents);
+                    errdefer parsed.deinit(self.allocator);
+                    if (self.anb_rewrites != null and close < stream.tokens.len) {
+                        const span = self.tokenizer.input[stream.tokens[open].start..stream.tokens[close].end];
+                        try self.serializeAs(stream.tokens[open].start, stream.tokens[close].end, try self.attributeText(span, contents, &parsed));
+                    }
+                    break :blk parsed;
                 },
                 .colon => blk: {
                     if (stream.peekAt(1).tag == .colon) {
@@ -1319,6 +1382,7 @@ pub const Parser = struct {
                         pseudo_element = parsed.name;
                         break :blk .{ .PseudoElement = parsed };
                     }
+                    const colon = stream.peek();
                     stream.advance();
                     const parsed = try self.parsePseudoClass(stream, ctx, pseudo_element);
                     if (parsed == .PseudoElement) {
@@ -1329,6 +1393,8 @@ pub const Parser = struct {
                             return error.InvalidSelector;
                         }
                         pseudo_element = parsed.PseudoElement.name;
+                        // CSSOM 5.2 step 4: "::" followed by its name.
+                        try self.serializeAs(colon.start, colon.start, ":");
                     }
                     break :blk parsed;
                 },
@@ -1341,6 +1407,16 @@ pub const Parser = struct {
         }
 
         if (simples.items.len == 0) return error.InvalidSelector;
+        // CSSOM 5.2 steps 1-2: a universal selector serializes only as the
+        // compound's one simple selector, or with a prefix CSSOM keeps; a
+        // prefix CSSOM leaves out (ResolvedType.drop_prefix) goes.
+        if (type_selector) |resolved| if (self.anb_rewrites != null) {
+            const others = simples.items.len - 1 - @intFromBool(resolved.uri != null);
+            const unprefixed = resolved.prefix_end == resolved.start or resolved.drop_prefix;
+            if (resolved.simple == .Universal and unprefixed and others > 0) {
+                try self.serializeAs(resolved.start, resolved.end, "");
+            } else if (resolved.drop_prefix) try self.serializeAs(resolved.start, resolved.prefix_end, "");
+        };
         if (type_selector == null) if (self.namespaces) |ns| if (ns.default) |uri| {
             var after = stream.*;
             _ = after.skipWhitespace();
@@ -1378,7 +1454,21 @@ pub const Parser = struct {
     /// <wq-name> = <ns-prefix>? <ident-token> and
     /// <ns-prefix> = [ <ident-token> | '*' ]? '|' - no whitespace inside.
     /// Null when the compound starts with no type selector.
-    const ResolvedType = struct { simple: SimpleSelector, uri: ?[]const u8 = null };
+    const ResolvedType = struct {
+        simple: SimpleSelector,
+        uri: ?[]const u8 = null,
+        /// The source span of the whole type selector, and where its
+        /// namespace prefix (with its "|") ends - `start` with none.
+        start: usize = 0,
+        prefix_end: usize = 0,
+        end: usize = 0,
+        /// CSSOM 5.2 leaves the written prefix out: `*|` with no default
+        /// namespace declared, or a prefix that maps to the default
+        /// namespace (css/cssom/serialize-namespaced-type-selectors.html:
+        /// `*|e` is "e" unless a default namespace is declared,
+        /// `nsdefault|e` is "e" - Chrome, Firefox and Safari).
+        drop_prefix: bool = false,
+    };
 
     fn ownUri(self: *Parser, uri: []const u8) ParserError![]const u8 {
         const owned = try self.allocator.dupe(u8, uri);
@@ -1398,23 +1488,25 @@ pub const Parser = struct {
         const t1 = stream.peekAt(1);
         const t2 = stream.peekAt(2);
 
+        const default_uri: ?[]const u8 = if (self.namespaces) |ns| ns.default else null;
         // ns-prefix '|' followed by a name or '*'.
         if (t1.isDelim('|') and (t0.tag == .ident or t0.isDelim('*'))) {
             if (t2.tag != .ident and !t2.isDelim('*')) return error.InvalidSelector;
             // Selectors 4 section 5.3: an undeclared prefix is invalid.
             const uri = if (t0.tag == .ident) try self.namespaceUri(t0.value) else null;
             stream.pos += 3;
-            return .{ .simple = try self.typeOrUniversal(t2, .any), .uri = uri };
+            const drop = if (uri) |u| (if (default_uri) |d| std.mem.eql(u8, u, d) else false) else default_uri == null;
+            return .{ .simple = try self.typeOrUniversal(t2, .any), .uri = uri, .start = t0.start, .prefix_end = t1.end, .end = t2.end, .drop_prefix = drop };
         }
         if (t0.isDelim('|')) {
             if (t1.tag != .ident and !t1.isDelim('*')) return error.InvalidSelector;
             stream.pos += 2;
-            return .{ .simple = try self.typeOrUniversal(t1, .none) };
+            return .{ .simple = try self.typeOrUniversal(t1, .none), .start = t0.start, .prefix_end = t0.end, .end = t1.end };
         }
         if (t0.tag == .ident or t0.isDelim('*')) {
             stream.advance();
-            const uri = if (self.namespaces) |ns| if (ns.default) |value| try self.ownUri(value) else null else null;
-            return .{ .simple = try self.typeOrUniversal(t0, .any), .uri = uri };
+            const uri = if (default_uri) |value| try self.ownUri(value) else null;
+            return .{ .simple = try self.typeOrUniversal(t0, .any), .uri = uri, .start = t0.start, .prefix_end = t0.start, .end = t0.end };
         }
         return null;
     }
@@ -1549,12 +1641,14 @@ pub const Parser = struct {
                 const kind = simplePseudoClass(name) orelse return error.InvalidSelector;
                 // The UA-only pseudo-classes are unknown to author style.
                 if (kind == .InternalListBox and !self.user_agent) return error.InvalidSelector;
-                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
+                // After a pseudo-element in this compound, or in a logical
+                // combination that follows one.
+                const after = after_pseudo_element orelse ctx.after_pseudo_element;
+                if (after) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
                 // View Transitions 1 §3.1: after a named view transition
                 // pseudo-element - or in a logical combination after one -
                 // :only-child tests that pseudo-element in its tree.
-                const follows_view_transition = ctx.after_view_transition or
-                    (if (after_pseudo_element) |pseudo| isNamedViewTransitionName(pseudo) else false);
+                const follows_view_transition = if (after) |pseudo| isNamedViewTransitionName(pseudo) else false;
                 if (kind == .OnlyChild and follows_view_transition) return .{ .PseudoClass = .{ .kind = .PseudoElementOnlyChild } };
                 return .{ .PseudoClass = .{ .kind = kind } };
             },
@@ -1564,15 +1658,21 @@ pub const Parser = struct {
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
+                const after = after_pseudo_element orelse ctx.after_pseudo_element;
                 var inner = ctx;
-                if (after_pseudo_element) |pseudo| {
-                    if (isNamedViewTransitionName(pseudo)) inner.after_view_transition = true;
-                }
+                inner.after_pseudo_element = after;
                 const kind = try self.functionalPseudoClass(token.value, args, inner);
                 var selector = PseudoClassSelector{ .kind = kind };
-                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
+                if (after) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
                     selector.deinit(self.allocator);
                     return error.InvalidSelector;
+                };
+                // CSSOM 5.2: an argument that is no selector list or An+B
+                // (those serialize themselves) without the whitespace
+                // around it (selectorSerialize.html ":lang( ja )").
+                if (kind == .Lang or kind == .Dir) self.trimSpan(args) catch |err| {
+                    selector.deinit(self.allocator);
+                    return err;
                 };
                 return .{ .PseudoClass = selector };
             },
@@ -1643,7 +1743,17 @@ pub const Parser = struct {
     /// (wpt.fyi 2358bd4835, css/css-view-transitions/parsing/
     /// pseudo-elements-{valid,valid-with-classes,invalid}.html): Blink's
     /// IsPseudoClassValidAfterPseudoElement takes only :only-child for them.
+    ///
+    /// ::slotted() and the highlight pseudo-elements take none but the
+    /// logical combinations: Chrome, Firefox and Safari reject
+    /// `::slotted(*):hover` and `::selection:hover` (wpt.fyi 2358bd4835,
+    /// css/css-shadow/slotted-parsing.html, css/css-pseudo/parsing/
+    /// highlight-pseudos.html).
     fn allowedAfterPseudoElement(pseudo_element: []const u8, kind: PseudoClassKind) bool {
+        if (std.mem.eql(u8, pseudo_element, "slotted") or isHighlightPseudoElement(pseudo_element)) return switch (kind) {
+            .Is, .Where, .Not => true,
+            else => false,
+        };
         const view_transition_root = std.mem.eql(u8, pseudo_element, "view-transition");
         if (view_transition_root or isNamedViewTransitionName(pseudo_element)) return switch (kind) {
             .Is, .Where, .Not => true,
@@ -1660,7 +1770,7 @@ pub const Parser = struct {
     /// A functional pseudo-class `name(` over its arguments `args`.
     fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
         const real = Context{ .real = true, .in_has = ctx.in_has };
-        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_view_transition = ctx.after_view_transition };
+        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_pseudo_element = ctx.after_pseudo_element };
         if (std.ascii.eqlIgnoreCase(name, "not")) {
             // 4.3: :not(<complex-real-selector-list>).
             return .{ .Not = try self.boxedList(args, logical, .{ .forgiving = false, .relative = false }) };
@@ -1692,6 +1802,10 @@ pub const Parser = struct {
                 const of = stream.peek();
                 if (of.tag != .ident or !std.ascii.eqlIgnoreCase(of.value, "of")) return error.InvalidSelector;
                 stream.advance();
+                // CSSOM: "of", one space, the selector list (whose items trim
+                // their own whitespace).
+                _ = stream.skipWhitespace();
+                if (!stream.atEnd()) try self.serializeAs(of.end, stream.peek().start, " ");
                 pattern.of = try self.boxedList(args[stream.pos..], real, .{ .forgiving = false, .relative = false });
             }
             try self.recordAnB(args, anb_end, pattern, pattern.of != null);
@@ -1832,23 +1946,50 @@ pub const Parser = struct {
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
                 try self.parsePseudoElementArgument(known, args, &pseudo);
+                // ::slotted()'s selector list trims itself.
+                if (!std.mem.eql(u8, known, "slotted")) try self.trimSpan(args);
                 break :blk known;
             },
             else => return error.InvalidSelector,
         };
         const name = pseudo.name;
         if (after) |first| {
-            // ::before::marker and ::after::marker; the tree-abiding
-            // pseudo-elements of a ::slotted() or ::part() element.
+            // ::before::marker and ::after::marker; the tree-abiding and
+            // element-backed pseudo-elements of a ::slotted() element - not
+            // ::first-line, ::first-letter or a highlight pseudo-element -
+            // and any but ::slotted() and ::part() after ::part(); and CSS
+            // Forms 1's ::picker(select) takes
+            // ::before, ::after, ::marker, ::placeholder and
+            // ::picker(select) (Chrome, Firefox and Safari: wpt.fyi
+            // 2358bd4835, css/css-shadow/slotted-parsing.html,
+            // css/css-forms/parsing/picker-select-pseudo-element.html).
             const ok = if (std.mem.eql(u8, first, "before") or std.mem.eql(u8, first, "after"))
                 std.mem.eql(u8, name, "marker")
-            else if (std.mem.eql(u8, first, "slotted") or std.mem.eql(u8, first, "part"))
+            else if (std.mem.eql(u8, first, "slotted"))
+                !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part") and
+                    !std.mem.eql(u8, name, "first-line") and !std.mem.eql(u8, name, "first-letter") and
+                    !isHighlightPseudoElement(name)
+            else if (std.mem.eql(u8, first, "part"))
+                // ::part() takes ::first-line, ::first-letter and the
+                // highlight pseudo-elements (css/selectors/parsing/
+                // parse-part.html, css/css-pseudo/parsing/highlight-pseudos.html:
+                // valid in all three).
                 !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part")
+            else if (std.mem.eql(u8, first, "picker"))
+                knownPseudoElement(name, &.{ "before", "after", "marker", "placeholder", "picker" }) != null
             else
                 false;
             if (!ok) return error.InvalidSelector;
         }
         return pseudo;
+    }
+
+    /// CSS Pseudo 4 §3: the highlight pseudo-elements.
+    fn isHighlightPseudoElement(name: []const u8) bool {
+        for ([_][]const u8{ "selection", "target-text", "spelling-error", "grammar-error", "highlight", "search-text" }) |h| {
+            if (std.mem.eql(u8, name, h)) return true;
+        }
+        return false;
     }
 
     const plain_pseudo_elements = [_][]const u8{
@@ -1894,6 +2035,13 @@ pub const Parser = struct {
             pseudo.part_names = try self.allocator.dupe([]const u8, names.items);
         } else if (std.mem.eql(u8, name, "highlight")) {
             pseudo.name_argument = (try singleToken(args, .ident)).value;
+        } else if (std.mem.eql(u8, name, "picker")) {
+            // CSS Forms 1: ::picker(<form-control-identifier>), `select`
+            // the one identifier (ASCII case-insensitive), which CSSOM
+            // serializes lowercase (picker-select-pseudo-element.html).
+            const identifier = try singleToken(args, .ident);
+            if (!std.ascii.eqlIgnoreCase(identifier.value, "select")) return error.InvalidSelector;
+            try self.serializeAs(identifier.start, identifier.end, "select");
         } else if (isNamedViewTransitionName(name)) {
             try self.parseViewTransitionArgument(&stream, pseudo);
         }
@@ -2032,6 +2180,98 @@ pub const Parser = struct {
         // WebKit consumeANPlusB parses the signed suffix as an int.
         const value = std.fmt.parseInt(i32, rest, 10) catch return error.InvalidSelector;
         return .{ .a = a, .b = value };
+    }
+
+    /// CSSOM only (`anb_rewrites`): serialize the source span [start, end)
+    /// as `text` - static, or in the parse's scratch memory - when the two
+    /// differ.
+    fn serializeAs(self: *Parser, start: usize, end: usize, text: []const u8) ParserError!void {
+        const rewrites = self.anb_rewrites orelse return;
+        if (std.mem.eql(u8, self.tokenizer.input[start..end], text)) return;
+        try rewrites.append(self.scratch, .{ .start = start, .end = end, .literal = text });
+    }
+
+    /// CSSOM 5.2: a selector list's item, or a functional pseudo-class's
+    /// non-list argument, serializes without the whitespace around it.
+    fn trimSpan(self: *Parser, piece: []const Token) ParserError!void {
+        if (self.anb_rewrites == null or piece.len == 0) return;
+        var first: usize = 0;
+        while (first < piece.len and piece[first].tag == .whitespace) first += 1;
+        if (first == piece.len) return self.serializeAs(piece[0].start, piece[piece.len - 1].end, "");
+        if (first > 0) try self.serializeAs(piece[0].start, piece[first].start, "");
+        var last = piece.len - 1;
+        while (piece[last].tag == .whitespace) last -= 1;
+        if (last + 1 < piece.len) try self.serializeAs(piece[last].end, piece[piece.len - 1].end, "");
+    }
+
+    /// CSSOM 5.2 step 3: " > ", " + ", " ~ ", or a single space for the
+    /// descendant combinator.
+    fn combinatorText(combinator: Combinator) []const u8 {
+        return switch (combinator) {
+            .Child => " > ",
+            .NextSibling => " + ",
+            .SubsequentSibling => " ~ ",
+            else => " ",
+        };
+    }
+
+    /// CSSOM 5.2 "serialize a simple selector", attribute selector: "[",
+    /// the namespace prefix and "|" unless it is the null namespace, the
+    /// name, the matcher and the value serialized as a string, " i" or " s"
+    /// for the modifier, "]". The prefix and the name are as written.
+    /// The text is the source's when they are the same; else it is kept
+    /// with the list's strings.
+    fn attributeText(self: *Parser, span: []const u8, contents: []const Token, simple: *const SimpleSelector) ParserError![]const u8 {
+        const attribute: *const AttributeSelector = switch (simple.*) {
+            .Attribute => |*plain| plain,
+            .NamespacedAttribute => |boxed| &boxed.attribute,
+            else => unreachable,
+        };
+        var stream = Stream{ .tokens = contents };
+        _ = stream.skipWhitespace();
+        const input = self.tokenizer.input;
+        const a = self.allocator;
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(a);
+        try out.append(a, '[');
+        const t0 = stream.peek();
+        const t1 = stream.peekAt(1);
+        const name_token = if (t0.isDelim('*') and t1.isDelim('|')) blk: {
+            try out.appendSlice(a, "*|");
+            break :blk stream.peekAt(2);
+        } else if (t0.isDelim('|')) t1 else if (t0.tag == .ident and t1.isDelim('|') and stream.peekAt(2).tag == .ident) blk: {
+            try out.appendSlice(a, input[t0.start..t0.end]);
+            try out.append(a, '|');
+            break :blk stream.peekAt(2);
+        } else t0;
+        try out.appendSlice(a, input[name_token.start..name_token.end]);
+        const Matched = struct { operator: []const u8, value: []const u8 };
+        const matched: ?Matched = switch (attribute.matcher) {
+            .Presence => null,
+            .Exact => |m| .{ .operator = "=", .value = m.value },
+            .Includes => |m| .{ .operator = "~=", .value = m.value },
+            .DashMatch => |m| .{ .operator = "|=", .value = m.value },
+            .Prefix => |m| .{ .operator = "^=", .value = m.value },
+            .Suffix => |m| .{ .operator = "$=", .value = m.value },
+            .Substring => |m| .{ .operator = "*=", .value = m.value },
+        };
+        if (matched) |m| {
+            try out.appendSlice(a, m.operator);
+            try appendCssString(a, &out, m.value);
+        }
+        switch (attribute.case) {
+            .default => {},
+            .insensitive => try out.appendSlice(a, " i"),
+            .sensitive => try out.appendSlice(a, " s"),
+        }
+        try out.append(a, ']');
+        if (std.mem.eql(u8, out.items, span)) return span;
+        const owned = try out.toOwnedSlice(a);
+        self.strings.append(a, owned) catch |err| {
+            a.free(owned);
+            return err;
+        };
+        return owned;
     }
 
     fn recordAnB(self: *Parser, args: []const Token, end: usize, pattern: NthPattern, has_of: bool) ParserError!void {
