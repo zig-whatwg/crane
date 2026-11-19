@@ -67,5 +67,14 @@ test "only the interfaces whose impls keep set entries are opted in" {
     try testing.expect(setlike.isImplemented("CustomStateSet"));
     try testing.expect(setlike.isImplemented("FontFaceSet"));
     try testing.expect(setlike.isImplemented("ViewTransitionTypeSet"));
-    try testing.expect(!setlike.isImplemented("Highlight"));
+    // CSS Custom Highlight API 1 §2.2: Highlight's ranges (lane css2).
+    try testing.expect(setlike.isImplemented("Highlight"));
+    try testing.expect(!setlike.isImplemented("NotASetlike"));
+}
+
+test "only HighlightRegistry's maplike declaration is opted in" {
+    const maplike = @import("codegen").maplike;
+    try testing.expect(maplike.isImplemented("HighlightRegistry"));
+    try testing.expect(!maplike.isImplemented("EventCounts"));
+    try testing.expect(!maplike.isImplemented("AudioParamMap"));
 }
