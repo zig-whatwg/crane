@@ -6017,8 +6017,8 @@ pub const TreeBuilder = struct {
 /// The document mode a DOCTYPE token sets in the "initial" insertion mode:
 /// quirks if it matches the first list, limited-quirks if it matches the
 /// second, no-quirks otherwise. Identifiers compare ASCII case-insensitively;
-/// "A system identifier whose value is the empty string is not considered
-/// missing." (The name is compared as the tokenizer left it, lowercased.)
+/// the HTML 4.01 entries treat an empty system identifier as a missing one.
+/// (The name is compared as the tokenizer left it, lowercased.)
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#the-initial-insertion-mode
 pub fn doctypeMode(name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]const u8, force_quirks: bool) QuirksMode {
@@ -6040,10 +6040,13 @@ pub fn doctypeMode(name: ?[]const u8, public_id: ?[]const u8, system_id: ?[]cons
         }
         const html401 = std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD HTML 4.01 Frameset//") or
             std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD HTML 4.01 Transitional//");
-        // "The system identifier is missing and the public identifier starts
-        // with" either 4.01 prefix: quirks. With a system identifier:
-        // limited-quirks.
-        if (html401 and system_id == null) return .quirks;
+        // "The system identifier is missing or the empty string, and the
+        // public identifier starts with" either 4.01 prefix: quirks; one
+        // "neither missing nor the empty string": limited-quirks
+        // (whatwg/html#12023; Chrome and Safari ship it, wpt.fyi 2358bd4835
+        // doctype-system-identifier-distinction.html - golden rule 2, the
+        // newer spec).
+        if (html401 and (system_id == null or system_id.?.len == 0)) return .quirks;
         if (std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Frameset//") or
             std.ascii.startsWithIgnoreCase(pid, "-//W3C//DTD XHTML 1.0 Transitional//"))
         {
