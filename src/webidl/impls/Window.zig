@@ -2019,15 +2019,17 @@ pub fn get_sessionStorage(instance: *runtime.Instance) anyerror!*runtime.Instanc
     const context_id = internal.browsing_context.getTop().id;
     const key = (try @import("dom").global_settings.storageKeyForNonStoragePurposesOf(instance)) orelse return error.SecurityError;
 
-    // The shed is the Browser's (its scope's supplement): a realm no Browser
-    // made has none - "the user agent is configured to not allow" storage.
-    const user_agent_storage = @import("dom").browser_state.userAgentStorageOf(instance.ctx) orelse return error.SecurityError;
+    // The traversable's shed is one of its Browser's navigables' (Storage
+    // 4.3: "A traversable navigable holds a storage shed"): a realm no
+    // Browser made has none - "the user agent is configured to not allow"
+    // storage.
+    const navigables = @import("dom").browser_state.navigablesOf(instance.ctx) orelse return error.SecurityError;
 
     // Create the backend storage for this origin and browsing context
     const backend = internal.allocator.create(WebStorage) catch return error.OutOfMemory;
     errdefer internal.allocator.destroy(backend);
 
-    backend.* = getSessionStorageBackend(internal.allocator, user_agent_storage, context_id, key) catch |err| {
+    backend.* = getSessionStorageBackend(internal.allocator, &navigables.traversable_storage, context_id, key) catch |err| {
         // Note: errdefer above handles cleanup, just return the error
         return switch (err) {
             web_storage.StorageError.SecurityError => error.SecurityError,
@@ -3736,8 +3738,10 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // The owner list holds the integration before storage is published, so
     // an append failure cannot leave an unreachable tab's copied shelves.
     if (!noopener) if (integration.browsing_context) |created_bc| {
-        if (@import("dom").browser_state.userAgentStorageOf(window.ctx)) |browser_storage| {
-            web_storage.web_storage.cloneSessionStorage(browser_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
+        // The traversables' sheds are their Browser's navigables' (Storage
+        // 4.3: each traversable navigable holds its own).
+        if (@import("dom").browser_state.navigablesOf(window.ctx)) |navigables| {
+            web_storage.web_storage.cloneSessionStorage(&navigables.traversable_storage, internal.browsing_context.getTop().id, created_bc.getTop().id) catch {};
         }
     };
     // Steps 8.5-8.6: a named target names the new navigable.

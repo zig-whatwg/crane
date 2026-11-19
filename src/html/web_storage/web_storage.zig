@@ -29,8 +29,9 @@
 //! try local.setItem("key", "value");
 //! const value = local.getItem("key"); // "value"
 //!
-//! // Get sessionStorage for a browsing context
-//! var session = try storage.getSessionStorage(allocator, user_agent_storage, context_id, key);
+//! // Get sessionStorage for a top-level traversable, among the Browser's
+//! // traversable storage sheds (its navigables')
+//! var session = try storage.getSessionStorage(allocator, sheds, context_id, key);
 //! defer session.deinit();
 //! ```
 //!
@@ -500,16 +501,17 @@ pub fn getLocalStorage(
 /// HTML Standard § 12.2.2 - sessionStorage getter
 ///
 /// `browsing_context_id` names the top-level traversable whose shed it is
-/// (Storage 4.3: every traversable navigable has one); `key` picks the shelf
-/// in it, as `getLocalStorage`'s does.
+/// (Storage 4.3: every traversable navigable has one), among `sheds` - its
+/// Browser's (html.window.Navigables); `key` picks the shelf in it, as
+/// `getLocalStorage`'s does.
 pub fn getSessionStorage(
     allocator: std.mem.Allocator,
-    user_agent_storage: *storage_standard.UserAgentStorage,
+    sheds: *storage_standard.TraversableStorageSheds,
     browsing_context_id: u64,
     key: storage_standard.StorageKey,
 ) StorageError!Storage {
     const proxy_map_result = storage_standard.obtainSessionStorageBottleMap(
-        user_agent_storage,
+        sheds,
         browsing_context_id,
         key,
         .sessionStorage,
@@ -535,15 +537,13 @@ pub fn getSessionStorage(
 /// area by its StorageKey alike). Nothing is published until every
 /// allocation succeeds; no storage event is generated. The copied shed owns
 /// every string independently.
-pub fn cloneSessionStorage(user_agent_storage: *storage_standard.UserAgentStorage, opener_top: u64, new_top: u64) std.mem.Allocator.Error!void {
+pub fn cloneSessionStorage(sheds: *storage_standard.TraversableStorageSheds, opener_top: u64, new_top: u64) std.mem.Allocator.Error!void {
     std.debug.assert(opener_top != new_top);
-    user_agent_storage.lock();
-    defer user_agent_storage.unlock();
-    const allocator = user_agent_storage.allocator;
+    const allocator = sheds.allocator;
     // HTML's caller supplies an empty new traversable. Reusing a named
     // popup never enters this algorithm or replaces a live shed.
-    std.debug.assert(!user_agent_storage.session_sheds.contains(new_top));
-    const source = user_agent_storage.session_sheds.getPtr(opener_top) orelse return;
+    std.debug.assert(!sheds.contains(new_top));
+    const source = sheds.existing(opener_top) orelse return;
 
     var copy = storage_standard.StorageShed.init(allocator, .session);
     errdefer copy.deinit();
@@ -561,7 +561,7 @@ pub fn cloneSessionStorage(user_agent_storage: *storage_standard.UserAgentStorag
 
     // The only allocation in publishing comes before the move. The new shed
     // is a value in the map; its shelves stay in their own allocation.
-    try user_agent_storage.session_sheds.putNoClobber(allocator, new_top, copy);
+    try sheds.sheds.putNoClobber(allocator, new_top, copy);
 }
 
 fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standard.StorageBottle) std.mem.Allocator.Error!storage_standard.StorageShelf {

@@ -729,23 +729,16 @@ pub const StorageShed = struct {
 /// every shelf, bucket, bottle and bucket file system is found or made under
 /// it (`obtainShelf`, `obtainBottleMap`, `bucketFileSystem`). A bottle's map
 /// is then read and written without it, by the realms that may reach it:
-/// localStorage and sessionStorage are [Exposed=Window], so only the Browser's
-/// window thread. A step that reads or writes a shelf from another thread
+/// localStorage is [Exposed=Window], so only the Browser's window thread. A step that reads or writes a shelf from another thread
 /// takes `lock`/`unlock` around it (StorageManager's persist, persisted and
 /// estimate).
 pub const UserAgentStorage = struct {
     allocator: std.mem.Allocator,
     mutex: std.Io.Mutex = .init,
     /// The user agent's storage shed: local storage, a shelf per storage
-    /// key.
+    /// key. (Session storage is not the user agent's: each traversable
+    /// navigable holds a shed of its own - `TraversableStorageSheds`.)
     shed: StorageShed,
-    /// The session storage sheds: Storage 4.3 gives every traversable
-    /// navigable a storage shed of its own, here by the top-level
-    /// traversable's browsing context id. Each holds a shelf per storage key;
-    /// a shed's shelves stay in its own allocation when this map grows, so a
-    /// Storage object's proxy map stays valid. Until each tab holds its
-    /// traversable's shed itself (instances B4), they end with the Browser.
-    session_sheds: std.AutoHashMapUnmanaged(u64, StorageShed) = .empty,
     /// The bucket file systems (navigator.storage.getDirectory()).
     buckets: fs.BucketManager,
 
@@ -760,9 +753,6 @@ pub const UserAgentStorage = struct {
     /// With its Browser: every storage area of it is gone.
     pub fn deinit(self: *UserAgentStorage) void {
         self.shed.deinit();
-        var sheds = self.session_sheds.valueIterator();
-        while (sheds.next()) |shed| shed.deinit();
-        self.session_sheds.deinit(self.allocator);
         self.buckets.deinit();
     }
 
@@ -780,22 +770,6 @@ pub const UserAgentStorage = struct {
     pub fn obtainLocalShelfLocked(self: *UserAgentStorage, key: StorageKey) !?*StorageShelf {
         const storage_key = obtainStorageKey(key) orelse return null;
         return try self.shed.obtainShelf(storage_key);
-    }
-
-    /// "Obtain a session storage shelf": `key`'s shelf in the session storage
-    /// shed of the top-level traversable `traversable`, made on first use.
-    pub fn obtainSessionShelfLocked(self: *UserAgentStorage, traversable: u64, key: StorageKey) !?*StorageShelf {
-        const storage_key = obtainStorageKey(key) orelse return null;
-        const shed = try self.sessionShedLocked(traversable);
-        return try shed.obtainShelf(storage_key);
-    }
-
-    /// The session storage shed of the top-level traversable `traversable`,
-    /// made empty on first use.
-    pub fn sessionShedLocked(self: *UserAgentStorage, traversable: u64) !*StorageShed {
-        const entry = try self.session_sheds.getOrPut(self.allocator, traversable);
-        if (!entry.found_existing) entry.value_ptr.* = StorageShed.init(self.allocator, .session);
-        return entry.value_ptr;
     }
 
     /// The local storage shelf of `origin` alone, with no top-level site:
@@ -818,6 +792,72 @@ pub const UserAgentStorage = struct {
         self.lock();
         defer self.unlock();
         return self.buckets.getOrCreate(origin);
+    }
+};
+
+/// The storage sheds of a Browser's traversable navigables. Storage 4.3: "A
+/// traversable navigable holds a storage shed ... A traversable navigable's
+/// storage shed holds all session storage data." Each is the shed of one
+/// top-level traversable, by its top-level browsing context's id; it holds a
+/// shelf per storage key.
+///
+/// The Browser's navigables own this (html.window.Navigables), beside the
+/// browsing contexts whose traversables hold the sheds; they end with the
+/// Browser.
+///
+/// THREADS: the Browser's window thread only, as its navigables are.
+/// sessionStorage is [Exposed=Window], so no other thread reaches a
+/// traversable's shed, and nothing here is locked.
+///
+/// A shed's shelves keep their own allocation when the map grows, so a
+/// Storage object's proxy map stays valid while its shed lives.
+pub const TraversableStorageSheds = struct {
+    allocator: std.mem.Allocator,
+    sheds: std.AutoHashMapUnmanaged(u64, StorageShed) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) TraversableStorageSheds {
+        return .{ .allocator = allocator };
+    }
+
+    /// Ends with the Browser's navigables: the sheds of traversables whose
+    /// records outlived the navigables go with them.
+    pub fn deinit(self: *TraversableStorageSheds) void {
+        var sheds = self.sheds.valueIterator();
+        while (sheds.next()) |shed| shed.deinit();
+        self.sheds.deinit(self.allocator);
+        self.sheds = .empty;
+    }
+
+    /// The shed of the traversable `traversable` (its top-level browsing
+    /// context's id), made empty on first use.
+    pub fn shedOf(self: *TraversableStorageSheds, traversable: u64) !*StorageShed {
+        const entry = try self.sheds.getOrPut(self.allocator, traversable);
+        if (!entry.found_existing) entry.value_ptr.* = StorageShed.init(self.allocator, .session);
+        return entry.value_ptr;
+    }
+
+    /// The traversable's shed if it has one; never makes one.
+    pub fn existing(self: *TraversableStorageSheds, traversable: u64) ?*StorageShed {
+        return self.sheds.getPtr(traversable);
+    }
+
+    /// Whether the traversable has a shed.
+    pub fn contains(self: *const TraversableStorageSheds, traversable: u64) bool {
+        return self.sheds.contains(traversable);
+    }
+
+    /// How many traversables have a shed.
+    pub fn count(self: *const TraversableStorageSheds) usize {
+        return self.sheds.count();
+    }
+
+    /// "Obtain a session storage shelf": `key`'s shelf in the traversable's
+    /// shed, both made on first use. Null - failure - for a key "obtain a
+    /// storage key" refuses.
+    pub fn obtainShelf(self: *TraversableStorageSheds, traversable: u64, key: StorageKey) !?*StorageShelf {
+        const storage_key = obtainStorageKey(key) orelse return null;
+        const shed = try self.shedOf(traversable);
+        return try shed.obtainShelf(storage_key);
     }
 };
 
@@ -905,20 +945,19 @@ pub fn obtainLocalStorageBottleMap(
     return obtainStorageBottleMap(user_agent_storage, key, identifier);
 }
 
-/// Obtain a session storage bottle map: `key`'s, in the session storage
-/// shed of the top-level traversable `traversable` (its browsing context
-/// id). Null when "obtain a storage key" fails for `key`.
+/// Obtain a session storage bottle map: `key`'s, in the storage shed of the
+/// top-level traversable `traversable` (its browsing context id), one of
+/// `sheds` - its Browser's. Null when "obtain a storage key" fails for `key`.
+/// On the Browser's window thread (TraversableStorageSheds, THREADS).
 /// https://storage.spec.whatwg.org/#obtain-a-session-storage-bottle-map
 pub fn obtainSessionStorageBottleMap(
-    user_agent_storage: *UserAgentStorage,
+    sheds: *TraversableStorageSheds,
     traversable: u64,
     key: StorageKey,
     identifier: StorageIdentifier,
 ) !?StorageProxyMap {
-    user_agent_storage.lock();
-    defer user_agent_storage.unlock();
-    const shelf = try user_agent_storage.obtainSessionShelfLocked(traversable, key) orelse return null;
-    return bottleMapOf(user_agent_storage.allocator, shelf, identifier);
+    const shelf = try sheds.obtainShelf(traversable, key) orelse return null;
+    return bottleMapOf(sheds.allocator, shelf, identifier);
 }
 
 // ============================================================================

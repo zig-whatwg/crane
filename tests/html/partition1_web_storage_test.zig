@@ -40,13 +40,15 @@ test "localStorage: one origin under two top-level sites has two areas" {
 test "localStorage and sessionStorage: a key obtain-a-storage-key refuses is a SecurityError" {
     var store = web_storage.UserAgentStorage.init(testing.allocator);
     defer store.deinit();
+    var sheds = web_storage.TraversableStorageSheds.init(testing.allocator);
+    defer sheds.deinit();
     try testing.expectError(error.SecurityError, web_storage.getLocalStorage(testing.allocator, &store, StorageKey.initBorrowed("null", "http://web-platform.test", true)));
     try testing.expectError(error.SecurityError, web_storage.getLocalStorage(testing.allocator, &store, StorageKey.initBorrowed(origin, "null", true)));
-    try testing.expectError(error.SecurityError, web_storage.getSessionStorage(testing.allocator, &store, 1, StorageKey.initBorrowed(origin, "null", true)));
+    try testing.expectError(error.SecurityError, web_storage.getSessionStorage(testing.allocator, &sheds, 1, StorageKey.initBorrowed(origin, "null", true)));
 }
 
 test "sessionStorage: a popup's copy keeps each shelf's key, so only an equal key reads it" {
-    var store = web_storage.UserAgentStorage.init(testing.allocator);
+    var store = web_storage.TraversableStorageSheds.init(testing.allocator);
     defer store.deinit();
 
     // The opener's tab: its own first-party area, and a third-party frame of

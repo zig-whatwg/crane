@@ -9,12 +9,12 @@ fn keyOf(origin: []const u8) web_storage.StorageKey {
 
 /// The number of shelves in top-level traversable `top`'s session storage
 /// shed (none: 0).
-fn shelvesOf(store: *web_storage.UserAgentStorage, top: u64) usize {
-    const shed = store.session_sheds.getPtr(top) orelse return 0;
+fn shelvesOf(store: *web_storage.TraversableStorageSheds, top: u64) usize {
+    const shed = store.existing(top) orelse return 0;
     return shed.count();
 }
 
-fn seed(store: *web_storage.UserAgentStorage, top: u64, origin: []const u8, value: []const u8) !void {
+fn seed(store: *web_storage.TraversableStorageSheds, top: u64, origin: []const u8, value: []const u8) !void {
     var area = try web_storage.getSessionStorage(std.testing.allocator, store, top, keyOf(origin));
     defer area.deinit();
     try area.setItem("key", value);
@@ -23,12 +23,14 @@ fn seed(store: *web_storage.UserAgentStorage, top: u64, origin: []const u8, valu
 
 test "new traversable storage copies every origin independently and excludes other tabs and local storage" {
     const allocator = std.testing.allocator;
-    var store = web_storage.UserAgentStorage.init(allocator);
+    var store = web_storage.TraversableStorageSheds.init(allocator);
     defer store.deinit();
+    var user_agent_storage = web_storage.UserAgentStorage.init(allocator);
+    defer user_agent_storage.deinit();
     try seed(&store, 1, "https://one.test", "first");
     try seed(&store, 1, "https://two.test", "second");
     try seed(&store, 10, "https://unrelated.test", "unrelated");
-    var local = try web_storage.getLocalStorage(allocator, &store, keyOf("https://local.test"));
+    var local = try web_storage.getLocalStorage(allocator, &user_agent_storage, keyOf("https://local.test"));
     defer local.deinit();
     try local.setItem("local-only", "value");
 
@@ -59,7 +61,7 @@ test "new traversable storage copies every origin independently and excludes oth
 fn cloneAllocationScenario(allocator: std.mem.Allocator) !void {
     // Seed with an infallible testing allocator: this test injects failures
     // into cloning, not the legacy backend's unrelated creation algorithms.
-    var store = web_storage.UserAgentStorage.init(std.testing.allocator);
+    var store = web_storage.TraversableStorageSheds.init(std.testing.allocator);
     defer store.deinit();
     try seed(&store, 1, "https://one.test", "first");
     try seed(&store, 1, "https://two.test", "second");
@@ -71,7 +73,7 @@ fn cloneAllocationScenario(allocator: std.mem.Allocator) !void {
     store.allocator = allocator;
     defer store.allocator = std.testing.allocator;
     storage.cloneSessionStorage(&store, 1, 2) catch |err| {
-        try std.testing.expect(!store.session_sheds.contains(2));
+        try std.testing.expect(!store.contains(2));
         try std.testing.expectEqual(@as(usize, 2), shelvesOf(&store, 1));
         try std.testing.expectEqualStrings("first", original.getItem("key").?);
         return err;
@@ -85,7 +87,7 @@ test "session storage clone allocation failure publishes no partial shelves" {
 
 fn growingCloneAllocationScenario(fail_index: usize) !bool {
     var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
-    var store = web_storage.UserAgentStorage.init(std.testing.allocator);
+    var store = web_storage.TraversableStorageSheds.init(std.testing.allocator);
     defer store.deinit();
     const origins = [_][]const u8{ "https://one.test", "https://two.test", "https://three.test", "https://four.test", "https://five.test" };
     for (origins) |origin| try seed(&store, 1, origin, "source");
@@ -97,7 +99,7 @@ fn growingCloneAllocationScenario(fail_index: usize) !bool {
     storage.cloneSessionStorage(&store, 1, 2) catch |err| {
         try std.testing.expectEqual(error.OutOfMemory, err);
         try std.testing.expect(failing.has_induced_failure);
-        try std.testing.expect(!store.session_sheds.contains(2));
+        try std.testing.expect(!store.contains(2));
         try std.testing.expectEqual(@as(usize, 5), shelvesOf(&store, 1));
         try std.testing.expectEqualStrings("source", original.getItem("key").?);
         return true;
@@ -118,7 +120,7 @@ test "session storage clone allocation failures also cover growing the map of sh
 
 test "session storage clone preserves the independent key-value set after growth and deletion" {
     const allocator = std.testing.allocator;
-    var store = web_storage.UserAgentStorage.init(allocator);
+    var store = web_storage.TraversableStorageSheds.init(allocator);
     defer store.deinit();
     var original = try web_storage.getSessionStorage(allocator, &store, 1, keyOf("https://order.test"));
     defer original.deinit();

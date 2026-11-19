@@ -98,6 +98,9 @@ pub const getBucketFileSystem = standard.getBucketFileSystem;
 /// The user agent's storage shed and bucket file systems: one per Browser, a
 /// supplement of its scope (docs/instances.md).
 pub const UserAgentStorage = standard.UserAgentStorage;
+/// The storage sheds of a Browser's traversable navigables (session
+/// storage): its navigables', on its window thread.
+pub const TraversableStorageSheds = standard.TraversableStorageSheds;
 
 // StorageManager interface (Phase 3.10)
 pub const storage_manager = @import("storage_manager.zig");

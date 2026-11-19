@@ -90,12 +90,14 @@ test "local storage bottle maps of one origin under two top-level sites share no
 test "session storage: each top-level traversable has a shed of its own, keyed by storage key" {
     var user_agent_storage = UserAgentStorage.init(testing.allocator);
     defer user_agent_storage.deinit();
+    var sheds = storage.TraversableStorageSheds.init(testing.allocator);
+    defer sheds.deinit();
 
-    const tab_one = (try storage.obtainSessionStorageBottleMap(&user_agent_storage, 1, first_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
+    const tab_one = (try storage.obtainSessionStorageBottleMap(&sheds, 1, first_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
     try tab_one.set("k", "one");
-    const tab_one_third = (try storage.obtainSessionStorageBottleMap(&user_agent_storage, 1, third_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
+    const tab_one_third = (try storage.obtainSessionStorageBottleMap(&sheds, 1, third_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
     try testing.expect(tab_one_third.get("k") == null);
-    const tab_two = (try storage.obtainSessionStorageBottleMap(&user_agent_storage, 2, first_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
+    const tab_two = (try storage.obtainSessionStorageBottleMap(&sheds, 2, first_party, .sessionStorage)) orelse return error.TestUnexpectedNull;
     try testing.expect(tab_two.get("k") == null);
     // The local shed holds none of it.
     const local = (try storage.obtainLocalStorageBottleMap(&user_agent_storage, first_party, .localStorage)) orelse return error.TestUnexpectedNull;
