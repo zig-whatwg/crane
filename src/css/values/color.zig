@@ -170,6 +170,10 @@ pub const ColorParser = struct {
     inline fn parseValue(comptime Result: type, tok: *Tokenizer, property: []const u8, ctx: *const ParserContext) ColorParseError!Result {
         tok.skipWhitespace();
         const token = tok.next();
+        // CSS Color 4 Appendix B: in quirks mode a <number-token> or a
+        // <dimension-token> is a <quirky-color> too.
+        if ((token.token_type == .number or token.token_type == .dimension) and ctx.allowsHashlessHexColor(property))
+            return byteResult(Result, try quirkyNumericColor(token));
         // Ordinary tokens need neither a decoding buffer nor its Debug-mode
         // initialization. Keep the complete escaped-name path off that path.
         if (std.mem.indexOfAny(u8, token.value, "\\\x00") == null)
@@ -203,6 +207,34 @@ pub const ColorParser = struct {
 
             else => return ColorParseError.UnexpectedToken,
         }
+    }
+
+    /// CSS Color 4 Appendix B, a <quirky-color> written as a <number-token>
+    /// or a <dimension-token>: "it must have its integer flag set. Serialize
+    /// the integer's value[, and append the representation of the token's
+    /// unit]. If the result has less than 6 characters, prepend "0"
+    /// characters to it until it is 6 characters long. It represents a
+    /// <hex-color> with the same value." A sign is no hex digit, so a
+    /// negative value is no color; the unit is its decoded name (all three
+    /// browsers read `12\33 ` as #000123: quirks/hashless-hex-color).
+    fn quirkyNumericColor(token: tokenizer.Token) ColorParseError!Color {
+        if (!token.is_integer) return ColorParseError.InvalidColor;
+        const n = token.numeric_value orelse return ColorParseError.InvalidColor;
+        if (n < 0 or n > 999_999) return ColorParseError.InvalidColor;
+        var digits: [8]u8 = undefined;
+        const number = std.fmt.bufPrint(&digits, "{d}", .{@as(u32, @intFromFloat(n))}) catch return ColorParseError.InvalidColor;
+        var unit_buffer: [512]u8 = undefined;
+        const unit: []const u8 = if (token.token_type == .dimension)
+            try decodedName(token.unit orelse return ColorParseError.InvalidColor, &unit_buffer)
+        else
+            "";
+        if (number.len + unit.len > 6) return ColorParseError.InvalidColor;
+        var hex: [6]u8 = @splat('0');
+        const start = 6 - number.len - unit.len;
+        @memcpy(hex[start..][0..number.len], number);
+        @memcpy(hex[start + number.len ..][0..unit.len], unit);
+        for (hex) |c| if (!std.ascii.isHex(c)) return ColorParseError.InvalidColor;
+        return parseHexDigits(&hex);
     }
 
     /// Parse a hash color (#fff or #ffffff).
