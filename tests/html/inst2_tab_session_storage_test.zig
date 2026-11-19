@@ -104,9 +104,12 @@ test "an opener holding a closed popup's sessionStorage reads it safely after th
         \\}
         \\true
     );
-    const answer = try fixture_mod.evaluateIn(fixture_mod.activeRealm(host).?, "reads.join()");
-    defer testing.allocator.free(answer);
-    std.debug.print("a closed popup's Storage, read by its opener: {s}; its browsing context {s}\n", .{ answer, if (dom.browser_state.existingNavigablesIn(fixture.browser.scope).?.byId(id) == null) "freed" else "held" });
+    // Its Window, which the Storage's realm keeps, still holds the popup's
+    // browsing context, so its traversable's shed is there to read: the
+    // Storage works on it as before the close (no other tab shares it).
+    try fixture.expect(host, "reads.join()", "value:v,value:1,value:k,value:set,value:cleared");
+    try testing.expect(dom.browser_state.existingNavigablesIn(fixture.browser.scope).?.byId(id) != null);
+    try testing.expect(hasShed(fixture, id));
 
     // Once the opener lets it go too, the traversable's record ends, and its
     // shed with it.

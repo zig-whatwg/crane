@@ -561,7 +561,7 @@ pub fn cloneSessionStorage(sheds: *storage_standard.TraversableStorageSheds, ope
 
     // The only allocation in publishing comes before the move. The new shed
     // is a value in the map; its shelves stay in their own allocation.
-    try sheds.sheds.putNoClobber(allocator, new_top, copy);
+    try sheds.publish(new_top, copy);
 }
 
 fn cloneSessionShelf(allocator: std.mem.Allocator, source: *const storage_standard.StorageBottle) std.mem.Allocator.Error!storage_standard.StorageShelf {
