@@ -1103,7 +1103,7 @@ pub const Parser = struct {
                 // comma-separated list" - each item without the whitespace
                 // around it, then ", " (a forgiven item keeps its text).
                 try self.trimSpan(piece);
-                if (at_comma) try self.rewrite(tokens[i].start, tokens[i].end, ", ");
+                if (at_comma) try self.serializeAs(tokens[i].start, tokens[i].end, ", ");
                 if (i >= tokens.len) break;
                 i += 1;
                 piece_start = i;
@@ -1194,7 +1194,7 @@ pub const Parser = struct {
                 stream.advance();
                 _ = stream.skipWhitespace();
                 // CSSOM 5.2: the combinator, then one space.
-                if (!stream.atEnd()) try self.rewrite(written.start, stream.peek().start, switch (explicit) {
+                if (!stream.atEnd()) try self.serializeAs(written.start, stream.peek().start, switch (explicit) {
                     .Child => "> ",
                     .NextSibling => "+ ",
                     .SubsequentSibling => "~ ",
@@ -1231,7 +1231,7 @@ pub const Parser = struct {
             if (stream.atEnd()) return error.InvalidSelector;
             // CSSOM 5.2 step 3: a single space, the combinator and another
             // space - one space for the descendant combinator.
-            try self.rewrite(left_end, stream.peek().start, combinatorText(combinator));
+            try self.serializeAs(left_end, stream.peek().start, combinatorText(combinator));
             try ltr_combinators.append(self.scratch, combinator);
         }
 
@@ -1359,7 +1359,7 @@ pub const Parser = struct {
                     errdefer parsed.deinit(self.allocator);
                     if (self.anb_rewrites != null and close < stream.tokens.len) {
                         const span = self.tokenizer.input[stream.tokens[open].start..stream.tokens[close].end];
-                        try self.rewrite(stream.tokens[open].start, stream.tokens[close].end, try self.attributeText(span, contents, &parsed));
+                        try self.serializeAs(stream.tokens[open].start, stream.tokens[close].end, try self.attributeText(span, contents, &parsed));
                     }
                     break :blk parsed;
                 },
@@ -1384,7 +1384,7 @@ pub const Parser = struct {
                         }
                         pseudo_element = parsed.PseudoElement.name;
                         // CSSOM 5.2 step 4: "::" followed by its name.
-                        try self.rewrite(colon.start, colon.start, ":");
+                        try self.serializeAs(colon.start, colon.start, ":");
                     }
                     break :blk parsed;
                 },
@@ -1404,8 +1404,8 @@ pub const Parser = struct {
             const others = simples.items.len - 1 - @intFromBool(resolved.uri != null);
             const unprefixed = resolved.prefix_end == resolved.start or resolved.drop_prefix;
             if (resolved.simple == .Universal and unprefixed and others > 0) {
-                try self.rewrite(resolved.start, resolved.end, "");
-            } else if (resolved.drop_prefix) try self.rewrite(resolved.start, resolved.prefix_end, "");
+                try self.serializeAs(resolved.start, resolved.end, "");
+            } else if (resolved.drop_prefix) try self.serializeAs(resolved.start, resolved.prefix_end, "");
         };
         if (type_selector == null) if (self.namespaces) |ns| if (ns.default) |uri| {
             var after = stream.*;
@@ -2128,7 +2128,7 @@ pub const Parser = struct {
     /// CSSOM only (`anb_rewrites`): serialize the source span [start, end)
     /// as `text` - static, or in the parse's scratch memory - when the two
     /// differ.
-    fn rewrite(self: *Parser, start: usize, end: usize, text: []const u8) ParserError!void {
+    fn serializeAs(self: *Parser, start: usize, end: usize, text: []const u8) ParserError!void {
         const rewrites = self.anb_rewrites orelse return;
         if (std.mem.eql(u8, self.tokenizer.input[start..end], text)) return;
         try rewrites.append(self.scratch, .{ .start = start, .end = end, .literal = text });
@@ -2140,11 +2140,11 @@ pub const Parser = struct {
         if (self.anb_rewrites == null or piece.len == 0) return;
         var first: usize = 0;
         while (first < piece.len and piece[first].tag == .whitespace) first += 1;
-        if (first == piece.len) return self.rewrite(piece[0].start, piece[piece.len - 1].end, "");
-        if (first > 0) try self.rewrite(piece[0].start, piece[first].start, "");
+        if (first == piece.len) return self.serializeAs(piece[0].start, piece[piece.len - 1].end, "");
+        if (first > 0) try self.serializeAs(piece[0].start, piece[first].start, "");
         var last = piece.len - 1;
         while (piece[last].tag == .whitespace) last -= 1;
-        if (last + 1 < piece.len) try self.rewrite(piece[last].end, piece[piece.len - 1].end, "");
+        if (last + 1 < piece.len) try self.serializeAs(piece[last].end, piece[piece.len - 1].end, "");
     }
 
     /// CSSOM 5.2 step 3: " > ", " + ", " ~ ", or a single space for the

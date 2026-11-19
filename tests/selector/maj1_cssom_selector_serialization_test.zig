@@ -31,7 +31,7 @@ const Namespaces = struct {
 
 fn expectTextWith(input: []const u8, expected: []const u8, default_ns: ?[]const u8) !void {
     const a = std.testing.allocator;
-    const resolver: ?selector.NamespaceResolver = if (default_ns) |d| .{ .resolve = Namespaces.resolve, .default = d } else .{ .resolve = Namespaces.resolve };
+    const resolver: ?selector.parser.NamespaceResolver = if (default_ns) |d| .{ .resolve = Namespaces.resolve, .default = d } else .{ .resolve = Namespaces.resolve };
     var result = try selector.parseCssomOwned(a, try a.dupe(u8, input), .{ .namespaces = resolver });
     defer a.free(result.text);
     defer result.selectors.deinit();
