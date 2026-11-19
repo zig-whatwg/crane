@@ -1,0 +1,14 @@
+# Architecture: What a tab holds ends with its browsing context's record, not with the Browser
+
+**Date**: 2026-11-19
+**Lesson**: State a top-level traversable holds (session storage, session history) goes on, or is discarded by, its top-level browsing context's record - freed in `BrowsingContext.deinit` once its owner let it go and no Window holds it - never on a Browser-wide map that only the Browser's end clears.
+
+**Why**: Crane's top-level `BrowsingContext` is the traversable navigable: it keeps the session history and the traversal queue, it survives a browsing context group switch (`switchGroup` keeps the record), and it is freed only after the last Window that showed it ends (`window_holds`). Anything a tab holds has exactly that lifetime. A map keyed by the tab's id on a Browser supplement has the Browser's lifetime instead: it grows by one entry per tab - and in a WPT runner process, where every file is a fresh traversable (`Browser.navigate`), by one entry per file.
+
+**What Happened**: Lane inst2 (instances T1(a)). sessionStorage's sheds sat on `storage.UserAgentStorage.session_sheds`, keyed by the top-level context's id, cloned into an opener's popup, and never removed ("until instances B4, they end with the Browser"). The red tests showed each case: a closed popup, a noopener tab the host closed, and a host page replaced by a fresh traversable all freed their browsing contexts, and all kept their sheds. Discarding at the close call sites would have been wrong. A Window of the traversable can outlive the close: the opener's `p` keeps the popup's Window, and so does a Storage object the opener kept (`kept = p.sessionStorage`). That Window still owns a Storage backend whose proxy map points into the shed. A pointer from the navigables to the storage supplement would also be read after the supplement ends, because a BrowserScope ends its supplements before its tables.
+
+**Fix**: The sheds moved to `storage.TraversableStorageSheds`, owned by the Browser's `Navigables`. That is window-thread state, the same as sessionStorage (`[Exposed=Window]`), so it needs no lock. `BrowsingContext.deinit` calls `navigables.traversable_storage.discard(self.id)` beside the joint history's end. A frame's context has no entry, so its discard is a miss. Because the map's keys now come and go, it carries a `TombstoneGuard`. Firefox does the same: `SessionStorageManager` lives on the top-level BrowsingContext (`Top()`).
+
+Testing corollary: a test that waits for a closed popup's context to be freed must drop every reference to the popup's Window first (`p.close(); p = null;`). While the opener holds the WindowProxy, the context stays held, as it should.
+
+**Takeaway**: **Put a tab's state where the tab's lifetime already is: the top-level browsing context's record, which ends after its last Window. A Browser-wide map keyed by tab id is a leak with one entry per tab.**
