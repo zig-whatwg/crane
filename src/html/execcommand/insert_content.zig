@@ -58,6 +58,8 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Steps 5-6: "Let last child be the lastChild of frag. If last child is
     // null, return true."
     const last_child = (try common.lastChild(fragment)) orelse return true;
+    // A list inserted into an empty list item gives the list its items.
+    if (try insertListItems(edit, fragment)) return true;
     // Step 7: "Let descendants be all descendants of frag."
     var descendants: std.ArrayList(*Instance) = .empty;
     {
@@ -132,6 +134,48 @@ fn insertHtmlSteps(edit: *Edit, value: []const u8) anyerror!bool {
     // Step 12: "Fix disallowed ancestors of each member of descendants."
     for (descendants.items) |descendant| try block_formatting.fixDisallowedAncestors(edit, descendant);
     // Step 13.
+    return true;
+}
+
+/// insertHTML of a single ol or ul at a caret in an empty list item (one
+/// holding nothing visible but a br): the inserted list's items take the
+/// empty item's place in its list, and the caret goes to the end of the
+/// last one - all three browsers give `<ul id=old><li id=li0>{}<br></ul>`
+/// + `<ul id=new><li id=li1>abc</li><li id=li2>def</li></ul>` -> `<ul
+/// id="old"><li id="li1">abc</li><li id="li2">def</li></ul>`, and the same
+/// with an ol either way (editing/run/inserthtml.html, PPP at wpt.fyi
+/// 2358bd4835), where the spec nests the new list in the item. Mechanism:
+/// Blink ReplaceSelectionCommand::InsertAsListItems; Gecko
+/// HTMLWithContextInserter's list item handling. Golden rule 2, no newer
+/// spec. Whether it did.
+fn insertListItems(edit: *Edit, fragment: *Instance) !bool {
+    const list = (try common.firstChild(fragment)) orelse return false;
+    if ((try common.lastChild(fragment)) != list) return false;
+    if (!try common.isHtmlElementIn(list, &.{ "ol", "ul" })) return false;
+    var item_check = try common.firstChild(list);
+    var any_item = false;
+    while (item_check) |c| : (item_check = try common.nextSibling(c)) {
+        if (!try common.isHtmlElementNamed(c, "li")) return false;
+        any_item = true;
+    }
+    if (!any_item) return false;
+    if (!try edit.rangeCollapsed()) return false;
+    const point = (try edit.rangeStart()) orelse return false;
+    const item = if (try common.isHtmlElementNamed(point.node, "li")) point.node else return false;
+    if (!try common.isEditable(item)) return false;
+    // Empty: nothing but one br.
+    const only = try common.firstChild(item);
+    if (only != null and ((try common.lastChild(item)) != only or !try common.isHtmlElementNamed(only.?, "br"))) return false;
+    const target = (try common.parent(item)) orelse return false;
+    if (!try common.isHtmlElementIn(target, &.{ "ol", "ul" })) return false;
+    var last: ?*Instance = null;
+    while (try common.firstChild(list)) |li| {
+        try edit.insertBefore(target, li, item);
+        last = li;
+    }
+    try edit.removeNode(item);
+    const end = try lastPositionIn(last.?);
+    try edit.collapse(end.node, end.offset);
     return true;
 }
 
