@@ -732,6 +732,57 @@ test "a timing-bound difference lists the statuses each run takes, and is neithe
     try testing.expectError(error.InvalidKnown, parseKnown(a, "/a\tx\tPASS|PASS\tPASS\to\te\n", &diag));
 }
 
+test "a file's timeout line also covers the subtests a run left unfinished when that run timed the file out" {
+    // A run in which the FILE timed out reports the subtests it never reached
+    // TIMEOUT or NOTRUN, where the other run has them PASS: one difference,
+    // the file's (tools/wpt_build_differences.txt's client-url-creation-url
+    // line, lane maj1's FULL A/B of 2026-11-19: 7 such subtests).
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const known = [_]Known{
+        .{ .test_id = "sw/c.https.html", .subtest = file_status, .production = "OK|TIMEOUT", .bug_finding = "OK|TIMEOUT", .owner = "o", .evidence = "e" },
+    };
+    const diffs = [_]Difference{
+        .{ .test_id = "sw/c.https.html", .subtest = file_status, .production = "OK", .bug_finding = "TIMEOUT" },
+        .{ .test_id = "/sw/c.https.html", .subtest = "first", .production = "PASS", .bug_finding = "TIMEOUT", .production_file = "OK", .bug_finding_file = "TIMEOUT" },
+        .{ .test_id = "/sw/c.https.html", .subtest = "second", .production = "PASS", .bug_finding = "NOTRUN", .production_file = "OK", .bug_finding_file = "TIMEOUT" },
+    };
+    const v = try check(a, &diffs, &known);
+    try testing.expectEqual(@as(usize, 0), v.new.len);
+    try testing.expectEqual(@as(usize, 3), v.known);
+    // Either build: the production run timed it out.
+    const flipped = [_]Difference{.{ .test_id = "/sw/c.https.html", .subtest = "third", .production = "NOTRUN", .bug_finding = "PASS", .production_file = "TIMEOUT", .bug_finding_file = "OK" }};
+    try testing.expectEqual(@as(usize, 0), (try check(a, &flipped, &known)).new.len);
+    // A subtest TIMEOUT inside a file that run finished (OK) is new.
+    const finished = [_]Difference{.{ .test_id = "/sw/c.https.html", .subtest = "first", .production = "PASS", .bug_finding = "TIMEOUT", .production_file = "OK", .bug_finding_file = "OK" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, &finished, &known)).new.len);
+    // A subtest that FAILs where the other run PASSes is no timeout's: new.
+    const failed = [_]Difference{.{ .test_id = "/sw/c.https.html", .subtest = "first", .production = "PASS", .bug_finding = "FAIL", .production_file = "OK", .bug_finding_file = "TIMEOUT" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, &failed, &known)).new.len);
+    // A file with no * line is not covered, nor one whose line lists no TIMEOUT.
+    const other = [_]Difference{.{ .test_id = "/sw/d.https.html", .subtest = "first", .production = "PASS", .bug_finding = "TIMEOUT", .production_file = "OK", .bug_finding_file = "TIMEOUT" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, &other, &known)).new.len);
+    const crash_line = [_]Known{.{ .test_id = "sw/c.https.html", .subtest = file_status, .production = "OK", .bug_finding = "CRASH", .owner = "o", .evidence = "e" }};
+    try testing.expectEqual(@as(usize, 1), (try check(a, diffs[1..2], &crash_line)).new.len);
+}
+
+test "compare records each subtest's file status in both runs" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var production: Run = .{};
+    var bug_finding: Run = .{};
+    try production.files.put(a, "sw/c.https.html", .ok);
+    try bug_finding.files.put(a, "sw/c.https.html", .timeout);
+    try production.addStream(a, "{\"test\": \"/sw/c.https.html?x=1\", \"status\": \"OK\", \"subtests\": [{\"name\": \"first\", \"status\": \"PASS\"}]}\n");
+    try bug_finding.addStream(a, "{\"test\": \"/sw/c.https.html?x=1\", \"status\": \"TIMEOUT\", \"subtests\": [{\"name\": \"first\", \"status\": \"TIMEOUT\"}]}\n");
+    const diffs = try compare(a, &production, &bug_finding);
+    try testing.expectEqual(@as(usize, 2), diffs.len);
+    try testing.expectEqualStrings("OK", diffs[1].production_file.?);
+    try testing.expectEqualStrings("TIMEOUT", diffs[1].bug_finding_file.?);
+}
+
 test "the bug-finding log: leaks, bad frees, panics, poison reads and refcount reports are counted" {
     var f: LogFindings = .{};
     f.scan(
