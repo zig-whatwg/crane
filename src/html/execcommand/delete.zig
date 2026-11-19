@@ -270,6 +270,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         if (try common.isCollapsedBlockProp(only)) try edit.removeNode(only);
     }
     var values: overrides.Values = .{};
+    var sibling_join = false;
     if (common.isAncestorOf(sb, eb)) {
         // Step 32: the end block is inside the start block.
         // Steps 32.1-32.2.
@@ -384,6 +385,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         // start block (the browsers' rule, see the module comment).
         // Step 34.1.
         try edit.collapse(sb, try common.nodeLength(sb));
+        sibling_join = true;
         // Step 34.2.
         if (try common.firstChild(eb)) |first| {
             if (common.isInlineNode(first)) {
@@ -435,6 +437,29 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     }
     // Step 40.
     try edit.removeExtraneousLineBreaksAtTheEndOf(sb);
+    // After a sibling-block join the caret goes to the end of the start
+    // block's last inline content - into `<span style=color:blue>foo|</span>`
+    // where step 34.1 left it between that span and the moved line - so the
+    // next typed text and the queries read the start line's style: all three
+    // browsers report blue for `<p><font color=blue>foo</font><p><font
+    // color=brown>[]bar</font>` + delete and type "A" into the blue span
+    // (editing/run/delete.html, forwarddelete.html, multitest.html: about 50
+    // subtests PPP or PPF at wpt.fyi 2358bd4835). Mechanism: Blink sets the
+    // ending selection to the merge point's VisiblePosition, whose deep
+    // equivalent is the upstream candidate in the text (visible_units.cc
+    // CanonicalPosition); the spec's first equivalent point is that place.
+    // Golden rule 2, no newer spec. Before step 41, which keys the restored
+    // overrides to the selection.
+    if (sibling_join) {
+        if (try edit.rangeCollapsed()) {
+            if (try edit.rangeStart()) |caret| {
+                if (caret.node == sb) {
+                    const deepest = try common.firstEquivalentPoint(caret);
+                    if (!deepest.eql(caret)) try edit.collapse(deepest.node, deepest.offset);
+                }
+            }
+        }
+    }
     // Step 41.
     try overrides.restoreStatesAndValues(edit, recorded);
 }
