@@ -2269,8 +2269,8 @@ const ContainerEvaluation = struct {
             // given property."
             .boolean => |name| {
                 const value = self.container.style.customValue(name) orelse return .false;
-                if (self.registration(name)) |registration| {
-                    if (registration.initial) |initial| if (css.cascade.tokensEqual(value.computed().text, initial.computed().text)) return .false;
+                if (self.registration(name)) |entry| {
+                    if (entry.initial) |initial| if (css.cascade.tokensEqual(value.computed().text, initial.computed().text)) return .false;
                 }
                 return .true;
             },
@@ -2284,7 +2284,7 @@ const ContainerEvaluation = struct {
                     // are computed with respect to the query container";
                     // revert and revert-layer make the query false.
                     const expected: ?*css.custom_properties.Text = switch (keyword) {
-                        .initial => if (self.registration(plain.name)) |registration| registration.initial else null,
+                        .initial => if (self.registration(plain.name)) |entry| entry.initial else null,
                         .inherit, .unset => self.parentValue(plain.name),
                         .revert, .revert_layer, .revert_rule => return .false,
                     };
@@ -2329,7 +2329,7 @@ const ContainerEvaluation = struct {
         var slotted = false;
         const parent = switch (flatParent(node, &slotted)) {
             .element => |p| p,
-            else => return if (self.registration(name)) |registration| registration.initial else null,
+            else => return if (self.registration(name)) |entry| entry.initial else null,
         };
         const element = instanceOf(parent) orelse return null;
         const state = element_style.existingOf(element) orelse return null;
@@ -2366,9 +2366,9 @@ const ContainerEvaluation = struct {
         return value.computed();
     }
 
-    fn attributeOfContainer(context: *anyopaque, tree_scope: u64, map: ?*const css.substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?css.substitution.Attribute {
+    fn attributeOfContainer(context: *anyopaque, declaration_scope: u64, map: ?*const css.substitution.NamespaceMap, prefix: ?[]const u8, local_name: []const u8) ?css.substitution.Attribute {
         const self: *ContainerEvaluation = @ptrCast(@alignCast(context));
-        _ = tree_scope;
+        _ = declaration_scope;
         // The container's own attribute: the query value is computed with
         // respect to the query container, which is no declaration's
         // shadow-scoped element.
