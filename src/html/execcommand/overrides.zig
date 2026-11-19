@@ -270,6 +270,41 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
     return .{ .items = list.items };
 }
 
+/// Delete the selection's step 41 ("restore states and values") as the
+/// browsers make the typing style a deletion leaves: with nothing
+/// formattable left in the range (the caret), only what differs from the
+/// style in effect at the caret's DOWNSTREAM point - its last equivalent
+/// point - becomes an override. Chrome 157 deletes `abc[<b>de]f</b>ghi` to
+/// `abc<b>f</b>ghi` with the caret in "abc" and bold OFF (the f still
+/// carries it at that place), but `abc[<b>def]</b>ghi` with bold ON; the
+/// data agrees (editing/run/multitest.html: delete then inserttext on
+/// `<div>abc[<b><i>def]</i></b>ghi</div>` -> `abc<b><i>def</i></b>ghi`,
+/// PPP, and on `<div>abc[<b><i>de]f</i></b>ghi</div>` -> `abcde<b><i>f
+/// </i></b>ghi`, PFP, wpt.fyi 2358bd4835). Blink computes its typing style
+/// before the delete and PrepareToApplyAt(ending position) drops what is in
+/// effect at the downstream ending position (DeleteSelectionCommand::
+/// CalculateTypingStyleAfterDelete, delete_selection_command.cc). The spec
+/// sets every recorded override. Golden rule 2, no newer spec.
+pub fn restoreTypingStyle(edit: *Edit, recorded: Overrides) !void {
+    if ((try inline_formatting.firstFormattableNode(edit)) != null) return restoreStatesAndValues(edit, recorded);
+    const caret = (try edit.rangeStart()) orelse return restoreStatesAndValues(edit, recorded);
+    const downstream = try common.lastEquivalentPoint(caret);
+    const node = downstream.node;
+    var kept: std.ArrayList(Override) = .empty;
+    for (recorded.items) |pair| {
+        const effective = try inline_formatting.effectiveValue(edit, node, pair.command);
+        const same = switch (pair.value) {
+            .state => |state| state == inline_formatting.isActivatedValue(pair.command, effective),
+            .value => |maybe| if (maybe) |value|
+                inline_formatting.areLooselyEquivalent(edit, pair.command, effective, value)
+            else
+                true,
+        };
+        if (!same) try kept.append(edit.scratchAllocator(), pair);
+    }
+    try restoreStatesAndValues(edit, .{ .items = kept.items });
+}
+
 /// The depth (ancestor count) of the nearest inclusive ancestor element of
 /// `node` that specifies a value for `command`; 0 for none.
 fn specifyingDepth(edit: *Edit, node: *Instance, command: Command) !u32 {

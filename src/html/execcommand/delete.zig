@@ -141,14 +141,24 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     // SaveTypingStyleState, chromium f31874d8d6d0), Chrome 156 and Safari
     // 27 pass multitest.html ?9001-last's class-B rows, Firefox 158 follows
     // the spec's first formattable node (wpt.fyi c645564b0e). See
-    // overrides.recordCurrentStatesAndValues.
-    const recorded = try overrides.recordCurrentStatesAndValues(edit, original_start.node);
+    // overrides.recordCurrentStatesAndValues. Where that start is the end of
+    // a Text node and the deleted range begins with text inside following
+    // inline elements, the style is that text's (the last equivalent point,
+    // where steps 4-5 move the start): Chrome 157 reports bold on after
+    // deleting `abc[<b>def]</b>ghi` and keeps it off when an img starts the
+    // deleted inline content (`abc[<b><i><img>def]</i></b>ghi` types
+    // `abcdefghi`: editing/run/inserttext.html and multitest.html, PPP and
+    // PPF at wpt.fyi 2358bd4835). What stays in effect at the caret is
+    // dropped afterwards (overrides.restoreTypingStyle).
+    const downstream_start = try common.lastEquivalentPoint(original_start);
+    const typing_node = if (common.isText(downstream_start.node)) downstream_start.node else original_start.node;
+    const recorded = try overrides.recordCurrentStatesAndValues(edit, typing_node);
     // Step 21: one editable Text node.
     if (start.node == end.node and common.isText(start.node) and try common.isEditable(start.node)) {
         try edit.deleteData(start.node, start.offset, end.offset - start.offset);
         try whitespace.canonicalizeWhitespace(edit, start, false);
         if (direction == .forward) try collapseForward(edit, original_start) else try edit.collapseToEnd();
-        try overrides.restoreStatesAndValues(edit, recorded);
+        try overrides.restoreTypingStyle(edit, recorded);
         return;
     }
     // Step 22.
@@ -259,7 +269,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
     {
         if (direction == .forward) try collapseForward(edit, original_start) else try edit.collapseToEnd();
         if (removed_only_inline and removed_line_content) try padEmptiedLine(edit);
-        try overrides.restoreStatesAndValues(edit, recorded);
+        try overrides.restoreTypingStyle(edit, recorded);
         return;
     }
     const sb = start_block.?;
@@ -299,12 +309,12 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
             // Step 32.4.3.
             if (try common.isEditable(eb)) try edit.removeNode(eb);
             // Steps 32.4.4-32.4.5.
-            try overrides.restoreStatesAndValues(edit, recorded);
+            try overrides.restoreTypingStyle(edit, recorded);
             return;
         }
         // Step 32.5.
         if (!common.isInlineNode((try common.firstChild(eb)).?)) {
-            try overrides.restoreStatesAndValues(edit, recorded);
+            try overrides.restoreTypingStyle(edit, recorded);
             return;
         }
         // A range from the start of a line into a child block deletes the
@@ -314,7 +324,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         // with nothing visible. See rangeKeepsChildBlock.
         if (keeps_child_block and try hasVisibleChild(eb)) {
             try edit.collapse(eb, 0);
-            try overrides.restoreStatesAndValues(edit, recorded);
+            try overrides.restoreTypingStyle(edit, recorded);
             return;
         }
         // Steps 32.6-32.8: the end block's first line - under the
@@ -468,7 +478,7 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
         }
     }
     // Step 41.
-    try overrides.restoreStatesAndValues(edit, recorded);
+    try overrides.restoreTypingStyle(edit, recorded);
 }
 
 /// Steps 21.3 and 30.1: collapse the selection to its start - at the range's

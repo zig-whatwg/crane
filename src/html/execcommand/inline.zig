@@ -378,6 +378,12 @@ fn keywordMatchesPixels(keyword: []const u8, pixels: []const u8) bool {
     return px == style_values.legacy_size_px[size - 1];
 }
 
+/// Whether `value` is one of `command`'s inline command activated values
+/// (its state is true where that is the effective command value).
+pub fn isActivatedValue(command: Command, value: Value) bool {
+    return isActivated(command, value);
+}
+
 fn isActivated(command: Command, value: Value) bool {
     const v = value orelse return false;
     const activated = command.activatedValues() orelse return false;
