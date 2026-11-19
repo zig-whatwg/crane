@@ -3910,6 +3910,17 @@ fn lifecycleStopLoad(document: *runtime.Instance) void {
     if (internal.ready_for_post_load_tasks) return;
     internal.load_aborted = true;
     internal.ready_for_post_load_tasks = true;
+    // - and it counts as completely loaded from now on, as Chrome's stopped
+    //   load does: Blink's CancelParsing sets load_event_progress_ to
+    //   kLoadEventCompleted, and the checks HTML words as "not completely
+    //   loaded" read Document::LoadEventFinished, so a location navigation
+    //   the stopped page makes later is no longer made a replace (HTML
+    //   "Location-object navigate" step 3) and its unload events fire. Chrome
+    //   157 passes performance-timeline/not-restored-reasons/
+    //   abort-block-bfcache.window.js this way (wpt.fyi 4786307730243584):
+    //   its window.stop() page navigates away with a push, and history.back()
+    //   returns to it; Firefox 160 and Safari 27.2 ship no notRestoredReasons.
+    internal.completely_loaded = true;
     const generation = runtime.SlabAllocator.generationOf(document);
     // readystatechange listeners run here, and may take the frame away.
     engine.runInRealm(document.ctx, becomeComplete, document) catch {};
