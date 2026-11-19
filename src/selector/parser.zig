@@ -1317,8 +1317,8 @@ pub const Parser = struct {
         const type_selector = try self.parseTypeSelector(stream);
         // Selectors 4 3.6.3: after a pseudo-element only pseudo-classes may
         // follow - in a logical combination's argument too (`after`).
-        const after = ctx.after_pseudo_element;
-        if (type_selector != null and after != null) {
+        const after_element = ctx.after_pseudo_element;
+        if (type_selector != null and after_element != null) {
             var dropped = type_selector.?.simple;
             dropped.deinit(self.allocator);
             return error.InvalidSelector;
@@ -1336,26 +1336,26 @@ pub const Parser = struct {
                 .hash => blk: {
                     // <id-selector> = <hash-token>, whose value "must be an
                     // identifier".
-                    if (!token.hash_is_id or pseudo_element != null or after != null) return error.InvalidSelector;
+                    if (!token.hash_is_id or pseudo_element != null or after_element != null) return error.InvalidSelector;
                     stream.advance();
                     break :blk .{ .Id = .{ .id = token.value } };
                 },
                 .delim => blk: {
                     if (token.delim == '&') {
-                        if (pseudo_element != null or after != null) return error.InvalidSelector;
+                        if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                         stream.advance();
                         break :blk if (self.preserve_nesting) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
                     }
                     // <class-selector> = '.' <ident-token>
                     if (token.delim != '.') break;
-                    if (pseudo_element != null or after != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                     const name = stream.peekAt(1);
                     if (name.tag != .ident) return error.InvalidSelector;
                     stream.pos += 2;
                     break :blk .{ .Class = .{ .class_name = name.value } };
                 },
                 .lbracket => blk: {
-                    if (pseudo_element != null or after != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after_element != null) return error.InvalidSelector;
                     // An attribute selector is a [] block: past
                     // `max_nested_blocks` it is an invalid item (Firefox
                     // 159: ':is(' x 75 + '[id]' parses, matching nothing -
