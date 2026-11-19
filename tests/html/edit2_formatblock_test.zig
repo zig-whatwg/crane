@@ -52,6 +52,9 @@ const value_cases = [_]ValueCase{
     // A container already of the name is rewrapped as one (the spec).
     .{ .input = "<div>[foobar]</div>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "div|div|<div>foobar</div>" },
     .{ .input = "<p>[foo<p>bar]", .commands = "[[\"formatblock\",\"<p>\"]]", .expected = "||<p>foo</p><p>bar</p>" },
+    // The new block takes the replaced container's attributes (all three).
+    .{ .input = "<div style=color:blue>[foo]</div>", .commands = "[[\"stylewithcss\",\"false\"],[\"formatblock\",\"<p>\"]]", .expected = "div|p|<p style=\"color:blue\">foo</p>" },
+    .{ .input = "<div style=color:blue>[foo]</div>", .commands = "[[\"stylewithcss\",\"true\"],[\"formatblock\",\"<p>\"]]", .expected = "div|p|<p style=\"color:blue\">foo</p>" },
     // Several blocks: "" (Chrome and Safari).
     .{ .input = "<p>[foo<p>bar]<p>baz", .commands = "[]", .expected = "||<p>foo</p><p>bar</p><p>baz</p>" },
 };
