@@ -1762,7 +1762,7 @@ pub fn matchesNth(index: i64, pattern: NthPattern) bool {
 /// shadow root's host's language, its parent element's, then its document's
 /// pragma-set default. HTTP Content-Language is not recorded yet, so the
 /// final fallback is the empty string (unknown).
-fn languageOf(start: *NodeBase) []const u8 {
+pub fn languageOf(start: *NodeBase) []const u8 {
     var current: ?*NodeBase = start;
     while (current) |node| {
         if (node.node_type == ELEMENT_NODE) {

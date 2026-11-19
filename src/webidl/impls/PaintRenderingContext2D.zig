@@ -40,103 +40,6 @@ pub fn deinit(instance: *runtime.Instance) void {
     _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
 }
 
-/// Getter for strokeStyle
-pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for fillStyle
-pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineWidth
-pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineCap
-pub fn get_lineCap(instance: *runtime.Instance) anyerror!enums.CanvasLineCap {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineJoin
-pub fn get_lineJoin(instance: *runtime.Instance) anyerror!enums.CanvasLineJoin {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for miterLimit
-pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Getter for lineDashOffset
-pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
-    _ = instance;
-    return error.NotImplemented;
-}
-
-/// Setter for strokeStyle
-pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for fillStyle
-pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineWidth
-pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineCap
-pub fn set_lineCap(instance: *runtime.Instance, value: enums.CanvasLineCap) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineJoin
-pub fn set_lineJoin(instance: *runtime.Instance, value: enums.CanvasLineJoin) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for miterLimit
-pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Setter for lineDashOffset
-pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
-    _ = instance;
-    _ = value;
-    return error.NotImplemented;
-}
-
-/// Operation: getLineDash
-pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    _ = instance;
-    return error.NotImplemented;
-}
-
 /// Operation: ellipse
 pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, radiusY: f64, rotation: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
@@ -151,15 +54,6 @@ pub fn call_ellipse(instance: *runtime.Instance, x: f64, y: f64, radiusX: f64, r
     return error.NotImplemented;
 }
 
-/// Operation: createConicGradient
-pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = startAngle;
-    _ = x;
-    _ = y;
-    return error.NotImplemented;
-}
-
 /// Operation: arc
 pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startAngle: f64, endAngle: f64, counterclockwise: webidl.Opt(bool)) anyerror!void {
     _ = instance;
@@ -169,18 +63,6 @@ pub fn call_arc(instance: *runtime.Instance, x: f64, y: f64, radius: f64, startA
     _ = startAngle;
     _ = endAngle;
     _ = counterclockwise;
-    return error.NotImplemented;
-}
-
-/// Operation: createRadialGradient
-pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = r0;
-    _ = x1;
-    _ = y1;
-    _ = r1;
     return error.NotImplemented;
 }
 
@@ -201,14 +83,6 @@ pub fn call_roundRect(instance: *runtime.Instance, x: f64, y: f64, w: f64, h: f6
     return error.NotImplemented;
 }
 
-/// Operation: createPattern
-pub fn call_createPattern(instance: *runtime.Instance, image: typedefs.CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
-    _ = instance;
-    _ = image;
-    _ = repetition;
-    return null;
-}
-
 /// Operation: lineTo
 pub fn call_lineTo(instance: *runtime.Instance, x: f64, y: f64) anyerror!void {
     _ = instance;
@@ -225,13 +99,6 @@ pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f6
     _ = x2;
     _ = y2;
     _ = radius;
-    return error.NotImplemented;
-}
-
-/// Operation: setLineDash
-pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-    _ = instance;
-    _ = segments;
     return error.NotImplemented;
 }
 
@@ -262,16 +129,6 @@ pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2
     _ = cp2y;
     _ = x;
     _ = y;
-    return error.NotImplemented;
-}
-
-/// Operation: createLinearGradient
-pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = x0;
-    _ = y0;
-    _ = x1;
-    _ = y1;
     return error.NotImplemented;
 }
 

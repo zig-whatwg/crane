@@ -67,8 +67,8 @@ const Destination = struct { x: f64, y: f64, w: ?f64, h: ?f64 };
 /// (`paintScaled`): bilinear filtering, imageSmoothingEnabled's default -
 /// "the user agent should attempt to apply a smoothing algorithm to the
 /// image data when it is scaled" (the attribute is not modelled yet, so it is
-/// always true here). Video, ImageBitmap, OffscreenCanvas, VideoFrame and
-/// SVG image sources are not implemented.
+/// always true here). Video, VideoFrame and SVG image sources are not
+/// implemented.
 fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, given_source: ?[4]f64, given_destination: Destination) anyerror!void {
     const bitmap = dom.image_sources.outputBitmap(instance) orelse return error.NotImplemented;
     // 1. "If any of the arguments are infinite or NaN, then return."
@@ -84,9 +84,11 @@ fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, giv
             .svgimage_element => return error.NotImplemented,
         },
         .htmlcanvas_element => |canvas| dom.image_sources.canvasUsability(canvas),
+        .image_bitmap => |bitmap| dom.image_sources.imageBitmapUsability(bitmap),
+        .offscreen_canvas => |canvas| dom.image_sources.offscreenCanvasUsability(canvas),
         // A video's readyState is not modelled past HAVE_NOTHING here: bad.
         .htmlvideo_element => .bad,
-        .image_bitmap, .offscreen_canvas, .video_frame => return error.NotImplemented,
+        .video_frame => return error.NotImplemented,
     };
     // 3. If usability is bad, return without drawing anything; an
     //    InvalidStateError is thrown by the check itself.
@@ -95,6 +97,10 @@ fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, giv
         .bad => return,
         .invalid_state => return error.InvalidStateError,
     };
+    // A bitmap nothing stores (a canvas with no rendering context) is
+    // transparent black: drawing it source-over changes no pixel, and it is
+    // origin-clean.
+    if (source_image.pixels.len == 0) return;
     // 4. The source rectangle defaults to the whole image at its natural
     //    size; the destination size defaults to the source's.
     var sx, var sy, var sw, var sh = given_source orelse [4]f64{ 0, 0, @floatFromInt(source_image.width), @floatFromInt(source_image.height) };

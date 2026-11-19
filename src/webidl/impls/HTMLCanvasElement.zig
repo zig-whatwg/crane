@@ -117,7 +117,7 @@ fn attributeChangeSteps(element: *runtime.Instance, local_name: []const u8, old_
 fn canvasUsability(instance: *runtime.Instance) dom.image_sources.Usability {
     const width, const height = bitmapSize(instance);
     if (width == 0 or height == 0) return .invalid_state;
-    const internal = internalOf(instance) orelse return .bad;
+    const internal = internalOf(instance) orelse return .invalid_state;
     if (internal.mode == .@"2d") if (internal.context) |context| if (dom.image_sources.outputBitmap(context)) |bitmap| {
         return .{ .good = .{
             .width = bitmap.width,
@@ -127,9 +127,10 @@ fn canvasUsability(instance: *runtime.Instance) dom.image_sources.Usability {
             .origin_clean = bitmap.origin_clean,
         } };
     };
-    // No context: a transparent black bitmap, whose drawing changes no
-    // pixel and keeps the target origin-clean - nothing to draw.
-    return .bad;
+    // No context: a transparent black bitmap that nothing stores (no
+    // pixels) - drawing it changes no pixel and keeps the target
+    // origin-clean; createImageBitmap copies it as transparent black.
+    return .{ .good = .{ .width = width, .height = height, .pixels = &.{}, .alpha = .premultiplied, .origin_clean = true } };
 }
 
 /// Constructor implementation
