@@ -389,8 +389,12 @@ const Parser = struct {
         if (std.ascii.eqlIgnoreCase(name, "counters")) return self.counter(true);
         if (std.ascii.eqlIgnoreCase(name, "url") or std.ascii.eqlIgnoreCase(name, "src")) {
             const value = self.next();
-            if (value.token_type != .string or !self.closeFunction()) return null;
-            return try self.url(try self.string(value), .{ .start = begin, .end = self.tok.pos });
+            if (value.token_type != .string) return null;
+            // Values 5 §4.1.1: request modifiers after the string, through
+            // the function's ")" or EOF.
+            var modifiers = (try resources.RequestModifiers.consume(self.allocator, self)) orelse return null;
+            defer modifiers.deinitOwned(self.allocator);
+            return try self.urlModified(try self.string(value), .{ .start = begin, .end = self.tok.pos }, modifiers);
         }
         // Images4 §2.5 / Q168: sole-color image() uses the owned image bridge.
         // Q232: other image() forms keep their existing Syntax3 EOF grammar.
@@ -412,9 +416,13 @@ const Parser = struct {
     }
 
     fn url(self: *Parser, raw: []const u8, range: resources.ResourceUrl.Range) Allocator.Error!?Item {
+        return self.urlModified(raw, range, .{});
+    }
+
+    fn urlModified(self: *Parser, raw: []const u8, range: resources.ResourceUrl.Range, modifiers: resources.RequestModifiers) Allocator.Error!?Item {
         const options = self.imageOptions();
         if (properties.urlRangeTainted(options, range)) return null;
-        return try self.imageItem(try properties.urlValue(options, raw));
+        return try self.imageItem(try properties.urlValueModified(options, raw, modifiers));
     }
 
     fn imageOptions(self: *const Parser) properties.ParseOptions {
