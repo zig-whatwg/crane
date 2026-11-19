@@ -28,3 +28,21 @@ fn imageCases() !void {
 test "insertImage inserts between the inline elements around the point, as the browsers do" {
     try helpers.onFreshThread(imageCases);
 }
+
+/// insertHTML of a list into an empty list item gives the list its items
+/// (inserthtml.html; all three).
+const list_cases = [_]harness.Case{
+    .{ .input = "<ul id=\"old\"><li id=\"li0\">{}<br></ul>", .commands = &.{.{ "inserthtml", "<ul id=\"new\"><li id=\"li1\">abc</li><li id=\"li2\">def</li></ul>" }}, .expected = "<ul id=\"old\"><li id=\"li1\">abc</li><li id=\"li2\">def</li></ul>" },
+    .{ .input = "<ul id=\"old\"><li id=\"li0\">{}<br></ul>", .commands = &.{.{ "inserthtml", "<ol id=\"new\"><li id=\"li1\">abc</li><li id=\"li2\">def</li></ol>" }}, .expected = "<ul id=\"old\"><li id=\"li1\">abc</li><li id=\"li2\">def</li></ul>" },
+};
+
+fn listCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &list_cases);
+}
+
+test "insertHTML of a list into an empty list item gives the list its items" {
+    try helpers.onFreshThread(listCases);
+}
