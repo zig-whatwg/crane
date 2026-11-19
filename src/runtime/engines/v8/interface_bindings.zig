@@ -344,6 +344,22 @@ pub fn registerAllInterfaces(
 ///
 /// The reinstallation is critical: without it, calling `new Worker()` from JS
 /// would invoke a stale callback pointer, never reaching our Zig code.
+/// Whether an isolate makes `name`'s template only when it first needs it -
+/// when script first reads its interface object, or a realm wraps its first
+/// instance - rather than with every other at its first realm
+/// (registerAllTemplatesOnly). Blink makes every interface's template so,
+/// once per isolate on first use (V8PerIsolateData::FindV8Template, from
+/// WrapperTypeInfo::GetV8ClassTemplate); Crane keeps that for the one whose
+/// template is costly: CSSStyleProperties' ~1,000 CSS property attributes
+/// (CSSOM 6.6.2) are ~2,000 FunctionTemplates and their names - ~300 KB of
+/// V8 heap in every isolate (lane css3's diagnosis, vmmap +304K) - which a
+/// document that never touches a style declaration does not pay. Its
+/// interface object is then a lazy one in every realm, so building it is
+/// what makes the template.
+pub fn madeOnFirstUse(name: []const u8) bool {
+    return std.mem.eql(u8, name, "CSSStyleProperties");
+}
+
 /// How `registerAllTemplatesOnly` installs the interface objects.
 pub const InterfaceObjects = enum {
     /// Materialize every interface object on the global now.
@@ -447,6 +463,15 @@ pub fn registerAllTemplatesOnly(
             // - Later, when processing HTMLElement, we'd create a DIFFERENT template
             // - globalThis.HTMLElement.prototype would differ from HTMLDivElement's parent prototype
             // - This breaks `div instanceof HTMLElement`
+            // An interface the isolate makes on first use (madeOnFirstUse): no
+            // template now, and its interface object a lazy one in every
+            // realm, the page's too - built when script first reads it, or
+            // before the realm's first wrapper of one (template_registry).
+            if (comptime madeOnFirstUse(decl.name)) {
+                global_constructor_handler.installLazy(isolate, context, global, decl.name);
+                continue;
+            }
+
             const Binding = V8Interface(InterfaceType);
             const existing = template_registry.getTemplate(decl.name);
             if (existing == null) {

@@ -222,3 +222,55 @@ test "CSSStyleProperties' CSS property attributes are accessors on its prototype
     defer protocol.destroyWindowRealm(frame, .global_detached);
     try expectOk(frame, checks);
 }
+
+// The CSS property attributes are ~2,000 FunctionTemplates and their names
+// (~300 KB of an isolate's heap): an isolate makes CSSStyleProperties'
+// template only when a realm first needs it - its interface object read, or
+// a style declaration wrapped - as Blink makes every interface's template on
+// first use (V8PerIsolateData::FindV8Template). Until then the page's
+// global has a lazy CSSStyleProperties, as a frame's has for every
+// interface, and a wrapper made first still gets the whole interface
+// prototype object (its @@toStringTag is put there when the interface
+// object is built).
+test "an isolate makes CSSStyleProperties' template only when a realm first needs it" {
+    const page = (try SnapshotPage.open()) orelse return error.SkipZigTest;
+    defer page.close();
+    const isolate: *ffi.Isolate = @ptrCast(@alignCast(page.agent));
+    const template_registry = @import("v8").template_registry;
+
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleDeclaration", isolate) != null);
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleProperties", isolate) == null);
+
+    // A realm that touches no style declaration makes none.
+    try expectOk(page.realm,
+        \\{
+        \\  const plain = new Document().implementation.createHTMLDocument('t');
+        \\  plain.body.setAttribute('style', 'color: red');
+        \\  plain.body.getAttribute('style') === 'color: red' ? 'ok' : 'attribute';
+        \\}
+    );
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleProperties", isolate) == null);
+
+    // The first wrapper: the interface object is built for it.
+    try expectOk(page.realm,
+        \\{
+        \\const failures = [];
+        \\function check(name, got, want) { if (got !== want) failures.push(name + ": " + String(got)); }
+        \\const doc = new Document().implementation.createHTMLDocument('t');
+        \\const s = doc.body.style;
+        \\check('the class string, before the global is read', Object.prototype.toString.call(s), '[object CSSStyleProperties]');
+        \\check("'color' in", 'color' in s, true);
+        \\const g = Object.getOwnPropertyDescriptor(globalThis, 'CSSStyleProperties');
+        \\check('the global is a data property', typeof g.value, 'function');
+        \\check('writable', g.writable, true);
+        \\check('not enumerable', g.enumerable, false);
+        \\check('configurable', g.configurable, true);
+        \\check('its prototype', Object.getPrototypeOf(s), CSSStyleProperties.prototype);
+        \\check('inherits', Object.getPrototypeOf(CSSStyleProperties.prototype), CSSStyleDeclaration.prototype);
+        \\check('the interface object inherits', Object.getPrototypeOf(CSSStyleProperties), CSSStyleDeclaration);
+        \\check('getComputedStyle, the same prototype', Object.getPrototypeOf(getComputedStyle(doc.body)), CSSStyleProperties.prototype);
+        \\failures.join('; ') || 'ok';
+        \\}
+    );
+    try testing.expect(template_registry.getTemplateForIsolate("CSSStyleProperties", isolate) != null);
+}
