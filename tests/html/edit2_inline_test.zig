@@ -144,6 +144,16 @@ const decoration_cases = [_]Case{
     .{ .input = "abc<span style=\"text-decoration:underline line-through blue dotted\">[def]</span>ghi", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "abc<span style=\"text-decoration:underline\">def</span>ghi" },
 };
 
+const unlink_cases = [_]Case{
+    // Chrome and Safari.
+    .{ .input = "foo<a href=https://example.com class=bold>[bar]</a>baz", .commands = "[[\"stylewithcss\",\"false\"],[\"unlink\",\"\"]]", .expected = "foobarbaz" },
+    .{ .input = "foo<a href=https://example.com style=font-weight:bold>[bar]</a>baz", .commands = "[[\"stylewithcss\",\"false\"],[\"unlink\",\"\"]]", .expected = "foo<b>bar</b>baz" },
+    // All three.
+    .{ .input = "foo<a href=https://example.com style=font-weight:bold>[bar]</a>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"unlink\",\"\"]]", .expected = "foo<span style=\"font-weight:bold\">bar</span>baz" },
+    // An id keeps the spec's a (the data; no browser passes it).
+    .{ .input = "foo<a id=foo href=http://www.google.com/>[bar]</a>baz", .commands = "[[\"unlink\",\"\"]]", .expected = "foo<a id=\"foo\">bar</a>baz" },
+};
+
 fn runCases(list: []const Case) !void {
     const page = try helpers.Page.open();
     defer page.close();
@@ -196,4 +206,12 @@ fn decorationCases() !void {
 
 test "strikethrough and underline in CSS mode join the wrapper's text-decoration" {
     try helpers.onFreshThread(decorationCases);
+}
+
+fn unlinkCases() !void {
+    try runCases(&unlink_cases);
+}
+
+test "unlink removes a link with only class or style beside its href, as Chrome and Safari do" {
+    try helpers.onFreshThread(unlinkCases);
 }
