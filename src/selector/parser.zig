@@ -942,10 +942,12 @@ const Context = struct {
     /// the SUBJECT of a logical combination's argument. Explicit type
     /// and universal selectors, and ancestor compounds, still receive it.
     resist_default_namespace: bool = false,
-    /// The argument of a logical combination that follows a named view
-    /// transition pseudo-element: its :only-child tests that pseudo-element
+    /// The argument of a logical combination that follows a pseudo-element
+    /// (its name): it may hold only the pseudo-classes that may follow that
+    /// pseudo-element (Selectors 4 3.6.3), and after a named view
+    /// transition pseudo-element its :only-child tests that pseudo-element
     /// (PseudoElementOnlyChild).
-    after_view_transition: bool = false,
+    after_pseudo_element: ?[]const u8 = null,
 };
 
 /// An end-of-input token, what reading past a range returns.
@@ -1313,6 +1315,14 @@ pub const Parser = struct {
         errdefer for (simples.items) |*simple| simple.deinit(self.allocator);
 
         const type_selector = try self.parseTypeSelector(stream);
+        // Selectors 4 3.6.3: after a pseudo-element only pseudo-classes may
+        // follow - in a logical combination's argument too (`after`).
+        const after = ctx.after_pseudo_element;
+        if (type_selector != null and after != null) {
+            var dropped = type_selector.?.simple;
+            dropped.deinit(self.allocator);
+            return error.InvalidSelector;
+        }
         if (type_selector) |resolved| {
             try simples.append(self.scratch, resolved.simple);
             if (resolved.uri) |uri| try simples.append(self.scratch, .{ .NamespaceURI = .{ .uri = uri } });
@@ -1326,26 +1336,26 @@ pub const Parser = struct {
                 .hash => blk: {
                     // <id-selector> = <hash-token>, whose value "must be an
                     // identifier".
-                    if (!token.hash_is_id or pseudo_element != null) return error.InvalidSelector;
+                    if (!token.hash_is_id or pseudo_element != null or after != null) return error.InvalidSelector;
                     stream.advance();
                     break :blk .{ .Id = .{ .id = token.value } };
                 },
                 .delim => blk: {
                     if (token.delim == '&') {
-                        if (pseudo_element != null) return error.InvalidSelector;
+                        if (pseudo_element != null or after != null) return error.InvalidSelector;
                         stream.advance();
                         break :blk if (self.preserve_nesting) .Nesting else try @import("nesting.zig").scopeReference(self.allocator);
                     }
                     // <class-selector> = '.' <ident-token>
                     if (token.delim != '.') break;
-                    if (pseudo_element != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after != null) return error.InvalidSelector;
                     const name = stream.peekAt(1);
                     if (name.tag != .ident) return error.InvalidSelector;
                     stream.pos += 2;
                     break :blk .{ .Class = .{ .class_name = name.value } };
                 },
                 .lbracket => blk: {
-                    if (pseudo_element != null) return error.InvalidSelector;
+                    if (pseudo_element != null or after != null) return error.InvalidSelector;
                     // An attribute selector is a [] block: past
                     // `max_nested_blocks` it is an invalid item (Firefox
                     // 159: ':is(' x 75 + '[id]' parses, matching nothing -
@@ -1631,12 +1641,14 @@ pub const Parser = struct {
                 const kind = simplePseudoClass(name) orelse return error.InvalidSelector;
                 // The UA-only pseudo-classes are unknown to author style.
                 if (kind == .InternalListBox and !self.user_agent) return error.InvalidSelector;
-                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
+                // After a pseudo-element in this compound, or in a logical
+                // combination that follows one.
+                const after = after_pseudo_element orelse ctx.after_pseudo_element;
+                if (after) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) return error.InvalidSelector;
                 // View Transitions 1 §3.1: after a named view transition
                 // pseudo-element - or in a logical combination after one -
                 // :only-child tests that pseudo-element in its tree.
-                const follows_view_transition = ctx.after_view_transition or
-                    (if (after_pseudo_element) |pseudo| isNamedViewTransitionName(pseudo) else false);
+                const follows_view_transition = if (after) |pseudo| isNamedViewTransitionName(pseudo) else false;
                 if (kind == .OnlyChild and follows_view_transition) return .{ .PseudoClass = .{ .kind = .PseudoElementOnlyChild } };
                 return .{ .PseudoClass = .{ .kind = kind } };
             },
@@ -1646,13 +1658,12 @@ pub const Parser = struct {
                 const close = try self.matchingClose(stream.tokens, stream.pos);
                 const args = stream.tokens[stream.pos + 1 .. close];
                 stream.pos = if (close < stream.tokens.len) close + 1 else close;
+                const after = after_pseudo_element orelse ctx.after_pseudo_element;
                 var inner = ctx;
-                if (after_pseudo_element) |pseudo| {
-                    if (isNamedViewTransitionName(pseudo)) inner.after_view_transition = true;
-                }
+                inner.after_pseudo_element = after;
                 const kind = try self.functionalPseudoClass(token.value, args, inner);
                 var selector = PseudoClassSelector{ .kind = kind };
-                if (after_pseudo_element) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
+                if (after) |pseudo| if (!allowedAfterPseudoElement(pseudo, kind)) {
                     selector.deinit(self.allocator);
                     return error.InvalidSelector;
                 };
@@ -1732,7 +1743,17 @@ pub const Parser = struct {
     /// (wpt.fyi 2358bd4835, css/css-view-transitions/parsing/
     /// pseudo-elements-{valid,valid-with-classes,invalid}.html): Blink's
     /// IsPseudoClassValidAfterPseudoElement takes only :only-child for them.
+    ///
+    /// ::slotted() and the highlight pseudo-elements take none but the
+    /// logical combinations: Chrome, Firefox and Safari reject
+    /// `::slotted(*):hover` and `::selection:hover` (wpt.fyi 2358bd4835,
+    /// css/css-shadow/slotted-parsing.html, css/css-pseudo/parsing/
+    /// highlight-pseudos.html).
     fn allowedAfterPseudoElement(pseudo_element: []const u8, kind: PseudoClassKind) bool {
+        if (std.mem.eql(u8, pseudo_element, "slotted") or isHighlightPseudoElement(pseudo_element)) return switch (kind) {
+            .Is, .Where, .Not => true,
+            else => false,
+        };
         const view_transition_root = std.mem.eql(u8, pseudo_element, "view-transition");
         if (view_transition_root or isNamedViewTransitionName(pseudo_element)) return switch (kind) {
             .Is, .Where, .Not => true,
@@ -1749,7 +1770,7 @@ pub const Parser = struct {
     /// A functional pseudo-class `name(` over its arguments `args`.
     fn functionalPseudoClass(self: *Parser, name: []const u8, args: []const Token, ctx: Context) ParserError!PseudoClassKind {
         const real = Context{ .real = true, .in_has = ctx.in_has };
-        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_view_transition = ctx.after_view_transition };
+        const logical = Context{ .real = true, .in_has = ctx.in_has, .resist_default_namespace = true, .after_pseudo_element = ctx.after_pseudo_element };
         if (std.ascii.eqlIgnoreCase(name, "not")) {
             // 4.3: :not(<complex-real-selector-list>).
             return .{ .Not = try self.boxedList(args, logical, .{ .forgiving = false, .relative = false }) };
@@ -1929,17 +1950,35 @@ pub const Parser = struct {
         };
         const name = pseudo.name;
         if (after) |first| {
-            // ::before::marker and ::after::marker; the tree-abiding
-            // pseudo-elements of a ::slotted() or ::part() element.
+            // ::before::marker and ::after::marker; the tree-abiding and
+            // element-backed pseudo-elements of a ::slotted() or ::part()
+            // element - not ::first-line, ::first-letter or a highlight
+            // pseudo-element; and CSS Forms 1's ::picker(select) takes
+            // ::before, ::after, ::marker, ::placeholder and
+            // ::picker(select) (Chrome, Firefox and Safari: wpt.fyi
+            // 2358bd4835, css/css-shadow/slotted-parsing.html,
+            // css/css-forms/parsing/picker-select-pseudo-element.html).
             const ok = if (std.mem.eql(u8, first, "before") or std.mem.eql(u8, first, "after"))
                 std.mem.eql(u8, name, "marker")
             else if (std.mem.eql(u8, first, "slotted") or std.mem.eql(u8, first, "part"))
-                !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part")
+                !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part") and
+                    !std.mem.eql(u8, name, "first-line") and !std.mem.eql(u8, name, "first-letter") and
+                    !isHighlightPseudoElement(name)
+            else if (std.mem.eql(u8, first, "picker"))
+                knownPseudoElement(name, &.{ "before", "after", "marker", "placeholder", "picker" }) != null
             else
                 false;
             if (!ok) return error.InvalidSelector;
         }
         return pseudo;
+    }
+
+    /// CSS Pseudo 4 §3: the highlight pseudo-elements.
+    fn isHighlightPseudoElement(name: []const u8) bool {
+        for ([_][]const u8{ "selection", "target-text", "spelling-error", "grammar-error", "highlight", "search-text" }) |h| {
+            if (std.mem.eql(u8, name, h)) return true;
+        }
+        return false;
     }
 
     const plain_pseudo_elements = [_][]const u8{
@@ -1985,6 +2024,13 @@ pub const Parser = struct {
             pseudo.part_names = try self.allocator.dupe([]const u8, names.items);
         } else if (std.mem.eql(u8, name, "highlight")) {
             pseudo.name_argument = (try singleToken(args, .ident)).value;
+        } else if (std.mem.eql(u8, name, "picker")) {
+            // CSS Forms 1: ::picker(<form-control-identifier>), `select`
+            // the one identifier (ASCII case-insensitive), which CSSOM
+            // serializes lowercase (picker-select-pseudo-element.html).
+            const identifier = try singleToken(args, .ident);
+            if (!std.ascii.eqlIgnoreCase(identifier.value, "select")) return error.InvalidSelector;
+            try self.serializeAs(identifier.start, identifier.end, "select");
         } else if (isNamedViewTransitionName(name)) {
             try self.parseViewTransitionArgument(&stream, pseudo);
         }
