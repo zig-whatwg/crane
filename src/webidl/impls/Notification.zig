@@ -214,6 +214,11 @@ fn createNotificationWithSettings(ctx: runtime.Context, title: []const u8, optio
     return createNotification(allocator, ctx, title, options, base_url, fallback_timestamp);
 }
 
+/// A DOMString member's value: its default, the empty string, when absent.
+fn domString(member: ?runtime.DOMString) []const u8 {
+    return if (member) |value| value.asSlice() else "";
+}
+
 /// "Create a notification" (2.2): steps 1-21.
 fn createNotification(
     allocator: std.mem.Allocator,
@@ -231,7 +236,7 @@ fn createNotification(
     // 3. If options["renotify"] is true and options["tag"] is the empty
     //    string, then throw a TypeError.
     if (options.renotify orelse false) {
-        if ((options.tag orelse "").len == 0) return error.TypeError;
+        if (domString(options.tag).len == 0) return error.TypeError;
     }
     // 4. Set notification's data to StructuredSerializeForStorage(options
     //    ["data"]) - which throws a DataCloneError for what cannot be
@@ -248,13 +253,13 @@ fn createNotification(
     const title_copy = try allocator.dupe(u8, title);
     errdefer allocator.free(title_copy);
     // 7. Set notification's language to options["lang"].
-    const language = try allocator.dupe(u8, options.lang orelse "");
+    const language = try allocator.dupe(u8, domString(options.lang));
     errdefer allocator.free(language);
     // 9. Set notification's body to options["body"].
-    const body = try allocator.dupe(u8, options.body orelse "");
+    const body = try allocator.dupe(u8, domString(options.body));
     errdefer allocator.free(body);
     // 11. Set notification's tag to options["tag"].
-    const tag = try allocator.dupe(u8, options.tag orelse "");
+    const tag = try allocator.dupe(u8, domString(options.tag));
     errdefer allocator.free(tag);
     // 15. If options["vibrate"] exists, then validate and normalize it and
     //     set notification's vibration pattern to the return value.
