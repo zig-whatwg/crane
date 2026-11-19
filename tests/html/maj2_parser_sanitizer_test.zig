@@ -29,6 +29,8 @@ const TreeNode = parser.TreeNode;
 const Config = struct {
     replace: []const []const u8 = &.{},
     remove: []const []const u8 = &.{},
+    /// SVG and MathML elements removed, by local name.
+    remove_foreign: []const []const u8 = &.{},
 
     fn parserSanitizer(self: *const Config) parser.ParserSanitizer {
         return .{
@@ -47,7 +49,7 @@ const Config = struct {
 
     fn elementAction(context: *const anyopaque, local: []const u8, namespace: parser.Namespace) parser.SanitizerAction {
         const self: *const Config = @ptrCast(@alignCast(context));
-        if (namespace != .html) return .keep;
+        if (namespace != .html) return if (has(self.remove_foreign, local)) .remove else .keep;
         if (has(self.replace, local)) return .replace_with_children;
         if (has(self.remove, local)) return .remove;
         return .keep;
@@ -217,6 +219,90 @@ test "the adoption agency algorithm keeps the insertion target redirection map" 
         \\"Textafter"
         \\
     );
+}
+
+/// Parse `markup` as a document with `config` as the parser's sanitizer
+/// configuration, and compare the whole tree (html5lib's dump, relative to
+/// the Document) with `expected`. std.testing.allocator fails the test when
+/// a node the configuration kept out of the tree is not freed with the
+/// builder.
+fn expectDocument(config: Config, markup: []const u8, expected: []const u8) !void {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, markup);
+    defer tokenizer.deinit();
+    var builder = try TreeBuilder.init(allocator, &tokenizer);
+    defer builder.deinit();
+    builder.parser_sanitizer = config.parserSanitizer();
+    try builder.parse();
+    var output: std.ArrayList(u8) = .empty;
+    defer output.deinit(allocator);
+    var child = builder.document.first_child;
+    while (child) |c| : (child = c.next_sibling) try dumpNode(&output, c, 0);
+    testing.expectEqualStrings(expected, output.items) catch |err| {
+        std.debug.print("markup: {s}\n", .{markup});
+        return err;
+    };
+}
+
+test "an element the parser makes itself and the configuration keeps out is freed with the builder" {
+    // The implied head (before head, "anything else"): removed. Lane maj2's
+    // bug-finding sweep leaked one 624-byte TreeNode per parse of
+    // sanitizer-duplicate-html-body.html's html/body-only configurations.
+    try expectDocument(.{ .remove = &.{"head"} }, "<p>x",
+        \\<html>
+        \\  <body>
+        \\    <p>
+        \\      "x"
+        \\
+    );
+    // The implied body (after head, "anything else"): replaced, so the p
+    // goes where the body would have been.
+    try expectDocument(.{ .replace = &.{"body"} }, "<p>x",
+        \\<html>
+        \\  <head>
+        \\  <p>
+        \\    "x"
+        \\
+    );
+    // The implied tbody and tr (in table and in table body, a td start
+    // tag): replaced, so the td goes into the table.
+    try expectDocument(.{ .replace = &.{ "tbody", "tr" } }, "<table><td>x",
+        \\<html>
+        \\  <head>
+        \\  <body>
+        \\    <table>
+        \\      <td>
+        \\        "x"
+        \\
+    );
+    // The implied colgroup (in table, a col start tag): removed with the col
+    // inserted into it.
+    try expectDocument(.{ .remove = &.{"colgroup"} }, "<table><col>",
+        \\<html>
+        \\  <head>
+        \\  <body>
+        \\    <table>
+        \\
+    );
+    // The implied p of a p end tag with no p in button scope: replaced.
+    try expectDocument(.{ .replace = &.{"p"} }, "</p>x",
+        \\<html>
+        \\  <head>
+        \\  <body>
+        \\    "x"
+        \\
+    );
+    // A foreign element ("insert a foreign element"), removed with its child.
+    try expectDocument(.{ .remove_foreign = &.{"svg"} }, "<svg><circle/></svg>y",
+        \\<html>
+        \\  <head>
+        \\  <body>
+        \\    "y"
+        \\
+    );
+    // The implied html (before html, "anything else"): removed, so the
+    // Document has no element.
+    try expectDocument(.{ .remove = &.{"html"} }, "x", "");
 }
 
 test "a parse with no sanitizer configuration builds the tree it always did" {
