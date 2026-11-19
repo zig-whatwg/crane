@@ -53,9 +53,32 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
         _ = try insert_paragraph(edit);
         return true;
     }
+    // A br that only held an empty line open goes once text fills the line,
+    // and one before the caret that draws nothing (an extraneous line
+    // break) is replaced by the text: all three browsers type `abc<br>{}
+    // <br>` + "d" into `abc<br>d` and `<span contenteditable=false>abc
+    // </span><br>{}` + "d" into `<span contenteditable="false">abc</span>d`
+    // (editing/run/inserttext.html, PPP at wpt.fyi 2358bd4835); the spec
+    // removes only a collapsed line break that is the node's sole child
+    // (step 14.1). Gecko: the padding <br> for an empty line is removed when
+    // the line gets content (HTMLEditor::InsertTextWithTransaction's
+    // padding-br handling). Golden rule 2, no newer spec.
+    if (!common.isText(start.node)) {
+        if (try common.childAt(start.node, start.offset)) |after| {
+            if ((try common.isEditable(after)) and (try common.isCollapsedLineBreak(after)) and !try common.isExtraneousLineBreak(after)) {
+                try edit.removeNode(after);
+            }
+        }
+        if (try common.childBefore(start.node, start.offset)) |before| {
+            if ((try common.isEditable(before)) and (try common.isHtmlElementNamed(before, "br")) and try common.isExtraneousLineBreak(before)) {
+                try edit.removeNode(before);
+            }
+        }
+    }
+    const caret = (try edit.rangeStart()) orelse return true;
     // Step 6.
-    var node = start.node;
-    var offset = start.offset;
+    var node = caret.node;
+    var offset = caret.offset;
     // Step 7: a Text node just before the point takes the text at its end.
     if (try common.childBefore(node, offset)) |before| {
         if (common.isText(before)) {
