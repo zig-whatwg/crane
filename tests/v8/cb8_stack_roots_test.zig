@@ -44,23 +44,46 @@ const Probe = struct {
     }
 };
 
-/// Holds the agents' lock until the probe's trace ran or `bound_ms` passed -
-/// a pause that waited for the lock then gets it, and the test fails rather
-/// than hangs.
+/// Holds the agents' lock, from when the test says `go` until the probe's
+/// trace ran or `bound_ms` passed - a pause that waited for the lock then
+/// gets it, and the test fails rather than hangs.
 const Holder = struct {
+    go: std.atomic.Value(bool) = .init(false),
     holding: std.atomic.Value(bool) = .init(false),
     probe: *const Probe,
     const bound_ms = 2000;
 
     fn run(self: *Holder) void {
+        var waited: u64 = 0;
+        while (!self.go.load(.acquire) and waited < 10 * bound_ms) : (waited += 1) pause();
         v8.protocol_agents.lockAgentsForTest();
         self.holding.store(true, .release);
-        var waited: u64 = 0;
-        while (!self.probe.ran.load(.acquire) and waited < bound_ms) : (waited += 1) {
-            std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
-        }
+        waited = 0;
+        while (!self.probe.ran.load(.acquire) and waited < bound_ms) : (waited += 1) pause();
         self.holding.store(false, .release);
         v8.protocol_agents.unlockAgentsForTest();
+    }
+
+    fn pause() void {
+        std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
+    }
+};
+
+/// Inside the realm - entering it consults the agents' records, which is
+/// not the collector's business - the helper takes the lock, and only then
+/// does a full collection run: the engine's own, as a host asks for one
+/// between its steps, with no drain of the queue after it (a drain finds its
+/// queue through the agents' records, outside the pause).
+const Collect = struct {
+    holder: *Holder,
+    isolate: *v8.ffi.Isolate,
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *Collect = @ptrCast(@alignCast(data.?));
+        self.holder.go.store(true, .release);
+        var spins: u32 = 0;
+        while (!self.holder.holding.load(.acquire) and spins < 2000) : (spins += 1) Holder.pause();
+        v8.ffi.v8_Isolate_RequestGarbageCollection(self.isolate);
     }
 };
 
@@ -82,7 +105,6 @@ test "a full collection walks the agent's stack roots in its atomic pause withou
     // The anchors' registry - whose Trace runs the keep walk in every full
     // collection - exists from the agent's first wrap; made here directly.
     v8.node_wrappers.prepareHolderTracing(isolate);
-    // Read before the helper takes the lock: deferredTeardownOf takes it.
     const queue = protocol.deferredTeardownOf(agent) orelse return error.NoQueue;
 
     var holder: Holder = .{ .probe = undefined };
@@ -92,18 +114,12 @@ test "a full collection walks the agent's stack roots in its atomic pause withou
     defer queue.removeStackRoot(&probe.root);
 
     const thread = try std.Thread.spawn(.{}, Holder.run, .{&holder});
-    var spins: u32 = 0;
-    while (!holder.holding.load(.acquire) and spins < 2000) : (spins += 1) std.Io.sleep(std.testing.io, .fromMilliseconds(1), .awake) catch {};
-    // A full collection, as a host asks for one between its own steps - the
-    // engine's own, with no drain of the queue after it (which takes the
-    // lock, outside the pause).
-    const Collect = struct {
-        fn steps(data: ?*anyopaque) void {
-            v8.ffi.v8_Isolate_RequestGarbageCollection(@ptrCast(@alignCast(data.?)));
-        }
-    };
-    try protocol.runInRealm(realm, Collect.steps, isolate);
+    var collect: Collect = .{ .holder = &holder, .isolate = isolate };
+    const ran = protocol.runInRealm(realm, Collect.steps, &collect);
+    // The helper ends whatever happened: a failure to enter still says go.
+    holder.go.store(true, .release);
     thread.join();
+    try ran;
 
     try testing.expect(probe.ran.load(.acquire));
     try testing.expect(probe.ran_while_held.load(.acquire));
