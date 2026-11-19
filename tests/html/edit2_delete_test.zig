@@ -187,3 +187,22 @@ fn lineCases() !void {
 test "a br alone on its line goes alone and an empty block is walked past" {
     try helpers.onFreshThread(lineCases);
 }
+
+/// Delete at the end of a table cell's visible content does nothing, its
+/// trailing br included (forwarddelete.html; Chrome and Safari).
+const cell_cases = [_]harness.Case{
+    .{ .input = "<table><tr><td>foo[]<br><td>bar</table>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<table><tbody><tr><td>foo<br></td><td>bar</td></tr></tbody></table>" },
+    .{ .input = "foo<table><tr><td>bar[]<br></table>baz", .commands = &.{.{ "forwarddelete", "" }}, .expected = "foo<table><tbody><tr><td>bar<br></td></tr></tbody></table>baz" },
+    .{ .input = "<table><tr><td>fo[]o<td>bar</table>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<table><tbody><tr><td>fo</td><td>bar</td></tr></tbody></table>" },
+};
+
+fn cellCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &cell_cases);
+}
+
+test "Delete at the end of a table cell's content changes nothing" {
+    try helpers.onFreshThread(cellCases);
+}
