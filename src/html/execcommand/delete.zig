@@ -1400,6 +1400,12 @@ pub fn deleteAction(edit: *Edit) !bool {
             continue;
         }
         if (try common.childBefore(start.node, start.offset)) |child| {
+            // A br alone between two blocks is a line of its own: it goes
+            // alone (see brBetweenBlocks).
+            if (point.offset == 0 and try brBetweenBlocks(child)) {
+                try edit.removeNode(child);
+                return true;
+            }
             if ((try common.isEditable(child)) and try common.isInvisible(child)) {
                 try edit.removeNode(child);
                 start.offset -= 1;
@@ -1587,6 +1593,19 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
             if (!try visibleAfterInside(caret, cell)) return true;
         }
     }
+    // A br alone between two blocks is a line of its own: it goes alone
+    // (see brBetweenBlocks).
+    {
+        const caret = (try edit.rangeStart()) orelse return true;
+        if (!common.isText(caret.node)) {
+            if (try common.childAt(caret.node, caret.offset)) |child| {
+                if (try brBetweenBlocks(child)) {
+                    try edit.removeNode(child);
+                    return true;
+                }
+            }
+        }
+    }
     // Step 2.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return true, true);
     // Step 3.
@@ -1686,6 +1705,12 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
             continue;
         }
         if (try common.childAt(end.node, end.offset)) |child| {
+            // A br alone between two blocks goes alone (see brBetweenBlocks).
+            if (point.offset == (try common.nodeLength(point.node)) and try brBetweenBlocks(child)) {
+                try edit.removeNode(child);
+                try edit.collapse(point.node, point.offset);
+                return true;
+            }
             if ((try common.isEditable(child)) and try common.isInvisible(child)) {
                 try edit.removeNode(child);
                 continue;
@@ -1817,6 +1842,21 @@ fn isEmptyBlock(node: *Instance) !bool {
     if (try common.hasChildren(node)) return false;
     // Not the void block elements, which are content.
     return !try common.isHtmlElementIn(node, &.{ "hr", "img", "input", "textarea", "select", "iframe", "video", "audio", "canvas", "object", "embed", "table" });
+}
+
+/// Whether `node` is an editable br whose previous and next siblings are
+/// both blocks: the empty line it makes is its own, and Backspace or Delete
+/// beside it removes just it - all three browsers give `<ol><li>foo</ol>{}
+/// <br><ol><li>bar</ol>` + Delete -> `<ol><li>foo</li></ol><ol><li>bar</li>
+/// </ol>` and `<p>foo[]</p><br><p>bar</p>` -> `<p>foo</p><p>bar</p>`
+/// (forwarddelete.html PPP, delete.html PFP at wpt.fyi 2358bd4835), where
+/// the spec counts it extraneous, removes it as invisible and joins the
+/// blocks. Golden rule 2, no newer spec.
+fn brBetweenBlocks(node: *Instance) !bool {
+    if (!try isBr(node) or !try common.isEditable(node)) return false;
+    const previous = (try common.previousSibling(node)) orelse return false;
+    const next = (try common.nextSibling(node)) orelse return false;
+    return common.isElement(previous) and common.isBlockNode(previous) and common.isElement(next) and common.isBlockNode(next);
 }
 
 /// The td or th holding `node` inside its editing host, or null.

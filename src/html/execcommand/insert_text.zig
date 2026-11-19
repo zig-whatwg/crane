@@ -101,15 +101,15 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     // the line gets content (HTMLEditor::InsertTextWithTransaction's
     // padding-br handling). Golden rule 2, no newer spec.
     if (!common.isText(start.node)) {
-        if (try common.childAt(start.node, start.offset)) |after| {
-            if ((try common.isEditable(after)) and (try common.isCollapsedLineBreak(after)) and !try common.isExtraneousLineBreak(after)) {
-                try edit.removeNode(after);
-            }
-        }
-        if (try common.childBefore(start.node, start.offset)) |before| {
-            if ((try common.isEditable(before)) and (try common.isHtmlElementNamed(before, "br")) and try common.isExtraneousLineBreak(before)) {
-                try edit.removeNode(before);
-            }
+        const before = try common.childBefore(start.node, start.offset);
+        const after = try common.childAt(start.node, start.offset);
+        if (before != null and (try common.isEditable(before.?)) and (try common.isHtmlElementNamed(before.?, "br")) and try common.isExtraneousLineBreak(before.?)) {
+            try edit.removeNode(before.?);
+        } else if (after != null and (try common.isEditable(after.?)) and (try common.isCollapsedLineBreak(after.?)) and !(try common.isExtraneousLineBreak(after.?)) and (try common.nextSibling(after.?)) == null and before != null) {
+            // Only the br ending its block, after other content: one before
+            // a block keeps its line (`<p>foo</p>{}<br><p>baz</p>` types
+            // `X<br>`), and a sole br is step 14.1's.
+            try edit.removeNode(after.?);
         }
     }
     const caret = (try edit.rangeStart()) orelse return true;

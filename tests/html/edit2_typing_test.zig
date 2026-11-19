@@ -36,7 +36,7 @@ const br_cases = [_]harness.Case{
     .{ .input = "abc<br>{}<br>", .commands = &.{.{ "inserttext", "d" }}, .expected = "abc<br>d" },
     .{ .input = "<span contenteditable=false>abc</span><br>{}", .commands = &.{.{ "inserttext", "d" }}, .expected = "<span contenteditable=\"false\">abc</span>d" },
     .{ .input = "<p>{}<br>", .commands = &.{.{ "inserttext", "a" }}, .expected = "<p>a</p>" },
-    .{ .input = "<br>{}", .commands = &.{.{ "inserttext", "a" }}, .expected = "<br>a" },
+    .{ .input = "<br>{}", .commands = &.{.{ "inserttext", "a" }}, .expected = "a" },
 };
 
 /// insertText on a selection types into the text that follows the
