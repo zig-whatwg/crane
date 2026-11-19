@@ -42,8 +42,20 @@ test "sequential navigation that finds nothing after the point unsets it: the ne
     try helpers.onFreshThread(tabFromAPointNothingFollows);
 }
 
+/// A page at an http URL: the navigation API has entries and events only for
+/// a document that is not the initial about:blank and whose origin is not
+/// opaque (HTML "has entries and events disabled").
+fn openAtAnHttpUrl() !helpers.Page {
+    const browser = try @import("browser").Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    errdefer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const context = browser.current_context orelse return error.NoPage;
+    try context.loadHTML("<!doctype html><body></body>", .{ .base_url = "http://blk4.test/start" });
+    return .{ .browser = browser };
+}
+
 fn tabAfterAFocusReset() !void {
-    const page = try helpers.Page.open();
+    const page = try openAtAnHttpUrl();
     defer page.close();
     try page.run(
         \\document.body.innerHTML = '<button id="first">a</button><button id="second">b</button>';
