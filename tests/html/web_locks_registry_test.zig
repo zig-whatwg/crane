@@ -76,8 +76,8 @@ test "an exclusive lock is held by one request at a time; the next in its queue 
     defer a.deinit();
     var b = Mailbox.init(testing.allocator);
     defer b.deinit();
-    const client_a = try registry.register(&realm_a, &realm_a, origin, a.delivery());
-    const client_b = try registry.register(&realm_b, &realm_b, origin, b.delivery());
+    const client_a = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, origin, null, b.delivery());
 
     const first = try registry.request(client_a, "res", .{});
     const second = try registry.request(client_b, "res", .{});
@@ -111,7 +111,7 @@ test "shared locks are held together; an exclusive request waits for every one, 
     defer registry.deinit();
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, origin, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
 
     const s1 = try registry.request(client, "res", .{ .mode = .shared });
     const s2 = try registry.request(client, "res", .{ .mode = .shared });
@@ -139,8 +139,8 @@ test "locks of different names, and of different storage keys, never block each 
     defer a.deinit();
     var b = Mailbox.init(testing.allocator);
     defer b.deinit();
-    const client_a = try registry.register(&realm_a, &realm_a, origin, a.delivery());
-    const client_b = try registry.register(&realm_b, &realm_b, "https://other.test", b.delivery());
+    const client_a = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, "https://other.test", null, b.delivery());
 
     const one = try registry.request(client_a, "one", .{});
     const two = try registry.request(client_a, "two", .{});
@@ -163,7 +163,7 @@ test "ifAvailable: granted when grantable, otherwise not_granted at once and nev
     defer registry.deinit();
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, origin, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
 
     const held = try registry.request(client, "res", .{ .if_available = true });
     try a.expect(&.{granted(held)});
@@ -198,9 +198,9 @@ test "steal releases every held lock of the name, telling each holder, and goes 
     defer b.deinit();
     var c = Mailbox.init(testing.allocator);
     defer c.deinit();
-    const client_a = try registry.register(&realm_a, &realm_a, origin, a.delivery());
-    const client_b = try registry.register(&realm_b, &realm_b, origin, b.delivery());
-    const client_c = try registry.register(&realm_c, &realm_c, origin, c.delivery());
+    const client_a = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, origin, null, b.delivery());
+    const client_c = try registry.register(&realm_c, &realm_c, origin, null, c.delivery());
 
     const shared_a = try registry.request(client_a, "res", .{ .mode = .shared });
     const shared_b = try registry.request(client_b, "res", .{ .mode = .shared });
@@ -227,7 +227,7 @@ test "abort removes a pending request and processes its queue; a granted one is 
     defer registry.deinit();
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, origin, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
 
     const held = try registry.request(client, "res", .{ .mode = .shared });
     const exclusive = try registry.request(client, "res", .{});
@@ -251,8 +251,8 @@ test "terminating an environment drops its requests and releases its locks, and 
     defer a.deinit();
     var b = Mailbox.init(testing.allocator);
     defer b.deinit();
-    const client_a = try registry.register(&realm_a, &realm_a, origin, a.delivery());
-    const client_b = try registry.register(&realm_b, &realm_b, origin, b.delivery());
+    const client_a = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, origin, null, b.delivery());
 
     const a_held = try registry.request(client_a, "x", .{});
     const b_waits_x = try registry.request(client_b, "x", .{});
@@ -288,8 +288,8 @@ test "unregister terminates the environment, forgets it and frees its delivery; 
     defer a.deinit();
     var b = Mailbox.init(testing.allocator);
     defer b.deinit();
-    const client_a = try registry.register(&realm_a, &realm_b, origin, a.delivery());
-    const client_b = try registry.register(&realm_b, &realm_b, origin, b.delivery());
+    const client_a = try registry.register(&realm_a, &realm_b, origin, null, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, origin, null, b.delivery());
     try testing.expectEqual(@as(?*Client, client_a), registry.clientOf(&realm_a));
     try testing.expect(registry.clientOf(&realm_c) == null);
     try testing.expect(!std.mem.eql(u8, &client_a.id, &client_b.id));
@@ -310,16 +310,42 @@ test "an environment whose lock manager could not be obtained has none to reques
     defer registry.deinit();
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, null, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, null, null, a.delivery());
     try testing.expectError(error.NoLockManager, registry.request(client, "x", .{}));
     try testing.expectError(error.NoLockManager, registry.snapshot(client, testing.allocator));
+}
+
+test "a lock's clientId is its environment's id when it has one, else a random v4 UUID of its own" {
+    var registry = Registry.init(testing.allocator);
+    defer registry.deinit();
+    var a = Mailbox.init(testing.allocator);
+    defer a.deinit();
+    var b = Mailbox.init(testing.allocator);
+    defer b.deinit();
+    // The id its service worker Client reports (web-locks/clientids.https.html).
+    const environment_id = "0172186c-a096-448f-9cd9-85a349713023".*;
+    const client_a = try registry.register(&realm_a, &realm_a, origin, environment_id, a.delivery());
+    const client_b = try registry.register(&realm_b, &realm_b, origin, null, b.delivery());
+    try testing.expectEqualSlices(u8, &environment_id, &client_a.id);
+
+    const held = try registry.request(client_a, "res", .{});
+    _ = try registry.request(client_b, "res", .{});
+    var snapshot = try registry.snapshot(client_a, testing.allocator);
+    defer snapshot.deinit(testing.allocator);
+    try testing.expectEqualSlices(u8, &environment_id, &snapshot.held[0].client_id);
+    try testing.expectEqualSlices(u8, &client_b.id, &snapshot.pending[0].client_id);
+    // No environment id: a version 4 UUID, lowercase.
+    try testing.expectEqual(@as(u8, '4'), client_b.id[14]);
+    try testing.expect(std.mem.indexOfScalar(u8, "89ab", client_b.id[19]) != null);
+    try testing.expect(!std.mem.eql(u8, &client_a.id, &client_b.id));
+    registry.release(held);
 }
 
 test "the Browser's end frees what is left: held locks, queued requests and registered environments" {
     var registry = Registry.init(testing.allocator);
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, origin, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
     _ = try registry.request(client, "x", .{});
     _ = try registry.request(client, "x", .{});
     registry.deinit();
@@ -331,7 +357,7 @@ test "names are compared as the bytes script gave them: a lone surrogate is not 
     defer registry.deinit();
     var a = Mailbox.init(testing.allocator);
     defer a.deinit();
-    const client = try registry.register(&realm_a, &realm_a, origin, a.delivery());
+    const client = try registry.register(&realm_a, &realm_a, origin, null, a.delivery());
     // WTF-8 for U+D800, and UTF-8 for U+FFFD.
     const lone = try registry.request(client, "\xED\xA0\x80", .{});
     const replacement = try registry.request(client, "\xEF\xBF\xBD", .{});
@@ -387,8 +413,8 @@ test "two threads contending for one exclusive lock never hold it together, and 
     defer one.mailbox.deinit();
     var two: Contender = .{ .registry = &registry, .mailbox = Mailbox.init(allocator), .holders = &holders, .overlaps = &overlaps, .rounds = 500 };
     defer two.mailbox.deinit();
-    one.client = try registry.register(&realm_a, &realm_a, origin, one.mailbox.delivery());
-    two.client = try registry.register(&realm_b, &realm_b, origin, two.mailbox.delivery());
+    one.client = try registry.register(&realm_a, &realm_a, origin, null, one.mailbox.delivery());
+    two.client = try registry.register(&realm_b, &realm_b, origin, null, two.mailbox.delivery());
 
     const t1 = try std.Thread.spawn(.{}, Contender.run, .{&one});
     const t2 = try std.Thread.spawn(.{}, Contender.run, .{&two});

@@ -251,6 +251,17 @@ fn firstChildNamed(node: *Instance, name: []const u8) ?*Instance {
     return null;
 }
 
+/// The first child of `node` named `name` that is not hidden from the
+/// accessibility tree.
+fn firstVisibleChildNamed(self: *Name, node: *Instance, name: []const u8) anyerror!?*Instance {
+    const base = bridge.getNodeBase(node) orelse return null;
+    var child = base.firstChild();
+    while (child) |at| : (child = at.next_sibling) if (instance(at)) |candidate| if (eq(localName(candidate), name)) {
+        if (!try self.hidden(candidate)) return candidate;
+    };
+    return null;
+}
+
 fn nextInTree(node: *NodeBase, boundary: *NodeBase) ?*NodeBase {
     if (node.firstChild()) |child| return child;
     var at = node;
@@ -577,7 +588,14 @@ const Name = struct {
                 var out: std.ArrayList(u8) = .empty;
                 const count = try interfaces.NodeList.get_length(list);
                 for (0..count) |i| if (try interfaces.NodeList.call_item(list, @intCast(i))) |label| {
-                    try self.append(&out, try self.text(label, .{ .native_label = true, .relation = walk.relation, .include_hidden = try self.hidden(label) }), true);
+                    // HTML-AAM 3.5.83 (the label note, w3c/html-aam#533): a
+                    // label hidden from the accessibility tree provides no
+                    // name to its labelable element - Chrome 157 and Firefox
+                    // 160 skip it (html-aam/hidden-names.html "Input with
+                    // hidden label", wpt.fyi 4786307730243584,
+                    // 4877168468033536; Safari 27.2 names it).
+                    if (try self.hidden(label)) continue;
+                    try self.append(&out, try self.text(label, .{ .native_label = true, .relation = walk.relation }), true);
                 };
                 if (std.mem.trim(u8, out.items, spaces).len > 0) return out.items;
             }
@@ -608,8 +626,25 @@ const Name = struct {
             if (eq(tag, "img") and attribute(node, "alt") == null and attribute(node, "title") == null) {
                 if (try self.imageCaption(node, walk)) |value| return value;
             }
-            if (oneOf(tag, .{ "fieldset", "table" })) if (firstChildNamed(node, if (eq(tag, "table")) "caption" else "legend")) |label| {
-                const value = try self.text(label, .{ .native_label = true, .relation = walk.relation, .include_hidden = try self.hidden(label) });
+            // HTML-AAM 4.1.5 step 2 / 4.1.11 step 2: the subtree of the
+            // first legend / caption child - and a legend or caption hidden
+            // from the accessibility tree provides no name (the notes of
+            // 3.5.40 and 3.5.22, w3c/html-aam#533). Where a hidden one comes
+            // first, the browsers split by element, and Crane takes each
+            // element's majority (golden rule 2; html-aam/hidden-names.html,
+            // wpt.fyi Chrome 157 4786307730243584, Firefox 160
+            // 4877168468033536, Safari 27.2 6479119966273536): a table takes
+            // its first caption that is not hidden (Chrome and Firefox give
+            // "Visible caption"; Safari names it from the hidden one), and a
+            // fieldset only its first legend, so a hidden first legend leaves
+            // it unnamed (Chrome and Safari give ""; Firefox names it from
+            // the hidden one). Together: Chrome's result.
+            if (eq(tag, "table")) if (try firstVisibleChildNamed(self, node, "caption")) |caption| {
+                const value = try self.text(caption, .{ .native_label = true, .relation = walk.relation });
+                if (std.mem.trim(u8, value, spaces).len > 0) return value;
+            };
+            if (eq(tag, "fieldset")) if (firstChildNamed(node, "legend")) |legend| if (!try self.hidden(legend)) {
+                const value = try self.text(legend, .{ .native_label = true, .relation = walk.relation });
                 if (std.mem.trim(u8, value, spaces).len > 0) return value;
             };
             if (oneOf(tag, .{ "option", "optgroup" })) if (attribute(node, "label")) |value| if (value.len > 0) return value;

@@ -76,7 +76,16 @@ pub const Implementation = struct {
     /// steps report it: Clients' matchAll() order (Service Workers 4.3.4
     /// step 2.6.4, "most recently focused").
     focused: *const fn (realm: runtime.Context, at_ns: u64) void,
+    /// The id of `realm`'s environment (HTML "an environment has an id"):
+    /// the UUID its Client's `id` is - the one id every API that names the
+    /// environment reports (Web Locks' LockInfo clientId). Null when the
+    /// realm is no client (an opaque origin's, a Browser-less realm, one
+    /// ended). Optional: an owner that keeps no ids leaves it out.
+    client_id: ?*const fn (realm: runtime.Context) ?[client_id_len]u8 = null,
 };
+
+/// The length of an environment's id: a UUID's string form.
+pub const client_id_len = 36;
 
 // process-wide: one function table the ServiceWorkerContainer impl installs once at process start (crane.Process), the same for every Browser and thread; the clients themselves are each Browser's (its service worker manager)
 var implementation: Hook(?Implementation) = .init(null);
@@ -124,6 +133,14 @@ pub fn registrationCount(scope: *runtime.BrowserScope) usize {
 pub fn routeForGlobal(global: *runtime.Instance) ?fetch.internal.ServiceWorkerRoute {
     const impl = implementation.get() orelse return null;
     return impl.route_for_global(global);
+}
+
+/// The id of `realm`'s environment, as its service worker Client reports it;
+/// null when it is no client, or with no owner installed.
+pub fn clientId(realm: runtime.Context) ?[client_id_len]u8 {
+    const impl = implementation.get() orelse return null;
+    const lookup = impl.client_id orelse return null;
+    return lookup(realm);
 }
 
 /// `realm`'s document's browsing context was focused at `at_ns`; nothing
