@@ -21,6 +21,7 @@ const common = @import("common.zig");
 const split_parent = @import("split_parent.zig");
 const overrides = @import("overrides.zig");
 const wrap_mod = @import("wrap.zig");
+const visible_position = @import("visible_position.zig");
 
 const Edit = common.Edit;
 const Point = common.Point;
@@ -454,7 +455,10 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
         const first = node_list.items[index];
         var sublist: std.ArrayList(*Instance) = .empty;
         defer sublist.deinit(edit.allocator);
-        if (try common.isSingleLineContainer(first)) {
+        // Step 10.3's first browser case is decided on the line as it was,
+        // before step 10.1 takes its container away (see below).
+        const already_named = try lineFormatBlockIsNamed(first, name);
+        if (try dissolvesForFormatBlock(first)) {
             // Step 10.1: a single-line container gives way to its children.
             var child = try common.firstChild(first);
             while (child) |c| : (child = try common.nextSibling(c)) try sublist.append(edit.allocator, c);
@@ -471,25 +475,29 @@ pub fn formatBlockAction(edit: *Edit, value_in: []const u8) !bool {
                 const candidate = node_list.items[index];
                 const last = sublist.items[sublist.items.len - 1];
                 if ((try common.nextSibling(last)) != candidate) break;
-                if (try common.isSingleLineContainer(candidate)) break;
+                if (try dissolvesForFormatBlock(candidate)) break;
                 if (try isBr(last)) break;
                 try sublist.append(edit.allocator, candidate);
                 index += 1;
             }
         }
         // Step 10.3, with two cases the browsers leave alone:
-        // - a line whose nearest formattable block is already a `name`
+        // - a line whose nearest formattable block - its own container
+        //   included, as it was before step 10.1 - is already a `name`
         //   (`<div><ol><li>[foo]</ol></div>` + "div" is unchanged in Chrome
         //   156, Firefox 158 and Safari 27; Gecko
         //   FormatBlockContainerWithTransaction finds the format block in
-        //   place), and
+        //   place), while a line in another block inside one is wrapped
+        //   (`<blockquote><p>[foo]<p>bar</blockquote>` + "blockquote" ->
+        //   `<blockquote><blockquote>foo</blockquote><p>bar</p></blockquote>`,
+        //   PPP at wpt.fyi 2358bd4835), and
         // - a line where no ancestor in the editing host can hold a `name`,
         //   which fix disallowed ancestors could not repair (all three keep
         //   `<p contenteditable=false><span contenteditable>[foo]</span></p>`
         //   on "p"; Firefox also keeps a div host's span and a p host on
         //   "div"; editing/run/formatblock.html at wpt.fyi 5af3c135c9).
         if (sublist.items.len == 0) continue;
-        if (try nearestFormatBlockIsNamed(sublist.items[0], name)) continue;
+        if (already_named) continue;
         if (!try nameIsAllowedInHost(sublist.items[0], name)) continue;
         if (try wrap_mod.wrap(edit, sublist.items, FormatBlockContext{ .name = name })) |result| {
             try fixDisallowedAncestors(edit, result);
@@ -557,8 +565,15 @@ pub fn visibleEditableLeaves(edit: *Edit, range: Range, list: *std.ArrayList(*In
 
 /// Whether an element named `name` may be a child of `node`'s parent or of
 /// another of its ancestors in the same editing host - somewhere fix
-/// disallowed ancestors can move a new wrapper to.
-fn nameIsAllowedInHost(node: *Instance, name: []const u8) !bool {
+/// disallowed ancestors can move a new wrapper to. A dd or dt goes where a
+/// dl may: fix disallowed ancestors step 2.1 wraps a stray one in a dl, so
+/// `<p>[foobar]</p>` + formatBlock "dd" gives `<dl><dd>foobar</dd></dl>`
+/// (editing/run/formatblock.html; Firefox 160 makes exactly that, Chrome
+/// 157 and Safari 27.2 a bare dd, and all three then report "dd" as the
+/// value, wpt.fyi 2358bd4835), where checking for the dd itself left the
+/// line unwrapped.
+fn nameIsAllowedInHost(node: *Instance, name_in: []const u8) !bool {
+    const name = if (common.nameIn(name_in, &.{ "dd", "dt" })) "dl" else name_in;
     var current = try common.parent(node);
     while (current) |c| : (current = try common.parent(c)) {
         if (!try common.inSameEditingHost(node, c)) break;
@@ -567,10 +582,10 @@ fn nameIsAllowedInHost(node: *Instance, name: []const u8) !bool {
     return false;
 }
 
-/// Whether the nearest editable element with a formattable block name
+/// Whether the nearest editable element with a formattable block name at or
 /// around `node`, inside its editing host, is named `name`.
-fn nearestFormatBlockIsNamed(node: *Instance, name: []const u8) !bool {
-    var current = try common.parent(node);
+fn lineFormatBlockIsNamed(node: *Instance, name: []const u8) !bool {
+    var current: ?*Instance = node;
     while (current) |c| : (current = try common.parent(c)) {
         if (!try common.isEditable(c)) return false;
         if (try common.isHtmlElementIn(c, &formattable_block_names)) return try common.localNameIs(c, name);
@@ -578,48 +593,59 @@ fn nearestFormatBlockIsNamed(node: *Instance, name: []const u8) !bool {
     return false;
 }
 
+/// Whether formatBlock step 10.1 replaces `node` by its children: a
+/// single-line container, except xmp and listing, which all three browsers
+/// keep and wrap whole - `<xmp>[foo]</xmp>` + "p" gives `<p><xmp>foo</xmp>
+/// </p>` (editing/run/formatblock.html: PPP for xmp, Chrome and Safari for
+/// listing, wpt.fyi 2358bd4835), where the spec's single-line container
+/// gives way to a p. Neither is an element Blink's formatBlock replaces
+/// (format_block_command.cc IsElementForFormatBlock) nor one Gecko's does
+/// (HTMLEditUtils::IsFormatTagForFormatBlockCommand). Golden rule 2, no
+/// newer spec.
+fn dissolvesForFormatBlock(node: *Instance) !bool {
+    if (try common.isHtmlElementIn(node, &.{ "xmp", "listing" })) return false;
+    return try common.isSingleLineContainer(node);
+}
+
 /// formatBlock's value, as Chrome and Safari compute it: the nearest
-/// element with a formattable block name around the active range's common
-/// ancestor, inside its editing host; "" when there is none. The spec takes
-/// the block of the first visible leaf instead, so a range across several
-/// blocks reports the first; Chrome 156 and Safari 27 report "" for
-/// `<p>[foo<p>bar]<p>baz`, `<h1>[foo</h1><h2>bar]</h2>` and
-/// `<p>[foo<h1>bar]</h1>` and "dl" for `<dl><dt>[foo<dd>bar]</dl>`, and all
-/// three report "" for `<p>[foo</p>bar]` (editing/run/formatblock.html,
-/// wpt.fyi 5af3c135c9). Mechanism: Blink
-/// FormatBlockCommand::ElementForFormatBlockCommand (format_block_command.cc).
+/// element with a formattable block name around the common ancestor of the
+/// selection's VISIBLE range, unless it holds the editing host; "" when
+/// there is none. The spec takes the block of the first visible leaf
+/// instead, so a range across several blocks reports the first; Chrome 157
+/// and Safari 27.2 report "" for `<p>[foo<p>bar]<p>baz` and "dl" for
+/// `<dl><dt>[foo<dd>bar]</dl>` (editing/run/formatblock.html, wpt.fyi
+/// 2358bd4835). The visible range is what Blink queries: `{<p><p> <p>foo
+/// </p>}` reports "p" (the empty blocks hold no visible position) and a
+/// range around a table cell's contents reports the block inside the cell.
+/// A block holding other blocks is the value too: all three report "div"
+/// for `<div><ol><li>[foo]</ol></div>` and `<div><table><tr><td>[foo]
+/// </table></div>` (the data expects that after formatBlock, but the spec's
+/// "" before it: Crane follows the browsers). Mechanism: Blink
+/// ValueFormatBlock (editor_command.cc) over FirstEphemeralRangeOf(the
+/// VisibleSelection) and FormatBlockCommand::ElementForFormatBlockCommand
+/// (format_block_command.cc). Golden rule 2, no newer spec.
 pub fn formatBlockValue(edit: *Edit) ![]const u8 {
-    const range = (try edit.activeRange()) orelse return "";
     const start = (try edit.rangeStart()) orelse return "";
-    const host = (try common.editingHostOf(start.node)) orelse return "";
-    var current: ?*Instance = try interfaces.Range.get_commonAncestorContainer(range);
+    const end = (try edit.rangeEnd()) orelse return "";
+    const visible = visible_position.visibleRange(edit.scratchAllocator(), start, end) orelse return "";
+    const host = (try common.editingHostOf(visible.start.node)) orelse return "";
+    var current: ?*Instance = try commonAncestor(visible.start.node, visible.end.node);
     while (current) |c| : (current = try common.parent(c)) {
         if (!try common.isHtmlElementIn(c, &formattable_block_names)) continue;
         // The editing host or an element around it is not the value.
         if (common.isInclusiveDescendantOf(host, c)) return "";
-        // Nor, as the spec says, a block holding other blocks (`<div>[foo
-        // <p>bar]</p></div>` and `<div><table><tr><td>[foo]</table></div>`
-        // report ""), except a dl holding its own dt and dd.
-        if (try holdsOtherBlocks(c)) continue;
         return formattableName(c);
     }
     return "";
 }
 
-/// Whether `element` is the ancestor of a prohibited paragraph child other
-/// than a dt or dd child of a dl `element`.
-fn holdsOtherBlocks(element: *Instance) !bool {
-    const is_dl = try common.isHtmlElementNamed(element, "dl");
-    var child = try common.firstChild(element);
-    while (child) |c| : (child = try common.nextSibling(c)) {
-        if (is_dl and try common.isHtmlElementIn(c, &.{ "dt", "dd" })) {
-            if (try isAncestorOfProhibitedParagraphChild(c)) return true;
-            continue;
-        }
-        if (try common.isProhibitedParagraphChild(c)) return true;
-        if (try isAncestorOfProhibitedParagraphChild(c)) return true;
+/// The nearest inclusive ancestor of `a` that is also one of `b`.
+fn commonAncestor(a: *Instance, b: *Instance) !?*Instance {
+    var current: ?*Instance = a;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (common.isInclusiveDescendantOf(b, c)) return c;
     }
-    return false;
+    return null;
 }
 
 /// The dl a dt or dd belongs to, or null.
