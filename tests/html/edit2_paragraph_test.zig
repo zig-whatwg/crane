@@ -26,3 +26,21 @@ fn flexCases() !void {
 test "insertParagraph splits a flex or grid item, as Chrome and Safari do" {
     try helpers.onFreshThread(flexCases);
 }
+
+/// insertParagraph wrapping a line of inline content keeps the line break
+/// that ended the line before it (Chrome and Safari).
+const line_cases = [_]harness.Case{
+    .{ .input = "foo<br>bar[]<br><span>baz</span>", .commands = &.{ .{ "defaultparagraphseparator", "div" }, .{ "insertparagraph", "" } }, .expected = "foo<br><div>bar</div><div><br><span>baz</span></div>" },
+    .{ .input = "foo<br>[]bar<span>baz</span><br>qux", .commands = &.{ .{ "defaultparagraphseparator", "p" }, .{ "insertparagraph", "" } }, .expected = "foo<br><p><br></p><p>bar<span>baz</span><br>qux</p>" },
+};
+
+fn lineCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &line_cases);
+}
+
+test "insertParagraph keeps the line break before the line it wraps, as Chrome and Safari do" {
+    try helpers.onFreshThread(lineCases);
+}
