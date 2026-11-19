@@ -2294,9 +2294,10 @@ fn windowPostMessageSteps(instance: *runtime.Instance, message: runtime.JSValue,
     // Steps 6-7: StructuredSerializeWithTransfer(message, transfer). Rethrow
     // any exceptions - which the serializer has already thrown, as the
     // spec's DataCloneError or as whatever script threw mid-walk. A transfer
-    // list ships its MessagePorts (their transfer steps, dom.message_ports)
-    // and detaches its ArrayBuffers, as a port's and a worker's postMessage
-    // do (html.worker_host.serializePortMessage).
+    // list runs its platform objects' transfer steps (the one shared step,
+    // dom.transferables: a MessagePort ships its end, a stream pipes into a
+    // cross-realm transform) and detaches its ArrayBuffers, as a port's and a
+    // worker's postMessage do (html.worker_host.serializePortMessage).
     //
     // The realm they run in is the current realm: the realm of the postMessage
     // function object - this window's for a script of its own origin-domain.
@@ -2593,38 +2594,34 @@ fn deliverPostedMessage(data: ?*anyopaque) void {
 }
 
 /// Steps 8.4-8.7 for `message`, posted with a transfer list, in `target`'s
-/// realm: its MessagePorts received into the realm (their transfer-receiving
-/// steps) - newPorts, in transfer-list order - and the message deserialized
-/// with its transferred ArrayBuffers; `message` fired with them, or
-/// `messageerror` when it does not deserialize. The message keeps nothing it
-/// handed over; it is freed with the posted message.
+/// realm: its transferred objects received into the realm (their
+/// transfer-receiving steps, the one shared step: dom.transferables) - its
+/// MessagePorts newPorts, in transfer-list order - and the message
+/// deserialized with them and its transferred ArrayBuffers; `message` fired,
+/// or `messageerror` when it does not deserialize. The message keeps nothing
+/// it handed over; it is freed with the posted message.
 fn deliverWithTransfer(target: *runtime.Instance, message: *@import("dom").port_channels.PortMessage, origin: []const u8, source: ?*runtime.Instance) void {
     const dom = @import("dom");
     const allocator = target.ctx.allocator;
-    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer ports.deinit(allocator);
-    const ends = message.takeEnds();
-    defer message.allocator.free(ends);
-    for (ends) |end| {
-        const port = dom.message_ports.receive(target.ctx, @ptrCast(end)) catch continue;
-        ports.append(allocator, port) catch continue;
-    }
     // Step 8.4: StructuredDeserializeWithTransfer in the target's realm, the
-    // received ports its memory for the transferred ones the value refers to
-    // (step 3.5); an exception is a messageerror, with origin and source - a
-    // port whose transfer-receiving steps failed too (step 3.4.4 throws), as
-    // the value's references are by place in the transfer list.
-    if (ports.items.len != ends.len) {
+    // received objects its memory for the transferred ones the value refers
+    // to (step 3.5); an exception is a messageerror, with origin and source -
+    // a transfer-receiving step's failure too (step 3.4.4 throws), as the
+    // value's references are by place in the transfer list.
+    const holders = message.takeHolders();
+    defer message.allocator.free(holders);
+    var received = dom.transferables.receiveAll(target.ctx, holders, allocator) catch {
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
-    }
-    const data = engine.structuredDeserializeWithOptions(target.ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = ports.items, .shared_memory = message.shared_memory }) catch {
+    };
+    defer received.deinit();
+    const data = engine.structuredDeserializeWithOptions(target.ctx, message.serialized, .{ .array_buffers = message.array_buffers, .transferred = received.values, .shared_memory = message.shared_memory }) catch {
         fireTransferEvent(target, "messageerror", runtime.JSValue.jsUndefined, origin, source, &.{});
         return;
     };
     defer data.release();
     // Steps 8.5-8.7: messageClone, newPorts, and the message event.
-    fireTransferEvent(target, "message", data.value, origin, source, ports.items);
+    fireTransferEvent(target, "message", data.value, origin, source, received.ports);
 }
 
 /// Fire `event_type` at `target` as a trusted MessageEvent with origin,

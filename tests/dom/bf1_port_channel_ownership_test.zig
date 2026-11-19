@@ -154,9 +154,9 @@ test "a message carrying an end discards it with itself; a closed sink drops its
         .array_buffers = &.{},
         .platform_objects = &.{},
     };
-    const ends = try testing.allocator.alloc(*End, 1);
-    ends[0] = carried.end(0);
-    channel.end(0).post(try PortMessage.create(testing.allocator, &result, ends));
+    const holders = try testing.allocator.alloc(channels.TransferDataHolder, 1);
+    holders[0] = .{ .message_port = carried.end(0) };
+    channel.end(0).post(try PortMessage.create(testing.allocator, &result, holders));
     // The loop ends before the notification runs: the sink drops it.
     sink.close();
     sink.release();

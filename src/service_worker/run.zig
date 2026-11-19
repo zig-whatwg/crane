@@ -586,27 +586,27 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
     // 6.2.3. destination: the worker's global.
     // 6.2.4. StructuredDeserializeWithTransfer, its transferred ports
     // received here first.
-    var ports: std.ArrayListUnmanaged(*runtime.Instance) = .empty;
-    defer ports.deinit(manager.allocator);
+    // The transferred objects are received by the one shared step
+    // (dom.transferables); the event's ports are the MessagePorts among them.
+    var received: ?dom.transferables.Received = null;
+    defer if (received) |*r| r.deinit();
     var event_type: []const u8 = "message";
     var data_hold: ?engine.Owned = null;
     defer if (data_hold) |hold| hold.release();
     if (message.message) |port_message| {
         message.message = null;
         defer port_message.destroy();
-        const ends = port_message.takeEnds();
-        defer port_message.allocator.free(ends);
-        for (ends) |end| {
-            const port = dom.message_ports.receive(realm, @ptrCast(end)) catch continue;
-            ports.append(manager.allocator, port) catch continue;
-        }
-        data_hold = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = ports.items, .shared_memory = port_message.shared_memory }) catch blk: {
-            // "If this throws an exception, let e be ... messageerror".
-            event_type = "messageerror";
-            ports.clearRetainingCapacity();
-            break :blk null;
-        };
+        const holders = port_message.takeHolders();
+        defer port_message.allocator.free(holders);
+        if (dom.transferables.receiveAll(realm, holders, manager.allocator)) |made| {
+            received = made;
+            data_hold = engine.structuredDeserializeWithOptions(realm, port_message.serialized, .{ .array_buffers = port_message.array_buffers, .transferred = made.values, .shared_memory = port_message.shared_memory }) catch null;
+        } else |_| {}
+        // "If this throws an exception, let e be ... messageerror" - a
+        // transfer-receiving step's throw included.
+        if (data_hold == null) event_type = "messageerror";
     }
+    const event_ports: []const *runtime.Instance = if (data_hold != null) (if (received) |r| r.ports else &.{}) else &.{};
     const settled = try manager.allocator.create(MessageSettled);
     settled.* = .{ .done = done };
     const lifetime = ExtendLifetime.create(realm.allocator, .{ .ctx = settled, .run = MessageSettled.run, .drop = MessageSettled.drop }) catch |err| {
@@ -624,7 +624,7 @@ fn fireMessage(manager: *Manager, realm: runtime.Context, global_scope: *runtime
             .data = if (data_hold) |hold| hold.value else runtime.JSValue.jsNull,
             .origin = message.origin,
             .source = source,
-            .ports = ports.items,
+            .ports = event_ports,
         },
     }) catch |err| {
         log.debug("no message event: {s}", .{@errorName(err)});

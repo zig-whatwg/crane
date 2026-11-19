@@ -49,6 +49,10 @@ pub const Stream = struct {
     pending_abort_request: ?PendingAbortRequest = null,
     write_requests: std.ArrayList(Deferred) = .empty,
     backpressure: bool = false,
+    /// HTML [[Detached]] (a transferable object's): set once the stream is
+    /// transferred (StructuredSerializeWithTransfer step 5.6); its transfer
+    /// pipe may end and release its lock, but it never transfers again.
+    detached: bool = false,
     pub fn deinit(self: *Stream) void {
         js.disposeOptional(&self.stored_error);
         if (self.in_flight_write_request) |d| d.deinit();
