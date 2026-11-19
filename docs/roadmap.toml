@@ -567,6 +567,7 @@ progress = [
   "c7de8b6e99f..a84b0e7cc58 - service workers batch 5: race-network-and-fetch-handler races a sibling network fetch; the report timing steps at the body's end; module imports byte-checked on update; the request's redirect taint and navigation origin carried to the worker; controllerchange and a worker's own objects without lazy-state races; a page's cancel reaches the worker's stream (sw1-b5 lane)",
   "7905e783ef7..aa1d486e942 - service workers batch 6: the service worker timing info reaches navigation timing (fetchStart after activation); a worker's response keeps the client's timing allowed only as its own fetch did, its CORS sizes hidden where it substituted another origin's response, Cache Storage keeping the flag; TAO step 6 fails a redirect-tainted navigation; Upgrade-Insecure-Requests on every navigation; module imports re-fetched with the graph's request on update (sw1-b6 lane)",
   "da81e0faae7..4c15e890977 - the HTTP cache is the Browser's: one in-memory RFC 9111 cache on its network context (BrowserConfig.http_cache, 50 MiB, an eighth per response, LRU), shared by its tabs, frames and workers and by no other Browser, partitioned by network partition key; HTTP-network-or-cache fetch reads, revalidates and stores through it; frames, popups and service worker scripts carry their key; Clear-Site-Data cache clears it (httpcache1 lane)",
+  "3e77e681cb6..48dc80fa2a6 - tabs share their Browser's state and keep their own: a tab's session storage shed is the Browser's navigables' and ends with its top-level browsing context's record (Storage 4.3; Firefox's SessionStorageManager on Top()), not with the Browser - one shed per closed tab, and per WPT file, no longer kept; tests: the tabs of one Browser share localStorage and its events, cookies and cookieStore events, BroadcastChannel, one shared worker, Web Locks, blob URLs, a service worker registration and permission changes and keep their own sessionStorage, and two Browsers on two threads share none of the registries (inst2 lane)",
 ]
 
   [[infra.items]]
@@ -579,11 +580,11 @@ progress = [
 
   [[infra.items]]
   name = "Cross-tab registries (BroadcastChannel, SharedWorker, Web Locks, service worker registrations and clients, permissions) belong to the instance"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Tab state (session history, sessionStorage per top-level traversable, timers, animation frames, visibility and focus) belongs to the tab"
-  status = "todo"
+  status = "doing"
 
   [[infra.items]]
   name = "Host API (Zig and C ABI): instance create/destroy with profile options; tab create, list, activate, navigate, evaluate, close; events for tabs script opens and closes"
@@ -591,7 +592,7 @@ progress = [
 
   [[infra.items]]
   name = "Isolation tests across instances and sharing tests across tabs; the process-global/threadlocal ratchet"
-  status = "doing"
+  status = "done"
 
   [[infra.items]]
   name = "Optional persistent profile directory (in-memory by default)"

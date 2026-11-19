@@ -28,6 +28,10 @@ pub const StorageError = web_storage.StorageError;
 /// supplement of its scope (docs/instances.md).
 pub const UserAgentStorage = @import("storage").UserAgentStorage;
 
+/// The session storage sheds the sessionStorage getter reads: each
+/// traversable navigable's, its Browser's navigables' (Storage 4.3).
+pub const TraversableStorageSheds = @import("storage").TraversableStorageSheds;
+
 /// What the getters find a storage area by: the environment's storage key
 /// (origin, top-level site, has cross-site ancestor).
 pub const StorageKey = @import("storage").StorageKey;
