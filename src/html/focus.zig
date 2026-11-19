@@ -969,8 +969,15 @@ pub fn matchesFocusWithin(element: *Instance) bool {
         while (node) |n| : (node = shadowIncludingParent(n)) {
             if (n == element) return true;
             // Selectors 4 section 9: popover and modal boundaries are
-            // inclusive. Non-modal dialogs remain ordinary ancestors.
-            if (top_layer) |layer| if (layer.find(n) != null or layer.findModal(n) != null) break;
+            // inclusive. Non-modal dialogs remain ordinary ancestors. An open
+            // customizable select's picker is a popover in the top layer
+            // too (HTML's select picker; its entry is the select's), so its
+            // options' focus stops at the select: Chrome 157 passes
+            // css/selectors/user-action-pseudo-top-layer.html's
+            // customizable-select case at "container should not have
+            // :focus-within for top layer elements" (Firefox has no
+            // base-select; Safari no showPicker on it).
+            if (top_layer) |layer| if (layer.find(n) != null or layer.findKind(n, true) != null or layer.findModal(n) != null) break;
             depth += 1;
             if (depth == 4096) break;
         }
