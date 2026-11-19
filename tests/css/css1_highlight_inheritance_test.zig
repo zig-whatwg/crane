@@ -119,3 +119,16 @@ test "a highlight copies font and line-height from its originating element, igno
     try expectValue(child_selection, .text_shadow, "rgb(0, 128, 0) 12px 0px 0px");
     try expectValue(child_selection, .text_decoration_thickness, "18px");
 }
+
+test "the highlight's currentColor bit costs a style no bytes: the sub-word fields share one word" {
+    // ComputedStyle's fields narrower than 8 bytes (the held-group bits, the
+    // color scheme, the box context, the flags) fit one 8-byte word beside
+    // the pointers; a ninth byte would pad every style by a whole word
+    // (264 -> 272 B on 64-bit targets).
+    var narrow: usize = 0;
+    inline for (@typeInfo(Style).@"struct".fields) |field| {
+        if (@sizeOf(field.type) < 8) narrow += @sizeOf(field.type);
+    }
+    std.debug.print("CSS1_STYLE_NARROW_FIELDS {d} B, ComputedStyle {d} B\n", .{ narrow, @sizeOf(Style) });
+    try testing.expect(narrow <= 8);
+}
