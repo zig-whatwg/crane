@@ -31,6 +31,29 @@
   internal.set_permission = __crane_test_driver_set_permission;
   internal.get_computed_role = __crane_test_driver_get_computed_role;
   internal.get_computed_label = __crane_test_driver_get_computed_label;
+  // WebDriver BiDi's log.entryAdded (test_driver.bidi.log.entry_added): the runner
+  // subscribes the session and emits each log.Entry as JSON to `emit`, which hands the
+  // event object to the listeners `on` added.
+  const logListeners = [];
+  const emit = (json) => {
+    const entry = JSON.parse(json);
+    for (const listener of logListeners.slice()) listener(entry);
+  };
+  internal.bidi.log.entry_added.subscribe = async function(params = {}) {
+    // Omitted contexts: the current browsing context; null: global.
+    const contexts = params.contexts === undefined ? [window] : params.contexts;
+    const id = __crane_test_driver_bidi_log_subscribe(emit, contexts === null, ...(contexts || []));
+    return async function() {
+      __crane_test_driver_bidi_log_unsubscribe(id);
+    };
+  };
+  internal.bidi.log.entry_added.on = function(callback) {
+    logListeners.push(callback);
+    return function() {
+      const index = logListeners.indexOf(callback);
+      if (index !== -1) logListeners.splice(index, 1);
+    };
+  };
   // A plain function, as upstream's is: tests call it with `new` too.
   window.test_driver.click = function(element) {
     return internal.click(element);

@@ -1780,8 +1780,14 @@ fn startImageFetch(instance: *runtime.Instance, url: []const u8, generation: u64
     // Where the script that started this update was (`queuingLocation`).
     if (location) |l| try request.setCspViolationLocation(.{ .url = l.url, .line = l.line, .column = l.column });
     // The client: the element's node document's relevant settings object -
-    // its realm's global's.
-    if (realmGlobal(instance.ctx)) |global| {
+    // that document's realm's global's, which is not the element's own realm
+    // once the element was adopted into another realm's document before the
+    // update's microtask ran (resource-timing/resource_reparenting.html: an
+    // img made in a frame's document and moved to the parent is reported to
+    // the parent's timeline, and one moved the other way to the frame's;
+    // Chrome 157 and Firefox 160 pass 1/1 on the aligned runs at 2358bd4835).
+    const client_realm = if (internal.document) |link| (if (link.isLive()) link.instance.ctx else instance.ctx) else instance.ctx;
+    if (realmGlobal(client_realm)) |global| {
         var client = try @import("dom").global_settings.requestClient(global);
         defer client.deinit();
         try fetch.internal.populateRequestFromClient(request, client.request);

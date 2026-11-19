@@ -18,12 +18,23 @@
 //!
 //! The factories' steps are HTML's (4.8.4.1 Image, 4.8.11.1 Audio, 4.10.10
 //! Option) and reach the DOM only through interfaces.
+//!
+//! WebIDL's steps make the object by "internally create a new object
+//! implementing the interface" with NewTarget: its prototype is
+//! NewTarget.prototype - or, when that is not an object, the interface
+//! prototype object of GetFunctionRealm(NewTarget) - so `class CustomImage
+//! extends Image {}` constructs a CustomImage (`applyNewTargetPrototype`;
+//! webidl/ecmascript-binding/legacy-factor-function-subclass.window.js,
+//! Chrome 157, Firefox 160 and Safari 27.2 pass 1/1). HTML's steps create the
+//! element with "create an element", which gives it the interface prototype;
+//! the binding then gives its wrapper NewTarget's.
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const v8 = @import("ffi.zig");
 const conv = @import("conversions.zig");
+const interface = @import("interface.zig");
 
 const Kind = enum { image, audio, option };
 
@@ -43,7 +54,7 @@ const factories = [_]Factory{
 pub fn registerExternalReferences() void {
     const ext_refs = @import("external_references.zig");
     inline for (factories) |factory| {
-        ext_refs.registerPointer(@intFromPtr(&Callback(factory.kind).callback));
+        ext_refs.registerPointer(@intFromPtr(&Callback(factory).callback));
     }
 }
 
@@ -68,7 +79,7 @@ fn installOne(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object, co
     const proto = v8.v8_Object_Get(@ptrCast(iface_value), context, @ptrCast(proto_key)) orelse return;
     defer v8.v8_Value_Dispose(proto);
 
-    const template = v8.v8_FunctionTemplate_New(isolate, Callback(factory.kind).callback, null) orelse return;
+    const template = v8.v8_FunctionTemplate_New(isolate, Callback(factory).callback, null) orelse return;
     defer v8.v8_FunctionTemplate_Dispose(template);
     const name = v8.v8_String_NewFromUtf8(isolate, factory.name.ptr, @intCast(factory.name.len)) orelse return;
     defer v8.v8_String_Dispose(name);
@@ -81,7 +92,8 @@ fn installOne(isolate: *v8.Isolate, context: *v8.Context, global: *v8.Object, co
     _ = v8.v8_Object_DefineProperty(global, context, @ptrCast(name), @ptrCast(function), true, false, true);
 }
 
-fn Callback(comptime kind: Kind) type {
+fn Callback(comptime factory: Factory) type {
+    const kind = factory.kind;
     return struct {
         fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
             const isolate = info.getIsolate();
@@ -104,9 +116,62 @@ fn Callback(comptime kind: Kind) type {
                 if (err != error.ExceptionPending) conv.throwWebIDLErrorFromContext(isolate, context, @errorName(err));
                 return;
             };
-            info.setReturnValue(conv.instanceToV8(isolate, element));
+            const wrapper = conv.instanceToV8(isolate, element);
+            // A getter on NewTarget's "prototype" threw: that exception.
+            if (!applyNewTargetPrototype(info, wrapper, isolate, context, factory.interface)) return;
+            info.setReturnValue(wrapper);
         }
     };
+}
+
+/// WebIDL "internally create a new object implementing the interface" with
+/// NewTarget, steps 2-3, for the object a factory made: its prototype is
+/// ? Get(NewTarget, "prototype"), or - that not being an Object - the
+/// interface prototype object of `interface_name` in GetFunctionRealm(
+/// NewTarget). `new Image()` (NewTarget the factory, whose prototype IS the
+/// interface prototype object) changes nothing. False when the Get threw:
+/// its exception is pending.
+fn applyNewTargetPrototype(
+    info: *const v8.FunctionCallbackInfo,
+    wrapper: *v8.Value,
+    isolate: *v8.Isolate,
+    context: *v8.Context,
+    comptime interface_name: []const u8,
+) bool {
+    if (!v8.v8_Value_IsObject(wrapper)) return true;
+    const new_target = info.getNewTarget() orelse return true;
+    defer v8.v8_Value_Dispose(new_target);
+    if (!v8.v8_Value_IsObject(new_target)) return true;
+    const prototype_key = v8.v8_String_NewFromUtf8(isolate, "prototype", 9) orelse return true;
+    defer v8.v8_String_Dispose(prototype_key);
+    const from_target = v8.v8_Object_Get(@ptrCast(new_target), context, @ptrCast(prototype_key)) orelse return false;
+    defer v8.v8_Value_Dispose(from_target);
+    const prototype: *v8.Value = if (v8.v8_Value_IsObject(from_target)) from_target else fallback: {
+        // Step 3: the interface prototype object of GetFunctionRealm(NewTarget).
+        const realm_owned = interface.getFunctionRealm(new_target, isolate);
+        defer if (realm_owned) |r| v8.v8_Context_Dispose(r);
+        const realm = realm_owned orelse context;
+        const global = v8.v8_Context_Global(realm) orelse return true;
+        defer v8.v8_Object_Dispose(global);
+        const name = v8.v8_String_NewFromUtf8(isolate, interface_name.ptr, @intCast(interface_name.len)) orelse return true;
+        defer v8.v8_String_Dispose(name);
+        const interface_object = v8.v8_Object_Get(global, realm, @ptrCast(name)) orelse return false;
+        defer v8.v8_Value_Dispose(interface_object);
+        if (!v8.v8_Value_IsObject(interface_object)) return true;
+        const interface_prototype = v8.v8_Object_Get(@ptrCast(interface_object), realm, @ptrCast(prototype_key)) orelse return false;
+        if (!v8.v8_Value_IsObject(interface_prototype)) {
+            v8.v8_Value_Dispose(interface_prototype);
+            return true;
+        }
+        break :fallback interface_prototype;
+    };
+    defer if (prototype != from_target) v8.v8_Value_Dispose(prototype);
+    if (v8.v8_Object_GetPrototypeV2(@ptrCast(wrapper))) |current| {
+        defer v8.v8_Value_Dispose(current);
+        if (v8.v8_Value_StrictEquals(current, prototype)) return true;
+    }
+    _ = v8.v8_Object_SetPrototypeV2(@ptrCast(wrapper), context, prototype);
+    return true;
 }
 
 /// The Document of the Window whose global `context` is.

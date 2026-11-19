@@ -91,6 +91,8 @@ pub const ShadowRoot = struct {
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
         pub const methods = .{
+            .{ "elementFromPoint", "call_elementFromPoint", 2 },
+            .{ "elementsFromPoint", "call_elementsFromPoint", 2 },
             .{ "appendHTML", "call_appendHTML", 1 },
             .{ "prependHTML", "call_prependHTML", 1 },
             .{ "streamHTML", "call_streamHTML", 0 },
@@ -109,6 +111,8 @@ pub const ShadowRoot = struct {
 
         /// Methods defined/overridden by this interface
         pub const own_methods = .{
+            "elementFromPoint",
+            "elementsFromPoint",
             "appendHTML",
             "prependHTML",
             "streamHTML",
@@ -213,6 +217,8 @@ pub const ShadowRoot = struct {
 
         .call_appendHTML = &call_appendHTML,
         .call_appendHTMLUnsafe = &call_appendHTMLUnsafe,
+        .call_elementFromPoint = &call_elementFromPoint,
+        .call_elementsFromPoint = &call_elementsFromPoint,
         .call_getAnimations = &call_getAnimations,
         .call_getHTML = &call_getHTML,
         .call_prependHTML = &call_prependHTML,
@@ -424,6 +430,10 @@ pub const ShadowRoot = struct {
         return try ShadowRootImpl.call_streamAppendHTMLUnsafe(instance, options);
     }
 
+    pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
+        return try ShadowRootImpl.call_elementFromPoint(instance, x, y);
+    }
+
     /// Extended attributes: [CEReactions]
     pub fn call_setHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(SetHTMLOptions)) anyerror!void {
         // [CEReactions] - Trigger Custom Element lifecycle callbacks
@@ -431,15 +441,6 @@ pub const ShadowRoot = struct {
         defer runtime.CEReactions.end(ce_scope);
 
         return try ShadowRootImpl.call_setHTML(instance, html, options);
-    }
-
-    /// Extended attributes: [CEReactions]
-    pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
-        // [CEReactions] - Trigger Custom Element lifecycle callbacks
-        const ce_scope = runtime.CEReactions.begin(instance);
-        defer runtime.CEReactions.end(ce_scope);
-
-        return try ShadowRootImpl.call_prependHTMLUnsafe(instance, html, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -459,11 +460,17 @@ pub const ShadowRoot = struct {
         return result;
     }
 
-    /// Extended attributes: [NewObject]
-    pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
-        // [NewObject] - Caller owns the returned object
+    pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+        return try ShadowRootImpl.call_elementsFromPoint(instance, x, y);
+    }
 
-        return try ShadowRootImpl.call_streamPrependHTMLUnsafe(instance, options);
+    /// Extended attributes: [CEReactions]
+    pub fn call_prependHTMLUnsafe(instance: *runtime.Instance, html: TrustedHTMLOrDOMString, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!void {
+        // [CEReactions] - Trigger Custom Element lifecycle callbacks
+        const ce_scope = runtime.CEReactions.begin(instance);
+        defer runtime.CEReactions.end(ce_scope);
+
+        return try ShadowRootImpl.call_prependHTMLUnsafe(instance, html, options);
     }
 
     /// Extended attributes: [NewObject]
@@ -480,6 +487,13 @@ pub const ShadowRoot = struct {
         defer runtime.CEReactions.end(ce_scope);
 
         return try ShadowRootImpl.call_setHTMLUnsafe(instance, html, options);
+    }
+
+    /// Extended attributes: [NewObject]
+    pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl.Opt(SetHTMLUnsafeOptionsOrTrustedHTMLParserOptions)) anyerror!*runtime.Instance {
+        // [NewObject] - Caller owns the returned object
+
+        return try ShadowRootImpl.call_streamPrependHTMLUnsafe(instance, options);
     }
 
     /// Extended attributes: [CEReactions], [NewObject]
@@ -550,6 +564,14 @@ pub const ShadowRoot = struct {
     /// Nullable callback attributes with [LegacyTreatNonObjectAsNull].
     pub const legacy_treat_non_object_as_null = .{"set_onslotchange"};
 
+    /// WebIDL `double` and `float` (not `unrestricted`): the values NaN and
+    /// the infinities throw a TypeError for (bit i = argument i; an attribute
+    /// setter's value is bit 0).
+    pub const restricted_floats = .{
+        .{ "call_elementFromPoint", 0b11 },
+        .{ "call_elementsFromPoint", 0b11 },
+    };
+
     /// HTML [CEReactions]: the functions that run a custom element reactions
     /// bracket - the binding dispatches each in a catch scope, where
     /// engine.withPendingExceptionSetAside sets aside what the member leaves
@@ -557,8 +579,8 @@ pub const ShadowRoot = struct {
     pub const ce_reactions = .{
         "set_innerHTML",
         "call_setHTML",
-        "call_prependHTMLUnsafe",
         "call_streamHTMLUnsafe",
+        "call_prependHTMLUnsafe",
         "call_setHTMLUnsafe",
         "call_streamHTML",
         "call_appendHTMLUnsafe",

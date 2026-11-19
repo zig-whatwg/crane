@@ -362,6 +362,10 @@ pub fn execCommand(document: *Instance, command: Command, value: []const u8) boo
             value;
         if (@import("../user_input.zig").execInsertIntoTextControl(document, text, command.inputType())) |ran| return ran;
     }
+    // And delete and forwardDelete delete in its editor.
+    if (command == .delete or command == .forward_delete) {
+        if (@import("../user_input.zig").execDeleteInTextControl(document, command == .forward_delete)) |ran| return ran;
+    }
     var edit = (beginEdit(document, arena.allocator()) catch return false) orelse return false;
     // selectAll changes no node: no editing host, no input event (steps
     // 5-8 alone).

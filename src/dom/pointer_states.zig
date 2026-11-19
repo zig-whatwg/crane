@@ -100,6 +100,7 @@ pub fn removingSteps(node: *NodeBase, old_parent: ?*NodeBase) void {
         if (!isShadowIncludingInclusiveDescendant(designated, node)) continue;
         impl.set(document, state, successor(parent));
     }
+    @import("pointer_capture.zig").removingSteps(document, node);
 }
 
 /// DOM moving steps (Document registers them), for the moved subtree's root:

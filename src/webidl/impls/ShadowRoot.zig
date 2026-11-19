@@ -552,6 +552,34 @@ pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl
     return @import("html").stream_html.containerUnsafe(instance, .prepend, parsed, "ShadowRoot streamPrependHTMLUnsafe");
 }
 
+/// elementFromPoint(x, y) on a ShadowRoot, as Chrome, Firefox and Safari
+/// expose it (specs/supplementary/ShadowRootHitTesting.idl; CSSOM View has it
+/// on Document only): the node document's elementFromPoint(x, y), retargeted
+/// against this shadow root (Blink TreeScope::ElementFromPoint, Gecko
+/// DocumentOrShadowRoot::ElementFromPoint, WebKit TreeScope::elementFromPoint
+/// retarget the hit-tested element). Hit testing is the document's, so the
+/// same no-renderer answer: CSSOM View step 1's negative coordinates are
+/// null, as is every point while no renderer gives a box.
+pub fn call_elementFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!?*runtime.Instance {
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    const document = (try interfaces.Node.get_ownerDocument(instance)) orelse return null;
+    const hit = try interfaces.Document.call_elementFromPoint(document, x, y);
+    return @import("dom").retarget.retargetAgainst(hit, instance);
+}
+
+/// elementsFromPoint(x, y) on a ShadowRoot (see `call_elementFromPoint`):
+/// the hit-tested elements of the node document, each retargeted against
+/// this shadow root - none while no renderer gives a box (CSSOM View: an
+/// empty sequence for a point no box covers).
+pub fn call_elementsFromPoint(instance: *runtime.Instance, x: f64, y: f64) anyerror!runtime.JSValue {
+    _ = getInternal(instance) orelse return error.InvalidStateError;
+    _ = x;
+    _ = y;
+    // OWNED, handed to the binding.
+    const array = try engine.createSequenceOfValues(engine.currentRealm() orelse instance.ctx, &.{});
+    return array.take();
+}
+
 /// getAnimations() (Web Animations 1 6.10): the relevant animations for
 /// this shadow root's subtree, in composite order.
 pub fn call_getAnimations(instance: *runtime.Instance) anyerror!runtime.JSValue {

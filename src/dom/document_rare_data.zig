@@ -71,6 +71,11 @@ pub const DocumentRareData = struct {
     /// and freed while it is designated.
     hovered_element: ?same_object.Link = null,
     pointed_element: ?same_object.Link = null,
+    /// HTML 6.6.5's sequential focus navigation starting point, when the
+    /// user agent keeps one apart from the focused area: the element the
+    /// focus fixup took the focus from (dom.focused_area.startPoint) - a
+    /// weak link (element and slab generation), never a count.
+    sequential_start: ?same_object.Link = null,
     activated_element: ?same_object.Link = null,
 
     /// The pointer lock element (Pointer Lock 2.0) and the

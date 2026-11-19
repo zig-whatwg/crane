@@ -82,6 +82,12 @@ pub const Message = struct {
     text: []const u8,
     /// An exception's or a rejection's source; empty for a console message.
     location: Location = .{},
+    /// A console message's arguments - the console method's data, which the
+    /// Printer formatted into `text` - for a host that shows them as values
+    /// (WebDriver BiDi's log.ConsoleLogEntry args). Empty for a message of
+    /// the console's own (a count, a timer) and for an exception. The host
+    /// may read their types and primitive values; it must run no script.
+    args: []const runtime.JSValue = &.{},
 };
 
 /// The host's side: `report` runs on the message's realm's thread with the
