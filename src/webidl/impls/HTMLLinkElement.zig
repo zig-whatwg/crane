@@ -250,7 +250,9 @@ fn fetchAndProcess(element: *runtime.Instance) void {
         .preload => {
             // Steps 3-4: "Let destination be the result of translating the
             // keyword representing the state of el's as attribute. If
-            // destination is null, then return."
+            // destination is null, then return." - for every keyword `as`
+            // reflects, as Firefox does (the user's ruling, 2026-11-18;
+            // `preloadDestination` says why).
             const destination = preloadDestination(attribute(element, "as")) orelse return;
             // "Preload" step 1: "If options's type doesn't match options's
             // destination, then return."
@@ -314,19 +316,27 @@ fn asDestination(as: ?[]const u8) ?Destination {
     return null;
 }
 
-/// HTML "translate a preload destination" for the `as` attribute's value:
-/// its state (limited to the potential destinations, ASCII
-/// case-insensitively), then "If destination is not "fetch", "font",
-/// "image", "script", "style", or "track", then return null", and
-/// "translating" it - "fetch" is the empty string.
+/// The destination a preload of the `as` attribute's value fetches with: its
+/// state - one of the keywords `as` reflects (`potential_destinations`),
+/// ASCII case-insensitively - translated ("fetch" is the empty string), or
+/// null when it is in no state.
+///
+/// HTML's "translate a preload destination" returns null for every keyword
+/// but "fetch", "font", "image", "script", "style" and "track" - 8 of the 14
+/// keywords its own `as` attribute accepts (the module preload destinations)
+/// - and its preload then returns with no fetch and no event, so a page that
+/// sets one of them waits forever: fetch/api/request/destination/
+/// fetch-destination.https.html cannot finish (wpt.fyi at 71b58bb191: Chrome
+/// 30/30 and Safari 28/30 never reach the wait - their `as` reflects none of
+/// those values - and Firefox 29/30). Firefox preloads every value its `as`
+/// reflects, with that destination (nsNetUtil.cpp's kAsAttributeTable: json,
+/// audio, video and text among them). The user's ruling (2026-11-18): Crane
+/// takes Firefox's model - rel=preload runs for every value `as` accepts -
+/// and keeps its reflection (every potential destination).
 fn preloadDestination(as: ?[]const u8) ?Destination {
     const value = as orelse return null;
-    const preloadable = [_]struct { []const u8, Destination }{
-        .{ "fetch", .empty },   .{ "font", .font },   .{ "image", .image },
-        .{ "script", .script }, .{ "style", .style }, .{ "track", .track },
-    };
-    for (preloadable) |entry| {
-        if (std.ascii.eqlIgnoreCase(value, entry[0])) return entry[1];
+    for (potential_destinations) |keyword| {
+        if (std.ascii.eqlIgnoreCase(value, keyword)) return asDestination(keyword);
     }
     return null;
 }
