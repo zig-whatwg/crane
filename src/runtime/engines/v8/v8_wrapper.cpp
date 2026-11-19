@@ -1825,7 +1825,20 @@ struct CraneViewInfo {
     size_t buffer_byte_length;   // [[ViewedArrayBuffer]].[[ArrayBufferByteLength]]
     bool buffer_detached;        // IsDetachedBuffer([[ViewedArrayBuffer]])
     bool buffer_shared;          // [[ViewedArrayBuffer]] is a SharedArrayBuffer
+    bool buffer_resizable;       // IsFixedLengthArrayBuffer([[ViewedArrayBuffer]]) is false
 };
+
+/// ECMA-262 IsFixedLengthArrayBuffer(buffer) is false: a resizable
+/// ArrayBuffer or a growable SharedArrayBuffer (its [[ArrayBufferMaxByteLength]]
+/// is present). Anything else: false.
+static bool craneBufferIsResizable(Local<Value> buffer) {
+    if (buffer->IsArrayBuffer()) return buffer.As<ArrayBuffer>()->IsResizableByUserJavaScript();
+    if (buffer->IsSharedArrayBuffer()) {
+        std::shared_ptr<BackingStore> store = buffer.As<SharedArrayBuffer>()->GetBackingStore();
+        return store && store->IsResizableByUserJavaScript();
+    }
+    return false;
+}
 
 static int craneViewKindOf(Local<Value> v) {
     if (v->IsDataView()) return kCraneDataView;
@@ -1860,6 +1873,7 @@ bool v8_ArrayBufferView_Describe(Global<Value>* view, CraneViewInfo* out) {
     out->length = v->IsTypedArray() ? v.As<TypedArray>()->Length() : abv->ByteLength();
     Local<Object> buffer_obj = abv->Buffer();
     out->buffer_shared = buffer_obj->IsSharedArrayBuffer();
+    out->buffer_resizable = craneBufferIsResizable(buffer_obj);
     if (buffer_obj->IsArrayBuffer()) {
         Local<ArrayBuffer> ab = buffer_obj.As<ArrayBuffer>();
         out->buffer_byte_length = ab->ByteLength();
@@ -3765,6 +3779,12 @@ struct IsolateData {
     /// BORROWED until the isolate is disposed.
     int64_t (*clock_wall_now)(void*) = nullptr;
     void* clock_context = nullptr;
+    /// Error.isError's answer for an API wrapper (V8's
+    /// IsJSApiWrapperNativeErrorCallback): whether the platform object behind
+    /// it has [[ErrorData]] - a DOMException, whatever its derived interface
+    /// (WebIDL, whatwg/webidl#1421). Set by the adapter's agent setup
+    /// (v8_Isolate_SetNativeErrorInstancePredicate); null: none has.
+    bool (*native_error_instance)(void* instance) = nullptr;
     /// Whether the isolate counts in the process's read-only heap record
     /// (g_read_only_heap): made by v8_Isolate_NewWithOptions or
     /// v8_Isolate_NewFromSnapshotWithOptions, given back by v8_Isolate_Dispose.
@@ -4493,16 +4513,59 @@ struct NodeAnchorInFrame {
 #define NODE_ANCHOR_IN_FRAME(isolate) ((void)0)
 #endif
 
+/// WebIDL 3.9 / HTML 7.2.3: a platform object is an object Crane made for an
+/// interface - a wrapper, or the proxy Crane makes AROUND one for a legacy
+/// platform object (a NodeList, an HTMLCollection) or a Location. A proxy a
+/// script makes around a wrapper (`new Proxy(node, {})`) is none: it is an
+/// ordinary exotic object, so a member called on it fails the binding's
+/// this-check, and an argument of interface type rejects it
+/// (webidl/ecmascript-binding/invalid-this-value-cross-realm.html: Chrome
+/// 157, Firefox 160 and Safari 27.2 throw a TypeError for each). Crane's
+/// proxies carry handlers of their own making: an API object with one
+/// internal field holding this Smi tag (a Smi, so a handler made while a
+/// snapshot is built serializes as it is).
+static constexpr int32_t kCraneProxyHandlerTag = 0x43726e50;  // "Crnp"
+
+/// A handler object for one of Crane's own proxies: an empty object from a
+/// one-field template, the tag in its field.
+static Local<Object> NewCraneProxyHandler(Isolate* isolate, Local<Context> ctx) {
+    Local<ObjectTemplate> handler_template = ObjectTemplate::New(isolate);
+    handler_template->SetInternalFieldCount(1);
+    Local<Object> handler = handler_template->NewInstance(ctx).ToLocalChecked();
+    handler->SetInternalField(0, Integer::New(isolate, kCraneProxyHandlerTag));
+    return handler;
+}
+
+/// Whether `handler` is the handler of one of Crane's own proxies.
+static bool isCraneProxyHandler(Local<Value> handler) {
+    if (handler.IsEmpty() || !handler->IsObject()) return false;
+    Local<Object> object = handler.As<Object>();
+    if (object->InternalFieldCount() != 1) return false;
+    Local<Data> field = object->GetInternalField(0);
+    if (field.IsEmpty() || !field->IsValue()) return false;
+    Local<Value> value = field.As<Value>();
+    return value->IsInt32() && value.As<Int32>()->Value() == kCraneProxyHandlerTag;
+}
+
+/// The object behind `object` that holds a platform object's fields: itself,
+/// or - for one of Crane's own proxies - its target. Empty for a proxy a
+/// script made, or a revoked one: no platform object is behind it.
+static Local<Object> platformObjectHolderOf(Local<Object> object) {
+    if (!object->IsProxy()) return object;
+    Local<Proxy> proxy = object.As<Proxy>();
+    if (!isCraneProxyHandler(proxy->GetHandler())) return Local<Object>();
+    Local<Value> target = proxy->GetTarget();
+    if (!target->IsObject()) return Local<Object>();
+    return target.As<Object>();
+}
+
 /// The node anchor `object` - a wrapper, or a legacy platform object's proxy
 /// around one - points at, or null: not an API wrapper (Object::Unwrap reads
 /// the CppHeap pointer field only API wrappers have), never wrapped, or
 /// wrapped under another tag.
 static NodeAnchor* nodeAnchorOf(Isolate* isolate, Local<Object> object) {
-    if (object->IsProxy()) {
-        Local<Value> target = object.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return nullptr;
-        object = target.As<Object>();
-    }
+    object = platformObjectHolderOf(object);
+    if (object.IsEmpty()) return nullptr;
     if (!object->IsApiWrapper()) return nullptr;
     return Object::Unwrap<NodeAnchor>(isolate, object, kNodeAnchorTagRange);
 }
@@ -4511,11 +4574,8 @@ static NodeAnchor* nodeAnchorOf(Isolate* isolate, Local<Object> object) {
 /// proxy around one - points at, or null: not an API wrapper, never bound, a
 /// node's wrapper (its anchor is a NodeAnchor), or a realm's global.
 static PlatformAnchor* platformAnchorOf(Isolate* isolate, Local<Object> object) {
-    if (object->IsProxy()) {
-        Local<Value> target = object.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return nullptr;
-        object = target.As<Object>();
-    }
+    object = platformObjectHolderOf(object);
+    if (object.IsEmpty()) return nullptr;
     if (!object->IsApiWrapper()) return nullptr;
     return Object::Unwrap<PlatformAnchor>(isolate, object, crane_tags::kPlatformObjectAnchorRange);
 }
@@ -4536,11 +4596,8 @@ static PlatformAnchor* platformAnchorOf(Isolate* isolate, Local<Object> object) 
 /// instance's state ancestry. `IsApiWrapper()` guards the Unwraps: only an
 /// API object has the CppHeap pointer field they read.
 static void* instanceOfObject(Isolate* isolate, Local<Object> object) {
-    if (object->IsProxy()) {
-        Local<Value> target = object.As<Proxy>()->GetTarget();
-        if (!target->IsObject()) return nullptr;
-        object = target.As<Object>();
-    }
+    object = platformObjectHolderOf(object);
+    if (object.IsEmpty()) return nullptr;
     if (object->IsApiWrapper()) {
         if (PlatformAnchor* anchor = Object::Unwrap<PlatformAnchor>(isolate, object, crane_tags::kPlatformObjectAnchorRange)) {
             return anchor->instance();
@@ -8252,6 +8309,14 @@ bool v8_Value_IsSharedArrayBuffer(Global<Value>* value) {
     return val->IsSharedArrayBuffer();
 }
 
+/// IsFixedLengthArrayBuffer(V) is false for V an ArrayBuffer or a
+/// SharedArrayBuffer (WebIDL 3.2.26's [AllowResizable] check).
+bool v8_Value_IsResizableBuffer(Global<Value>* value) {
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope handle_scope(isolate);
+    return craneBufferIsResizable(value->Get(isolate));
+}
+
 bool v8_Value_IsArrayBufferView(Global<Value>* value) {
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope handle_scope(isolate);
@@ -9365,10 +9430,11 @@ int v8_Object_InternalFieldCount(Global<Object>* obj) {
     HandleScope handle_scope(isolate);
     Local<Object> local_obj = obj->Get(isolate);
     // A legacy platform object's proxy has no fields; its target does, and
-    // v8_Object_GetAlignedPointerFromInternalField reads them through it.
+    // v8_Object_GetAlignedPointerFromInternalField reads them through it - a
+    // proxy of Crane's own only (platformObjectHolderOf).
     if (local_obj->IsProxy()) {
-        Local<Value> target = local_obj.As<Proxy>()->GetTarget();
-        if (target->IsObject()) local_obj = target.As<Object>();
+        local_obj = platformObjectHolderOf(local_obj);
+        if (local_obj.IsEmpty()) return 0;
     }
     return local_obj->InternalFieldCount();
 }
@@ -9381,12 +9447,10 @@ void* v8_Object_GetAlignedPointerFromInternalField(Global<Object>* obj, int inde
     // CROSS-REALM FIX: If object is a Proxy, unwrap to get the target.
     // Proxies (used for legacy platform objects like CSSStyleDeclaration)
     // have no internal fields - the internal fields are on the target object.
+    // Only Crane's own proxies: one a script made is no platform object.
     if (local_obj->IsProxy()) {
-        Local<Proxy> proxy = local_obj.As<Proxy>();
-        Local<Value> target = proxy->GetTarget();
-        if (target->IsObject()) {
-            local_obj = target.As<Object>();
-        }
+        local_obj = platformObjectHolderOf(local_obj);
+        if (local_obj.IsEmpty()) return nullptr;
     }
 
     // An object with no such field has no pointer there. Only a realm's
@@ -15892,7 +15956,8 @@ extern "C" {
 /// proxy's target as its first argument. Blink has no such object to reach
 /// (its legacy platform objects are API objects with interceptors).
 static Local<Object> NewLegacyPlatformObjectHandler(Isolate* isolate, Local<Context> ctx, bool named_setter) {
-    Local<Object> handler = Object::New(isolate);
+    // Tagged as Crane's (isCraneProxyHandler): its proxies are platform objects.
+    Local<Object> handler = NewCraneProxyHandler(isolate, ctx);
     // Object::SetPrototype on a JSObject enters V8 with no script and no
     // callbacks (15.7.112.43 src/api/api.cc SetPrototypeImpl,
     // EnterV8NoScriptNoExceptionScope).
@@ -17593,6 +17658,25 @@ void v8_SetProtocolPromiseRejectDispatcher(ProtocolPromiseRejectDispatch dispatc
 /// process's dispatcher.
 void v8_Isolate_SetProtocolPromiseRejectCallback(Isolate* isolate) {
     isolate->SetPromiseRejectCallback(ProtocolPromiseRejectCallback);
+}
+
+/// V8's IsJSApiWrapperNativeErrorCallback, asked by Error.isError for an API
+/// wrapper only (15.7.112.43 src/builtins/builtins-error.cc ErrorIsError):
+/// the platform object behind `object`, given to the isolate's predicate.
+static bool CraneIsJSApiWrapperNativeError(Isolate* isolate, Local<Object> object) {
+    IsolateData* data = isolateData(isolate);
+    if (!data || !data->native_error_instance) return false;
+    void* instance = instanceOfObject(isolate, object);
+    return instance && data->native_error_instance(instance);
+}
+
+/// Install `predicate` as the isolate's answer to "does this platform object
+/// have [[ErrorData]]?" for Error.isError; null removes it.
+void v8_Isolate_SetNativeErrorInstancePredicate(Isolate* isolate, bool (*predicate)(void* instance)) {
+    IsolateData* data = isolateData(isolate);
+    if (!data) return;
+    data->native_error_instance = predicate;
+    isolate->SetIsJSApiWrapperNativeErrorCallback(predicate ? CraneIsJSApiWrapperNativeError : nullptr);
 }
 
 /// Remove HostPromiseRejectionTracker from `isolate` alone (the dispatcher,
@@ -20445,8 +20529,12 @@ Global<Object>* v8_CreateLocationObject(Global<Context>* realm, Global<Object>* 
     Local<Context> context = realm->Get(isolate);
     Local<ObjectTemplate> handler_template = ObjectTemplate::New(isolate);
     handler_template->SetHandler(NamedPropertyHandlerConfiguration(LocationTrapLookup));
+    // Tagged as Crane's (isCraneProxyHandler): the Location proxy is the
+    // platform object.
+    handler_template->SetInternalFieldCount(1);
     Local<Object> handler;
     if (!handler_template->NewInstance(context).ToLocal(&handler)) return nullptr;
+    handler->SetInternalField(0, Integer::New(isolate, kCraneProxyHandlerTag));
     if (!handler->SetPrototype(context, Null(isolate)).FromMaybe(false)) return nullptr;
     Local<Proxy> result;
     if (!Proxy::New(context, target->Get(isolate), handler).ToLocal(&result)) return nullptr;

@@ -1490,12 +1490,17 @@ pub fn executeScriptElement(
     }
 }
 
-/// Run a classic script: el's result, in el's realm.
+/// Run a classic script: el's result, in the realm of el's node document.
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 ///
-/// Deviation, stated: the script runs in el's realm, not in the relevant realm
-/// of el's node document - the same realm unless el was adopted from another
-/// realm's document before it was prepared. Module scripts do the same
+/// "Prepare the script element" creates the script with "el's node document's
+/// relevant settings object" (step 33.2 / 34.2), and "execute the script
+/// element" step 2 returns unless that document is still the preparation-time
+/// document - so the script runs in `document`'s realm, which differs from
+/// el's own realm when el was created in another document and inserted here
+/// (Chrome 157, Firefox 160 and Safari 27.2 pass
+/// WebCryptoAPI/algorithm-discards-context.https.window.js 13/13, whose child
+/// scripts are created in the top-level document). Module scripts do the same
 /// (`moduleEnvironment`).
 fn runClassicScript(script_element: *runtime.Instance, document: *runtime.Instance, from_external: bool) void {
     const state = script_element_state.of(script_element) orelse return;
@@ -1527,8 +1532,9 @@ fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance,
 }
 
 /// "Create a classic script" from `source` with `base_url`, and "run a classic
-/// script" with rethrow errors false, in the realm of `element` (an HTML or SVG
-/// script): the engine's operation, which prepares to run script, reports a
+/// script" with rethrow errors false, in the realm of `document`, the node
+/// document of `element` (an HTML or SVG script) - its settings object's: the
+/// engine's operation, which prepares to run script, reports a
 /// parse error or a thrown exception through `reportClassicScriptError`, and
 /// cleans up after running script - the microtask checkpoint, when the
 /// JavaScript execution context stack is then empty. `url` is the script's
@@ -1536,7 +1542,9 @@ fn runClassicScriptText(element: *runtime.Instance, document: *runtime.Instance,
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/webappapis.html#run-a-classic-script
 fn runClassicScriptSource(element: *runtime.Instance, document: *runtime.Instance, source: engine.ScriptSource, url: []const u8, base_url: []const u8, muted: bool, credentials_mode: fetch.internal.CredentialsMode) void {
-    const realm = element.ctx;
+    // Create-a-classic-script's settings object: the node document's
+    // relevant settings object, whose realm is the document's own.
+    const realm = document.ctx;
     // Create-classic step 1 sanitizes a muted script's import base, while
     // its resource name remains the response URL for error reporting.
     // HTML PR 5753 (2020-07-24), WPT 23560: Chrome 155 ships it; Firefox 158
@@ -1838,6 +1846,20 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
         const url = parseUrl(element, raw, base_url) orelse return queueErrorEventTask(element);
         defer element.ctx.allocator.free(url);
 
+        // A script-inserted one is fetched in parallel and runs from the
+        // task that delivers its response, as a force-async HTML script runs
+        // "as soon as possible" (step 35.2) - not in the order it was
+        // inserted, and never before a script whose fetch ended first
+        // (execution-timing/136.html: a DOM-added external SVG script, its
+        // response trickled over 2 s, runs after an in-order HTML script
+        // inserted after it; Chrome 157, Firefox 160 and Safari 27.2 pass
+        // 1/1). It was fetched synchronously at insertion and queued from
+        // there, so it ran first. Blink and WebKit run SVG scripts through
+        // the HTML script loader (SVGScriptElement's ScriptLoader).
+        if (!from_parser_end_tag and loader == null) {
+            if (startSvgScriptFetch(element, document, url, credentials_mode, documentEncoding(document))) return;
+        }
+
         var fetched = fetchClassicScriptSource(allocator, loader, element, document, raw, url, documentEncoding(document));
         defer fetched.deinit();
         const response_url = fetched.final_url orelse url;
@@ -2048,7 +2070,11 @@ fn moduleEnvironment(script_element: *runtime.Instance, document: *runtime.Insta
     const module_allocator = document_modules.allocator(document) orelse return null;
     return .{
         .allocator = module_allocator,
-        .context_instance = script_element,
+        // The settings object is el's node document's relevant settings
+        // object ("fetch an inline module script graph", "fetch an external
+        // module script graph"): records are made, and run, in the
+        // document's realm - not in el's, when el was created elsewhere.
+        .context_instance = document,
         .map = documentModuleMap(document),
         .resolveImportFn = &documentResolveImport,
         .resolveIntegrityFn = &documentResolveIntegrity,
@@ -3612,6 +3638,16 @@ const ClassicScriptFetch = struct {
     /// fetch's start to its end (refcount step 5d's GCReachableRef; WebKit's
     /// PendingScript holds `Ref<ScriptElement>`).
     hold: dom.node_holds.ReachableHold = .{},
+    /// A script-inserted SVG script's fetch (`startSvgScriptFetch`): the
+    /// delivery runs the script and fires load, with no HTML script state
+    /// (the SVG script has none), and `url` is this fetch's own copy.
+    svg: bool = false,
+    /// `url`, owned (allocator) - an SVG script's, which no element state keeps.
+    owned_url: ?[]u8 = null,
+    /// An SVG script's fetch delays its document's load event from its start
+    /// to its end, as HTML's force-async script does by being in the "set of
+    /// scripts that will execute as soon as possible" ("the end" step 7).
+    delays_load: bool = false,
 
     fn elementIsLive(self: *const ClassicScriptFetch) bool {
         return runtime.SlabAllocator.generationOf(self.element) == self.element_generation;
@@ -3654,9 +3690,14 @@ fn isFetching(element: *runtime.Instance) bool {
 /// event loop to hand the response to - and the caller fetches it
 /// synchronously instead.
 fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode, encoding: script_encodings.Encoding) bool {
-    if (element.ctx.getOptionalEventLoop() == null) return false;
+    return startScriptFetch(element, document, url, credentials_mode, encoding) != null;
+}
+
+/// `startClassicScriptFetch`'s steps; the fetch started, or null.
+fn startScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode, encoding: script_encodings.Encoding) ?*ClassicScriptFetch {
+    if (element.ctx.getOptionalEventLoop() == null) return null;
     const allocator = element.ctx.allocator;
-    const self = allocator.create(ClassicScriptFetch) catch return false;
+    const self = allocator.create(ClassicScriptFetch) catch return null;
     self.* = .{
         .allocator = allocator,
         .element = element,
@@ -3670,7 +3711,7 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     };
     self.realm.addObject(.classic_script_fetches, self) catch {
         allocator.destroy(self);
-        return false;
+        return null;
     };
 
     // Steps 1-3: a potential-CORS request, its client the element's node
@@ -3692,13 +3733,32 @@ fn startClassicScriptFetch(element: *runtime.Instance, document: *runtime.Instan
     self.fetch = AsyncFetch.start(allocator, request, .{}, dom.agent_fetches.of(document.ctx), self.client()) catch
         return abandonStart(self);
     if (dom.instance_bridge.getNodeBase(element)) |base| self.hold.take(element, base);
+    return self;
+}
+
+/// `startClassicScriptFetch` for a script-inserted external SVG script: the
+/// same fetch (SVG 2 15.2: "a script element is equivalent to the script
+/// element in HTML"), owning its URL, delaying its document's load event, and
+/// delivering to `svgFetchedSteps`. False when it cannot run in parallel.
+fn startSvgScriptFetch(element: *runtime.Instance, document: *runtime.Instance, url: []const u8, credentials_mode: fetch.internal.CredentialsMode, encoding: script_encodings.Encoding) bool {
+    if (element.ctx.getOptionalEventLoop() == null) return false;
+    const allocator = element.ctx.allocator;
+    const owned_url = allocator.dupe(u8, url) catch return false;
+    const self = startScriptFetch(element, document, owned_url, credentials_mode, encoding) orelse {
+        allocator.free(owned_url);
+        return false;
+    };
+    self.svg = true;
+    self.owned_url = owned_url;
+    self.delays_load = true;
+    dom.document_lifecycle.delayLoadEvent(document);
     return true;
 }
 
-fn abandonStart(self: *ClassicScriptFetch) bool {
+fn abandonStart(self: *ClassicScriptFetch) ?*ClassicScriptFetch {
     forgetFetch(self);
     self.allocator.destroy(self);
-    return false;
+    return null;
 }
 
 fn forgetFetch(self: *ClassicScriptFetch) void {
@@ -3741,7 +3801,22 @@ fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.alg
             self.muted = response.response_type == .@"opaque" or response.response_type == .opaqueredirect;
             // Fetch-classic step 5.6: the result's base URL is the response's.
             // Reuse the element's existing URL owner; the fetch borrows it.
-            if (self.elementIsLive()) {
+            if (self.svg) {
+                // An SVG script's result URL is the response's (fetch-classic
+                // step 5.6), kept in its own copy.
+                if (response.url()) |final_url| {
+                    if (!std.mem.eql(u8, final_url, self.url)) {
+                        if (self.allocator.dupe(u8, final_url)) |copy| {
+                            if (self.owned_url) |old| self.allocator.free(old);
+                            self.owned_url = copy;
+                            self.url = copy;
+                        } else |_| {
+                            if (self.body) |body| self.allocator.free(body);
+                            self.body = null;
+                        }
+                    }
+                }
+            } else if (self.elementIsLive()) {
                 if (script_element_state.of(self.element)) |state| {
                     if (response.url()) |final_url| {
                         if (!std.mem.eql(u8, final_url, self.url)) {
@@ -3774,8 +3849,22 @@ fn runFetchedTask(data: ?*anyopaque) void {
     if (!self.elementIsLive() or !self.documentIsLive()) return;
     // A realm retired by a navigation runs none of its tasks.
     if (self.realm.engine_ctx == null) return;
-    engine.runTaskInRealm(self.element.ctx, fetchedSteps, self) catch return;
+    engine.runTaskInRealm(self.element.ctx, if (self.svg) svgFetchedSteps else fetchedSteps, self) catch return;
     ending = .settled;
+}
+
+/// A script-inserted SVG script's fetch has delivered: run it - or, with no
+/// body, fire error at it - and fire load, as `runQueuedSvgScript` does.
+fn svgFetchedSteps(data: ?*anyopaque) void {
+    const self: *ClassicScriptFetch = @ptrCast(@alignCast(data.?));
+    forgetFetch(self);
+    const allocator = self.element.ctx.allocator;
+    const source = self.body orelse return fireErrorEvent(allocator, self.element);
+    runSvgScriptSource(self.document, self.element, source, self.url, self.url, self.muted, self.credentials_mode);
+    // Again after the script: the hold keeps the element through anything
+    // the script does, but not through a teardown it starts.
+    if (!self.elementIsLive()) return;
+    fireLoadEvent(allocator, self.element);
 }
 
 fn fetchedSteps(data: ?*anyopaque) void {
@@ -3899,12 +3988,17 @@ fn finishFetch(self: *ClassicScriptFetch, ending: FetchEnding) void {
         self.fetch = null;
         f.terminate();
     }
-    if (ending == .teardown)
+    // An SVG script has no HTML script state to discard.
+    if (ending == .teardown and !self.svg)
         discardUndeliveredScript(self.element, self.element_generation, self.document, self.document_generation);
     self.hold.release();
     if (self.body) |b| self.allocator.free(b);
+    if (self.owned_url) |u| self.allocator.free(u);
     const document = self.document;
     const document_live = self.documentIsLive();
+    // The load event delay an SVG script's fetch took, given back - unless
+    // its document is already gone.
+    if (self.delays_load and document_live) dom.document_lifecycle.undelayLoadEvent(document);
     self.allocator.destroy(self);
     // A script that never ran still leaves nothing to wait for once its
     // fetch is over - unless the page itself is going.

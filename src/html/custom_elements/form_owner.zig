@@ -74,7 +74,11 @@ pub fn subtreeMoved(node: *Instance, old_parent: ?*Instance, new_parent: ?*Insta
     past_names.subtreeMoved(node);
     const state = activeState(node.ctx) orelse return;
     const base = dom.instance_bridge.getNodeBase(node) orelse return;
-    resetShadowIncludingSubtree(base);
+    // A removal resets each form-associated custom element of the subtree in
+    // its own removing steps, after its disconnectedCallback
+    // (dom.mutation's resetRemovedFormControl); an insertion or a move here.
+    const removal = old_parent != null and new_parent == null;
+    if (!removal) resetShadowIncludingSubtree(base);
     if (state.form_id_observers.count() != 0) resetObserversOfIdsIn(state, base);
     if (base.node_type != ELEMENT_NODE) return;
     if (old_parent) |parent| resetIfLegendOfDisabledFieldset(node, parent);

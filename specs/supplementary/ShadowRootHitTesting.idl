@@ -1,0 +1,19 @@
+// Crane supplementary IDL - not in webref.
+// Origin: lane dom1, 2026-11-18.
+// Why Crane carries it: CSSOM View declares elementFromPoint() and
+// elementsFromPoint() on Document only (specs/idl/cssom-view.idl), but Chrome,
+// Firefox and Safari all expose them on ShadowRoot too, as members of their
+// DocumentOrShadowRoot (Blink tree_scope.idl / document_or_shadow_root.idl,
+// Gecko DocumentOrShadowRoot.webidl, WebKit DocumentOrShadowRoot.idl) and
+// answer with the hit-tested element retargeted against the shadow root.
+// Golden rule 2 (no newer spec; all three browsers agree):
+// shadow-dom/untriaged/elements-and-dom-objects/shadowroot-object/
+// shadowroot-methods/test-007.html passes 2/2 in Chrome 157, Firefox 160 and
+// Safari 27.2 (aligned runs at 2358bd4835). Delete this file when webref's
+// cssom-view.idl declares the members on ShadowRoot (or on a mixin it
+// includes), and drop ShadowRoot's own copies in favour of the generated ones.
+
+partial interface ShadowRoot {
+  Element? elementFromPoint(double x, double y);
+  sequence<Element> elementsFromPoint(double x, double y);
+};

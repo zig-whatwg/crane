@@ -174,10 +174,18 @@ pub fn parserScriptCallback(script_tree_node: *TreeNode, context: ?*anyopaque) v
 
     const script_element = ctx.getDomElement(script_tree_node) orelse return;
 
-    // Trusted Types 4.1.2.6: "Set script's script text value to its child
+    // Trusted Types 4.1.2.3: "Set script's script text value to its child
     // text content" - before preparing it, for an HTML script and (as the
-    // spec asks of implementations) an SVG one.
-    dom.script_elements.setScriptTextToChildTextContent(ctx.allocator, script_element) catch {};
+    // spec asks of implementations) an SVG one. "Implementors must ensure
+    // they protect against" content changed mid-parse (w3c/trusted-types#507):
+    // the value is the text THE PARSER inserted - its own text children's -
+    // so a child a script added or changed before the end tag is not trusted,
+    // and "prepare the script text" sends the difference through the default
+    // policy (Blink HTMLScriptElement::FinishParsingChildren keeps the slot
+    // when children_changed_by_api_). Chrome 157, Firefox 160 and Safari 27.2
+    // block such a script: trusted-types/SVGScriptElement-internal-slot.html
+    // 1/1 and HTMLScriptElement-internal-slot.html's first subtest.
+    setScriptTextFromParser(ctx.allocator, script_tree_node, script_element);
 
     if (isSvgScript(script_tree_node)) {
         // "An end tag whose tag name is "script", if the current node is an
@@ -408,6 +416,21 @@ pub fn appendParsedAttribute(element: *runtime.Instance, attr: html_core.parser.
 
 /// The SVG script end-tag step's "process the SVG script element", or the
 /// HTML script callback: which one `tree_node` is.
+/// The script element's script text, as its parser inserted it: the data of
+/// `script_tree_node`'s Text children in the parser's own tree - not the DOM
+/// element's, which a script may have changed since. Out of memory leaves the
+/// slot as it is (empty for a parser-inserted script: nothing trusted).
+fn setScriptTextFromParser(allocator: std.mem.Allocator, script_tree_node: *const TreeNode, script_element: *runtime.Instance) void {
+    var text: std.ArrayListUnmanaged(u8) = .empty;
+    defer text.deinit(allocator);
+    var child = script_tree_node.first_child;
+    while (child) |c| : (child = c.next_sibling) {
+        if (c.node_type != .text) continue;
+        text.appendSlice(allocator, c.text_content.toSlice()) catch return;
+    }
+    dom.script_elements.setScriptText(script_element, text.items) catch {};
+}
+
 pub fn isSvgScript(tree_node: *const TreeNode) bool {
     return tree_node.namespace == .svg and tree_node.hasTagName("script");
 }

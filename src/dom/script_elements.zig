@@ -204,6 +204,13 @@ pub fn setScriptTextToChildTextContent(allocator: std.mem.Allocator, element: *r
     try slot.set(element.ctx.allocator, text);
 }
 
+/// Trusted Types 4.1.2.3 for the parser: set `element`'s script text value to
+/// `text` (BORROWED; copied). A no-op for an element that is no script element.
+pub fn setScriptText(element: *runtime.Instance, text: []const u8) error{OutOfMemory}!void {
+    const slot = scriptTextOf(element) orelse return;
+    try slot.set(element.ctx.allocator, text);
+}
+
 /// `element`'s script element state if it is an SVG script element, else
 /// null.
 pub fn svgFlags(element: *runtime.Instance) ?*ScriptFlags {

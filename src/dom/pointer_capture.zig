@@ -164,6 +164,38 @@ pub fn releasePointerCapture(pointers: *ActivePointers, id: i32, element: *runti
     pointer.pending = null;
 }
 
+/// Pointer Events 8.5, at the removal itself (pointer_states.removingSteps,
+/// for the root of a subtree removed from `document`'s tree): "When the
+/// pending pointer capture target override is no longer connected, the
+/// pending pointer capture target override node SHOULD be cleared", and
+/// "when the pointer capture target override is no longer connected, the
+/// pointer capture target override SHOULD be set to the document" - so the
+/// next "process pending pointer capture" fires lostpointercapture at the
+/// document. Done when the target leaves, not at that next step: an element
+/// removed and inserted again before it (dom/nodes/moveBefore/
+/// pointer-events.html's insertBefore) no longer has the capture (Chrome 157
+/// and Firefox 160 pass 1/1 on the aligned runs at 2358bd4835; Blink's
+/// PointerEventManager::ElementRemoved). DOM "move" runs no removing steps:
+/// a moved element keeps it.
+pub fn removingSteps(document: *runtime.Instance, removed: *@import("node_base.zig").NodeBase) void {
+    const window = (@import("interfaces").Document.get_defaultView(document) catch null) orelse return;
+    const context = @import("browser_state.zig").browsingContextOf(window) orelse return;
+    const pointers = &context.getTop().active_pointers;
+    const pointer_states = @import("pointer_states.zig");
+    const instance_bridge = @import("instance_bridge.zig");
+    for (pointers.items[0..pointers.count]) |*entry| {
+        if (get(entry.pending)) |pending| {
+            const base = instance_bridge.getNodeBase(pending) orelse continue;
+            if (pointer_states.isShadowIncludingInclusiveDescendant(base, removed)) entry.pending = null;
+        }
+        if (get(entry.override)) |override| {
+            if (override == document) continue;
+            const base = instance_bridge.getNodeBase(override) orelse continue;
+            if (pointer_states.isShadowIncludingInclusiveDescendant(base, removed)) entry.override = refOf(document);
+        }
+    }
+}
+
 /// 4.1 hasPointerCapture(pointerId): "returns true if the pending pointer
 /// capture target override for pointerId is set to the element on which
 /// this method is invoked, and false otherwise."
