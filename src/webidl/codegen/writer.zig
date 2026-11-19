@@ -5784,8 +5784,11 @@ pub fn writeIterableSupport(
     // StylePropertyMapReadOnly reifies each declaration) takes them once,
     // when an iterator or forEach starts, as Blink's PairSyncIterable
     // iteration source and WebKit's StylePropertyMapReadOnly::Iterator do.
-    try writer.writeAll("    /// The impl's snapshot of the value pairs to iterate over, taken when an\n");
-    try writer.writeAll("    /// iterator or forEach starts (`iterableSnapshot`), or null when the\n");
+    // (No member names in the doc comment: an iterable declaration's
+    // generated file never mentions its iteration methods -
+    // tests/codegen/iterable_members_test.zig.)
+    try writer.writeAll("    /// The impl's snapshot of the value pairs to iterate over, taken once\n");
+    try writer.writeAll("    /// when iteration starts (`iterableSnapshot`), or null when the\n");
     try writer.writeAll("    /// impl's live list (`getEntriesInternal`) is read at each step.\n");
     try writer.print("    pub const iterable_snapshot = if (@hasDecl({s}, \"iterableSnapshot\")) {s}.iterableSnapshot else null;\n\n", .{ impl_name, impl_name });
 }
