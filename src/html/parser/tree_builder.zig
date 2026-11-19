@@ -401,6 +401,10 @@ pub const TreeNode = struct {
     /// token: "If the current node is a script element, then set its already
     /// started to true"): the tree-then-convert path marks its DOM node so.
     script_already_started: bool = false,
+    /// The element's token had a duplicate-attribute parse error
+    /// (TagToken.had_duplicate_attribute): the DOM adapter records it on the
+    /// element for CSP 6.7.3.1 "Is element nonceable?" step 3.
+    had_duplicate_attribute: bool = false,
     /// A `<template for>` that patches: its content patch, which it owns.
     content_patch: ?*ContentPatch = null,
     /// HTML "insertion target redirection map"[this node], for the live DOM
@@ -1847,6 +1851,7 @@ pub const TreeBuilder = struct {
         const element_name = if (namespace == .svg) adjustSvgTagName(name) else name;
         const element = try TreeNode.initElement(allocator, element_name, namespace);
         errdefer element.deinit();
+        element.had_duplicate_attribute = tag.had_duplicate_attribute;
 
         for (tag.attributes.toSlice()) |attr| {
             var attr_name = attr.getName();
@@ -4778,6 +4783,7 @@ pub const TreeBuilder = struct {
         const element = try TreeNode.initElement(self.allocator, name, namespace);
         errdefer element.deinit();
         element.creation_location = intended;
+        element.had_duplicate_attribute = tag.had_duplicate_attribute;
 
         // Copy attributes
         const attrs = tag.attributes.toSlice();

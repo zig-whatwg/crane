@@ -86,10 +86,18 @@ pub const ScriptText = struct {
 pub const ScriptFlags = struct {
     parser_inserted: bool = false,
     already_started: bool = false,
+    /// Where the parser found the element - its position after the start
+    /// tag - for a CSP violation its inline check reports when no script is
+    /// running (as an HTML script's state records it); null when not
+    /// parser-made or unknown.
+    start: ?StartPosition = null,
     /// Trusted Types 4.1.2.1 (an SVG script element has one too). Freed by
     /// SVGScriptElement's teardown.
     script_text: ScriptText = .{},
 };
+
+/// A 1-based line and column in the element's document.
+pub const StartPosition = struct { line: u32, column: u32 };
 
 /// What SVGScriptElement supplies: an SVG script element's flags, or null for
 /// any other element.

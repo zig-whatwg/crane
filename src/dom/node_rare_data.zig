@@ -251,9 +251,17 @@ pub const Flags = packed struct(u32) {
     internals_traced: bool = false,
     /// attachInternals() was called (it can be only once).
     internals_attached: bool = false,
-    _unused: u28 = 0,
+    /// HTML's parser made the element from a token that had a
+    /// duplicate-attribute parse error (CSP 6.7.3.1 "Is element
+    /// nonceable?" step 3; Blink's Element::HasDuplicateAttribute). Set only
+    /// on an element that has a block when the parser appends its
+    /// attributes - one with a nonce has one (its `nonce` field), and the
+    /// step only asks about an element with a nonce
+    /// (dom.csp_violations.markParsedDuplicateAttribute).
+    parsed_duplicate_attribute: bool = false,
+    _unused: u27 = 0,
 };
-pub const Flag = enum { style_traced, shadow_root_traced, internals_traced, internals_attached };
+pub const Flag = enum { style_traced, shadow_root_traced, internals_traced, internals_attached, parsed_duplicate_attribute };
 
 /// The block's header; the slots follow it.
 pub const Block = extern struct {

@@ -142,15 +142,22 @@ pub const CallbackThis = union(enum) {
 };
 
 /// setTimeout's and setInterval's `TimerHandler` - `(TrustedScript or
-/// DOMString or Function)` - after WebIDL conversion. Either way an OWNED
-/// handle, which its holder releases with `releaseValue`.
+/// DOMString or Function)` - after WebIDL conversion (3.2.24, the union
+/// algorithm's order: a platform object implementing a member interface,
+/// then a callable, then ToString). Each an OWNED handle, which its holder
+/// releases with `releaseValue`.
 pub const WindowTimerHandler = union(enum) {
     /// A callable: the union conversion picks the Function member.
     function: JSValue,
+    /// A platform object the host says implements TrustedScript
+    /// (`WindowOperations.isTrustedScript`): the TrustedScript member, as
+    /// it is. No ToString runs on it - script may have replaced its
+    /// stringifier - and the host reads its data (HTML timer initialization
+    /// step 1.4, "get trusted type compliant string", returns it).
+    trusted_script: JSValue,
     /// Anything else, converted by ToString when setTimeout or setInterval was
     /// called - which runs script, so it happens at the call and not when the
-    /// timer fires. (A TrustedScript converts the same way: its stringifier is
-    /// its data.) A string handle, so the source keeps every code unit until
+    /// timer fires. A string handle, so the source keeps every code unit until
     /// it runs.
     string: JSValue,
 };
@@ -165,9 +172,19 @@ pub const WindowOperations = struct {
     /// The timer initialization steps, for setTimeout (`repeat` false) and
     /// setInterval (`repeat` true). `handler` and every element of
     /// `arguments` are OWNED and handed over - the host releases each with
-    /// `releaseValue` - while the `arguments` slice itself is BORROWED for the
-    /// call. Returns the id script receives, or 0 when no timer was set.
-    initializeTimer: *const fn (realm: Context, handler: WindowTimerHandler, timeout: i32, arguments: []const JSValue, repeat: bool) i32,
+    /// `releaseValue`, whatever it returns - while the `arguments` slice
+    /// itself is BORROWED for the call. Returns the id script receives, or 0
+    /// when no timer was set; or what the call throws: error.TypeError (the
+    /// binding throws a TypeError - Trusted Types refused a string handler),
+    /// error.ExceptionPending (the host's steps ran script that threw - a
+    /// Trusted Types default policy - and the exception stays in flight), or
+    /// another error, which the binding throws as WebIDL names it.
+    initializeTimer: *const fn (realm: Context, handler: WindowTimerHandler, timeout: i32, arguments: []const JSValue, repeat: bool) EngineError!i32,
+    /// TimerHandler's union conversion, its first step: whether `instance`,
+    /// the platform object setTimeout or setInterval was given as handler,
+    /// implements TrustedScript. Asked at the call, before the handler is
+    /// tested for a Function or converted by ToString.
+    isTrustedScript: *const fn (instance: *Instance) bool,
     /// clearTimeout(id) and clearInterval(id): `id` after ToInt32.
     clearTimer: *const fn (realm: Context, id: i32) void,
     /// requestAnimationFrame(callback), for a callable `callback`, OWNED and

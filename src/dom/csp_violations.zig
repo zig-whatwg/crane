@@ -33,6 +33,7 @@ const webidl = @import("webidl");
 const csp = @import("csp");
 const fire_event = @import("fire_event.zig");
 const policy_containers = @import("policy_containers.zig");
+const rare_data = @import("node_rare_data.zig");
 const trusted_types = @import("trusted_types.zig");
 const reporting = @import("reporting.zig");
 const fetch = @import("fetch");
@@ -62,8 +63,9 @@ pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) b
 /// element - its nonce when it is nonceable, whether it is a parser-inserted
 /// script.
 ///
-/// For each policy of the element's node document's CSP list, the inline
-/// check of the directive §6.8.4 picks (csp.inline_check); a policy it
+/// For each policy of the element's node document's global object's CSP list
+/// (`inlineCheckScope`), the inline check of the directive §6.8.4 picks
+/// (csp.inline_check); a policy it
 /// blocks reports a violation - the effective directive for inline checks,
 /// resource "inline", the element, a sample under 'report-sample' - and
 /// blocks when it is enforced. A monitored policy reports and lets it
@@ -75,7 +77,8 @@ pub fn isBaseAllowedForDocument(document: *runtime.Instance, base: []const u8) b
 /// from the parent on an element of a child frame's document reports to the
 /// child frame (securitypolicyviolation/targeting-for-inline-handler-on-
 /// subframe-element.html) - while the parent's script is the current one.
-/// A document with no window reports to no one, and still blocks.
+/// A document with no window reports to no one, except a style attribute's
+/// check, which its relevant global's policies decide (`inlineCheckScope`).
 ///
 /// Spec: https://w3c.github.io/webappsec-csp/#should-block-inline
 pub fn shouldBlockInline(
@@ -85,35 +88,20 @@ pub fn shouldBlockInline(
     matching: csp.inline_check.Element,
 ) bool {
     // 1. "Assert: element is not null."
-    // "element's Document's global object's CSP list": a Window's is its
-    // associated Document's policy container's (§4.2.2); a document with no
-    // window is read the same way, its own container. One that cannot be
-    // found fails closed (`documentCspList`): an element always has a node
-    // document, and not knowing its policies is not having none.
+    // "element's Document's global object's CSP list" (`inlineCheckScope`).
+    // One that cannot be found fails closed (`documentCspList`): an element
+    // always has a node document, and not knowing its policies is not having
+    // none.
     const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return true;
-    const list = documentCspList(document);
+    const scope = inlineCheckScope(document, inline_type);
+    const list = scope.list;
     if (list.isEmpty()) return false;
     var eligible = matching;
-    // §6.7.3.1 steps 1-2, reached by §6.7.3.3 step 2: a supplied nonce
-    // cannot authorize a script with dangling markup in an attribute. Read
-    // the native attribute list, without creating Attr wrappers. Blink's
-    // ContentSecurityPolicy::IsNonceableElement uses the same scan; Chrome
-    // and Firefox pass non-nonceable-elements.html (10/10, cc74d2669f).
-    // Step 3's duplicate-attribute parse flag is not supplied by HTML yet.
-    if (inline_type == .script and eligible.nonce != null) {
-        const attributes = @import("element_attributes.zig");
-        for (0..attributes.count(element)) |index| {
-            const attribute = attributes.at(element, index) orelse continue;
-            if (containsDanglingMarkup(attribute.local_name) or
-                containsDanglingMarkup(attribute.value) or
-                (if (attribute.prefix) |prefix| containsDanglingMarkup(prefix) else false))
-            {
-                eligible.nonce = null;
-                break;
-            }
-        }
-    }
-    const window: ?*runtime.Instance = interfaces.Document.get_defaultView(document) catch null;
+    // §6.7.3.1 "Is element nonceable?", reached by §6.7.3.3 step 2: a
+    // supplied nonce (step 1: the element has one) cannot authorize an
+    // element that is not nonceable.
+    if (eligible.nonce != null and !isNonceable(element, inline_type == .script)) eligible.nonce = null;
+    const window = scope.global;
     // A list that could not record a policy blocks everything (fail closed,
     // csp.CSPList.unenforceable).
     if (list.blocksEverything()) return true;
@@ -139,6 +127,124 @@ pub fn shouldBlockInline(
     }
     // 4. Return result.
     return blocked;
+}
+
+/// What §4.2.3 reads of an element's node document `document`: "element's
+/// Document's global object" - to which its violations go - and that
+/// global's CSP list.
+const InlineCheckScope = struct {
+    list: *const csp.CSPList,
+    /// Null: a document whose global cannot be found, which reports to no
+    /// one and still blocks.
+    global: ?*runtime.Instance,
+};
+
+/// A document with a browsing context reads its Window, whose CSP list is
+/// the document's own policy container's (§4.2.2).
+///
+/// A document without one - DOMParser's, createHTMLDocument's, a template's
+/// contents owner, a document whose frame was discarded - has no Window, and
+/// HTML gives it an empty policy container. The browsers then part by the
+/// inline type, and Crane follows each (golden rule 2, no newer spec):
+///
+/// - A STYLE ATTRIBUTE is checked against the element's document's relevant
+///   global object - the global of the realm the document was made in, for
+///   DOMParser, createHTMLDocument and template contents the creating Window
+///   - whose policies decide and receive the violation. So a style attribute
+///   parsed into an inert document stays unapplied when the element is
+///   adopted into the page that made it (HTML 3.2.6.5). Chrome 157 and
+///   Firefox 160 pass content-security-policy/style-src/style-src-attr-
+///   blocked-{domparser-adopt,createhtmldocument-adopt,template-move}.html
+///   2/2 (wpt.fyi runs 4786307730243584, 4877168468033536); Safari 27.2 times
+///   out 0/2 (6479119966273536), and WebKit has since done the same
+///   (322461@main: StyledElement::styleAttributeChanged checks the policy of
+///   contextDocument(), the document that created the inert one).
+/// - Everything else - an event handler content attribute above all - reads
+///   the document's own empty list: nothing is blocked or reported. Firefox
+///   160 and Safari 27.2 pass content-security-policy/securitypolicyviolation/
+///   no-violation-for-inline-handler-in-document-without-browsing-context.html
+///   5/5 (Chrome 157 reports on the creator, 0/5, and has since stopped:
+///   Chromium 1728709, "Skip CSP check on inline handler set in document
+///   without window", wpt dcbd71020c). A script or a style element there
+///   never runs or applies: one adopted into a page is checked again there.
+fn inlineCheckScope(document: *runtime.Instance, inline_type: csp.inline_check.InlineType) InlineCheckScope {
+    if (interfaces.Document.get_defaultView(document) catch null) |window| {
+        return .{ .list = documentCspList(document), .global = window };
+    }
+    if (inline_type == .style_attribute) {
+        if (trusted_types.relevantGlobalOf(document)) |global| {
+            if (trusted_types.cspListOf(global)) |list| return .{ .list = list, .global = global };
+        }
+    }
+    return .{ .list = documentCspList(document), .global = null };
+}
+
+/// CSP §6.7.3.1 "Is element nonceable?" steps 2-4 for `element`, which has
+/// a nonce attribute (step 1 is the caller's: it supplies a nonce only for
+/// an element with one). `is_script` is step 2's "element is a script
+/// element" (an HTML or SVG script).
+///
+/// Step 2: a script with dangling markup in an attribute's name or value is
+/// not nonceable. The native attribute list is read, without creating Attr
+/// wrappers. Blink's ContentSecurityPolicy::IsNonceableElement uses the same
+/// scan; Chrome and Firefox pass non-nonceable-elements.html (10/10,
+/// cc74d2669f).
+///
+/// Step 3: an element whose token had a duplicate-attribute parse error is
+/// not nonceable - the parser's record (`markParsedDuplicateAttribute`; HTML
+/// has yet to name the hook, whatwg/html#3257).
+pub fn isNonceable(element: *runtime.Instance, is_script: bool) bool {
+    // 2.
+    if (is_script) {
+        const attributes = @import("element_attributes.zig");
+        for (0..attributes.count(element)) |index| {
+            const attribute = attributes.at(element, index) orelse continue;
+            if (containsDanglingMarkup(attribute.local_name) or
+                containsDanglingMarkup(attribute.value) or
+                (if (attribute.prefix) |prefix| containsDanglingMarkup(prefix) else false))
+            {
+                return false;
+            }
+        }
+    }
+    // 3.
+    if (rare_data.flag(rare_data.of(element), .parsed_duplicate_attribute)) return false;
+    // 4. "Return "Nonceable"."
+    return true;
+}
+
+/// The cryptographic nonce a script element's fetch carries (HTML "prepare
+/// the script element": the script fetch options' cryptographic nonce, its
+/// [[CryptographicNonce]]): `nonce`, or "" when the element is not
+/// nonceable (`isNonceable`), so no nonce-source can match its request.
+///
+/// Golden rule 2 (no newer spec): HTML hands the slot to the fetch as it
+/// is, and CSP asks 6.7.3.1 only for inline checks; Chrome 157, Firefox 160
+/// and Safari 27.2 all apply it to an external script's nonce too -
+/// content-security-policy/script-src/nonce-enforce-blocked.html expects
+/// its seven external scripts with dangling markup or a duplicate attribute
+/// blocked and reported, 1/1 in all three (wpt.fyi 4786307730243584,
+/// 4877168468033536, 6479119966273536). Blink's ScriptLoader takes the
+/// fetch's nonce from ScriptElementBase::GetNonceForElement, which is empty
+/// for an element IsNonceableElement rejects.
+pub fn nonceableScriptNonce(element: *runtime.Instance, nonce: []const u8) []const u8 {
+    if (nonce.len == 0) return nonce;
+    return if (isNonceable(element, true)) nonce else "";
+}
+
+/// HTML's parser, once it has appended the attributes of an element made
+/// for a token with a duplicate-attribute parse error: remember it for
+/// §6.7.3.1 step 3. A flag never makes a block, and an element with no
+/// block has no nonce - its nonce attribute's change steps make the block's
+/// `nonce` field - so step 1 already answers "Not Nonceable" for it.
+/// Stated deviation: a nonce script gives such an element later is not
+/// refused by step 3. Script that can set a nonce attribute can run script
+/// already: step 3 guards against dangling markup that merges into a
+/// parsed tag, which this records.
+pub fn markParsedDuplicateAttribute(element: *runtime.Instance) void {
+    const a = rare_data.access(element) orelse return;
+    if (a.holder.block == null) return;
+    rare_data.setFlag(a.holder, .parsed_duplicate_attribute, true);
 }
 
 fn containsDanglingMarkup(value: []const u8) bool {
