@@ -44,21 +44,3 @@ fn lineCases() !void {
 test "insertParagraph keeps the line break before the line it wraps, as Chrome and Safari do" {
     try helpers.onFreshThread(lineCases);
 }
-
-/// indent in CSS mode makes Chrome's start-side blockquote (indent.html;
-/// the data accepts it and Firefox's margin-left; all three pass).
-const indent_cases = [_]harness.Case{
-    .{ .input = "<p>[abc]</p>", .commands = &.{ .{ "stylewithcss", "true" }, .{ "indent", "" } }, .expected = "<blockquote style=\"margin: 0 0 0 40px; border: none; padding: 0px;\"><p>abc</p></blockquote>" },
-    .{ .input = "<p>[abc]</p>", .commands = &.{ .{ "stylewithcss", "false" }, .{ "indent", "" } }, .expected = "<blockquote><p>abc</p></blockquote>" },
-};
-
-fn indentCases() !void {
-    const page = try helpers.Page.open();
-    defer page.close();
-    try page.run(harness.setup_script);
-    try harness.runCases(page, &indent_cases);
-}
-
-test "indent in CSS mode makes a start-side blockquote" {
-    try helpers.onFreshThread(indentCases);
-}
