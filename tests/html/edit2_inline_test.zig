@@ -105,6 +105,10 @@ const push_down_cases = [_]Case{
     // spec's span, which Crane passes).
     .{ .input = "<b id=purple>bar [baz] qoz</b>", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "<span id=\"purple\"><b>bar </b>baz<b> qoz</b></span>" },
     .{ .input = "foo<b>b[a]r</b>baz", .commands = "[[\"bold\",\"\"]]", .expected = "foo<b>b</b>a<b>r</b>baz" },
+    // The range's end at its innermost equivalent point is inside the i
+    // (bold.html; all three).
+    .{ .input = "abc<i>[def</i>]ghi", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "abc<i><b>def</b></i>ghi" },
+    .{ .input = "abc[<i>def]</i>ghi", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "abc<i><b>def</b></i>ghi" },
     // Only fontSize, fontName and foreColor split where the spec gives up:
     // bold and the background colors nest (Firefox and the data; Chrome and
     // Safari split), and no browser splits a block.

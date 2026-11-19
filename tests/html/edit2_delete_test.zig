@@ -163,3 +163,27 @@ fn whiteSpaceCases() !void {
 test "a line break white-space collapsing hides spaces around is deleted with them" {
     try helpers.onFreshThread(whiteSpaceCases);
 }
+
+/// A br alone on its line between blocks is deleted alone; an empty block
+/// draws no line and the merge walks past it (delete.html, forwarddelete.
+/// html: PPP unless marked).
+const line_cases = [_]harness.Case{
+    .{ .input = "<ol><li>foo</ol>{}<br><ol><li>bar</ol>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<ol><li>foo</li></ol><ol><li>bar</li></ol>" },
+    .{ .input = "<p>foo[]</p><br><p>bar</p>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<p>foo</p><p>bar</p>" },
+    // Chrome and Safari.
+    .{ .input = "<p>foo</p><br><p>[]bar</p>", .commands = &.{.{ "delete", "" }}, .expected = "<p>foo</p><p>bar</p>" },
+    .{ .input = "<div>foo[]</div><div></div><div>bar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div>foobar</div>" },
+    // Chrome and Safari.
+    .{ .input = "<div>foo</div><div></div><div>[]bar</div>", .commands = &.{.{ "delete", "" }}, .expected = "<div>foobar</div>" },
+};
+
+fn lineCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &line_cases);
+}
+
+test "a br alone on its line goes alone and an empty block is walked past" {
+    try helpers.onFreshThread(lineCases);
+}
