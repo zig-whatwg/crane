@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const runtime = @import("runtime");
+const engine = @import("engine");
 const interfaces = @import("interfaces");
 const typedefs = @import("typedefs");
 const enums = @import("enums");
@@ -249,18 +250,21 @@ pub fn get_language(instance: *runtime.Instance) anyerror!runtime.DOMString {
     return try runtime.DOMString.initDupe(instance.ctx.allocator, "en-US");
 }
 
-/// Getter for languages
-///
-/// Spec: HTML Standard § 8.8.1.2 NavigatorLanguage
-/// "Must return a frozen array of valid BCP 47 language tags."
+/// The member a worker navigator keeps its languages array in.
+const languages_slot: engine.TracedSlot = .{ .name = "languages" };
+
+/// Getter for languages (HTML 8.9.1.4): a frozen array of BCP 47 language
+/// tags, the most preferred - navigator.language - first; "the same object
+/// must be returned until the user agent needs to return different values":
+/// made on the first read, kept by an edge from the navigator.
 pub fn get_languages(instance: *runtime.Instance) anyerror!runtime.JSValue {
-    const state = instance.getState(State);
-    if (state.own._internal) |_| {
-        // TODO: Return proper frozen array of strings when V8 array creation is available
-        // For now, return undefined - the spec requires returning a frozen array of strings
-        return runtime.JSValue.jsUndefined;
-    }
-    return error.NotImplemented;
+    if (engine.tracedValue(instance, languages_slot)) |kept| return kept.take();
+    var language = try get_language(instance);
+    defer language.deinit(instance.ctx.allocator);
+    const values = [_]runtime.JSValue{.{ .string = .{ .data = language.asSlice(), .owned = false } }};
+    const array = try engine.createFrozenArray(instance.ctx, &values);
+    engine.traceValue(instance, array.value, languages_slot);
+    return array.take();
 }
 
 /// Getter for onLine
