@@ -943,7 +943,8 @@ pub const TreeBuilder = struct {
 
     /// HTML parser "parser sanitizer configuration" (initially null).
     parser_sanitizer: ?ParserSanitizer = null,
-    /// HTML parser "insertion target redirection map", for the elements the
+    /// HTML parser "insertion target redirection map", on the tree-then-
+    /// convert path (`treeSanitizer`), for the elements the
     /// parser sanitizer configuration replaces with their children ("insert
     /// an element at the adjusted insertion location" step 3.4, the adoption
     /// agency algorithm steps 10, 21, 30 and 32): such an element is pushed
@@ -2635,7 +2636,7 @@ pub const TreeBuilder = struct {
     /// reference child check is the insertion's (`insertNodeAt`, and the
     /// live adapter's against the live DOM).
     fn sanitizerRedirected(self: *const TreeBuilder, location: InsertionLocation) InsertionLocation {
-        if (self.parser_sanitizer == null) return location;
+        if (self.treeSanitizer() == null) return location;
         const redirected = self.sanitizer_redirects.get(location.parent) orelse return location;
         return .{ .parent = redirected.parent, .before = redirected.before, .move = location.move };
     }
@@ -2649,7 +2650,7 @@ pub const TreeBuilder = struct {
     /// `location` (step 3.4). Its attributes were sanitized when it was
     /// created from its token (step 3.2's assertion: `sanitizeAttributes`).
     fn sanitizerInserts(self: *TreeBuilder, location: InsertionLocation, element: *TreeNode) !bool {
-        const sanitizer = self.parser_sanitizer orelse return true;
+        const sanitizer = self.treeSanitizer() orelse return true;
         if (element.node_type != .element) return true;
         // 3.1. The sanitizer action for element's local name and namespace.
         const local_name = element.local_name orelse return true;
@@ -2667,10 +2668,22 @@ pub const TreeBuilder = struct {
         }
     }
 
+    /// The parser sanitizer configuration whose element actions this tree
+    /// applies itself: the tree-then-convert path's (setHTML, parseHTML and
+    /// their kin). The live DOM adapter - streaming HTML - applies them
+    /// against the live DOM instead (parser_script_execution's
+    /// DomTreeAdapter.sanitizerAction and redirectReplacedElement, resolved
+    /// by parser_dom_mutation), where script can move the redirect's nodes
+    /// between tokens; this tree then keeps every element.
+    fn treeSanitizer(self: *const TreeBuilder) ?ParserSanitizer {
+        if (self.dom_adapter_on_inserted != null) return null;
+        return self.parser_sanitizer;
+    }
+
     /// HTML "get the sanitizer action for an element name" for `element`
     /// given the parser sanitizer configuration; "Keep" without one.
     fn sanitizerAction(self: *const TreeBuilder, element: *const TreeNode) SanitizerAction {
-        const sanitizer = self.parser_sanitizer orelse return .keep;
+        const sanitizer = self.treeSanitizer() orelse return .keep;
         const local_name = element.local_name orelse return .keep;
         return sanitizer.element_action(sanitizer.context, local_name, element.namespace);
     }
@@ -5818,7 +5831,7 @@ pub const TreeBuilder = struct {
             self.insertOpenElement(self.openIndex(furthest).? + 1, replacement) catch unreachable;
             // Steps 31-32: replaced elements below newElement on the stack
             // now have it between them and furthestBlock.
-            if (self.parser_sanitizer != null) {
+            if (self.treeSanitizer() != null) {
                 var below_index = self.openIndex(replacement).? + 1;
                 while (below_index < self.open_elements.len) : (below_index += 1) {
                     const below = self.open_elements.get(below_index).?;
