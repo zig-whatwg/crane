@@ -1802,6 +1802,10 @@ pub const Parser = struct {
                 const of = stream.peek();
                 if (of.tag != .ident or !std.ascii.eqlIgnoreCase(of.value, "of")) return error.InvalidSelector;
                 stream.advance();
+                // CSSOM: "of", one space, the selector list (whose items trim
+                // their own whitespace).
+                _ = stream.skipWhitespace();
+                if (!stream.atEnd()) try self.serializeAs(of.end, stream.peek().start, " ");
                 pattern.of = try self.boxedList(args[stream.pos..], real, .{ .forgiving = false, .relative = false });
             }
             try self.recordAnB(args, anb_end, pattern, pattern.of != null);
