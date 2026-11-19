@@ -42,6 +42,15 @@ test "::slotted() takes element-backed and tree-abiding pseudo-elements, no pseu
     }
 }
 
+test "::part() takes ::first-line, ::first-letter and the highlight pseudo-elements after it" {
+    // Only ::slotted() refuses them (css/selectors/parsing/parse-part.html,
+    // css/css-pseudo/parsing/highlight-pseudos.html,
+    // css/css-highlight-api/highlight-pseudo-parsing.html: valid in all three).
+    for ([_][]const u8{ "::part(foo)::first-line", "::part(foo)::first-letter", "::part(my-part)::selection", "::part(my-part)::target-text", "::part(my-part)::spelling-error", "::part(my-part)::grammar-error", "::part(my-part)::highlight(foo)" }) |s| try expect(true, s);
+    try expect(false, "::part(foo)::part(bar)");
+    try expect(false, "::part(foo)::slotted(*)");
+}
+
 test "the highlight pseudo-elements take no user action pseudo-class" {
     for ([_][]const u8{ "::selection:hover", "::target-text:hover", "::spelling-error:hover", "::grammar-error:hover" }) |s| try expect(false, s);
     try expect(true, "::selection");
