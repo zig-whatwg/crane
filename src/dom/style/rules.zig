@@ -94,6 +94,7 @@ pub const Kind = enum {
     property,
     keyframes,
     keyframe,
+    view_transition,
 
     /// CSSOM's CSSRule `type` constant for the kind ("new rule types ...
     /// return 0": the layer rules).
@@ -112,7 +113,7 @@ pub const Kind = enum {
             .namespace => 10,
             .supports => 12,
             .layer_block, .layer_statement, .font_palette_values, .starting_style => 0,
-            .position_try, .property, .nested_declarations, .container, .scope => 0,
+            .position_try, .property, .nested_declarations, .container, .scope, .view_transition => 0,
         };
     }
 
@@ -231,6 +232,8 @@ pub const Data = union(Kind) {
     property: *css.property_registry.Registration,
     keyframes: struct { children: std.ArrayList(*Rule) = .empty },
     keyframe: struct { selectors: css.keyframe_values.Selectors, block: DeclarationBlock },
+    /// CSS View Transitions 2 §8.3: the @view-transition rule's descriptors.
+    view_transition: *css.view_transition_rule.Data,
 };
 
 pub const Rule = struct {
@@ -307,6 +310,10 @@ pub const Rule = struct {
                 a.destroy(payload);
             },
             .counter_style => |payload| {
+                payload.deinit();
+                a.destroy(payload);
+            },
+            .view_transition => |payload| {
                 payload.deinit();
                 a.destroy(payload);
             },
@@ -418,6 +425,11 @@ pub const Rule = struct {
                 try out.appendSlice(allocator, text);
             },
             .counter_style => |payload| {
+                const text = try payload.cssText(allocator);
+                defer allocator.free(text);
+                try out.appendSlice(allocator, text);
+            },
+            .view_transition => |payload| {
                 const text = try payload.cssText(allocator);
                 defer allocator.free(text);
                 try out.appendSlice(allocator, text);
@@ -1189,6 +1201,16 @@ pub fn build(options: BuildOptions, parsed: *const css.rules.Rule, position: Pos
         // The payload moves only when make succeeds. The general rule's
         // prelude is empty: the parsed family already owns its spelling.
         return make(a, try a.dupe(u8, ""), .{ .font_feature_values = payload });
+    }
+    if (std.mem.eql(u8, name, "view-transition")) {
+        // View Transitions 2 §8.3.1: invalid descriptors are dropped, the
+        // rule stays (css.view_transition_rule).
+        var native = try css.view_transition_rule.fromParsed(a, parsed) orelse return null;
+        errdefer native.deinit();
+        const payload = try a.create(css.view_transition_rule.Data);
+        errdefer a.destroy(payload);
+        payload.* = native;
+        return make(a, try a.dupe(u8, ""), .{ .view_transition = payload });
     }
     if (std.mem.eql(u8, name, "counter-style")) {
         var native = try css.counter_style_descriptors.fromParsed(a, parsed) orelse return null;

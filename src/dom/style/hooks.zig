@@ -71,6 +71,14 @@ pub const Hooks = struct {
     svg_parse_resource_document: ?*const fn (document: *runtime.Instance, bytes: []const u8, content_type: []const u8) anyerror!bool = null,
     font_face_of: ?*const fn (face: *runtime.Instance) ?*@import("font_loading.zig").Face = null,
     font_set_of: ?*const fn (set: *runtime.Instance) ?*@import("font_loading.zig").Set = null,
+    /// View Transitions 2 §10.4: whether the class list captured for the
+    /// view transition name `name` of the transition `originating` (the
+    /// document element) is in contains every one of `classes`. Installed
+    /// by Document, which holds the active view transition.
+    view_transition_classes: ?*const fn (originating: *runtime.Instance, name: []const u8, classes: []const []const u8) bool = null,
+    /// CSS View Transitions 1 §6.2: the model of a ViewTransition object
+    /// (dom.view_transitions.Transition). Installed by ViewTransition.
+    view_transition_of: ?*const fn (instance: *runtime.Instance) ?*@import("../view_transitions.zig").Transition = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -196,6 +204,18 @@ pub fn svgParseResourceDocument(document: *runtime.Instance, bytes: []const u8, 
 pub fn fontFaceOf(face: *runtime.Instance) ?*@import("font_loading.zig").Face {
     const f = hooks.read().font_face_of orelse return null;
     return f(face);
+}
+
+/// View Transitions 2 §10.4 (hook view_transition_classes): false with no
+/// active transition, so a class selector matches nothing outside one.
+pub fn viewTransitionClasses(originating: *runtime.Instance, name: []const u8, classes: []const []const u8) bool {
+    const f = hooks.read().view_transition_classes orelse return false;
+    return f(originating, name, classes);
+}
+
+pub fn viewTransitionOf(instance: *runtime.Instance) ?*@import("../view_transitions.zig").Transition {
+    const f = hooks.read().view_transition_of orelse return null;
+    return f(instance);
 }
 
 pub fn fontSetOf(set: *runtime.Instance) ?*@import("font_loading.zig").Set {

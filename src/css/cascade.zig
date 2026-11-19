@@ -216,11 +216,25 @@ pub const Context = struct {
     registered: ?*registered_mod.Snapshot = null,
     /// What base appearance the element (or pseudo-element) can have, for
     /// the UA sheet's -internal-auto-base() (substitution.zig) and the
-    /// inherited in-base-appearance bit (ComputedStyle.in_base_appearance).
+    /// inherited in-base-appearance bit (ComputedStyle.flags.in_base_appearance).
     appearance_support: AppearanceSupport = .none,
     /// Where the cascade records the inputs it read (lane style1 b2: the
     /// matched-properties cache's cacheability). Null: nothing is recorded.
     dependencies: ?*Dependencies = null,
+    /// CSS Pseudo 4 §3.5 highlight inheritance, for a highlight
+    /// pseudo-element (::selection, ::target-text, ::search-text,
+    /// ::spelling-error, ::grammar-error, ::highlight()): every property -
+    /// inherited or not - that the cascade gives no value, or `inherit` or
+    /// `unset`, takes the value of `highlight_parent`, the corresponding
+    /// highlight pseudo-element of the originating element's parent element
+    /// (null at the root, where they take their initial values, except
+    /// color, whose inherited value is currentColor: the originating
+    /// element's color). `parent` stays the originating element's style:
+    /// custom properties "inherit from the originating element", and the
+    /// fonts, line-height and color-scheme are copied from it, whatever the
+    /// highlight declares (§3.6, highlight_copied).
+    highlight: bool = false,
+    highlight_parent: ?*const ComputedStyle = null,
 };
 
 /// What one cascade read beyond its matched declarations, its parent's
@@ -435,6 +449,47 @@ const first_letter_longhands: LonghandSet = blk: {
     break :blk set;
 };
 
+/// CSS Pseudo 4 §3.6: "For any properties not listed above, but which are
+/// required to resolve the values of applicable properties, their computed
+/// values are copied from those of the originating element, ignoring any
+/// values specified on the highlight pseudo-element itself" - color-scheme
+/// (system colors), "font-size, font-family, etc." (em and the other
+/// font-relative lengths) and line-height (lh). csswg-drafts#7591; WPT
+/// css-pseudo/highlight-cascade/highlight-cascade-007.html and the
+/// ::selection subtest of css-values/attr-pseudo-elem-invalidation.html;
+/// Blink's StyleResolver::InitStyle clones the parent highlight's style and
+/// then copies the originating style's (CopyHighlightPropertiesFrom). Custom
+/// properties come from the originating element already (Context.highlight).
+const highlight_copied: LonghandSet = blk: {
+    @setEvalBranchQuota(100_000);
+    var set: LonghandSet = .initMany(&.{ .color_scheme, .line_height });
+    for (0..Longhand.count) |i| {
+        const l: Longhand = @fromBackingInt(@intCast(i));
+        if (std.mem.startsWith(u8, @tagName(l), "font_")) set.insert(l);
+    }
+    break :blk set;
+};
+
+/// What a highlight pseudo-element's own declarations may set: everything
+/// but what it copies from its originating element.
+const highlight_settable: LonghandSet = highlight_copied.complement();
+
+/// A highlight pseudo-element's starting style: the parent highlight's
+/// values, every property (§3.5), with highlight_copied's the originating
+/// element's (§3.6).
+fn highlightStyle(ctx: Context) Allocator.Error!*ComputedStyle {
+    const style = try ComputedStyle.inheritingAll(ctx.allocator, ctx.highlight_parent);
+    errdefer style.destroy();
+    const originating = ctx.parent orelse return style;
+    var it = highlight_copied.iterator();
+    while (it.next()) |l| {
+        const v = originating.get(l);
+        v.retain();
+        try style.set(l, v);
+    }
+    return style;
+}
+
 /// The longhands that may apply to `pseudo`, or null when every one does.
 /// Only ::first-letter and ::first-line filter, so only they pay.
 fn appliesTo(pseudo: ?[]const u8) ?*const LonghandSet {
@@ -586,7 +641,7 @@ pub const CandidateIndex = struct {
 /// the caller's (`destroy`). Matched blocks must remain stable for this call.
 pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*ComputedStyle {
     const allocator = ctx.allocator;
-    var candidates = try collectCandidates(allocator, matched, appliesTo(ctx.pseudo));
+    var candidates = try collectCandidates(allocator, matched, if (ctx.highlight) &highlight_settable else appliesTo(ctx.pseudo));
     defer candidates.deinit(allocator);
     var stack_links: [64]usize = undefined;
     const links = if (candidates.items.len <= stack_links.len)
@@ -612,7 +667,10 @@ pub fn cascade(ctx: Context, matched: []const Matched) Allocator.Error!*Computed
     // Every longhand starts at its default (Cascade 5 7.1) without a
     // per-longhand step: the inherited groups are the parent's, shared, and
     // the others the initial values (computed_style.zig, storage).
-    const style = try ComputedStyle.inheriting(allocator, ctx.parent);
+    const style = if (ctx.highlight)
+        try highlightStyle(ctx)
+    else
+        try ComputedStyle.inheriting(allocator, ctx.parent);
     builder.style = style;
     errdefer style.destroy();
     if (ctx.registered) |r| {
@@ -1459,7 +1517,7 @@ const Builder = struct {
     /// Whether the element has base appearance, once `appearance` is
     /// computed (Blink StyleCascade::ResolveAutoBaseInto and StyleAdjuster).
     fn hasBaseAppearance(self: *const Builder) bool {
-        const inherited = if (self.ctx.parent) |p| p.in_base_appearance else false;
+        const inherited = if (self.ctx.parent) |p| p.flags.in_base_appearance else false;
         return switch (self.ctx.appearance_support) {
             .none => inherited,
             .select => self.style.keyword(.appearance) == .base_select,
@@ -1636,6 +1694,25 @@ const Builder = struct {
     }
 
     fn parentValue(self: *const Builder, l: Longhand) Value {
+        if (self.ctx.highlight) {
+            // At the root: "the inherited value of color is currentColor",
+            // which computes to itself: down the highlight chain it is each
+            // highlight's own originating element's color
+            // (highlight-currentcolor-computed-visited.html, Chrome 12/12).
+            if (l == .color) {
+                const current = if (self.ctx.highlight_parent) |p| p.flags.highlight_current_color else true;
+                if (current) if (self.ctx.parent) |originating| {
+                    self.style.flags.highlight_current_color = true;
+                    return originating.get(.color);
+                };
+            }
+            // §3.6: font-size, line-height and color-scheme (computed early,
+            // through here) are the originating element's.
+            if (highlight_copied.contains(l)) if (self.ctx.parent) |originating| return originating.get(l);
+            if (self.ctx.highlight_parent) |p| return p.get(l);
+            // Every other property at the root: its initial value.
+            return computed_mod.initialComputed(l);
+        }
         if (self.ctx.parent) |p| return p.get(l);
         return computed_mod.initialComputed(l);
     }
@@ -1691,7 +1768,9 @@ const Builder = struct {
     }
 
     fn unset(self: *const Builder, l: Longhand) Specified {
-        _ = self;
+        // CSS Pseudo 4 §3.5: in a highlight pseudo-element every property
+        // inherits from the parent's highlight.
+        if (self.ctx.highlight) return .{ .inherit = {} };
         return if (l.inherited()) .{ .inherit = {} } else .{ .initial = {} };
     }
 
@@ -1932,6 +2011,9 @@ const Builder = struct {
             .math = self.computationContext(l, v, source),
         }) };
         if (v == .color) {
+            // CSS Pseudo 4 §3.5: a highlight's `color: currentcolor` keeps
+            // its currentColor for the highlights that inherit it.
+            if (l == .color and self.ctx.highlight and v.color == .current) self.style.flags.highlight_current_color = true;
             // Color4 §6.4: currentcolor in color inherits. Every other
             // destination keeps it symbolic until the receiving element
             // resolves the value, including nested expression origins.
@@ -2060,6 +2142,18 @@ const Builder = struct {
             // Inline3 §4.2.3.1: Q12 C/S computed split resolves by the spec.
             .baseline_shift => if (v.isKeyword(.baseline)) return Value.px(0),
             .text_align, .text_align_last => return @import("text_values.zig").computeAlignment(l, v, if (self.ctx.is_root) null else self.ctx.parent),
+            // Generated Content 3 §4.1 match-parent: "If the inherited value
+            // is auto, computes to the content language of the parent ...
+            // [which] serializes as match-parent. Otherwise, computes to the
+            // inherited value." A content language is kept as the keyword
+            // match-parent, so a parent's content language is inherited as
+            // one too. The root's inherited value is the initial value, auto.
+            .quotes => if (v.isKeyword(.match_parent)) {
+                const inherited = self.parentValue(l);
+                if (inherited.isKeyword(.auto) or inherited.isKeyword(.match_parent)) return Value.kw(.match_parent);
+                inherited.retain();
+                return inherited;
+            },
             // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp.
             .opacity, .shape_image_threshold => return .{ .number = std.math.clamp(v.number, 0, 1) },
             .line_height => switch (v) {
@@ -2342,7 +2436,7 @@ const Builder = struct {
         // 3.5 and §4: layout/paint containment, including content-visibility.
         const content_visibility = s.keyword(.content_visibility);
         const independent = containment.layout or containment.paint or content_visibility == .auto or content_visibility == .hidden;
-        s.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
+        s.flags.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
             (parent_box != .grid or out_of_flow or independent);
 
         // Overflow 3 §3.1: visible computes to auto when either axis is
@@ -2361,7 +2455,7 @@ const Builder = struct {
         // what they contain (Blink StyleAdjuster's InBaseAppearance: set on
         // an element that supports base appearance and has it, inherited,
         // cleared on one that supports it and does not).
-        s.in_base_appearance = self.hasBaseAppearance();
+        s.flags.in_base_appearance = self.hasBaseAppearance();
     }
 };
 

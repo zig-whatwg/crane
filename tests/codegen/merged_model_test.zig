@@ -182,9 +182,13 @@ test "a from-scratch run over the default sources matches every committed root's
     const interfaces_root = try out.read("interfaces/root.zig");
     defer testing.allocator.free(interfaces_root);
     try testing.expect(contains(interfaces_root, "pub const ShadowRealmGlobalScope = "));
+    // FontFaceSet's setlike<FontFace> (css-font-loading.idl) is the
+    // binding's: its size comes from the declaration, not from an
+    // attribute (specs/supplementary/FontFaceSetExtensions.idl, removed).
     const font_face_set = try out.read("interfaces/FontFaceSet.zig");
     defer testing.allocator.free(font_face_set);
-    try testing.expect(contains(font_face_set, "get_size"));
+    try testing.expect(contains(font_face_set, "pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {"));
+    try testing.expect(!contains(font_face_set, "get_size"));
     const window = try out.read("interfaces/Window.zig");
     defer testing.allocator.free(window);
     // specs/supplementary/WindowIndexedGetter.idl's anonymous indexed getter

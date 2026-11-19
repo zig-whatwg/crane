@@ -20,6 +20,13 @@ pub fn matches(element: *Instance, which: Kind) bool {
         // Fullscreen 5.1: any element - an SVG svg or a MathML math can be
         // fullscreen.
         .fullscreen => return @import("fullscreen.zig").matchesFullscreenPseudoClass(element),
+        // HTML 4.16.3 :modal: "dialog elements whose is modal is true" and
+        // "elements whose fullscreen flag is true" - any element, as for
+        // :fullscreen (Selectors 4 §11.3: "a :fullscreen element is also
+        // :modal when opened with the requestFullscreen() API").
+        // css/selectors/invalidation/modal-pseudo-class-in-has.html: Chrome,
+        // Firefox and Safari 5/5.
+        .modal => return dom.dialog.isModal(element) or @import("fullscreen.zig").hasFullscreenFlag(element),
         .active => return userActionMatches(element, &.{ .pointed, .activated }),
         // A MathML a with an href is the source of a hyperlink (MathML Core
         // 3.6 gives it the HTML a element's href semantics), so it matches
@@ -58,10 +65,9 @@ pub fn matches(element: *Instance, which: Kind) bool {
         .autofill => false,
         .user_valid => dom.form_controls.userValidity(element) and forms.validationState(element) == .valid,
         .user_invalid => dom.form_controls.userValidity(element) and forms.validationState(element) == .invalid,
-        .modal => dom.dialog.isModal(element),
         .playing, .paused, .seeking, .buffering, .stalled, .muted, .volume_locked => mediaMatches(element, which),
         .heading => |levels| heading(element, levels),
-        .dir_ltr, .dir_rtl, .hover, .active, .fullscreen => unreachable,
+        .dir_ltr, .dir_rtl, .hover, .active, .fullscreen, .modal => unreachable,
     };
 }
 

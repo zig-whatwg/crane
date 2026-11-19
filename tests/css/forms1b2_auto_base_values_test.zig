@@ -192,7 +192,7 @@ fn checkDeclaration(allocator: Allocator, case: Case, parent: ?*const ComputedSt
     defer via_switch.destroy();
     const via_direct = try styleOf(allocator, direct, case.author, case.support, parent);
     defer via_direct.destroy();
-    try testing.expectEqual(case.base, via_switch.in_base_appearance);
+    try testing.expectEqual(case.base, via_switch.flags.in_base_appearance);
     const longhands: []const css.properties.Longhand = switch (property) {
         .longhand => |l| &.{l},
         .shorthand => |s| s.longhands(),

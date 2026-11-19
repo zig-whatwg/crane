@@ -102,6 +102,7 @@ pub fn ruleObject(rule: *Rule, realm: runtime.Context) anyerror!*runtime.Instanc
         .property => interfaces.CSSPropertyRule.initWith(a, realm, args),
         .keyframes => interfaces.CSSKeyframesRule.initWith(a, realm, args),
         .keyframe => interfaces.CSSKeyframeRule.initWith(a, realm, args),
+        .view_transition => interfaces.CSSViewTransitionRule.initWith(a, realm, args),
     };
     rule.object.set(object);
     if (try parentObject(rule, realm)) |parent| engine.traceChild(object, parent, slots.parent);

@@ -58,7 +58,14 @@ pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, sour
     errdefer runtime.Instance.deinit(instance);
     if (!ctx.isWindow()) return instance;
     const face = try faceOf(instance);
-    try face.loaded.ensure(instance);
+    // §2.1 makes [[FontStatusPromise]] here and rejects it for a syntax
+    // error; Chrome, Firefox and Safari make the promise object only when
+    // script reads `loaded` (Blink's ScriptPromiseProperty, Gecko's
+    // FontFace::EnsurePromise keeping mLoadedRejection, WebKit's
+    // loadedForBindings), so an invalid face no script asked about reports
+    // no unhandled rejection (css-font-loading/fontfacesetloadevent-
+    // constructor.html: harness OK in all three). Golden rule 2: the face
+    // keeps its status, and Face.loadedPromise makes the promise settled.
     try face.setDescriptorValue(.family, "font-family", family.asSlice());
     const dict: dictionaries.FontFaceDescriptors = if (descriptors.was_passed) descriptors.value else .{};
     var invalid = false;
@@ -78,7 +85,10 @@ pub fn call_constructor(ctx: runtime.Context, family: typedefs.CSSOMString, sour
         },
         else => return err,
     };
-    if (dict.stretch) |value| face.setDescriptorValue(.stretch, "font-stretch", value.asSlice()) catch |err| switch (err) {
+    // Font Loading 3 §2: stretch is "a legacy name alias of width" - both
+    // set font-stretch (font-width's other name); width, when given, wins
+    // (it has no default; stretch defaults to "normal").
+    if (dict.width orelse dict.stretch) |value| face.setDescriptorValue(.stretch, "font-stretch", value.asSlice()) catch |err| switch (err) {
         error.SyntaxError => {
             try face.emptyDescriptor("font-stretch");
             invalid = true;
@@ -187,6 +197,14 @@ pub fn get_stretch(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
     return descriptor(instance, "font-stretch");
 }
 pub fn set_stretch(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
+    try (try faceOf(instance)).setDescriptorValue(.stretch, "font-stretch", value.asSlice());
+}
+
+/// Font Loading 3 §2: width and stretch "set the same attribute".
+pub fn get_width(instance: *runtime.Instance) anyerror!typedefs.CSSOMString {
+    return descriptor(instance, "font-stretch");
+}
+pub fn set_width(instance: *runtime.Instance, value: typedefs.CSSOMString) anyerror!void {
     try (try faceOf(instance)).setDescriptorValue(.stretch, "font-stretch", value.asSlice());
 }
 

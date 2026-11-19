@@ -730,6 +730,9 @@ const Compiler = struct {
             // Fonts 4 §6.9: feature maps contribute no element selector.
             // Fonts4 §9.2: palette descriptors contribute no selector.
             .page, .margin, .font_feature_values, .counter_style, .font_palette_values => {},
+            // View Transitions 2 §8.3: read for cross-document transitions,
+            // which no navigation here starts; it styles nothing.
+            .view_transition => {},
             // Anchor Position 1 §6.5 applies these only while trying a
             // geometry-dependent fallback; they are not author rules.
             .position_try => {},

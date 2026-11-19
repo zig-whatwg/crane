@@ -328,3 +328,35 @@ test "font requests set the CSS Values CORS credentials and URL credentials flag
         }
     }.run);
 }
+
+fn invalidSourceLazyRejection() !void {
+    const browser = try browser_mod.Browser.init(std.testing.allocator, .{ .persist_storage = false, .snapshot_path = "" });
+    defer browser.deinit();
+    try browser.navigate("about:blank", .window);
+    const realm = browser.getRealm() orelse return error.NoRealm;
+    const global = try browser.evaluateScript("globalThis.css1Unhandled = 0; addEventListener('unhandledrejection', () => css1Unhandled++); globalThis");
+    defer global.release();
+    // Lane css1: an invalid source rejects loaded, but - as Chrome, Firefox
+    // and Safari make the promise only when script reads it - an unread face
+    // makes no promise, and so reports no unhandled rejection.
+    const face = try interfaces.FontFace.call_constructor(realm, .initInterned("family"), .{ .cssomstring = .initInterned("src") }, .{ .was_passed = false, .value = undefined });
+    const generation = runtime.SlabAllocator.generationOf(face);
+    defer face.releaseIfUnwrapped(generation);
+    try std.testing.expectEqual(._error_, try interfaces.FontFace.get_status(face));
+    const internal = dom.style.hooks.fontFaceOf(face) orelse return error.NoFontState;
+    try std.testing.expect(!internal.loaded.initialized);
+    for (0..3) |_| _ = try browser.runEventLoopBlocking(10);
+    const before = try browser.evaluateScript("css1Unhandled");
+    defer before.release();
+    try std.testing.expectEqual(@as(f64, 0), try engine.convertToUnrestrictedDouble(realm, before.borrow()));
+    // The first read makes it, already rejected.
+    const loaded: engine.Owned = .{ .value = try interfaces.FontFace.get_loaded(face) };
+    defer loaded.release();
+    try std.testing.expect(internal.loaded.initialized);
+    try std.testing.expect(internal.loaded.capability == null);
+    engine.markPromiseAsHandled(realm, loaded.borrow());
+}
+
+test "an invalid FontFace makes its rejected loaded promise only when read" {
+    try fresh(invalidSourceLazyRejection);
+}

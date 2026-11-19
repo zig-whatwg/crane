@@ -194,7 +194,7 @@ test "authored values read fast-path defaults as the slow path does" {
                 }
             }
             try testing.expectEqual(fast.style.box_context, slow.style.box_context);
-            try testing.expectEqual(fast.style.subgrid_ineligible, slow.style.subgrid_ineligible);
+            try testing.expectEqual(fast.style.flags.subgrid_ineligible, slow.style.flags.subgrid_ineligible);
             try testing.expectEqual(fast.style.used_color_scheme, slow.style.used_color_scheme);
         }
     }

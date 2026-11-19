@@ -87,7 +87,7 @@ test "a select without base appearance takes the native argument" {
     const style = try styleOf(testing.allocator, .{ .support = .select, .ua = "appearance: auto; " ++ switch_display }, null);
     defer style.destroy();
     try expectResolved(style, .min_width, "1px");
-    try testing.expect(!style.in_base_appearance);
+    try testing.expect(!style.flags.in_base_appearance);
 }
 
 test "a base-select select takes the base argument and is in base appearance" {
@@ -95,14 +95,14 @@ test "a base-select select takes the base argument and is in base appearance" {
     defer style.destroy();
     try expectResolved(style, .min_width, "2px");
     try expectResolved(style, .appearance, "base-select");
-    try testing.expect(style.in_base_appearance);
+    try testing.expect(style.flags.in_base_appearance);
 }
 
 test "base-select on an element that does not support it is not base appearance" {
     const style = try styleOf(testing.allocator, .{ .ua = switch_display, .author = "appearance: base-select" }, null);
     defer style.destroy();
     try expectResolved(style, .min_width, "1px");
-    try testing.expect(!style.in_base_appearance);
+    try testing.expect(!style.flags.in_base_appearance);
 }
 
 test "the bit is inherited and cleared on a nested select without base appearance" {
@@ -111,11 +111,11 @@ test "the bit is inherited and cleared on a nested select without base appearanc
     const option = try styleOf(testing.allocator, .{ .ua = switch_display }, select);
     defer option.destroy();
     try expectResolved(option, .min_width, "2px");
-    try testing.expect(option.in_base_appearance);
+    try testing.expect(option.flags.in_base_appearance);
     const nested = try styleOf(testing.allocator, .{ .support = .select, .ua = "appearance: auto; " ++ switch_display }, option);
     defer nested.destroy();
     try expectResolved(nested, .min_width, "1px");
-    try testing.expect(!nested.in_base_appearance);
+    try testing.expect(!nested.flags.in_base_appearance);
     const nested_option = try styleOf(testing.allocator, .{ .ua = switch_display }, nested);
     defer nested_option.destroy();
     try expectResolved(nested_option, .min_width, "1px");
@@ -127,18 +127,18 @@ test "a picker has base appearance only when its select has it" {
     const picker_of_native = try styleOf(testing.allocator, .{ .support = .picker, .ua = switch_display, .author = "appearance: base-select" }, native_select);
     defer picker_of_native.destroy();
     try expectResolved(picker_of_native, .min_width, "1px");
-    try testing.expect(!picker_of_native.in_base_appearance);
+    try testing.expect(!picker_of_native.flags.in_base_appearance);
 
     const base_select = try styleOf(testing.allocator, .{ .support = .select, .author = "appearance: base-select" }, null);
     defer base_select.destroy();
     const auto_picker = try styleOf(testing.allocator, .{ .support = .picker, .ua = switch_display }, base_select);
     defer auto_picker.destroy();
     try expectResolved(auto_picker, .min_width, "1px");
-    try testing.expect(!auto_picker.in_base_appearance);
+    try testing.expect(!auto_picker.flags.in_base_appearance);
     const base_picker = try styleOf(testing.allocator, .{ .support = .picker, .ua = switch_display, .author = "appearance: base-select" }, base_select);
     defer base_picker.destroy();
     try expectResolved(base_picker, .min_width, "2px");
-    try testing.expect(base_picker.in_base_appearance);
+    try testing.expect(base_picker.flags.in_base_appearance);
 }
 
 test "an appearance that asks for its own base appearance is invalid at computed-value time" {
@@ -148,7 +148,7 @@ test "an appearance that asks for its own base appearance is invalid at computed
     defer style.destroy();
     try expectResolved(style, .appearance, "none");
     try expectResolved(style, .min_width, "1px");
-    try testing.expect(!style.in_base_appearance);
+    try testing.expect(!style.flags.in_base_appearance);
 }
 
 test "revert-rule as the chosen argument rolls back to the UA rule before it" {
@@ -185,5 +185,5 @@ test "an element whose declarations use no -internal-auto-base() never resolves 
     defer style.destroy();
     try expectResolved(style, .appearance, "base-select");
     try expectResolved(style, .display, "block");
-    try testing.expect(!style.in_base_appearance);
+    try testing.expect(!style.flags.in_base_appearance);
 }

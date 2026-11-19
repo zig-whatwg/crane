@@ -4170,7 +4170,7 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
     const internal = getInternal(instance) orelse return error.InvalidStateError;
     // 2. "Let obj be elt."
     var target: @import("dom").style.ComputedFor = .{ .element = elt };
-    var name_buffer: [64]u8 = undefined;
+    var name_buffer: [256]u8 = undefined;
     // 3. "If pseudoElt is provided, is not the empty string, and starts with
     // a colon": parse it as a <pseudo-element-selector>; failure, ::slotted()
     // or ::part() makes obj null; otherwise obj is that pseudo-element.
@@ -4190,7 +4190,11 @@ pub fn call_getComputedStyle(instance: *runtime.Instance, elt: *runtime.Instance
 /// The pseudo-element `text` names when it parses as a
 /// <pseudo-element-selector> - lowercase, no colons, into `buffer` - or
 /// null (and for ::slotted() and ::part(), which getComputedStyle does not
-/// take). CSS 2's single-colon forms count (CSSOM 7.2 step 3's note).
+/// take). CSS 2's single-colon forms count (CSSOM 7.2 step 3's note). A
+/// named pseudo-element - ::highlight(), the named view transition ones -
+/// is that pseudo-element for its name, kept in parentheses as written
+/// (case-sensitive), `*` as "()": the style engine's target
+/// (dom.selector_matching.pseudoTargetMatches).
 fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u8) ?[]const u8 {
     const selector = @import("selector");
     var list = selector.parse(allocator, text) catch return null;
@@ -4198,17 +4202,26 @@ fn pseudoElementName(allocator: std.mem.Allocator, text: []const u8, buffer: []u
     if (list.selectors.len != 1) return null;
     const complex = &list.selectors[0];
     if (complex.combinators.len != 0) return null;
-    var name: ?[]const u8 = null;
+    var pseudo: ?*const selector.PseudoElementSelector = null;
     for (complex.compound.simple_selectors) |*simple| switch (simple.*) {
-        .PseudoElement => |p| name = p.name,
+        .PseudoElement => |*p| pseudo = p,
         // Only the implicit universal selector may stand beside it.
         .Universal => {},
         else => return null,
     };
-    const found = name orelse return null;
+    const found = (pseudo orelse return null).name;
     if (std.ascii.eqlIgnoreCase(found, "slotted") or std.ascii.eqlIgnoreCase(found, "part")) return null;
     if (found.len > buffer.len) return null;
-    return std.ascii.lowerString(buffer[0..found.len], found);
+    const lower = std.ascii.lowerString(buffer[0..found.len], found);
+    const named = pseudo.?.isNamedViewTransition() or std.mem.eql(u8, found, "highlight");
+    if (!named) return lower;
+    const argument = pseudo.?.name_argument orelse "";
+    const total = found.len + argument.len + 2;
+    if (total > buffer.len) return null;
+    buffer[found.len] = '(';
+    @memcpy(buffer[found.len + 1 ..][0..argument.len], argument);
+    buffer[total - 1] = ')';
+    return buffer[0..total];
 }
 
 /// Operation: cancelAnimationFrame

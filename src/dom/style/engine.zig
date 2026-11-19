@@ -291,6 +291,13 @@ pub const StyleEngine = struct {
         /// element inherits from its slot. 1 while the engine has no Rare
         /// (StyleEngine.slotVersion).
         slot_version: u64 = 1,
+        /// CSS View Transitions 1 §7.1.1: the document's view transition
+        /// state (dom.view_transitions) and its "dynamic view transition
+        /// style sheet", a user-agent origin sheet after the global one
+        /// (html.css's View Transitions section), matched for pseudo-elements
+        /// only (`collectMatched`). Null while no transition wrote rules.
+        view_transitions: @import("../view_transitions.zig").DocumentState = .{},
+        view_transition_sheet: ?*Contents = null,
 
         fn deinit(self: *Rare, allocator: Allocator) void {
             // Hints its elements still hold live on, uncached.
@@ -305,6 +312,8 @@ pub const StyleEngine = struct {
                 allocator.destroy(registry);
             }
             if (self.registered) |snapshot| snapshot.release();
+            self.view_transitions.deinit(allocator);
+            if (self.view_transition_sheet) |contents| contents.destroy();
             self.media_query_lists.deinit(allocator);
             self.adopting_roots.deinit(allocator);
             if (self.preferred_set_name) |name| allocator.free(name);
@@ -385,6 +394,21 @@ pub const StyleEngine = struct {
         }
         var declared = css.property_registry.Declared.init(self.allocator);
         defer declared.deinit();
+        // §2.8: "All registrations, whether they appear in the outermost
+        // document or within a shadow tree, interact in a single global
+        // registration map for the Document" (css-houdini-drafts#1085,
+        // 2023-02; WPT css-properties-values-api/at-property-shadow.html
+        // updated to it, wpt#44922). Chrome, Firefox and Safari still read
+        // document-scope rules only (csswg-drafts#10541, open; interop#673
+        // asks to drop the test), with no engine's stated intent to keep
+        // that: golden rule 2, the newer spec. The order across trees is not
+        // specified: the shadow trees' rules first, in tree order, then the
+        // document's, so a document rule wins over a shadow tree's - the
+        // outer context, as normal declarations cascade (Cascade 5 6.1).
+        for (active.scopes.items) |*scope| for (scope.sheets.items) |sheet| for (sheet.contents.property_rules.items) |entry| {
+            if (sheet.contents.conditionHolds(entry.condition, &active.media))
+                try declared.add(entry.rule.data.property);
+        };
         // §2.1: the last rule in document stylesheet order wins. Imports are
         // already substituted by ensureActive; layer precedence is irrelevant.
         for (active.sheets.items) |sheet| for (sheet.contents.property_rules.items) |entry| {
@@ -1124,6 +1148,11 @@ const Resolution = struct {
     starting: bool = false,
     /// A rule inside @starting-style matched since `starting` was set.
     starting_matched: bool = false,
+    /// CSS Pseudo 4 §3.5: the highlight pseudo-element being resolved
+    /// inherits from `highlight_parent` (css.cascade.Context.highlight), set
+    /// by pseudoStyle around its resolveOne.
+    highlight: bool = false,
+    highlight_parent: ?*const ComputedStyle = null,
     /// Scoped style rules (Cascade 6 3.5), for the subject and sheet being
     /// matched (`beginScopes`): each @scope rule's scopes the subject is in,
     /// found when a rule of it is first a candidate - a span of
@@ -1396,6 +1425,17 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
     }
     var reads: selector_matching.StateReads = .{};
     const previous: ?element_style.Cached = if (state.pseudoCached(p)) |cached| cached.cached else null;
+    // CSS Pseudo 4 §3.5: a highlight pseudo-element inherits from the same
+    // highlight of its originating element's parent element (resolved
+    // first, from the root down, each cached as this one is).
+    const highlight = isHighlightPseudo(p);
+    const highlight_parent: ?*const ComputedStyle = if (highlight) try highlightParentStyle(res, node, p, animation_reader, generation) else null;
+    res.highlight = highlight;
+    res.highlight_parent = highlight_parent;
+    defer {
+        res.highlight = false;
+        res.highlight_parent = null;
+    }
     const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
         .event = styleChangeEvent(previous, res.key, own.@"volatile"),
         .parent_rendered = own.rendered,
@@ -1456,6 +1496,30 @@ pub fn authorDeclares(element: *runtime.Instance, names: []const []const u8) Err
 /// declarations are empty (CSSOM 7.2 step 5's null obj). Chrome, the one
 /// engine shipping ::picker, answers so
 /// (customizable-select/select-picker-pseudo-box-type.html).
+/// CSS Pseudo 4 §3.1's highlight pseudo-elements, as the style engine
+/// names them (`p`: the name, and ::highlight()'s argument).
+fn isHighlightPseudo(p: []const u8) bool {
+    for ([_][]const u8{ "selection", "target-text", "search-text", "spelling-error", "grammar-error" }) |name| {
+        if (std.mem.eql(u8, p, name)) return true;
+    }
+    return std.mem.startsWith(u8, p, "highlight(");
+}
+
+/// The highlight pseudo-element `p` of the flat-tree parent element of
+/// `node` (whose own style its lineage resolution cached), or null at the
+/// root: what a highlight of `node` inherits from (CSS Pseudo 4 §3.5).
+fn highlightParentStyle(res: *Resolution, node: *NodeBase, p: []const u8, animation_reader: *animations.effect_stack.Reader, generation: *?u64) Error!?*const ComputedStyle {
+    var slotted = false;
+    const parent_node = switch (flatParent(node, &slotted)) {
+        .element => |parent| parent,
+        else => return null,
+    };
+    const parent = instanceOf(parent_node) orelse return null;
+    const parent_state = element_style.existingOf(parent) orelse return null;
+    if (parent_state.cached == null) return null;
+    return (try pseudoStyle(res, parent, parent_node, parent_state, p, animation_reader, generation)).style;
+}
+
 fn hasPseudoElement(element: *runtime.Instance, name: []const u8) bool {
     if (!std.mem.eql(u8, name, "picker")) return true;
     return selectKind(element) == .drop_down;
@@ -1602,6 +1666,9 @@ fn resolveOne(res: *Resolution, element: *runtime.Instance, node: *NodeBase, sta
         .blockify_display = pseudo == null and isHtmlLegend(element),
         // Position 4 §3.1: an element in the top layer, or its ::backdrop.
         .top_layer = res.inTopLayer(element, pseudo),
+        // CSS Pseudo 4 §3.5 highlight inheritance (pseudoStyle).
+        .highlight = res.highlight,
+        .highlight_parent = res.highlight_parent,
     };
     const base = try cascadeOrHit(res, ctx, pseudo);
     errdefer base.destroy();
@@ -2127,6 +2194,13 @@ fn collectMatched(res: *Resolution, element: *runtime.Instance, node: *NodeBase,
         // html.css's last block had them: every tie resolves as before.
         if (res.engine.rare) |rare| if (rare.fullscreen_rules) {
             try matchContents(res, &matcher, element, keys, ua.fullscreen, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 19, .tree_scope = .{ .serial = own_scope } }, null, null);
+        };
+        // View Transitions 1 §7.1.1: the dynamic view transition style sheet,
+        // "in the user-agent origin, ordered after the global view
+        // transition user agent style sheet" (html.css): its rules style the
+        // ::view-transition-* pseudo-elements only.
+        if (pseudo != null) if (res.engine.rare) |rare| if (rare.view_transition_sheet) |dynamic| {
+            try matchContents(res, &matcher, element, keys, dynamic, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = (1 << 19) + (1 << 18), .tree_scope = .{ .serial = own_scope } }, null, null);
         };
         if (quirks) try matchContents(res, &matcher, element, keys, ua.quirks, pseudo, is_html, quirks, .{ .origin = .user_agent, .order = 1 << 20, .tree_scope = .{ .serial = own_scope } }, null, null);
         try matchContents(res, &matcher, element, keys, ua.hints, pseudo, is_html, quirks, .{ .origin = .presentational_hint, .tree_scope = .{ .serial = own_scope } }, null, .zero);
@@ -2779,6 +2853,38 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
     const engine = hooks.engineOf(document) orelse return;
     if (!engine.declaresAnimations()) return;
     _ = updateSubtree(engine.allocator, node) catch {};
+}
+
+/// CSS View Transitions 1 §7.1.1: `document`'s view transition state, made
+/// with the engine's rare data; null for a document without a style engine.
+pub fn viewTransitionState(document: *runtime.Instance) ?*@import("../view_transitions.zig").DocumentState {
+    // A read: "update the rendering" asks for every document on every
+    // rendering opportunity, so only startViewTransition() makes the rare
+    // record (ensureViewTransitionState).
+    const engine = hooks.engineOf(document) orelse return null;
+    const rare = engine.rare orelse return null;
+    return &rare.view_transitions;
+}
+
+/// `document`'s view transition state, made with the rare record if need
+/// be; null when the document has no style engine.
+pub fn ensureViewTransitionState(document: *runtime.Instance) Error!?*@import("../view_transitions.zig").DocumentState {
+    const engine = hooks.engineOf(document) orelse return null;
+    const rare = try engine.ensureRare();
+    return &rare.view_transitions;
+}
+
+/// Replace `document`'s dynamic view transition style sheet's rules with
+/// `text` (null: no rules). Every cached style is recomputed against it.
+pub fn setViewTransitionSheet(document: *runtime.Instance, text: ?[]const u8) Error!void {
+    const engine = hooks.engineOf(document) orelse return;
+    // No rules to clear without a rare record: none is made for it.
+    const rare = if (text == null) (engine.rare orelse return) else try engine.ensureRare();
+    if (rare.view_transition_sheet == null and text == null) return;
+    const made: ?*Contents = if (text) |t| try Contents.parse(engine.allocator, t, .{ .user_agent = true }) else null;
+    if (rare.view_transition_sheet) |old| old.destroy();
+    rare.view_transition_sheet = made;
+    engine.generation +%= 1;
 }
 
 /// Whether `document`'s style engine matches Fullscreen 5.2's user-agent

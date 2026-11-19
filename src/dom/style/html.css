@@ -636,3 +636,49 @@ select:-internal-list-box {
  overflow: -internal-auto-base(revert-rule, auto);
  block-size: -internal-auto-base(revert-rule, calc(max(24px, 1lh) * attr(size type(<integer>), 4)));
 }
+
+/* CSS View Transitions 2 §7: the global view transition user agent style
+ * sheet, at the user-agent origin. Its @keyframes and
+ * ::view-transition-group-children() (not parsed yet) are left out. */
+:root {
+ view-transition-name: root;
+}
+
+::view-transition {
+ position: absolute;
+ inset: 0;
+}
+
+::view-transition-group(*) {
+ position: absolute;
+ top: 0;
+ left: 0;
+ animation-duration: 0.25s;
+ animation-fill-mode: both;
+}
+
+::view-transition-image-pair(*) {
+ position: absolute;
+ inset: 0;
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+ position: absolute;
+ display: block;
+ inset-block-start: 0;
+ inline-size: 100%;
+ block-size: auto;
+}
+
+::view-transition-image-pair(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+ animation-duration: inherit;
+ animation-fill-mode: inherit;
+ animation-delay: inherit;
+ animation-timing-function: inherit;
+ animation-iteration-count: inherit;
+ animation-direction: inherit;
+ animation-play-state: inherit;
+}
