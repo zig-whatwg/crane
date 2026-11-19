@@ -33,12 +33,14 @@ const ValueCase = struct {
 };
 
 const value_cases = [_]ValueCase{
-    // The empty blocks hold no visible position: the value is the third's.
-    .{ .input = "{<p><p> <p>foo</p>}", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "p|div|<p></p><p> </p><div>foo</div>" },
+    // The empty blocks hold no visible position: the value is the third's
+    // (the data's DOM after; Chrome keeps the empty blocks).
+    .{ .input = "{<p><p> <p>foo</p>}", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "p|div|<div> foo</div>" },
     // A block holding other blocks is the value too.
     .{ .input = "<div><ol><li>[foo]</ol></div>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "div|div|<div><ol><li>foo</li></ol></div>" },
-    // A dl holding the range's dt and dd.
-    .{ .input = "<dl><dt>[foo<dd>bar]</dl>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "dl|div|<div>foo</div><div>bar</div>" },
+    // A dl holding the range's dt and dd; after, the range spans two divs:
+    // "" (Chrome and Safari make one div with a br, which reports "div").
+    .{ .input = "<dl><dt>[foo<dd>bar]</dl>", .commands = "[[\"formatblock\",\"<div>\"]]", .expected = "dl||<div>foo</div><div>bar</div>" },
     // A dd line gets its dl (Firefox's DOM; all three report "dd").
     .{ .input = "<p>[foobar]</p>", .commands = "[[\"formatblock\",\"<dd>\"]]", .expected = "p|dd|<dl><dd>foobar</dd></dl>" },
     .{ .input = "<div>[foobar]</div>", .commands = "[[\"formatblock\",\"<dt>\"]]", .expected = "div|dt|<dl><dt>foobar</dt></dl>" },
