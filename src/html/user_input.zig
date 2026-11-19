@@ -530,6 +530,21 @@ pub const Pointer = struct {
 /// declared size (getBoundingClientRect, which reads the inline style), else
 /// its width and height attributes, else the extent of its map's areas.
 pub fn hitTest(element: *Instance, x: f64, y: f64) *Instance {
+    // A navigable container's in-view centre is in its content navigable's
+    // viewport, so the hit test goes on in that navigable's active document
+    // - where, with no layout, the element at any point is its root element
+    // (the user's ruling of 2026-10-27 for the WPT runner's no-layout hit
+    // test; tests/wpt_runner/test_driver.zig's viewport origin). Browsers
+    // deliver a click on an iframe inside the frame, which gets the user
+    // activation: fullscreen/api/element-ready-check-allowed-cross-origin.
+    // sub.html (wpt.fyi 2358bd4835: Chrome 157 and Safari 27.2 pass - the
+    // cross-origin frame enters fullscreen; Firefox 160 does not).
+    if (form_associated.isElementNamed(element, "iframe") or form_associated.isElementNamed(element, "frame") or form_associated.isElementNamed(element, "object")) {
+        if (focus.contentDocumentOf(element)) |document| {
+            if (interfaces.Document.get_documentElement(document) catch null) |root| return root;
+        }
+        return element;
+    }
     if (!form_associated.isElementNamed(element, "img")) return element;
     const map = imageMapOf(element) orelse return element;
     const size = imageSize(element, map);

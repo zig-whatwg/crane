@@ -55,7 +55,6 @@ pub const interface_skip_list = .{
     "DeviceChangeEvent", // MediaDeviceInfo array issues
     "GamepadHapticActuator", // GamepadHapticEffectType array issues
     "MediaMetadata", // ChapterInformation array issues
-    "Notification", // Missing unsignedlong type
     "PerformanceLongAnimationFrameTiming", // PerformanceScriptTiming array issues
     "PressureObserver", // Missing cached field
     "PublicKeyCredential", // ArrayBuffer type issues

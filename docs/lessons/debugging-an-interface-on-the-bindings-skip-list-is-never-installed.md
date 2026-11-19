@@ -10,3 +10,9 @@
 **Fix**: Delete the stale entries (granted - the file is the V8 adapter's), and check `typeof Interface` from the realm that should expose it before debugging the path that makes its instances.
 
 **Takeaway**: **When an event is dispatched but its listener sees `undefined`, check that the event's interface is installed at all - grep the bindings' skip list before tracing the dispatch.**
+
+**Recurred** (2026-11-19, lane blk4): Notification ("Missing unsignedlong type") was on the list while
+wasm/serialization/module/serialization-via-notifications-api.any.js waited on its constructor. The first red/green
+run showed `Notification is not defined` on BOTH sides - base and tip - which is the tell: an impl change that does
+not move a ReferenceError means the interface is not installed. Before implementing an interface whose WPT failure is
+a ReferenceError, grep `interface_skip_list` first.

@@ -47,7 +47,7 @@ pub const Implementation = struct {
     mark_initial_about_blank: *const fn (document: *runtime.Instance) void,
     is_unloading: *const fn (document: *runtime.Instance) bool,
     fire_beforeunload: *const fn (document: *runtime.Instance) BeforeUnloadResult,
-    unload: *const fn (document: *runtime.Instance, destroy: UnloadDestroy) void,
+    unload: *const fn (document: *runtime.Instance, destroy: UnloadDestroy, timing: ?*UnloadTimingInfo) void,
     abort: *const fn (document: *runtime.Instance) void,
     /// Navigation's provisional abort, before the replacement commits.
     abort_for_navigation: *const fn (document: *runtime.Instance) void,
@@ -238,6 +238,18 @@ pub fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
     return impl.fire_beforeunload(document);
 }
 
+/// HTML's "document unload timing info": the unload event's start and end
+/// times, which "unload" steps 11 and 13 set (milliseconds of `now`'s clock,
+/// the unsafe shared current time the caller made it relative to its new
+/// document's time origin from: Navigation Timing's unloadEventStart and
+/// unloadEventEnd). Times only the document's own unload event - not its
+/// pagehide, and not its descendants' unloads.
+pub const UnloadTimingInfo = struct {
+    unload_event_start: f64 = 0,
+    unload_event_end: f64 = 0,
+    now: *const fn () f64,
+};
+
 /// Who runs "unload" step 20 - "if oldDocument's salvageable state is false,
 /// then destroy oldDocument" - for an unload.
 pub const UnloadDestroy = enum {
@@ -252,7 +264,7 @@ pub const UnloadDestroy = enum {
 /// destroyed (step 20).
 pub fn unload(document: *runtime.Instance) void {
     const impl = implementation.get() orelse return;
-    impl.unload(document, .now);
+    impl.unload(document, .now, null);
 }
 
 /// `unload` without step 20: `document` is not destroyed here, even when it
@@ -266,8 +278,14 @@ pub fn unload(document: *runtime.Instance) void {
 /// is the document shut down (Document::Shutdown). HTMLIFrameElement's
 /// unloadDocumentTree states the order.
 pub fn unloadLeavingDestroy(document: *runtime.Instance) void {
+    unloadLeavingDestroyTimed(document, null);
+}
+
+/// `unloadLeavingDestroy` given HTML's unloadTimingInfo: `timing`, when
+/// given, gets the unload event's start and end (steps 11 and 13).
+pub fn unloadLeavingDestroyTimed(document: *runtime.Instance, timing: ?*UnloadTimingInfo) void {
     const impl = implementation.get() orelse return;
-    impl.unload(document, .by_caller);
+    impl.unload(document, .by_caller, timing);
 }
 
 /// HTML "abort" `document` (§7.5.6): a parser still running - a navigation

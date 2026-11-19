@@ -174,6 +174,9 @@ pub const ApplyItem = struct {
     reload_api_state: ?joint_history.SerializedState = null,
     /// `.reload` made by history.go(0) (the reload rules in History).
     go_zero: bool = false,
+    /// `.reload` made by location.reload() of a top-level traversable (the
+    /// reload rules in History: a later one replaces it).
+    location_reload: bool = false,
     /// `.reload` made by a declarative refresh (`ReloadCause.declarative_refresh`):
     /// once beforeunload let it go on, the reloaded navigable's active
     /// document and its descendants are aborted, as the navigate the refresh
@@ -900,7 +903,7 @@ pub fn traverse(top: *BrowsingContext, allocator: Allocator, target: Target, opt
 /// history.go(0) (`go_zero`), or a declarative refresh, whose reload aborts
 /// the active document as the navigate it stands for does
 /// (`reload_aborts_document`).
-pub const ReloadCause = enum { reload, go_zero, declarative_refresh };
+pub const ReloadCause = enum { reload, location_reload, go_zero, declarative_refresh };
 
 /// HTML "reload" step 4: "Append the following session history traversal
 /// steps to traversable: apply the reload history step to traversable" -
@@ -909,10 +912,16 @@ pub const ReloadCause = enum { reload, go_zero, declarative_refresh };
 /// asked for by `cause`.
 pub fn reload(navigable: *BrowsingContext, allocator: Allocator, entry_id: u64, api_state: ?joint_history.SerializedState, cause: ReloadCause) void {
     const top = navigable.getTop();
+    // The reload rule (c) in History: a top-level traversable's
+    // location.reload() replaces the one it made before that has not
+    // finished - queued, or running with its document still loading.
+    const location_reload = cause == .location_reload and navigable == top;
+    if (location_reload) _ = cancelLocationReload(top);
     const self = ApplyItem.make(top, allocator, .reload) orelse return;
     self.reload_navigable = navigable.id;
     self.reload_entry = entry_id;
     self.go_zero = cause == .go_zero;
+    self.location_reload = location_reload;
     self.reload_aborts_document = cause == .declarative_refresh;
     if (api_state) |state| {
         self.reload_api_state = state.clone(allocator) catch {
@@ -1176,19 +1185,33 @@ pub fn coalesceDelta(top: *BrowsingContext, pending: *ApplyItem, delta: i32) voi
 /// with its population left to be superseded by the traversal appended
 /// next. Whether one was.
 pub fn cancelGoZeroReload(top: *BrowsingContext) bool {
+    return cancelReloads(top, isGoZeroReloadOf);
+}
+
+/// The reload rule (c) in History: a location.reload() reload of `top`'s
+/// own navigable that is queued or running is cancelled the same way, for
+/// the reload appended next. Whether one was.
+fn cancelLocationReload(top: *BrowsingContext) bool {
+    return cancelReloads(top, isLocationReloadOf);
+}
+
+/// `top`'s queued or running reloads of its own navigable that `matches`
+/// are cancelled - removed, or finished with their population left to be
+/// superseded by what is appended next.
+fn cancelReloads(top: *BrowsingContext, comptime matches: fn (*Item, u64) bool) bool {
     const queue = top.traversal_queue orelse return false;
     var cancelled = false;
     var i: usize = 0;
     while (i < queue.items.items.len) {
         const item = queue.items.items[i];
-        if (isGoZeroReloadOf(item, top.id)) {
+        if (matches(item, top.id)) {
             _ = queue.items.orderedRemove(i);
             item.destroy(item);
             cancelled = true;
         } else i += 1;
     }
     if (queue.running) |item| {
-        if (isGoZeroReloadOf(item, top.id)) {
+        if (matches(item, top.id)) {
             TraversalQueue.completeById(queue.navigables, top.id, item.token);
             cancelled = true;
         }
@@ -1212,6 +1235,12 @@ fn isReloadOf(item: *Item, navigable: u64) bool {
     if (item.run != &ApplyItem.run) return false;
     const apply: *ApplyItem = @fieldParentPtr("item", item);
     return apply.kind == .reload and apply.reload_navigable == navigable;
+}
+
+fn isLocationReloadOf(item: *Item, navigable: u64) bool {
+    if (item.run != &ApplyItem.run) return false;
+    const apply: *ApplyItem = @fieldParentPtr("item", item);
+    return apply.kind == .reload and apply.location_reload and apply.reload_navigable == navigable;
 }
 
 fn isGoZeroReloadOf(item: *Item, navigable: u64) bool {
