@@ -154,6 +154,103 @@ fn callbackOf(listener: Listener) engine.CallbackInterface {
     return .{ .object = ownedObject(listener.object), .context = listener.context };
 }
 
+// ----------------------------------------------------------------------------
+// The list's values, traced from the target's wrapper (refcount step 8,
+// decision D7; tmp/plans/refcount-design.md 3, "event listener closure
+// capturing its node").
+//
+// A listener's callback and an event handler's compiled function are held
+// WEAKLY by the list (engine.holdWeakly), and the target's wrapper keeps every
+// one of them, in ONE fixed slot (engine.traceValues): an edge the collector
+// traces, never a root. So a closure over its own target - the commonest
+// listener there is - no longer keeps the target, its tree and its realm alive
+// until the realm ends: once script holds none of them, they go together. A
+// listener lives exactly as long as its target's wrapper - a node's while its
+// tree is reachable or a document holds it (the document's wrapper keeps its
+// tree's), any other target's while script or the platform keeps it - and one
+// whose value the collector took does not fire (its hold reads empty; the
+// call is a TypeError, logged and skipped).
+//
+// - WebKit (reference only, LGPL): JSEventListener keeps
+//   `JSC::Weak<JSC::JSObject> m_jsFunction` and `m_wrapper`, and the target's
+//   wrapper marks the function ("marks m_jsFunction in JSEventListener::
+//   visitJSFunctionInGCThread if m_wrapper is alive"; EventTarget::
+//   visitJSEventListeners), Source/WebCore/bindings/js/JSEventListener.h.
+// - Blink: EventTarget::Trace -> EventListenerMap -> RegisteredEventListener's
+//   Member<EventListener> -> JSEventListener -> its V8EventListener's
+//   TraceWrapperV8Reference (core/dom/events/, platform/bindings/
+//   callback_interface_base.h): traced from the target, rooted nowhere.
+//
+// The slot holds the list's values themselves, rebuilt from the list at every
+// change of them - one key for every listener, never one per listener
+// (docs/lessons/architecture-reuse-slots-inside-a-collectible-traced-value.md),
+// and the list the one record of which values the wrapper keeps. An engine
+// that keeps no traced values answers false and the holds stay strong.
+// ----------------------------------------------------------------------------
+
+/// The slot a target's wrapper keeps its list's values in.
+const listeners_slot: engine.TracedSlot = .{ .name = "listeners" };
+
+/// Whether `listener` holds an engine value its target's wrapper keeps: a
+/// listener's callback, or an event handler's compiled function.
+fn holdsValue(listener: Listener) bool {
+    if (listener.object == null) return false;
+    return switch (listener.bits.kind) {
+        .listener => true,
+        .handler => listener.bits.value == .compiled,
+    };
+}
+
+/// `target`'s wrapper keeps exactly the values `listeners` holds now
+/// (engine.traceValues): whether the engine keeps them - false, and the holds
+/// are left strong, on an engine with no traced values or where `target` has
+/// nothing to hang an edge on (its realm ended). Runs no script.
+fn traceListValues(target: *runtime.Instance, listeners: Listeners) bool {
+    const view = listeners.view();
+    var count: usize = 0;
+    for (view) |listener| count += @intFromBool(holdsValue(listener));
+    var inline_values: [16]runtime.JSValue = undefined;
+    const allocator = runtime.allocatorOf(target);
+    const values: []runtime.JSValue = if (count <= inline_values.len)
+        inline_values[0..count]
+    else
+        allocator.alloc(runtime.JSValue, count) catch return false;
+    defer if (count > inline_values.len) allocator.free(values);
+    var at: usize = 0;
+    for (view) |listener| {
+        if (!holdsValue(listener)) continue;
+        values[at] = ownedObject(listener.object).value;
+        at += 1;
+    }
+    return engine.traceValues(target, values, listeners_slot);
+}
+
+/// `listeners`' values changed - one added, removed or replaced - and
+/// `added`, if any, is the hold the list took for the new one: the target's
+/// wrapper keeps the list's values from here, and the new hold becomes weak
+/// once it does. Every other hold in the list was weakened when it came.
+fn listValuesChanged(target: *runtime.Instance, listeners: Listeners, added: ?*anyopaque) void {
+    if (!traceListValues(target, listeners)) return;
+    if (added) |handle| engine.holdWeakly(ownedObject(handle));
+}
+
+/// `target` - torn down, or erased - keeps no values for its list any more:
+/// the edge its realm's wrapper cache may keep for it, waiting for a wrapper
+/// it never got, goes (engine.forgetTracedChild; an owner freed unwrapped ends
+/// its waiting edges in its teardown). A wrapper's edge goes with the
+/// wrapper.
+fn forgetListValues(target: *runtime.Instance) void {
+    engine.forgetTracedChild(target, listeners_slot);
+}
+
+/// Whether any listener of `list` holds an engine value.
+fn listHoldsValues(list: ListenerList) bool {
+    for (list.view()) |listener| {
+        if (holdsValue(listener)) return true;
+    }
+    return false;
+}
+
 /// A target's event listener list, wherever the target keeps it - what
 /// every step below reads and changes the list through.
 ///
@@ -380,6 +477,12 @@ fn ensureListeners(target: *runtime.Instance) !Listeners {
 fn releaseNodeListeners(node: *runtime.Instance) void {
     const base = dom_module.instance_bridge.getNodeBaseUnaudited(node) orelse return;
     const listeners: Listeners = .{ .place = .{ .node = base } };
+    // No forgetListValues: a node's values were traced on its wrapper (a
+    // node gets a JS listener only through script, or a compiled handler,
+    // which wraps it), and a node is torn down only once that wrapper went -
+    // possibly after its realm ended, when its realm's cache is not there to
+    // ask. A waiting edge of a node never wrapped would be its realm cache's
+    // to prune (WrapperCache.pruneDeferredEdges, by generation).
     listeners.release(runtime.allocatorOf(node), true);
 }
 
@@ -510,6 +613,7 @@ fn leavesOutOwnState(comptime StateType: type) bool {
 /// chain. The slot itself is the collector's to free, or the queue's.
 pub fn deinitOwn(instance: *runtime.Instance) void {
     if (Own.get(instance)) |internal| {
+        if (listHoldsValues(internal.listeners)) forgetListValues(instance);
         internal.deinit(runtime.allocatorOf(instance));
         Own.remove(instance);
         return;
@@ -524,6 +628,7 @@ pub fn deinitOwn(instance: *runtime.Instance) void {
     // An entry made lazily for it after its own state went (a listener added
     // to a torn-down target).
     if (getInternalFromRegistry(instance)) |internal| {
+        if (listHoldsValues(internal.listeners)) forgetListValues(instance);
         internal.deinit(runtime.allocatorOf(instance));
         removeFromRegistry(instance);
     }
@@ -886,6 +991,7 @@ const SignalRemoval = struct {
         // eventTarget's event listener list": out of the list, it is out of
         // every clone a dispatch walks (dom.event_listener_list `Cursor`).
         const removed = listeners.removeAt(index);
+        if (holdsValue(removed)) listValuesChanged(self.target, listeners, null);
         releaseListener(runtime.allocatorOf(self.target), removed, true);
         listenersChanged(listeners, self.target);
     }
@@ -951,12 +1057,16 @@ fn addAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"type"
     // One read of the list for the append and the owner's flag: nothing
     // between here and the end of step 5 can move it.
     var list = listeners.current();
+    const object = packObject(callback_value.object);
     list.appendAssumeCapacity(.{
         .type = kept_type,
-        .object = packObject(callback_value.object),
+        .object = object,
         .context = callback_value.context,
         .bits = .{ .id = id, .capture = options.capture, .passive = passive, .once = options.once },
     });
+    // The target's wrapper keeps the callback from here, and the list's
+    // hold of it is weak (refcount step 8). Runs no script.
+    if (object != null) listValuesChanged(instance, listeners, object);
     // Appended: its owner hears of it before step 6 can fail.
     if (list.watched()) dom_module.event_listener_changes.changed(instance);
 
@@ -999,6 +1109,8 @@ fn removeAnEventListener(listeners: Listeners, instance: *runtime.Instance, @"ty
     // of every clone a dispatch walks (dom.event_listener_list `Cursor`),
     // which is what its removed flag is for; its callback goes with it.
     const removed = list.removeAt(index);
+    // Its callback leaves the wrapper's set before its hold goes.
+    if (holdsValue(removed)) listValuesChanged(instance, listeners, null);
     releaseListener(runtime.allocatorOf(instance), removed, true);
     if (list.watched()) dom_module.event_listener_changes.changed(instance);
 }
@@ -1056,6 +1168,8 @@ fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type
         var updated = listeners.at(index);
         value.keepIn(&updated);
         const old = listeners.replaceAt(index, updated);
+        // The wrapper keeps the new function, not the old (refcount step 8).
+        if (holdsValue(old) or holdsValue(updated)) listValuesChanged(target, listeners, if (holdsValue(updated)) updated.object else null);
         releaseValue(allocator, old, true);
         return;
     }
@@ -1080,6 +1194,7 @@ fn storeEventHandler(target: *runtime.Instance, listeners: Listeners, event_type
     };
     value.keepIn(&listener);
     listeners.appendAssumeCapacity(listener);
+    if (holdsValue(listener)) listValuesChanged(target, listeners, listener.object);
     listenersChanged(listeners, target);
 }
 
@@ -1094,6 +1209,7 @@ fn deactivateEventHandler(target: *runtime.Instance, listeners: Listeners, event
     // event listener with eventTarget and listener. Set eventHandler's
     // listener to null."
     const removed = listeners.removeAt(index);
+    if (holdsValue(removed)) listValuesChanged(target, listeners, null);
     releaseListener(runtime.allocatorOf(target), removed, true);
     listenersChanged(listeners, target);
 }
@@ -1112,10 +1228,14 @@ pub fn eraseAllEventListenersAndHandlers(target: *runtime.Instance) void {
     // 2, DOM "remove all event listeners" - for each listener, "remove an
     // event listener" (its removed flag set, out of the list): every
     // listener leaves, each out of the list before what it owns is released.
+    var held_values = false;
     while (listeners.len() > 0) {
         const removed = listeners.removeAt(listeners.len() - 1);
+        held_values = held_values or holdsValue(removed);
         releaseListener(allocator, removed, true);
     }
+    // The wrapper keeps none of them any more (refcount step 8).
+    if (held_values) listValuesChanged(target, listeners, null);
     listenersChanged(listeners, target);
 }
 
@@ -1724,7 +1844,16 @@ fn innerInvoke(event: *runtime.Instance, state: *EventState, current_target: *ru
         // is then this call's to release, after the call.
         var expired: ?engine.CallbackInterface = null;
         if (listener.bits.once) expired = detachListener(listeners, current_target, listener.bits.id);
-        defer if (expired) |value| value.release();
+        defer if (expired) |value| {
+            // Its callback leaves the wrapper's set only now, its call over
+            // (refcount step 8): its hold is weak, and until callListener
+            // took one of its own the set was what kept it. A list gone
+            // with its target (a node torn down under the call) keeps
+            // nothing to trace.
+            if (value.object.value == .handle and listeners.current().header != null)
+                listValuesChanged(current_target, listeners, null);
+            value.release();
+        };
 
         // Step 2.11 (passive): set event's in passive listener flag.
         if (listener.bits.passive) state.in_passive_listener_flag = true;

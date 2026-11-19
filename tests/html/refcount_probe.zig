@@ -22,8 +22,8 @@ pub const migrated = struct {
     /// queue, so a never-wrapped detached tree no longer lives to realm end.
     pub const switch_step7 = true;
     /// Step 8: listener and observer callbacks are traced from their
-    /// target's wrapper instead of owned as strong roots.
-    pub const cycle_breakers_step8 = false;
+    /// target's wrapper instead of owned as strong roots (lane rc8).
+    pub const cycle_breakers_step8 = true;
 };
 
 /// Assert `holds`, or - while `landed` is false - that it does not.

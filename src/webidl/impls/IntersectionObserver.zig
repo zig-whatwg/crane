@@ -46,7 +46,13 @@ pub const InternalState = struct {
     allocator: std.mem.Allocator,
 
     /// [[callback]]: the IntersectionObserverCallback value, OWNED -
-    /// released in deinit.
+    /// released in deinit - and held WEAKLY: the observer's wrapper keeps the
+    /// function (`callback_slot`, engine.traceValues; refcount step 8,
+    /// decision D7), so a callback that closes over its observer keeps it no
+    /// longer than the observer's own liveness rule does (`kept_alive`, the
+    /// spec's "remain alive until ... not observing any targets"). Blink
+    /// traces it from the observer (IntersectionObserver::Trace ->
+    /// callback_); strong on an engine with no traced values.
     callback: ?engine.CallbackFunction = null,
 
     /// List of observed targets with their state
@@ -180,6 +186,9 @@ pub fn init(
 }
 
 /// Deinitialize instance
+/// The slot the observer's wrapper keeps its callback in.
+const callback_slot: engine.TracedSlot = .{ .name = "callback" };
+
 pub fn deinit(instance: *runtime.Instance) void {
     leaveObserving(instance);
     const state = instance.getState(State);
@@ -187,6 +196,9 @@ pub fn deinit(instance: *runtime.Instance) void {
         const internal: *InternalState = @ptrCast(@alignCast(internal_ptr));
         if (internal.has_thresholds_array) engine.forgetTracedChild(instance, thresholds_slot);
         internal.has_thresholds_array = false;
+        // An observer freed before its wrapper was made leaves no edge
+        // waiting for one.
+        engine.forgetTracedChild(instance, callback_slot);
         internal.deinit();
         // Return the block itself, not just what it points to. The comment this
         // replaces said the arena manages it; the arena had no way to, so the
@@ -210,8 +222,12 @@ pub fn call_constructor(ctx: runtime.Context, callback: callbacks.IntersectionOb
 
     // Set this's internal [[callback]] slot to callback: the binding hands
     // the converted function over, and the observer keeps it (OWNED) with
-    // its callback context.
-    internal.callback = engine.takeCallbackFunction(@ptrCast(callback));
+    // its callback context - weakly, its wrapper keeping the function
+    // (refcount step 8): until the binding wraps `this`, the edge waits in
+    // the realm's wrapper cache, strong.
+    const taken = engine.takeCallbackFunction(@ptrCast(callback));
+    internal.callback = taken;
+    if (engine.traceValues(instance, &.{taken.function.value}, callback_slot)) engine.holdWeakly(taken.function);
 
     // Parse options
     const opts = if (options.was_passed) options.value else dictionaries.IntersectionObserverInit{};
