@@ -2874,12 +2874,17 @@ pub fn urlValueModified(options: ParseOptions, raw: []const u8, modifiers: resou
     var out: std.ArrayList(u8) = .empty;
     defer out.deinit(options.allocator);
     try out.appendSlice(options.allocator, "url(");
+    const argument_start = out.items.len;
     // Values4 §4.5: keep authored text separate from frozen resolution.
     try values.appendString(raw, &out, options.allocator);
+    const argument_end = out.items.len;
     try modifiers.serialize(&out, options.allocator);
     try out.append(options.allocator, ')');
     var url = values.ResourceUrl.describe(raw, resolved, options.url_resolver != null, options.resource_source, .{ .start = 0, .end = out.items.len });
     url.modifiers = modifiers;
+    // A computed value replaces only the string, keeping the modifiers
+    // (resolved_urls.append).
+    if (!modifiers.isEmpty()) url.argument_range = .{ .start = argument_start, .end = argument_end };
     const shared = try SharedText.createWithResources(options.allocator, out.items, &.{url});
     shared.image_kind = .url;
     return .{ .text = shared };
