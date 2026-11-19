@@ -74,16 +74,20 @@ fn featureless() !void {
     defer map.release();
     var reads: dom.selector_matching.StateReads = .{};
     var matcher = dom.selector_matching.StyleMatcher.initForHost(host, shadow.?, &reads).?;
-    // Regression pins: without namespace resolution the first two already
-    // match. Adding an implicit URI constraint must not take that away.
+    // Under a default namespace only a compound of :host matches the
+    // featureless host: `:is(:host)` carries the implied universal selector
+    // the default namespace stands for, which never matches it. Chrome,
+    // Firefox and Safari all agree (css/selectors/featureless-007.html at
+    // wpt.fyi aligned run 2358bd4835; lane maj1 moved this pin from
+    // `:is(:host)` matching).
     for ([_][]const u8{ ":host", ":is(:host)", "*:host", "div:host", "[id]:host" }, 0..) |text, i| {
         var ast = try rules.parseSelector(a, text, map);
         defer ast.deinit();
-        try std.testing.expectEqual(i < 2, matcher.matchesHost(host, &ast.selectors[0], null));
+        try std.testing.expectEqual(i < 1, matcher.matchesHost(host, &ast.selectors[0], null));
     }
 }
 
-test "an implicit default namespace never excludes an otherwise matching featureless host" {
+test "an implicit default namespace excludes the featureless host from every compound but :host" {
     const Run = struct {
         fn call(result: *?anyerror) void {
             featureless() catch |err| {
