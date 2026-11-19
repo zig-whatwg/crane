@@ -378,6 +378,12 @@ fn keywordMatchesPixels(keyword: []const u8, pixels: []const u8) bool {
     return px == style_values.legacy_size_px[size - 1];
 }
 
+/// Whether `value` is one of `command`'s inline command activated values
+/// (its state is true where that is the effective command value).
+pub fn isActivatedValue(command: Command, value: Value) bool {
+    return isActivated(command, value);
+}
+
 fn isActivated(command: Command, value: Value) bool {
     const v = value orelse return false;
     const activated = command.activatedValues() orelse return false;
@@ -540,10 +546,11 @@ pub fn clearValue(edit: *Edit, element: *Instance, command: Command) anyerror![]
         const word: []const u8 = if (command == .strikethrough) "line-through" else "underline";
         const decoration = try style_values.inlineValue(scratch(edit), element, "text-decoration");
         if (style_values.containsWord(decoration, word)) {
-            if (std.mem.eql(u8, decoration, word)) {
+            const rest = try withoutWord(edit, decoration, word);
+            if (rest.len == 0) {
                 try style_values.removeInline(element, "text-decoration");
             } else {
-                try style_values.setInline(element, "text-decoration", try withoutWord(edit, decoration, word));
+                try style_values.setInline(element, "text-decoration", rest);
                 try style_values.dropEmptyStyleAttribute(element);
             }
             edit.modified = true;
@@ -584,11 +591,18 @@ pub fn clearValue(edit: *Edit, element: *Instance, command: Command) anyerror![]
     return result.items;
 }
 
+/// `value`'s text-decoration line keywords without `word` - its color,
+/// style and thickness go too: all three browsers take line-through out of
+/// `text-decoration: underline line-through blue dotted` as `text-
+/// decoration: underline` (editing/run/strikethrough.html and
+/// underline.html, PPP at wpt.fyi 2358bd4835), where the spec's steps 5-6
+/// keep "underline blue dotted". Golden rule 2, no newer spec.
 fn withoutWord(edit: *Edit, value: []const u8, word: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var words = std.mem.tokenizeAny(u8, value, " \t\n\r\x0c");
     while (words.next()) |w| {
         if (std.ascii.eqlIgnoreCase(w, word)) continue;
+        if (!isLineKeyword(w)) continue;
         if (out.items.len > 0) try out.append(scratch(edit), ' ');
         try out.appendSlice(scratch(edit), w);
     }
@@ -619,11 +633,39 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     // Step 9: "If propagated value is null and is not equal to new value,
     // abort this algorithm."
     if (propagated_value == null and new_value != null) return;
-    // Step 10: pushing down only helps when the value above is the one we
-    // want (or we only want to remove a value).
+    // Step 10: "If the effective command value of command is not loosely
+    // equivalent to new value on the parent of the last member of ancestor
+    // list, and new value is not null, abort this algorithm." The spec's
+    // note says Chrome breaks the ancestor up instead; today all three
+    // browsers do: `<font size=1>foo[bar]baz</font>` + fontSize 4 gives
+    // `<font size=1>foo</font><font size=4>bar</font><font size=1>baz</font>`
+    // where the spec nests a <font size=4> inside, and the WPT data follows
+    // them (editing/run/fontsize.html, fontname.html, forecolor.html: 62
+    // subtests PPP or PFP at wpt.fyi 2358bd4835, Chrome 157 / Firefox 160 /
+    // Safari 27.2). Mechanism: the styled ancestors are split at the node,
+    // the parts beside it keeping the ancestor as it is and the part holding
+    // it losing the value - Blink ApplyStyleCommand::SplitTextElementAtStart
+    // / SplitTextElementAtEnd (apply_style_command.cc), Gecko
+    // HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges
+    // (HTMLEditor.cpp). Golden rule 2, no newer spec. Only where all three
+    // split: fontSize, fontName and foreColor, inline ancestors. For bold,
+    // italic, backColor and hiliteColor Chrome and Safari split too but
+    // Firefox nests as the spec does, and the data keeps the spec (bold.html
+    // "<span style=font-weight:100>foo[bar]baz</span>", backcolor.html
+    // "fo[o<span style=background-color:tan>b]ar</span>baz": FPF), so
+    // splitting there would trade ~46 passing subtests for none - following
+    // the Chrome + Safari majority there needs the user's ruling (OPEN, lane
+    // edit2's report, 2026-11-19); nobody splits a block
+    // (`<p style=font-size:xx-small>foo[bar]baz</p>`). Where
+    // the value above IS the new one the spec's steps below stand (bold.html
+    // "<b id=purple>bar [baz] qoz</b>": the data keeps the spec's result).
     if (new_value != null) {
         const top_parent = (try common.parent(ancestor_list.items[ancestor_list.items.len - 1])) orelse return;
-        if (!areLooselyEquivalent(edit, command, try effectiveValue(edit, top_parent, command), new_value)) return;
+        if (!areLooselyEquivalent(edit, command, try effectiveValue(edit, top_parent, command), new_value)) {
+            if (!splitsLikeTheBrowsers(command)) return;
+            for (ancestor_list.items) |ancestor| if (!common.isInlineNode(ancestor)) return;
+            return try splitDifferingAncestors(edit, node, ancestor_list.items, command, propagated_value);
+        }
     }
     // Step 11: from the top down, clear each ancestor's value and force the
     // propagated value onto its other children.
@@ -633,17 +675,147 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
         var children: std.ArrayList(*Instance) = .empty;
         var child = try common.firstChild(ancestor);
         while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
-        if ((try specifiedValue(edit, ancestor, command)) != null) _ = try clearValue(edit, ancestor, command);
+        // An s or em ancestor that clearing removes gives its other inline
+        // children copies of itself, not the strike, i or span force the
+        // value would make: all three browsers keep `<s>foo[bar]baz</s>` +
+        // strikethrough as `<s>foo</s>bar<s>baz</s>` and `foo<em>b[a]r</em>
+        // baz` + italic as `foo<em>b</em>a<em>r</em>baz`, in CSS mode too
+        // (editing/run/strikethrough.html, italic.html: PPP at wpt.fyi
+        // 2358bd4835). Mechanism: Blink PushDownInlineStyleAroundNode wraps
+        // the children in clones of the elements it pushes down; Gecko
+        // splits the element (SplitAncestorStyledInlineElementsAtRangeEdges).
+        // Golden rule 2, no newer spec. The browsers copy b, i, u, strike and
+        // styled spans the same way, but there the data still expects the
+        // spec's new elements in CSS mode (`<u>foo[bar]baz</u>`, `foo[<b>b]ar
+        // </b>baz`, `<strike>foo[bar]baz</strike>`...: ~30 rows FFF that Crane
+        // passes), so copying them would trade passing subtests - an OPEN
+        // ruling candidate (lane edit2's report, 2026-11-19); outside CSS mode
+        // force the value remakes the same b, i, u or strike anyway.
+        var copy_of: ?*Instance = null;
+        if ((try specifiedValue(edit, ancestor, command)) != null) {
+            // The removed element itself is what each run copies.
+            // Only for its own command: an s styled to underline is cleared
+            // by underline as the spec says (underline.html's `foo<s style=
+            // "text-decoration: underline">b[a]r</s>baz` rows, FFF).
+            const own = (command == .strikethrough and try isNamed(ancestor, "s")) or (command == .italic and try isNamed(ancestor, "em"));
+            if (own and try isSimpleModifiableElement(edit, ancestor)) copy_of = ancestor;
+            _ = try clearValue(edit, ancestor, command);
+        }
+        var run_copy: ?*Instance = null;
         for (children.items) |c| {
-            if (c == node) continue;
+            const wraps = blk: {
+                if (c == node) break :blk false;
+                if (common.isElement(c)) {
+                    const specified = try specifiedValue(edit, c, command);
+                    if (specified != null and !areEquivalent(edit, command, specified, propagated_value)) break :blk false;
+                }
+                if (ancestor_list.items.len > 0 and c == ancestor_list.items[ancestor_list.items.len - 1]) break :blk false;
+                break :blk true;
+            };
+            if (!wraps) {
+                run_copy = null;
+                continue;
+            }
+            const template = copy_of orelse {
+                try forceValue(edit, c, command, propagated_value);
+                continue;
+            };
+            // A block child is not copied around: its contents are forced.
+            if (!try isAllowedChildOfName(c, "span")) {
+                run_copy = null;
+                try forceValue(edit, c, command, propagated_value);
+                continue;
+            }
+            // Consecutive children share one copy.
+            if (run_copy) |copy| {
+                if ((try common.nextSibling(copy)) == c) {
+                    try edit.movePreservingRanges(c, copy, try common.childCount(copy));
+                    continue;
+                }
+            }
+            const c_parent = (try common.parent(c)) orelse continue;
+            const copy = try copyWithoutId(template);
+            try edit.insertBefore(c_parent, copy, c);
+            try edit.movePreservingRanges(c, copy, 0);
+            run_copy = copy;
+        }
+    }
+}
+
+/// The commands whose differing ancestors all three browsers split where
+/// the spec's push down values step 10 gives up (see pushDownValues).
+fn splitsLikeTheBrowsers(command: Command) bool {
+    return switch (command) {
+        .font_size, .font_name, .fore_color => true,
+        else => false,
+    };
+}
+
+/// The browsers' push down where the spec's step 10 gives up (see
+/// pushDownValues). From the topmost of `ancestors` (node's parent first,
+/// the topmost last) down: an ancestor that specifies a value for `command`
+/// is split around the child that leads to `node` - the children before it
+/// go into a copy of the ancestor placed before it, those after it into a
+/// copy placed after it, both keeping everything the ancestor carries - and
+/// then has its value cleared (step 11.5), which removes a simple
+/// modifiable element altogether; an ancestor that specifies none has the
+/// propagated value forced onto its other children, as step 11.6 does. A
+/// copy takes no id: the original keeps it (two elements must not share
+/// one; Blink's PushDownInlineStyleAroundNode drops it from the copies the
+/// same way).
+fn splitDifferingAncestors(edit: *Edit, node: *Instance, ancestors: []const *Instance, command: Command, propagated_in: Value) anyerror!void {
+    var propagated_value = propagated_in;
+    var index = ancestors.len;
+    while (index > 0) {
+        index -= 1;
+        const ancestor = ancestors[index];
+        const path_child = if (index == 0) node else ancestors[index - 1];
+        if (try specifiedValue(edit, ancestor, command)) |specified| {
+            propagated_value = specified;
+            try splitAround(edit, ancestor, path_child);
+            _ = try clearValue(edit, ancestor, command);
+            continue;
+        }
+        var children: std.ArrayList(*Instance) = .empty;
+        var child = try common.firstChild(ancestor);
+        while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
+        for (children.items) |c| {
+            if (c == path_child) continue;
             if (common.isElement(c)) {
                 const specified = try specifiedValue(edit, c, command);
                 if (specified != null and !areEquivalent(edit, command, specified, propagated_value)) continue;
             }
-            if (ancestor_list.items.len > 0 and c == ancestor_list.items[ancestor_list.items.len - 1]) continue;
             try forceValue(edit, c, command, propagated_value);
         }
     }
+}
+
+/// Split `ancestor` so that it holds only `child`: its children before
+/// `child` move, preserving ranges, into a shallow copy of it inserted
+/// before it, and those after into a copy inserted after it.
+fn splitAround(edit: *Edit, ancestor: *Instance, child: *Instance) !void {
+    const ancestor_parent = (try common.parent(ancestor)) orelse return;
+    if ((try common.previousSibling(child)) != null) {
+        const before = try copyWithoutId(ancestor);
+        try edit.insertBefore(ancestor_parent, before, ancestor);
+        while (try common.firstChild(ancestor)) |first| {
+            if (first == child) break;
+            try edit.movePreservingRanges(first, before, try common.childCount(before));
+        }
+    }
+    if ((try common.nextSibling(child)) != null) {
+        const after = try copyWithoutId(ancestor);
+        try edit.insertBefore(ancestor_parent, after, try common.nextSibling(ancestor));
+        while (try common.nextSibling(child)) |next| {
+            try edit.movePreservingRanges(next, after, try common.childCount(after));
+        }
+    }
+}
+
+fn copyWithoutId(element: *Instance) !*Instance {
+    const copy = try common.cloneNode(element, false);
+    if (try common.hasAttribute(copy, "id")) try common.removeAttribute(copy, "id");
+    return copy;
 }
 
 /// Force-the-value's sibling criteria (step 4.3): a simple modifiable
@@ -716,9 +888,20 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     }
     // Step 8.
     if (areLooselyEquivalent(edit, command, try effectiveValue(edit, node, command), new_value)) return;
+    const css_styling = try overrides.cssStylingFlag(edit);
+    // Before steps 9-20 make a new parent, a <font> or style-only <span>
+    // that wraps exactly this node takes the value itself, as all three
+    // browsers do: `<font color=#ff0000>[abc]</font>` + fontSize 7 gives
+    // `<font color=#ff0000 size=7>abc</font>`, hiliteColor on `<span
+    // style=font-size:xx-large>[foo]</span>` adds background-color to that
+    // span (editing/run/fontsize.html, fontname.html, forecolor.html,
+    // hilitecolor.html: PPP at wpt.fyi 2358bd4835). Mechanism: Blink
+    // ApplyStyleCommand::ApplyInlineStyleChange sets the font attributes on
+    // the run's font element and the CSS on its style container instead of
+    // surrounding the run. Golden rule 2, no newer spec.
+    if (try valueOntoWrapper(edit, node, command, new_value, css_styling)) return;
     // Steps 9-15: the new parent.
     var new_parent: ?*Instance = null;
-    const css_styling = try overrides.cssStylingFlag(edit);
     if (!css_styling) {
         switch (command) {
             .bold => if (std.mem.eql(u8, new_value, "bold")) {
@@ -727,8 +910,16 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
             .italic => if (std.mem.eql(u8, new_value, "italic")) {
                 new_parent = try edit.createElement("i");
             },
+            // The spec says an s; Chrome, Firefox and Safari all make a
+            // strike (Blink ApplyStyleCommand::ApplyInlineStyleChange
+            // surrounds with html_names::kStrikeTag; Gecko
+            // HTMLEditor::SetInlinePropertiesAsSubAction maps
+            // strikethrough to nsGkAtoms::strike), and the WPT data expects
+            // it (editing/run/strikethrough.html with styleWithCSS false,
+            // 37 subtests PPP at wpt.fyi 2358bd4835). Golden rule 2, no
+            // newer spec.
             .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) {
-                new_parent = try edit.createElement("s");
+                new_parent = try edit.createElement(strike_element);
             },
             .underline => if (std.mem.eql(u8, new_value, "underline")) {
                 new_parent = try edit.createElement("u");
@@ -808,6 +999,89 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     }
 }
 
+/// Force the value's browser step before its new parent (see forceValue):
+/// when `node` is the only child of an editable <font> - for the commands
+/// that would make a <font> - or of a <font> or a <span> whose one attribute
+/// is style - for those that would make a span with a CSS property - set the
+/// value on that element instead and report true.
+fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: []const u8, css_styling: bool) !bool {
+    const wrapper = (try common.parent(node)) orelse return false;
+    if (!common.isElement(wrapper) or !try common.isEditable(wrapper)) return false;
+    if ((try common.firstChild(wrapper)) != node or (try common.lastChild(wrapper)) != node) return false;
+    if (css_styling and (command == .strikethrough or command == .underline)) return try decorationOntoWrapper(edit, wrapper, command);
+    const name = newParentName(command, new_value, css_styling, scratch(edit));
+    if (std.mem.eql(u8, name, "font")) {
+        if (!try isNamed(wrapper, "font")) return false;
+        switch (command) {
+            .fore_color => {
+                var buffer: [7]u8 = undefined;
+                const hex = style_values.simpleColor(scratch(edit), new_value, &buffer) orelse return false;
+                try common.setAttribute(wrapper, "color", hex);
+            },
+            .font_name => try common.setAttribute(wrapper, "face", new_value),
+            .font_size => {
+                const size = style_values.legacySizeOfKeyword(new_value) orelse return false;
+                var digit = [1]u8{'0' + size};
+                try common.setAttribute(wrapper, "size", &digit);
+            },
+            else => return false,
+        }
+        edit.modified = true;
+        return true;
+    }
+    if (!std.mem.eql(u8, name, "span")) return false;
+    const property = command.relevantProperty() orelse return false;
+    const style_only_span = (try isNamed(wrapper, "span")) and (try attributeCount(wrapper)) == 1 and try common.hasAttribute(wrapper, "style");
+    // A background goes on a <font> only when the font was there before:
+    // typed text gets its font and, inside it, a background span (Blink's
+    // typing style makes both around the text; multitest.html fontName,
+    // foreColor, fontSize, backColor, insertText - PPP), so a font this
+    // command chain made keeps the span; hiliteColor on an author's
+    // `<font size=6>[foo]</font>` would put the style on that font, which
+    // this cannot tell apart, and is left to a new span.
+    if (!style_only_span and (command == .back_color or command == .hilite_color)) return false;
+    if (!style_only_span and !try isNamed(wrapper, "font")) return false;
+    try style_values.setInline(wrapper, property, new_value);
+    edit.modified = true;
+    return true;
+}
+
+fn isLineKeyword(word: []const u8) bool {
+    for ([_][]const u8{ "underline", "overline", "line-through", "blink" }) |line| {
+        if (std.ascii.eqlIgnoreCase(word, line)) return true;
+    }
+    return false;
+}
+
+/// Strikethrough and underline in CSS mode on a node that a style-only
+/// span, an ins or a del wraps exactly: that element's text-decoration
+/// takes the new line beside the ones it already draws, as one declaration
+/// (`foo<span style="text-decoration: underline">[bar]</span>baz` ->
+/// `<span style="text-decoration:underline line-through">`, `foo<ins>[bar]
+/// </ins>baz` -> `<ins style="text-decoration:underline line-through">`;
+/// strikethrough.html and underline.html: Firefox 160 and Safari 27.2, and
+/// all three where the span also sets a color and style, which go:
+/// wpt.fyi 2358bd4835). Blink's ApplyInlineStyleChange sets it on the
+/// style container the same way. Golden rule 2: the majority.
+fn decorationOntoWrapper(edit: *Edit, wrapper: *Instance, command: Command) !bool {
+    const style_only_span = (try isNamed(wrapper, "span")) and (try attributeCount(wrapper)) == 1 and try common.hasAttribute(wrapper, "style");
+    if (!style_only_span and !try isNamedIn(wrapper, &.{ "ins", "del" })) return false;
+    var out: std.ArrayList(u8) = .empty;
+    for ([_][]const u8{ "underline", "overline", "line-through" }) |line| {
+        const wanted = std.mem.eql(u8, line, if (command == .strikethrough) "line-through" else "underline");
+        if (!wanted and !try style_values.textDecorationContains(scratch(edit), wrapper, line)) continue;
+        if (out.items.len > 0) try out.append(scratch(edit), ' ');
+        try out.appendSlice(scratch(edit), line);
+    }
+    try style_values.setInline(wrapper, "text-decoration", out.items);
+    edit.modified = true;
+    return true;
+}
+
+/// The element strikethrough makes outside CSS mode (force the value step
+/// 10's "s", as the browsers make it: see forceValue).
+const strike_element = "strike";
+
 /// The local name force the value's steps 9-15 give its new parent for
 /// `command`, `new_value` and the CSS styling flag.
 fn newParentName(command: Command, new_value: []const u8, css_styling: bool, allocator: Allocator) []const u8 {
@@ -830,7 +1104,7 @@ fn newParentName(command: Command, new_value: []const u8, css_styling: bool, all
     return switch (command) {
         .bold => if (std.mem.eql(u8, new_value, "bold")) "b" else "span",
         .italic => if (std.mem.eql(u8, new_value, "italic")) "i" else "span",
-        .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) "s" else "span",
+        .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) strike_element else "span",
         .underline => if (std.mem.eql(u8, new_value, "underline")) "u" else "span",
         .fore_color => blk: {
             var buffer: [7]u8 = undefined;
@@ -917,6 +1191,8 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
     // editable node effectively contained.
     const bounds = (try activeBounds(edit)) orelse return;
     const nodes = try effectivelyContainedNodes(edit, bounds, .editable);
+    const inner_start = try common.lastEquivalentPoint(bounds.start);
+    const inner_end = try common.firstEquivalentPoint(bounds.end);
     for (nodes) |node| {
         try pushDownValues(edit, node, command, new_value);
         // An element the whole range lies inside (an inclusive ancestor of
@@ -927,7 +1203,16 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
         // </i>ghi" and "abc<i>{def}</i>ghi" with styleWithCSS false:
         // Chrome 156, Firefox 158 and Safari 27 pass, wpt.fyi f4febe305a /
         // 5af3c135c9 / 1ec6aacb4e). Golden rule 2, no newer spec.
-        if (common.isElement(node) and common.isInclusiveDescendantOf(bounds.start.node, node) and common.isInclusiveDescendantOf(bounds.end.node, node)) continue;
+        // With one end inside the element, the other is read at its
+        // innermost equivalent point (`abc<i>[def</i>]ghi` and `abc[<i>def]
+        // </i>ghi` lie inside the i: bold gives `abc<i><b>def</b></i>ghi` in
+        // all three, bold.html ?3001-last, PPP at wpt.fyi 2358bd4835 -
+        // Blink reads the selection's visible positions). A range with both
+        // ends outside (`abc[<i>def</i>]ghi`) keeps the spec's wrapping: the
+        // data expects `<b><i>` there (Firefox; Chrome and Safari fail).
+        if (common.isElement(node) and
+            (common.isInclusiveDescendantOf(bounds.start.node, node) or common.isInclusiveDescendantOf(bounds.end.node, node)) and
+            common.isInclusiveDescendantOf(inner_start.node, node) and common.isInclusiveDescendantOf(inner_end.node, node)) continue;
         if (try isAllowedChildOfName(node, "span")) try forceValue(edit, node, command, new_value);
     }
 }
@@ -1247,10 +1532,45 @@ fn unlink(edit: *Edit) !bool {
             try hyperlinks.append(scratch(edit), n);
         }
     }
-    // Step 2: clear the value of each.
-    for (hyperlinks.items) |link| _ = try clearValue(edit, link, .unlink);
+    // Step 2: clear the value of each - except that a link whose other
+    // attributes are only class and style goes altogether, what its style
+    // attribute gave its contents put back on them: Chrome 157 and Safari
+    // 27.2 unlink `foo<a href=... class=bold>[bar]</a>baz` to `foobarbaz`
+    // and `foo<a href=... style=font-weight:bold>[bar]</a>baz` to `foo<b>bar
+    // </b>baz` (a span in CSS mode: all three), where the spec keeps the a
+    // without its href (editing/run/unlink.html: 8 subtests PFP or PPP at
+    // wpt.fyi 2358bd4835). Blink's unlink is an ApplyStyleCommand that
+    // removes the anchor and pushes its inline style down onto its
+    // children (ApplyInlineStyleToPushDown). Golden rule 2, the majority. A
+    // link with an id or a name keeps the spec's result: the data expects
+    // `<a id=foo>` there and no browser passes those rows (FFF/FPF), so
+    // following the browsers would trade passing subtests.
+    for (hyperlinks.items) |link| {
+        if (try isRemovableLink(link)) {
+            var children: std.ArrayList(*Instance) = .empty;
+            var child = try common.firstChild(link);
+            while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
+            const values = try overrides.recordTheValues(edit, children.items);
+            try split_parent.removePreservingDescendants(edit, link);
+            try overrides.restoreTheValues(edit, values);
+            continue;
+        }
+        _ = try clearValue(edit, link, .unlink);
+    }
     // Step 3.
     return true;
+}
+
+/// Whether unlink removes `link` whole (see unlink): an a whose attributes
+/// besides href are only class and style, and at least one of them.
+fn isRemovableLink(link: *Instance) !bool {
+    var others = try attributeCount(link);
+    others -= 1; // href
+    if (others == 0) return false;
+    for ([_][]const u8{ "class", "style" }) |name| {
+        if (try common.hasAttribute(link, name)) others -= 1;
+    }
+    return others == 0;
 }
 
 fn rootOf(node: *Instance) *Instance {
