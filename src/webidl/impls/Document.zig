@@ -293,7 +293,7 @@ pub fn installHooks() void {
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
     // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .get_start = &sequentialStart, .set_start = &setSequentialStart });
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .start_range = &sequentialStartRange, .select_start = &selectSequentialStart });
     // HTML removing steps step 2: a removed focused area becomes the
     // viewport at the removal (html.focus.removingSteps).
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
@@ -640,27 +640,38 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
 }
 
 /// dom.focused_area: `document`'s sequential focus navigation starting point
-/// kept apart from its focused area, or null.
-fn sequentialStart(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
+/// (HTML 6.6.5) - the live Range `selectSequentialStart` keeps - or null.
+fn sequentialStartRange(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;
-    const link = rare.sequential_start orelse return null;
-    return .{ .element = link.instance, .generation = link.generation };
+    return rare.sequential_start.get();
 }
 
-/// dom.focused_area: keep (null: drop) `document`'s starting point - rare
-/// data, which few Documents ever need: every change of the focused area
-/// drops it, and dropping none where none was kept makes nothing.
-fn setSequentialStart(document: *runtime.Instance, start: ?@import("dom").focused_area.Designation) void {
+/// dom.focused_area: `element` was focused, and is `document`'s sequential
+/// focus navigation starting point from now on: the document's one live
+/// Range for it, made on the first focus, selects the element's contents -
+/// so the DOM's removal steps move it to where the element was when the
+/// element, or an ancestor, is removed (Blink: Document::
+/// SetSequentialFocusNavigationStartingPoint, which keeps a Range and calls
+/// selectNodeContents). Rare data: only a document something was focused
+/// in keeps one. It is the document's for its whole life (`KeptChild`): its
+/// wrapper keeps the range's, and the document's teardown releases it.
+fn selectSequentialStart(document: *runtime.Instance, element: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    if (start == null) {
-        const rare = internal.rareData() orelse return;
-        rare.sequential_start = null;
-        return;
-    }
+    // Only a document with a browsing context navigates sequentially.
+    if (internal.destroyed or internal.default_view == null) return;
+    // An element of another document is no point in this one (Blink: the
+    // starting point is cleared for it).
+    if ((interfaces.Node.get_ownerDocument(element) catch null) != document) return;
     // Out of memory no starting point is kept, as for a document with none.
     const rare = internal.ensureRareData(document) catch return;
-    rare.sequential_start = .{ .instance = start.?.element, .generation = start.?.generation };
+    const range = rare.sequential_start.get() orelse blk: {
+        const made = interfaces.Document.call_createRange(document) catch return;
+        rare.sequential_start.made(made);
+        break :blk made;
+    };
+    rare.sequential_start.handOut(document, range, .{ .name = "sequentialFocusStart" });
+    interfaces.Range.call_selectNodeContents(range, element) catch {};
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.

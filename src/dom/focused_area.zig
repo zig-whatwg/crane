@@ -47,10 +47,13 @@ pub const Implementation = struct {
     get: *const fn (document: *runtime.Instance) ?Designation,
     /// Designate an element (null: the viewport) as `document`'s focused area.
     set: *const fn (document: *runtime.Instance, designation: ?Designation) void,
-    /// `document`'s sequential focus navigation starting point (HTML 6.6.5),
-    /// when one is kept apart from the focused area; and setting it.
-    get_start: ?*const fn (document: *runtime.Instance) ?Designation = null,
-    set_start: ?*const fn (document: *runtime.Instance, start: ?Designation) void = null,
+    /// `document`'s sequential focus navigation starting point (HTML 6.6.5):
+    /// the live Range the document keeps for it (`selectStart`), or null
+    /// before any element of the document was focused.
+    start_range: ?*const fn (document: *runtime.Instance) ?*runtime.Instance = null,
+    /// Make the starting point select the contents of `element`, an element
+    /// of `document`: the document's one Range for it, made on first use.
+    select_start: ?*const fn (document: *runtime.Instance, element: *runtime.Instance) void = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -72,33 +75,33 @@ pub fn get(document: *runtime.Instance) ?Designation {
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.set(document, if (element) |e| .{ .element = e, .generation = runtime.SlabAllocator.generationOf(e) } else null);
-    // A new focused area is the starting point from here on: one kept apart
-    // (`setStartPoint`) is dropped.
-    if (impl.set_start) |set_start| set_start(document, null);
+    // HTML 6.6.5: "the user agent may set" the sequential focus navigation
+    // starting point. A newly focused element is it from here on, and the
+    // viewport taking the focus leaves it where it was - so Tab after the
+    // focused element is blurred, disabled or removed continues from where
+    // it was. Chrome 157 and Firefox 160 pass every one of those cases of
+    // html/interaction/focus/sequential-focus-navigation-starting-
+    // point.tentative.html (wpt.fyi 4786307730243584, 4877168468033536;
+    // Safari 27.2 fails the removed and blurred ones). Blink keeps the point
+    // as a live Range on the Document, selecting the focused element's
+    // contents (Document::SetSequentialFocusNavigationStartingPoint, called
+    // from SetFocusedElement), which the DOM's removal steps move to where a
+    // removed element was; `selectStart` is that range.
+    if (element) |e| if (impl.select_start) |select_start| select_start(document, e);
     // The focus fixup runs at the next rendering opportunity: a focused
     // element asks for one, and its document is watched
     // (dom.update_the_rendering).
     @import("update_the_rendering.zig").focusedAreaChanged(document, element);
 }
 
-/// HTML 6.6.5 "sequential focus navigation starting point", kept apart from
-/// the focused area: `element` - the element the focus fixup just took the
-/// focus from, still in the tree - so that the next sequential navigation
-/// continues from where it was ("the user agent may set it"; Blink keeps its
-/// starting point where the focused element was, Document::
-/// SetSequentialFocusNavigationStartingPoint; Gecko continues from the
-/// element too). Any later change of the focused area drops it (`set`).
-pub fn setStartPoint(document: *runtime.Instance, element: *runtime.Instance) void {
-    const impl = implementation.get() orelse return;
-    const set_start = impl.set_start orelse return;
-    set_start(document, .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element) });
-}
-
-/// The starting point `setStartPoint` kept, or null.
-pub fn startPoint(document: *runtime.Instance) ?Designation {
+/// `document`'s sequential focus navigation starting point (HTML 6.6.5): its
+/// live Range (`set`), or null when it has none. Read by html.focus's
+/// sequential navigation, which takes the point from the range's boundary
+/// points.
+pub fn startRange(document: *runtime.Instance) ?*runtime.Instance {
     const impl = implementation.get() orelse return null;
-    const get_start = impl.get_start orelse return null;
-    return get_start(document);
+    const start_range = impl.start_range orelse return null;
+    return start_range(document);
 }
 
 test "without an installed implementation a document's focused area is its viewport" {

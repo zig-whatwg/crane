@@ -330,21 +330,18 @@ pub fn focusedAreaOf(document: *Instance) ?*Instance {
     if (designatedAreaOf(document)) |element| {
         if (isFocusableArea(element)) return element;
         const generation = runtime.SlabAllocator.generationOf(document);
-        const element_generation = runtime.SlabAllocator.generationOf(element);
         focusUpdateSteps(focusChain(element), focusChain(document), document);
         // A blur listener can navigate or choose a new focus target. The
         // existing update steps preserve that target; do not clear it here.
         if (runtime.SlabAllocator.generationOf(document) != generation) return null;
         // The element that lost the focus stays the sequential focus
-        // navigation starting point (HTML 6.6.5), unless a listener moved
-        // the focus on: Tab after a focused button is disabled goes to the
-        // control after it (html/interaction/focus/sequential-focus-
+        // navigation starting point (HTML 6.6.5): the document's range still
+        // selects it (dom.focused_area.set keeps the point when the viewport
+        // takes the focus), so Tab after a focused button is disabled goes to
+        // the control after it (html/interaction/focus/sequential-focus-
         // navigation-after-disabled.html, selection/selection-focused-element-
         // becomes-nonfocusable.html's disabled case: Chrome 157, Firefox 160
         // and Safari 27.2 pass the first, Chrome and Firefox the second).
-        if (designatedAreaOf(document) == null and runtime.SlabAllocator.generationOf(element) == element_generation) {
-            dom.focused_area.setStartPoint(document, element);
-        }
         if (windowOf(document)) |window| dom.navigation_api.setFocusChanged(window, false);
         return designatedAreaOf(document);
     }
@@ -1073,15 +1070,122 @@ fn sequentialSearch(document: *Instance, starting_point: ?*Instance, direction: 
     return candidate;
 }
 
+/// The element sequential navigation starts from for `document`'s sequential
+/// focus navigation starting point (HTML 6.6.5) - the live range
+/// dom.focused_area keeps, selecting the contents of the element last
+/// focused - or null when it has none in `document`'s tree. HTML leaves how
+/// the point is kept to the user agent; this reads it as Blink's
+/// Document::SequentialFocusNavigationStartingPoint does (the algorithm, in
+/// Crane's own words, over the DOM tree where Blink walks the flat tree for a
+/// removed point):
+/// - the range still selects an element's contents: that element;
+/// - it is collapsed in an element with no children (the element had none):
+///   that element;
+/// - otherwise what it selected was removed, and the range sits where it
+///   was: the node after that point decides - forward, the last element
+///   before it in tree order (else the first at or after it); backward, the
+///   first element at or after it. A shadow root there stands for its host.
+fn keptStartingPoint(document: *Instance, direction: Direction) ?*Instance {
+    const range = dom.focused_area.startRange(document) orelse return null;
+    const points = dom.range_boundaries.of(range) orelse return null;
+    const container = points.start_container;
+    // "Inside starting point": in the document's tree.
+    if (!(interfaces.Node.get_isConnected(container) catch false) or nodeDocument(container) != document) return null;
+    const container_base = dom.instance_bridge.getNodeBase(container) orelse return null;
+    const collapsed = points.start_container == points.end_container and points.start_offset == points.end_offset;
+    if (!collapsed) {
+        if (container_base.node_type == ELEMENT_NODE) return container;
+        const neighbour = if (direction == .forward) elementBefore(container_base) else elementFrom(nextInDocument(container_base));
+        return neighbour orelse parentElementOf(container_base);
+    }
+    if (container_base.node_type == ELEMENT_NODE and container_base.firstChild() == null and points.start_offset == 0) return container;
+    // The node at the point: a text container itself, the child at the
+    // offset, the container at offset 0, else the node after the container's
+    // subtree.
+    const at: ?*dom.NodeBase = if (container_base.node_type == TEXT_NODE or container_base.node_type == COMMENT_NODE or container_base.node_type == PROCESSING_INSTRUCTION_NODE or container_base.node_type == CDATA_SECTION_NODE)
+        container_base
+    else if (container_base.childAt(points.start_offset)) |child|
+        child
+    else if (points.start_offset == 0)
+        container_base
+    else
+        nextSkippingChildren(container_base);
+    const node = at orelse return null;
+    if (node.node_type == DOCUMENT_FRAGMENT_NODE) {
+        const root = instanceOf(node) orelse return null;
+        if (root.stateAs(interfaces.ShadowRoot.State) != null) return interfaces.ShadowRoot.get_host(root) catch null;
+    }
+    if (direction == .forward) {
+        if (elementBefore(node)) |before| return before;
+    }
+    return elementFrom(node);
+}
+
+const ELEMENT_NODE: u8 = 1;
+const TEXT_NODE: u8 = 3;
+const CDATA_SECTION_NODE: u8 = 4;
+const PROCESSING_INSTRUCTION_NODE: u8 = 7;
+const COMMENT_NODE: u8 = 8;
+const DOCUMENT_FRAGMENT_NODE: u8 = 11;
+
+fn instanceOf(base: *dom.NodeBase) ?*Instance {
+    return @ptrCast(@alignCast(dom.instance_bridge.getInstance(base) orelse return null));
+}
+
+/// The node after `node` in tree order.
+fn nextInDocument(node: *dom.NodeBase) ?*dom.NodeBase {
+    if (node.firstChild()) |child| return child;
+    return nextSkippingChildren(node);
+}
+
+/// The node after `node`'s subtree in tree order.
+fn nextSkippingChildren(node: *dom.NodeBase) ?*dom.NodeBase {
+    var at: ?*dom.NodeBase = node;
+    while (at) |current| : (at = current.parent_node) {
+        if (current.next_sibling) |sibling| return sibling;
+    }
+    return null;
+}
+
+/// The node before `node` in tree order.
+fn previousInDocument(node: *dom.NodeBase) ?*dom.NodeBase {
+    var previous = node.previousSibling() orelse return node.parent_node;
+    while (previous.lastChild()) |child| previous = child;
+    return previous;
+}
+
+/// The last element before `node` in tree order.
+fn elementBefore(node: *dom.NodeBase) ?*Instance {
+    var at = previousInDocument(node);
+    while (at) |current| : (at = previousInDocument(current)) {
+        if (current.node_type == ELEMENT_NODE) return instanceOf(current);
+    }
+    return null;
+}
+
+/// The first element at or after `node` in tree order.
+fn elementFrom(node: ?*dom.NodeBase) ?*Instance {
+    var at = node;
+    while (at) |current| : (at = nextInDocument(current)) {
+        if (current.node_type == ELEMENT_NODE) return instanceOf(current);
+    }
+    return null;
+}
+
+/// `node`'s parent element, or its shadow root's host.
+fn parentElementOf(node: *dom.NodeBase) ?*Instance {
+    const parent = node.parent_node orelse return null;
+    if (parent.node_type == ELEMENT_NODE) return instanceOf(parent);
+    const root = instanceOf(parent) orelse return null;
+    if (root.stateAs(interfaces.ShadowRoot.State) != null) return interfaces.ShadowRoot.get_host(root) catch null;
+    return null;
+}
+
 /// HTML sequential focus navigation, when the user requests the next
 /// (forward) or previous (backward) control from the currently focused area
 /// of the top-level traversable `document` is in.
 pub fn navigateSequentially(document: *Instance, direction: Direction) void {
-    // Step 1: the starting point.
-    // A removal-stable starting point needs a document-owned live Range;
-    // tracked separately as "SEQUENTIAL FOCUS NAVIGATION STARTING POINT"
-    // in tmp/plans/feature-queue.md (row 129 Q7). Until then the focused
-    // area, or the document start, supplies the point without new ownership.
+    // Step 1: the starting point - the focused area, or the document.
     var starting_point = currentlyFocusedArea(document);
     if (starting_point.stateAs(interfaces.HTMLOptionElement.State) != null) {
         const picker = @import("forms/select_picker.zig");
@@ -1093,15 +1197,10 @@ pub fn navigateSequentially(document: *Instance, direction: Direction) void {
     }
     // Step 2: "If there is a sequential focus navigation starting point
     // defined and it is inside starting point, then let starting point be the
-    // sequential focus navigation starting point instead" - the element the
-    // focus fixup took the focus from, while the focused area is the
-    // viewport of the document it is still in.
+    // sequential focus navigation starting point instead" - while the focused
+    // area is the viewport of the document the point is in.
     if (isDocument(starting_point)) {
-        if (dom.focused_area.startPoint(starting_point)) |kept| {
-            if (kept.isLive() and (interfaces.Node.get_isConnected(kept.element) catch false) and nodeDocument(kept.element) == starting_point) {
-                starting_point = kept.element;
-            }
-        }
+        if (keptStartingPoint(starting_point, direction)) |kept| starting_point = kept;
     }
     var depth: usize = 0;
     while (depth < 64) : (depth += 1) {

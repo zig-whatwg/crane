@@ -722,6 +722,9 @@ pub const InternalState = struct {
         // The rare data: what few Documents set (dom.document_rare_data).
         if (self.rare) |rare| {
             self.rare = null;
+            // The sequential focus navigation starting point's Range, which
+            // the document handed out as its own (see `KeptChild`).
+            if (rare.sequential_start.get()) |range| rare.sequential_start.releaseOwned(range);
             rare.destroy(self.allocator);
         }
 
