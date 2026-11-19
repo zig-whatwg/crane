@@ -310,6 +310,9 @@ pub fn installHooks() void {
         .top_level_site = &settingsTopLevelSite,
         .top_level_origin = &settingsTopLevelOrigin,
         .storage_key = &settingsStorageKey,
+        // HTML 8.6: a worker's timers are the host's that runs it.
+        .set_timer = &@import("html").worker_host.setTimerOf,
+        .clear_timer = &@import("html").worker_host.clearTimerOf,
     });
 }
 
