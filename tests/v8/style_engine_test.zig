@@ -309,6 +309,11 @@ const ArraySteps = struct {
 };
 
 test "an observable array of platform objects: values converted, the owner's steps run, its backing list read and replaced" {
+    // The counts start at zero in every run: verify mode runs a test ten
+    // times in one process.
+    ArraySteps.sets = 0;
+    ArraySteps.deletes = 0;
+    ArraySteps.last_changed = 0;
     dom.style.ua_sheet.build();
     const page = try Page.open();
     defer page.close();
