@@ -4014,8 +4014,17 @@ pub fn V8Interface(comptime Interface: type) type {
         fn PropertyGetterCallback(comptime iface_name: []const u8, comptime getter_name: []const u8) type {
             return struct {
                 pub fn callback(info: *const v8.FunctionCallbackInfo) callconv(.c) void {
+                    // WebIDL 3.7.6 "attribute getter": a promise-typed
+                    // attribute's exception - its receiver check's included -
+                    // rejects the promise it returns. Chosen here, at
+                    // comptime, so no other getter pays a branch.
+                    if (comptime returns_promise) return binding_plumbing.promiseAttributeGetter(info, &plumbing);
                     binding_plumbing.attributeGetter(info, &plumbing);
                 }
+
+                /// The attribute's type is a promise: codegen lists its getter
+                /// in `promise_returning`.
+                const returns_promise = returnsPromise(Interface, getter_name);
 
                 const zig_getter = @field(Interface, getter_name);
                 const fn_info = @typeInfo(@TypeOf(zig_getter)).@"fn";
