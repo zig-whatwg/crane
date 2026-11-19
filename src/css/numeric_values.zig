@@ -60,6 +60,8 @@ pub const Number = union(enum) {
         var n = context.resolve(self.literal);
         if (std.math.isNan(n.value)) n.value = 0;
         n.value = std.math.clamp(n.value, -std.math.floatMax(f64), std.math.floatMax(f64));
+        // Values 4 §5: an angle past the range clamps to a multiple of 360deg.
+        n = math.clampAngle(n);
         if (n.value == 0) n.value = 0;
         return .{ .literal = n };
     }
