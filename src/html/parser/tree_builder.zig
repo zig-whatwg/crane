@@ -2152,8 +2152,13 @@ pub const TreeBuilder = struct {
 
         // "Insert an element at the adjusted insertion location" with it and
         // (the Document, null): an html element the parser sanitizer
-        // configuration removes is not inserted (it is never replaceable).
-        if (try self.sanitizerInserts(.{ .parent = self.document }, html)) {
+        // configuration removes is not inserted (it is never replaceable),
+        // and is this builder's on the detached list (`insertElementAt`).
+        const inserts = self.sanitizerInserts(.{ .parent = self.document }, html) catch |err| {
+            self.keepDetached(html);
+            return err;
+        };
+        if (inserts) {
             self.document.appendChild(html);
 
             // Notify DOM adapter of parent-child relationship
@@ -2701,8 +2706,30 @@ pub const TreeBuilder = struct {
     /// "Insert an element at the adjusted insertion location" for an
     /// element just created from its token (`alreadySanitized` false): the
     /// sanitizer's step 3, then the insertion.
+    ///
+    /// An element step 3 keeps out of the tree - or that it could not decide
+    /// on (out of memory recording its redirect) - is this builder's from
+    /// then on, on the detached list, as an element `insertNodeAt` refuses
+    /// and one the adoption agency removes are: the stack of open elements,
+    /// the head and form element pointers and the list of active formatting
+    /// elements still name it, and what is inserted into it (a removed
+    /// element's descendants) hangs from it, so it lives as long as the
+    /// builder's structures may, and `deinit` frees it with the rest. The
+    /// elements `createElementForToken` makes are on that list from their
+    /// creation; the ones the parser makes itself (the implied html, head,
+    /// body, p, tbody, tr and colgroup, and a foreign element) are not until
+    /// they are inserted or refused here - 289 of them leaked in lane maj2's
+    /// bug-finding sweep (sanitizer-api) before this. Blink does the same
+    /// with its own owner: HTMLConstructionSite::AttachOrFosterParent pushes
+    /// the element's HTMLStackItem before Attach asks ShouldInsertChild,
+    /// and a refused element is never attached - the stack item keeps it
+    /// (html_construction_site.cc, Chromium main, BSD; read, not copied).
     fn insertElementAt(self: *TreeBuilder, location: InsertionLocation, element: *TreeNode) !void {
-        if (!try self.sanitizerInserts(location, element)) return;
+        const inserts = self.sanitizerInserts(location, element) catch |err| {
+            self.keepDetached(element);
+            return err;
+        };
+        if (!inserts) return self.keepDetached(element);
         self.insertNodeAt(location, element);
     }
 
