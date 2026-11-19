@@ -10,9 +10,9 @@
 The probe page runs the cases with the WPT setup (the [ ] { } markers and data-start/data-end) and writes innerHTML, the selection and queryCommand* into a <pre>. It steals no focus and needs no window.
 
 **Fix**:
-1. Per subtest, list the failing rows with Chrome/Firefox/Safari status from the aligned wpt.fyi runs (tmp/scratch/edit2/cmp.py), and group them by cause.
+1. Per subtest, list the failing rows with Chrome/Firefox/Safari status from the aligned wpt.fyi runs (the runs at the served WPT revision), and group them by cause.
 2. Before a change, list the rows the same mechanism decides, and check whether any of them pass in Crane while the browsers fail (FFF/FPF with Crane PASS). Those are the rows the change would trade.
-3. After the change, run all editing/ worklist files on the lane runner and diff every subtest against the generation (tmp/scratch/edit2/subdiff.py). Narrow the change until every loss is explained: keep the browsers' mechanism only where the data and all three browsers agree. A remaining trade goes to the integrator as a ruling.
+3. After the change, run all editing/ worklist files on the lane runner and diff every subtest against the generation's journal.wptreport.jsonl, matched by test URL and subtest name. Narrow the change until every loss is explained: keep the browsers' mechanism only where the data and all three browsers agree. A remaining trade goes to the integrator as a ruling. On a macOS runner, the editing/whitespaces Ctrl+Backspace/Ctrl+Delete subtests are named Alt+, so a name-matched diff against the Linux generation shows them as new passes with no losses: compare those two files by count.
 4. When a browser's value depends on its own DOM, probe Chrome headless before designing. Do not reason from the engine's source alone.
 
 **Takeaway**: **In editing, "follow the browsers" is decided row family by row family: a mechanism the browsers share can still be a net loss against the data's spec rows. Diff every editing subtest after each change, and probe Chrome headless for the DOM and selection a value comes from.**
