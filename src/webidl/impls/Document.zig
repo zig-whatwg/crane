@@ -293,7 +293,7 @@ pub fn installHooks() void {
     // focused area (src/html/focus.zig), and a top-level traversable's system
     // visibility state updates its documents' visibility state, through these
     // hooks.
-    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .get_start = &sequentialStart, .set_start = &setSequentialStart });
+    @import("dom").focused_area.install(.{ .get = &focusedArea, .set = &setFocusedArea, .start_range = &sequentialStartRange, .select_start = &selectSequentialStart, .clear_start = &clearSequentialStart });
     // HTML removing steps step 2: a removed focused area becomes the
     // viewport at the removal (html.focus.removingSteps).
     @import("dom").mutation.registerRemovingStepsCallback(&@import("html").focus.removingSteps) catch @panic("focus removing steps allocation");
@@ -640,27 +640,50 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
 }
 
 /// dom.focused_area: `document`'s sequential focus navigation starting point
-/// kept apart from its focused area, or null.
-fn sequentialStart(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
+/// (HTML 6.6.5) - the live Range `selectSequentialStart` keeps - or null.
+fn sequentialStartRange(document: *runtime.Instance) ?*runtime.Instance {
     const internal = getInternal(document) orelse return null;
     const rare = internal.rareData() orelse return null;
-    const link = rare.sequential_start orelse return null;
-    return .{ .element = link.instance, .generation = link.generation };
+    if (rare.sequential_start_unset) return null;
+    return rare.sequential_start.get();
 }
 
-/// dom.focused_area: keep (null: drop) `document`'s starting point - rare
-/// data, which few Documents ever need: every change of the focused area
-/// drops it, and dropping none where none was kept makes nothing.
-fn setSequentialStart(document: *runtime.Instance, start: ?@import("dom").focused_area.Designation) void {
+/// dom.focused_area: unset `document`'s sequential focus navigation
+/// starting point (HTML 6.6.5 "sequential navigation" step 7). The range
+/// stays the document's; it reads as no point until the next select.
+fn clearSequentialStart(document: *runtime.Instance) void {
     const internal = getInternal(document) orelse return;
-    if (start == null) {
-        const rare = internal.rareData() orelse return;
-        rare.sequential_start = null;
-        return;
-    }
+    const rare = internal.rareData() orelse return;
+    rare.sequential_start_unset = true;
+}
+
+/// dom.focused_area: `element` was focused (or an algorithm moved the point
+/// to it), and is `document`'s sequential focus navigation starting point
+/// from now on: the document's one live Range for it, made on first use,
+/// selects the element's contents -
+/// so the DOM's removal steps move it to where the element was when the
+/// element, or an ancestor, is removed (Blink: Document::
+/// SetSequentialFocusNavigationStartingPoint, which keeps a Range and calls
+/// selectNodeContents). Rare data: only a document something was focused
+/// in keeps one. It is the document's for its whole life (`KeptChild`): its
+/// wrapper keeps the range's, and the document's teardown releases it.
+fn selectSequentialStart(document: *runtime.Instance, element: *runtime.Instance) void {
+    const internal = getInternal(document) orelse return;
+    // Only a document with a browsing context navigates sequentially.
+    if (internal.destroyed or internal.default_view == null) return;
+    // An element of another document is no point in this one (Blink: the
+    // starting point is cleared for it).
+    if ((interfaces.Node.get_ownerDocument(element) catch null) != document) return;
     // Out of memory no starting point is kept, as for a document with none.
     const rare = internal.ensureRareData(document) catch return;
-    rare.sequential_start = .{ .instance = start.?.element, .generation = start.?.generation };
+    const range = rare.sequential_start.get() orelse blk: {
+        const made = interfaces.Document.call_createRange(document) catch return;
+        rare.sequential_start.made(made);
+        break :blk made;
+    };
+    rare.sequential_start.handOut(document, range, .{ .name = "sequentialFocusStart" });
+    interfaces.Range.call_selectNodeContents(range, element) catch {};
+    rare.sequential_start_unset = false;
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.
@@ -3917,6 +3940,17 @@ fn lifecycleStopLoad(document: *runtime.Instance) void {
     if (internal.ready_for_post_load_tasks) return;
     internal.load_aborted = true;
     internal.ready_for_post_load_tasks = true;
+    // - and it counts as completely loaded from now on, as Chrome's stopped
+    //   load does: Blink's CancelParsing sets load_event_progress_ to
+    //   kLoadEventCompleted, and the checks HTML words as "not completely
+    //   loaded" read Document::LoadEventFinished, so a location navigation
+    //   the stopped page makes later is no longer made a replace (HTML
+    //   "Location-object navigate" step 3) and its unload events fire. Chrome
+    //   157 passes performance-timeline/not-restored-reasons/
+    //   abort-block-bfcache.window.js this way (wpt.fyi 4786307730243584):
+    //   its window.stop() page navigates away with a push, and history.back()
+    //   returns to it; Firefox 160 and Safari 27.2 ship no notRestoredReasons.
+    internal.completely_loaded = true;
     const generation = runtime.SlabAllocator.generationOf(document);
     // readystatechange listeners run here, and may take the frame away.
     engine.runInRealm(document.ctx, becomeComplete, document) catch {};
@@ -4618,8 +4652,8 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 /// whose descendants unload after it); steps 18-19 (cleanup steps, not
 /// restored reasons) are the navigable's: navigation clears the window's
 /// timers once this returns - or, for a kept document, suspends them.
-fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy) void {
-    var call: UnloadCall = .{ .document = document, .destroy = destroy };
+fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy, timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo) void {
+    var call: UnloadCall = .{ .document = document, .destroy = destroy, .timing = timing };
     engine.runInRealm(document.ctx, unloadSteps, &call) catch |err| {
         log.debug("unload not run: {}", .{err});
     };
@@ -4629,6 +4663,8 @@ fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document
 const UnloadCall = struct {
     document: *runtime.Instance,
     destroy: @import("dom").document_lifecycle.UnloadDestroy,
+    /// HTML's unloadTimingInfo, or null.
+    timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo = null,
 };
 
 fn unloadSteps(data: ?*anyopaque) void {
@@ -4674,10 +4710,19 @@ fn unloadSteps(data: ?*anyopaque) void {
         firePageTransition(document, window, "pagehide", internal.salvageable);
         updateVisibilityState(document, ._hidden_);
     }
+    // Step 11: "If unloadTimingInfo is not null, then set unloadTimingInfo's
+    // unload event start time to the current high resolution time given
+    // newDocument's relevant global object" - the caller's clock, made
+    // relative to the new document's time origin when its navigation timing
+    // entry is.
+    if (call.timing) |info| info.unload_event_start = info.now();
     // Step 12: "If oldDocument's salvageable state is false, then fire an
     // event named unload at oldDocument's relevant global object, with legacy
     // target override flag set."
     if (!internal.salvageable) fireAtWindow(document, window, "unload");
+    // Step 13: "If unloadTimingInfo is not null, then set unloadTimingInfo's
+    // unload event end time" likewise.
+    if (call.timing) |info| info.unload_event_end = info.now();
     // Step 14.
     termination_nesting.leave(event_loop);
     terminating = false;

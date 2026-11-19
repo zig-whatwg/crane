@@ -1072,6 +1072,17 @@ pub fn documentFocused(realm: runtime.Context, at_ns: u64) void {
     manager.environmentFocused(self.id, at_ns);
 }
 
+/// dom.service_worker_clients' `client_id`: the id of `realm`'s environment -
+/// the UUID the registry made for it when the realm became a client
+/// (Registry.addEnvironment), which its Client's `id` is. Null for a realm
+/// that is no client (`environmentOf`: an opaque origin's, a Browser-less
+/// one, one ended). Never makes an environment or a manager.
+pub fn clientIdOfRealm(realm: runtime.Context) ?[36]u8 {
+    if (Manager.existingOf(realm) == null) return null;
+    const self = environmentOf(realm, false) orelse return null;
+    return self.manager.clientIdOf(self.id);
+}
+
 /// dom.service_worker_clients' `route_for_global`: "populate request from
 /// client" - the route of a controlled client's requests.
 pub fn routeForGlobal(global: *runtime.Instance) ?@import("fetch").internal.ServiceWorkerRoute {

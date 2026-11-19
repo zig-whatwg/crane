@@ -228,7 +228,20 @@ pub fn canonicalizeWhitespace(edit: *Edit, point: Point, fix_collapsed_space: bo
     // (`<p><a href=foo>foo&nbsp;[]<br><br></a></p>` keeps its no-break space
     // on insertParagraph in Chrome 156, Firefox 158 and Safari 27,
     // editing/run/insertparagraph.html at wpt.fyi 5af3c135c9).
-    const non_breaking_end = end_offset == (try common.nodeLength(end_node)) and try common.precedesLineBreak(end_node);
+    //
+    // A run that ends where its editing host's editable content stops - the
+    // next node is not in the same editing host (a contenteditable=false
+    // element) - is given a non-breaking end too: what follows can be taken
+    // away by script, and a plain space would then collapse. All three
+    // browsers keep a space typed before such an element visible after the
+    // element is removed (editing/whitespaces/keep-typed-collapsible-white-
+    // space-visible-after-muation.html, wpt.fyi 2358bd4835: Chrome 157,
+    // Firefox 160 and Safari 27.2 pass); Blink and WebKit emit the no-break
+    // space when typing, as their whitespace rebalancing ends a run at its
+    // Text node's end with one (CompositeEditCommand::
+    // RebalanceWhitespaceOnTextSubstring's should_emit_nbsp_before_end).
+    const before_non_editable = if (try common.childAt(end_node, end_offset)) |next| !(try common.inSameEditingHost(end_node, next)) else false;
+    const non_breaking_end = (end_offset == (try common.nodeLength(end_node)) and try common.precedesLineBreak(end_node)) or before_non_editable;
     try canonicalSpaceSequence(&replacement, edit.allocator, length, non_breaking_start, non_breaking_end);
     var next_unit: usize = 0;
     // Step 10: write it over the run, one code unit at a time.

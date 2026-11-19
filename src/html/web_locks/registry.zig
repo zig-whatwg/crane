@@ -237,13 +237,19 @@ pub const Registry = struct {
 
     /// A new Client for `environment`, whose lock manager is the one of
     /// `storage_key` (BORROWED; copied) - null when "obtain a lock manager"
-    /// fails for it. `delivery` is the Client's from now on: its `deinit`
-    /// runs when the Client goes, and on failure here.
+    /// fails for it. `id` is the environment's id (HTML: "an environment has
+    /// an id"), the clientId its locks and requests carry - the same value a
+    /// service worker's Client `id` reports for it (Web Locks 4.3, the
+    /// clientId member); null for an environment that has none to share (no
+    /// service worker client: an opaque origin's, a Browser-less realm's),
+    /// which gets a random UUID of its own. `delivery` is the Client's from
+    /// now on: its `deinit` runs when the Client goes, and on failure here.
     pub fn register(
         self: *Registry,
         environment: *const anyopaque,
         owner: *anyopaque,
         storage_key: ?[]const u8,
+        id: ?[client_id_len]u8,
         delivery: Delivery,
     ) Allocator.Error!*Client {
         errdefer delivery.deinit(delivery.ctx);
@@ -257,7 +263,7 @@ pub const Registry = struct {
         client.* = .{
             .environment = environment,
             .owner = owner,
-            .id = self.randomUuid(),
+            .id = id orelse self.randomUuid(),
             .storage_key = key,
             .delivery = delivery,
         };

@@ -2245,8 +2245,11 @@ fn potentiallyResetFocus(instance: *runtime.Instance, internal: *InternalState, 
         (interfaces.Document.get_documentElement(scope.document) catch null) orelse scope.document;
     // 11: the viewport is the fallback even when the body is not focusable.
     html.focus.focusingSteps(target, scope.document, .other);
-    // 12: the sequential focus navigation starting point is not modelled;
-    // adding its Document-owned node requires the separate holder work.
+    // 12. "Move the sequential focus navigation starting point to
+    // focusTarget": Tab after the reset starts from it, not from the
+    // element focused before the navigation (the point the viewport's focus
+    // left where it was).
+    dom.focused_area.moveStartPoint(scope.document, target);
 }
 
 /// dom.navigation_api: `window`'s navigation API's "suppress normal scroll

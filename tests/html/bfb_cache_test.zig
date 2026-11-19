@@ -743,7 +743,7 @@ test "locks1: a lock granted to a cached page waits for its restore: its callbac
     const registry = try fixture.browser.scope.of(html.web_locks.Registry);
     var holder: TestHolder = .{};
     var environment: u8 = 0;
-    const client = try registry.register(&environment, &environment, "http://localhost", holder.delivery());
+    const client = try registry.register(&environment, &environment, "http://localhost", null, holder.delivery());
     defer registry.unregister(client);
     const id = try registry.request(client, "bfb-wait", .{});
     const bc = try fixture.openPopupAt("http://localhost", "/wait.html");
