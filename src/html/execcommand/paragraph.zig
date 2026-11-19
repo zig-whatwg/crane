@@ -386,9 +386,22 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
     // AutoInsertParagraphHandler::ShouldInsertLineBreakInstead: no editable
     // block in the editing host, or an editing host that cannot hold a p).
     if (try shouldInsertLineBreakInstead(node)) return insertLineBreakAfterDeletion(edit);
-    // Steps 8-9: the nearest single-line container in the editing host.
+    // Steps 8-9: the nearest single-line container in the editing host - or,
+    // as Chrome and Safari split it, a flex or grid item on the way:
+    // `<div style=display:flex><span>a[]bc</span></div>` gives `<div
+    // style=display:flex><span>a</span><span>bc</span></div>` where the spec
+    // splits the flex container (editing/run/insertparagraph.html, 24
+    // subtests PFP at wpt.fyi 2358bd4835; Firefox 160 splits the
+    // container). Mechanism: Blink's InsertParagraphSeparatorCommand splits
+    // the paragraph's EnclosingBlock, which a blockified item is. Golden
+    // rule 2, no newer spec: the majority.
     var container = node;
+    var flex_item = false;
     while (!try common.isSingleLineContainer(container)) {
+        if (try common.isFlexOrGridItem(container)) {
+            if (try common.isEditable(container)) flex_item = true;
+            break;
+        }
         const p = (try common.parent(container)) orelse break;
         if (!try common.isEditable(p)) break;
         if (!try common.inSameEditingHost(p, node)) break;
@@ -407,8 +420,8 @@ fn insertParagraphAfterDeletion(edit: *Edit) !bool {
         if (try common.isHtmlElementIn(outer, &.{ "dd", "dt", "li" })) container = outer;
     }
     // Step 11: no container - wrap the line in the default single-line
-    // container first.
-    if (!(try common.isEditable(container)) or !(try common.inSameEditingHost(container, node)) or !try common.isSingleLineContainer(container)) {
+    // container first (a flex or grid item is the container itself).
+    if (!flex_item and (!(try common.isEditable(container)) or !(try common.inSameEditingHost(container, node)) or !try common.isSingleLineContainer(container))) {
         // Step 11.1.
         const tag = try block.defaultSingleLineContainerName(edit);
         // Step 11.2.

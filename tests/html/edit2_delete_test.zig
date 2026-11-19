@@ -78,9 +78,11 @@ test "Backspace and Delete remove an element whose contents editing ignores whol
 /// After a block join the caret is at the end of the start line's last
 /// inline content: the next text goes into its span and the queries read
 /// its style (delete.html, forwarddelete.html, multitest.html; all three).
+/// The moved span is the fresh one rewrapMovedLine makes, with its style
+/// serialized (the WPT harness normalizes that away).
 const caret_cases = [_]harness.Case{
-    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo</span></p><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span></p>" },
-    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo[]</span></p><p><span style=\"color:rgb(255, 0, 0)\">bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "forwarddelete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span></p>" },
+    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo</span></p><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color: rgb(255, 0, 0);\">bar</span></p>" },
+    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo[]</span></p><p><span style=\"color:rgb(255, 0, 0)\">bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "forwarddelete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color: rgb(255, 0, 0);\">bar</span></p>" },
     .{ .input = "<span style=\"color:rgb(0, 0, 255)\">foo<br></span><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span>" },
 };
 

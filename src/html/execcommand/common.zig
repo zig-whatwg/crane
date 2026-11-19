@@ -880,6 +880,23 @@ pub fn isInlineNode(node: *Instance) bool {
     return !isBlockNode(node);
 }
 
+/// Whether `node` is an element laid out as a flex or grid item: a rendered
+/// child of an element whose computed display is (inline-)flex or
+/// (inline-)grid (CSS Flexbox 4, CSS Grid 6). The browsers' editing treats
+/// such an item as a paragraph's block of its own (Blink's
+/// EnclosingBlock: the item is blockified, a LayoutBlockFlow).
+pub fn isFlexOrGridItem(node: *Instance) !bool {
+    if (!isElement(node)) return false;
+    const own = computedStyleOf(node) orelse return false;
+    if (own.display().box != .normal) return false;
+    const p = (try parent(node)) orelse return false;
+    if (!isElement(p)) return false;
+    const style = computedStyleOf(p) orelse return false;
+    const display = style.display();
+    if (display.box != .normal) return false;
+    return display.inner == .flex or display.inner == .grid;
+}
+
 /// Whether `node` or an ancestor element has display: none.
 pub fn hasDisplayNoneInclusiveAncestor(node: *Instance) !bool {
     var current: ?*Instance = node;
