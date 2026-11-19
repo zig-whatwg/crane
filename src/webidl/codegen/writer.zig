@@ -4871,16 +4871,21 @@ pub fn writeMemberDefaults(w: anytype, members: []const types.DictionaryMember, 
 pub fn writePromiseReturning(writer: anytype, attributes: []const types.Attribute, overload_ops: []const types.Operation) !void {
     const allocator = std.heap.page_allocator;
     var any = false;
+    var any_attribute = false;
     for (attributes) |attr| {
-        if (isPromiseType(attr.idlType)) any = true;
+        if (isPromiseType(attr.idlType)) any_attribute = true;
     }
     for (overload_ops) |op| {
         if (isPromiseType(op.idlType)) any = true;
     }
-    if (!any) return;
+    if (!any and !any_attribute) return;
 
-    try writer.writeAll("    /// WebIDL: attribute getters and operations whose type is a promise - an\n");
-    try writer.writeAll("    /// exception in their steps becomes a rejected promise.\n");
+    try writer.writeAll("    /// WebIDL: operations whose return type is a promise - an exception in\n");
+    try writer.writeAll("    /// their steps becomes a rejected promise.\n");
+    // The getters of promise-typed attributes, likewise (3.7.6 "attribute
+    // getter"): said only where there are some, so the other tables read
+    // as they did.
+    if (any_attribute) try writer.writeAll("    /// So does a promise-typed attribute's getter.\n");
     try writer.writeAll("    pub const promise_returning = .{\n");
     for (attributes) |attr| {
         if (!isPromiseType(attr.idlType)) continue;
