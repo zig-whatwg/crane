@@ -180,8 +180,14 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
     // spec's order (states, then values) nests the font inside the b. Blink
     // applies a typing style in one ApplyInlineStyleChange: font element
     // first, then the CSS span, then b, i, u, s, sub, sup. Golden rule 2, no
-    // newer spec.
+    // newer spec. A subscript or superscript state override puts fontSize
+    // back after the states, as the spec's own order does for that reason:
+    // the sub or sup makes the smaller size the recorded value holds (a
+    // deleted `foo<sub>[bar]</sub>baz` retypes as `foo<sub>a</sub>baz`,
+    // not inside a <font size=2>).
+    const sub_or_sup = ((try stateOverride(edit, .subscript)) orelse false) or ((try stateOverride(edit, .superscript)) orelse false);
     for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
+        if (command == .font_size and sub_or_sup) continue;
         if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
     }
     // Step 3: the state overrides - in the order they were set rather than
@@ -201,6 +207,9 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
         }
     }.earlierFirst);
     for (states.items) |entry| try list.append(arena, .{ .command = entry.command, .value = .{ .state = entry.state } });
+    if (sub_or_sup) {
+        if (try valueOverride(edit, .font_size)) |value| try list.append(arena, .{ .command = .font_size, .value = .{ .value = try arena.dupe(u8, value) } });
+    }
     return .{ .items = list.items };
 }
 
