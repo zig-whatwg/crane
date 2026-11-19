@@ -394,13 +394,18 @@ pub fn deleteTheSelection(edit: *Edit, block_merging: bool, strip_wrappers: bool
                 }
             }
         }
-        // Step 34.3.
-        values = try overrides.recordTheValues(edit, &.{eb});
         // Step 34.4 (first line): move the children up to the line's end;
         // the br or line feed that ended it is deleted.
         var line: Line = .{};
         defer line.deinit(edit.allocator);
         if (try common.firstChild(eb)) |first| try extractFirstLine(edit, first, &line, .delete);
+        // Step 34.3: "Record the values of end block's children" - the
+        // ones that move, recorded where they still are, so step 38 forces
+        // what the end block gave them (`<p style=color:brown>bar` joining a
+        // blue p keeps bar brown: delete.html and forwarddelete.html, PFP at
+        // wpt.fyi 2358bd4835). Recording the end block itself, which leaves,
+        // restored nothing.
+        values = try overrides.recordTheValues(edit, line.nodes.items);
         try dropLeadingWhiteSpace(edit, &line);
         try line.recordWhiteSpace(edit, sb);
         try rewrapMovedLine(edit, &line);
