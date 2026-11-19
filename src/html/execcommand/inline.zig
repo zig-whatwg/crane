@@ -1517,10 +1517,45 @@ fn unlink(edit: *Edit) !bool {
             try hyperlinks.append(scratch(edit), n);
         }
     }
-    // Step 2: clear the value of each.
-    for (hyperlinks.items) |link| _ = try clearValue(edit, link, .unlink);
+    // Step 2: clear the value of each - except that a link whose other
+    // attributes are only class and style goes altogether, what its style
+    // attribute gave its contents put back on them: Chrome 157 and Safari
+    // 27.2 unlink `foo<a href=... class=bold>[bar]</a>baz` to `foobarbaz`
+    // and `foo<a href=... style=font-weight:bold>[bar]</a>baz` to `foo<b>bar
+    // </b>baz` (a span in CSS mode: all three), where the spec keeps the a
+    // without its href (editing/run/unlink.html: 8 subtests PFP or PPP at
+    // wpt.fyi 2358bd4835). Blink's unlink is an ApplyStyleCommand that
+    // removes the anchor and pushes its inline style down onto its
+    // children (ApplyInlineStyleToPushDown). Golden rule 2, the majority. A
+    // link with an id or a name keeps the spec's result: the data expects
+    // `<a id=foo>` there and no browser passes those rows (FFF/FPF), so
+    // following the browsers would trade passing subtests.
+    for (hyperlinks.items) |link| {
+        if (try isRemovableLink(link)) {
+            var children: std.ArrayList(*Instance) = .empty;
+            var child = try common.firstChild(link);
+            while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
+            const values = try overrides.recordTheValues(edit, children.items);
+            try split_parent.removePreservingDescendants(edit, link);
+            try overrides.restoreTheValues(edit, values);
+            continue;
+        }
+        _ = try clearValue(edit, link, .unlink);
+    }
     // Step 3.
     return true;
+}
+
+/// Whether unlink removes `link` whole (see unlink): an a whose attributes
+/// besides href are only class and style, and at least one of them.
+fn isRemovableLink(link: *Instance) !bool {
+    var others = try attributeCount(link);
+    others -= 1; // href
+    if (others == 0) return false;
+    for ([_][]const u8{ "class", "style" }) |name| {
+        if (try common.hasAttribute(link, name)) others -= 1;
+    }
+    return others == 0;
 }
 
 fn rootOf(node: *Instance) *Instance {
