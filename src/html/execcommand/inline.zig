@@ -1203,11 +1203,16 @@ pub fn setSelectionValue(edit: *Edit, command: Command, new_value: Value) anyerr
         // </i>ghi" and "abc<i>{def}</i>ghi" with styleWithCSS false:
         // Chrome 156, Firefox 158 and Safari 27 pass, wpt.fyi f4febe305a /
         // 5af3c135c9 / 1ec6aacb4e). Golden rule 2, no newer spec.
-        // The range's ends are read at their innermost equivalent points
-        // (`abc<i>[def</i>]ghi` ends inside the i too: bold gives `abc<i><b>
-        // def</b></i>ghi` in all three, bold.html ?3001-last, PPP at wpt.fyi
-        // 2358bd4835 - Blink reads the selection's visible positions).
-        if (common.isElement(node) and common.isInclusiveDescendantOf(inner_start.node, node) and common.isInclusiveDescendantOf(inner_end.node, node)) continue;
+        // With one end inside the element, the other is read at its
+        // innermost equivalent point (`abc<i>[def</i>]ghi` and `abc[<i>def]
+        // </i>ghi` lie inside the i: bold gives `abc<i><b>def</b></i>ghi` in
+        // all three, bold.html ?3001-last, PPP at wpt.fyi 2358bd4835 -
+        // Blink reads the selection's visible positions). A range with both
+        // ends outside (`abc[<i>def</i>]ghi`) keeps the spec's wrapping: the
+        // data expects `<b><i>` there (Firefox; Chrome and Safari fail).
+        if (common.isElement(node) and
+            (common.isInclusiveDescendantOf(bounds.start.node, node) or common.isInclusiveDescendantOf(bounds.end.node, node)) and
+            common.isInclusiveDescendantOf(inner_start.node, node) and common.isInclusiveDescendantOf(inner_end.node, node)) continue;
         if (try isAllowedChildOfName(node, "span")) try forceValue(edit, node, command, new_value);
     }
 }

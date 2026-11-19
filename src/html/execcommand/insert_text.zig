@@ -35,15 +35,17 @@ pub const ParagraphAction = *const fn (edit: *Edit) anyerror!bool;
 /// href=...>[bar</a>baz]` + "a" types `fooa` (PPP; Blink
 /// PositionAvoidingSpecialElementBoundary). The spec inserts at the
 /// deletion's caret. Golden rule 2, no newer spec.
-fn moveToInsertionPoint(edit: *Edit) !void {
+fn moveToInsertionPoint(edit: *Edit, end_link: ?*Instance) !void {
     if (!try edit.rangeCollapsed()) return;
     var caret = (try edit.rangeStart()) orelse return;
-    // An emptied link goes, the caret where it was.
+    // An emptied link goes, the caret where it was - when the selection
+    // ran past it: text typed over a selection inside a link stays in it
+    // (`foo<a href=...>[bar]</a>baz` + "a" -> `foo<a href=...>a</a>baz`, PPP).
     var current: ?*Instance = caret.node;
     while (current) |c| : (current = try common.parent(c)) {
         if (!try common.isEditable(c)) break;
         if (!common.isInlineNode(c)) break;
-        if ((try common.isHtmlElementNamed(c, "a")) and !try common.isVisible(c)) {
+        if ((try common.isHtmlElementNamed(c, "a")) and c != end_link and !try common.isVisible(c)) {
             const p = (try common.parent(c)) orelse break;
             const index = try common.indexOf(c);
             try edit.removeNode(c);
@@ -66,8 +68,19 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     // the white-space around the caret, which step 11 does anyway (lane
     // editing2's measured behaviour, editing/run/inserttext.html).
     if (!try edit.rangeCollapsed()) {
+        // The link the selection ends in, if any (see moveToInsertionPoint).
+        var end_link: ?*Instance = null;
+        if (try edit.rangeEnd()) |end| {
+            var up: ?*Instance = end.node;
+            while (up) |u| : (up = try common.parent(u)) {
+                if (try common.isHtmlElementNamed(u, "a")) {
+                    end_link = u;
+                    break;
+                }
+            }
+        }
         try delete.deleteTheSelection(edit, true, false, .forward);
-        try moveToInsertionPoint(edit);
+        try moveToInsertionPoint(edit, end_link);
     }
     // Step 2: "If the active range's start node is neither editable nor an
     // editing host, return true."
@@ -103,7 +116,7 @@ pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction)
     if (!common.isText(start.node)) {
         const before = try common.childBefore(start.node, start.offset);
         const after = try common.childAt(start.node, start.offset);
-        if (before != null and (try common.isEditable(before.?)) and (try common.isHtmlElementNamed(before.?, "br")) and try common.isExtraneousLineBreak(before.?)) {
+        if (before != null and after == null and (try common.isEditable(before.?)) and (try common.isHtmlElementNamed(before.?, "br")) and try common.isExtraneousLineBreak(before.?)) {
             try edit.removeNode(before.?);
         } else if (after != null and (try common.isEditable(after.?)) and (try common.isCollapsedLineBreak(after.?)) and !(try common.isExtraneousLineBreak(after.?)) and (try common.nextSibling(after.?)) == null and before != null) {
             // Only the br ending its block, after other content: one before
