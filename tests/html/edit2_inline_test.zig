@@ -109,6 +109,8 @@ const push_down_cases = [_]Case{
     // (bold.html; all three).
     .{ .input = "abc<i>[def</i>]ghi", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "abc<i><b>def</b></i>ghi" },
     .{ .input = "abc[<i>def]</i>ghi", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "abc<i><b>def</b></i>ghi" },
+    // Both ends outside: the spec's wrapping (the data; Firefox).
+    .{ .input = "abc[<i>def</i>]ghi", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "abc<b><i>def</i></b>ghi" },
     // Only fontSize, fontName and foreColor split where the spec gives up:
     // bold and the background colors nest (Firefox and the data; Chrome and
     // Safari split), and no browser splits a block.

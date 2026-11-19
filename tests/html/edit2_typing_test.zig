@@ -37,6 +37,8 @@ const br_cases = [_]harness.Case{
     .{ .input = "<span contenteditable=false>abc</span><br>{}", .commands = &.{.{ "inserttext", "d" }}, .expected = "<span contenteditable=\"false\">abc</span>d" },
     .{ .input = "<p>{}<br>", .commands = &.{.{ "inserttext", "a" }}, .expected = "<p>a</p>" },
     .{ .input = "<br>{}", .commands = &.{.{ "inserttext", "a" }}, .expected = "a" },
+    // A br before inline content after the caret stays (Firefox; the data).
+    .{ .input = "<p style=\"white-space:pre-wrap\">a<br>{}<span style=\"padding:1px\"></span></p>", .commands = &.{.{ "inserttext", "b" }}, .expected = "<p style=\"white-space:pre-wrap\">a<br>b<span style=\"padding:1px\"></span></p>" },
 };
 
 /// insertText on a selection types into the text that follows the
@@ -45,6 +47,8 @@ const insertion_cases = [_]harness.Case{
     .{ .input = "<div>abc[<b><i>de]f</i></b>ghi</div>", .commands = &.{ .{ "inserttext", "d" }, .{ "inserttext", "e" } }, .expected = "<div>abc<b><i>def</i></b>ghi</div>" },
     .{ .input = "<div>abc{<b><i>de]f</i></b>ghi</div>", .commands = &.{ .{ "inserttext", "d" }, .{ "inserttext", "e" } }, .expected = "<div>abc<b><i>def</i></b>ghi</div>" },
     .{ .input = "foo<a href=http://www.google.com>[bar</a>baz]", .commands = &.{.{ "inserttext", "a" }}, .expected = "fooa" },
+    // A selection inside the link types into it (PPP).
+    .{ .input = "foo<a href=http://www.google.com>[bar]</a>baz", .commands = &.{.{ "inserttext", "a" }}, .expected = "foo<a href=\"http://www.google.com\">a</a>baz" },
 };
 
 fn typingCases() !void {
