@@ -558,7 +558,7 @@ const Command = struct {
         // click's handlers transitions from the style this read saw, as it
         // does from the one a browser's driver reads
         // (fullscreen/rendering/fullscreen-css-transition.html).
-        _ = interfaces.Element.call_scrollIntoView(element, @import("webidl").Opt(runtime.JSValue).notPassed()) catch {};
+        _ = interfaces.Element.call_scrollIntoView(element, .notPassed()) catch {};
         // Steps 6-7: in view and not obscured - without layout, a connected
         // element is both.
         // Step 8, an option element: its container is what is clicked.
