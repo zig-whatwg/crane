@@ -24,6 +24,7 @@ pub const pipeline = @import("pipeline.zig");
 pub const argument_unions = @import("argument_unions.zig");
 pub const member_unions = @import("member_unions.zig");
 pub const setlike = @import("setlike.zig");
+pub const maplike = @import("maplike.zig");
 pub const duplicates = @import("duplicates.zig");
 pub const member_overrides = @import("member_overrides.zig");
 pub const adapter = @import("adapter.zig");

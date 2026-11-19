@@ -1850,3 +1850,19 @@ assertion = assert_equals: expected "rgb(255, 0, 0)" but got "rgb(0, 128, 0)" (b
 kind      = needs-renderer
 why       = the @media (min-width: 200px) wrapping the second @property rules is evaluated against an iframe's viewport, the iframe element's laid-out width (100px, then 300px); with no renderer the iframe's viewport is 1024px, so the conditional registrations apply from the start. The non-geometry half - an unmatched @media's @property is not registered, a condition change re-registers - passes: crane/css1-at-property-conditional.html (lane css1)
 assertion = assert_equals: expected "1px" but got "4px" (the first assertion)
+
+# follows-majority (lane css2, 2026-11-18): TimelineTrigger is in no specification - Animation Triggers 1 (the
+# editor's draft the test links) and webref's curated IDL define only AnimationTrigger, with another shape (a
+# timeline attribute, no ranges) - and only Chrome ships it. Crane fails all nine subtests as Firefox and Safari
+# do, at the same assertion (ReferenceError: TimelineTrigger is not defined; only the engines' wording of the
+# message differs). Generation 229's messages, unchanged on css2's base runner at main 583f7bc0065.
+
+[web-animations/interfaces/TimelineTrigger/constructor.html]
+kind            = follows-majority
+why             = Crane exposes no TimelineTrigger - no specification defines it (Animation Triggers 1 and webref define only AnimationTrigger) - so every subtest fails with a ReferenceError, as in Firefox and Safari; only Chrome ships the interface
+chrome.result   = wpt.fyi run 4786307730243584: 9/9 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/9 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/9 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = the integrator, 2026-11-18 10:13 PM ET (lane css2): no specification; only Chrome ships it; Crane = Firefox = Safari by failing assertion
+revisit         = when a specification or webref defines TimelineTrigger, or Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves

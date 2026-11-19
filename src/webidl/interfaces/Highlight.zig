@@ -53,6 +53,10 @@ pub const Highlight = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = true;
+
+        /// Setlike declaration (WebIDL 2.5.12): the binding defines its members
+        /// (3.7.12) over the impl's set entries (`setlikeEntries`).
+        pub const setlike = .{ .value_type = "AbstractRange", .readonly = false };
     };
 
     pub const State = runtime.FlattenedState(
@@ -62,10 +66,6 @@ pub const Highlight = struct {
             _internal: ?*HighlightImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .get_priority = &get_priority,
@@ -193,5 +193,11 @@ pub const Highlight = struct {
 
     pub fn set_type(instance: *runtime.Instance, value: HighlightType) anyerror!void {
         try HighlightImpl.set_type(instance, value);
+    }
+
+    /// The set entries of this setlike object (WebIDL 2.5.12), for the
+    /// binding's setlike members.
+    pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {
+        return HighlightImpl.setlikeEntries(instance);
     }
 };

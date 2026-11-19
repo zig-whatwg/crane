@@ -220,6 +220,13 @@ pub const Setlike = struct {
     readonly: bool = false,
 };
 
+/// WebIDL maplike declaration (maplike<K, V>, 2.5.11).
+pub const Maplike = struct {
+    key_type: IDLType,
+    value_type: IDLType,
+    readonly: bool = false,
+};
+
 /// WebIDL async iterable declaration (async_iterable<T>)
 pub const AsyncIterable = struct {
     /// Key type (for pair async iterables) or value type (for value async iterables)
@@ -248,6 +255,7 @@ pub const Member = struct {
     iterable: ?Iterable = null,
     async_iterable: ?AsyncIterable = null,
     setlike: ?Setlike = null,
+    maplike: ?Maplike = null,
 
     /// Get as attribute (returns null if not an attribute)
     pub fn asAttribute(self: Member) ?Attribute {
@@ -289,6 +297,7 @@ pub const MemberType = enum {
     iterable,
     async_iterable,
     setlike,
+    maplike,
 };
 
 /// WebIDL attribute definition

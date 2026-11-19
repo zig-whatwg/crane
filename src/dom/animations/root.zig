@@ -27,6 +27,7 @@ pub const promise = @import("promise.zig");
 pub const css_events = @import("css_events.zig");
 pub const css_transitions = @import("css_transitions.zig");
 pub const css_animations = @import("css_animations.zig");
+const view_transitions = @import("../view_transitions.zig");
 
 pub const Registry = registry.Registry;
 pub const updateAnimationsAndSendEvents = registry.updateAnimationsAndSendEvents;
@@ -164,7 +165,16 @@ pub fn elementAnimations(element: *runtime.Instance, subtree: bool, pseudo_eleme
             if (self.pseudo) |wanted| {
                 // 3. The pseudo-element of `element` is the target.
                 if (target != self.element) return false;
-                return target_pseudo != null and std.mem.eql(u8, target_pseudo.?, wanted);
+                const have = target_pseudo orelse return false;
+                if (std.mem.eql(u8, have, wanted)) return true;
+                // 4. With subtree, "the relevant animations for a subtree
+                // of target": the pseudo-elements under it as well - the
+                // view transition pseudo-element tree is the one tree of
+                // pseudo-elements Crane generates (CSS View Transitions 1
+                // §3.2; getAnimations-pseudoElement-option-on-view-
+                // transition.html: a group's subtree is the group and its
+                // image pair, Firefox 1/1).
+                return self.subtree and view_transitions.isPseudoElementDescendant(std.mem.trimStart(u8, wanted, ":"), std.mem.trimStart(u8, have, ":"));
             }
             if (!self.subtree) return target == self.element and target_pseudo == null;
             // "an inclusive descendant ... or a pseudo-element of such a

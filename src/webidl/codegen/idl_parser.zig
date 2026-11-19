@@ -614,24 +614,17 @@ pub const Parser = struct {
             (self.current_token.type == .keyword_readonly and
                 self.peek_token.type == .keyword_maplike))
         {
-            // Maplike declarations remain a separate codegen feature.
-            while (self.current_token.type != .semicolon and self.current_token.type != .eof) {
-                try self.advance();
-            }
-            if (self.current_token.type == .semicolon) {
-                try self.advance();
-            }
-            // Return a dummy constant member to keep parsing going
-            // This will be filtered out later
-            return types.Member{
-                .type = .constant,
-                .constant = types.Constant{
-                    .name = try self.allocator.dupe(u8, "_skipped"),
-                    .idlType = .{ .type = try self.allocator.dupe(u8, "void") },
-                    .value = .null,
-                    .extAttrs = &.{},
-                },
-            };
+            const readonly = self.current_token.type == .keyword_readonly;
+            if (readonly) try self.advance();
+            try self.expect(.keyword_maplike);
+            try self.expect(.left_angle);
+            var key_type = try self.parseType();
+            errdefer self.freeIDLType(&key_type);
+            try self.expect(.comma);
+            const value_type = try self.parseType();
+            try self.expect(.right_angle);
+            try self.expect(.semicolon);
+            return .{ .type = .maplike, .maplike = .{ .key_type = key_type, .value_type = value_type, .readonly = readonly } };
         } else if (self.current_token.type == .keyword_readonly or
             self.current_token.type == .keyword_attribute or
             self.current_token.type == .keyword_inherit or
@@ -1645,6 +1638,10 @@ pub const Parser = struct {
                 self.allocator.free(async_iter.extAttrs);
             },
             .setlike => if (member.setlike) |*set| self.freeIDLType(&set.value_type),
+            .maplike => if (member.maplike) |*map| {
+                self.freeIDLType(&map.key_type);
+                self.freeIDLType(&map.value_type);
+            },
         }
     }
 

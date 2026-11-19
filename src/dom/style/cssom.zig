@@ -4,10 +4,10 @@
 //! objects these are called on. Every edit moves the containing sheet's
 //! version, so the cascade compiles the sheet again on its next read.
 //!
-//! Stated: an @import rule insertRule() adds to a sheet that is not
-//! constructed is not fetched (its styleSheet stays null). Nested rules
-//! use the nearest style/scope selector context; every selector replacement
-//! needed by a deletion is prepared before the live list changes.
+//! An @import rule insertRule() adds is fetched (`importInserted`). Nested
+//! rules use the nearest style/scope selector context; every selector
+//! replacement needed by a deletion is prepared before the live list
+//! changes.
 //!
 //! Spec: https://drafts.csswg.org/cssom-1/#insert-a-css-rule
 //! Spec: https://drafts.csswg.org/cssom-1/#remove-a-css-rule
@@ -139,8 +139,32 @@ pub fn insertRule(object: *runtime.Instance, of: RulesOf, text: []const u8, inde
     inserted = true;
     promotion.apply();
     if (record) |r| r.changed();
+    // An inserted @import is fetched (CSS Cascade "fetch an @import"; all
+    // three browsers fetch one insertRule() inserts).
+    if (kind == .import) if (record) |r| importInserted(r, new_rule);
     // 9. "Return index."
     return index;
+}
+
+/// CSS Cascade 5 "fetch an @import" for `rule`, an @import rule CSSOM just
+/// inserted into `record` (a sheet's top level: CSS allows no nested
+/// @import). CSSOM does not say when an inserted rule's sheet is fetched;
+/// the browsers fetch it at the insertion - Blink's CSSStyleSheet::insertRule
+/// calls StyleRuleImport::RequestStyleSheet, Gecko's insertRule loads the
+/// child sheet (css::Loader::LoadChildSheet with no parent load), WebKit's
+/// CSSStyleSheet::insertRule calls StyleRuleImport::requestStyleSheet. The
+/// rule takes the next import slot - the index the loader delivers its
+/// sheet by, after the slots the parse gave - and the loader is asked for it
+/// (dom.style.hooks.importInserted). A sheet no document loads into (a
+/// constructed one never has an @import; one whose owner is gone) fetches
+/// nothing: the loader finds no owner node.
+fn importInserted(record: *SheetRecord, rule: *Rule) void {
+    const slot = record.import_slots.items.len;
+    if (slot > std.math.maxInt(u16)) return;
+    record.import_slots.append(record.allocator, rule) catch return;
+    rule.ref();
+    rule.data.import.index = @intCast(slot);
+    @import("hooks.zig").importInserted(record, @intCast(slot), rule.data.import.href);
 }
 
 fn checkPosition(items: []const *Rule, index: usize, kind: rules_mod.Kind, nested: bool) !void {

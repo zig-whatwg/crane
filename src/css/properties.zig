@@ -336,11 +336,13 @@ pub const Longhand = enum(u16) {
     text_box_trim,
     text_box_edge,
 
-    // CSS Flexbox 2 §§5–6.1 and CSS Display 4 §3.
+    // CSS Flexbox 2 §§5–6.1 and CSS Display 4 §§3-4.
     flex_direction,
     flex_wrap,
     flex_line_count,
     order,
+    reading_flow,
+    reading_order,
 
     // CSS Multicol 1 §§4,6–7 and Multicol 2 §4.
     column_count,
@@ -1049,6 +1051,11 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .flex_wrap, .inherited = false, .initial = Value.kw(.nowrap), .grammar = .box },
         .{ .longhand = .flex_line_count, .inherited = false, .initial = .{ .integer = 1 }, .grammar = .box },
         .{ .longhand = .order, .inherited = false, .initial = .{ .integer = 0 }, .grammar = .box },
+        // Display 4 §4: reading-flow and reading-order (Chrome ships both;
+        // the newer spec, golden rule 2). Neither affects layout; the
+        // sequential focus navigation order reads them (html focus).
+        .{ .longhand = .reading_flow, .inherited = false, .initial = Value.kw(.normal), .grammar = .keywords, .keywords = &.{ .normal, .source_order, .flex_visual, .flex_flow, .grid_rows, .grid_columns, .grid_order } },
+        .{ .longhand = .reading_order, .inherited = false, .initial = .{ .integer = 0 }, .grammar = .box },
         .{ .longhand = .column_count, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_count },
         .{ .longhand = .column_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_size },
         .{ .longhand = .column_height, .inherited = false, .initial = Value.kw(.auto), .grammar = .column_size },

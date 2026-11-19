@@ -1,5 +1,5 @@
 //! Box-property grammars independent of layout geometry.
-//! CSS Flexbox 2 §§5–6.1 and CSS Display 4 §3.
+//! CSS Flexbox 2 §§5–6.1 and CSS Display 4 §§3-4.1.
 const std = @import("std");
 const properties = @import("properties.zig");
 const values = @import("style_values.zig");
@@ -45,7 +45,8 @@ pub fn consume(options: properties.ParseOptions, longhand: properties.Longhand, 
     return switch (longhand) {
         .flex_wrap => consumeWrap(stream),
         .flex_line_count => consumeInteger(options, stream, 1),
-        .order => consumeInteger(options, stream, null),
+        // Display 4 §4.1 reading-order: <integer>.
+        .order, .reading_order => consumeInteger(options, stream, null),
         else => unreachable,
     };
 }

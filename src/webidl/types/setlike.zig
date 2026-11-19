@@ -168,6 +168,13 @@ pub const PlatformObjects = struct {
         size: *const fn (context: *anyopaque) usize,
         contains: *const fn (context: *anyopaque, value: *anyopaque) bool,
         after: *const fn (context: *anyopaque, sequence: u64) ?Entry,
+        /// A read-write setlike whose interface does not declare add,
+        /// delete and clear itself (3.7.12.8-10): the binding's members
+        /// change the impl's list through these (Highlight's ranges). Null
+        /// where the interface declares its own (FontFaceSet).
+        append: ?*const fn (context: *anyopaque, value: *anyopaque) anyerror!void = null,
+        remove: ?*const fn (context: *anyopaque, value: *anyopaque) bool = null,
+        empty: ?*const fn (context: *anyopaque) void = null,
     };
 
     /// The set's size.
@@ -184,6 +191,25 @@ pub const PlatformObjects = struct {
     /// the first), or null.
     pub fn after(self: *const PlatformObjects, sequence: u64) ?Entry {
         return self.vtable.after(self.context, sequence);
+    }
+
+    /// Infra "append" the platform object `value`, which the impl traces;
+    /// error.NotSupported where the impl's interface declares add itself.
+    pub fn append(self: *PlatformObjects, value: *anyopaque) anyerror!void {
+        const f = self.vtable.append orelse return error.NotSupported;
+        return f(self.context, value);
+    }
+
+    /// Infra "remove" `value`; whether the set contained it.
+    pub fn remove(self: *PlatformObjects, value: *anyopaque) bool {
+        const f = self.vtable.remove orelse return false;
+        return f(self.context, value);
+    }
+
+    /// Infra "empty".
+    pub fn empty(self: *PlatformObjects) void {
+        const f = self.vtable.empty orelse return;
+        f(self.context);
     }
 };
 
