@@ -79,23 +79,13 @@ const SameListContext = struct {
 };
 
 /// Indent step 4: merge into a simple indentation element, else a new
-/// blockquote - in CSS mode one whose style indents on the start side only,
-/// as Chrome 157 makes it (`<blockquote style="margin: 0 0 0 40px; border:
-/// none; padding: 0px;">`; Firefox 160 sets margin-left on the block
-/// itself; the data accepts both and Safari 27.2 passes too:
-/// editing/run/indent.html, PPP at wpt.fyi 2358bd4835). The spec's note
-/// keeps plain blockquotes in CSS mode too. Mechanism: Blink
-/// IndentOutdentCommand::CreateIndentBlockquoteElement. Golden rule 2, no
-/// newer spec.
+/// blockquote.
 const BlockquoteContext = struct {
-    css: bool,
     pub fn siblingCriteria(_: BlockquoteContext, node: *Instance) anyerror!bool {
         return try isSimpleIndentationElement(node);
     }
-    pub fn newParent(self: BlockquoteContext, edit: *Edit) anyerror!?*Instance {
-        const quote = try edit.createElement("blockquote");
-        if (self.css) try common.setAttribute(quote, "style", "margin: 0 0 0 40px; border: none; padding: 0px;");
-        return quote;
+    pub fn newParent(_: BlockquoteContext, edit: *Edit) anyerror!?*Instance {
+        return try edit.createElement("blockquote");
     }
 };
 
@@ -115,7 +105,7 @@ pub fn indentNodes(edit: *Edit, node_list: []const *Instance) !void {
         }
     }
     // Step 4.
-    const new_parent = (try wrap_mod.wrap(edit, node_list, BlockquoteContext{ .css = try overrides.cssStylingFlag(edit) })) orelse return;
+    const new_parent = (try wrap_mod.wrap(edit, node_list, BlockquoteContext{})) orelse return;
     // Step 5.
     try block.fixDisallowedAncestors(edit, new_parent);
 }
