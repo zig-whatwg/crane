@@ -2593,11 +2593,17 @@ pub fn call_streamPrependHTMLUnsafe(instance: *runtime.Instance, options: webidl
 /// CSSOM View §5.1 - Scrolls this element into view
 /// Spec: https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview
 ///
-/// Without a layout engine, this is a no-op (returns sentinel for undefined)
+/// Step 4, "If the element does not have any associated box ... return",
+/// reads the element's box: the browsers update style and layout first
+/// (Blink Element::scrollIntoViewWithOptions calls
+/// UpdateStyleAndLayoutForNode; Gecko flushes layout; WebKit
+/// Element::scrollIntoView updates layout ignoring pending stylesheets).
+/// Crane lays nothing out: the style half, as its other CSSOM View
+/// geometry reads do (dom.style.engine.updateStyleForRead), then nothing
+/// to scroll - a renderer answers the box.
 pub fn call_scrollIntoView(instance: *runtime.Instance, arg: webidl.Opt(runtime.JSValue)) anyerror!runtime.JSValue {
-    _ = instance;
     _ = arg;
-    // No-op without layout engine - returns undefined
+    dom.style.engine.updateStyleForRead(instance);
     // TODO: Should return a resolved Promise<undefined>
     return runtime.JSValue.jsUndefined;
 }
