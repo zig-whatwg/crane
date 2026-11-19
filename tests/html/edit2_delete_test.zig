@@ -134,3 +134,32 @@ fn valuesCases() !void {
 test "a line joining another block keeps the values its own block gave it" {
     try helpers.onFreshThread(valuesCases);
 }
+
+/// A line break with the spaces white-space collapsing hides around it goes
+/// as one (delete.html, forwarddelete.html; PPP unless marked), and an empty
+/// last line left after a preserved line feed gets a padding br.
+const white_space_cases = [_]harness.Case{
+    // Chrome and Firefox.
+    .{ .input = "<div style=white-space:pre-line>foo[] \nbar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div style=\"white-space:pre-line\">foobar</div>" },
+    .{ .input = "<div style=white-space:pre-line>foo[]\n bar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div style=\"white-space:pre-line\">foobar</div>" },
+    .{ .input = "<div style=white-space:nowrap>foo[] \nbar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div style=\"white-space:nowrap\">foobar</div>" },
+    .{ .input = "<div style=white-space:nowrap>foo[]\n\nbar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div style=\"white-space:nowrap\">foobar</div>" },
+    // Chrome and Firefox.
+    .{ .input = "<div style=white-space:pre-line>foo \n[]bar</div>", .commands = &.{.{ "delete", "" }}, .expected = "<div style=\"white-space:pre-line\">foobar</div>" },
+    .{ .input = "<div style=white-space:nowrap>foo\n []bar</div>", .commands = &.{.{ "delete", "" }}, .expected = "<div style=\"white-space:nowrap\">foobar</div>" },
+    .{ .input = "<div style=white-space:pre>foo\nb[]</div>", .commands = &.{.{ "delete", "" }}, .expected = "<div style=\"white-space:pre\">foo\n<br></div>" },
+    .{ .input = "<div style=white-space:pre-line>foo\nb[]</div>", .commands = &.{.{ "delete", "" }}, .expected = "<div style=\"white-space:pre-line\">foo\n<br></div>" },
+    // A space between words is deleted alone.
+    .{ .input = "<div style=white-space:pre-line>foo[] bar</div>", .commands = &.{.{ "forwarddelete", "" }}, .expected = "<div style=\"white-space:pre-line\">foobar</div>" },
+};
+
+fn whiteSpaceCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &white_space_cases);
+}
+
+test "a line break white-space collapsing hides spaces around is deleted with them" {
+    try helpers.onFreshThread(whiteSpaceCases);
+}
