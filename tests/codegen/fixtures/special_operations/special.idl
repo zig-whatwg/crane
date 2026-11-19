@@ -78,10 +78,3 @@ interface CSSStyleDeclaration {
   readonly attribute unsigned long length;
   getter CSSOMString item(unsigned long index);
 };
-
-// CSSOM 6.6.2: the CSS property attributes are attributes of
-// CSSStyleProperties, not named properties.
-[Exposed=Window]
-interface CSSStyleProperties : CSSStyleDeclaration {
-  [CEReactions] attribute [LegacyNullToEmptyString] CSSOMString cssFloat;
-};

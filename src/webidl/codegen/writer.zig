@@ -5860,34 +5860,9 @@ pub fn writeCSSPropertyNamedHandlers(
 /// These interfaces need special handling for CSS property access (style.color, etc.)
 pub fn isCSSDeclarationInterface(name: []const u8) bool {
     return std.mem.eql(u8, name, "CSSStyleDeclaration") or
+        std.mem.eql(u8, name, "CSSStyleProperties") or
         std.mem.eql(u8, name, "CSSPageDescriptors") or
         std.mem.eql(u8, name, "CSSMarginDescriptors");
-}
-
-/// CSSOM 6.6.2: CSSStyleProperties' camel-cased, webkit-cased and dashed
-/// attributes are attributes, not named properties: the binding defines one
-/// accessor per name on the prototype (Firefox's CSS2Properties, WebKit's
-/// generated CSSStyleProperties attributes) from the impl's
-/// `css_property_attributes`, and runs each through these delegates by the
-/// attribute's index.
-pub fn isCSSPropertyAttributesInterface(name: []const u8) bool {
-    return std.mem.eql(u8, name, "CSSStyleProperties");
-}
-
-/// The CSS property attributes' table and delegates (isCSSPropertyAttributesInterface).
-pub fn writeCSSPropertyAttributes(writer: anytype, impl_name: []const u8) !void {
-    try writer.writeAll("    /// CSSOM 6.6.2: the CSS property attributes (camel-cased, webkit-cased,\n");
-    try writer.writeAll("    /// dashed), in the order the binding defines them on the prototype.\n");
-    try writer.print("    pub const css_property_attributes = {s}.css_property_attributes;\n\n", .{impl_name});
-    try writer.writeAll("    /// The getter of the CSS property attribute at `index`.\n");
-    try writer.writeAll("    pub fn getCssPropertyAttribute(instance: *runtime.Instance, index: usize) anyerror!runtime.DOMString {\n");
-    try writer.print("        return {s}.getCssPropertyAttribute(instance, index);\n", .{impl_name});
-    try writer.writeAll("    }\n\n");
-    try writer.writeAll("    /// The setter of the CSS property attribute at `index` ([CEReactions],\n");
-    try writer.writeAll("    /// [LegacyNullToEmptyString]: the binding converted the value).\n");
-    try writer.writeAll("    pub fn setCssPropertyAttribute(instance: *runtime.Instance, index: usize, value: runtime.DOMString) anyerror!void {\n");
-    try writer.print("        return {s}.setCssPropertyAttribute(instance, index, value);\n", .{impl_name});
-    try writer.writeAll("    }\n\n");
 }
 
 /// Escape Zig reserved keywords by appending underscore

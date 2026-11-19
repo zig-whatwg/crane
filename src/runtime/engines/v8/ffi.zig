@@ -178,10 +178,6 @@ pub const FunctionCallbackInfo = opaque {
     /// Get data associated with the function template
     pub extern fn v8_FunctionCallbackInfo_Data(self: *const FunctionCallbackInfo) *Value;
 
-    /// The function template's data as an unsigned 32-bit integer, read with
-    /// no handle; maxInt(u32) when it is not one.
-    pub extern fn v8_FunctionCallbackInfo_DataUint32(self: *const FunctionCallbackInfo) u32;
-
     /// Get the creation context of the target function being called.
     /// This is critical for cross-realm support: when calling
     /// other.SomeInterface.prototype.method.call(obj), we need the context
@@ -547,18 +543,6 @@ pub extern fn v8_ObjectTemplate_SetAccessorProperty(
     name: *String,
     getter: ?FunctionCallback,
     setter: ?FunctionCallback,
-) void;
-
-/// CSSOM 6.6.2's CSS property attributes: `count` accessors on `self`, the
-/// i-th named names[i] (lengths[i] bytes), all sharing `getter` and `setter`,
-/// each function's data the Integer i (v8_wrapper.cpp).
-pub extern fn v8_ObjectTemplate_SetIndexedAccessorProperties(
-    self: *ObjectTemplate,
-    names: [*]const [*]const u8,
-    lengths: [*]const usize,
-    count: usize,
-    getter: FunctionCallback,
-    setter: FunctionCallback,
 ) void;
 
 /// Set a named property handler on the ObjectTemplate
