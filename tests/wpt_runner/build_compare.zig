@@ -255,9 +255,23 @@ pub const Difference = struct {
     subtest: []const u8,
     production: []const u8,
     bug_finding: []const u8,
+    /// A subtest's: its file's status in each run (the journal's), null
+    /// when that run's journal has no such file (`journalPathOf`).
+    production_file: ?[]const u8 = null,
+    bug_finding_file: ?[]const u8 = null,
 };
 
 pub const missing = "MISSING";
+
+/// The journal path of a result stream's test URL: without its leading "/"
+/// and any variant (`?...`) or fragment. A test generated from a
+/// `.any.js` file has a URL the journal does not name (`.any.html`).
+pub fn journalPathOf(test_id: []const u8) []const u8 {
+    var path = test_id;
+    if (path.len > 0 and path[0] == '/') path = path[1..];
+    if (std.mem.indexOfAny(u8, path, "?#")) |i| path = path[0..i];
+    return path;
+}
 
 /// Every difference between the two runs, in the production run's order
 /// (files, then tests, then subtests), then what only the bug-finding run has.
@@ -278,14 +292,17 @@ pub fn compare(arena: Allocator, production: *const Run, bug_finding: *const Run
     // nothing), and is not repeated subtest by subtest.
     for (production.tests.keys(), production.tests.values()) |test_id, result| {
         const other = bug_finding.tests.get(test_id) orelse continue;
+        const path = journalPathOf(test_id);
+        const production_file: ?[]const u8 = if (production.files.get(path)) |f| f.toString() else null;
+        const bug_finding_file: ?[]const u8 = if (bug_finding.files.get(path)) |f| f.toString() else null;
         for (result.subtests.keys(), result.subtests.values()) |name, status| {
             const theirs = other.subtests.get(name) orelse missing;
             if (std.mem.eql(u8, status, theirs)) continue;
-            try out.append(arena, .{ .test_id = test_id, .subtest = name, .production = status, .bug_finding = theirs });
+            try out.append(arena, .{ .test_id = test_id, .subtest = name, .production = status, .bug_finding = theirs, .production_file = production_file, .bug_finding_file = bug_finding_file });
         }
         for (other.subtests.keys(), other.subtests.values()) |name, status| {
             if (result.subtests.contains(name)) continue;
-            try out.append(arena, .{ .test_id = test_id, .subtest = name, .production = missing, .bug_finding = status });
+            try out.append(arena, .{ .test_id = test_id, .subtest = name, .production = missing, .bug_finding = status, .production_file = production_file, .bug_finding_file = bug_finding_file });
         }
     }
     return out.toOwnedSlice(arena);
@@ -308,7 +325,7 @@ pub fn check(arena: Allocator, differences: []const Difference, known: []const K
     for (differences) |d| {
         const hit = for (known, 0..) |k, i| {
             if (k.matches(d)) break i;
-        } else null;
+        } else fileTimeoutLine(d, known);
         if (hit) |i| {
             seen[i] = true;
             matched += 1;
@@ -317,6 +334,32 @@ pub fn check(arena: Allocator, differences: []const Difference, known: []const K
     var stale: std.ArrayList(Known) = .empty;
     for (known, seen) |k, s| if (!s and !k.intermittent()) try stale.append(arena, k);
     return .{ .new = try new.toOwnedSlice(arena), .stale = try stale.toOwnedSlice(arena), .known = matched };
+}
+
+/// A subtest the run that timed its FILE out left unfinished - TIMEOUT or
+/// NOTRUN where the other run has it PASS - is that file's difference, not
+/// one of its own: the file's `*` line covers it when the line lists TIMEOUT
+/// for that run. Only when that run's file status is TIMEOUT: a subtest
+/// that timed out in a file that run finished is a difference of its own
+/// (integrator 2026-11-19, lane maj1: tools/wpt_build_differences.txt's
+/// client-url-creation-url line).
+fn fileTimeoutLine(d: Difference, known: []const Known) ?usize {
+    if (std.mem.eql(u8, d.subtest, file_status)) return null;
+    const in_production = unfinished(d.production) and std.mem.eql(u8, d.bug_finding, "PASS");
+    const in_bug_finding = unfinished(d.bug_finding) and std.mem.eql(u8, d.production, "PASS");
+    if (!in_production and !in_bug_finding) return null;
+    const file = (if (in_production) d.production_file else d.bug_finding_file) orelse return null;
+    if (!std.mem.eql(u8, file, "TIMEOUT")) return null;
+    const path = journalPathOf(d.test_id);
+    for (known, 0..) |k, i| {
+        if (!std.mem.eql(u8, k.subtest, file_status) or !std.mem.eql(u8, k.test_id, path)) continue;
+        if (listed(if (in_production) k.production else k.bug_finding, "TIMEOUT")) return i;
+    }
+    return null;
+}
+
+fn unfinished(status: []const u8) bool {
+    return std.mem.eql(u8, status, "TIMEOUT") or std.mem.eql(u8, status, "NOTRUN");
 }
 
 // ============================================================================
