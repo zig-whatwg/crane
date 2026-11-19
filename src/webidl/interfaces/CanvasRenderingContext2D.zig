@@ -473,21 +473,11 @@ pub const CanvasRenderingContext2D = struct {
     pub const get_imageSmoothingQuality = mixins.CanvasImageSmoothing.get_imageSmoothingQuality;
     pub const set_imageSmoothingQuality = mixins.CanvasImageSmoothing.set_imageSmoothingQuality;
 
-    pub fn get_strokeStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try CanvasRenderingContext2DImpl.get_strokeStyle(instance);
-    }
+    pub const get_strokeStyle = mixins.CanvasFillStrokeStyles.get_strokeStyle;
+    pub const set_strokeStyle = mixins.CanvasFillStrokeStyles.set_strokeStyle;
 
-    pub fn set_strokeStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_strokeStyle(instance, value);
-    }
-
-    pub fn get_fillStyle(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try CanvasRenderingContext2DImpl.get_fillStyle(instance);
-    }
-
-    pub fn set_fillStyle(instance: *runtime.Instance, value: runtime.JSValue) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_fillStyle(instance, value);
-    }
+    pub const get_fillStyle = mixins.CanvasFillStrokeStyles.get_fillStyle;
+    pub const set_fillStyle = mixins.CanvasFillStrokeStyles.set_fillStyle;
 
     pub const get_shadowOffsetX = mixins.CanvasShadowStyles.get_shadowOffsetX;
     pub const set_shadowOffsetX = mixins.CanvasShadowStyles.set_shadowOffsetX;
@@ -504,45 +494,20 @@ pub const CanvasRenderingContext2D = struct {
     pub const get_filter = mixins.CanvasFilters.get_filter;
     pub const set_filter = mixins.CanvasFilters.set_filter;
 
-    pub fn get_lineWidth(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_lineWidth(instance);
-    }
+    pub const get_lineWidth = mixins.CanvasPathDrawingStyles.get_lineWidth;
+    pub const set_lineWidth = mixins.CanvasPathDrawingStyles.set_lineWidth;
 
-    pub fn set_lineWidth(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_lineWidth(instance, value);
-    }
+    pub const get_lineCap = mixins.CanvasPathDrawingStyles.get_lineCap;
+    pub const set_lineCap = mixins.CanvasPathDrawingStyles.set_lineCap;
 
-    pub fn get_lineCap(instance: *runtime.Instance) anyerror!CanvasLineCap {
-        return try CanvasRenderingContext2DImpl.get_lineCap(instance);
-    }
+    pub const get_lineJoin = mixins.CanvasPathDrawingStyles.get_lineJoin;
+    pub const set_lineJoin = mixins.CanvasPathDrawingStyles.set_lineJoin;
 
-    pub fn set_lineCap(instance: *runtime.Instance, value: CanvasLineCap) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_lineCap(instance, value);
-    }
+    pub const get_miterLimit = mixins.CanvasPathDrawingStyles.get_miterLimit;
+    pub const set_miterLimit = mixins.CanvasPathDrawingStyles.set_miterLimit;
 
-    pub fn get_lineJoin(instance: *runtime.Instance) anyerror!CanvasLineJoin {
-        return try CanvasRenderingContext2DImpl.get_lineJoin(instance);
-    }
-
-    pub fn set_lineJoin(instance: *runtime.Instance, value: CanvasLineJoin) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_lineJoin(instance, value);
-    }
-
-    pub fn get_miterLimit(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_miterLimit(instance);
-    }
-
-    pub fn set_miterLimit(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_miterLimit(instance, value);
-    }
-
-    pub fn get_lineDashOffset(instance: *runtime.Instance) anyerror!f64 {
-        return try CanvasRenderingContext2DImpl.get_lineDashOffset(instance);
-    }
-
-    pub fn set_lineDashOffset(instance: *runtime.Instance, value: f64) anyerror!void {
-        try CanvasRenderingContext2DImpl.set_lineDashOffset(instance, value);
-    }
+    pub const get_lineDashOffset = mixins.CanvasPathDrawingStyles.get_lineDashOffset;
+    pub const set_lineDashOffset = mixins.CanvasPathDrawingStyles.set_lineDashOffset;
 
     pub const get_lang = mixins.CanvasTextDrawingStyles.get_lang;
     pub const set_lang = mixins.CanvasTextDrawingStyles.set_lang;
@@ -577,9 +542,7 @@ pub const CanvasRenderingContext2D = struct {
     pub const get_wordSpacing = mixins.CanvasTextDrawingStyles.get_wordSpacing;
     pub const set_wordSpacing = mixins.CanvasTextDrawingStyles.set_wordSpacing;
 
-    pub fn call_createRadialGradient(instance: *runtime.Instance, x0: f64, y0: f64, r0: f64, x1: f64, y1: f64, r1: f64) anyerror!*runtime.Instance {
-        return try CanvasRenderingContext2DImpl.call_createRadialGradient(instance, x0, y0, r0, x1, y1, r1);
-    }
+    pub const call_createRadialGradient = mixins.CanvasFillStrokeStyles.call_createRadialGradient;
 
     pub const call_save = mixins.CanvasState.call_save;
 
@@ -591,9 +554,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub const call_stroke = mixins.CanvasDrawPath.call_stroke;
 
-    pub fn call_setLineDash(instance: *runtime.Instance, segments: runtime.JSValue) anyerror!void {
-        return try CanvasRenderingContext2DImpl.call_setLineDash(instance, segments);
-    }
+    pub const call_setLineDash = mixins.CanvasPathDrawingStyles.call_setLineDash;
 
     pub fn call_bezierCurveTo(instance: *runtime.Instance, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_bezierCurveTo(instance, cp1x, cp1y, cp2x, cp2y, x, y);
@@ -601,9 +562,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub const call_fillRect = mixins.CanvasRect.call_fillRect;
 
-    pub fn call_createConicGradient(instance: *runtime.Instance, startAngle: f64, x: f64, y: f64) anyerror!*runtime.Instance {
-        return try CanvasRenderingContext2DImpl.call_createConicGradient(instance, startAngle, x, y);
-    }
+    pub const call_createConicGradient = mixins.CanvasFillStrokeStyles.call_createConicGradient;
 
     pub const call_getTransform = mixins.CanvasTransform.call_getTransform;
 
@@ -653,9 +612,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub const call_setTransform = mixins.CanvasTransform.call_setTransform;
 
-    pub fn call_createLinearGradient(instance: *runtime.Instance, x0: f64, y0: f64, x1: f64, y1: f64) anyerror!*runtime.Instance {
-        return try CanvasRenderingContext2DImpl.call_createLinearGradient(instance, x0, y0, x1, y1);
-    }
+    pub const call_createLinearGradient = mixins.CanvasFillStrokeStyles.call_createLinearGradient;
 
     pub const call_fill = mixins.CanvasDrawPath.call_fill;
 
@@ -663,9 +620,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub const call_restore = mixins.CanvasState.call_restore;
 
-    pub fn call_getLineDash(instance: *runtime.Instance) anyerror!runtime.JSValue {
-        return try CanvasRenderingContext2DImpl.call_getLineDash(instance);
-    }
+    pub const call_getLineDash = mixins.CanvasPathDrawingStyles.call_getLineDash;
 
     pub fn call_arcTo(instance: *runtime.Instance, x1: f64, y1: f64, x2: f64, y2: f64, radius: f64) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_arcTo(instance, x1, y1, x2, y2, radius);
@@ -673,9 +628,7 @@ pub const CanvasRenderingContext2D = struct {
 
     pub const call_strokeText = mixins.CanvasText.call_strokeText;
 
-    pub fn call_createPattern(instance: *runtime.Instance, image: CanvasImageSource, repetition: runtime.DOMString) anyerror!?*runtime.Instance {
-        return try CanvasRenderingContext2DImpl.call_createPattern(instance, image, repetition);
-    }
+    pub const call_createPattern = mixins.CanvasFillStrokeStyles.call_createPattern;
 
     pub fn call_closePath(instance: *runtime.Instance) anyerror!void {
         return try CanvasRenderingContext2DImpl.call_closePath(instance);
