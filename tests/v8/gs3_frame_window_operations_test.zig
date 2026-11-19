@@ -40,11 +40,11 @@ const Seen = struct {
 /// The test thread's record: each test runs one thread, which sets it.
 var current: ?*Seen = null;
 
-fn initializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) i32 {
+fn initializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) runtime.EngineError!i32 {
     _ = timeout;
     _ = repeat;
     switch (handler) {
-        .function, .string => |h| protocol.releaseValue(.{ .value = h }),
+        .function, .trusted_script, .string => |h| protocol.releaseValue(.{ .value = h }),
     }
     for (arguments) |argument| protocol.releaseValue(.{ .value = argument });
     // No record: its test has returned (every test ends its realms first,
@@ -71,8 +71,13 @@ fn windowDestroyed(r: runtime.Context) void {
     seen.own_operations_at_destroy = r.window_operations != null;
 }
 
+fn isTrustedScript(_: *runtime.Instance) bool {
+    return false;
+}
+
 const operations = runtime.WindowOperations{
     .initializeTimer = initializeTimer,
+    .isTrustedScript = isTrustedScript,
     .clearTimer = clearTimer,
     .requestAnimationFrame = requestAnimationFrame,
     .cancelAnimationFrame = cancelAnimationFrame,

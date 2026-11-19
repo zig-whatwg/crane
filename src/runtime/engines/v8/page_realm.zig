@@ -347,14 +347,28 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
     const context = ffi.v8_Isolate_GetCurrentContext(isolate) orelse return;
     defer ffi.v8_Context_Dispose(context);
 
-    // TimerHandler is (TrustedScript or DOMString or Function). A callable
-    // is the Function member; anything else is converted by ToString HERE, at
-    // the call - which runs script (evil-spec-example.any.js has a toString()
-    // that itself calls setTimeout) and can throw. A null from ToString means
-    // it threw: the exception is pending, and returning rethrows it.
+    // The function's realm - the window whose method this is - and its own
+    // window operations. Found before any argument is converted: the
+    // handler's conversion asks the host about a platform object.
+    const realm = context_manager.get(context) orelse return setIntegerReturn(info, isolate, 0);
+    const operations = realm.window_operations orelse return setIntegerReturn(info, isolate, 0);
+
+    // TimerHandler is (TrustedScript or DOMString or Function), converted as
+    // the union algorithm does (WebIDL 3.2.24): a platform object the host
+    // says implements TrustedScript is that member (step 4), as it is; a
+    // callable is the Function member (step 10); anything else is converted
+    // by ToString HERE, at the call (step 15) - which runs script
+    // (evil-spec-example.any.js has a toString() that itself calls
+    // setTimeout) and can throw. A null from ToString means it threw: the
+    // exception is pending, and returning rethrows it. The callable test
+    // comes first here, as no platform object is callable (platformObjectOf
+    // answers null for every function): the same result, and a Function
+    // handler - nearly every timer - is never asked about.
     const handler_value = info.get(0);
     const handler: runtime.WindowTimerHandler = if (ffi.v8_Value_IsFunction(handler_value))
         .{ .function = ownedHandle(handler_value) }
+    else if (if (@import("conversions.zig").platformObjectOf(handler_value)) |instance| operations.isTrustedScript(instance) else false)
+        .{ .trusted_script = ownedHandle(handler_value) }
     else blk: {
         defer ffi.v8_Global_Dispose(handler_value);
         const source = ffi.v8_Value_ToString(handler_value, context) orelse return;
@@ -367,7 +381,7 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
     };
     var handler_owned = true;
     defer if (handler_owned) switch (handler) {
-        .function, .string => |h| ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.handle.ptr))),
+        .function, .trusted_script, .string => |h| ffi.v8_Global_Dispose(@ptrCast(@alignCast(h.handle.ptr))),
     };
 
     // `optional long timeout = 0` is ToInt32: ToNumber - script again, and it
@@ -380,11 +394,6 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
             !ffi.v8_Value_ToInt32(timeout_value, context, &timeout)) return;
     }
 
-    // The function's realm - the window whose method this is - and its own
-    // window operations.
-    const realm = context_manager.get(context) orelse return setIntegerReturn(info, isolate, 0);
-    const operations = realm.window_operations orelse return setIntegerReturn(info, isolate, 0);
-
     // `any... arguments`, for every run of a Function handler. Each is an
     // owned Global handed to the host; the slice is only lent for the call.
     const arguments = realm.allocator.alloc(JSValue, argc -| 2) catch return setIntegerReturn(info, isolate, 0);
@@ -392,7 +401,12 @@ fn timerInitializationFromCall(info: *const ffi.FunctionCallbackInfo, repeat: bo
     for (arguments, 2..) |*argument, i| argument.* = ownedHandle(info.get(@intCast(i)));
 
     handler_owned = false;
-    const id = operations.initializeTimer(realm, handler, timeout, arguments, repeat);
+    const id = operations.initializeTimer(realm, handler, timeout, arguments, repeat) catch |err| switch (err) {
+        // The host's steps ran script that threw (a Trusted Types default
+        // policy): leave it in flight.
+        error.ExceptionPending => return,
+        else => return @import("conversions.zig").throwWebIDLErrorFromContext(isolate, context, @errorName(err)),
+    };
     setIntegerReturn(info, isolate, id);
 }
 

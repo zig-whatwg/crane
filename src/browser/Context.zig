@@ -145,9 +145,9 @@ test "a held timer stays in its window's map until cleared, and clearing it free
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
     other.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const interval: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
-    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const interval: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
+    const elsewhere: TimerId = @intCast(try initializeTimer(&other, .{ .function = .{ .number = 3 } }, 10, &.{}, false));
     try std.testing.expect(id != 0 and interval != 0 and elsewhere != 0);
 
     // Both of `realm`'s are held: their window's document went into the
@@ -192,7 +192,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
     defer manager.deinit();
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
-    const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
+    const resident: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
     var starved: usize = 0;
     var worst: usize = 0;
@@ -200,7 +200,7 @@ test "a window's map of active timers keeps half its unused slots free while tim
         // A page's debounced work: timers armed, then cleared before due.
         var ids: [12]TimerId = undefined;
         for (&ids, 0..) |*id, i| {
-            id.* = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
+            id.* = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
             if (i == 0) {
                 const map = &realm.active_timers.map;
                 if (!webidl.utils.tombstones.slotCounts(map).halfOfUnusedFree()) starved += 1;
@@ -231,17 +231,17 @@ test "a window's map of active timers gives back what a burst of 5,000 took once
     defer manager.deinit();
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
-    const resident: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
+    const resident: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 3_600_000, &.{}, true));
     defer clearTimer(&realm, @intCast(resident));
-    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
+    for (0..16) |_| clearTimer(&realm, try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 60_000, &.{}, false));
     const before = TimerMap.of(&realm).capacity();
 
     const burst = try allocator.alloc(i32, 5_000);
     defer allocator.free(burst);
-    for (burst) |*id| id.* = initializeTimer(&realm, .{ .function = .{ .number = 3 } }, 60_000, &.{}, false);
+    for (burst) |*id| id.* = try initializeTimer(&realm, .{ .function = .{ .number = 3 } }, 60_000, &.{}, false);
     for (burst) |id| clearTimer(&realm, id);
     // The next timers the pages that follow set.
-    for (0..16) |_| clearTimer(&realm, initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
+    for (0..16) |_| clearTimer(&realm, try initializeTimer(&realm, .{ .function = .{ .number = 4 } }, 60_000, &.{}, false));
 
     const after = TimerMap.of(&realm).capacity();
     if (after > @max(before, 64)) {
@@ -263,8 +263,8 @@ test "a queued timer's task owns its record: suspension skips it, clearing relea
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
     realm.timer = manager.timerInterface();
-    const cleared: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const dropped: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
+    const cleared: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const dropped: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, true));
     var queued: [2]*WindowTimerCallback = undefined;
     for ([_]TimerId{ cleared, dropped }, 0..) |key, i| {
         const wrapper = TimerMap.of(&realm).get(key).?;
@@ -300,8 +300,8 @@ test "a window's end leaves a queued timer's record to its task, holding no hand
     const manager = try runtime.native_timer.NativeTimerManager.init(allocator);
     defer manager.deinit();
     realm.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
-    const armed: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, false));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 10, &.{}, false));
+    const armed: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 2 } }, 10, &.{}, false));
     try std.testing.expect(armed != 0);
     const wrapper = TimerMap.of(&realm).get(id).?;
     try std.testing.expect(manager.clearTimeout(wrapper.getData().current_timer_id));
@@ -328,8 +328,8 @@ test "a suspended timer keeps the wait it had left, and a resumed one is armed f
     // Each window's timers run on its agent's loop: here, the manager.
     realm.timer = manager.timerInterface();
     other.timer = manager.timerInterface();
-    const id: TimerId = @intCast(initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
-    const elsewhere: TimerId = @intCast(initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
+    const id: TimerId = @intCast(try initializeTimer(&realm, .{ .function = .{ .number = 1 } }, 5_000, &.{}, false));
+    const elsewhere: TimerId = @intCast(try initializeTimer(&other, .{ .function = .{ .number = 2 } }, 5_000, &.{}, false));
     try std.testing.expect(id != 0 and elsewhere != 0);
     const armed = TimerMap.of(&realm).get(id).?.getData().current_timer_id;
 
@@ -560,11 +560,18 @@ fn endWindowTimers(realm: runtime.Context) void {
 /// frame methods (see `runtime.WindowOperations`).
 const window_operations = runtime.WindowOperations{
     .initializeTimer = initializeTimer,
+    .isTrustedScript = isTrustedScript,
     .clearTimer = clearTimer,
     .requestAnimationFrame = rendering.requestAnimationFrame,
     .cancelAnimationFrame = rendering.cancelAnimationFrame,
     .windowDestroyed = clearDiscardedWindowState,
 };
+
+/// TimerHandler's TrustedScript member (WebIDL 3.2.24 step 4): a Trusted
+/// Types object of the script kind.
+fn isTrustedScript(instance: *runtime.Instance) bool {
+    return dom_mod.trusted_types.dataOf(instance, .script) != null;
+}
 
 /// The engine's end of a window realm: the window goes with its last
 /// document (`clearWindowState`).
@@ -871,15 +878,26 @@ const WindowTimerData = struct {
     /// none (its handler is left a number), so `destroyTimer` after an early
     /// release (a queued timer cleared, `releaseQueued`) releases nothing.
     fn release(self: *WindowTimerData, allocator: std.mem.Allocator) void {
-        switch (self.handler) {
-            .function, .string => |handle| releaseValue(handle),
-        }
+        releaseTimerHandler(self.handler, allocator);
         self.handler = .{ .function = .{ .number = 0 } };
         for (self.arguments) |argument| releaseValue(argument);
         allocator.free(self.arguments);
         self.arguments = &.{};
     }
 };
+
+/// Release a timer handler: the engine's handle, or - for a string handler
+/// the timer initialization steps replaced (`initializeTimer`, step 1.4) -
+/// the compliant text, bytes of `allocator`'s.
+fn releaseTimerHandler(handler: runtime.WindowTimerHandler, allocator: std.mem.Allocator) void {
+    switch (handler) {
+        .function, .trusted_script => |handle| releaseValue(handle),
+        .string => |value| switch (value) {
+            .string => |text| if (text.owned) allocator.free(text.data),
+            else => releaseValue(value),
+        },
+    }
+}
 
 /// WindowTimerData's shape before the back/forward cache (phase A): the
 /// record a suspension may not grow (`WindowTimerData` test below).
@@ -989,17 +1007,25 @@ fn runTimerSteps(opaque_data: ?*anyopaque) void {
         // URL, which is also where its errors are reported from - and run it.
         .string => |source| {
             const window = realmWindow(data.realm) orelse return;
-            // Step 10.8.2's CSP check ran at the call instead
-            // (initializeTimer, a stated deviation): a handler here was
-            // allowed then.
+            // Step 1's Trusted Types and CSP checks ran at the call
+            // (initializeTimer): a handler here was allowed then. It is the
+            // JS string the call converted, or - where step 1.4 replaced it
+            // (a TrustedScript's data, a default policy's value) - its text.
+            const script: engine.ScriptSource = switch (source) {
+                .string => |text| .{ .utf8 = text.data },
+                else => .{ .string = source },
+            };
             const base_url = apiBaseUrl(data.realm, window);
             defer base_url.deinit();
-            engine.runClassicScript(data.realm, .{ .string = source }, base_url.url, null, windowReporter(data.realm)) catch |err| switch (err) {
+            engine.runClassicScript(data.realm, script, base_url.url, null, windowReporter(data.realm)) catch |err| switch (err) {
                 // Reported for the Window already (step 8.3).
                 error.ExceptionReported => {},
                 else => log.debug("a timer's string handler did not run: {}", .{err}),
             };
         },
+        // Step 1.4 makes every TrustedScript handler a string; one is kept
+        // only by a realm with no Window, whose timers run nothing.
+        .trusted_script => {},
     }
 }
 
@@ -1212,41 +1238,75 @@ fn intervalSteps(data: *WindowTimerData) void {
 /// `handler` and every element of `arguments` are handed over.
 ///
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#timer-initialisation-steps
-fn initializeTimer(realm: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) i32 {
+fn initializeTimer(realm: runtime.Context, converted: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) runtime.EngineError!i32 {
     // Owned until the timer takes them.
+    var handler = converted;
     var owned = true;
     defer if (owned) {
-        switch (handler) {
-            .function, .string => |handle| releaseValue(handle),
-        }
+        releaseTimerHandler(handler, realm.allocator);
         for (arguments) |argument| releaseValue(argument);
     };
 
-    // Not in the spec, stated: a string handler is checked by CSP here, at
-    // the call, and not by step 10.8.2 when the timer fires
-    // (EnsureCSPDoesNotBlockStringCompilation(realm, « », handler, handler,
-    // timer, « », handler), whose EvalError the spec reports for the
-    // global). An enforced policy that blocks it reports its violation and
-    // the call returns 0, scheduling nothing and reporting no exception; a
-    // report-only one reports and the timer is set. That is what all three
-    // engines do - Blink's DOMTimer::setTimeout/setInterval (IsAllowed:
-    // ContentSecurityPolicy::AllowEval, kReport, kWillNotThrowException,
-    // then `return 0`), Gecko's nsGlobalWindowInner::SetTimeoutOrInterval
-    // (CSPEvalChecker::CheckForWindow: GetAllowsEval, LogViolationDetails,
-    // `return 0`) and WebKit's LocalDOMWindow::setTimeout/setInterval
-    // (ContentSecurityPolicy::allowEval, `return 0`) - and what WPT asserts:
-    // unsafe-eval/eval-scripts-set{Timeout,Interval}-blocked.sub.html expect
-    // the id 0, and files that call setTimeout(string) under such a policy
-    // expect no error event (the spec's report made testharness end them
-    // in ERROR). A blocked interval is thereby checked once, as the engines
-    // do. (Step 1's Trusted Types step is not run yet: a TrustedScript
-    // reaches here already a string.)
+    // Step 1: "If handler is not a Function and previousId was not given" -
+    // setTimeout and setInterval give none; an interval's repeats do not run
+    // this. Both checks are at the call: Trusted Types (1.4) may replace the
+    // handler, and CSP (1.5) may refuse it. An enforced policy that blocks it
+    // reports its violation and the call returns 0, scheduling nothing and
+    // reporting no exception; a report-only one reports and the timer is
+    // set. All three engines check CSP at the call too - Blink's
+    // DOMTimer::setTimeout/setInterval (IsAllowed: ContentSecurityPolicy::
+    // AllowEval, kReport, kWillNotThrowException, then `return 0`), Gecko's
+    // nsGlobalWindowInner::SetTimeoutOrInterval (CSPEvalChecker::
+    // CheckForWindow, `return 0`) and WebKit's LocalDOMWindow::setTimeout/
+    // setInterval (ContentSecurityPolicy::allowEval, `return 0`) - and WPT
+    // asserts it: unsafe-eval/eval-scripts-set{Timeout,Interval}-
+    // blocked.sub.html expect the id 0. A blocked interval is thereby checked
+    // once, as the engines do.
     switch (handler) {
         .function => {},
-        .string => |source| if (realmWindow(realm)) |window| {
-            const text = engine.convertToDOMString(realm, source, window.ctx.allocator) catch return 0;
-            defer window.ctx.allocator.free(text);
-            if (!html_mod.code_generation.timerHandlerAllowed(window, text)) return 0;
+        .trusted_script, .string => |value| if (realmWindow(realm)) |window| {
+            const allocator = realm.allocator;
+            // 1.1-1.3: "Window setTimeout" or "Window setInterval".
+            const sink: []const u8 = if (repeat) "Window setInterval" else "Window setTimeout";
+            // The string the call converted, as a DOMString.
+            const text: ?[]u8 = switch (handler) {
+                .string => engine.convertToDOMString(realm, value, allocator) catch return 0,
+                else => null,
+            };
+            defer if (text) |t| allocator.free(t);
+            const input: dom_mod.trusted_types.Input = if (text) |t|
+                .{ .string = t }
+            else
+                .{ .object = engine.convertToPlatformObject(realm, value) orelse return 0 };
+            // 1.4: "Set handler to the result of invoking the get trusted
+            // type compliant string algorithm with TrustedScript, global,
+            // handler, sink, and "script"" - a TrustedScript's data, the
+            // string where Trusted Types are not required, the default
+            // policy's value, or a TypeError where they are required (and a
+            // report where they are only reported). The default policy runs
+            // script, and what it throws is the call's.
+            const compliant = dom_mod.trusted_types.getCompliantString(allocator, .script, window, input, sink, dom_mod.trusted_types.script_sink_group) catch |err| return switch (err) {
+                error.TypeError => error.TypeError,
+                error.ExceptionPending => error.ExceptionPending,
+                error.OutOfMemory => error.OutOfMemory,
+                else => error.OperationFailed,
+            };
+            // 1.5: EnsureCSPDoesNotBlockStringCompilation(global's relevant
+            // realm, « », handler, handler, timer, « », handler); "if this
+            // throws an exception, catch it and return 0".
+            if (!html_mod.code_generation.timerHandlerAllowed(window, compliant)) {
+                allocator.free(compliant);
+                return 0;
+            }
+            // The handler is now the compliant string. One the steps left
+            // as it was stays the JS string, every code unit kept; another is
+            // its text, freed with the timer (`releaseTimerHandler`).
+            if (text != null and std.mem.eql(u8, compliant, text.?)) {
+                allocator.free(compliant);
+            } else {
+                releaseTimerHandler(handler, allocator);
+                handler = .{ .string = .{ .string = .{ .data = compliant, .owned = true } } };
+            }
         },
     }
 
