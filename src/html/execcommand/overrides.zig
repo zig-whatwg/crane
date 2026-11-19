@@ -170,6 +170,20 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
     var list: std.ArrayList(Override) = .empty;
     // Step 2: createLink's value override first.
     if (try valueOverride(edit, .create_link)) |link| try list.append(arena, .{ .command = .create_link, .value = .{ .value = try arena.dupe(u8, link) } });
+    // Step 4 before step 3: the value overrides come back first, so the
+    // font they make is outermost, its attributes on one <font>, and the
+    // background span and the b, i, u or s go inside it - all three
+    // browsers type `["foreColor","#ff0000"],["bold",""],["insertText","b"]`
+    // into `a<font color=#ff0000><b>b</b></font>c` and fontName, foreColor,
+    // fontSize and backColor into one <font> around a background span
+    // (editing/run/multitest.html, PPP at wpt.fyi 2358bd4835), where the
+    // spec's order (states, then values) nests the font inside the b. Blink
+    // applies a typing style in one ApplyInlineStyleChange: font element
+    // first, then the CSS span, then b, i, u, s, sub, sup. Golden rule 2, no
+    // newer spec.
+    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
+        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
+    }
     // Step 3: the state overrides - in the order they were set rather than
     // the spec's fixed order, so a deletion's recorded wrappers come back
     // nested as they were (see recordCurrentStatesAndValues).
@@ -187,10 +201,6 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
         }
     }.earlierFirst);
     for (states.items) |entry| try list.append(arena, .{ .command = entry.command, .value = .{ .state = entry.state } });
-    // Step 4: the value overrides.
-    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
-        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
-    }
     return .{ .items = list.items };
 }
 

@@ -1019,6 +1019,14 @@ fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: [
     if (!std.mem.eql(u8, name, "span")) return false;
     const property = command.relevantProperty() orelse return false;
     const style_only_span = (try isNamed(wrapper, "span")) and (try attributeCount(wrapper)) == 1 and try common.hasAttribute(wrapper, "style");
+    // A background goes on a <font> only when the font was there before:
+    // typed text gets its font and, inside it, a background span (Blink's
+    // typing style makes both around the text; multitest.html fontName,
+    // foreColor, fontSize, backColor, insertText - PPP), so a font this
+    // command chain made keeps the span; hiliteColor on an author's
+    // `<font size=6>[foo]</font>` would put the style on that font, which
+    // this cannot tell apart, and is left to a new span.
+    if (!style_only_span and (command == .back_color or command == .hilite_color)) return false;
     if (!style_only_span and !try isNamed(wrapper, "font")) return false;
     try style_values.setInline(wrapper, property, new_value);
     edit.modified = true;
