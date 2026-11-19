@@ -1579,6 +1579,13 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
         const caret = (try edit.rangeStart()) orelse return true;
         const host = (try common.editingHostOf(caret.node)) orelse return true;
         if (!try hasVisibleContentAfter(caret, host)) return true;
+        // Nor at the end of a table cell's visible content: Delete cannot
+        // leave the cell, and Chrome 157 and Safari 27.2 leave `<td>bar[]<br>
+        // </td>` as it is, its br included (forwarddelete.html, PFP at wpt.fyi
+        // 2358bd4835), where the spec's step 4 removes the invisible br first.
+        if (try enclosingCell(caret.node)) |cell| {
+            if (!try visibleAfterInside(caret, cell)) return true;
+        }
     }
     // Step 2.
     try whitespace.canonicalizeWhitespace(edit, (try edit.rangeStart()) orelse return true, true);
@@ -1810,6 +1817,39 @@ fn isEmptyBlock(node: *Instance) !bool {
     if (try common.hasChildren(node)) return false;
     // Not the void block elements, which are content.
     return !try common.isHtmlElementIn(node, &.{ "hr", "img", "input", "textarea", "select", "iframe", "video", "audio", "canvas", "object", "embed", "table" });
+}
+
+/// The td or th holding `node` inside its editing host, or null.
+fn enclosingCell(node: *Instance) !?*Instance {
+    var current: ?*Instance = node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (try common.isEditingHost(c)) return null;
+        if (try common.isHtmlElementIn(c, &.{ "td", "th" })) return c;
+    }
+    return null;
+}
+
+/// Whether anything visible (common.isVisible: an extraneous br is not)
+/// follows `point` inside `container`.
+fn visibleAfterInside(point: Point, container: *Instance) !bool {
+    if (common.isText(point.node)) {
+        const length = try common.nodeLength(point.node);
+        if (point.offset < length and !try common.textIsCollapsibleWhitespace(point.node, point.offset, length)) return true;
+    } else {
+        var child = try common.childAt(point.node, point.offset);
+        while (child) |c| : (child = try common.nextSibling(c)) {
+            if (try common.isVisible(c)) return true;
+        }
+    }
+    var current = point.node;
+    while (current != container) {
+        var next = try common.nextSibling(current);
+        while (next) |n| : (next = try common.nextSibling(n)) {
+            if (try common.isVisible(n)) return true;
+        }
+        current = (try common.parent(current)) orelse return false;
+    }
+    return false;
 }
 
 const RunDirection = enum { forward, backward };
