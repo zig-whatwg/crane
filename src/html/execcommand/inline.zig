@@ -619,11 +619,28 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
     // Step 9: "If propagated value is null and is not equal to new value,
     // abort this algorithm."
     if (propagated_value == null and new_value != null) return;
-    // Step 10: pushing down only helps when the value above is the one we
-    // want (or we only want to remove a value).
+    // Step 10: "If the effective command value of command is not loosely
+    // equivalent to new value on the parent of the last member of ancestor
+    // list, and new value is not null, abort this algorithm." The spec's
+    // note says Chrome breaks the ancestor up instead; today all three
+    // browsers do: `<font size=1>foo[bar]baz</font>` + fontSize 4 gives
+    // `<font size=1>foo</font><font size=4>bar</font><font size=1>baz</font>`
+    // where the spec nests a <font size=4> inside, and the WPT data follows
+    // them (editing/run/fontsize.html, fontname.html, forecolor.html: 62
+    // subtests PPP or PFP at wpt.fyi 2358bd4835, Chrome 157 / Firefox 160 /
+    // Safari 27.2). Mechanism: the styled ancestors are split at the node,
+    // the parts beside it keeping the ancestor as it is and the part holding
+    // it losing the value - Blink ApplyStyleCommand::SplitTextElementAtStart
+    // / SplitTextElementAtEnd (apply_style_command.cc), Gecko
+    // HTMLEditor::SplitAncestorStyledInlineElementsAtRangeEdges
+    // (HTMLEditor.cpp). Golden rule 2, no newer spec. Where the value above
+    // IS the new one the spec's steps below stand (bold.html "<b id=purple>
+    // bar [baz] qoz</b>": the data keeps the spec's result there).
     if (new_value != null) {
         const top_parent = (try common.parent(ancestor_list.items[ancestor_list.items.len - 1])) orelse return;
-        if (!areLooselyEquivalent(edit, command, try effectiveValue(edit, top_parent, command), new_value)) return;
+        if (!areLooselyEquivalent(edit, command, try effectiveValue(edit, top_parent, command), new_value)) {
+            return try splitDifferingAncestors(edit, node, ancestor_list.items, command, propagated_value);
+        }
     }
     // Step 11: from the top down, clear each ancestor's value and force the
     // propagated value onto its other children.
@@ -644,6 +661,73 @@ pub fn pushDownValues(edit: *Edit, node: *Instance, command: Command, new_value:
             try forceValue(edit, c, command, propagated_value);
         }
     }
+}
+
+/// The browsers' push down where the spec's step 10 gives up (see
+/// pushDownValues). From the topmost of `ancestors` (node's parent first,
+/// the topmost last) down: an ancestor that specifies a value for `command`
+/// is split around the child that leads to `node` - the children before it
+/// go into a copy of the ancestor placed before it, those after it into a
+/// copy placed after it, both keeping everything the ancestor carries - and
+/// then has its value cleared (step 11.5), which removes a simple
+/// modifiable element altogether; an ancestor that specifies none has the
+/// propagated value forced onto its other children, as step 11.6 does. A
+/// copy takes no id: the original keeps it (two elements must not share
+/// one; Blink's PushDownInlineStyleAroundNode drops it from the copies the
+/// same way).
+fn splitDifferingAncestors(edit: *Edit, node: *Instance, ancestors: []const *Instance, command: Command, propagated_in: Value) anyerror!void {
+    var propagated_value = propagated_in;
+    var index = ancestors.len;
+    while (index > 0) {
+        index -= 1;
+        const ancestor = ancestors[index];
+        const path_child = if (index == 0) node else ancestors[index - 1];
+        if (try specifiedValue(edit, ancestor, command)) |specified| {
+            propagated_value = specified;
+            try splitAround(edit, ancestor, path_child);
+            _ = try clearValue(edit, ancestor, command);
+            continue;
+        }
+        var children: std.ArrayList(*Instance) = .empty;
+        var child = try common.firstChild(ancestor);
+        while (child) |c| : (child = try common.nextSibling(c)) try children.append(scratch(edit), c);
+        for (children.items) |c| {
+            if (c == path_child) continue;
+            if (common.isElement(c)) {
+                const specified = try specifiedValue(edit, c, command);
+                if (specified != null and !areEquivalent(edit, command, specified, propagated_value)) continue;
+            }
+            try forceValue(edit, c, command, propagated_value);
+        }
+    }
+}
+
+/// Split `ancestor` so that it holds only `child`: its children before
+/// `child` move, preserving ranges, into a shallow copy of it inserted
+/// before it, and those after into a copy inserted after it.
+fn splitAround(edit: *Edit, ancestor: *Instance, child: *Instance) !void {
+    const ancestor_parent = (try common.parent(ancestor)) orelse return;
+    if ((try common.previousSibling(child)) != null) {
+        const before = try copyWithoutId(ancestor);
+        try edit.insertBefore(ancestor_parent, before, ancestor);
+        while (try common.firstChild(ancestor)) |first| {
+            if (first == child) break;
+            try edit.movePreservingRanges(first, before, try common.childCount(before));
+        }
+    }
+    if ((try common.nextSibling(child)) != null) {
+        const after = try copyWithoutId(ancestor);
+        try edit.insertBefore(ancestor_parent, after, try common.nextSibling(ancestor));
+        while (try common.nextSibling(child)) |next| {
+            try edit.movePreservingRanges(next, after, try common.childCount(after));
+        }
+    }
+}
+
+fn copyWithoutId(element: *Instance) !*Instance {
+    const copy = try common.cloneNode(element, false);
+    if (try common.hasAttribute(copy, "id")) try common.removeAttribute(copy, "id");
+    return copy;
 }
 
 /// Force-the-value's sibling criteria (step 4.3): a simple modifiable
@@ -716,9 +800,20 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     }
     // Step 8.
     if (areLooselyEquivalent(edit, command, try effectiveValue(edit, node, command), new_value)) return;
+    const css_styling = try overrides.cssStylingFlag(edit);
+    // Before steps 9-20 make a new parent, a <font> or style-only <span>
+    // that wraps exactly this node takes the value itself, as all three
+    // browsers do: `<font color=#ff0000>[abc]</font>` + fontSize 7 gives
+    // `<font color=#ff0000 size=7>abc</font>`, hiliteColor on `<span
+    // style=font-size:xx-large>[foo]</span>` adds background-color to that
+    // span (editing/run/fontsize.html, fontname.html, forecolor.html,
+    // hilitecolor.html: PPP at wpt.fyi 2358bd4835). Mechanism: Blink
+    // ApplyStyleCommand::ApplyInlineStyleChange sets the font attributes on
+    // the run's font element and the CSS on its style container instead of
+    // surrounding the run. Golden rule 2, no newer spec.
+    if (try valueOntoWrapper(edit, node, command, new_value, css_styling)) return;
     // Steps 9-15: the new parent.
     var new_parent: ?*Instance = null;
-    const css_styling = try overrides.cssStylingFlag(edit);
     if (!css_styling) {
         switch (command) {
             .bold => if (std.mem.eql(u8, new_value, "bold")) {
@@ -727,8 +822,16 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
             .italic => if (std.mem.eql(u8, new_value, "italic")) {
                 new_parent = try edit.createElement("i");
             },
+            // The spec says an s; Chrome, Firefox and Safari all make a
+            // strike (Blink ApplyStyleCommand::ApplyInlineStyleChange
+            // surrounds with html_names::kStrikeTag; Gecko
+            // HTMLEditor::SetInlinePropertiesAsSubAction maps
+            // strikethrough to nsGkAtoms::strike), and the WPT data expects
+            // it (editing/run/strikethrough.html with styleWithCSS false,
+            // 37 subtests PPP at wpt.fyi 2358bd4835). Golden rule 2, no
+            // newer spec.
             .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) {
-                new_parent = try edit.createElement("s");
+                new_parent = try edit.createElement(strike_element);
             },
             .underline => if (std.mem.eql(u8, new_value, "underline")) {
                 new_parent = try edit.createElement("u");
@@ -808,6 +911,48 @@ pub fn forceValue(edit: *Edit, node: *Instance, command: Command, new_value_in: 
     }
 }
 
+/// Force the value's browser step before its new parent (see forceValue):
+/// when `node` is the only child of an editable <font> - for the commands
+/// that would make a <font> - or of a <font> or a <span> whose one attribute
+/// is style - for those that would make a span with a CSS property - set the
+/// value on that element instead and report true.
+fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: []const u8, css_styling: bool) !bool {
+    const wrapper = (try common.parent(node)) orelse return false;
+    if (!common.isElement(wrapper) or !try common.isEditable(wrapper)) return false;
+    if ((try common.firstChild(wrapper)) != node or (try common.lastChild(wrapper)) != node) return false;
+    const name = newParentName(command, new_value, css_styling, scratch(edit));
+    if (std.mem.eql(u8, name, "font")) {
+        if (!try isNamed(wrapper, "font")) return false;
+        switch (command) {
+            .fore_color => {
+                var buffer: [7]u8 = undefined;
+                const hex = style_values.simpleColor(scratch(edit), new_value, &buffer) orelse return false;
+                try common.setAttribute(wrapper, "color", hex);
+            },
+            .font_name => try common.setAttribute(wrapper, "face", new_value),
+            .font_size => {
+                const size = style_values.legacySizeOfKeyword(new_value) orelse return false;
+                var digit = [1]u8{'0' + size};
+                try common.setAttribute(wrapper, "size", &digit);
+            },
+            else => return false,
+        }
+        edit.modified = true;
+        return true;
+    }
+    if (!std.mem.eql(u8, name, "span")) return false;
+    const property = command.relevantProperty() orelse return false;
+    const style_only_span = (try isNamed(wrapper, "span")) and (try attributeCount(wrapper)) == 1 and try common.hasAttribute(wrapper, "style");
+    if (!style_only_span and !try isNamed(wrapper, "font")) return false;
+    try style_values.setInline(wrapper, property, new_value);
+    edit.modified = true;
+    return true;
+}
+
+/// The element strikethrough makes outside CSS mode (force the value step
+/// 10's "s", as the browsers make it: see forceValue).
+const strike_element = "strike";
+
 /// The local name force the value's steps 9-15 give its new parent for
 /// `command`, `new_value` and the CSS styling flag.
 fn newParentName(command: Command, new_value: []const u8, css_styling: bool, allocator: Allocator) []const u8 {
@@ -830,7 +975,7 @@ fn newParentName(command: Command, new_value: []const u8, css_styling: bool, all
     return switch (command) {
         .bold => if (std.mem.eql(u8, new_value, "bold")) "b" else "span",
         .italic => if (std.mem.eql(u8, new_value, "italic")) "i" else "span",
-        .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) "s" else "span",
+        .strikethrough => if (std.mem.eql(u8, new_value, "line-through")) strike_element else "span",
         .underline => if (std.mem.eql(u8, new_value, "underline")) "u" else "span",
         .fore_color => blk: {
             var buffer: [7]u8 = undefined;
