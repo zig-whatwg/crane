@@ -24,7 +24,7 @@ const types = @import("types.zig");
 
 /// The setlike interfaces whose impls keep their set entries in a
 /// `webidl.setlike.SetEntries`.
-pub const implemented = [_][]const u8{ "CustomStateSet", "FontFaceSet", "ViewTransitionTypeSet" };
+pub const implemented = [_][]const u8{ "CustomStateSet", "FontFaceSet", "Highlight", "ViewTransitionTypeSet" };
 
 pub fn isImplemented(interface_name: []const u8) bool {
     for (implemented) |name| {

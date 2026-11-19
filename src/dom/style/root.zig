@@ -21,6 +21,7 @@ pub const typed_om = @import("typed_om.zig");
 pub const content_visibility = @import("content_visibility.zig");
 pub const font_hints = @import("font_hints.zig");
 pub const matched_properties_cache = @import("matched_properties_cache.zig");
+pub const highlights = @import("highlights.zig");
 
 pub const StyleEngine = engine.StyleEngine;
 pub const SheetRecord = sheet.SheetRecord;
@@ -60,7 +61,6 @@ pub fn sheetsChanged(document: *@import("runtime").Instance) void {
 /// decoded the response using CSS Syntax 3 section 3.2, before scanning
 /// its @imports; these Unicode characters must not be decoded again.
 pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, text: []const u8, url: []const u8, origin_clean: bool, encoding: ?*const css.rules.stylesheet_encoding.Encoding) void {
-    const allocator = owner.ctx.allocator;
     if (path.len == 0) {
         hooks.linkSheetArrived(owner, text, url, origin_clean);
         // CSS Cascade 5 section 2.2: even an import inserted after loading
@@ -69,6 +69,16 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, text
         return;
     }
     const root = hooks.sheetOf(owner) orelse return;
+    deliverImport(owner, root, path, text, url, origin_clean, encoding);
+}
+
+/// An @import's sheet arrived for the import reached from `root` by `path`
+/// (`path.len` >= 1; the last index is the rule's import slot in its sheet):
+/// it becomes the rule's sheet. `owner` is the node the sheet tree loads
+/// for (its realm parses the sheet's url()s). A sheet an inserted @import's
+/// load holds (`root`, held by the loader) may no longer be `owner`'s.
+pub fn deliverImport(owner: *@import("runtime").Instance, root: *SheetRecord, path: []const u16, text: []const u8, url: []const u8, origin_clean: bool, encoding: ?*const css.rules.stylesheet_encoding.Encoding) void {
+    const allocator = owner.ctx.allocator;
     const parent = root.importAt(path[0 .. path.len - 1]) orelse return;
     const child = SheetRecord.create(allocator, text, .{ .location = url, .base_url = url, .origin_clean = origin_clean, .mode = root.mode, .encoding = encoding }) catch return;
     var url_context = parent.urlContext(owner);
@@ -82,6 +92,11 @@ pub fn deliverSheet(owner: *@import("runtime").Instance, path: []const u16, text
 /// @import's policy with its parent's, and survives removal of the owner.
 pub fn setDeliveredSheetPolicy(owner: *@import("runtime").Instance, path: []const u16, policy: @import("fetch").internal.ReferrerPolicy) void {
     const root = hooks.sheetOf(owner) orelse return;
+    setDeliveredImportPolicy(root, path, policy);
+}
+
+/// As setDeliveredSheetPolicy, for the import reached from `root`.
+pub fn setDeliveredImportPolicy(root: *SheetRecord, path: []const u16, policy: @import("fetch").internal.ReferrerPolicy) void {
     const delivered = root.importAt(path) orelse return;
     delivered.referrer_policy = policy;
 }

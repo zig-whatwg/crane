@@ -378,6 +378,32 @@ pub const AsyncFetch = struct {
         return !self.collect or (self.source == null and self.relay == null and self.race.network == null);
     }
 
+    /// Static data: the outcome of a fetch of a data: URL that settled
+    /// inside `start` - scheme fetch answers a data: URL with no network, so
+    /// a collected fetch of one is over before `start` returns - taken by
+    /// the client NOW, rather than handed to it by the next `pump`. The
+    /// fetch is gone afterwards (`finished` is not called: the caller has
+    /// the outcome in hand). Null - nothing taken, the fetch goes on as
+    /// usual - for any other fetch, or one not settled yet.
+    ///
+    /// For the clients whose resources the browsers load at once from a
+    /// data: URL: Blink's ResourceFetcher makes a data: URL's resource from
+    /// the URL synchronously (CreateResourceForStaticData), and a style
+    /// sheet's client hears it synchronously (Resource's synchronous cache
+    /// hit for kCSSStyleSheet). The outcome is the same one `pump` would
+    /// hand over: every step of the fetch - CSP's "should request be
+    /// blocked", the response's tainting - ran in `start`.
+    pub fn takeStaticOutcome(self: *AsyncFetch) ?(FetchError!FetchResult) {
+        if (!std.ascii.startsWithIgnoreCase(self.job.request.currentUrl(), "data:")) return null;
+        if (!self.collect or !self.deliverable() or self.transfer != null or self.job.hasNextManualRedirect()) return null;
+        var outcome = self.outcome.?;
+        self.outcome = null;
+        outcome = AsyncFetch.settleCollected(outcome);
+        self.delivered = true;
+        self.destroy();
+        return outcome;
+    }
+
     /// Whether this fetch's response has started arriving and not ended:
     /// lines of its header block are in, or its head is and its body is still
     /// coming off a transfer that is not paused. What `catchUp` waits on.

@@ -5,12 +5,14 @@
 //! All cursors borrow nodes only during native reads, before focusing can
 //! dispatch script. Design reference: Blink FocusNavigation and
 //! ScopedFocusNavigation, focus_controller.cc at 8d5ba1795f0c50b90072399d0403389df6eebbd6.
+const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
 const dom = @import("dom");
 const focus = @import("focus.zig");
 const associated = @import("form_associated.zig");
 const radio_focus = @import("forms/radio_focus.zig");
+const reading_flow = @import("reading_flow.zig");
 
 const Instance = runtime.Instance;
 const Direction = focus.Direction;
@@ -34,7 +36,14 @@ fn isSlot(node: *Instance) bool {
 }
 
 fn ownsTree(node: *Instance) bool {
-    return isSlot(node) or dom.shadow_hosts.rootForHost(node) != null;
+    return isSlot(node) or dom.shadow_hosts.rootForHost(node) != null or ownsReadingFlowScope(node);
+}
+
+/// whatwg/html#10613: a reading-flow-ordered scope owner and a reading flow
+/// item are focus navigation scope owners (reading_flow.zig).
+fn ownsReadingFlowScope(node: *Instance) bool {
+    if (!associated.isElement(node)) return false;
+    return reading_flow.isScopeOwner(node) or reading_flow.isItem(node);
 }
 
 /// The root whose descendants belong to one owner's scope. Assigned slot
@@ -227,6 +236,11 @@ const Search = struct {
             if (p == self.document or (interfaces.Document.get_documentElement(self.document) catch null) == p)
                 return .{ .root = self.document };
             if (self.invoker(current)) |owner| return .{ .root = current, .owner = owner };
+            // whatwg/html#10613's steps: "If element's parent is a
+            // reading-flow-ordered scope owner, then return element's
+            // parent. If element's parent is a reading flow item, then
+            // return element's parent."
+            if (ownsReadingFlowScope(p)) return .{ .root = p, .owner = p };
         }
         return null;
     }
@@ -239,6 +253,8 @@ const Search = struct {
     /// One rank selection in a tabindex-ordered scope, preserving tree order
     /// for ties. A negative adjusted starting tabindex uses DOM order.
     fn nextInScope(self: *Search, scope: Scope, start: ?*Instance, direction: Direction) ?*Instance {
+        if (scope.owner) |owner| if (scope.assigned == null and !isSlot(owner) and dom.shadow_hosts.rootForHost(owner) == null and reading_flow.isScopeOwner(owner))
+            return self.nextInReadingFlowScope(owner, start, direction);
         const document_tree = self.popovers == null and scope.tree() == self.document;
         // Browser-majority deviation from HTML 6.6.5 step 4: disabling a
         // positive-tabindex button keeps its explicit rank as the start.
@@ -284,6 +300,34 @@ const Search = struct {
             if (start != null and start_value < 0 and direction == .forward) break;
         }
         return best;
+    }
+
+    /// whatwg/html#10613: in a reading-flow-ordered focus navigation scope
+    /// the order is the reading flow order (reading_flow.readingFlowOrder);
+    /// "the use of tabindex value only determines an item's focusability,
+    /// but does not affect order within the scope" - a negative one still
+    /// takes the element (and its scope) out of the sequential order, a
+    /// positive one counts as zero. The element after (before) `start` in
+    /// that order, or the first (last) with no start.
+    fn nextInReadingFlowScope(self: *Search, owner: *Instance, start: ?*Instance, direction: Direction) ?*Instance {
+        const allocator = self.document.ctx.allocator;
+        const order = reading_flow.readingFlowOrder(allocator, owner) catch return null;
+        defer allocator.free(order);
+        const document_tree = self.popovers == null and associated.rootOf(owner) == self.document;
+        const len: isize = @intCast(order.len);
+        const before_first: isize = if (direction == .forward) -1 else len;
+        var i: isize = before_first;
+        if (start) |s| if (std.mem.indexOfScalar(*Instance, order, s)) |found| {
+            i = @intCast(found);
+        };
+        while (true) {
+            i += if (direction == .forward) 1 else -1;
+            if (i < 0 or i >= len) return null;
+            const node = order[@intCast(i)];
+            const value = focus.tabindexValue(node) orelse 0;
+            if (value < 0) continue;
+            if (self.isOwner(node) or self.eligible(node, document_tree)) return node;
+        }
     }
 
     /// HTML 6.6.2 flattening step 2: retain a focusable owner, and insert its

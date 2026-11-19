@@ -79,6 +79,11 @@ pub const Hooks = struct {
     /// CSS View Transitions 1 §6.2: the model of a ViewTransition object
     /// (dom.view_transitions.Transition). Installed by ViewTransition.
     view_transition_of: ?*const fn (instance: *runtime.Instance) ?*@import("../view_transitions.zig").Transition = null,
+    /// CSSOM insertRule() put an @import rule into `record`, at its import
+    /// slot `slot` (SheetRecord.import_slots), with the URL `href` as the
+    /// rule wrote it: CSS Cascade's "fetch an @import" for it. Installed by
+    /// HTMLLinkElement, whose loader fetches every style sheet.
+    import_inserted: ?*const fn (record: *sheet.SheetRecord, slot: u16, href: []const u8) void = null,
 };
 
 // process-wide: immutable function pointers that Document, Element, HTMLStyleElement and HTMLLinkElement install once at process start (crane.Process); each reads only the object it is given, so one serves every Browser and thread
@@ -211,6 +216,11 @@ pub fn fontFaceOf(face: *runtime.Instance) ?*@import("font_loading.zig").Face {
 pub fn viewTransitionClasses(originating: *runtime.Instance, name: []const u8, classes: []const []const u8) bool {
     const f = hooks.read().view_transition_classes orelse return false;
     return f(originating, name, classes);
+}
+
+pub fn importInserted(record: *sheet.SheetRecord, slot: u16, href: []const u8) void {
+    const f = hooks.read().import_inserted orelse return;
+    f(record, slot, href);
 }
 
 pub fn viewTransitionOf(instance: *runtime.Instance) ?*@import("../view_transitions.zig").Transition {

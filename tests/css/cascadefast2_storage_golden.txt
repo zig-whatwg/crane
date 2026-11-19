@@ -257,6 +257,8 @@ flex-direction: row
 flex-wrap: nowrap
 flex-line-count: 1
 order: 0
+reading-flow: normal
+reading-order: 0
 column-count: auto
 column-width: auto
 column-height: auto

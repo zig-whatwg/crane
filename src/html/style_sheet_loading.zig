@@ -108,6 +108,13 @@ const Kind = enum {
     /// A top-level document's icon: image fetch only, no link event or
     /// document load delay, no decoding and no stylesheet processing.
     icon,
+    /// An @import rule CSSOM's insertRule() inserted (`startInsertedImport`):
+    /// its sheet, then that sheet's own imports, each delivered to its rule.
+    /// No event fires at the sheet's owner for it - the owner's own load has
+    /// fired its event already, or fires it for its own sheet - as in Gecko,
+    /// which notifies the parent sheet, not the element, of a load a CSSOM
+    /// insertion starts (css::Loader::LoadChildSheet with no parent load).
+    inserted_import,
 };
 
 const Load = struct {
@@ -155,6 +162,19 @@ const Load = struct {
     /// conditions, checked by blocksScripts. Completion, cancellation and
     /// removal end eligibility with the load.
     blocks_scripts: bool = false,
+    /// An inserted @import's load: the sheet the rule was inserted into,
+    /// HELD (its import slots are where the fetched sheet is delivered:
+    /// `deliver` paths start there), and what its first fetch inherits from
+    /// that sheet - its location and Referrer-Policy (the referrer: an
+    /// @import of a fetched sheet is requested with that sheet's URL, as a
+    /// parsed import is in `startFetchOrFail`), its encoding (the imported
+    /// sheet's environment encoding, CSS Cascade 5 2.2) and its origin-clean
+    /// flag (CSS Values 4 "fetch a style resource" step 7).
+    import_root: ?*dom.style.SheetRecord = null,
+    import_root_location: ?[]u8 = null,
+    import_root_policy: fetch.internal.ReferrerPolicy = .empty,
+    import_root_encoding: ?*const stylesheet_encoding.Encoding = null,
+    import_root_origin_clean: bool = true,
 
     /// The load's element and document are weak links (refcount step 5i: a
     /// style sheet owner's registration never counts - the queued event's
@@ -670,7 +690,8 @@ fn startLinkFetch(element: *runtime.Instance, kind: Kind, options: LinkOptions, 
     };
     defer element.ctx.allocator.free(url);
     startFetch(load, url, null, options, destination);
-    if (load.in_flight == 0) complete(load);
+    drainStatic(load);
+    if (load.in_flight == 0 and !load.event_queued) complete(load);
     return id;
 }
 
@@ -704,6 +725,7 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     // (it is not browsing-context connected, HTML 4.2.4). A document still
     // loading into its navigable is not gone.
     if (dom.document_activity.activity(load.document, load.document_generation) != .gone) fetchImports(load, null, text, base);
+    drainStatic(load);
     // Without critical subresources the rules are immediately available
     // to script (HTML 4.2.7), even though the load event runs in a task.
     load.blocks_scripts = parser_created and load.in_flight > 0;
@@ -714,8 +736,49 @@ pub fn startStyle(element: *runtime.Instance, text: []const u8, parser_created: 
     blockRenderingFor(load, parser_created);
     // "If the style sheet has no critical subresources, once the style sheet
     // has been parsed and processed": now.
-    if (load.in_flight == 0) complete(load);
+    if (load.in_flight == 0 and !load.event_queued) complete(load);
     return id;
+}
+
+/// CSS Cascade 5 "fetch an @import" for an @import rule CSSOM's insertRule()
+/// put into `record` at its import slot `slot`, whose URL is `href` as the
+/// rule wrote it (dom.style.hooks import_inserted, `installImportInserted`).
+/// The load is for the sheet tree's owner node - the style, link or
+/// xml-stylesheet node whose sheet `record` is, or imports - and delivers
+/// the fetched sheet to the rule, then fetches that sheet's own imports. A
+/// sheet with no owner node (a constructed sheet, which allows no @import;
+/// one whose owner let it go) fetches nothing - Blink's
+/// StyleRuleImport::RequestStyleSheet returns without a document - and nor
+/// does an owner whose document no browsing context can show (`startStyle`).
+/// "If that failed, return": a URL that does not parse fetches nothing.
+pub fn startInsertedImport(record: *dom.style.SheetRecord, slot: u16, href: []const u8) void {
+    var root = record;
+    while (root.parentSheet()) |parent| root = parent;
+    const owner = root.owner_node orelse return;
+    const load = newLoad(owner, .inserted_import) orelse return;
+    if (dom.document_activity.activity(load.document, load.document_generation) == .gone) return release(load, .teardown);
+    record.ref();
+    load.import_root = record;
+    load.import_root_location = if (record.location) |l| (load.allocator.dupe(u8, l) catch null) else null;
+    load.import_root_policy = record.referrer_policy;
+    load.import_root_encoding = record.encoding;
+    load.import_root_origin_clean = record.origin_clean;
+    // The rule's URL against the style sheet base URL: the sheet's location,
+    // or - an embedded sheet - its node document's base URL.
+    const document_base = if (record.base_url.len == 0) (interfaces.Node.get_baseURI(load.document) catch null) else null;
+    defer if (document_base) |b| load.document.ctx.allocator.free(b);
+    const base: ?[]const u8 = if (record.base_url.len != 0) record.base_url else document_base;
+    const url = resolve(owner, href, base) orelse return release(load, .settled);
+    defer owner.ctx.allocator.free(url);
+    startFetchImport(load, url, null, slot, .{ .href = url }, .style);
+    drainStatic(load);
+    if (load.in_flight == 0 and !load.event_queued) complete(load);
+}
+
+/// dom.style.hooks' import_inserted is this loader's (HTMLLinkElement's
+/// installHooks installs it, with the document abort).
+pub fn installImportInserted() void {
+    dom.style.hooks.install(.{ .import_inserted = startInsertedImport });
 }
 
 /// A style element whose block Content Security Policy blocked ("update a
@@ -868,6 +931,8 @@ fn release(load: *Load, ending: Ending) void {
         load.allocator.destroy(sheet);
     }
     load.sheets.deinit(load.allocator);
+    if (load.import_root) |record| record.unref();
+    if (load.import_root_location) |l| load.allocator.free(l);
     const document = load.document;
     const document_live = load.documentIsLive();
     load.allocator.destroy(load);
@@ -887,6 +952,8 @@ fn complete(load: *Load) void {
     // so it does nothing. Browsers notify their favicon UI, not the link
     // element (WebKit IconLoader::notifyFinished, Blink LinkStyle::Process).
     if (load.kind == .icon) return release(load, .settled);
+    // An inserted @import's load fires no event (`Kind.inserted_import`).
+    if (load.kind == .inserted_import) return release(load, .settled);
     // The style element's steps once its critical subresources are
     // obtained, and the link's "process the linked resource": "unblock
     // rendering on el".
@@ -1026,7 +1093,11 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     // module_script.AsyncModuleLoader.startModulePreload).
     // CSS Values 4 §4.5.4 step 7: an origin-dirty parent does not expose
     // its imported URLs through resource timing. Inline styles are clean.
-    request.initiator_type = if (parent != null and !parent.?.origin_clean) null else if (parent != null or load.kind == .style) .css else .link;
+    request.initiator_type = if (parent != null and !parent.?.origin_clean)
+        null
+    else if (parent == null and load.kind == .inserted_import and !load.import_root_origin_clean)
+        null
+    else if (parent != null or load.kind == .style or load.kind == .inserted_import) .css else .link;
     // Prefetch step 5. Fetch consumes this for CSP's union check.
     // It is distinct from Resource Timing's initiatorType.
     if (load.kind == .prefetch) request.initiator = .prefetch;
@@ -1050,6 +1121,10 @@ fn startFetchOrFail(load: *Load, url: []const u8, parent: ?*Sheet, import_index:
     if (parent) |p| {
         if (p.location) |location| try request.setReferrerUrl(location);
         if (p.referrer_policy != .empty) request.referrer_policy = p.referrer_policy;
+    } else if (load.kind == .inserted_import) {
+        // The same, for an inserted @import: the sheet it was inserted into.
+        if (load.import_root_location) |location| try request.setReferrerUrl(location);
+        if (load.import_root_policy != .empty) request.referrer_policy = load.import_root_policy;
     }
 
     // The fetch owns the request from here, even when it fails to start.
@@ -1095,7 +1170,41 @@ fn fetchDone(context: *anyopaque, outcome: fetch.algorithms.FetchError!fetch.alg
     sheet.fetch = null;
     load.in_flight -= 1;
     processResponse(sheet, outcome);
+    drainStatic(load);
     if (load.in_flight == 0 and !load.event_queued) complete(load);
+}
+
+/// Static data (fetch's AsyncFetch.takeStaticOutcome): a fetch of `load`
+/// that a data: URL answered at its start is processed now - its sheet is
+/// the element's, or its @import rule's, before the call that started the
+/// fetch returns - and so is each data: import a processed sheet starts.
+/// The event still fires in its task (`complete`), never synchronously.
+///
+/// Golden rule 2 (no newer spec: HTML and CSSOM fetch every style sheet
+/// asynchronously, and say nothing of data: URLs): Chrome makes a data:
+/// URL's resource at once (ResourceFetcher::CreateResourceForStaticData)
+/// and hands a style sheet's client its cached resource synchronously
+/// (Resource::TypeNeedsSynchronousCacheHit, kCSSStyleSheet); Firefox has the
+/// sheet object in place from the load's start (css::Loader::LoadStyleLink /
+/// LoadChildSheet insert it before loading). Both expose a data: sheet
+/// synchronously: css/cssom/CSSImportRule-insertRule-styleSheet-
+/// parentStyleSheet.html (Chrome 157 1/1, Firefox 160 1/1, Safari 27.2 0/1,
+/// wpt.fyi runs 4786307730243584, 4877168468033536, 6479119966273536) and
+/// HTMLLinkElement-load-event.html, whose two links are one data: URL (all
+/// three pass; Safari through its memory cache). Chrome's mechanism is the
+/// one that keeps the majority elsewhere: a network sheet still arrives
+/// later, as in Chrome and Safari (Firefox's early empty sheet is its alone).
+fn drainStatic(load: *Load) void {
+    if (load.kind != .stylesheet and load.kind != .style and load.kind != .inserted_import) return;
+    var i: usize = 0;
+    while (i < load.sheets.items.len) : (i += 1) {
+        const sheet = load.sheets.items[i];
+        const started = sheet.fetch orelse continue;
+        const outcome = started.takeStaticOutcome() orelse continue;
+        sheet.fetch = null;
+        load.in_flight -= 1;
+        processResponse(sheet, outcome);
+    }
 }
 
 /// HTML 4.2.4.3 step 7's processResponseConsumeBody and the stylesheet
@@ -1208,6 +1317,9 @@ fn processResponse(sheet: *Sheet, outcome: fetch.algorithms.FetchError!fetch.alg
 fn sheetEnvironmentEncoding(sheet: *const Sheet) *const stylesheet_encoding.Encoding {
     if (sheet.parent) |parent| if (parent.encoding) |encoding| return encoding;
     const load = sheet.load;
+    // An inserted @import's sheet: the encoding of the sheet it was inserted
+    // into, when that sheet was decoded from bytes.
+    if (sheet.parent == null and load.kind == .inserted_import) if (load.import_root_encoding) |encoding| return encoding;
     if (!load.documentIsLive()) return stylesheet_encoding.fallback("", .{});
     if (load.kind == .stylesheet and load.elementIsLive()) {
         const node_type = interfaces.Node.get_nodeType(load.element) catch 0;
@@ -1237,7 +1349,7 @@ fn sheetEnvironmentEncoding(sheet: *const Sheet) *const stylesheet_encoding.Enco
 /// CSS style sheet") or an @import's (CSS Cascade "fetch an @import" step 3).
 /// A superseded load's sheets are no longer the element's.
 fn deliver(load: *Load, sheet: *Sheet, text: []const u8, location: []const u8) void {
-    if (load.kind != .stylesheet and load.kind != .style) return;
+    if (load.kind != .stylesheet and load.kind != .style and load.kind != .inserted_import) return;
     if (load.superseded or !load.elementIsLive()) return;
     // The @import path from the element's own sheet, outermost first. A
     // style element's own sheet is its text, never fetched: every Sheet of
@@ -1252,6 +1364,14 @@ fn deliver(load: *Load, sheet: *Sheet, text: []const u8, location: []const u8) v
         n += 1;
     }
     std.mem.reverse(u16, path[0..n]);
+    // An inserted @import's sheets are delivered into the sheet the rule was
+    // inserted into, which the load holds - whether or not it is still the
+    // element's.
+    if (load.import_root) |root| {
+        dom.style.deliverImport(load.element, root, path[0..n], text, location, sheet.origin_clean, sheet.encoding);
+        dom.style.setDeliveredImportPolicy(root, path[0..n], sheet.referrer_policy);
+        return;
+    }
     dom.style.deliverSheet(load.element, path[0..n], text, location, sheet.origin_clean, sheet.encoding);
     dom.style.setDeliveredSheetPolicy(load.element, path[0..n], sheet.referrer_policy);
 }
