@@ -1605,6 +1605,27 @@ pub fn soleCaretRoot(allocator: std.mem.Allocator, point: Point) ?*Instance {
     return rootEditableElementOf(position);
 }
 
+/// The range Blink's command queries read (FirstEphemeralRangeOf over the
+/// VisibleSelection): each end made its canonical visible position - the
+/// deep equivalent CreateVisiblePosition gives it - then its parent-anchored
+/// equivalent as a DOM boundary point. An end with no visible position
+/// keeps its DOM point; null when neither has one.
+pub fn visibleRange(allocator: std.mem.Allocator, start: Point, end: Point) ?struct { start: Point, end: Point } {
+    var ctx = Context.init(allocator);
+    defer ctx.deinit();
+    const visible_start = canonicalPosition(&ctx, Position.at(start.node, start.offset));
+    const visible_end = canonicalPosition(&ctx, Position.at(end.node, end.offset));
+    if (visible_start.isNull() and visible_end.isNull()) return null;
+    return .{ .start = domPointOf(visible_start) orelse start, .end = domPointOf(visible_end) orelse end };
+}
+
+fn domPointOf(position: Position) ?Point {
+    if (position.isNull()) return null;
+    const dom_position = parentAnchoredEquivalent(position);
+    const node = dom_position.anchor orelse return null;
+    return .{ .node = node, .offset = dom_position.offset };
+}
+
 /// Whether `element` is laid out as a block container (Blink's
 /// LayoutBlockFlow), from its computed display.
 pub fn isBlockFlow(allocator: std.mem.Allocator, element: *Instance) bool {

@@ -243,13 +243,16 @@ fn selectionFollowsTheDeletion() !void {
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(setup_script);
-    // After a merge the caret sits at the join (delete the selection step
-    // 34.1 collapses at the start block's end; the moved nodes are inserted
-    // after it, preserving ranges): typing continues there.
+    // After a merge the caret sits at the join, at the end of the start
+    // line's text (delete the selection step 34.1 collapses at the start
+    // block's end; the moved nodes are inserted after it, preserving ranges;
+    // then the browsers' first equivalent point, lane edit2): Chrome 157
+    // reports (#text "foobar", 3) - one Text node there, two here - so typing
+    // continues in the start line's inline style.
     try page.run("setupHost('<p>foo</p><p>[]bar</p>'); document.execCommand('delete', false, '')");
     const caret = try page.evaluate("(() => { const s = getSelection(); return s.isCollapsed + ':' + s.anchorNode.nodeName + ':' + s.anchorNode.textContent + ':' + s.anchorOffset; })()");
     defer std.testing.allocator.free(caret);
-    try std.testing.expectEqualStrings("true:P:foobar:1", caret);
+    try std.testing.expectEqualStrings("true:#text:foo:3", caret);
     // A range that starts at the end of a text node and ends inside the
     // following inline: the caret stays in that text node, outside the
     // inline, so typing lands there (Chrome 156 and Safari 27; Firefox 158

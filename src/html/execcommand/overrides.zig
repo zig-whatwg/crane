@@ -76,6 +76,11 @@ fn current(edit: *Edit) !*FormattingOverrides {
     return store;
 }
 
+/// Whether any state or value override is set for the current selection.
+pub fn hasOverrides(edit: *Edit) !bool {
+    return (try current(edit)).any();
+}
+
 fn stateCommand(command: Command) ?FormattingOverrides.StateCommand {
     return switch (command) {
         .bold => .bold,
@@ -170,6 +175,26 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
     var list: std.ArrayList(Override) = .empty;
     // Step 2: createLink's value override first.
     if (try valueOverride(edit, .create_link)) |link| try list.append(arena, .{ .command = .create_link, .value = .{ .value = try arena.dupe(u8, link) } });
+    // Step 4 before step 3: the value overrides come back first, so the
+    // font they make is outermost, its attributes on one <font>, and the
+    // background span and the b, i, u or s go inside it - all three
+    // browsers type `["foreColor","#ff0000"],["bold",""],["insertText","b"]`
+    // into `a<font color=#ff0000><b>b</b></font>c` and fontName, foreColor,
+    // fontSize and backColor into one <font> around a background span
+    // (editing/run/multitest.html, PPP at wpt.fyi 2358bd4835), where the
+    // spec's order (states, then values) nests the font inside the b. Blink
+    // applies a typing style in one ApplyInlineStyleChange: font element
+    // first, then the CSS span, then b, i, u, s, sub, sup. Golden rule 2, no
+    // newer spec. A subscript or superscript state override puts fontSize
+    // back after the states, as the spec's own order does for that reason:
+    // the sub or sup makes the smaller size the recorded value holds (a
+    // deleted `foo<sub>[bar]</sub>baz` retypes as `foo<sub>a</sub>baz`,
+    // not inside a <font size=2>).
+    const sub_or_sup = ((try stateOverride(edit, .subscript)) orelse false) or ((try stateOverride(edit, .superscript)) orelse false);
+    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
+        if (command == .font_size and sub_or_sup) continue;
+        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
+    }
     // Step 3: the state overrides - in the order they were set rather than
     // the spec's fixed order, so a deletion's recorded wrappers come back
     // nested as they were (see recordCurrentStatesAndValues).
@@ -187,9 +212,8 @@ pub fn recordCurrentOverrides(edit: *Edit) !Overrides {
         }
     }.earlierFirst);
     for (states.items) |entry| try list.append(arena, .{ .command = entry.command, .value = .{ .state = entry.state } });
-    // Step 4: the value overrides.
-    for ([_]Command{ .font_name, .font_size, .fore_color, .hilite_color }) |command| {
-        if (try valueOverride(edit, command)) |value| try list.append(arena, .{ .command = command, .value = .{ .value = try arena.dupe(u8, value) } });
+    if (sub_or_sup) {
+        if (try valueOverride(edit, .font_size)) |value| try list.append(arena, .{ .command = .font_size, .value = .{ .value = try arena.dupe(u8, value) } });
     }
     return .{ .items = list.items };
 }
@@ -268,6 +292,41 @@ pub fn recordCurrentStatesAndValues(edit: *Edit, start_node: *Instance) !Overrid
     // Step 7: fontSize as the node's effective command value (pixels).
     try list.append(arena, .{ .command = .font_size, .value = .{ .value = try inline_formatting.effectiveValue(edit, node, .font_size) } });
     return .{ .items = list.items };
+}
+
+/// Delete the selection's step 41 ("restore states and values") as the
+/// browsers make the typing style a deletion leaves: with nothing
+/// formattable left in the range (the caret), only what differs from the
+/// style in effect at the caret's DOWNSTREAM point - its last equivalent
+/// point - becomes an override. Chrome 157 deletes `abc[<b>de]f</b>ghi` to
+/// `abc<b>f</b>ghi` with the caret in "abc" and bold OFF (the f still
+/// carries it at that place), but `abc[<b>def]</b>ghi` with bold ON; the
+/// data agrees (editing/run/multitest.html: delete then inserttext on
+/// `<div>abc[<b><i>def]</i></b>ghi</div>` -> `abc<b><i>def</i></b>ghi`,
+/// PPP, and on `<div>abc[<b><i>de]f</i></b>ghi</div>` -> `abcde<b><i>f
+/// </i></b>ghi`, PFP, wpt.fyi 2358bd4835). Blink computes its typing style
+/// before the delete and PrepareToApplyAt(ending position) drops what is in
+/// effect at the downstream ending position (DeleteSelectionCommand::
+/// CalculateTypingStyleAfterDelete, delete_selection_command.cc). The spec
+/// sets every recorded override. Golden rule 2, no newer spec.
+pub fn restoreTypingStyle(edit: *Edit, recorded: Overrides) !void {
+    if ((try inline_formatting.firstFormattableNode(edit)) != null) return restoreStatesAndValues(edit, recorded);
+    const caret = (try edit.rangeStart()) orelse return restoreStatesAndValues(edit, recorded);
+    const downstream = try common.lastEquivalentPoint(caret);
+    const node = downstream.node;
+    var kept: std.ArrayList(Override) = .empty;
+    for (recorded.items) |pair| {
+        const effective = try inline_formatting.effectiveValue(edit, node, pair.command);
+        const same = switch (pair.value) {
+            .state => |state| state == inline_formatting.isActivatedValue(pair.command, effective),
+            .value => |maybe| if (maybe) |value|
+                inline_formatting.areLooselyEquivalent(edit, pair.command, effective, value)
+            else
+                true,
+        };
+        if (!same) try kept.append(edit.scratchAllocator(), pair);
+    }
+    try restoreStatesAndValues(edit, .{ .items = kept.items });
 }
 
 /// The depth (ancestor count) of the nearest inclusive ancestor element of
