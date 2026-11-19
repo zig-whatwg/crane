@@ -242,8 +242,8 @@ pub const URLSearchParams = struct {
         return URLSearchParamsImpl.getEntriesInternal(instance);
     }
 
-    /// The impl's snapshot of the value pairs to iterate over, taken when an
-    /// iterator or forEach starts (`iterableSnapshot`), or null when the
+    /// The impl's snapshot of the value pairs to iterate over, taken once
+    /// when iteration starts (`iterableSnapshot`), or null when the
     /// impl's live list (`getEntriesInternal`) is read at each step.
     pub const iterable_snapshot = if (@hasDecl(URLSearchParamsImpl, "iterableSnapshot")) URLSearchParamsImpl.iterableSnapshot else null;
 };
