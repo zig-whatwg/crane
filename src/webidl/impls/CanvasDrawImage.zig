@@ -84,7 +84,7 @@ fn drawImage(instance: *runtime.Instance, image: typedefs.CanvasImageSource, giv
             .svgimage_element => return error.NotImplemented,
         },
         .htmlcanvas_element => |canvas| dom.image_sources.canvasUsability(canvas),
-        .image_bitmap => |bitmap| dom.image_sources.imageBitmapUsability(bitmap),
+        .image_bitmap => |image_bitmap| dom.image_sources.imageBitmapUsability(image_bitmap),
         .offscreen_canvas => |canvas| dom.image_sources.offscreenCanvasUsability(canvas),
         // A video's readyState is not modelled past HAVE_NOTHING here: bad.
         .htmlvideo_element => .bad,
