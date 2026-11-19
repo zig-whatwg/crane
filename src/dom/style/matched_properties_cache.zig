@@ -559,7 +559,7 @@ fn parentCorresponds(hit: *MatchedPropertiesCache.Correspondence, parent: *const
     if (cached.custom != parent.custom) return false;
     // adjust() and the base-appearance bit (Blink IsCacheCompatible, WebKit
     // inBaseAppearanceSubtree).
-    if (cached.in_base_appearance != parent.in_base_appearance or cached.box_context != parent.box_context) return false;
+    if (cached.flags.in_base_appearance != parent.flags.in_base_appearance or cached.box_context != parent.box_context) return false;
     if (css.cascade.blockifiesChildren(cached) != css.cascade.blockifiesChildren(parent)) return false;
     // Align 3 7.1: every element's justify-items `legacy` reads its parent's
     // (Blink IsCacheCompatible: the parent's JustifyItems).
@@ -605,7 +605,7 @@ pub fn differenceFromCascade(ctx: css.cascade.Context, matched: []const Matched,
     // what the fetch layer requests (lane style1 b4).
     if (try style.firstObservableDifference(fresh, ctx.allocator)) |l| return .{ .longhand = l };
     if (style.used_color_scheme != fresh.used_color_scheme or style.box_context != fresh.box_context or
-        style.subgrid_ineligible != fresh.subgrid_ineligible or style.in_base_appearance != fresh.in_base_appearance or
+        style.flags.subgrid_ineligible != fresh.flags.subgrid_ineligible or style.flags.in_base_appearance != fresh.flags.in_base_appearance or
         style.registered != fresh.registered) return .flags;
     const names = try style.customNames(ctx.allocator);
     defer ctx.allocator.free(names);

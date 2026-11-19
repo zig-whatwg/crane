@@ -1,40 +1,43 @@
-//! Implementation for ViewTransitionTypeSet interface
+//! CSS View Transitions 2 §9: `interface ViewTransitionTypeSet {
+//! setlike<DOMString>; }` - a view transition's active types. The set
+//! entries are this impl's (a webidl.setlike.Strings); their setlike members
+//! are the binding's (WebIDL 3.7.12), which reaches them through the
+//! generated `setlikeEntries`, as CustomStateSet's.
+//!
+//! Spec: https://drafts.csswg.org/css-view-transitions-2/#viewtransitiontypeset
 
 const std = @import("std");
 const runtime = @import("runtime");
 const interfaces = @import("interfaces");
-const typedefs = @import("typedefs");
-const enums = @import("enums");
-const dictionaries = @import("dictionaries");
-const callbacks = @import("callbacks");
-const ViewTransitionTypeSet = interfaces.ViewTransitionTypeSet;
+const webidl = @import("webidl");
 
-pub const State = ViewTransitionTypeSet.State;
+pub const State = interfaces.ViewTransitionTypeSet.State;
 
-pub const ImplError = error{
-    NotImplemented,
+pub const InternalState = struct {
+    /// The active types ("an ordered set of strings").
+    values: webidl.setlike.Strings,
 };
 
-/// Internal state for implementation-specific data
-/// Implementations can replace this with a real struct containing:
-/// - Private data not exposed via WebIDL attributes
-/// - Cached computations, buffers, etc.
-pub const InternalState = struct {};
-
-/// Initialize instance (creates the instance)
-pub fn init(
-    allocator: std.mem.Allocator,
-    comptime StateType: type,
-    vtable: *const runtime.VTable,
-    ctx: runtime.Context,
-) !*runtime.Instance {
-    const instance = try runtime.Instance.init(allocator, StateType, vtable, ctx);
-    // TODO: Initialize your instance state here if needed
-    return instance;
+pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
+    _ = args;
+    const internal = try allocator.create(InternalState);
+    internal.* = .{ .values = .init(allocator) };
+    instance.getState(StateType).own._internal = internal;
 }
 
-/// Deinitialize instance
-pub fn deinit(instance: *runtime.Instance) void {
-    // TODO: Clean up your instance resources here
-    _ = instance; // GC layer handles slab freeing - do NOT call runtime.Instance.deinit()
+pub fn deinitOwn(instance: *runtime.Instance) void {
+    const state = instance.getState(State);
+    const internal = state.own._internal orelse return;
+    state.own._internal = null;
+    const allocator = internal.values.allocator;
+    internal.values.deinit();
+    allocator.destroy(internal);
+}
+
+/// The set entries (WebIDL 2.5.12), for the binding's setlike members; null
+/// once the instance's state is gone.
+pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.Strings {
+    const state = instance.stateAs(State) orelse return null;
+    const internal = state.own._internal orelse return null;
+    return &internal.values;
 }

@@ -185,7 +185,10 @@ test "pr1 document registries remain isolated across Browser scopes" {
     try second.expectInitial("2px");
 }
 
-test "pr1 shadow stylesheet keeps CSSOM records without document registrations" {
+// Properties and Values API 1 §2.8: a shadow tree's @property registers in
+// the document's one registry (lane css1, main's ruling 2026-11-18: the newer
+// spec, css-houdini-drafts#1085; it registered nothing before).
+test "pr1 shadow stylesheet keeps CSSOM records and registers in the document" {
     var page: Page = undefined;
     try page.init();
     defer page.deinit();
@@ -201,7 +204,7 @@ test "pr1 shadow stylesheet keeps CSSOM records without document registrations" 
     const rules = try sheet.rulesWith(.{ .allocator = allocator });
     try testing.expectEqual(@as(usize, 1), rules.items.len);
     try testing.expectEqualStrings("--x", rules.items[0].data.property.name);
-    try page.expectInitial(null);
+    try page.expectInitial("8px");
 }
 
 // Registration state behind at-property-non-matching-media-crash.html.

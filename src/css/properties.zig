@@ -542,6 +542,9 @@ pub const Longhand = enum(u16) {
     d,
     stroke_dasharray,
 
+    // CSS Generated Content 3 §4.1 (lane css1).
+    quotes,
+
     pub const count = @typeInfo(Longhand).@"enum".field_names.len;
 
     /// The property name.
@@ -875,6 +878,9 @@ pub const Grammar = enum {
     path_data,
     /// SVG 2 §13.5.6: none | <dasharray>.
     dasharray,
+    /// Generated Content 3 §4.1: auto | none | match-parent |
+    /// [ <string> <string> ]+.
+    quotes,
 };
 
 pub const Info = struct {
@@ -1404,6 +1410,7 @@ const infos: [Longhand.count]Info = blk: {
         .{ .longhand = .scrollbar_width, .inherited = false, .initial = Value.kw(.auto), .grammar = .keywords, .keywords = &.{ .auto, .thin, .none } },
         .{ .longhand = .d, .inherited = false, .initial = Value.kw(.none), .grammar = .path_data },
         .{ .longhand = .stroke_dasharray, .inherited = true, .initial = Value.kw(.none), .grammar = .dasharray },
+        .{ .longhand = .quotes, .inherited = true, .initial = Value.kw(.auto), .grammar = .quotes },
     };
     for (defs) |def| {
         const i = @backingInt(def.longhand);
@@ -2470,7 +2477,32 @@ pub fn parseLonghand(options: ParseOptions, l: Longhand, stream: *Stream) Alloca
             return .{ .shape = (try @import("shape_values.zig").consumePathData(options, stream)) orelse return null };
         },
         .dasharray => return @import("svg_paint.zig").parseDasharray(options, stream),
+        .quotes => return quotesValue(options, stream),
     }
+}
+
+/// CSS Generated Content 3 §4.1 quotes: auto | none | match-parent |
+/// [ <string> <string> ]+. The draft's value table names match-parent
+/// "bikeshed-this"; css-content/parsing/quotes-valid.html spells it
+/// match-parent, which Firefox Nightly takes (9/9; Chrome and Safari, 7/9,
+/// have not shipped it yet: golden rule 2's newer spec). The pairs are kept
+/// as their serialization, each string a CSS string (CSSOM 6.7.2).
+fn quotesValue(options: ParseOptions, stream: *Stream) Allocator.Error!?Value {
+    if (takeKeyword(stream, &.{ .auto, .none, .match_parent })) |k| return Value.kw(k);
+    const allocator = options.allocator;
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(allocator);
+    var strings: usize = 0;
+    while (stream.peek().token_type == .string) : (strings += 1) {
+        const token = stream.next();
+        const decoded = try tokenizer_mod.decode(allocator, token.stringContents());
+        defer allocator.free(decoded);
+        if (strings != 0) try text.append(allocator, ' ');
+        try values.appendString(decoded, &text, allocator);
+    }
+    // "[ <string> <string> ]+": at least one pair, and only whole pairs.
+    if (strings == 0 or strings % 2 != 0) return null;
+    return .{ .text = try SharedText.create(allocator, text.items) };
 }
 
 /// One <custom-ident>, or with `list` one or more (View Transitions 2

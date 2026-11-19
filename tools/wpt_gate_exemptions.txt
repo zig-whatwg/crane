@@ -1723,3 +1723,36 @@ kind      = needs-decoder
 why       = the in-policy WebM, direct and through a redirect, loads but the default platform cannot decode it, so the element fires error where the test waits for loadeddata
 media     = /media/A4.webm (video/webm)
 assertion = assert_unreached: Media error handler shouldn't be triggered for allowed domain. Reached unreachable code (subtests 1-3; 4-5 NOTRUN)
+
+# needs-renderer (lane css1, 2026-11-18; main's OK 3:55 PM ET): each file's every failure reads a layout result.
+# The insets files read CSSOM's resolved value of an inset, which for a positioned box is its USED value (CSSOM
+# "resolved values": percentages of the laid-out containing block, the opposite inset of a relatively positioned
+# box) - with no box Crane answers the computed value - or compare it with getBoundingClientRect/offset* geometry.
+# getAnimations-iframe evaluates an iframe document's @media (min-width) against the iframe's viewport, the iframe
+# element's laid-out content box; with no renderer every viewport is Crane's default 1024px. Generation 229's
+# messages, unchanged on lane css1's tips.
+
+[css/cssom/getComputedStyle-insets-relpos-inline-002.html]
+kind      = needs-renderer
+why       = the resolved value of a relatively positioned inline's inset is its used value (CSSOM resolved values): top/left 50%/75% of the containing block's laid-out size and bottom/right their negations; with no box Crane answers the computed value (50%, 75%, auto)
+assertion = assert_equals: expected "50px" but got "50%" (top); expected "-50px" but got "auto" (bottom); expected "75px" but got "75%" (left); expected "-75px" but got "auto" (right)
+
+[css/cssom/getComputedStyle-insets-relpos-block-in-inline.html]
+kind      = needs-renderer
+why       = the resolved value of a relatively positioned block-in-inline's inset is its used value (CSSOM resolved values): percentages of the laid-out containing block and the opposite insets' negations; with no box Crane answers the computed value
+assertion = assert_equals: expected "50px" but got "50%" (top); expected "-50px" but got "auto" (bottom); expected "75px" but got "75%" (left); expected "-75px" but got "auto" (right)
+
+[css/cssom/getComputedStyle-inset-inline-containing-block-vertical.html]
+kind      = needs-renderer
+why       = each subtest compares parseFloat of the resolved right/bottom of an abspos box (a used value from layout) with getBoundingClientRect().width/height and offsetLeft/offsetWidth/offsetTop/offsetHeight; with no box the resolved value is the computed auto (parseFloat NaN) and each geometry read is 0
+assertion = assert_equals: expected 0 but got NaN (both subtests)
+
+[web-animations/interfaces/Animatable/getAnimations-iframe.html]
+kind      = needs-renderer
+why       = the iframe document's @media (min-width: 300px) is evaluated against the iframe's viewport, the iframe element's laid-out content box (200px, then 400px after frame.style.width changes); with no renderer every viewport is 1024px, so the animation runs from the start and the first assertion (no animation yet, red) fails
+assertion = assert_equals: expected "rgb(255, 0, 0)" but got "rgb(0, 128, 0)" (both subtests, the first assertion)
+
+[css/css-properties-values-api/at-property-media-query.html]
+kind      = needs-renderer
+why       = the @media (min-width: 200px) wrapping the second @property rules is evaluated against an iframe's viewport, the iframe element's laid-out width (100px, then 300px); with no renderer the iframe's viewport is 1024px, so the conditional registrations apply from the start. The non-geometry half - an unmatched @media's @property is not registered, a condition change re-registers - passes: crane/css1-at-property-conditional.html (lane css1)
+assertion = assert_equals: expected "1px" but got "4px" (the first assertion)

@@ -100,6 +100,13 @@ pub const InternalState = struct {
     /// unsafe worker creation time, monotonic nanoseconds as the worker host
     /// recorded it (worker_host.ScopeSettings); null when it recorded none.
     time_origin_ns: ?i64 = null,
+    /// Font Loading 3 §4.1: this worker's FontFaceSet ("Worker
+    /// FontFaceSources"), made on first use, kept by a collector-traced edge.
+    fonts: ?struct {
+        owner: *runtime.Instance,
+        value: *runtime.Instance,
+        edge: same_object.Traced = .{ .slot = .{ .name = "fonts" } },
+    } = null,
     /// IndexedDB 4.3: one factory owned by this worker global's traced graph.
     indexed_db: ?struct {
         owner: *runtime.Instance,
@@ -201,6 +208,7 @@ pub const InternalState = struct {
         }
         if (self.crypto) |*crypto| crypto.edge.release(crypto.owner);
         if (self.trusted_types) |*factory| factory.edge.release(factory.owner);
+        if (self.fonts) |*set| set.edge.release(set.owner);
         // The WorkerLocation and WorkerNavigator objects are the wrapper
         // cache's: they are freed with it, not here. Only the pins are ours.
         self.location_pin.release();
@@ -679,11 +687,17 @@ pub fn get_navigator(instance: *runtime.Instance) anyerror!*runtime.Instance {
 // are the generated interface's: HTML's getter and setter, through
 // dom.event_handlers, in EventTarget's event handler map.
 
-/// Getter for fonts
+/// Font Loading 3 §4 FontFaceSource's fonts: this worker's FontFaceSet -
+/// one per global (§4.1: "Within a worker", its set entries start empty and
+/// hold what script adds), made on first use.
 pub fn get_fonts(instance: *runtime.Instance) anyerror!*runtime.Instance {
-    // FontFaceSet is not yet implemented
-    _ = instance;
-    return error.NotImplemented;
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    const internal = state.own._internal orelse return error.InvalidStateError;
+    if (internal.fonts) |set| return set.value;
+    const set = try interfaces.FontFaceSet.init(internal.allocator, instance.ctx);
+    internal.fonts = .{ .owner = instance, .value = set };
+    internal.fonts.?.edge.hold(instance, set);
+    return set;
 }
 
 /// Operation: importScripts - "import scripts into worker global scope"

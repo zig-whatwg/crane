@@ -409,6 +409,7 @@ scrollbar-color: auto
 scrollbar-width: auto
 d: none
 stroke-dasharray: none
+quotes: auto
 == initial root and child / 0
 display: block
 == initial root and child / 1
