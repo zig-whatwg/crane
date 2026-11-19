@@ -713,6 +713,17 @@ fn traceKeeps(raw_registry: ?*anyopaque, visitor: ?*anyopaque) callconv(.c) void
         const target = targetOf(instance) orelse continue;
         walk(registry, target, &tracer);
     }
+    // The agent's stack roots (refcount step 8): the paths of the event
+    // dispatches in flight, whose nodes' listeners are values traced from
+    // their wrappers. The queue is read as every binding entry reads it
+    // (dom_algorithm.zig: the isolate's own adapter storage, a data slot) -
+    // no lock in the pause.
+    const storage = @import("isolate_templates.zig").getTemplateStorage(registry.isolate) orelse return;
+    const queue = storage.deferred_teardown orelse return;
+    if (queue.stack_roots == null) return;
+    registry.in_walk = true;
+    defer registry.in_walk = false;
+    queue.traceStackRoots(&tracer);
 }
 
 /// The end of a collection's marking (the anchors' registry's weak

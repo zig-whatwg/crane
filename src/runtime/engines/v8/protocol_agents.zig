@@ -347,6 +347,21 @@ pub fn observableArraysOf(isolate: *ffi.Isolate) ?*observable_array.Registry {
 
 // process-wide: the lock over `agents`, the process's one index of live agents, which every Browser's and worker's thread reaches
 var agents_lock: std.Io.Mutex = .init;
+/// Tests only (tests/v8/cb8_stack_roots_test.zig): hold the agents' lock
+/// from a thread of the test's, to pin that a collection's atomic pause
+/// takes no lock (refcount step 8's stack roots, walked there). A build that
+/// is not a test refuses to compile a call.
+pub fn lockAgentsForTest() void {
+    if (!@import("builtin").is_test) @compileError("lockAgentsForTest is for tests only");
+    std.Io.Threaded.mutexLockUncancelable(&agents_lock);
+}
+
+/// Tests only: end `lockAgentsForTest`'s hold.
+pub fn unlockAgentsForTest() void {
+    if (!@import("builtin").is_test) @compileError("unlockAgentsForTest is for tests only");
+    std.Io.Threaded.mutexUnlock(&agents_lock);
+}
+
 /// Every agent made by createAgent and not yet destroyed, by isolate.
 // process-wide: V8's isolates are the process's, and a hook dispatch finds its agent's record by isolate from any thread; each Browser and worker adds and removes only its own agents' records, always under agents_lock (the records themselves are their Browser's or WorkerHost's)
 var agents: std.AutoHashMapUnmanaged(*ffi.Isolate, *AgentRecord) = .empty;

@@ -1622,6 +1622,11 @@ fn dispatchWithThrowFlag(target: *runtime.Instance, event: *runtime.Instance, st
     var path: dom_module.event_dispatch.DispatchPath = undefined;
     path.init(runtime.allocatorOf(event));
     defer path.deinit();
+    // The path's nodes keep their wrappers - and with them the listeners
+    // still to be called - while the dispatch runs (refcount step 8).
+    var active: dom_module.event_dispatch.ActiveDispatch = .{ .path = &path };
+    active.begin(target);
+    defer active.end();
     // Whatever way the dispatch left, the event does not point at this
     // frame once it is gone.
     defer if (state.path == &path) state.clearPath();
