@@ -207,10 +207,10 @@ pub const Face = struct {
         };
     }
 
-    /// CSS-connected faces retain native status until script asks for the
-    /// promise (WebKit FontFace::loadedForBindings/loadForBindings). Creating
-    /// an unseen rejected JS promise during font selection would report an
-    /// unhandled rejection. The explicit constructor still ensures eagerly.
+    /// A face keeps its native status until script asks for the promise
+    /// (WebKit FontFace::loadedForBindings/loadForBindings). Creating an
+    /// unseen rejected JS promise - during font selection, or for a
+    /// constructor's syntax error - would report an unhandled rejection.
     pub fn loadedPromise(self: *Face) !engine.Owned {
         try self.loaded.ensure(self.owner);
         try self.settleLoaded();
@@ -2278,6 +2278,9 @@ pub const Set = struct {
     next_id: u64 = 0,
     retired: bool = false,
     environment_pending: bool = true,
+    /// The set entries as the binding's setlike members read them
+    /// (`setlikeView`).
+    entries_view: @import("webidl").setlike.PlatformObjects = undefined,
 
     pub const Member = struct {
         face: InstanceLink,
@@ -2347,6 +2350,34 @@ pub const Set = struct {
         return result;
     }
 
+    /// Font Loading 3 §3.3 check(font, text), steps 2-3: "find the matching
+    /// font faces" (§3.1, as load() does; Crane's faces are the set's own -
+    /// it has no system font that could load), "If a syntax error was
+    /// returned, throw a SyntaxError"; "If font face list is empty, or all
+    /// fonts in the font face list either have a status attribute of
+    /// "loaded" or are system fonts, return true. Otherwise, return false."
+    /// Starts no load.
+    pub fn check(self: *Set, font: []const u8, text: []const u8) !bool {
+        if (self.retired or !self.ownerLive()) return error.InvalidStateError;
+        var available = try LoadingFaces.init(self);
+        defer available.deinit();
+        var options: css.font_request.Options = .{ .allocator = self.allocator };
+        if (self.liveDocument()) |document| {
+            const media = hooks.mediaValues(document);
+            options.viewport_width = media.width;
+            options.viewport_height = media.height;
+        }
+        const matched = try matchFontForText(options, available.faces.items, font, text) orelse return error.SyntaxError;
+        defer self.allocator.free(matched.indices);
+        for (matched.indices) |index| {
+            const link = available.entries.items[index].face;
+            if (!link.isLive()) continue;
+            const face = hooks.fontFaceOf(link.instance) orelse continue;
+            if (face.status != .loaded) return false;
+        }
+        return true;
+    }
+
     fn detachPendingLoad(self: *Set, pending: *SetLoad) void {
         for (self.pending_loads.items, 0..) |candidate, index| if (candidate == pending) {
             _ = self.pending_loads.orderedRemove(index);
@@ -2365,6 +2396,46 @@ pub const Set = struct {
             pending.cancel();
             pending.release();
         }
+    }
+
+    /// Font Loading 3 §3: the set entries for WebIDL's setlike members
+    /// (3.7.12: size, has, forEach, keys, values, entries and the iterator;
+    /// add, delete and clear are the interface's own). Each read reconciles
+    /// the CSS-connected faces first, as every other member does (the
+    /// impl's setOf), so the "iteration order" is §3's: the CSS-connected
+    /// faces in document order of their rules, then the others in insertion
+    /// order (`members`, as reconcile keeps it). An iterator is a position
+    /// (webidl.setlike.PlatformObjects: Gecko and WebKit keep an index).
+    pub fn setlikeView(self: *Set) *@import("webidl").setlike.PlatformObjects {
+        self.entries_view = .{ .context = self, .vtable = &entries_vtable };
+        return &self.entries_view;
+    }
+    const entries_vtable: @import("webidl").setlike.PlatformObjects.VTable = .{ .size = entriesSize, .contains = entriesContain, .after = entriesAfter };
+    fn entriesOf(context: *anyopaque) *Set {
+        const self: *Set = @ptrCast(@alignCast(context));
+        // A reconcile that cannot allocate leaves the entries as they were.
+        self.reconcile() catch {};
+        return self;
+    }
+    fn entriesSize(context: *anyopaque) usize {
+        const self = entriesOf(context);
+        var count: usize = 0;
+        for (self.members.items) |member| count += @intFromBool(member.face.isLive());
+        return count;
+    }
+    fn entriesContain(context: *anyopaque, value: *anyopaque) bool {
+        const self = entriesOf(context);
+        return self.indexOf(@ptrCast(@alignCast(value))) != null;
+    }
+    fn entriesAfter(context: *anyopaque, sequence: u64) ?@import("webidl").setlike.PlatformObjects.Entry {
+        const self = entriesOf(context);
+        var index: usize = @intCast(sequence);
+        while (index < self.members.items.len) : (index += 1) {
+            const member = self.members.items[index];
+            if (!member.face.isLive()) continue;
+            return .{ .sequence = index + 1, .value = member.face.instance };
+        }
+        return null;
     }
 
     pub fn liveDocument(self: *const Set) ?*runtime.Instance {

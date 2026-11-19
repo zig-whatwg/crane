@@ -143,5 +143,49 @@ pub fn SetEntries(comptime T: type) type {
 /// The set entries of a setlike<DOMString>, <USVString> or <ByteString>.
 pub const Strings = SetEntries([]const u8);
 
+/// The set entries of a setlike whose value type is an interface
+/// (setlike<FontFace>), as the binding reads them: a view of the list the
+/// impl keeps, and traces, itself - a platform object in a set must stay
+/// alive while the set does, which only its owner's traced edges say (the
+/// FontFaceSet's members, css-font-loading's Set). The values are the
+/// platform objects (`runtime.Instance`s; opaque here, below the runtime).
+///
+/// Iteration (`after`) is the impl's: Gecko's and WebKit's FontFaceSet
+/// iterators keep an index into the set's ordered list (Gecko
+/// FontFaceSetIterator::Next, WebKit FontFaceSet::Iterator::next), and a
+/// view whose entries are reordered (CSS-connected faces first, in rule
+/// order) answers by position: `sequence` is the position after the entry.
+pub const PlatformObjects = struct {
+    context: *anyopaque,
+    vtable: *const VTable,
+
+    pub const Entry = struct {
+        sequence: u64,
+        value: *anyopaque,
+    };
+
+    pub const VTable = struct {
+        size: *const fn (context: *anyopaque) usize,
+        contains: *const fn (context: *anyopaque, value: *anyopaque) bool,
+        after: *const fn (context: *anyopaque, sequence: u64) ?Entry,
+    };
+
+    /// The set's size.
+    pub fn size(self: *const PlatformObjects) usize {
+        return self.vtable.size(self.context);
+    }
+
+    /// Whether the set contains the platform object `value`.
+    pub fn contains(self: *const PlatformObjects, value: *anyopaque) bool {
+        return self.vtable.contains(self.context, value);
+    }
+
+    /// An iterator's next step after the entry with `sequence` (0: before
+    /// the first), or null.
+    pub fn after(self: *const PlatformObjects, sequence: u64) ?Entry {
+        return self.vtable.after(self.context, sequence);
+    }
+};
+
 /// The name the webidl module re-exports (root.zig).
 pub const Setlike = SetEntries;

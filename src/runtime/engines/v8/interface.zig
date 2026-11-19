@@ -7231,6 +7231,23 @@ pub fn V8Interface(comptime Interface: type) type {
         else
             void;
 
+        /// Whether the declaration's values are platform objects (an
+        /// interface value type: FontFaceSet's FontFace) rather than strings.
+        /// Their set entries are the impl's traced list
+        /// (webidl.setlike.PlatformObjects); a value is never owned here.
+        const setlike_values_are_objects = if (has_setlike) !(std.mem.eql(u8, Meta.setlike.value_type, "DOMString") or
+            std.mem.eql(u8, Meta.setlike.value_type, "USVString") or std.mem.eql(u8, Meta.setlike.value_type, "ByteString") or
+            std.mem.eql(u8, Meta.setlike.value_type, "CSSOMString")) else false;
+
+        /// A converted setlike argument: an owned string, or a BORROWED
+        /// platform object (its wrapper, the argument, keeps it alive).
+        const SetlikeValue = if (setlike_values_are_objects) *runtime.Instance else []const u8;
+
+        fn setlikeFreeValue(allocator: std.mem.Allocator, value: SetlikeValue) void {
+            if (comptime setlike_values_are_objects) return;
+            allocator.free(value);
+        }
+
         const setlike_key_prefix = "crane:setlike:" ++ interface_name ++ ":";
         const setlike_target_key = setlike_key_prefix ++ "target";
         const setlike_kind_key = setlike_key_prefix ++ "kind";
@@ -7271,11 +7288,25 @@ pub fn V8Interface(comptime Interface: type) type {
         /// exception thrown (or pending) when the conversion threw. A missing
         /// argument is undefined: these are built-in functions taking one
         /// argument, not operations with a required one.
-        fn setlikeValueArgument(isolate: *v8.Isolate, context: *v8.Context, info: *const v8.FunctionCallbackInfo, allocator: std.mem.Allocator) ?[]const u8 {
+        fn setlikeValueArgument(isolate: *v8.Isolate, context: *v8.Context, info: *const v8.FunctionCallbackInfo, allocator: std.mem.Allocator) ?SetlikeValue {
             // Owned: info.get makes a Global for the call, v8_Undefined one too.
             const arg = (if (info.length() >= 1) info.get(0) else v8.v8_Undefined(isolate)) orelse return null;
             defer v8.v8_Value_Dispose(arg);
-            if (comptime std.mem.eql(u8, Meta.setlike.value_type, "USVString")) {
+            if (comptime setlike_values_are_objects) {
+                // WebIDL 3.2.20 (interface types): a platform object that
+                // implements the interface, else a TypeError. The argument's
+                // wrapper keeps it alive for the call.
+                const ValueInterface = @field(@import("interfaces"), Meta.setlike.value_type);
+                const instance = conv.platformObjectOf(arg) orelse {
+                    conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.setlike.value_type);
+                    return null;
+                };
+                if (!conv.implements(instance, ValueInterface)) {
+                    conv.throwTypeErrorFromContext(isolate, context, "The value is not a " ++ Meta.setlike.value_type);
+                    return null;
+                }
+                return instance;
+            } else if (comptime std.mem.eql(u8, Meta.setlike.value_type, "USVString")) {
                 return conv.fromV8Value(runtime.USVString, allocator, isolate, context, arg) catch |err| {
                     throwMemberError(isolate, context, err);
                     return null;
@@ -7295,9 +7326,24 @@ pub fn V8Interface(comptime Interface: type) type {
             }
         }
 
-        /// A set entry's value converted to an ECMAScript value, OWNED.
-        fn setlikeValueToV8(isolate: *v8.Isolate, value: []const u8) ?*v8.Value {
+        /// A set entry's value converted to an ECMAScript value, OWNED: a
+        /// string made here, or a platform object's wrapper - the wrapper
+        /// cache's, so cloned (conv.instanceToV8: only the undefined of an
+        /// object that cannot be wrapped is the caller's).
+        fn setlikeValueToV8(isolate: *v8.Isolate, value: anytype) ?*v8.Value {
+            if (comptime setlike_values_are_objects) {
+                const instance: *runtime.Instance = @ptrCast(@alignCast(value));
+                const wrapper = conv.instanceToV8Checked(isolate, instance) catch return null;
+                if (v8.v8_Value_IsUndefined(wrapper)) return wrapper;
+                return v8.v8_Global_Clone(wrapper);
+            }
             return conv.newStringFromWtf8(isolate, value);
+        }
+
+        /// What SetEntries.contains/append/remove take for `value`.
+        fn setlikeEntryArgument(value: SetlikeValue) if (setlike_values_are_objects) *anyopaque else []const u8 {
+            if (comptime setlike_values_are_objects) return @ptrCast(value);
+            return value;
         }
 
         /// The current context, OWNED, or null with nothing to release.
@@ -7328,8 +7374,8 @@ pub fn V8Interface(comptime Interface: type) type {
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
             const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(value);
-            setlikeReturnBoolean(info, isolate, entries.contains(value));
+            defer setlikeFreeValue(allocator, value);
+            setlikeReturnBoolean(info, isolate, entries.contains(setlikeEntryArgument(value)));
         }
 
         /// 3.7.12.8 add: append the converted value, then return O.
@@ -7342,8 +7388,14 @@ pub fn V8Interface(comptime Interface: type) type {
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
             const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(value);
-            entries.append(value) catch |err| {
+            defer setlikeFreeValue(allocator, value);
+            // A platform-object set's impl owns its list (and the traced
+            // edges): its interface declares add (FontFaceSet), so the
+            // binding's never runs; registered all the same.
+            if (comptime setlike_values_are_objects) {
+                conv.throwTypeErrorFromContext(isolate, context, "Illegal invocation");
+                return;
+            } else entries.append(setlikeEntryArgument(value)) catch |err| {
                 throwMemberError(isolate, context, err);
                 return;
             };
@@ -7362,8 +7414,11 @@ pub fn V8Interface(comptime Interface: type) type {
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
             const allocator = setlikeAllocator(this_obj);
             const value = setlikeValueArgument(isolate, context, info, allocator) orelse return;
-            defer allocator.free(value);
-            setlikeReturnBoolean(info, isolate, entries.remove(value));
+            defer setlikeFreeValue(allocator, value);
+            if (comptime setlike_values_are_objects) {
+                conv.throwTypeErrorFromContext(isolate, context, "Illegal invocation");
+                return;
+            } else setlikeReturnBoolean(info, isolate, entries.remove(setlikeEntryArgument(value)));
         }
 
         /// 3.7.12.10 clear: empty the set - the same set, so a suspended
@@ -7375,7 +7430,10 @@ pub fn V8Interface(comptime Interface: type) type {
             const this_obj = info.getThis();
             defer v8.v8_Object_Dispose(this_obj);
             const entries = setlikeEntriesOf(isolate, context, this_obj) orelse return;
-            entries.empty();
+            if (comptime setlike_values_are_objects) {
+                conv.throwTypeErrorFromContext(isolate, context, "Illegal invocation");
+                return;
+            } else entries.empty();
             conv.setReturnUndefined(info);
         }
 

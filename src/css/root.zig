@@ -70,6 +70,7 @@ pub const font_palette_descriptors = @import("font_palette_descriptors.zig");
 pub const page_values = @import("page_values.zig");
 pub const page_data = @import("page_data.zig");
 pub const counter_style_descriptors = @import("counter_style_descriptors.zig");
+pub const view_transition_rule = @import("view_transition_rule.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 pub const TokenType = tokenizer.TokenType;

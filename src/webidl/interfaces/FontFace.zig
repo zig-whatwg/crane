@@ -54,6 +54,7 @@ pub const FontFace = struct {
             .{ "features", "get_features", null },
             .{ "variations", "get_variations", null },
             .{ "palettes", "get_palettes", null },
+            .{ "width", "get_width", "set_width" },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -87,6 +88,7 @@ pub const FontFace = struct {
             .{ "features", "get_features", null },
             .{ "variations", "get_variations", null },
             .{ "palettes", "get_palettes", null },
+            .{ "width", "get_width", "set_width" },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
@@ -120,6 +122,7 @@ pub const FontFace = struct {
         .get_variationSettings = &get_variationSettings,
         .get_variations = &get_variations,
         .get_weight = &get_weight,
+        .get_width = &get_width,
 
         .set_ascentOverride = &set_ascentOverride,
         .set_descentOverride = &set_descentOverride,
@@ -132,6 +135,7 @@ pub const FontFace = struct {
         .set_unicodeRange = &set_unicodeRange,
         .set_variationSettings = &set_variationSettings,
         .set_weight = &set_weight,
+        .set_width = &set_width,
 
         .call_load = &call_load,
 
@@ -339,6 +343,14 @@ pub const FontFace = struct {
 
     pub fn get_palettes(instance: *runtime.Instance) anyerror!*runtime.Instance {
         return try FontFaceImpl.get_palettes(instance);
+    }
+
+    pub fn get_width(instance: *runtime.Instance) anyerror!CSSOMString {
+        return try FontFaceImpl.get_width(instance);
+    }
+
+    pub fn set_width(instance: *runtime.Instance, value: CSSOMString) anyerror!void {
+        try FontFaceImpl.set_width(instance, value);
     }
 
     pub fn call_load(instance: *runtime.Instance) anyerror!runtime.JSValue {

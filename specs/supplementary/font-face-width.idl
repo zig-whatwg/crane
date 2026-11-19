@@ -1,0 +1,22 @@
+// CSS Font Loading 3 §2 (https://drafts.csswg.org/css-font-loading-3/#fontface-interface):
+// FontFace's width attribute and FontFaceDescriptors' width member, CSS Fonts 4's
+// font-width name for what the stretch attribute and descriptor ("a legacy name
+// alias of width ... they set the same attribute") already hold.
+//
+// Crane's own copy of definitions the pinned webref snapshot (specs/idl,
+// curated bfbec43f445, 2026-09-17) predates. webref's curated branch has them -
+// curated f8b7573d6eb3408bd3335fbe37df9fe4d3f5b250 (2026-11-18),
+// ed/idl/css-font-loading.idl - and the text below is theirs. DELETE THIS FILE
+// at the next webref snapshot update (specs/idl/WEBREF.md, "Updating").
+//
+// The dictionary member has no default: "width" given in a dictionary wins over
+// "stretch" (whose default is "normal"), css-font-loading/fontface-width.html,
+// Chrome and Firefox 5/5.
+
+partial dictionary FontFaceDescriptors {
+  CSSOMString width;
+};
+
+partial interface FontFace {
+  attribute CSSOMString width;
+};

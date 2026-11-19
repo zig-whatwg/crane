@@ -989,9 +989,7 @@ pub fn get_rootElement(instance: *runtime.Instance) anyerror!?*runtime.Instance 
 /// View Transitions API - Returns the active ViewTransition or null
 /// Spec: https://drafts.csswg.org/css-view-transitions/#dom-document-activeviewtransition
 pub fn get_activeViewTransition(instance: *runtime.Instance) anyerror!?*runtime.Instance {
-    _ = instance;
-    // View transitions not yet implemented - return null
-    return null;
+    return @import("dom").view_transitions.activeOf(instance);
 }
 
 /// Getter for location
@@ -3507,11 +3505,63 @@ pub fn call_caretPositionFromPoint(instance: *runtime.Instance, x: f64, y: f64, 
     return null;
 }
 
-/// Operation: startViewTransition
+/// CSS View Transitions 1 §6.1.1 (Level 2's argument:
+/// `(ViewTransitionUpdateCallback or StartViewTransitionOptions)`, default
+/// `{}`): the steps are dom.view_transitions.start's; step 1, the new
+/// ViewTransition "in this's relevant Realm", is made here.
 pub fn call_startViewTransition(instance: *runtime.Instance, callbackOptions: webidl.Opt(runtime.JSValue)) anyerror!*runtime.Instance {
-    _ = instance;
-    _ = callbackOptions;
-    return error.NotImplemented;
+    const view_transitions = @import("dom").view_transitions;
+    const realm = instance.ctx;
+    var options: view_transitions.Start = .{};
+    var update: ?engine.Owned = null;
+    defer if (update) |held| held.release();
+    errdefer for (options.types) |name| realm.allocator.free(name);
+    errdefer if (options.types.len != 0) realm.allocator.free(options.types);
+    if (callbackOptions.was_passed) {
+        const value = callbackOptions.value;
+        // WebIDL 3.2.24 (the union's conversion): a callable value is the
+        // callback; any other object, null or undefined is the dictionary.
+        if (engine.isCallable(realm, value)) {
+            options.update = value;
+        } else switch (engine.typeOf(realm, value)) {
+            .undefined, .null => {},
+            .object => {
+                // StartViewTransitionOptions, in member order: types, update.
+                const types_value = try engine.getProperty(realm, value, "types");
+                defer types_value.release();
+                switch (engine.typeOf(realm, types_value.borrow())) {
+                    .undefined, .null => {},
+                    else => options.types = (try engine.convertToSequenceOfDOMStrings(realm, types_value.borrow(), realm.allocator)) orelse return error.TypeError,
+                }
+                const update_value = try engine.getProperty(realm, value, "update");
+                switch (engine.typeOf(realm, update_value.borrow())) {
+                    .undefined, .null => update_value.release(),
+                    else => {
+                        if (!engine.isCallable(realm, update_value.borrow())) {
+                            update_value.release();
+                            return error.TypeError;
+                        }
+                        update = update_value;
+                        options.update = update_value.borrow();
+                    },
+                }
+            },
+            else => return error.TypeError,
+        }
+    }
+    // 1. "Let transition be a new ViewTransition object in this's relevant
+    // Realm."
+    const transition = try interfaces.ViewTransition.init(realm.allocator, realm);
+    const generation = runtime.SlabAllocator.generationOf(transition);
+    errdefer transition.releaseIfUnwrapped(generation);
+    // 3. "Let document be this's relevant global object's associated
+    // Document" - this document, whose window's realm made it.
+    // The transition takes the types (start owns them from here, failing or
+    // not).
+    const taken: view_transitions.Start = .{ .update = options.update, .types = options.types };
+    options.types = &.{};
+    try view_transitions.start(instance, transition, taken);
+    return transition;
 }
 
 /// Operation: createComment

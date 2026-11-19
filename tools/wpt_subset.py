@@ -1024,6 +1024,31 @@ EXCLUDE = [
     ('content-security-policy/webrtc/', 'WebRTC is out of scope'),
     ('content-security-policy/xslt/',   'XSLT is out of scope (as dom/xslt/)'),
     ('content-security-policy/plugin-types/', 'plugins do not exist'),
+    # The integrator's rulings on lane csp1's 0.1-blocker triage (2026-11-18, 2:56 PM ET). CSP files whose
+    # subject is a feature the worklist leaves out, as webrtc/ above:
+    # - WebTransport: webtransport/ is not in the worklist, and a real WebTransport needs HTTP/3; each file
+    #   needs `new WebTransport(...)` with working ready/closed promises (Crane's interface is a generated
+    #   stub). Chrome 157, Firefox 160 and Safari 27.2 pass 2/3, 2/2, 2/3.
+    ('content-security-policy/connect-src/connect-src-webtransport-allowed.sub.https.html',
+     'WebTransport is out of scope (webtransport/ is not in the worklist; the integrator, 2026-11-18)'),
+    ('content-security-policy/connect-src/connect-src-webtransport-blocked.sub.https.html',
+     'WebTransport is out of scope (webtransport/ is not in the worklist; the integrator, 2026-11-18)'),
+    ('content-security-policy/connect-src/connect-src-webtransport-hashes.sub.https.html',
+     'WebTransport is out of scope (webtransport/ is not in the worklist; the integrator, 2026-11-18)'),
+    # - Web Audio: webaudio/ is not in the worklist; these two need an AudioWorkletNode whose port talks to
+    #   its processor's (Crane's AudioWorkletNode is a generated stub). The worklet's own CSP checks are
+    #   covered elsewhere in content-security-policy/ (worklet imports, AudioWorklet addModule).
+    ('content-security-policy/script-src/audioworklet-eval-blocked.https.html',
+     'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
+    ('content-security-policy/script-src/audioworklet-trusted-types-eval-blocked.https.html',
+     'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
+    # - filesystem: URLs: the File API: Directories and System, a W3C Working Group Note (2014) that was
+    #   never ratified; only Chrome ships webkitRequestFileSystem (Firefox 160 and Safari 27.2 fail both
+    #   files as Crane does).
+    ('content-security-policy/generic/filesystem-urls-do-not-match-self.sub.html',
+     'filesystem: URLs are an abandoned W3C Note, not ratified (the integrator, 2026-11-18)'),
+    ('content-security-policy/generic/filesystem-urls-match-filesystem.sub.html',
+     'filesystem: URLs are an abandoned W3C Note, not ratified (the integrator, 2026-11-18)'),
     ('workers/non-automated/',       'requires a human'),
 
     # Geometry (the user, 2026-10-16): Crane builds a style system - cascade and

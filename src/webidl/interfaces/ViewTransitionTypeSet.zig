@@ -45,6 +45,10 @@ pub const ViewTransitionTypeSet = struct {
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Setlike declaration (WebIDL 2.5.12): the binding defines its members
+        /// (3.7.12) over the impl's set entries (`setlikeEntries`).
+        pub const setlike = .{ .value_type = "DOMString", .readonly = false };
     };
 
     pub const State = runtime.FlattenedState(
@@ -54,10 +58,6 @@ pub const ViewTransitionTypeSet = struct {
             _internal: ?*ViewTransitionTypeSetImpl.InternalState = null,
         },
     );
-
-    // ========================================
-    // Constants (static getters)
-    // ========================================
 
     const delegates = .{
         .deinit = &deinit,
@@ -146,5 +146,11 @@ pub const ViewTransitionTypeSet = struct {
         if (comptime @hasDecl(impls, "ViewTransitionTypeSet")) {
             if (comptime @hasDecl(impls.ViewTransitionTypeSet, "installHooks")) impls.ViewTransitionTypeSet.installHooks();
         }
+    }
+
+    /// The set entries of this setlike object (WebIDL 2.5.12), for the
+    /// binding's setlike members.
+    pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.Strings {
+        return ViewTransitionTypeSetImpl.setlikeEntries(instance);
     }
 };

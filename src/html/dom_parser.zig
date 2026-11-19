@@ -967,7 +967,7 @@ fn createElementNode(
     };
 
     // "Append each attribute in the given token to element."
-    parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), conversion.attribute_run);
+    parser_script_execution.appendParsedAttributes(element, tree_node, conversion.attribute_run);
 
     // Fragment (runScripts): "in head" steps 2-5 give the script its parser
     // document and force async false, and leave already started false; at

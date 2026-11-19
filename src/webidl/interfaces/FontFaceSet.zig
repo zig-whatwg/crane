@@ -49,7 +49,6 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
-            .{ "size", "get_size", null },
         };
 
         /// Method binding hints for V8Interface (JS name, Zig function name, arity) - ONLY own instance methods
@@ -85,13 +84,16 @@ pub const FontFaceSet = struct {
             .{ "onloadingerror", "get_onloadingerror", "set_onloadingerror" },
             .{ "ready", "get_ready", null },
             .{ "status", "get_status", null },
-            .{ "size", "get_size", null },
         };
 
         /// Properties to define lazily (rarely accessed) - ONLY own properties
         pub const lazy_properties = .{};
 
         pub const has_constructor = false;
+
+        /// Setlike declaration (WebIDL 2.5.12): the binding defines its members
+        /// (3.7.12) over the impl's set entries (`setlikeEntries`).
+        pub const setlike = .{ .value_type = "FontFace", .readonly = false };
     };
 
     pub const State = runtime.FlattenedState(
@@ -102,16 +104,11 @@ pub const FontFaceSet = struct {
         },
     );
 
-    // ========================================
-    // Constants (static getters)
-    // ========================================
-
     const delegates = .{
         .get_onloading = &get_onloading,
         .get_onloadingdone = &get_onloadingdone,
         .get_onloadingerror = &get_onloadingerror,
         .get_ready = &get_ready,
-        .get_size = &get_size,
         .get_status = &get_status,
 
         .set_onloading = &set_onloading,
@@ -254,10 +251,6 @@ pub const FontFaceSet = struct {
         return try FontFaceSetImpl.get_status(instance);
     }
 
-    pub fn get_size(instance: *runtime.Instance) anyerror!u32 {
-        return try FontFaceSetImpl.get_size(instance);
-    }
-
     pub fn call_delete(instance: *runtime.Instance, font: *runtime.Instance) anyerror!bool {
         return try FontFaceSetImpl.call_delete(instance, font);
     }
@@ -295,4 +288,10 @@ pub const FontFaceSet = struct {
     pub const promise_returning = .{
         "call_load",
     };
+
+    /// The set entries of this setlike object (WebIDL 2.5.12), for the
+    /// binding's setlike members.
+    pub fn setlikeEntries(instance: *runtime.Instance) ?*webidl.setlike.PlatformObjects {
+        return FontFaceSetImpl.setlikeEntries(instance);
+    }
 };
