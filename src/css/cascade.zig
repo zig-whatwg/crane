@@ -216,7 +216,7 @@ pub const Context = struct {
     registered: ?*registered_mod.Snapshot = null,
     /// What base appearance the element (or pseudo-element) can have, for
     /// the UA sheet's -internal-auto-base() (substitution.zig) and the
-    /// inherited in-base-appearance bit (ComputedStyle.in_base_appearance).
+    /// inherited in-base-appearance bit (ComputedStyle.flags.in_base_appearance).
     appearance_support: AppearanceSupport = .none,
     /// Where the cascade records the inputs it read (lane style1 b2: the
     /// matched-properties cache's cacheability). Null: nothing is recorded.
@@ -1517,7 +1517,7 @@ const Builder = struct {
     /// Whether the element has base appearance, once `appearance` is
     /// computed (Blink StyleCascade::ResolveAutoBaseInto and StyleAdjuster).
     fn hasBaseAppearance(self: *const Builder) bool {
-        const inherited = if (self.ctx.parent) |p| p.in_base_appearance else false;
+        const inherited = if (self.ctx.parent) |p| p.flags.in_base_appearance else false;
         return switch (self.ctx.appearance_support) {
             .none => inherited,
             .select => self.style.keyword(.appearance) == .base_select,
@@ -1700,9 +1700,9 @@ const Builder = struct {
             // highlight's own originating element's color
             // (highlight-currentcolor-computed-visited.html, Chrome 12/12).
             if (l == .color) {
-                const current = if (self.ctx.highlight_parent) |p| p.highlight_current_color else true;
+                const current = if (self.ctx.highlight_parent) |p| p.flags.highlight_current_color else true;
                 if (current) if (self.ctx.parent) |originating| {
-                    self.style.highlight_current_color = true;
+                    self.style.flags.highlight_current_color = true;
                     return originating.get(.color);
                 };
             }
@@ -2013,7 +2013,7 @@ const Builder = struct {
         if (v == .color) {
             // CSS Pseudo 4 §3.5: a highlight's `color: currentcolor` keeps
             // its currentColor for the highlights that inherit it.
-            if (l == .color and self.ctx.highlight and v.color == .current) self.style.highlight_current_color = true;
+            if (l == .color and self.ctx.highlight and v.color == .current) self.style.flags.highlight_current_color = true;
             // Color4 §6.4: currentcolor in color inherits. Every other
             // destination keeps it symbolic until the receiving element
             // resolves the value, including nested expression origins.
@@ -2436,7 +2436,7 @@ const Builder = struct {
         // 3.5 and §4: layout/paint containment, including content-visibility.
         const content_visibility = s.keyword(.content_visibility);
         const independent = containment.layout or containment.paint or content_visibility == .auto or content_visibility == .hidden;
-        s.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
+        s.flags.subgrid_ineligible = s.box_context != .suppressed and display.box == .normal and display.inner == .grid and
             (parent_box != .grid or out_of_flow or independent);
 
         // Overflow 3 §3.1: visible computes to auto when either axis is
@@ -2455,7 +2455,7 @@ const Builder = struct {
         // what they contain (Blink StyleAdjuster's InBaseAppearance: set on
         // an element that supports base appearance and has it, inherited,
         // cleared on one that supports it and does not).
-        s.in_base_appearance = self.hasBaseAppearance();
+        s.flags.in_base_appearance = self.hasBaseAppearance();
     }
 };
 

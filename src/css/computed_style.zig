@@ -59,6 +59,25 @@ const Color = values.Color;
 /// The groups a style holds a reference on: bit g for groups g.
 pub const Held = std.bit_set.IntegerBitSet(groups.count);
 
+/// ComputedStyle's bits that are no property.
+pub const Flags = packed struct(u8) {
+    /// Grid 2 §9: copied box ancestry (with box_context): a grid that
+    /// cannot be a subgrid.
+    subgrid_ineligible: bool = false,
+    /// HTML 15.5.16: the element is rendered with base appearance (a
+    /// base-select select, its base ::picker(select), and their contents) -
+    /// what the UA sheet's -internal-auto-base() picks on. Not a property:
+    /// no author style reads or sets it (Blink ComputedStyle InBaseAppearance).
+    in_base_appearance: bool = false,
+    /// CSS Pseudo 4 §3.5: this highlight pseudo-element's color is
+    /// currentColor - declared, or inherited from the root highlight, whose
+    /// inherited color is currentColor - so it is its originating element's
+    /// color, and a highlight that inherits it takes its own originating
+    /// element's (currentColor computes to itself). Not a property.
+    highlight_current_color: bool = false,
+    _: u5 = 0,
+};
+
 /// A counted group of values: this header, then `len` Values. One reference
 /// per style holding it (ComputedStyle.held).
 pub const Group = struct {
@@ -348,18 +367,10 @@ pub const ComputedStyle = struct {
     /// style pointer. display:contents forwards its nearest principal box;
     /// display:none suppresses all descendant boxes.
     box_context: enum { suppressed, grid, other } = .other,
-    subgrid_ineligible: bool = false,
-    /// HTML 15.5.16: the element is rendered with base appearance (a
-    /// base-select select, its base ::picker(select), and their contents) -
-    /// what the UA sheet's -internal-auto-base() picks on. Not a property:
-    /// no author style reads or sets it (Blink ComputedStyle InBaseAppearance).
-    in_base_appearance: bool = false,
-    /// CSS Pseudo 4 §3.5: this highlight pseudo-element's color is
-    /// currentColor - declared, or inherited from the root highlight, whose
-    /// inherited color is currentColor - so it is its originating element's
-    /// color, and a highlight that inherits it takes its own originating
-    /// element's (currentColor computes to itself). Not a property.
-    highlight_current_color: bool = false,
+    /// One byte of bits, so that the fields narrower than a word (held, the
+    /// color scheme, the box context, these) share one: a byte more pads
+    /// every style by a word (tests/css/css1_highlight_inheritance_test.zig).
+    flags: Flags = .{},
     /// CSS Variables 1 §2: the element's custom properties, computed; shared
     /// by reference with the parent's when this cascade changed none (one
     /// reference held). Null: none has a value.
@@ -884,7 +895,7 @@ pub const ComputedStyle = struct {
         }
         // Grid 2 §§7.2.6, 9: only the resolved value of an ineligible
         // subgrid becomes none. The computed track object is unchanged.
-        if ((l == .grid_template_columns or l == .grid_template_rows) and self.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)
+        if ((l == .grid_template_columns or l == .grid_template_rows) and self.flags.subgrid_ineligible and v == .grid_tracks and v.grid_tracks.subgrid)
             return out.appendSlice(allocator, "none");
         // CSS Text4 §8.2's legacy resolved value: every computed zero is normal.
         if (l == .letter_spacing and v == .length and v.length.value == 0)
