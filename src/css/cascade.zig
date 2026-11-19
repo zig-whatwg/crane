@@ -2148,6 +2148,8 @@ const Builder = struct {
             },
             .fill, .stroke => return @import("svg_paint.zig").compute(v, self.ctx.allocator, .{ .scheme = self.used_scheme, .math = self.computationContext(l, v, source) }),
             .stroke_width => if (v == .number) return Value.px(v.number),
+            // SVG 2 §13.5.7: a <number> stroke-dashoffset is a px length.
+            .stroke_dashoffset => if (v == .number) return Value.px(v.number),
             // Lists 3 §3.3: a counter-style name keeps the tree scope that
             // named it (list_values.ScopedName). The document's scope (0)
             // stays the plain name: no allocation for the common case, and
@@ -2182,8 +2184,18 @@ const Builder = struct {
                 inherited.retain();
                 return inherited;
             },
-            // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp.
-            .opacity, .shape_image_threshold => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // CSS Shapes 1 §6.2 shares opacity's computed [0,1] clamp, and
+            // so do Fill and Stroke 3's fill-opacity and stroke-opacity, SVG
+            // 2's stop-opacity and Filter Effects 1's flood-opacity ("the
+            // specified value converted to a number, clamped to [0,1]").
+            .opacity, .shape_image_threshold, .fill_opacity, .stroke_opacity, .stop_opacity, .flood_opacity => return .{ .number = std.math.clamp(v.number, 0, 1) },
+            // MathML Core §3.1: from the inherited math-depth (and, for
+            // auto-add, math-style).
+            .math_depth => {
+                const inherited = self.parentValue(.math_depth);
+                const depth: i32 = if (inherited == .integer) inherited.integer else 0;
+                if (@import("math_depth.zig").compute(v, depth, self.parentValue(.math_style).isKeyword(.compact))) |n| return .{ .integer = n };
+            },
             .line_height => switch (v) {
                 .length => |len| if (len.unit == .percent) return Value.px(len.value / 100 * self.fontSize()),
                 else => {},
