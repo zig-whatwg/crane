@@ -1,7 +1,8 @@
 //! HTML 2.7 transferable objects: the transfer steps and transfer-receiving
 //! steps of every transferable platform object Crane has - MessagePort (HTML
-//! 9.4.3) and ReadableStream, WritableStream and TransformStream (Streams
-//! 4.2.6, 5.2.5, 6.2.5) - as ONE step that every carrier of a transfer list
+//! 9.4.3), ReadableStream, WritableStream and TransformStream (Streams
+//! 4.2.6, 5.2.5, 6.2.5), ImageBitmap (HTML 8.11.2) and OffscreenCanvas (HTML
+//! 4.12.5.3) - as ONE step that every carrier of a transfer list
 //! runs: a MessagePort's postMessage, a Worker's and a worker global's, a
 //! Window's, a service worker's and a client's, and structuredClone.
 //!
@@ -27,6 +28,7 @@ const runtime = @import("runtime");
 const message_ports = @import("message_ports.zig");
 const port_channels = @import("port_channels.zig");
 const streams_transfer = @import("streams_transfer.zig");
+const image_bitmaps = @import("image_bitmaps.zig");
 
 pub const TransferDataHolder = port_channels.TransferDataHolder;
 
@@ -38,6 +40,8 @@ pub const TransferDataHolder = port_channels.TransferDataHolder;
 pub fn transferableState(instance: *runtime.Instance) runtime.TransferableState {
     const port = message_ports.transferableState(instance);
     if (port != .not_transferable) return port;
+    const bitmap = image_bitmaps.transferableState(instance);
+    if (bitmap != .not_transferable) return bitmap;
     return streams_transfer.transferableState(instance);
 }
 
@@ -61,6 +65,12 @@ pub fn transfer(realm: runtime.Context, instance: *runtime.Instance) !TransferDa
         const end = message_ports.ship(instance) orelse return error.DataCloneError;
         return .{ .message_port = @ptrCast(@alignCast(end)) };
     }
+    // An ImageBitmap's or OffscreenCanvas's transfer steps (5.2's refusal
+    // of a detached one included).
+    if (try image_bitmaps.transfer(instance)) |holder| return switch (holder) {
+        .image_bitmap => |bitmap| .{ .image_bitmap = bitmap },
+        .offscreen_canvas => |canvas| .{ .offscreen_canvas = canvas },
+    };
     return streams_transfer.transfer(realm, instance);
 }
 
@@ -93,6 +103,8 @@ pub fn receive(realm: runtime.Context, holder: TransferDataHolder) !*runtime.Ins
         .readable_stream => |end| streams_transfer.receiveReadable(realm, end),
         .writable_stream => |end| streams_transfer.receiveWritable(realm, end),
         .transform_stream => |sides| streams_transfer.receiveTransform(realm, sides.readable, sides.writable),
+        .image_bitmap => |bitmap| image_bitmaps.receiveImageBitmap(realm, bitmap),
+        .offscreen_canvas => |canvas| image_bitmaps.receiveOffscreenCanvas(realm, canvas),
     };
 }
 

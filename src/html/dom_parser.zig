@@ -85,6 +85,11 @@ pub const ParseOptions = struct {
     origin: ?*dom.origin_record.OriginRecord = null,
     /// HTML lastModified: the source timestamp, if this parse has one.
     last_modified: ?@import("platform").WallTime = null,
+    /// HTML "parse HTML from a string"'s configuration argument (default
+    /// null): the parser's sanitizer configuration (step 2), which sanitizes
+    /// the markup as it is parsed - Document.parseHTML and, given a
+    /// sanitizer, parseHTMLUnsafe. BORROWED for the parse.
+    parser_sanitizer: ?html_core.parser.ParserSanitizer = null,
 };
 
 /// HTML 13.2.4.5 "parser scripting mode": the two the HTML fragment parsing
@@ -194,6 +199,9 @@ pub fn parseHTML(
     // Configure tree builder
     tree_builder.scripting_enabled = options.scripting_enabled;
     tree_builder.allow_declarative_shadow_roots = options.allow_declarative_shadow_roots;
+    // "Parse HTML from a string" step 2: the parser's sanitizer
+    // configuration is the given configuration.
+    tree_builder.parser_sanitizer = options.parser_sanitizer;
 
     // Step 4: Parse the document using full algorithm
     tree_builder.parse() catch return error.TreeBuilderError;

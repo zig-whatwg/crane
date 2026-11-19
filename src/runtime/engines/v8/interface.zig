@@ -6636,6 +6636,40 @@ pub fn V8Interface(comptime Interface: type) type {
                 v8.v8_Undefined(isolate) orelse return;
             defer v8.v8_Value_Dispose(this_arg);
 
+            // An interface whose value pairs are a snapshot: steps 6-8 over
+            // the pairs taken now, as its iterators take them.
+            if (comptime hasIterableSnapshot()) {
+                const pairs = snapshotPairs(isolate, v8_context, target) orelse {
+                    conv.throwTypeErrorFromContext(isolate, v8_context, "Failed to iterate");
+                    return;
+                };
+                defer v8.v8_Array_Dispose(pairs);
+                var position: u32 = 0;
+                while (position < v8.v8_Array_Length(pairs)) : (position += 1) {
+                    const pair_val = v8.v8_Array_Get(v8_context, pairs, position) orelse return;
+                    defer v8.v8_Value_Dispose(pair_val);
+                    const pair: *v8.Array = @ptrCast(pair_val);
+                    const key = v8.v8_Array_Get(v8_context, pair, 0) orelse return;
+                    defer v8.v8_Value_Dispose(key);
+                    const value = v8.v8_Array_Get(v8_context, pair, 1) orelse return;
+                    defer v8.v8_Value_Dispose(value);
+                    // Step 8.2: invoke idlCallback with « value, key, idlObject »
+                    // and thisArg; what it throws ends forEach.
+                    const args = [_]*v8.Value{ value, key, @ptrCast(this_obj) };
+                    var threw = false;
+                    const result = v8.v8_Function_CallCatching(v8_context, @ptrCast(callback_fn), this_arg, args.len, &args, &threw);
+                    if (threw) {
+                        if (result) |exception| {
+                            defer v8.v8_Value_Dispose(exception);
+                            v8.v8_Isolate_ThrowException(isolate, exception);
+                        }
+                        return;
+                    }
+                    if (result) |r| v8.v8_Value_Dispose(r);
+                }
+                return;
+            }
+
             // Get entries using getEntriesForIterable with live iteration
             // Per WebIDL spec, forEach must iterate live - modifications during iteration
             // should be visible (deletions skip items, additions are visited)
@@ -6947,9 +6981,108 @@ pub fn V8Interface(comptime Interface: type) type {
                     defer v8.v8_Value_Dispose(flag);
                     setIteratorSlot(isolate, context, iterator_obj, "_isPairIterator", flag);
                 }
+                // The value pairs to iterate over, taken now for an interface
+                // whose impl makes them when asked (`iterable_snapshot`).
+                if (comptime hasIterableSnapshot()) {
+                    const instance = pairIterationTarget(target) orelse {
+                        v8.v8_Object_Dispose(iterator_obj);
+                        return null;
+                    };
+                    const pairs = snapshotPairs(isolate, context, instance) orelse {
+                        v8.v8_Object_Dispose(iterator_obj);
+                        return null;
+                    };
+                    defer v8.v8_Array_Dispose(pairs);
+                    setIteratorSlot(isolate, context, iterator_obj, "_pairs", @ptrCast(pairs));
+                }
             }
 
             return iterator_obj;
+        }
+
+        /// Whether this interface's impl takes its value pairs as a snapshot
+        /// when an iterator or forEach starts (the generated
+        /// `iterable_snapshot`, the impl's `iterableSnapshot`) instead of
+        /// handing out a live list (`getEntriesForIterable`). CSS Typed OM's
+        /// StylePropertyMapReadOnly reifies each declaration when asked, so
+        /// it does: Blink's PairSyncIterable iteration source
+        /// (StylePropertyMapReadOnlyMainThread::CreateIterationSource) and
+        /// WebKit's StylePropertyMapReadOnly::Iterator take the pairs once,
+        /// when the iterator is made.
+        fn hasIterableSnapshot() bool {
+            if (!@hasDecl(Interface, "iterable_snapshot")) return false;
+            return @TypeOf(Interface.iterable_snapshot) != @TypeOf(null);
+        }
+
+        /// `instance`'s value pairs (WebIDL "value pairs to iterate over"),
+        /// as the impl's snapshot makes them, converted to a JS Array of
+        /// [key, value] Arrays - each value a sequence of platform objects,
+        /// an Array of their wrappers. OWNED, or null with nothing thrown
+        /// when the snapshot or a conversion fails.
+        fn snapshotPairs(isolate: *v8.Isolate, context: *v8.Context, instance: *runtime.Instance) ?*v8.Array {
+            var snapshot = Interface.iterable_snapshot(instance) catch return null;
+            defer snapshot.deinit();
+            const entries = snapshot.entries.items;
+            const pairs = v8.v8_Array_New(isolate, @intCast(entries.len));
+            for (entries, 0..) |entry, i| {
+                const key = pairStringToV8(true, isolate, entry.name) orelse {
+                    v8.v8_Array_Dispose(pairs);
+                    return null;
+                };
+                defer v8.v8_Value_Dispose(key);
+                const values = v8.v8_Array_New(isolate, @intCast(entry.value.len));
+                defer v8.v8_Array_Dispose(values);
+                for (entry.value, 0..) |value_instance, j| {
+                    // Our own Global of the wrapper (the wrapper cache keeps
+                    // its own); Set copies it into the Array.
+                    const wrapper = v8.v8_Global_Clone(conv.instanceToV8(isolate, value_instance)) orelse {
+                        v8.v8_Array_Dispose(pairs);
+                        return null;
+                    };
+                    defer v8.v8_Value_Dispose(wrapper);
+                    _ = v8.v8_Array_Set(values, context, @intCast(j), wrapper);
+                }
+                const pair = v8.v8_Array_New(isolate, 2);
+                defer v8.v8_Array_Dispose(pair);
+                _ = v8.v8_Array_Set(pair, context, 0, key);
+                _ = v8.v8_Array_Set(pair, context, 1, @ptrCast(values));
+                _ = v8.v8_Array_Set(pairs, context, @intCast(i), @ptrCast(pair));
+            }
+            return pairs;
+        }
+
+        /// WebIDL 3.7.10.2 "get the next iteration result" for an iterator
+        /// over a snapshot of value pairs (`_pairs`, taken when it was made):
+        /// the pair at `index`, as `kind` asks - its key, its value, or a new
+        /// [key, value] Array - or done past the last one.
+        fn snapshotIteratorNext(info: *const v8.FunctionCallbackInfo, isolate: *v8.Isolate, context: *v8.Context, iterator_obj: *v8.Object, index: u32, kind: IteratorKind) void {
+            const pairs_val = iteratorSlot(isolate, context, iterator_obj, "_pairs") orelse return;
+            defer v8.v8_Value_Dispose(pairs_val);
+            if (!v8.v8_Value_IsArray(pairs_val)) return returnIterDone(info, isolate, context);
+            const pairs: *v8.Array = @ptrCast(pairs_val);
+            if (index >= v8.v8_Array_Length(pairs)) return returnIterDone(info, isolate, context);
+            const pair_val = v8.v8_Array_Get(context, pairs, index) orelse return;
+            defer v8.v8_Value_Dispose(pair_val);
+            if (!v8.v8_Value_IsArray(pair_val)) return returnIterDone(info, isolate, context);
+            const pair: *v8.Array = @ptrCast(pair_val);
+            const key = v8.v8_Array_Get(context, pair, 0) orelse return;
+            defer v8.v8_Value_Dispose(key);
+            const value = v8.v8_Array_Get(context, pair, 1) orelse return;
+            defer v8.v8_Value_Dispose(value);
+            switch (kind) {
+                .keys => returnIterResult(info, isolate, context, key, false),
+                .values => returnIterResult(info, isolate, context, value, false),
+                .entries => {
+                    const result = v8.v8_Array_New(isolate, 2);
+                    defer v8.v8_Array_Dispose(result);
+                    _ = v8.v8_Array_Set(result, context, 0, key);
+                    _ = v8.v8_Array_Set(result, context, 1, value);
+                    returnIterResult(info, isolate, context, @ptrCast(result), false);
+                },
+            }
+            const new_index = v8.v8_Number_New(isolate, @floatFromInt(index + 1));
+            defer v8.v8_Value_Dispose(@ptrCast(new_index));
+            setIteratorSlot(isolate, context, iterator_obj, "_index", @ptrCast(new_index));
         }
 
         /// `iterator[slot_name]`, OWNED, or null.
@@ -7012,6 +7145,13 @@ pub fn V8Interface(comptime Interface: type) type {
 
             const index: u32 = @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(index_val), v8_context));
             const kind: IteratorKind = @fromBackingInt(@intCast(@as(u2, @intFromFloat(v8.v8_Value_NumberValue(@ptrCast(kind_val), v8_context)))));
+
+            // An interface whose value pairs are a snapshot taken when the
+            // iterator was made (`iterable_snapshot`): the pair at index.
+            if (comptime hasIterableSnapshot()) {
+                snapshotIteratorNext(info, isolate, v8_context, iterator_obj, index, kind);
+                return;
+            }
 
             // Get live entries from the target object
             // This ensures concurrent modifications (like delete during iteration) are reflected

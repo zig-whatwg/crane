@@ -5780,6 +5780,17 @@ pub fn writeIterableSupport(
     try writer.print("    pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const {s}.IterableEntry {{\n", .{impl_name});
     try writer.print("        return {s}.getEntriesInternal(instance);\n", .{impl_name});
     try writer.writeAll("    }\n\n");
+    // An impl whose value pairs are made when asked (CSS Typed OM's
+    // StylePropertyMapReadOnly reifies each declaration) takes them once,
+    // when an iterator or forEach starts, as Blink's PairSyncIterable
+    // iteration source and WebKit's StylePropertyMapReadOnly::Iterator do.
+    // (No member names in the doc comment: an iterable declaration's
+    // generated file never mentions its iteration methods -
+    // tests/codegen/iterable_members_test.zig.)
+    try writer.writeAll("    /// The impl's snapshot of the value pairs to iterate over, taken once\n");
+    try writer.writeAll("    /// when iteration starts (`iterableSnapshot`), or null when the\n");
+    try writer.writeAll("    /// impl's live list (`getEntriesInternal`) is read at each step.\n");
+    try writer.print("    pub const iterable_snapshot = if (@hasDecl({s}, \"iterableSnapshot\")) {s}.iterableSnapshot else null;\n\n", .{ impl_name, impl_name });
 }
 
 /// Write getSupportedPropertyNames delegate for named property support
@@ -6243,6 +6254,21 @@ test "mapWebIDLType maps string types to runtime types" {
     try testing.expectEqualStrings("runtime.DOMString", mapWebIDLType(.{ .type = "DOMString" }));
     try testing.expectEqualStrings("runtime.ByteString", mapWebIDLType(.{ .type = "ByteString" }));
     try testing.expectEqualStrings("runtime.USVString", mapWebIDLType(.{ .type = "USVString" }));
+}
+
+test "writeIterableSupport publishes a pair iterable's live entries and its impl's snapshot, if any" {
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
+    try writeIterableSupport(&buffer.writer, "MapImpl", .{ .keyType = .{ .type = "USVString" }, .valueType = .{ .type = "sequence" } });
+    const output = buffer.written();
+    try testing.expect(std.mem.indexOf(u8, output, "pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const MapImpl.IterableEntry {") != null);
+    try testing.expect(std.mem.indexOf(u8, output, "pub const iterable_snapshot = if (@hasDecl(MapImpl, \"iterableSnapshot\")) MapImpl.iterableSnapshot else null;") != null);
+
+    // A value iterable has neither.
+    var value_only: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer value_only.deinit();
+    try writeIterableSupport(&value_only.writer, "ListImpl", .{ .keyType = .{ .type = "Node" } });
+    try testing.expectEqualStrings("", value_only.written());
 }
 
 test "writeHeader writes basic header" {

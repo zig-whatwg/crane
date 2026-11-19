@@ -3628,8 +3628,19 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
     // stated, matching Chrome and Safari (window-open-popup-behavior passes
     // 51/51 in both; Firefox follows the text): a window opened with noopener
     // or noreferrer is never a popup, whatever its features.
-    const is_popup = window_features.popup and !noopener;
-    const created = try newTopLevelTraversable(instance, target_str, noopener, is_popup, this) orelse return null;
+    // "The rules for choosing a navigable" step 8.4: "If currentDocument's
+    // opener policy's value is "same-origin" or "same-origin-plus-COEP", and
+    // currentDocument's origin is not same origin with currentDocument's
+    // relevant settings object's top-level origin": noopener is true, the
+    // name "_blank", windowType "new with no opener" - "nested documents
+    // that are cross-origin with their top-level browsing context's active
+    // document always set noopener to true" (currentDocument: this's
+    // navigable's active document).
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(this);
+    const new_noopener = noopener or coop_noopener;
+    const new_target = if (coop_noopener) "_blank" else target_str;
+    const is_popup = window_features.popup and !new_noopener;
+    const created = try newTopLevelTraversable(instance, new_target, new_noopener, is_popup, this) orelse return null;
     const integration = created.integration;
     // Step 15.2: "Set up browsing context features for targetNavigable's
     // active browsing context given tokenizedFeatures" - the window's
@@ -3659,7 +3670,27 @@ pub fn call_open(this: *runtime.Instance, url: webidl.Opt(runtime.USVString), ta
 
     // Steps 17-18: "If noopener is true or windowType is "new with no
     // opener", then return null. Return targetNavigable's active WindowProxy."
-    return if (noopener) null else created.window;
+    return if (new_noopener) null else created.window;
+}
+
+/// The rules for choosing a navigable step 8.4's condition for `window`'s
+/// associated Document (currentDocument): its opener policy's value is
+/// "same-origin" or "same-origin-plus-COEP", and its origin is not same
+/// origin with its relevant settings object's top-level origin.
+fn crossOriginUnderSameOriginOpenerPolicy(window: *runtime.Instance) bool {
+    const container = settingsPolicyContainer(window) orelse return false;
+    switch (container.openerPolicy().value) {
+        .same_origin, .same_origin_plus_coep => {},
+        .unsafe_none, .same_origin_allow_popups, .noopener_allow_popups => return false,
+    }
+    const internal = getInternal(window) orelse return false;
+    const own = effectiveOrigin(window, internal);
+    const top = (settingsTopLevelOrigin(window) catch return false) orelse return true;
+    defer window.ctx.allocator.free(top);
+    // An opaque origin is same origin with nothing but itself, and no
+    // serialization tells two apart: "null" is never same origin here.
+    if (std.mem.eql(u8, own, "null")) return true;
+    return !std.mem.eql(u8, own, top);
 }
 
 const NamedPopup = struct {
@@ -3758,7 +3789,19 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // context group of its own.
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
-        if (integration.browsing_context) |bc| bc.startOwnGroup();
+        if (integration.browsing_context) |bc| {
+            bc.startOwnGroup();
+            // Deviation, stated (golden rule 2): step 8.8.2's one permitted
+            // sandboxed navigator is set in the opener branch only, so a
+            // sandboxed document's noopener popup could not be navigated by
+            // the window open steps' own navigation; Chrome 157, Firefox 160
+            // and Safari 27.2 all load it (html/cross-origin-opener-policy/
+            // coop-sandbox.https.html and coop-coep-sandbox.https.html,
+            // "allow-popups allow-scripts allow-popups-to-escape-sandbox":
+            // a sandboxed srcdoc frame under COOP same-origin opens with
+            // noopener by step 8.4, and its popup loads).
+            if (current_flags.navigation) bc.one_permitted_sandboxed_navigator = internal.browsing_context;
+        }
     } else {
         setOpener(created.window, window) catch {};
         // Step 8.8.2: "If sandboxingFlagSet's sandboxed navigation browsing
@@ -3802,7 +3845,10 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
     // context flag set.
     if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
-    const created = (newTopLevelTraversable(current_window, target, noopener, false, current_window) catch null) orelse return null;
+    // Step 8.4: a nested document cross-origin with its top-level origin
+    // under "same-origin" opens with noopener, named "_blank".
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(current_window);
+    const created = (newTopLevelTraversable(current_window, if (coop_noopener) "_blank" else target, noopener or coop_noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
 
