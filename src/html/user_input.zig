@@ -2303,13 +2303,36 @@ pub fn deleteByCut(control: *Instance) void {
 /// Null when no mutable text control is focused (the editing-host path then
 /// runs); otherwise whether the command ran.
 pub fn execInsertIntoTextControl(document: *Instance, text: []const u8, input_type: []const u8) ?bool {
-    const focused = (interfaces.Document.get_activeElement(document) catch return null) orelse return null;
+    const focused = focusedTextControlOf(document) orelse return null;
     const kind = textControlKind(focused);
-    if (kind == .none) return null;
     if (!isMutable(focused)) return false;
     // A text control holds no line breaks but a textarea's.
     insertText(focused, kind, text, input_type);
     return true;
+}
+
+/// execCommand("delete") or ("forwardDelete") with a text control focused:
+/// the control's own editor deletes the selection, or the code point before
+/// (after) the caret - Backspace's (Delete's) edit, as Chrome, Firefox and
+/// Safari run it (Blink's Editor::ExecuteCommand on the inner editor; Gecko's
+/// TextEditor::DeleteSelectionAsAction); null when no text control is
+/// focused, for the Editing spec's command in an editing host.
+pub fn execDeleteInTextControl(document: *Instance, forward: bool) ?bool {
+    const focused = focusedTextControlOf(document) orelse return null;
+    if (!isMutable(focused)) return false;
+    deleteContent(focused, textControlKind(focused), if (forward) .forward else .backward);
+    return true;
+}
+
+/// The text control `document`'s focused area is, if it is one: the element
+/// itself, inside a shadow tree too - document.activeElement would answer its
+/// shadow host (selection/fire-selectionchange-event-on-document-if-
+/// textcontrol-element-is-in-shadow-tree.html deletes in an input in a shadow
+/// root; Chrome 157, Firefox 160 and Safari 27.2 edit its value).
+fn focusedTextControlOf(document: *Instance) ?*Instance {
+    const focused = focus.designatedAreaOf(document) orelse return null;
+    if (textControlKind(focused) == .none) return null;
+    return focused;
 }
 
 fn isNumberInput(element: *Instance) bool {

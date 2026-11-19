@@ -18,6 +18,9 @@
 //!   delete_all_cookies(ctx)       WebDriver 14.5 Delete All Cookies
 //!   get_computed_role(element)    WebDriver 12.4.9 Get Computed Role
 //!   get_computed_label(element)   WebDriver 12.4.10 Get Computed Label
+//!   bidi_log_subscribe(emit, global, contexts...)
+//!                                 WebDriver BiDi session.subscribe for log.entryAdded
+//!   bidi_log_unsubscribe(id)      WebDriver BiDi session.unsubscribe
 //!
 //! Each returns a promise and runs as tasks: the command's steps run from a
 //! timer on the page's event loop, a tick of actions per timer, each tick
@@ -63,6 +66,8 @@ const focus = html.focus;
 const Weak = user_input.Weak;
 const BrowsingContext = html_core.window.BrowsingContext;
 const browser_state = @import("dom").browser_state;
+const dom = @import("dom");
+const clock = @import("clock");
 const log = std.log.scoped(.test_driver);
 
 /// The vendor file, served for /resources/testdriver-vendor.js.
@@ -75,7 +80,7 @@ pub const vendor_path = "/resources/testdriver-vendor.js";
 // The driver: its natives, its commands, the session's input state
 // ============================================================================
 
-const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission, get_computed_role, get_computed_label };
+const Native = enum { click, send_keys, action_sequence, minimize_window, set_window_rect, get_window_rect, get_all_cookies, get_named_cookie, delete_all_cookies, set_permission, get_computed_role, get_computed_label, bidi_log_subscribe, bidi_log_unsubscribe };
 
 fn nativeName(comptime native: Native) []const u8 {
     return "__crane_test_driver_" ++ @tagName(native);
@@ -129,6 +134,9 @@ pub const TestDriver = struct {
     pointer_sources: std.ArrayListUnmanaged(*PointerSource) = .empty,
     keyboard: user_input.Keyboard = .{},
     key_sources: std.ArrayListUnmanaged(KeySource) = .empty,
+    /// The test's BiDi session's log.entryAdded subscription, if it has one.
+    log_subscription: ?*LogSubscription = null,
+    next_subscription_id: u32 = 0,
 
     pub fn create(allocator: std.mem.Allocator) !*TestDriver {
         const self = try allocator.create(TestDriver);
@@ -160,6 +168,7 @@ pub const TestDriver = struct {
     /// promise, and forget the session's input state. Run while the test's
     /// realms still exist.
     pub fn endTest(self: *TestDriver) void {
+        if (self.log_subscription) |subscription| subscription.end();
         for (self.commands.items) |command| command.cancel();
         // A worker's queued delivery owns its own batch share and may end
         // after this command. Abandon only the command's share here.
@@ -267,6 +276,296 @@ pub const TestDriver = struct {
         }
     }
 };
+
+// ============================================================================
+// WebDriver BiDi: the log module's log.entryAdded (7.8.3.1)
+// ============================================================================
+
+/// The test session's subscription to log.entryAdded (WebDriver BiDi
+/// session.subscribe, events ["log.entryAdded"], with contexts or globally),
+/// and the console steps' entries waiting for delivery.
+///
+/// The remote end hears what a page prints the way a browser's does: the
+/// Console Standard's Printer output reaches its Browser's developer console
+/// (dom.developer_console, as Chrome's reaches the DevTools protocol's
+/// Runtime.consoleAPICalled, which chromium-bidi turns into log.entryAdded).
+/// The subscription attaches a host to it; the host keeps each message of a
+/// subscribed context's realm as a log.ConsoleLogEntry and queues a task on
+/// the subscriber's event loop, which emits it - testdriver's
+/// `test_driver_internal.bidi.log.entry_added` listeners get the event object
+/// (resources/testdriver-vendor.js parses the JSON this sends).
+///
+/// Deviations, stated: the entry's `args` carry primitives' values and other
+/// values' types alone (`writeRemoteValue`); its `text` is what the Printer
+/// printed, which equals the console steps' text (the arguments, formatted,
+/// joined with spaces) outside console.group's indentation; only the
+/// subscribed contexts' realms are heard (a global subscription: the realms
+/// of the subscriber's agent); and no log event from before the
+/// subscription is buffered.
+const LogSubscription = struct {
+    driver: *TestDriver,
+    /// The subscriber's realm, where `emit` is called, and its window.
+    realm: runtime.Context,
+    window: ?Weak,
+    /// testdriver-vendor.js's emitter: called with one log.Entry as JSON.
+    emit: engine.CallbackFunction,
+    /// The Browser whose developer console the host is attached to.
+    scope: *runtime.BrowserScope,
+    /// The subscribed contexts' realms; null: every realm (global).
+    contexts: ?[]runtime.Context,
+    /// Entries waiting for the emitting task (JSON, OWNED by the driver's
+    /// allocator). Written by `report`, on the subscribed realms' thread,
+    /// read by `deliver` on the same thread.
+    pending: std.ArrayListUnmanaged([]u8) = .empty,
+    /// The subscriber realm's timers: the emitting step is a 0 ms timer
+    /// task there, cancelled when the subscription ends first.
+    timer: ?runtime.TimerInterface,
+    timer_id: ?runtime.TimerId = null,
+    /// The subscription's id, which session.unsubscribe names.
+    id: u32,
+
+    fn host(self: *LogSubscription) dom.developer_console.Host {
+        return .{ .context = self, .report = &report };
+    }
+
+    fn matches(self: *const LogSubscription, realm: runtime.Context) bool {
+        // Global: the subscriber's agent's realms - its own and its frames',
+        // on its thread (a worker's messages, on another, are not read).
+        const contexts = self.contexts orelse return realm == self.realm or (realm.agent != null and realm.agent == self.realm.agent);
+        for (contexts) |context| if (context == realm) return true;
+        return false;
+    }
+
+    /// The developer console host's report, on the message's realm's thread
+    /// with the console's lock held: runs no script, keeps the entry and
+    /// queues the task that emits it.
+    fn report(context: *anyopaque, message: *const dom.developer_console.Message) void {
+        const self: *LogSubscription = @ptrCast(@alignCast(context));
+        if (message.kind != .console) return;
+        if (!self.matches(message.realm)) return;
+        const json = consoleEntryJson(self.driver.allocator, message) catch return;
+        self.pending.append(self.driver.allocator, json) catch {
+            self.driver.allocator.free(json);
+            return;
+        };
+        if (self.timer_id != null) return;
+        const timer = self.timer orelse return;
+        self.timer_id = timer.setTimeout(0, &fire, self);
+    }
+
+    fn fire(data: ?*anyopaque) void {
+        const self: *LogSubscription = @ptrCast(@alignCast(data orelse return));
+        self.timer_id = null;
+        self.deliver();
+    }
+
+    /// "Emit an event" for each entry kept, in order: the emitter is called
+    /// in the subscriber's realm with the entry's JSON.
+    fn deliver(self: *LogSubscription) void {
+        const allocator = self.driver.allocator;
+        const driver = self.driver;
+        // The entries to emit now, taken: a listener may print (more entries,
+        // for the next step) or unsubscribe (which frees `self`).
+        var batch = self.pending;
+        self.pending = .empty;
+        defer {
+            for (batch.items) |json| allocator.free(json);
+            batch.deinit(allocator);
+        }
+        for (batch.items) |json| {
+            // The subscription ended by a listener, or its window gone:
+            // nothing more is emitted.
+            if (driver.log_subscription != self) return;
+            if (self.window) |window| if (window.get() == null) return;
+            const completion = engine.invokeCallbackFunction(self.realm, &self.emit, .undefined, &.{JSValue.fromStringRef(json)}, .rethrow) catch continue;
+            switch (completion) {
+                inline else => |value| value.release(),
+            }
+        }
+    }
+
+    /// session.unsubscribe, or the test's end: the host is detached first -
+    /// once that returns no report runs - then everything is given back.
+    fn end(self: *LogSubscription) void {
+        const driver = self.driver;
+        dom.developer_console.detach(self.scope);
+        if (driver.log_subscription == self) driver.log_subscription = null;
+        // The emitting step, if armed, never runs: its context is freed here.
+        if (self.timer_id) |id| {
+            self.timer_id = null;
+            if (self.timer) |timer| _ = timer.clearTimeout(id);
+        }
+        for (self.pending.items) |json| driver.allocator.free(json);
+        self.pending.deinit(driver.allocator);
+        if (self.contexts) |contexts| driver.allocator.free(contexts);
+        self.emit.release();
+        driver.allocator.destroy(self);
+    }
+};
+
+/// WebDriver BiDi's console steps for one Printer call: a log.EntryAdded's
+/// params, a log.ConsoleLogEntry, as JSON. OWNED.
+fn consoleEntryJson(allocator: std.mem.Allocator, message: *const dom.developer_console.Message) ![]u8 {
+    const method = @tagName(message.level);
+    // Step 1.1: the level.
+    const level: []const u8 = switch (message.level) {
+        .@"error", .assert => "error",
+        .debug, .trace => "debug",
+        .warn => "warn",
+        else => "info",
+    };
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    const w = &out.writer;
+    try w.writeAll("{\"type\":\"console\",\"method\":");
+    try writeJsonString(w, method);
+    try w.writeAll(",\"level\":");
+    try writeJsonString(w, level);
+    try w.writeAll(",\"text\":");
+    try writeJsonString(w, message.text);
+    try w.print(",\"timestamp\":{d},\"source\":{{\"realm\":\"{x}\"}},\"args\":[", .{ clock.wallMillis(), @intFromPtr(message.realm) });
+    // Steps 7-9: each argument serialized as a remote value.
+    for (message.args, 0..) |arg, i| {
+        if (i > 0) try w.writeByte(',');
+        try writeRemoteValue(w, allocator, message.realm, arg);
+    }
+    try w.writeAll("]}");
+    return out.toOwnedSlice();
+}
+
+/// WebDriver BiDi "serialize as a remote value" (7.6.3.2) for a console
+/// argument, as far as the remote end can without running script (the
+/// developer console's host runs none): a primitive's type and value
+/// (script.PrimitiveProtocolValue), and for a symbol, a bigint or an object
+/// its type alone - no handle, no properties (a stated deviation).
+fn writeRemoteValue(w: *std.Io.Writer, allocator: std.mem.Allocator, realm: runtime.Context, value: JSValue) !void {
+    switch (value) {
+        .undefined => return w.writeAll("{\"type\":\"undefined\"}"),
+        .null => return w.writeAll("{\"type\":\"null\"}"),
+        .boolean => |b| return w.print("{{\"type\":\"boolean\",\"value\":{}}}", .{b}),
+        .number => |n| return writeNumberValue(w, n),
+        .string => |text| {
+            try w.writeAll("{\"type\":\"string\",\"value\":");
+            try writeJsonString(w, text.data);
+            return w.writeByte('}');
+        },
+        .instance => return w.writeAll("{\"type\":\"object\"}"),
+        .handle => {},
+    }
+    switch (engine.typeOf(realm, value)) {
+        .undefined => try w.writeAll("{\"type\":\"undefined\"}"),
+        .null => try w.writeAll("{\"type\":\"null\"}"),
+        .string => {
+            // A string primitive converts with no script.
+            const text = engine.convertToDOMString(realm, value, allocator) catch return w.writeAll("{\"type\":\"string\"}");
+            defer allocator.free(text);
+            try w.writeAll("{\"type\":\"string\",\"value\":");
+            try writeJsonString(w, text);
+            try w.writeByte('}');
+        },
+        .symbol => try w.writeAll("{\"type\":\"symbol\"}"),
+        .bigint => try w.writeAll("{\"type\":\"bigint\"}"),
+        .boolean => try w.writeAll("{\"type\":\"boolean\"}"),
+        .number => try w.writeAll("{\"type\":\"number\"}"),
+        .object => try w.writeAll(if (engine.isCallable(realm, value)) "{\"type\":\"function\"}" else "{\"type\":\"object\"}"),
+    }
+}
+
+/// A number's remote value: NaN, -0 and the infinities as their special
+/// strings (script.SpecialNumber), every other value as a JSON number.
+fn writeNumberValue(w: *std.Io.Writer, n: f64) !void {
+    try w.writeAll("{\"type\":\"number\",\"value\":");
+    if (std.math.isNan(n)) {
+        try w.writeAll("\"NaN\"");
+    } else if (std.math.isInf(n)) {
+        try w.writeAll(if (n > 0) "\"Infinity\"" else "\"-Infinity\"");
+    } else if (n == 0 and std.math.signbit(n)) {
+        try w.writeAll("\"-0\"");
+    } else {
+        try w.print("{d}", .{n});
+    }
+    try w.writeByte('}');
+}
+
+fn writeJsonString(w: *std.Io.Writer, text: []const u8) !void {
+    try w.writeByte('"');
+    for (text) |c| switch (c) {
+        '"' => try w.writeAll("\\\""),
+        '\\' => try w.writeAll("\\\\"),
+        '\n' => try w.writeAll("\\n"),
+        '\r' => try w.writeAll("\\r"),
+        '\t' => try w.writeAll("\\t"),
+        0...0x08, 0x0b, 0x0c, 0x0e...0x1f => try w.print("\\u{x:0>4}", .{c}),
+        else => try w.writeByte(c),
+    };
+    try w.writeByte('"');
+}
+
+/// session.subscribe for log.entryAdded: `args` are the emitter, whether the
+/// subscription is global, and the contexts (WindowProxies). Returns the
+/// subscription's id. One subscription per test session: a second replaces
+/// the first.
+fn logSubscribe(driver: *TestDriver, realm: runtime.Context, args: []const JSValue) runtime.EngineError!JSValue {
+    const allocator = driver.allocator;
+    const scope = realm.browserScope() orelse return error.OperationFailed;
+    const emit_value = argument(args, 0);
+    if (!engine.isCallable(realm, emit_value)) return error.TypeError;
+    const global = switch (argument(args, 1)) {
+        .boolean => |b| b,
+        else => false,
+    };
+    var contexts: ?[]runtime.Context = null;
+    if (!global) {
+        const list = allocator.alloc(runtime.Context, if (args.len > 2) args.len - 2 else 0) catch return error.OperationFailed;
+        for (args[@min(args.len, 2)..], 0..) |value, i| {
+            // "invalid argument" for anything that is no browsing context.
+            const window = windowArgument(realm, value) orelse {
+                allocator.free(list);
+                return error.TypeError;
+            };
+            list[i] = window.ctx;
+        }
+        contexts = list;
+    }
+    const emit = engine.retainValue(realm, emit_value) catch {
+        if (contexts) |list| allocator.free(list);
+        return error.OperationFailed;
+    };
+    const subscription = allocator.create(LogSubscription) catch {
+        emit.release();
+        if (contexts) |list| allocator.free(list);
+        return error.OperationFailed;
+    };
+    if (driver.log_subscription) |previous| previous.end();
+    driver.next_subscription_id +%= 1;
+    subscription.* = .{
+        .driver = driver,
+        .realm = realm,
+        .window = if (windowOfRealm(realm)) |w| Weak.of(w) else null,
+        .emit = .{ .function = emit, .context = null },
+        .scope = scope,
+        .contexts = contexts,
+        .timer = realm.getOptionalTimer(),
+        .id = driver.next_subscription_id,
+    };
+    driver.log_subscription = subscription;
+    dom.developer_console.attach(scope, subscription.host()) catch {
+        subscription.end();
+        return error.OperationFailed;
+    };
+    return .{ .number = @floatFromInt(subscription.id) };
+}
+
+/// session.unsubscribe of the subscription `args[0]` names.
+fn logUnsubscribe(driver: *TestDriver, args: []const JSValue) runtime.EngineError!JSValue {
+    const subscription = driver.log_subscription orelse return JSValue.jsUndefined;
+    const id: u32 = switch (argument(args, 0)) {
+        .number => |n| if (n >= 0 and n <= std.math.maxInt(u32)) @intFromFloat(n) else 0,
+        else => 0,
+    };
+    if (id == subscription.id) subscription.end();
+    return JSValue.jsUndefined;
+}
 
 // ============================================================================
 // Actions (WebDriver 15.5 "Processing actions")
@@ -1158,7 +1457,11 @@ fn nativeSteps(comptime native: Native) runtime.BuiltinSteps {
         fn steps(data: ?*anyopaque, args: []const JSValue) runtime.EngineError!JSValue {
             const driver: *TestDriver = @ptrCast(@alignCast(data orelse return error.OperationFailed));
             const realm = engine.currentRealm() orelse return error.OperationFailed;
-            return startCommand(driver, realm, native, args);
+            return switch (native) {
+                .bidi_log_subscribe => logSubscribe(driver, realm, args),
+                .bidi_log_unsubscribe => logUnsubscribe(driver, args),
+                else => startCommand(driver, realm, native, args),
+            };
         }
     }.steps;
 }
@@ -1283,6 +1586,8 @@ fn startCommand(driver: *TestDriver, realm: runtime.Context, native: Native, arg
             command.permission_state = parsed.state;
             break :blk null;
         },
+        // Answered by `nativeSteps` itself: no command.
+        .bidi_log_subscribe, .bidi_log_unsubscribe => unreachable,
     };
     driver.commands.append(allocator, command) catch {
         command.free();

@@ -1231,6 +1231,9 @@ pub extern fn v8_Value_IsArray(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBuffer(value: *Value) bool;
 /// IsSharedArrayBuffer(V): a SharedArrayBuffer (never a view over one).
 pub extern fn v8_Value_IsSharedArrayBuffer(value: *Value) bool;
+/// IsFixedLengthArrayBuffer(V) is false, for V an ArrayBuffer or a
+/// SharedArrayBuffer: a resizable or growable one (false for anything else).
+pub extern fn v8_Value_IsResizableBuffer(value: *Value) bool;
 pub extern fn v8_Value_IsArrayBufferView(value: *Value) bool;
 pub extern fn v8_Value_IsDate(value: *Value) bool;
 
@@ -2054,6 +2057,9 @@ pub const ViewInfo = extern struct {
     buffer_byte_length: usize,
     buffer_detached: bool,
     buffer_shared: bool,
+    /// IsFixedLengthArrayBuffer([[ViewedArrayBuffer]]) is false: a resizable
+    /// ArrayBuffer or a growable SharedArrayBuffer.
+    buffer_resizable: bool,
 };
 
 /// Describe an ArrayBufferView. False when `view` is not one of a known kind.
@@ -3885,6 +3891,9 @@ pub extern fn v8_SetProtocolPromiseRejectDispatcher(dispatch: ?ProtocolPromiseRe
 /// Install HostPromiseRejectionTracker on `isolate` alone, dispatched to the
 /// process's dispatcher.
 pub extern fn v8_Isolate_SetProtocolPromiseRejectCallback(isolate: *Isolate) void;
+/// Error.isError for an API wrapper: `predicate` answers whether the platform
+/// object behind it (its instance) has [[ErrorData]]; null removes it.
+pub extern fn v8_Isolate_SetNativeErrorInstancePredicate(isolate: *Isolate, predicate: ?*const fn (instance: *anyopaque) callconv(.c) bool) void;
 
 /// Remove HostPromiseRejectionTracker from `isolate` alone.
 pub extern fn v8_Isolate_ClearProtocolPromiseRejectCallback(isolate: *Isolate) void;

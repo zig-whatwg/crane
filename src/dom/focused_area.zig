@@ -47,6 +47,10 @@ pub const Implementation = struct {
     get: *const fn (document: *runtime.Instance) ?Designation,
     /// Designate an element (null: the viewport) as `document`'s focused area.
     set: *const fn (document: *runtime.Instance, designation: ?Designation) void,
+    /// `document`'s sequential focus navigation starting point (HTML 6.6.5),
+    /// when one is kept apart from the focused area; and setting it.
+    get_start: ?*const fn (document: *runtime.Instance) ?Designation = null,
+    set_start: ?*const fn (document: *runtime.Instance, start: ?Designation) void = null,
 };
 
 /// Process-wide, written once at start-up (process_start.zig).
@@ -68,10 +72,33 @@ pub fn get(document: *runtime.Instance) ?Designation {
 pub fn set(document: *runtime.Instance, element: ?*runtime.Instance) void {
     const impl = implementation.get() orelse return;
     impl.set(document, if (element) |e| .{ .element = e, .generation = runtime.SlabAllocator.generationOf(e) } else null);
+    // A new focused area is the starting point from here on: one kept apart
+    // (`setStartPoint`) is dropped.
+    if (impl.set_start) |set_start| set_start(document, null);
     // The focus fixup runs at the next rendering opportunity: a focused
     // element asks for one, and its document is watched
     // (dom.update_the_rendering).
     @import("update_the_rendering.zig").focusedAreaChanged(document, element);
+}
+
+/// HTML 6.6.5 "sequential focus navigation starting point", kept apart from
+/// the focused area: `element` - the element the focus fixup just took the
+/// focus from, still in the tree - so that the next sequential navigation
+/// continues from where it was ("the user agent may set it"; Blink keeps its
+/// starting point where the focused element was, Document::
+/// SetSequentialFocusNavigationStartingPoint; Gecko continues from the
+/// element too). Any later change of the focused area drops it (`set`).
+pub fn setStartPoint(document: *runtime.Instance, element: *runtime.Instance) void {
+    const impl = implementation.get() orelse return;
+    const set_start = impl.set_start orelse return;
+    set_start(document, .{ .element = element, .generation = runtime.SlabAllocator.generationOf(element) });
+}
+
+/// The starting point `setStartPoint` kept, or null.
+pub fn startPoint(document: *runtime.Instance) ?Designation {
+    const impl = implementation.get() orelse return null;
+    const get_start = impl.get_start orelse return null;
+    return get_start(document);
 }
 
 test "without an installed implementation a document's focused area is its viewport" {

@@ -1235,18 +1235,25 @@ fn convertAllowSharedBufferSource(
     // case (TextDecoder.decode's input), one FFI call.
     var info: v8.ViewInfo = undefined;
     if (v8.v8_ArrayBufferView_Describe(value, &info)) {
+        // 3.2.26 ArrayBufferView step 4: not [AllowResizable] (only the
+        // WebAssembly namespace's arguments are, and V8 converts those).
+        if (info.buffer_resizable) return ConversionError.TypeError;
         const view = typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
             return ConversionError.TypeError;
         return .{ .array_buffer_view = view };
     }
     // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
     if (v8.v8_Value_IsArrayBuffer(value)) {
+        // 3.2.26 ArrayBuffer step 3: a resizable one, with no [AllowResizable].
+        if (v8.v8_Value_IsResizableBuffer(value)) return ConversionError.TypeError;
         const buffer = try allocator.create(buffer_sources.ArrayBuffer);
         buffer.* = .{ .data = &[_]u8{}, .detached = false, .js = @ptrCast(value) };
         return .{ .array_buffer = buffer };
     }
     // Step 7.
     if (v8.v8_Value_IsSharedArrayBuffer(value)) {
+        // 3.2.26 SharedArrayBuffer step 3: a growable one, likewise.
+        if (v8.v8_Value_IsResizableBuffer(value)) return ConversionError.TypeError;
         const buffer = try allocator.create(buffer_sources.SharedArrayBuffer);
         buffer.* = .{ .data = &[_]u8{}, .allocator = allocator, .js = @ptrCast(value) };
         return .{ .shared_array_buffer = buffer };
@@ -1262,8 +1269,11 @@ fn convertAllowSharedBufferSource(
 /// 1-2. V must be an Object with a [[TypedArrayName]] or [[DataView]] internal
 ///      slot: anything else is a TypeError.
 /// 3.   IsSharedArrayBuffer(V.[[ViewedArrayBuffer]]) is a TypeError.
-/// 4.   (IsFixedLengthArrayBuffer: not checked - the FFI has no resizable
-///      predicate yet; a view over a resizable buffer converts.)
+/// 4.   IsFixedLengthArrayBuffer(V.[[ViewedArrayBuffer]]) false - a view over
+///      a resizable ArrayBuffer - is a TypeError: no Crane-bound IDL type
+///      carries [AllowResizable] (webidl/ecmascript-binding/allow-resizable.html:
+///      Chrome 157, Firefox 160 and Safari 27.2 reject a view over a resizable
+///      buffer passed to Response).
 /// 5.   "Return the IDL value of type T that is a reference to the same
 ///      object as V."
 ///
@@ -1281,6 +1291,8 @@ fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBuffer
     if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
     // Step 3: not [AllowShared].
     if (info.buffer_shared) return ConversionError.TypeError;
+    // Step 4: not [AllowResizable].
+    if (info.buffer_resizable) return ConversionError.TypeError;
     // Step 5.
     return typedefs.ArrayBufferView.fromEngine(@intCast(@backingInt(info.kind)), info.byte_offset, info.length, @ptrCast(value)) orelse
         ConversionError.TypeError;
@@ -1291,8 +1303,8 @@ fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBuffer
 ///
 /// - Step 6: V has an [[ArrayBufferData]] slot and IsSharedArrayBuffer(V) is
 ///   false - "the result of converting V to ArrayBuffer" (3.2.26: steps 1-2
-///   checked here, step 3 IsFixedLengthArrayBuffer not checked, see
-///   `convertArrayBufferView`; step 4 a reference to the same object).
+///   checked here, step 3 a resizable buffer is a TypeError (no
+///   [AllowResizable]); step 4 a reference to the same object).
 /// - Steps 8-9: a DataView or a typed array - `convertArrayBufferView`.
 /// - Step 7: a SharedArrayBuffer matches no member type, and like every other
 ///   value (step 20) is a TypeError.
@@ -1311,6 +1323,8 @@ fn convertArrayBufferView(value: *v8.Value) ConversionError!typedefs.ArrayBuffer
 fn convertBufferSource(allocator: std.mem.Allocator, value: *v8.Value) ConversionError!typedefs.BufferSource {
     // Step 6 (V8's IsArrayBuffer is false for a SharedArrayBuffer).
     if (v8.v8_Value_IsArrayBuffer(value)) {
+        // 3.2.26 ArrayBuffer step 3: not [AllowResizable].
+        if (v8.v8_Value_IsResizableBuffer(value)) return ConversionError.TypeError;
         const buffer = try allocator.create(buffer_sources.ArrayBuffer);
         buffer.* = .{ .data = &[_]u8{}, .detached = false, .js = @ptrCast(value) };
         return .{ .array_buffer = buffer };
@@ -1353,6 +1367,9 @@ fn convertBodyInit(
     // typed arrays). Not [AllowShared]: a SharedArrayBuffer is no
     // BufferSource, and a view over one is a TypeError.
     if (v8.v8_Value_IsArrayBuffer(value)) {
+        // 3.2.26 ArrayBuffer step 3: BodyInit's BufferSource has no
+        // [AllowResizable] - a resizable buffer is a TypeError.
+        if (v8.v8_Value_IsResizableBuffer(value)) return ConversionError.TypeError;
         var data: ?*anyopaque = null;
         var len: usize = 0;
         const bytes: []const u8 = if (v8.v8_ArrayBuffer_Bytes(value, &data, &len) and len > 0 and data != null)
@@ -1365,6 +1382,10 @@ fn convertBodyInit(
         var info: v8.ViewInfo = undefined;
         if (!v8.v8_ArrayBufferView_Describe(value, &info)) return ConversionError.TypeError;
         if (info.buffer_shared) return ConversionError.TypeError;
+        // 3.2.26 ArrayBufferView step 4: a view over a resizable buffer
+        // (webidl/ecmascript-binding/allow-resizable.html: new Response(new
+        // Uint8Array(rab)) throws in Chrome 157, Firefox 160 and Safari 27.2).
+        if (info.buffer_resizable) return ConversionError.TypeError;
         if (info.buffer_detached or info.byte_length == 0) return bodyInitCopy(allocator, &.{});
         const buffer = v8.v8_ArrayBufferView_Buffer(value) orelse return ConversionError.TypeError;
         defer v8.v8_Global_Dispose(buffer);
@@ -2339,11 +2360,13 @@ fn convertValueAs(
         };
 
         // Buffer source arms: BufferSource (its flattened member types are
-        // ArrayBuffer, DataView and the typed arrays) or ArrayBufferView
-        // (DataView and the typed arrays).
+        // ArrayBuffer, DataView and the typed arrays), AllowSharedBufferSource
+        // (those and SharedArrayBuffer, with [AllowShared] views - WebCodecs'
+        // ImageBufferSource = (AllowSharedBufferSource or ReadableStream)) or
+        // ArrayBufferView (DataView and the typed arrays).
         const buffer_source_idx: ?usize = comptime blk: {
             for (fields, 0..) |field, i| {
-                if (field.type == typedefs.BufferSource) break :blk i;
+                if (field.type == typedefs.BufferSource or field.type == typedefs.AllowSharedBufferSource) break :blk i;
             }
             break :blk null;
         };
@@ -4435,6 +4458,19 @@ fn newQuotaExceededError(isolate: *v8.Isolate, context: *v8.Context, message: []
     const wrapper = instanceToV8(isolate, instance);
     if (v8.v8_Value_IsUndefined(wrapper)) return null;
     return v8.v8_Global_Clone(wrapper);
+}
+
+/// WebIDL (whatwg/webidl#1421, 2024): a DOMException has an [[ErrorData]]
+/// internal slot - every instance whose state ancestry holds DOMException's,
+/// a QuotaExceededError included - so Error.isError answers true for it.
+/// V8 asks the embedder for an API wrapper's (IsJSApiWrapperNativeErrorCallback,
+/// installed per agent by protocol_agents through
+/// v8_Isolate_SetNativeErrorInstancePredicate); `instance` is the platform
+/// object behind the wrapper.
+pub fn isDOMExceptionInstance(instance: *anyopaque) callconv(.c) bool {
+    const interfaces = @import("interfaces");
+    const object: *runtime.Instance = @ptrCast(@alignCast(instance));
+    return object.stateAs(interfaces.DOMException.State) != null;
 }
 
 fn isQuotaExceededError(name: []const u8) bool {

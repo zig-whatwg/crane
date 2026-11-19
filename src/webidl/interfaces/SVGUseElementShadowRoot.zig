@@ -92,6 +92,8 @@ pub const SVGUseElementShadowRoot = struct {
             "moveBefore",
             "querySelector",
             "querySelectorAll",
+            "elementFromPoint",
+            "elementsFromPoint",
             "appendHTML",
             "prependHTML",
             "streamHTML",
