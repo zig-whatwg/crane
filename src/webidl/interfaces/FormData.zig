@@ -266,4 +266,9 @@ pub const FormData = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const FormDataImpl.IterableEntry {
         return FormDataImpl.getEntriesInternal(instance);
     }
+
+    /// The impl's snapshot of the value pairs to iterate over, taken when an
+    /// iterator or forEach starts (`iterableSnapshot`), or null when the
+    /// impl's live list (`getEntriesInternal`) is read at each step.
+    pub const iterable_snapshot = if (@hasDecl(FormDataImpl, "iterableSnapshot")) FormDataImpl.iterableSnapshot else null;
 };

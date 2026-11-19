@@ -69,22 +69,30 @@ pub fn call_has(instance: *runtime.Instance, property: runtime.USVString) anyerr
     return dom.style.typed_om.mapHas(instance, property);
 }
 
-/// Entry type for pair iterable support
-/// Note: Using string types for V8 compatibility
+/// The generated pair-iterable bridge's live entry type. This map has no
+/// live list: its value pairs are reified when asked, and taken once per
+/// iterator (`iterableSnapshot`), so `getEntriesInternal` answers none.
 pub const IterableEntry = struct {
     name: []const u8,
-    value: []const u8, // CSSStyleValue as string representation
+    value: []const u8,
 };
 
-/// Get entries for pair iterable support (used by V8 for iteration)
+/// The live entries the generated bridge asks for: none - the binding reads
+/// `iterableSnapshot` instead (the generated `iterable_snapshot`).
 pub fn getEntriesInternal(instance: *runtime.Instance) ?[]const IterableEntry {
     _ = instance;
-    return null; // TODO: Implement when StylePropertyMapReadOnly is fully implemented
+    return null;
 }
 
-/// Q25's real sequence-valued iteration source. The old generated iterable
-/// bridge above remains untouched until the routed binding support lands.
-/// The caller owns this snapshot and must deinit after conversion.
+/// CSS Typed OM 1 3, the value pairs to iterate over: each declaration's
+/// property and its reified values (`mapEntries`). WebIDL's iterator asks
+/// for them again at each step; they are taken once, when an iterator or
+/// forEach starts, as both shipping engines take them - Blink
+/// (StylePropertyMapReadOnlyMainThread::CreateIterationSource) and WebKit
+/// (StylePropertyMapReadOnly::Iterator's constructor); Firefox ships no
+/// Typed OM (golden rule 2: the browsers decide; reifying every
+/// declaration at every step would also make a computed map's iteration
+/// quadratic). OWNED by the caller, who converts it, then deinits it.
 pub fn iterableSnapshot(instance: *runtime.Instance) !dom.style.typed_om.IterableSnapshot {
     return dom.style.typed_om.mapEntries(instance);
 }
