@@ -74,3 +74,28 @@ fn ignoredContentCases() !void {
 test "Backspace and Delete remove an element whose contents editing ignores whole" {
     try helpers.onFreshThread(ignoredContentCases);
 }
+
+/// After a block join the caret is at the end of the start line's last
+/// inline content: the next text goes into its span and the queries read
+/// its style (delete.html, forwarddelete.html, multitest.html; all three).
+const caret_cases = [_]harness.Case{
+    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo</span></p><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span></p>" },
+    .{ .input = "<p><span style=\"color:rgb(0, 0, 255)\">foo[]</span></p><p><span style=\"color:rgb(255, 0, 0)\">bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "forwarddelete", "" }, .{ "insertText", "A" } }, .expected = "<p><span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span></p>" },
+    .{ .input = "<span style=\"color:rgb(0, 0, 255)\">foo<br></span><p><span style=\"color:rgb(255, 0, 0)\">[]bar</span></p>", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "delete", "" }, .{ "insertText", "A" } }, .expected = "<span style=\"color:rgb(0, 0, 255)\">fooA</span><span style=\"color:rgb(255, 0, 0)\">bar</span>" },
+};
+
+fn caretCases() !void {
+    const page = try helpers.Page.open();
+    defer page.close();
+    try page.run(harness.setup_script);
+    try harness.runCases(page, &caret_cases);
+    // The queries read the start line's font.
+    try page.run("setupHost('<p><font color=blue>foo</font><p><font color=brown>[]bar</font>'); document.execCommand('styleWithCSS', false, 'false'); document.execCommand('delete');");
+    try harness.expectEval(page, "document.queryCommandValue('foreColor')", "rgb(0, 0, 255)");
+    try page.run("setupHost('<p><font size=4>foo[]</font><p><font size=5>bar</font>'); document.execCommand('forwarddelete');");
+    try harness.expectEval(page, "document.queryCommandValue('fontSize')", "4");
+}
+
+test "after a block join the caret ends the start line, inside its inline style" {
+    try helpers.onFreshThread(caretCases);
+}
