@@ -1955,19 +1955,26 @@ pub const Parser = struct {
         const name = pseudo.name;
         if (after) |first| {
             // ::before::marker and ::after::marker; the tree-abiding and
-            // element-backed pseudo-elements of a ::slotted() or ::part()
-            // element - not ::first-line, ::first-letter or a highlight
-            // pseudo-element; and CSS Forms 1's ::picker(select) takes
+            // element-backed pseudo-elements of a ::slotted() element - not
+            // ::first-line, ::first-letter or a highlight pseudo-element -
+            // and any but ::slotted() and ::part() after ::part(); and CSS
+            // Forms 1's ::picker(select) takes
             // ::before, ::after, ::marker, ::placeholder and
             // ::picker(select) (Chrome, Firefox and Safari: wpt.fyi
             // 2358bd4835, css/css-shadow/slotted-parsing.html,
             // css/css-forms/parsing/picker-select-pseudo-element.html).
             const ok = if (std.mem.eql(u8, first, "before") or std.mem.eql(u8, first, "after"))
                 std.mem.eql(u8, name, "marker")
-            else if (std.mem.eql(u8, first, "slotted") or std.mem.eql(u8, first, "part"))
+            else if (std.mem.eql(u8, first, "slotted"))
                 !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part") and
                     !std.mem.eql(u8, name, "first-line") and !std.mem.eql(u8, name, "first-letter") and
                     !isHighlightPseudoElement(name)
+            else if (std.mem.eql(u8, first, "part"))
+                // ::part() takes ::first-line, ::first-letter and the
+                // highlight pseudo-elements (css/selectors/parsing/
+                // parse-part.html, css/css-pseudo/parsing/highlight-pseudos.html:
+                // valid in all three).
+                !std.mem.eql(u8, name, "slotted") and !std.mem.eql(u8, name, "part")
             else if (std.mem.eql(u8, first, "picker"))
                 knownPseudoElement(name, &.{ "before", "after", "marker", "placeholder", "picker" }) != null
             else
