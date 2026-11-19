@@ -105,6 +105,18 @@ const push_down_cases = [_]Case{
     // spec's span, which Crane passes).
     .{ .input = "<b id=purple>bar [baz] qoz</b>", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "<span id=\"purple\"><b>bar </b>baz<b> qoz</b></span>" },
     .{ .input = "foo<b>b[a]r</b>baz", .commands = "[[\"bold\",\"\"]]", .expected = "foo<b>b</b>a<b>r</b>baz" },
+    // Only fontSize, fontName and foreColor split where the spec gives up:
+    // bold and the background colors nest (Firefox and the data; Chrome and
+    // Safari split), and no browser splits a block.
+    .{ .input = "<span style=\"font-weight: 100\">foo[bar]baz</span>", .commands = "[[\"stylewithcss\",\"false\"],[\"bold\",\"\"]]", .expected = "<span style=\"font-weight:100\">foo<b>bar</b>baz</span>" },
+    .{ .input = "fo[o<span style=background-color:tan>b]ar</span>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"backcolor\",\"#00FFFF\"]]", .expected = "fo<span style=\"background-color:rgb(0, 255, 255)\">o</span><span style=\"background-color:rgb(210, 180, 140)\"><span style=\"background-color:rgb(0, 255, 255)\">b</span>ar</span>baz" },
+    .{ .input = "<p style=\"font-size: medium\">foo[bar]baz</p>", .commands = "[[\"stylewithcss\",\"false\"],[\"fontsize\",\"4\"]]", .expected = "<p style=\"font-size:medium\">foo<font size=\"4\">bar</font>baz</p>" },
+    // A simple modifiable element that push down removes gives its other
+    // children copies of itself (all three; strikethrough.html, italic.html).
+    .{ .input = "<s>foo[bar]baz</s>", .commands = "[[\"stylewithcss\",\"false\"],[\"strikethrough\",\"\"]]", .expected = "<s>foo</s>bar<s>baz</s>" },
+    .{ .input = "<s>foo[bar]baz</s>", .commands = "[[\"stylewithcss\",\"true\"],[\"strikethrough\",\"\"]]", .expected = "<s>foo</s>bar<s>baz</s>" },
+    .{ .input = "foo<em>b[a]r</em>baz", .commands = "[[\"stylewithcss\",\"false\"],[\"italic\",\"\"]]", .expected = "foo<em>b</em>a<em>r</em>baz" },
+    .{ .input = "foo<em>b[a]r</em>baz", .commands = "[[\"stylewithcss\",\"true\"],[\"italic\",\"\"]]", .expected = "foo<em>b</em>a<em>r</em>baz" },
 };
 
 const exact_wrap_cases = [_]Case{
