@@ -546,10 +546,11 @@ pub fn clearValue(edit: *Edit, element: *Instance, command: Command) anyerror![]
         const word: []const u8 = if (command == .strikethrough) "line-through" else "underline";
         const decoration = try style_values.inlineValue(scratch(edit), element, "text-decoration");
         if (style_values.containsWord(decoration, word)) {
-            if (std.mem.eql(u8, decoration, word)) {
+            const rest = try withoutWord(edit, decoration, word);
+            if (rest.len == 0) {
                 try style_values.removeInline(element, "text-decoration");
             } else {
-                try style_values.setInline(element, "text-decoration", try withoutWord(edit, decoration, word));
+                try style_values.setInline(element, "text-decoration", rest);
                 try style_values.dropEmptyStyleAttribute(element);
             }
             edit.modified = true;
@@ -590,11 +591,18 @@ pub fn clearValue(edit: *Edit, element: *Instance, command: Command) anyerror![]
     return result.items;
 }
 
+/// `value`'s text-decoration line keywords without `word` - its color,
+/// style and thickness go too: all three browsers take line-through out of
+/// `text-decoration: underline line-through blue dotted` as `text-
+/// decoration: underline` (editing/run/strikethrough.html and
+/// underline.html, PPP at wpt.fyi 2358bd4835), where the spec's steps 5-6
+/// keep "underline blue dotted". Golden rule 2, no newer spec.
 fn withoutWord(edit: *Edit, value: []const u8, word: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var words = std.mem.tokenizeAny(u8, value, " \t\n\r\x0c");
     while (words.next()) |w| {
         if (std.ascii.eqlIgnoreCase(w, word)) continue;
+        if (!isLineKeyword(w)) continue;
         if (out.items.len > 0) try out.append(scratch(edit), ' ');
         try out.appendSlice(scratch(edit), w);
     }
@@ -996,6 +1004,7 @@ fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: [
     const wrapper = (try common.parent(node)) orelse return false;
     if (!common.isElement(wrapper) or !try common.isEditable(wrapper)) return false;
     if ((try common.firstChild(wrapper)) != node or (try common.lastChild(wrapper)) != node) return false;
+    if (css_styling and (command == .strikethrough or command == .underline)) return try decorationOntoWrapper(edit, wrapper, command);
     const name = newParentName(command, new_value, css_styling, scratch(edit));
     if (std.mem.eql(u8, name, "font")) {
         if (!try isNamed(wrapper, "font")) return false;
@@ -1029,6 +1038,38 @@ fn valueOntoWrapper(edit: *Edit, node: *Instance, command: Command, new_value: [
     if (!style_only_span and (command == .back_color or command == .hilite_color)) return false;
     if (!style_only_span and !try isNamed(wrapper, "font")) return false;
     try style_values.setInline(wrapper, property, new_value);
+    edit.modified = true;
+    return true;
+}
+
+fn isLineKeyword(word: []const u8) bool {
+    for ([_][]const u8{ "underline", "overline", "line-through", "blink" }) |line| {
+        if (std.ascii.eqlIgnoreCase(word, line)) return true;
+    }
+    return false;
+}
+
+/// Strikethrough and underline in CSS mode on a node that a style-only
+/// span, an ins or a del wraps exactly: that element's text-decoration
+/// takes the new line beside the ones it already draws, as one declaration
+/// (`foo<span style="text-decoration: underline">[bar]</span>baz` ->
+/// `<span style="text-decoration:underline line-through">`, `foo<ins>[bar]
+/// </ins>baz` -> `<ins style="text-decoration:underline line-through">`;
+/// strikethrough.html and underline.html: Firefox 160 and Safari 27.2, and
+/// all three where the span also sets a color and style, which go:
+/// wpt.fyi 2358bd4835). Blink's ApplyInlineStyleChange sets it on the
+/// style container the same way. Golden rule 2: the majority.
+fn decorationOntoWrapper(edit: *Edit, wrapper: *Instance, command: Command) !bool {
+    const style_only_span = (try isNamed(wrapper, "span")) and (try attributeCount(wrapper)) == 1 and try common.hasAttribute(wrapper, "style");
+    if (!style_only_span and !try isNamedIn(wrapper, &.{ "ins", "del" })) return false;
+    var out: std.ArrayList(u8) = .empty;
+    for ([_][]const u8{ "underline", "overline", "line-through" }) |line| {
+        const wanted = std.mem.eql(u8, line, if (command == .strikethrough) "line-through" else "underline");
+        if (!wanted and !try style_values.textDecorationContains(scratch(edit), wrapper, line)) continue;
+        if (out.items.len > 0) try out.append(scratch(edit), ' ');
+        try out.appendSlice(scratch(edit), line);
+    }
+    try style_values.setInline(wrapper, "text-decoration", out.items);
     edit.modified = true;
     return true;
 }
