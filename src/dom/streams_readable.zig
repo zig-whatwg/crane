@@ -2286,19 +2286,42 @@ fn pipeAbortAlgorithm(state: *PipeState) void {
     pipeShutdownWithAction(state, action, err);
 }
 
-/// One iteration: wait for the writer to be ready, then read one chunk.
+/// One iteration of step 15's loop: "Backpressure must be enforced: while
+/// WritableStreamDefaultWriterGetDesiredSize(writer) is <= 0 or is null, the
+/// user agent must not read from reader." So the pipe waits for the writer's
+/// ready promise only while the desired size is <= 0, and otherwise reads at
+/// once - as Blink (PipeToEngine::HandleNextEvent, core/streams/
+/// pipe_to_engine.cc) and Gecko (PipeToPump::Read, dom/streams/
+/// ReadableStreamPipeTo.cpp) both do; step 15 leaves the timing to the
+/// implementation ("in parallel but not really"). Waiting a microtask for an
+/// already-resolved ready promise let a new source's start reaction run
+/// first: its pull ran with no read pending, and the pipe's read then pulled
+/// again - one pull too many, which streams/transferable/readable-stream.html
+/// ('cancel should be propagated to the original', 'cancel should abort a
+/// pending read()') counts: Chrome 158, Firefox 160 and Safari 27.2 pass both.
+/// A null desired size (the destination errored, or an abort is queued) is
+/// left to the writer's closed-promise reaction, as both engines leave it.
 fn pipeStep(state: *PipeState) void {
     if (state.shutting_down) return;
-    const realm = Realm.of(state.source) catch return;
     const writer = sw.writerOf(state.writer) orelse return;
+    if (writer.stream == null) return;
+    const desired = sw.writerGetDesiredSize(writer) orelse return;
+    if (desired > 0) return pipeRead(state);
+    const realm = Realm.of(state.source) catch return;
     const ready = writer.ready_promise orelse return;
     realm.react(ready.promise, PipeState, state.retain(), pipeReadyFulfilled, pipeIgnore, pipeDropped) catch {
         state.refs -= 1;
     };
 }
 
+/// The writer is ready: the loop's next turn asks the desired size again.
 fn pipeReadyFulfilled(state: *PipeState, _: Value) void {
     defer state.release();
+    pipeStep(state);
+}
+
+/// Read one chunk from the source.
+fn pipeRead(state: *PipeState) void {
     if (state.shutting_down) return;
     const realm = Realm.of(state.source) catch return;
     const reader = readerOf(state.reader) orelse return;
