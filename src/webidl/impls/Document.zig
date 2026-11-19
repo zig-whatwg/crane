@@ -4612,7 +4612,7 @@ fn fireBeforeUnload(document: *runtime.Instance) BeforeUnloadResult {
 /// restored reasons) are the navigable's: navigation clears the window's
 /// timers once this returns - or, for a kept document, suspends them.
 fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document_lifecycle.UnloadDestroy, timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo) void {
-    var call: UnloadCall = .{ .document = document, .destroy = destroy };
+    var call: UnloadCall = .{ .document = document, .destroy = destroy, .timing = timing };
     engine.runInRealm(document.ctx, unloadSteps, &call) catch |err| {
         log.debug("unload not run: {}", .{err});
     };
@@ -4622,6 +4622,8 @@ fn lifecycleUnload(document: *runtime.Instance, destroy: @import("dom").document
 const UnloadCall = struct {
     document: *runtime.Instance,
     destroy: @import("dom").document_lifecycle.UnloadDestroy,
+    /// HTML's unloadTimingInfo, or null.
+    timing: ?*@import("dom").document_lifecycle.UnloadTimingInfo = null,
 };
 
 fn unloadSteps(data: ?*anyopaque) void {
@@ -4672,14 +4674,14 @@ fn unloadSteps(data: ?*anyopaque) void {
     // newDocument's relevant global object" - the caller's clock, made
     // relative to the new document's time origin when its navigation timing
     // entry is.
-    if (timing) |info| info.unload_event_start = info.now();
+    if (call.timing) |info| info.unload_event_start = info.now();
     // Step 12: "If oldDocument's salvageable state is false, then fire an
     // event named unload at oldDocument's relevant global object, with legacy
     // target override flag set."
     if (!internal.salvageable) fireAtWindow(document, window, "unload");
     // Step 13: "If unloadTimingInfo is not null, then set unloadTimingInfo's
     // unload event end time" likewise.
-    if (timing) |info| info.unload_event_end = info.now();
+    if (call.timing) |info| info.unload_event_end = info.now();
     // Step 14.
     termination_nesting.leave(event_loop);
     terminating = false;
