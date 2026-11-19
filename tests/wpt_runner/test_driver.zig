@@ -551,8 +551,16 @@ const Command = struct {
                 return .{ .code = "invalid argument", .message = "a file input cannot be clicked" };
             }
         }
-        // Steps 5-7: scrolled into view, in view and not obscured - without
-        // layout, a connected element is all three.
+        // Step 5: "Scroll into view the element's container" - the
+        // element's scrollIntoView, which reads its box: in a browser that
+        // updates style and layout first, and in Crane the style half
+        // (Element.scrollIntoView). A style change script makes in the
+        // click's handlers transitions from the style this read saw, as it
+        // does from the one a browser's driver reads
+        // (fullscreen/rendering/fullscreen-css-transition.html).
+        _ = interfaces.Element.call_scrollIntoView(element, @import("webidl").Opt(runtime.JSValue).notPassed()) catch {};
+        // Steps 6-7: in view and not obscured - without layout, a connected
+        // element is both.
         // Step 8, an option element: its container is what is clicked.
         if (html.form_associated.isElementNamed(element, "option")) return self.clickOption(element);
         // Step 8, otherwise: pointerMove to the element, pointerDown and
