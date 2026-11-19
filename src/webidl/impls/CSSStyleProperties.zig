@@ -48,7 +48,6 @@ pub fn set_cssFloat(instance: *runtime.Instance, value: typedefs.CSSOMString) an
 /// the order the binding defines them on the prototype (one accessor each;
 /// its index reaches the entry). dom.style.css_attributes holds the table.
 pub const css_property_attributes: [css_attributes.attributes.len][:0]const u8 = blk: {
-    @setEvalBranchQuota(100_000);
     var names: [css_attributes.attributes.len][:0]const u8 = undefined;
     for (css_attributes.attributes, 0..) |attribute, i| names[i] = attribute.name;
     break :blk names;
