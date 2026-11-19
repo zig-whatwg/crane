@@ -401,7 +401,7 @@ pub fn call_constructor(ctx: runtime.Context, title: runtime.DOMString, options_
     //       yet (the module comment).
     // The steps hold this until their task has run: a keep taken before the
     // object has a wrapper is the wrapper's when the binding makes it.
-    if (notificationsPermissionState() != .granted) {
+    if (notificationsPermissionState() != ._granted_) {
         engine.keepPlatformObjectAlive(instance);
         notification.kept_alive = true;
         ErrorTask.queue(instance);
