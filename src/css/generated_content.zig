@@ -344,7 +344,8 @@ const Parser = struct {
         }
     }
 
-    fn next(self: *Parser) Token {
+    /// pub: RequestModifiers.consume reads the url() modifiers through it.
+    pub fn next(self: *Parser) Token {
         const token = self.peek();
         self.peeked = null;
         return token;
