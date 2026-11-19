@@ -209,11 +209,25 @@ pub fn wrap(edit: *Edit, node_list_in: []const *Instance, context: anytype) !?*I
         }
     }
 
-    // Step 16: "Remove extraneous line breaks from new parent."
-    try edit.removeExtraneousLineBreaksFrom(parent_node);
+    // Step 16: "Remove extraneous line breaks from new parent." A context
+    // that declares `keep_line_break_before` keeps the one before it (see
+    // insertParagraph's NewContainerContext).
+    if (comptime keepsLineBreakBefore(@TypeOf(context))) {
+        try edit.removeExtraneousLineBreaksAtTheEndOf(parent_node);
+    } else {
+        try edit.removeExtraneousLineBreaksFrom(parent_node);
+    }
 
     // Step 17: "Return new parent."
     return parent_node;
+}
+
+fn keepsLineBreakBefore(comptime C: type) bool {
+    const T = switch (@typeInfo(C)) {
+        .pointer => |pointer| pointer.child,
+        else => C,
+    };
+    return @hasDecl(T, "keep_line_break_before") and T.keep_line_break_before;
 }
 
 /// Whether `a` is before `b` in tree order (an ancestor is before its
