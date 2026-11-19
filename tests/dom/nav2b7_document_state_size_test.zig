@@ -47,6 +47,7 @@ const rare_or_gone = .{
     "template_owner_document",    "template_owner_generation",
     "fullscreen_element",         "pointer_lock_element",
     "picture_in_picture_element", "parser_form_associations",
+    "sequential_start",
 };
 
 test "Document's state keeps none of what few Documents set: that is its rare data" {

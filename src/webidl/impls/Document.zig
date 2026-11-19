@@ -643,15 +643,24 @@ fn setFocusedArea(document: *runtime.Instance, designation: ?@import("dom").focu
 /// kept apart from its focused area, or null.
 fn sequentialStart(document: *runtime.Instance) ?@import("dom").focused_area.Designation {
     const internal = getInternal(document) orelse return null;
-    const element = internal.sequential_start orelse return null;
-    return .{ .element = element, .generation = internal.sequential_start_generation };
+    const rare = internal.rareData() orelse return null;
+    const link = rare.sequential_start orelse return null;
+    return .{ .element = link.instance, .generation = link.generation };
 }
 
-/// dom.focused_area: keep (null: drop) `document`'s starting point.
+/// dom.focused_area: keep (null: drop) `document`'s starting point - rare
+/// data, which few Documents ever need: every change of the focused area
+/// drops it, and dropping none where none was kept makes nothing.
 fn setSequentialStart(document: *runtime.Instance, start: ?@import("dom").focused_area.Designation) void {
     const internal = getInternal(document) orelse return;
-    internal.sequential_start = if (start) |s| s.element else null;
-    internal.sequential_start_generation = if (start) |s| s.generation else 0;
+    if (start == null) {
+        const rare = internal.rareData() orelse return;
+        rare.sequential_start = null;
+        return;
+    }
+    // Out of memory no starting point is kept, as for a document with none.
+    const rare = internal.ensureRareData(document) catch return;
+    rare.sequential_start = .{ .instance = start.?.element, .generation = start.?.generation };
 }
 
 /// dom.visibility_state: "update the visibility state" of `document`.
