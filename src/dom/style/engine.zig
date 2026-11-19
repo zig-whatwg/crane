@@ -57,6 +57,7 @@ const custom_elements = @import("../custom_elements.zig");
 const tree_scope = @import("../tree_scope.zig");
 const navigable_container = @import("../navigable_container.zig");
 const top_layer_mod = @import("../top_layer.zig");
+const view_transition_tree = @import("../view_transitions.zig");
 const selector_matching = @import("../selector_matching.zig");
 const hooks = @import("hooks.zig");
 const sheet_mod = @import("sheet.zig");
@@ -1436,9 +1437,15 @@ fn pseudoStyle(res: *Resolution, element: *runtime.Instance, node: *NodeBase, st
         res.highlight = false;
         res.highlight_parent = null;
     }
+    // CSS View Transitions 1 §3.2: a view transition pseudo-element exists
+    // only while its document shows the transition's pseudo-element tree;
+    // out of it (before setup, after "clear view transition") its style is
+    // still read, but it generates no box, so its CSS animations and
+    // transitions end (CSS Animations 2 2.1) as the pseudo-element goes.
+    const exists = !view_transition_tree.isViewTransitionPseudoElement(p) or view_transition_tree.originatesPseudoElement(element, p);
     const resolved = try resolveOne(res, element, node, state, p, own.style, false, &reads, .{
         .event = styleChangeEvent(previous, res.key, own.@"volatile"),
-        .parent_rendered = own.rendered,
+        .parent_rendered = own.rendered and exists,
         .parent_after_change = own.base orelse own.style,
         .generation = generation,
     });
@@ -2762,9 +2769,21 @@ fn updateSubtree(allocator: Allocator, root: *NodeBase) !bool {
         // this update (HTML 15.5.16; customizable-select/select-picker-
         // starting-style.html, Chrome 157 1/1).
         if (selectKind(element) == .drop_down) try addPseudo(allocator, &names, "picker");
+        try addViewTransitionPseudos(allocator, &names, node);
         for (names.items) |n| _ = computedStyle(element, n) catch continue;
     }
     return any_volatile;
+}
+
+/// The document element's view transition pseudo-elements while its
+/// document shows their tree (CSS View Transitions 1 §3.2): they are boxes
+/// whose CSS animations - the transition's own and the author's - run with
+/// no read, at the frames that drive the transition (§7.8 waits for them).
+fn addViewTransitionPseudos(allocator: Allocator, names: *std.ArrayList([]u8), node: *NodeBase) Allocator.Error!void {
+    const parent = node.parent_node orelse return;
+    if (parent.node_type != NodeBase.DOCUMENT_NODE) return;
+    const document = instanceOf(parent) orelse return;
+    try view_transition_tree.appendPseudoElementNames(document, allocator, names);
 }
 
 /// The pseudo-elements a browser generates boxes for, whose CSS animations
@@ -2845,6 +2864,9 @@ pub fn flushForAnimations(root: *runtime.Instance, subtree: bool) void {
                 };
             }
             addGeneratedPseudos(allocator, &names, state) catch {};
+            // The document element's view transition pseudo-elements while
+            // their tree is shown (CSS View Transitions 1 §3.2).
+            addViewTransitionPseudos(allocator, &names, node) catch {};
             for (names.items) |name| _ = computedStyle(root, name) catch {};
         }
         if (!subtree) return;

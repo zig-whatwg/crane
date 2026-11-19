@@ -1012,7 +1012,9 @@ fn hasActiveAnimations(document: *runtime.Instance) bool {
         const target = effect.targetElement() orelse continue;
         if (target != root) continue;
         const pseudo = effect.pseudo orelse continue;
-        if (!std.mem.startsWith(u8, pseudo, "view-transition")) continue;
+        // An effect's pseudo-element is written with its "::" (CSS
+        // Animations' and KeyframeEffect's alike).
+        if (!std.mem.startsWith(u8, std.mem.trimStart(u8, pseudo, ":"), "view-transition")) continue;
         switch (animation.playState()) {
             .paused, .running => return true,
             else => {},
@@ -1034,6 +1036,136 @@ fn clear(transition: *Transition, document: *runtime.Instance) void {
     // this transition's only.
     style_engine.setViewTransitionSheet(document, null) catch {};
     transition.clearNamed(true);
+}
+
+// ============================================================================
+// §3.2 the view transition pseudo-element tree
+// ============================================================================
+
+/// The transition whose pseudo-element tree `document` shows: its active
+/// view transition, once §7.7 "setup transition pseudo-elements" ran (the
+/// "show view transition tree" flag; the phase is animating then) and until
+/// §7.10 "clear view transition".
+fn shownTransition(document: *runtime.Instance) ?*Transition {
+    const state = stateOf(document) orelse return null;
+    if (!state.show_tree) return null;
+    const instance = activeOf(document) orelse return null;
+    const transition = transitionOf(instance) orelse return null;
+    if (transition.phase != .animating) return null;
+    return transition;
+}
+
+/// The named view transition pseudo-elements (§3.2), by the start of a
+/// pseudo-element's bare name.
+const PseudoKind = enum { group, image_pair, old, new };
+
+const pseudo_kinds = [_]struct { prefix: []const u8, kind: PseudoKind }{
+    .{ .prefix = "view-transition-group(", .kind = .group },
+    .{ .prefix = "view-transition-image-pair(", .kind = .image_pair },
+    .{ .prefix = "view-transition-old(", .kind = .old },
+    .{ .prefix = "view-transition-new(", .kind = .new },
+};
+
+/// A bare pseudo-element name ("view-transition-group(x)") as its kind and
+/// its argument; null for any other name.
+fn splitNamed(name: []const u8) ?struct { kind: PseudoKind, argument: []const u8 } {
+    for (pseudo_kinds) |entry| {
+        if (!std.ascii.startsWithIgnoreCase(name, entry.prefix)) continue;
+        if (name.len <= entry.prefix.len or name[name.len - 1] != ')') return null;
+        return .{ .kind = entry.kind, .argument = name[entry.prefix.len .. name.len - 1] };
+    }
+    return null;
+}
+
+/// §3.2: whether `element` originates, right now, the view transition
+/// pseudo-element whose bare name is `name` - "view-transition", or a named
+/// one whose argument is a captured name: `element` is its document's
+/// document element and the document shows the tree of a transition that
+/// generated it (§7.7: a group and an image pair for each named element, an
+/// old image where the old state was captured, a new image where there is a
+/// new element). False for any other name, and for an argument with a class
+/// list or the universal selector, which select pseudo-elements but name
+/// none.
+pub fn originatesPseudoElement(element: *runtime.Instance, name: []const u8) bool {
+    const document = (interfaces.Node.get_ownerDocument(element) catch null) orelse return false;
+    const root = (interfaces.Document.get_documentElement(document) catch null) orelse return false;
+    if (root != element) return false;
+    const transition = shownTransition(document) orelse return false;
+    if (std.ascii.eqlIgnoreCase(name, "view-transition")) return true;
+    const named = splitNamed(name) orelse return false;
+    const captured = transition.find(named.argument) orelse return false;
+    return switch (named.kind) {
+        .group, .image_pair => true,
+        .old => captured.has_old_image,
+        .new => captured.new_element != null,
+    };
+}
+
+/// Whether `name` (bare) is a view transition pseudo-element's.
+pub fn isViewTransitionPseudoElement(name: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(name, "view-transition") or splitNamed(name) != null;
+}
+
+/// Append to `names` the bare names of the view transition pseudo-elements
+/// `document` shows, in tree order: ::view-transition, then for each named
+/// element its group, image pair, old and new image. Each is allocated with
+/// `allocator` and owned by the list; one already there is not added again.
+/// Nothing when no tree is shown.
+pub fn appendPseudoElementNames(document: *runtime.Instance, allocator: Allocator, names: *std.ArrayList([]u8)) Allocator.Error!void {
+    const transition = shownTransition(document) orelse return;
+    try appendOwned(allocator, names, try allocator.dupe(u8, "view-transition"));
+    for (transition.named.items) |*captured| {
+        try appendOwned(allocator, names, try std.fmt.allocPrint(allocator, "view-transition-group({s})", .{captured.name}));
+        try appendOwned(allocator, names, try std.fmt.allocPrint(allocator, "view-transition-image-pair({s})", .{captured.name}));
+        if (captured.has_old_image) try appendOwned(allocator, names, try std.fmt.allocPrint(allocator, "view-transition-old({s})", .{captured.name}));
+        if (captured.new_element != null) try appendOwned(allocator, names, try std.fmt.allocPrint(allocator, "view-transition-new({s})", .{captured.name}));
+    }
+}
+
+/// Append `name` (OWNED) to `names`, or free it when it is there already.
+fn appendOwned(allocator: Allocator, names: *std.ArrayList([]u8), name: []u8) Allocator.Error!void {
+    for (names.items) |n| if (std.mem.eql(u8, n, name)) {
+        allocator.free(name);
+        return;
+    };
+    names.append(allocator, name) catch |err| {
+        allocator.free(name);
+        return err;
+    };
+}
+
+/// §3.2's tree, by name: whether the view transition pseudo-element
+/// `descendant` (a bare name) is a descendant of `ancestor` - every named
+/// one is under ::view-transition; a group's image pair and old and new
+/// images are under that group; the old and new images under their image
+/// pair. Whether either exists is the caller's question.
+pub fn isPseudoElementDescendant(ancestor: []const u8, descendant: []const u8) bool {
+    const below = splitNamed(descendant) orelse return false;
+    if (std.ascii.eqlIgnoreCase(ancestor, "view-transition")) return true;
+    const above = splitNamed(ancestor) orelse return false;
+    if (!std.mem.eql(u8, above.argument, below.argument)) return false;
+    return switch (above.kind) {
+        .group => below.kind != .group,
+        .image_pair => below.kind == .old or below.kind == .new,
+        .old, .new => false,
+    };
+}
+
+test "view transition pseudo-element tree: descendants by name" {
+    try std.testing.expect(isPseudoElementDescendant("view-transition", "view-transition-group(a)"));
+    try std.testing.expect(isPseudoElementDescendant("view-transition", "view-transition-new(a)"));
+    try std.testing.expect(isPseudoElementDescendant("view-transition-group(a)", "view-transition-image-pair(a)"));
+    try std.testing.expect(isPseudoElementDescendant("view-transition-group(a)", "view-transition-old(a)"));
+    try std.testing.expect(isPseudoElementDescendant("view-transition-image-pair(a)", "view-transition-new(a)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-group(a)", "view-transition-group(a)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-group(a)", "view-transition-image-pair(b)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-image-pair(a)", "view-transition-group(a)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-new(a)", "view-transition-old(a)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-group(a)", "before"));
+    try std.testing.expect(!isPseudoElementDescendant("before", "view-transition-group(a)"));
+    try std.testing.expect(!isPseudoElementDescendant("view-transition-group(a)", "view-transition"));
+    try std.testing.expect(isViewTransitionPseudoElement("view-transition-old(x)"));
+    try std.testing.expect(!isViewTransitionPseudoElement("before"));
 }
 
 /// Level 2 §10.4 (the view_transition_classes style hook): whether
