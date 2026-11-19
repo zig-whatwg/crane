@@ -1180,3 +1180,25 @@ pub fn viewTransitionClasses(originating: *runtime.Instance, name: []const u8, c
     if (transition.phase != .animating) return false;
     return transition.hasClasses(name, classes);
 }
+
+/// §3.1 (the view_transition_only_child style hook): whether the view
+/// transition pseudo-element `pseudo` ("view-transition-new(name)") of the
+/// tree `originating` - the document element - shows has no sibling, which
+/// is when :only-child matches it. The groups are the root's children; an
+/// image pair is its group's one child; an old image has a sibling when the
+/// pair holds a new one, and the other way round. False when no tree is
+/// shown, or it holds no such pseudo-element.
+pub fn viewTransitionOnlyChild(originating: *runtime.Instance, pseudo: []const u8) bool {
+    const document = (interfaces.Node.get_ownerDocument(originating) catch null) orelse return false;
+    const root = (interfaces.Document.get_documentElement(document) catch null) orelse return false;
+    if (root != originating) return false;
+    const transition = shownTransition(document) orelse return false;
+    const named = splitNamed(pseudo) orelse return false;
+    const captured = transition.find(named.argument) orelse return false;
+    return switch (named.kind) {
+        .group => transition.named.items.len == 1,
+        .image_pair => true,
+        .old => captured.has_old_image and captured.new_element == null,
+        .new => captured.new_element != null and !captured.has_old_image,
+    };
+}

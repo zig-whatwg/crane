@@ -89,10 +89,10 @@ fn expectEval(r: runtime.Context, source: []const u8, expected: []const u8) !voi
 test "the [Serializable] interfaces with steps are exactly this batch's" {
     defer test_agent.close();
     const expected = [_][]const u8{
-        "Blob",               "CryptoKey",       "DOMException",     "DOMMatrix",
-        "DOMMatrixReadOnly",  "DOMPoint",        "DOMPointReadOnly", "DOMQuad",
-        "DOMRect",            "DOMRectReadOnly", "File",             "ImageData",
-        "QuotaExceededError",
+        "Blob",              "CryptoKey",          "DOMException",     "DOMMatrix",
+        "DOMMatrixReadOnly", "DOMPoint",           "DOMPointReadOnly", "DOMQuad",
+        "DOMRect",           "DOMRectReadOnly",    "File",             "FileList",
+        "ImageData",         "QuotaExceededError",
     };
     const names = v8.serializable_objects.serializableInterfaces();
     try std.testing.expectEqual(expected.len, names.len);
@@ -102,7 +102,6 @@ test "the [Serializable] interfaces with steps are exactly this batch's" {
     // Not [Serializable], or no steps: not in the table.
     try std.testing.expect(v8.serializable_objects.stepsFor("Response") == null);
     try std.testing.expect(v8.serializable_objects.stepsFor("MessagePort") == null);
-    try std.testing.expect(v8.serializable_objects.stepsFor("FileList") == null);
 }
 
 test "structuredClone keeps a point, a rectangle and a matrix" {
