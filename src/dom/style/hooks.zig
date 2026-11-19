@@ -76,6 +76,12 @@ pub const Hooks = struct {
     /// document element) is in contains every one of `classes`. Installed
     /// by Document, which holds the active view transition.
     view_transition_classes: ?*const fn (originating: *runtime.Instance, name: []const u8, classes: []const []const u8) bool = null,
+    /// View Transitions 1 §3.1: whether the view transition pseudo-element
+    /// `pseudo` ("view-transition-new(name)", the style engine's target) of
+    /// the active transition `originating` (the document element) is in
+    /// has no sibling in the view transition tree. Installed by
+    /// ViewTransition beside view_transition_of.
+    view_transition_only_child: ?*const fn (originating: *runtime.Instance, pseudo: []const u8) bool = null,
     /// CSS View Transitions 1 §6.2: the model of a ViewTransition object
     /// (dom.view_transitions.Transition). Installed by ViewTransition.
     view_transition_of: ?*const fn (instance: *runtime.Instance) ?*@import("../view_transitions.zig").Transition = null,
@@ -216,6 +222,13 @@ pub fn fontFaceOf(face: *runtime.Instance) ?*@import("font_loading.zig").Face {
 pub fn viewTransitionClasses(originating: *runtime.Instance, name: []const u8, classes: []const []const u8) bool {
     const f = hooks.read().view_transition_classes orelse return false;
     return f(originating, name, classes);
+}
+
+/// View Transitions 1 §3.1 (hook view_transition_only_child): false with no
+/// active transition - with none there is no view transition tree.
+pub fn viewTransitionOnlyChild(originating: *runtime.Instance, pseudo: []const u8) bool {
+    const f = hooks.read().view_transition_only_child orelse return false;
+    return f(originating, pseudo);
 }
 
 pub fn importInserted(record: *sheet.SheetRecord, slot: u16, href: []const u8) void {
