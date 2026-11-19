@@ -62,7 +62,7 @@ pub fn containerOf(document: *Instance) ?*Instance {
 }
 
 /// The active document of `container`'s content navigable, or null.
-fn contentDocumentOf(container: *Instance) ?*Instance {
+pub fn contentDocumentOf(container: *Instance) ?*Instance {
     // The container's Browser's list, which its content navigable is on.
     const navigables = dom.browser_state.navigablesOf(container.ctx) orelse return null;
     for (navigables.contexts()) |context| {
