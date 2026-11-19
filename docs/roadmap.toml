@@ -454,6 +454,7 @@ and transferable platform objects."""
 progress = [
   "0c414f3cad - [Serializable] platform objects: codegen routes to each interface's serialization steps, an engine-neutral record on V8's delegate, Blob/File/DOMException/geometry/ImageData/CryptoKey (serializable lane)",
   "8b365d3349 - WebAssembly.Module: wire bytes and [[AgentCluster]] in an adapter envelope, HostHooks.agentClusterOf, site-keyed window clusters (wasmser lane, ported from serial); 435021f2a9 cross-origin postMessage serializes in the caller's realm; 9feeb5f976 a dedicated worker is in its owner's cluster",
+  "f5344572cb4 - one shared transfer step every carrier runs (dom.transferables: typed transfer data holders in a PortMessage; MessageEvent.ports only the explicitly transferred ports); transferable ReadableStream, WritableStream and TransformStream over cross-realm transforms on hidden MessagePorts (Streams 4.2.6, 5.2.5, 6.2.5, 8.2) (lane net2)",
 ]
 
   [[infra.items]]
@@ -475,6 +476,10 @@ progress = [
   [[infra.items]]
   name = "Transferable platform objects inside a message (MessagePort in the value), resizable and length-tracking ArrayBuffer transfer"
   status = "todo"
+
+  [[infra.items]]
+  name = "Transferable streams (ReadableStream, WritableStream, TransformStream) through every postMessage carrier and structuredClone"
+  status = "done"
 
 [[infra]]
 id = "event-loop"
