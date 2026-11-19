@@ -29,7 +29,8 @@ pub const InternalState = struct {
 };
 
 fn internalOf(instance: *runtime.Instance) !*InternalState {
-    return instance.getState(State).own._internal orelse error.InvalidStateError;
+    const state = instance.stateAs(State) orelse return error.InvalidStateError;
+    return state.own._internal orelse error.InvalidStateError;
 }
 
 pub fn initOwn(instance: *runtime.Instance, allocator: std.mem.Allocator, comptime StateType: type, args: anytype) !void {
