@@ -30,12 +30,22 @@ const order_cases = [_]harness.Case{
     .{ .input = "abc[]ef", .commands = &.{ .{ "styleWithCSS", "false" }, .{ "fontName", "monospace" }, .{ "foreColor", "#ff0000" }, .{ "fontSize", "7" }, .{ "backColor", "#00dddd" }, .{ "insertText", "d" } }, .expected = "abc<font face=\"monospace\" size=\"7\" color=\"#ff0000\"><span style=\"background-color: rgb(0, 221, 221);\">d</span></font>ef" },
 };
 
+/// Typed text fills an empty line's padding br and replaces an extraneous
+/// one before the caret (inserttext.html; all three).
+const br_cases = [_]harness.Case{
+    .{ .input = "abc<br>{}<br>", .commands = &.{.{ "inserttext", "d" }}, .expected = "abc<br>d" },
+    .{ .input = "<span contenteditable=false>abc</span><br>{}", .commands = &.{.{ "inserttext", "d" }}, .expected = "<span contenteditable=\"false\">abc</span>d" },
+    .{ .input = "<p>{}<br>", .commands = &.{.{ "inserttext", "a" }}, .expected = "<p>a</p>" },
+    .{ .input = "<br>{}", .commands = &.{.{ "inserttext", "a" }}, .expected = "<br>a" },
+};
+
 fn typingCases() !void {
     const page = try helpers.Page.open();
     defer page.close();
     try page.run(harness.setup_script);
     try harness.runCases(page, &typing_cases);
     try harness.runCases(page, &order_cases);
+    try harness.runCases(page, &br_cases);
 }
 
 test "a deletion leaves the deleted text's style for typing, as Chrome does" {
