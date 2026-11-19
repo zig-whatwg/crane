@@ -65,6 +65,10 @@ of what was filed under the user's account, so each can be re-checked (`gh issue
 | wpt#65405 | issue | 2026-11-18 | close_script_defer: `t.step` instead of `t.step_func` | open |
 | wpt#65406 | issue | 2026-11-18 | not-restored-reasons/fetch.window.js: listener parameter shadows wavURL, long-wav.py never fetched | open |
 | wpt#65407 | issue | 2026-11-18 | reload-service-worker-fetch-event: no `.https`, worker calls `transitionWhile()` | open |
+| wpt#65463 | issue | 2026-11-19 | autoplay-disabled-by-csp: parent reads the document of a `CSP: sandbox` (opaque-origin) frame | open |
+| wpt#65464 | issue | 2026-11-19 | popup-inheritance-form-submission: asserts the test page's own `document.referrer`, not the popup's | open |
+| wpt#65465 | issue | 2026-11-19 | unregister-immediately-during-extendable-events: top window's `TypeError` for a frame's `fetch()` | open |
+| wpt#65466 | issue | 2026-11-19 | css-forms input-file/input-text base appearance: expectations differ from the ED (radius 4px, `align-items: unsafe center`) | open |
 | wpt.fyi#5128 | issue | 2026-09-30 | Crane test runner registration request | open |
 | w3c/IndexedDB#510 | spec issue | 2026-10-03 | IDBKeyRange.bound() equal keys with an open bound | open, 3 comments |
 | w3c/FileAPI#226 | spec issue | 2026-10-04 | Blob/File serialization drops type | open |
