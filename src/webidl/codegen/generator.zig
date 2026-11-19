@@ -1971,6 +1971,10 @@ fn generateInterfaceFile(
     if (writer.isCSSDeclarationInterface(interface.name)) {
         try writer.writeCSSPropertyNamedHandlers(w, impl_name);
     }
+    // CSSOM 6.6.2: CSSStyleProperties' CSS property attributes.
+    if (writer.isCSSPropertyAttributesInterface(interface.name)) {
+        try writer.writeCSSPropertyAttributes(w, impl_name);
+    }
 
     // Close struct
     try writer.writeStructEnd(w);

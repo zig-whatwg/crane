@@ -265,6 +265,22 @@ test "HTMLFormElement's named properties are left out of [[OwnPropertyKeys]], as
     }
 }
 
+test "CSSStyleProperties' CSS property attributes are prototype accessors, not named properties" {
+    var out = try Generated.init();
+    defer out.deinit();
+    const properties = try out.file("CSSStyleProperties");
+    defer testing.allocator.free(properties);
+    // Only the inherited indexed getter: no named handler masks the object.
+    try expectTable(properties, &.{
+        ".indexed_getter = .{ .function = \"call_item\" },",
+    });
+    try testing.expect(!contains(properties, "call_namedItem"));
+    // The table and the delegates the binding defines the accessors from.
+    try testing.expect(contains(properties, "pub const css_property_attributes = CSSStylePropertiesImpl.css_property_attributes;"));
+    try testing.expect(contains(properties, "pub fn getCssPropertyAttribute(instance: *runtime.Instance, index: usize) anyerror!runtime.DOMString {"));
+    try testing.expect(contains(properties, "pub fn setCssPropertyAttribute(instance: *runtime.Instance, index: usize, value: runtime.DOMString) anyerror!void {"));
+}
+
 test "a CSS declaration interface's named properties are Crane's camel-cased attributes, and say so" {
     var out = try Generated.init();
     defer out.deinit();
