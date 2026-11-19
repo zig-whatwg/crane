@@ -3789,7 +3789,19 @@ fn newTopLevelTraversable(window: *runtime.Instance, target: []const u8, noopene
     // context group of its own.
     if (noopener) {
         setOpenerNoopener(created.window) catch {};
-        if (integration.browsing_context) |bc| bc.startOwnGroup();
+        if (integration.browsing_context) |bc| {
+            bc.startOwnGroup();
+            // Deviation, stated (golden rule 2): step 8.8.2's one permitted
+            // sandboxed navigator is set in the opener branch only, so a
+            // sandboxed document's noopener popup could not be navigated by
+            // the window open steps' own navigation; Chrome 157, Firefox 160
+            // and Safari 27.2 all load it (html/cross-origin-opener-policy/
+            // coop-sandbox.https.html and coop-coep-sandbox.https.html,
+            // "allow-popups allow-scripts allow-popups-to-escape-sandbox":
+            // a sandboxed srcdoc frame under COOP same-origin opens with
+            // noopener by step 8.4, and its popup loads).
+            if (current_flags.navigation) bc.one_permitted_sandboxed_navigator = internal.browsing_context;
+        }
     } else {
         setOpener(created.window, window) catch {};
         // Step 8.8.2: "If sandboxingFlagSet's sandboxed navigation browsing
@@ -3833,7 +3845,10 @@ fn chooseTopLevelTraversable(current_window: *runtime.Instance, target: []const 
     // sandboxing flag set has the sandboxed auxiliary navigation browsing
     // context flag set.
     if (sandboxingFlagsOfWindow(current_window).auxiliary_navigation) return null;
-    const created = (newTopLevelTraversable(current_window, target, noopener, false, current_window) catch null) orelse return null;
+    // Step 8.4: a nested document cross-origin with its top-level origin
+    // under "same-origin" opens with noopener, named "_blank".
+    const coop_noopener = crossOriginUnderSameOriginOpenerPolicy(current_window);
+    const created = (newTopLevelTraversable(current_window, if (coop_noopener) "_blank" else target, noopener or coop_noopener, false, current_window) catch null) orelse return null;
     return .{ .integration = @ptrCast(created.integration), .window = created.window };
 }
 
