@@ -1909,3 +1909,17 @@ revisit         = when User-Agent Client Hints reaches a standards track, or Chr
 kind      = needs-renderer
 why       = each subtest's hover step moves the pointer with invoker-utils hoverOver(), which reads button.getBoundingClientRect() and moves to the rect's centre in viewport coordinates; with no renderer the rect is 0x0 at (0,0), so the pointer lands at the viewport's origin - the document element, not the button in the top-layer dialog, popover or select picker - and the button never matches :hover
 assertion = assert_true: button has :hover expected true got false (all four subtests)
+
+# follows-majority (lane blk4, 2026-11-19; the integrator's ruling 9:50 AM ET): two location.reload() calls in a row
+# load the page once more, as in all three browsers (fb23ca56a30, History's reload rule (c)). Lane blk4's tip on
+# chat.local (q-e77bfed94bd), production runner: the same failing assertion as Chrome, Firefox and Safari.
+
+[html/browsers/history/the-location-interface/reload_document_write_onload.html]
+kind            = follows-majority
+why             = a top-level location.reload() made while the earlier one is still queued or running replaces it, so the popup's document loads twice in all (4 messages: original, written, original, written) where the test expects 3, exactly as in Chrome, Firefox and Safari ("lengths differ ... length 4" in all three); HTML's traversal queue would run both reloads (6)
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+matches         = chrome, firefox, safari
+ruling          = golden rule 2, the browsers agreeing with no newer spec: the integrator, 2026-11-19 9:50 AM ET (lane blk4), superseding the 2026-10-28 line that kept location.reload() on the spec's queue
+revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
