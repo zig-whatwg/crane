@@ -25,13 +25,50 @@ const DOMString = runtime.DOMString;
 /// editing4's, blocks.zig).
 pub const ParagraphAction = *const fn (edit: *Edit) anyerror!bool;
 
+/// After insertText's deletion, where the text goes, as all three
+/// browsers put it: into the text that follows when the deletion left the
+/// caret at the end of the text before it (its downstream point) and no
+/// typing style is pending - `abc[<b><i>de]f</i></b>ghi` + "d", "e" types
+/// `abc<b><i>def</i></b>ghi` (editing/run/inserttext.html, PPP at wpt.fyi
+/// 2358bd4835; Blink's InsertTextCommand inserts at the selection's
+/// downstream start) - and never into a link the deletion emptied: `foo<a
+/// href=...>[bar</a>baz]` + "a" types `fooa` (PPP; Blink
+/// PositionAvoidingSpecialElementBoundary). The spec inserts at the
+/// deletion's caret. Golden rule 2, no newer spec.
+fn moveToInsertionPoint(edit: *Edit) !void {
+    if (!try edit.rangeCollapsed()) return;
+    var caret = (try edit.rangeStart()) orelse return;
+    // An emptied link goes, the caret where it was.
+    var current: ?*Instance = caret.node;
+    while (current) |c| : (current = try common.parent(c)) {
+        if (!try common.isEditable(c)) break;
+        if (!common.isInlineNode(c)) break;
+        if ((try common.isHtmlElementNamed(c, "a")) and !try common.isVisible(c)) {
+            const p = (try common.parent(c)) orelse break;
+            const index = try common.indexOf(c);
+            try edit.removeNode(c);
+            try edit.collapse(p, index);
+            caret = .{ .node = p, .offset = index };
+            break;
+        }
+    }
+    if (try overrides.hasOverrides(edit)) return;
+    const downstream = try common.lastEquivalentPoint(caret);
+    if (downstream.eql(caret) or !common.isText(downstream.node)) return;
+    if ((try common.parent(downstream.node)) == (try common.parent(caret.node))) return;
+    try edit.collapse(downstream.node, downstream.offset);
+}
+
 /// The insertText action with `value`.
 pub fn action(edit: *Edit, value: []const u8, insert_paragraph: ParagraphAction) anyerror!bool {
     // Step 1: "Delete the selection, with strip wrappers false." Run only
     // for a non-collapsed range: on a collapsed one it only canonicalizes
     // the white-space around the caret, which step 11 does anyway (lane
     // editing2's measured behaviour, editing/run/inserttext.html).
-    if (!try edit.rangeCollapsed()) try delete.deleteTheSelection(edit, true, false, .forward);
+    if (!try edit.rangeCollapsed()) {
+        try delete.deleteTheSelection(edit, true, false, .forward);
+        try moveToInsertionPoint(edit);
+    }
     // Step 2: "If the active range's start node is neither editable nor an
     // editing host, return true."
     const start = (try edit.rangeStart()) orelse return true;

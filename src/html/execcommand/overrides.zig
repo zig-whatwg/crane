@@ -76,6 +76,11 @@ fn current(edit: *Edit) !*FormattingOverrides {
     return store;
 }
 
+/// Whether any state or value override is set for the current selection.
+pub fn hasOverrides(edit: *Edit) !bool {
+    return (try current(edit)).any();
+}
+
 fn stateCommand(command: Command) ?FormattingOverrides.StateCommand {
     return switch (command) {
         .bold => .bold,
