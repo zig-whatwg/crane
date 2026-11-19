@@ -117,7 +117,7 @@ var implementation: Hook(Implementation) = .init(.{});
 
 /// The installed steps, for dom.image_bitmaps and dom.canvas_2d, whose
 /// owners install them into this one table.
-pub fn installed() Implementation {
+pub fn installed() *const Implementation {
     return implementation.read();
 }
 
