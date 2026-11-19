@@ -1201,15 +1201,6 @@ matches         = chrome, firefox, safari
 ruling          = the integrator's golden-rule-2 ruling, 2026-10-17 (lane gr2audit): a WebSocket violation reports the ws/wss URL as all three browsers do; the http(s) text is from 2016 (whatwg/fetch ce16adc5), no engine shipped it or has a bug open, and w3c/webappsec-csp#735 is open
 revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
 
-[dom/nodes/insertion-removing-steps/Node-appendChild-script-and-default-style-meta-from-fragment.html]
-kind            = follows-majority
-why             = the alternate style sheet a <meta http-equiv=default-style> selects is not applied yet when the later-inserted script runs, as in Firefox and Safari; only Chrome passes, because Blink loads data: style sheets synchronously
-chrome.result   = wpt.fyi run 4786307730243584: 1/1 (Chrome 157, 2358bd4835)
-firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
-safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
-matches         = firefox, safari
-revisit         = when Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
-
 [editing/other/cefalse-boundaries-deletion.html]
 kind            = follows-majority
 why             = selectAll then delete leaves the contenteditable=false elements at the boundaries of the editing host in place - the Editing spec's delete skips non-editable nodes - as Chrome and Safari do; only Firefox removes them
