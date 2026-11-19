@@ -1900,3 +1900,12 @@ safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
 matches         = firefox, safari
 ruling          = the integrator, 2026-11-19 9:02 AM ET (lane blk4): UA Client Hints is a WICG draft (not on a standards track); only Chrome ships it; Crane = Firefox = Safari by failing assertion
 revisit         = when User-Agent Client Hints reaches a standards track, or Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+# needs-renderer (lane blk4, 2026-11-19): after lane blk4's :focus-within fix for an open select picker
+# (f8a3769504a), every subtest's focus part passes and each fails only at its hover step. Lane blk4's tip on
+# chat.local (q-f79c9b93770), production runner.
+
+[css/selectors/user-action-pseudo-top-layer.html]
+kind      = needs-renderer
+why       = each subtest's hover step moves the pointer with invoker-utils hoverOver(), which reads button.getBoundingClientRect() and moves to the rect's centre in viewport coordinates; with no renderer the rect is 0x0 at (0,0), so the pointer lands at the viewport's origin - the document element, not the button in the top-layer dialog, popover or select picker - and the button never matches :hover
+assertion = assert_true: button has :hover expected true got false (all four subtests)
