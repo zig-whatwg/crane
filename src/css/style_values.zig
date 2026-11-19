@@ -474,6 +474,13 @@ pub const Keyword = enum(u16) {
     // Color HDR 1 §3.1 dynamic-range-limit (no-limit is shared above).
     standard,
     constrained,
+    // Display 4 §4 reading-flow (normal is shared above).
+    source_order,
+    flex_visual,
+    flex_flow,
+    grid_rows,
+    grid_columns,
+    grid_order,
 
     /// The keyword's CSS spelling.
     pub fn name(self: Keyword) []const u8 {
