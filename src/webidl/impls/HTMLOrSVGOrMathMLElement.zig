@@ -62,6 +62,8 @@ pub fn installHooks() void {
     dom.mutation.registerPostConnectionStepsCallback(&nonceConnectionSteps) catch @panic("out of memory installing nonce connection steps");
     dom.mutation.registerInsertionStepsCallback(&nonceInsertionSteps) catch @panic("out of memory installing nonce insertion steps");
     dom.cloning_steps.install(&nonceCloningSteps);
+    // The parser's html/body attribute merge (dom.nonce_hiding).
+    dom.nonce_hiding.install(.{ .hide = &hideMergedNonce, .has_nonce = &hasNonceValue });
 }
 
 /// Whether `instance` is an element that includes this mixin: an HTML, SVG
@@ -165,6 +167,20 @@ fn nonceCandidate(node: *dom.NodeBase) ?*runtime.Instance {
     const instance: *runtime.Instance = @ptrCast(@alignCast(dom.instance_bridge.getInstance(node) orelse return null));
     if (rare_data.getBytes(rare_data.of(instance), .nonce) == null) return null;
     return instance;
+}
+
+/// dom.nonce_hiding's hide: the parser added a nonce attribute to
+/// `instance`, connected (an html or body element it had made already). The
+/// attribute's change steps gave it a slot; none means nothing to hide.
+fn hideMergedNonce(instance: *runtime.Instance) void {
+    if (!includesMixin(instance)) return;
+    if (rare_data.getBytes(rare_data.of(instance), .nonce) == null) return;
+    hideNonce(instance);
+}
+
+/// dom.nonce_hiding's has_nonce: a nonempty [[CryptographicNonce]].
+fn hasNonceValue(instance: *runtime.Instance) bool {
+    return nonceValueOf(instance).len > 0;
 }
 
 /// HTML 2.5.6's hiding steps 1-2.3 for `instance`, connected with a slot.

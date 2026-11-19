@@ -319,9 +319,9 @@ fn prepareScriptElementFor(
         // hashes and 'strict-dynamic' are csp.inline_check's).
         if (node_document != null) {
             // CSP 6.7.3.1 "Is element nonceable?": one with a nonce
-            // attribute; step 2's scan of a script's attributes for
-            // "<script" and the like is csp_violations.shouldBlockInline's.
-            // Not modelled, stated: step 3's duplicate-attribute parse error.
+            // attribute; steps 2-3 - the scan of a script's attributes for
+            // "<script" and the like, the parser's duplicate-attribute
+            // record - are csp_violations.shouldBlockInline's.
             // A violation reports the script's start in its document when no
             // script is running - the parser blocking it (Blink's
             // ContentSecurityPolicy::AllowInline context line;
@@ -1808,9 +1808,17 @@ fn prepareSvgScriptElement(allocator: std.mem.Allocator, element: *runtime.Insta
     // an SVG document a navigation loads with a script-src policy runs none
     // of its inline scripts (content-security-policy/svg/svg-policy-with-
     // resource.html).
+    // A violation reports the script's start in its document when no
+    // script is running - the parser blocking it - as an HTML script's does
+    // (nonce-enforce-blocked.html's SVG case expects its line).
     if (href == null) {
         const nonce = getNonceAttribute(element);
-        if (!document_scripts.inlineScriptAllowedByCsp(document, element, source, if (nonce.len > 0) nonce else null, parser_inserted)) {
+        const start: ?script_elements.StartPosition = if (parser_inserted) state.start else null;
+        if (dom.csp_violations.shouldBlockInline(element, .script, source, .{
+            .nonce = if (nonce.len > 0) nonce else null,
+            .parser_inserted = parser_inserted,
+            .position = if (start) |at| .{ .line = at.line, .column = at.column } else null,
+        })) {
             log.debug("CSP blocked inline SVG script", .{});
             return;
         }
@@ -3381,7 +3389,9 @@ fn resolveUrl(allocator: std.mem.Allocator, url: []const u8, base_url: []const u
 /// the request against the client's CSP list with them (a nonce or a listed
 /// hash lets it through).
 fn setUpScriptRequest(request: *fetch.internal.InternalRequest, element: *runtime.Instance) !void {
-    const nonce = getNonceAttribute(element);
+    // Only a nonceable element's nonce (dom.csp_violations.nonceableScriptNonce
+    // says why: the browsers apply CSP 6.7.3.1 to an external script too).
+    const nonce = dom.csp_violations.nonceableScriptNonce(element, getNonceAttribute(element));
     if (nonce.len > 0) try request.setCryptographicNonceMetadata(nonce);
     try request.setIntegrityMetadata(getAttribute(element, "integrity") orelse "");
     const state = script_element_state.of(element);
@@ -3401,7 +3411,8 @@ fn scriptCredentialsMode(element: *runtime.Instance) fetch.internal.CredentialsM
 fn scriptFetchOptions(element: *runtime.Instance, credentials_mode: fetch.internal.CredentialsMode) module_script.FetchOptions {
     const state = script_element_state.of(element);
     return .{
-        .nonce = getNonceAttribute(element),
+        // A nonceable element's nonce only (setUpScriptRequest).
+        .nonce = dom.csp_violations.nonceableScriptNonce(element, getNonceAttribute(element)),
         .credentials_mode = credentials_mode,
         .integrity = getAttribute(element, "integrity") orelse "",
         .parser_inserted = state != null and state.?.parser_document != null,

@@ -479,6 +479,13 @@ pub const TagToken = struct {
     /// Used to detect non-void elements with self-closing tags.
     self_closing_acknowledged: bool,
 
+    /// Whether an attribute was dropped from this token as a duplicate - a
+    /// duplicate-attribute parse error during tokenization - which the
+    /// element made for it keeps: CSP 6.7.3.1 "Is element nonceable?" step 3
+    /// asks it (whatwg/html#3257 is the hook HTML has yet to name; Blink's
+    /// Element::HasDuplicateAttribute, set by the parser, answers it).
+    had_duplicate_attribute: bool = false,
+
     /// Allocator for memory management.
     allocator: Allocator,
 
@@ -492,6 +499,7 @@ pub const TagToken = struct {
             .attribute_names = null,
             .current_attribute = null,
             .self_closing_acknowledged = false,
+            .had_duplicate_attribute = false,
             .allocator = allocator,
         };
     }
@@ -614,7 +622,9 @@ pub const TagToken = struct {
             if (!is_duplicate) {
                 try self.attributes.append(attr);
             } else {
-                // Discard duplicate attribute
+                // Discard duplicate attribute ("the new attribute must be
+                // removed from the token"), and remember the parse error.
+                self.had_duplicate_attribute = true;
                 var mutable_attr = attr;
                 mutable_attr.deinit();
             }
@@ -1127,6 +1137,33 @@ test "TagToken - duplicate attributes" {
     const id_attr = tag.getAttribute("id");
     try std.testing.expect(id_attr != null);
     try std.testing.expectEqualStrings("first", id_attr.?.getValue());
+    // The duplicate-attribute parse error is remembered (CSP 6.7.3.1 step 3).
+    try std.testing.expect(tag.had_duplicate_attribute);
+}
+
+test "TagToken - the duplicate-attribute flag is set by a duplicate only, past the hash-set threshold too" {
+    const allocator = std.testing.allocator;
+    var tag = TagToken.init(allocator, false);
+    defer tag.deinit();
+    // Six distinct names, then a seventh repeating the first: the hash set
+    // path (more than four attributes).
+    for ("abcdefa", 0..) |name, index| {
+        try tag.startNewAttribute();
+        try tag.appendToAttributeName(name);
+        if (index < 6) try std.testing.expect(!tag.had_duplicate_attribute);
+    }
+    try tag.finishCurrentAttribute();
+    try std.testing.expectEqual(@as(usize, 6), tag.attributes.len);
+    try std.testing.expect(tag.had_duplicate_attribute);
+
+    var clean = TagToken.init(allocator, false);
+    defer clean.deinit();
+    for ("xy") |name| {
+        try clean.startNewAttribute();
+        try clean.appendToAttributeName(name);
+    }
+    try clean.finishCurrentAttribute();
+    try std.testing.expect(!clean.had_duplicate_attribute);
 }
 
 test "CommentToken - basic usage" {

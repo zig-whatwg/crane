@@ -278,12 +278,17 @@ test "a window member called with another same-origin window's this acts on that
 /// values they are handed are theirs to release.
 const idle_window_operations = runtime.WindowOperations{
     .initializeTimer = struct {
-        fn f(_: runtime.Context, handler: runtime.WindowTimerHandler, _: i32, arguments: []const runtime.JSValue, _: bool) i32 {
+        fn f(_: runtime.Context, handler: runtime.WindowTimerHandler, _: i32, arguments: []const runtime.JSValue, _: bool) runtime.EngineError!i32 {
             switch (handler) {
                 inline else => |h| v8_engine.v8ReleaseValue(h),
             }
             for (arguments) |argument| v8_engine.v8ReleaseValue(argument);
             return 0;
+        }
+    }.f,
+    .isTrustedScript = struct {
+        fn f(_: *runtime.Instance) bool {
+            return false;
         }
     }.f,
     .clearTimer = struct {

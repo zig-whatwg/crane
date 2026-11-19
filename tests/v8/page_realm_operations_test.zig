@@ -218,6 +218,11 @@ const Seen = struct {
     cleared: ?i32 = null,
     frames: usize = 0,
     cancelled: ?u32 = null,
+    /// What the host's timer steps answer, when set: the error the binding
+    /// throws (HTML timer initialization step 1.4's Trusted Types TypeError).
+    fail_with: ?runtime.EngineError = null,
+    /// How often the binding asked whether a handler is a TrustedScript.
+    trusted_script_questions: usize = 0,
 
     fn stringSource(self: *const Seen) []const u8 {
         return self.string_source[0..self.string_len];
@@ -226,7 +231,7 @@ const Seen = struct {
 
 var seen: Seen = .{};
 
-fn testInitializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) i32 {
+fn testInitializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, timeout: i32, arguments: []const runtime.JSValue, repeat: bool) runtime.EngineError!i32 {
     seen.realm = r;
     seen.timers += 1;
     seen.timeout = timeout;
@@ -244,10 +249,18 @@ fn testInitializeTimer(r: runtime.Context, handler: runtime.WindowTimerHandler, 
             _ = ffi.v8_String_WriteUtf8(string, &seen.string_source, @intCast(seen.string_len));
             v8.engine.v8ReleaseValue(h);
         },
+        // No platform object here is a TrustedScript (testIsTrustedScript).
+        .trusted_script => |h| v8.engine.v8ReleaseValue(h),
     }
     // Every argument is the host's to release.
     for (arguments) |argument| v8.engine.v8ReleaseValue(argument);
+    if (seen.fail_with) |err| return err;
     return 41 + @as(i32, @intCast(seen.timers));
+}
+
+fn testIsTrustedScript(_: *runtime.Instance) bool {
+    seen.trusted_script_questions += 1;
+    return false;
 }
 
 fn testClearTimer(r: runtime.Context, id: i32) void {
@@ -271,6 +284,7 @@ fn testWindowDestroyed(_: runtime.Context) void {}
 
 const test_operations = runtime.WindowOperations{
     .initializeTimer = testInitializeTimer,
+    .isTrustedScript = testIsTrustedScript,
     .clearTimer = testClearTimer,
     .requestAnimationFrame = testRequestAnimationFrame,
     .cancelAnimationFrame = testCancelAnimationFrame,
@@ -323,6 +337,30 @@ test "setTimeout without a handler, or with one whose ToString throws, throws" {
     try std.testing.expectEqual(@as(usize, 1), reports.count);
     try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "no string") != null);
     try std.testing.expectEqual(@as(usize, 0), seen.timers);
+}
+
+test "the host's timer steps can throw: a TypeError is thrown, and only a platform object is asked about TrustedScript" {
+    defer test_agent.close();
+    _ = try installed();
+
+    // A string and a plain object are no platform objects: the binding never
+    // asks the host whether they implement TrustedScript.
+    _ = try run("setTimeout('1'); setTimeout({});");
+    try std.testing.expectEqual(@as(usize, 0), seen.trusted_script_questions);
+    try std.testing.expectEqual(@as(usize, 2), seen.timers);
+
+    // Trusted Types refuses the string (HTML timer initialization step 1.4):
+    // the call throws a TypeError, which script can catch, and returns no id.
+    seen.fail_with = error.TypeError;
+    var reports = try run("globalThis.caught = 0; try { globalThis.id = setTimeout('1'); } catch (e) { globalThis.caught = e instanceof TypeError ? 1 : 2; }");
+    try std.testing.expectEqual(@as(usize, 0), reports.count);
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt("globalThis.caught"));
+    try std.testing.expectEqual(@as(i32, 1), try scriptInt("typeof globalThis.id === 'undefined' ? 1 : 0"));
+    // Uncaught, it is reported.
+    reports = try run("setInterval('1', 0);");
+    try std.testing.expectEqual(@as(usize, 1), reports.count);
+    try std.testing.expect(std.mem.indexOf(u8, reports.messageText(), "TypeError") != null);
+    seen.fail_with = null;
 }
 
 test "clearTimeout and clearInterval convert the id with ToInt32" {

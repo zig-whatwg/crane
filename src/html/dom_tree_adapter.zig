@@ -401,7 +401,7 @@ pub const DomTreeAdapter = struct {
             parser_script_execution.recordStartPosition(element, self.document);
         }
         // "Append each attribute in the given token to element."
-        parser_script_execution.appendParsedAttributes(element, tree_node.attributes.toSlice(), &self.attribute_run);
+        parser_script_execution.appendParsedAttributes(element, tree_node, &self.attribute_run);
 
         // Capture the token's stylesheet state before connection. A style
         // block also waits for its pop callback before reading its text.

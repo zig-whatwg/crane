@@ -101,9 +101,9 @@ pub fn ensureCSPDoesNotBlockStringCompilation(global: *runtime.Instance, code_st
 }
 
 /// CSP 4.4.1 for a timer's string handler `handler` in `global` - compilationType
-/// TIMER, so no Trusted Types steps - as the timer initialization steps run it
-/// at the call (src/browser/Context.zig initializeTimer says why not when the
-/// timer fires, as HTML's step 10.8.2 has it): each policy's violation is
+/// TIMER, so no Trusted Types steps (the timer initialization steps ran them
+/// just before, step 1.4) - as those steps run it, at the call (step 1.5;
+/// src/browser/Context.zig initializeTimer): each policy's violation is
 /// reported (blockedURI "eval", the handler as the 'report-sample' sample),
 /// and false means an enforced policy blocked it - the call returns 0 and no
 /// exception is reported.
