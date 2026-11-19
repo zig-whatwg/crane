@@ -1042,6 +1042,11 @@ EXCLUDE = [
      'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
     ('content-security-policy/script-src/audioworklet-trusted-types-eval-blocked.https.html',
      'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
+    # The integrator's ruling on lane net2's triage (2026-11-18, 5:22 PM ET), as the two above: transferring a
+    # stream to an AudioWorkletProcessor needs an AudioWorkletNode whose port talks to its processor's (Chrome 158
+    # and Firefox 160 pass 3/3, Safari 27.2 0/3); the transferable-streams files that need no Web Audio stay.
+    ('streams/transferable/audioworklet.https.html',
+     'needs AudioWorkletNode and its port: Web Audio is out of scope (the integrator, 2026-11-18)'),
     # - filesystem: URLs: the File API: Directories and System, a W3C Working Group Note (2014) that was
     #   never ratified; only Chrome ships webkitRequestFileSystem (Firefox 160 and Safari 27.2 fail both
     #   files as Crane does).
