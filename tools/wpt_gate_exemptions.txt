@@ -1857,3 +1857,46 @@ safari.result   = wpt.fyi run 6479119966273536: 0/9 (Safari 27.2, 2358bd4835)
 matches         = firefox, safari
 ruling          = the integrator, 2026-11-18 10:13 PM ET (lane css2): no specification; only Chrome ships it; Crane = Firefox = Safari by failing assertion
 revisit         = when a specification or webref defines TimelineTrigger, or Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
+
+# test-bug (lane blk4, 2026-11-19; filed on the user's "File all 5", 6:37 AM ET; main's OK 9:02 AM ET). Each fails
+# identically in Chrome, Firefox and Safari at Crane's WPT revision 2358bd4835, and Crane fails at the same step
+# (generation 231, wpt-results/sweep-412c03b927).
+
+[content-security-policy/sandbox/autoplay-disabled-by-csp.html]
+kind            = test-bug
+why             = the parent reads iframe.contentWindow.document of a frame its CSP sandboxes into an opaque origin (no allow-same-origin), so the access throws SecurityError: harness ERROR and the autoplay subtest TIMEOUT in Chrome, Firefox, Safari and Crane alike (only each engine's SecurityError text differs)
+upstream        = https://github.com/web-platform-tests/wpt/issues/65463
+chrome.result   = wpt.fyi run 4786307730243584: 1/2 (ERROR, Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 1/2 (ERROR, Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 1/2 (ERROR, Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65463 is resolved
+
+[referrer-policy/generic/inheritance/popup-inheritance-form-submission.html]
+kind            = test-bug
+why             = the test asserts the test page's own document.referrer instead of the popup's, so its one subtest fails at the same assertion in Chrome, Firefox, Safari and Crane
+upstream        = https://github.com/web-platform-tests/wpt/issues/65464
+chrome.result   = wpt.fyi run 4786307730243584: 0/1 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/1 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/1 (Safari 27.2, 2358bd4835)
+revisit         = when https://github.com/web-platform-tests/wpt/issues/65464 is resolved
+
+# needs-renderer (lane blk4, 2026-11-19; main's OK 9:02 AM ET): generation 231's messages.
+
+[css/css-grid/parsing/grid-content-sized-columns-resolution.html]
+kind      = needs-renderer
+why       = all 42 subtests read getComputedStyle(grid).gridTemplateColumns, whose resolved value for a grid container is its used track sizes (CSS Grid 7.2.6) - min-content/max-content/auto tracks sized from Ahem items by the track sizing algorithm, which needs layout; with no box Crane answers the computed track list
+assertion = assert_equals: expected "15px 75px" but got "minmax(min-content, 15px) auto" (the other 41 subtests likewise: the computed track list where the used sizes are expected)
+
+# follows-majority (lane blk4, 2026-11-19; main's ruling 9:02 AM ET): an API only an unratified draft defines, which
+# only Chrome ships. Crane fails both subtests as Firefox and Safari do, at the same step (navigator.userAgentData is
+# undefined; only the engines' wording of the TypeError differs). Generation 231's messages.
+
+[workers/WorkerNavigator_userAgentData.https.html]
+kind            = follows-majority
+why             = Crane exposes no navigator.userAgentData in workers (or windows), so the worker's brands read fails and getHighEntropyValues is read from undefined, as in Firefox and Safari (the same TypeError in each engine's wording); only Chrome ships User-Agent Client Hints
+chrome.result   = wpt.fyi run 4786307730243584: 2/2 (Chrome 157, 2358bd4835)
+firefox.result  = wpt.fyi run 4877168468033536: 0/2 (Firefox 160, 2358bd4835)
+safari.result   = wpt.fyi run 6479119966273536: 0/2 (Safari 27.2, 2358bd4835)
+matches         = firefox, safari
+ruling          = the integrator, 2026-11-19 9:02 AM ET (lane blk4): UA Client Hints is a WICG draft (not on a standards track); only Chrome ships it; Crane = Firefox = Safari by failing assertion
+revisit         = when User-Agent Client Hints reaches a standards track, or Chrome, Firefox or Safari changes its result on a newer aligned wpt.fyi run, or Crane's result moves
