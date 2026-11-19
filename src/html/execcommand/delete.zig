@@ -1332,9 +1332,13 @@ pub fn deleteAction(edit: *Edit) !bool {
     if ((common.isText(point.node) and point.offset != 0) or
         (common.isBlockNode(point.node) and ((try childBeforeIsNamed(point, &.{ "br", "hr", "img" })) or try childBeforeIsIgnoredContent(point))))
     {
+        // A line break that white-space collapsing hides spaces around goes
+        // with them (see collapsedLineBreakRun).
+        const from = if (common.isText(point.node)) (try collapsedLineBreakRun(point.node, point.offset, .backward)) orelse point.offset - 1 else point.offset - 1;
         try edit.collapse(point.node, point.offset);
-        try edit.extend(point.node, point.offset - 1);
+        try edit.extend(point.node, from);
         try deleteTheSelection(edit, true, true, .forward);
+        if (common.isText(point.node)) try padTrailingLineFeed(edit, point.node);
         return true;
     }
     // Step 6.
@@ -1639,6 +1643,9 @@ pub fn forwardDeleteAction(edit: *Edit) !bool {
                 if (!unicode_data.isMark(code_point)) break;
             }
         }
+        // A line break that white-space collapsing hides spaces around goes
+        // with them (see collapsedLineBreakRun).
+        if (try collapsedLineBreakRun(point.node, point.offset, .forward)) |run_end| end_offset = run_end;
         // Steps 5.3-5.6.
         try edit.collapse(point.node, point.offset);
         try edit.extend(point.node, end_offset);
@@ -1788,6 +1795,119 @@ fn hasVisibleContentAfter(point: Point, host: *Instance) !bool {
 
 fn isElementDisplayNone(node: *Instance) bool {
     return common.isElement(node) and common.displayIsNone(node);
+}
+
+const RunDirection = enum { forward, backward };
+
+/// Where a Backspace (backward) or Delete (forward) at `offset` in the Text
+/// node `text` ends when the character it meets is a line feed or a space
+/// next to one that white-space collapsing hides: the other end of the run
+/// of spaces, tabs and line feeds holding a line feed - under pre-line the
+/// spaces around the line break, under normal and nowrap the run that
+/// renders as one space - or null when the next character is not in such a
+/// run (or spaces are preserved). All three browsers delete `foo[] \nbar`
+/// in a pre-line or nowrap div to `foobar` (Chrome and Firefox the
+/// pre-line Delete), where the spec deletes one invisible space
+/// (editing/run/delete.html and forwarddelete.html: 14 subtests PPP or PPF
+/// at wpt.fyi 2358bd4835). Blink deletes up to the next VisiblePosition,
+/// past collapsed white-space; Gecko's WSRunScanner treats the collapsed
+/// run as one visible unit. Golden rule 2, no newer spec.
+fn collapsedLineBreakRun(text: *Instance, offset: u32, direction: RunDirection) !?u32 {
+    const ws = try common.whiteSpaceAround(text);
+    if (ws.preservesSpaces()) return null;
+    var data = try common.textData(text);
+    defer data.deinit(text.ctx.allocator);
+    const bytes = data.asSlice();
+    const length = common.utf16Length(bytes);
+    const isRunUnit = struct {
+        fn f(unit: u16) bool {
+            return unit == ' ' or unit == '\t' or unit == '\n';
+        }
+    }.f;
+    // The run around the character the key meets.
+    var from = offset;
+    var to = offset;
+    switch (direction) {
+        .forward => {
+            if (offset >= length) return null;
+            const unit = common.codeUnitAt(bytes, offset) orelse return null;
+            if (!isRunUnit(unit)) return null;
+        },
+        .backward => {
+            if (offset == 0) return null;
+            const unit = common.codeUnitAt(bytes, offset - 1) orelse return null;
+            if (!isRunUnit(unit)) return null;
+        },
+    }
+    while (from > 0) {
+        const unit = common.codeUnitAt(bytes, from - 1) orelse break;
+        if (!isRunUnit(unit)) break;
+        from -= 1;
+    }
+    while (to < length) {
+        const unit = common.codeUnitAt(bytes, to) orelse break;
+        if (!isRunUnit(unit)) break;
+        to += 1;
+    }
+    // Only a run holding a line feed.
+    var has_line_feed = false;
+    var i = from;
+    while (i < to) : (i += 1) {
+        if (common.codeUnitAt(bytes, i) == '\n') has_line_feed = true;
+    }
+    if (!has_line_feed) return null;
+    if (!ws.preservesNewlines()) {
+        // normal, nowrap: the run is one rendered space - all of it goes.
+        return if (direction == .forward) to else from;
+    }
+    // pre-line: one line feed per line break; the spaces around it are
+    // collapsed. The key takes the line break nearest it and the spaces
+    // between.
+    switch (direction) {
+        .forward => {
+            var j = offset;
+            while (j < to and common.codeUnitAt(bytes, j) != '\n') : (j += 1) {}
+            if (j == to) return null;
+            j += 1;
+            while (j < to and common.codeUnitAt(bytes, j) != '\n') : (j += 1) {}
+            return j;
+        },
+        .backward => {
+            var j = offset;
+            while (j > from and common.codeUnitAt(bytes, j - 1) != '\n') : (j -= 1) {}
+            if (j == from) return null;
+            j -= 1;
+            while (j > from and common.codeUnitAt(bytes, j - 1) != '\n') : (j -= 1) {}
+            return j;
+        },
+    }
+}
+
+/// After Backspace, a Text node whose white-space keeps line feeds and that
+/// now ends its block with one gets a padding br, so the empty last line
+/// shows: all three browsers give `<div style=white-space:pre>foo\nb[]
+/// </div>` -> `foo\n<br>` or `foo\n\n` (delete.html, PPP for pre,
+/// pre-wrap and pre-line at wpt.fyi 2358bd4835; Chrome 157 adds the br).
+/// Gecko: InsertPaddingBRElementToMakeEmptyLineVisibleIfNeeded.
+fn padTrailingLineFeed(edit: *Edit, text: *Instance) !void {
+    if (!(interfaces.Node.get_isConnected(text) catch false)) return;
+    if (!(try common.whiteSpaceAround(text)).preservesNewlines()) return;
+    var data = try common.textData(text);
+    defer data.deinit(text.ctx.allocator);
+    const bytes = data.asSlice();
+    if (bytes.len == 0 or bytes[bytes.len - 1] != '\n') return;
+    // Nothing follows it up to its block's end.
+    var node = text;
+    while (true) {
+        if ((try common.nextSibling(node)) != null) return;
+        const p = (try common.parent(node)) orelse return;
+        if (!common.isInlineNode(p)) break;
+        node = p;
+    }
+    const p = (try common.parent(text)) orelse return;
+    if (!try common.isAllowedChild(.{ .name = "br" }, p)) return;
+    const br = try edit.createElement("br");
+    try edit.insertBefore(p, br, null);
 }
 
 /// Whether `node` is what Backspace and Delete remove whole when the caret
