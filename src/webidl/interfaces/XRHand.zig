@@ -177,4 +177,9 @@ pub const XRHand = struct {
     pub fn getEntriesForIterable(instance: *runtime.Instance) ?[]const XRHandImpl.IterableEntry {
         return XRHandImpl.getEntriesInternal(instance);
     }
+
+    /// The impl's snapshot of the value pairs to iterate over, taken once
+    /// when iteration starts (`iterableSnapshot`), or null when the
+    /// impl's live list (`getEntriesInternal`) is read at each step.
+    pub const iterable_snapshot = if (@hasDecl(XRHandImpl, "iterableSnapshot")) XRHandImpl.iterableSnapshot else null;
 };

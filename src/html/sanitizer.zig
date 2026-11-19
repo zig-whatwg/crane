@@ -995,11 +995,15 @@ const default_svg_elements =
     \\tspan dx dy lengthAdjust rotate textLength x y
 ;
 
-/// Document.parseHTML[Unsafe], steps 4–6 after parsing the inactive document.
-pub fn filterDocument(document: *runtime.Instance, converted: *const Converted, safe: bool) !void {
-    var config = try Config.fromConverted(document.ctx.allocator, document.ctx, converted, !safe);
-    defer config.deinit();
-    try sanitize(document, &config, safe);
+/// Document.parseHTML steps 3-4: HTML "get a sanitizer config from options"
+/// steps 7-16 for `converted` - a new Sanitizer configured with it, with
+/// permissive defaults when not `safe`, and Safe's unsafe content removed
+/// (step 14) - the configuration its parser sanitizes with. OWNED.
+pub fn documentConfig(realm: runtime.Context, converted: *const Converted, safe: bool) !Config {
+    var config = try Config.fromConverted(realm.allocator, realm, converted, !safe);
+    errdefer config.deinit();
+    if (safe) _ = try config.removeUnsafe();
+    return config;
 }
 
 /// HTML "sanitize", steps 1–4. Safe mode copies the configuration before
@@ -1018,9 +1022,13 @@ pub fn sanitize(node: *runtime.Instance, config: *const Config, safe: bool) !voi
 /// HTML "inner sanitize steps". Use the existing DOM mutation and attribute
 /// hooks, which keep observer, custom-element and ownership bookkeeping in
 /// their owners. No wrappers are created to inspect nodes or attributes.
-/// Removal leaves adjacent Text nodes separate: HTML specifies no normalize
-/// step. Chrome 154 coalesces them and Firefox 157 does not (basic-filtering
-/// comments/1 and sethtml-safety); the shipping-browser tie follows the spec.
+/// The entry points' parsers sanitize as they parse (the HTML Standard's
+/// model since the sanitizer moved into the tree builder: what is kept out
+/// is never inserted, so the Text on either side coalesces - Chrome 157 and
+/// Firefox 160 pass sanitizer-api/sethtml-tree-construction, basic-filtering
+/// comments/1 and sethtml-safety at WPT 2358bd4835, Safari 27.2 fails them),
+/// so this walk over their result removes nothing they kept; a removal here
+/// leaves adjacent Text nodes separate, as DOM removal does.
 fn innerSanitize(node: *dom.NodeBase, config: *const Data) anyerror!void {
     var child = node.firstChild();
     while (child) |current| {

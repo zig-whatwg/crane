@@ -8,6 +8,7 @@ const message_ports = @import("dom").message_ports;
 /// The one transfer step every carrier of a transfer list runs.
 const transferables = @import("dom").transferables;
 const streams_js = @import("dom").streams_js;
+const dom = @import("dom");
 const same_object = @import("dom").same_object;
 const fetch_body = @import("fetch_body");
 const engine = @import("engine");
@@ -174,13 +175,229 @@ pub fn call_btoa(instance: *runtime.Instance, data: runtime.DOMString) anyerror!
     return runtime.DOMString.initOwned(try html_core.base64_utility.btoa(instance.ctx.allocator, data.asSlice()));
 }
 
-/// Operation: createImageBitmap
+/// Operation: createImageBitmap(image, options) - HTML 8.11.2.
 pub fn call_createImageBitmap(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
-    _ = instance;
-    _ = image;
-    _ = options;
-    return error.NotImplemented;
+    return createImageBitmap(instance, image, null, options.getOrDefault(.{}));
 }
+
+/// Operation: createImageBitmap(image, sx, sy, sw, sh, options) - HTML
+/// 8.11.2.
+pub fn call_createImageBitmap__1(instance: *runtime.Instance, image: typedefs.ImageBitmapSource, sx: i32, sy: i32, sw: i32, sh: i32, options: webidl.Opt(dictionaries.ImageBitmapOptions)) anyerror!runtime.JSValue {
+    return createImageBitmap(instance, image, .{ .sx = sx, .sy = sy, .sw = sw, .sh = sh }, options.getOrDefault(.{}));
+}
+
+/// HTML 8.11.2, the createImageBitmap() method steps, for `global` (this).
+/// The binding turns what they throw into a rejected promise ("return a
+/// promise rejected with": the method returns a Promise, WebIDL 3.7.6).
+///
+/// The Blob arm's steps 1-4 run "in parallel" in the spec; here the read
+/// and the decode run on the agent's thread before the call returns, as the
+/// canvas element's toBlob encodes (stated there). The promise is still
+/// settled by a task queued on the bitmap task source, so script sees the
+/// same order.
+fn createImageBitmap(global: *runtime.Instance, image: typedefs.ImageBitmapSource, crop: ?dom.image_bitmaps.Crop, options: dictionaries.ImageBitmapOptions) anyerror!runtime.JSValue {
+    // 1. "If either sw or sh is given and is 0, then return a promise
+    //    rejected with a RangeError."
+    if (crop) |given| if (given.sw == 0 or given.sh == 0) return error.RangeError;
+    // 2. "If either options's resizeWidth or options's resizeHeight is
+    //    present and is 0, then return a promise rejected with an
+    //    "InvalidStateError" DOMException."
+    if (options.resizeWidth) |width| if (width == 0) return error.InvalidStateError;
+    if (options.resizeHeight) |height| if (height == 0) return error.InvalidStateError;
+    const formatting: dom.image_bitmaps.Formatting = .{
+        .flip_y = (options.imageOrientation orelse ._from_image_) == ._flipY_,
+        .premultiply_alpha = switch (options.premultiplyAlpha orelse ._default_) {
+            ._default_ => .default,
+            ._premultiply_ => .premultiply,
+            ._none_ => .none,
+        },
+        .resize_width = options.resizeWidth,
+        .resize_height = options.resizeHeight,
+        .resize_quality = switch (options.resizeQuality orelse ._low_) {
+            ._pixelated_ => .pixelated,
+            ._low_ => .low,
+            ._medium_ => .medium,
+            ._high_ => .high,
+        },
+    };
+    const allocator = global.ctx.allocator;
+    // 3, 6: the bitmap data, cropped to the source rectangle with
+    //    formatting, by kind of image; an InvalidStateError when no bitmap
+    //    can be made from it. (Steps 4-5's promise and ImageBitmap follow:
+    //    nothing in between is observable.)
+    const bitmap: *dom.image_bitmaps.Bitmap = switch (image) {
+        .canvas_image_source => |source| blk: {
+            // 3. "Check the usability of the image argument. If this throws
+            //    an exception or returns bad, then return a promise rejected
+            //    with an "InvalidStateError" DOMException."
+            const usability: dom.image_sources.Usability = switch (source) {
+                .htmlor_svgimage_element => |element| switch (element) {
+                    .htmlimage_element => |img| dom.image_sources.imageUsability(img),
+                    // An SVG image element's image is not loaded here: it
+                    // has no image to give (bad).
+                    .svgimage_element => .bad,
+                },
+                // A video's readyState is not modelled past HAVE_NOTHING
+                // (no media decoding): bad.
+                .htmlvideo_element => .bad,
+                .htmlcanvas_element => |canvas| dom.image_sources.canvasUsability(canvas),
+                .image_bitmap => |source_bitmap| dom.image_sources.imageBitmapUsability(source_bitmap),
+                .offscreen_canvas => |canvas| dom.image_sources.offscreenCanvasUsability(canvas),
+                // VideoFrame is not implemented: no frame has pixels.
+                .video_frame => .bad,
+            };
+            const good = switch (usability) {
+                .good => |good| good,
+                .bad, .invalid_state => return error.InvalidStateError,
+            };
+            // 6, img / canvas / ImageBitmap / OffscreenCanvas: "a copy of
+            //    image's media data (bitmap data), cropped to the source
+            //    rectangle with formatting", origin-clean as image is.
+            break :blk try formatted(allocator, good, crop, formatting);
+        },
+        .image_data => |image_data| blk: {
+            // 6, ImageData: 1-2. If its data's [[ViewedArrayBuffer]] is
+            //    detached, an InvalidStateError.
+            const realm = engine.currentRealm() orelse global.ctx;
+            const data = switch (try interfaces.ImageData.get_data(image_data)) {
+                .uint8clamped_array => |array| array,
+                .float16array => return error.InvalidStateError,
+            };
+            const description = engine.describeArrayBufferView(realm, data) orelse return error.InvalidStateError;
+            if (description.detached) return error.InvalidStateError;
+            const buffer = try engine.getViewedArrayBuffer(realm, data);
+            defer buffer.release();
+            const bytes = engine.borrowArrayBufferBytes(realm, buffer.value) orelse return error.InvalidStateError;
+            // 3. "image's image data" - straight alpha, origin-clean.
+            const width = try interfaces.ImageData.get_width(image_data);
+            const height = try interfaces.ImageData.get_height(image_data);
+            break :blk try formatted(allocator, .{
+                .width = width,
+                .height = height,
+                .pixels = bytes[description.byte_offset..][0..description.byte_length],
+                .alpha = .straight,
+                .origin_clean = true,
+            }, crop, formatting);
+        },
+        .blob => |blob| blk: {
+            // 6, Blob: 1. read image's data; 2. sniff it with its type as
+            //    the official type; 3. not a supported image, or no
+            //    dimensions: an InvalidStateError - in a task.
+            const bytes = dom.blob_bytes.bytesOf(blob) orelse &.{};
+            var blob_type = try interfaces.Blob.get_type(blob);
+            defer blob_type.deinit(allocator);
+            var decoded = dom.image_bitmaps.decodeBlob(allocator, bytes, blob_type.asSlice()) orelse
+                return settleInTask(global, null);
+            defer decoded.deinit();
+            // 4. "Set imageBitmap's bitmap data to imageData, cropped to the
+            //    source rectangle with formatting."
+            break :blk formatted(allocator, decoded.source(), crop, formatting) catch |err| switch (err) {
+                error.InvalidStateError => return settleInTask(global, null),
+                else => return err,
+            };
+        },
+    };
+    return settleInTask(global, bitmap);
+}
+
+/// "Crop bitmap data to the source rectangle with formatting", an
+/// InvalidStateError for a bitmap too large to make.
+fn formatted(allocator: std.mem.Allocator, source: dom.image_sources.ImageSource, crop: ?dom.image_bitmaps.Crop, formatting: dom.image_bitmaps.Formatting) !*dom.image_bitmaps.Bitmap {
+    return dom.image_bitmaps.cropWithFormatting(allocator, source, crop, formatting) catch |err| switch (err) {
+        error.TooLarge => error.InvalidStateError,
+        error.OutOfMemory => error.OutOfMemory,
+    };
+}
+
+/// createImageBitmap steps 4-5 and 7, then 6's last step: "Let promise be a
+/// new promise"; "Let imageBitmap be a new ImageBitmap object" with
+/// `bitmap` (taken); "Queue a global task, using the bitmap task source, to
+/// resolve promise with imageBitmap"; return promise. A null `bitmap` is the
+/// Blob arm's failure: the task rejects promise with an "InvalidStateError"
+/// DOMException instead.
+fn settleInTask(global: *runtime.Instance, bitmap: ?*dom.image_bitmaps.Bitmap) !runtime.JSValue {
+    const realm = global.ctx;
+    const allocator = realm.allocator;
+    // `bitmap` is ours until the ImageBitmap takes it (step 5).
+    var bitmap_owned = bitmap != null;
+    errdefer if (bitmap_owned) bitmap.?.destroy();
+    // 4.
+    var promise = try engine.createPromise(realm);
+    errdefer engine.releasePromiseCapability(&promise);
+    const result = try engine.retainValue(realm, promise.promise);
+    errdefer result.release();
+    // 5. The ImageBitmap, made now: unwrapped until the task resolves the
+    //    promise with it (its wrapper is made then, in this realm).
+    const image_bitmap: ?*runtime.Instance = if (bitmap) |b| try interfaces.ImageBitmap.initWith(allocator, realm, .{ .bitmap = b }) else null;
+    bitmap_owned = false;
+    errdefer if (image_bitmap) |made| made.releaseIfUnwrapped(runtime.SlabAllocator.generationOf(made));
+    const task = try allocator.create(BitmapTask);
+    task.* = .{
+        .allocator = allocator,
+        .realm = realm,
+        .capability = promise,
+        .image_bitmap = image_bitmap,
+        .generation = if (image_bitmap) |made| runtime.SlabAllocator.generationOf(made) else 0,
+    };
+    const loop = realm.getOptionalEventLoop() orelse {
+        BitmapTask.run(task);
+        return result.take();
+    };
+    var queued: runtime.EventLoopTask = .{ .callback = BitmapTask.run, .context = task, .drop = BitmapTask.drop };
+    // "Queue a global task": a Window's runs only while its Document is
+    // fully active.
+    if (realm.isWindow()) {
+        if (realm.getRealm()) |record| if (record.global_object) |object| {
+            const window: *runtime.Instance = @ptrCast(@alignCast(object));
+            queued.document = window;
+            queued.document_generation = runtime.SlabAllocator.generationOf(window);
+        };
+    }
+    loop.queueTask(queued);
+    // 7.
+    return result.take();
+}
+
+/// createImageBitmap's global task on the bitmap task source.
+const BitmapTask = struct {
+    allocator: std.mem.Allocator,
+    realm: runtime.Context,
+    capability: engine.PromiseCapability,
+    /// The ImageBitmap to resolve with, unwrapped until then; null rejects.
+    image_bitmap: ?*runtime.Instance,
+    generation: u64,
+
+    fn run(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        defer self.deinit();
+        engine.runTaskInRealm(self.realm, steps, self) catch {};
+    }
+
+    fn steps(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        const made = self.image_bitmap orelse {
+            const exception = engine.createDOMException(self.realm, "InvalidStateError", "The source image could not be decoded.") catch return;
+            defer exception.release();
+            engine.rejectPromise(&self.capability, exception.value) catch {};
+            return;
+        };
+        // Resolving wraps it: it is the wrapper's from then on.
+        engine.resolvePromise(&self.capability, .{ .instance = made }) catch {};
+    }
+
+    fn drop(data: ?*anyopaque) void {
+        const self: *BitmapTask = @ptrCast(@alignCast(data.?));
+        self.deinit();
+    }
+
+    fn deinit(self: *BitmapTask) void {
+        engine.releasePromiseCapability(&self.capability);
+        // Never wrapped (the task was dropped, or the resolution failed
+        // before wrapping it): ours to let go.
+        if (self.image_bitmap) |made| made.releaseIfUnwrapped(self.generation);
+        self.allocator.destroy(self);
+    }
+};
 
 /// Operation: clearInterval
 /// Spec: https://html.spec.whatwg.org/multipage/timers-and-user-prompts.html#dom-clearinterval

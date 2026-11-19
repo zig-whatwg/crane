@@ -2256,20 +2256,31 @@ pub fn call_queryCommandState(instance: *runtime.Instance, commandId: runtime.DO
 }
 
 /// HTML 8.5.2 parseHTML, steps 1–6: an inactive HTML document, with the
-/// relevant origin and declarative shadow roots, followed by safe filtering.
+/// relevant origin and declarative shadow roots, parsed by a parser that
+/// sanitizes with the safe configuration as it parses.
 pub fn call_static_parseHTML(instance: *runtime.Instance, html: runtime.DOMString, options: webidl.Opt(dictionaries.SetHTMLOptions)) anyerror!*runtime.Instance {
-    var converted = try @import("html").sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
+    const sanitizer = @import("html").sanitizer;
+    var converted = try sanitizer.convertOptions(instance.ctx, options.getOrDefault(.{}).sanitizer, true);
     defer converted.deinit();
     const allocator = instance.ctx.allocator;
     const realm = engine.currentRealm() orelse instance.ctx;
+    // Steps 3-4: "Let sanitizerConfig be the result of getting a sanitizer
+    // config from options given options and true" - remove unsafe applied.
+    var config = try sanitizer.documentConfig(instance.ctx, &converted, true);
+    defer config.deinit();
+    const filter: sanitizer.ParseFilter = .{ .data = &config.data, .allocator = allocator };
     const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, html.asSlice(), .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+    // Step 5: "Parse HTML from a string given document, html, and
+    // sanitizerConfig".
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, html.asSlice(), .{ .allow_declarative_shadow_roots = true, .origin = origin, .parser_sanitizer = filter.parserSanitizer() }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try @import("dom").document_internals.setContentType(document, "text/html");
-    try @import("html").sanitizer.filterDocument(document, &converted, true);
+    // What the parser could not decide (an allocation failure in an
+    // attribute's URL check keeps it) is filtered after the parse.
+    try sanitizer.sanitize(document, &config, false);
     // To script: its first wrapper takes its born reference (refcount7).
     @import("dom").refcount.offerDocument(document);
     return document;
@@ -2299,16 +2310,23 @@ pub fn call_static_parseHTMLUnsafe(instance: *runtime.Instance, html: typedefs.T
     defer if (config) |*held| held.deinit();
     // Step 5: "Parse HTML from a string given document, compliantHTML, and
     // sanitizerConfig" - whose parser takes the document's allow
-    // declarative shadow roots. The configuration filters the parsed
-    // document (row 41 review M2/S2: none filters nothing).
+    // declarative shadow roots and sanitizes with the configuration as it
+    // parses (row 41 review M2/S2: none filters nothing).
     const origin: ?*OriginRecord = if (globalOfRealm(realm)) |global| try @import("dom").global_settings.shareableOriginOf(global) else null;
-    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant.html, .{ .allow_declarative_shadow_roots = true, .origin = origin }) catch |err| switch (err) {
+    const filter: ?@import("html").sanitizer.ParseFilter = if (config) |*held| .{ .data = &held.data, .allocator = allocator } else null;
+    const document = @import("html").dom_parser.parseHTML(allocator, realm, compliant.html, .{
+        .allow_declarative_shadow_roots = true,
+        .origin = origin,
+        .parser_sanitizer = if (filter) |*parse_filter| parse_filter.parserSanitizer() else null,
+    }) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         else => return error.NotSupportedError,
     };
     const document_internals = @import("dom").document_internals;
     errdefer @import("dom").node_creation.destroyUninserted(document);
     try document_internals.setContentType(document, "text/html");
+    // What the parser could not decide (an allocation failure in an
+    // attribute's URL check keeps it) is filtered after the parse.
     if (config) |*held| try @import("html").sanitizer.sanitize(document, held, false);
     // Step 6. To script: its first wrapper takes its born reference
     // (refcount7).

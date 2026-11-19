@@ -248,15 +248,21 @@ pub const DeclarativeShadow = struct {
 pub const SanitizerAction = enum { keep, remove, replace_with_children };
 
 /// The parser's sanitizer configuration (HTML "parser sanitizer
-/// configuration"), as the sanitizer answers for it. Crane's parser applies
-/// it, as far as it goes yet, where the result could not be undone after
-/// parsing: an element's attributes are sanitized when it is created from
-/// its token ("create an element for a token"), a comment or processing
+/// configuration"), as the sanitizer answers for it. The parser sanitizes
+/// the markup as it parses it: an element's attributes are sanitized when it
+/// is created from its token ("create an element for a token"), an element
+/// the configuration removes or replaces with its children is never
+/// inserted ("insert an element at the adjusted insertion location" step 3;
+/// a replaced one's insertions go where it would have been, through the
+/// insertion target redirection map, `TreeBuilder.sanitizer_redirects`, also
+/// kept by the adoption agency algorithm), a comment or processing
 /// instruction it does not allow is not inserted ("insert a comment" step 1,
-/// "insert a processing instruction" step 2), and a template the sanitizer
-/// removes or replaces is never inserted and never patches (the template
-/// start tag's steps 11-13). Everything else the configuration
-/// decides is still filtered once parsing ends (sanitizer.zig).
+/// "insert a processing instruction" step 2), and a template it removes or
+/// replaces is never inserted and never patches (the template start tag's
+/// steps 12-14). So text on either side of what it keeps out coalesces, as
+/// the parser's "insert a character" finds it. The entry points still run
+/// the sanitizer over the result (sanitizer.zig), which finds nothing left
+/// to do except what an allocation failure kept the parser from deciding.
 pub const ParserSanitizer = struct {
     context: *const anyopaque,
     element_action: *const fn (*const anyopaque, []const u8, Namespace) SanitizerAction,
@@ -937,6 +943,19 @@ pub const TreeBuilder = struct {
 
     /// HTML parser "parser sanitizer configuration" (initially null).
     parser_sanitizer: ?ParserSanitizer = null,
+    /// HTML parser "insertion target redirection map", on the tree-then-
+    /// convert path (`treeSanitizer`), for the elements the
+    /// parser sanitizer configuration replaces with their children ("insert
+    /// an element at the adjusted insertion location" step 3.4, the adoption
+    /// agency algorithm steps 10, 21, 30 and 32): such an element is pushed
+    /// onto the stack of open elements but never inserted, and what would be
+    /// inserted into it goes where it would have been ("adjusted insertion
+    /// location" step 5), so text on either side of it coalesces. The keys
+    /// are tree nodes this builder owns until it ends (the detached list).
+    /// Only a sanitizing parse has entries; the live DOM adapter's own
+    /// redirect (the fragment root's, `TreeNode.insertion_redirect`) resolves
+    /// below this one.
+    sanitizer_redirects: std.AutoHashMapUnmanaged(*TreeNode, InsertionLocation) = .empty,
 
     /// HTML parser "fragment parser abort requested" (initially false): a
     /// streaming parser's owner (html.stream_html) sets it when the stream
@@ -1169,6 +1188,7 @@ pub const TreeBuilder = struct {
             self.detached_nodes = node.detached_next;
             node.deinit();
         }
+        self.sanitizer_redirects.deinit(self.allocator);
         self.open_elements.deinit();
         self.active_formatting_elements.deinit();
         self.scripts_to_process.deinit();
@@ -1828,6 +1848,9 @@ pub const TreeBuilder = struct {
     /// Spec: https://html.spec.whatwg.org/multipage/parsing.html#insert-a-foreign-element
     fn insertForeignElement(self: *TreeBuilder, tag: TagToken, namespace: Namespace) !*TreeNode {
         const element = try createForeignElement(self.allocator, tag, namespace);
+        // "Create an element for the token" step 12: with a parser sanitizer
+        // configuration, the attributes it does not allow are not appended.
+        if (self.parser_sanitizer) |sanitizer| self.sanitizeAttributes(element, sanitizer);
 
         // "Create an element for the token", then "insert an element at the
         // adjusted insertion location", then push it.
@@ -1838,7 +1861,7 @@ pub const TreeBuilder = struct {
         // A self-closing one is popped at once; Blink attaches it without
         // pushing it (InsertForeignElement), so the depth bound counts the
         // open elements without it.
-        self.insertNodeAt(self.boundedLocation(!tag.self_closing), element);
+        try self.insertElementAt(self.boundedLocation(!tag.self_closing), element);
         try self.pushOpenElement(element);
         return element;
     }
@@ -2070,13 +2093,18 @@ pub const TreeBuilder = struct {
                 if (std.mem.eql(u8, name, "html")) {
                     // Create html element and append to document
                     const html = try self.createElementForToken(tag, .html, .{ .parent = self.document });
-                    self.document.appendChild(html);
-                    self.releaseDetached(html);
+                    // "Insert an element at the adjusted insertion location"
+                    // with (the Document, null): not when the parser
+                    // sanitizer configuration removes html.
+                    if (try self.sanitizerInserts(.{ .parent = self.document }, html)) {
+                        self.document.appendChild(html);
+                        self.releaseDetached(html);
 
-                    // Notify DOM adapter of parent-child relationship
-                    self.flushPendingText();
-                    if (self.dom_adapter_on_child_appended) |callback| {
-                        callback(self.document, html, self.dom_adapter_context);
+                        // Notify DOM adapter of parent-child relationship
+                        self.flushPendingText();
+                        if (self.dom_adapter_on_child_appended) |callback| {
+                            callback(self.document, html, self.dom_adapter_context);
+                        }
                     }
 
                     try self.pushOpenElement(html);
@@ -2122,13 +2150,23 @@ pub const TreeBuilder = struct {
             callback(html, self.dom_adapter_context);
         }
 
-        self.document.appendChild(html);
+        // "Insert an element at the adjusted insertion location" with it and
+        // (the Document, null): an html element the parser sanitizer
+        // configuration removes is not inserted (it is never replaceable),
+        // and is this builder's on the detached list (`insertElementAt`).
+        const inserts = self.sanitizerInserts(.{ .parent = self.document }, html) catch |err| {
+            self.keepDetached(html);
+            return err;
+        };
+        if (inserts) {
+            self.document.appendChild(html);
 
-        // Notify DOM adapter of parent-child relationship
-        self.flushPendingText();
-        if (self.dom_adapter_on_child_appended) |callback| {
-            callback(self.document, html, self.dom_adapter_context);
-        }
+            // Notify DOM adapter of parent-child relationship
+            self.flushPendingText();
+            if (self.dom_adapter_on_child_appended) |callback| {
+                callback(self.document, html, self.dom_adapter_context);
+            }
+        } else self.keepDetached(html);
 
         try self.pushOpenElement(html);
         self.insertion_mode = .before_head;
@@ -2199,7 +2237,7 @@ pub const TreeBuilder = struct {
             callback(head, self.dom_adapter_context);
         }
 
-        self.insertAtAppropriatePlace(head);
+        try self.insertAtAppropriatePlace(head);
         try self.pushOpenElement(head);
         self.setHeadElement(head);
         self.insertion_mode = .in_head;
@@ -2375,7 +2413,8 @@ pub const TreeBuilder = struct {
         // redirection map[declarativeShadowHostElement] exists": a host the
         // sanitizer replaces with its children is never inserted, and a
         // shadow root attached to it would be lost.
-        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).? or current.insertion_redirect != null)
+        if (!self.allow_declarative_shadow_roots or current == self.open_elements.get(0).? or current.insertion_redirect != null or
+            self.sanitizer_redirects.contains(current))
             return self.insertHtmlElementAt(tag, location);
         // Step 7.2: the declarative shadow host is the adjusted current node.
         const host = self.adjustedCurrentNode() orelse current;
@@ -2580,11 +2619,118 @@ pub const TreeBuilder = struct {
     /// live DOM instead (parser_dom_mutation.resolve), so this tree keeps a
     /// patching template's contents as its children there.
     fn patchedLocation(self: *const TreeBuilder, location: InsertionLocation) InsertionLocation {
+        return self.sanitizerRedirected(self.contentPatchedLocation(location));
+    }
+
+    fn contentPatchedLocation(self: *const TreeBuilder, location: InsertionLocation) InsertionLocation {
         if (self.dom_adapter_prepare_content_patching != null or location.foster_table != null) return location;
         const patch = location.parent.content_patch orelse return location;
         const target = patch.target_node orelse return location;
         const before = if (patch.end_node) |end| (if (end.parent == target) end else null) else null;
         return .{ .parent = target, .before = before };
+    }
+
+    /// HTML "adjusted insertion location" steps 3-7 for the sanitizer's
+    /// entries of the insertion target redirection map: an insertion into an
+    /// element the parser sanitizer configuration replaced with its children
+    /// goes to the location that element would have been inserted at -
+    /// which was itself adjusted when it was recorded, so one lookup
+    /// resolves it. Step 4 asserts the reference child is null: a replaced
+    /// element is never inserted, so nothing is inserted before a child of
+    /// it, and no table can be its child to foster-parent before. Steps 6-7's
+    /// reference child check is the insertion's (`insertNodeAt`, and the
+    /// live adapter's against the live DOM).
+    fn sanitizerRedirected(self: *const TreeBuilder, location: InsertionLocation) InsertionLocation {
+        if (self.treeSanitizer() == null) return location;
+        const redirected = self.sanitizer_redirects.get(location.parent) orelse return location;
+        return .{ .parent = redirected.parent, .before = redirected.before, .move = location.move };
+    }
+
+    /// HTML "insert an element at the adjusted insertion location" step 3,
+    /// for `element` and its adjusted insertion location `location`: with a
+    /// parser sanitizer configuration, whether `element` is inserted. One the
+    /// configuration removes is not (its descendants go into it, out of
+    /// the tree); one it replaces with its children is not either, and the
+    /// insertion target redirection map sends what would go into it to
+    /// `location` (step 3.4). Its attributes were sanitized when it was
+    /// created from its token (step 3.2's assertion: `sanitizeAttributes`).
+    fn sanitizerInserts(self: *TreeBuilder, location: InsertionLocation, element: *TreeNode) !bool {
+        const sanitizer = self.treeSanitizer() orelse return true;
+        if (element.node_type != .element) return true;
+        // 3.1. The sanitizer action for element's local name and namespace.
+        const local_name = element.local_name orelse return true;
+        switch (sanitizer.element_action(sanitizer.context, local_name, element.namespace)) {
+            .keep => return true,
+            // 3.4 "Remove": return.
+            .remove => return false,
+            // 3.3 asserts a Document target never replaces (html, the one
+            // element a Document takes, is never replaceable); 3.4 "Replace
+            // with children": map[element] = (targetParent, referenceChild).
+            .replace_with_children => {
+                try self.sanitizer_redirects.put(self.allocator, element, .{ .parent = location.parent, .before = location.before });
+                return false;
+            },
+        }
+    }
+
+    /// The parser sanitizer configuration whose element actions this tree
+    /// applies itself: the tree-then-convert path's (setHTML, parseHTML and
+    /// their kin). The live DOM adapter - streaming HTML - applies them
+    /// against the live DOM instead (parser_script_execution's
+    /// DomTreeAdapter.sanitizerAction and redirectReplacedElement, resolved
+    /// by parser_dom_mutation), where script can move the redirect's nodes
+    /// between tokens; this tree then keeps every element.
+    fn treeSanitizer(self: *const TreeBuilder) ?ParserSanitizer {
+        if (self.dom_adapter_on_inserted != null) return null;
+        return self.parser_sanitizer;
+    }
+
+    /// HTML "get the sanitizer action for an element name" for `element`
+    /// given the parser sanitizer configuration; "Keep" without one.
+    fn sanitizerAction(self: *const TreeBuilder, element: *const TreeNode) SanitizerAction {
+        const sanitizer = self.treeSanitizer() orelse return .keep;
+        const local_name = element.local_name orelse return .keep;
+        return sanitizer.element_action(sanitizer.context, local_name, element.namespace);
+    }
+
+    /// DOM "remove" of `node` from its parent in this tree (the adoption
+    /// agency algorithm step 18.11's "Remove"): it stays this builder's,
+    /// on the detached list, and the live adapter removes its DOM node.
+    fn removeFromTree(self: *TreeBuilder, node: *TreeNode) void {
+        self.flushPendingText();
+        node.remove();
+        self.keepDetached(node);
+        if (self.dom_adapter_on_removed) |callback| callback(node, self.dom_adapter_context);
+    }
+
+    /// "Insert an element at the adjusted insertion location" for an
+    /// element just created from its token (`alreadySanitized` false): the
+    /// sanitizer's step 3, then the insertion.
+    ///
+    /// An element step 3 keeps out of the tree - or that it could not decide
+    /// on (out of memory recording its redirect) - is this builder's from
+    /// then on, on the detached list, as an element `insertNodeAt` refuses
+    /// and one the adoption agency removes are: the stack of open elements,
+    /// the head and form element pointers and the list of active formatting
+    /// elements still name it, and what is inserted into it (a removed
+    /// element's descendants) hangs from it, so it lives as long as the
+    /// builder's structures may, and `deinit` frees it with the rest. The
+    /// elements `createElementForToken` makes are on that list from their
+    /// creation; the ones the parser makes itself (the implied html, head,
+    /// body, p, tbody, tr and colgroup, and a foreign element) are not until
+    /// they are inserted or refused here - 289 of them leaked in lane maj2's
+    /// bug-finding sweep (sanitizer-api) before this. Blink does the same
+    /// with its own owner: HTMLConstructionSite::AttachOrFosterParent pushes
+    /// the element's HTMLStackItem before Attach asks ShouldInsertChild,
+    /// and a refused element is never attached - the stack item keeps it
+    /// (html_construction_site.cc, Chromium main, BSD; read, not copied).
+    fn insertElementAt(self: *TreeBuilder, location: InsertionLocation, element: *TreeNode) !void {
+        const inserts = self.sanitizerInserts(location, element) catch |err| {
+            self.keepDetached(element);
+            return err;
+        };
+        if (!inserts) return self.keepDetached(element);
+        self.insertNodeAt(location, element);
     }
 
     /// The template end tag's step 4, for a template that patches: remove
@@ -2864,7 +3010,7 @@ pub const TreeBuilder = struct {
             callback(body, self.dom_adapter_context);
         }
 
-        self.insertAtAppropriatePlace(body);
+        try self.insertAtAppropriatePlace(body);
         try self.pushOpenElement(body);
         // "Set the frameset-ok flag to "ok"." A template in head set it to
         // "not ok"; the implied body puts it back, so `<template></template>
@@ -3355,7 +3501,7 @@ pub const TreeBuilder = struct {
                 if (self.dom_adapter_on_node_created) |callback| {
                     callback(p_element, self.dom_adapter_context);
                 }
-                self.insertAtAppropriatePlace(p_element);
+                try self.insertAtAppropriatePlace(p_element);
                 try self.pushOpenElement(p_element);
             }
             // Close the p element
@@ -3840,7 +3986,7 @@ pub const TreeBuilder = struct {
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(colgroup, self.dom_adapter_context);
                     }
-                    self.insertAtAppropriatePlace(colgroup);
+                    try self.insertAtAppropriatePlace(colgroup);
                     try self.pushOpenElement(colgroup);
                     self.insertion_mode = .in_column_group;
                     try self.processToken(token);
@@ -3863,7 +4009,7 @@ pub const TreeBuilder = struct {
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(tbody, self.dom_adapter_context);
                     }
-                    self.insertAtAppropriatePlace(tbody);
+                    try self.insertAtAppropriatePlace(tbody);
                     try self.pushOpenElement(tbody);
                     self.insertion_mode = .in_table_body;
                     try self.processToken(token);
@@ -4205,7 +4351,7 @@ pub const TreeBuilder = struct {
                     if (self.dom_adapter_on_node_created) |callback| {
                         callback(tr, self.dom_adapter_context);
                     }
-                    self.insertAtAppropriatePlace(tr);
+                    try self.insertAtAppropriatePlace(tr);
                     try self.pushOpenElement(tr);
                     self.insertion_mode = .in_row;
                     try self.processToken(token);
@@ -4837,7 +4983,7 @@ pub const TreeBuilder = struct {
     /// Insert HTML element for token.
     fn insertHtmlElement(self: *TreeBuilder, tag: TagToken) !*TreeNode {
         const element = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
-        self.insertAtAppropriatePlace(element);
+        try self.insertAtAppropriatePlace(element);
         try self.pushOpenElement(element);
         return element;
     }
@@ -4850,15 +4996,15 @@ pub const TreeBuilder = struct {
     /// its Attach counts the open elements without it (`depthBounded`).
     fn insertVoidHtmlElement(self: *TreeBuilder, tag: TagToken) !void {
         const element = try self.createElementForToken(tag, .html, self.appropriateLocation(null));
-        self.insertNodeAt(self.boundedLocation(false), element);
+        try self.insertElementAt(self.boundedLocation(false), element);
         try self.pushOpenElement(element);
         _ = self.popCurrentNode();
     }
 
     /// Insert at the appropriate place an element that is pushed onto the
     /// stack of open elements next.
-    fn insertAtAppropriatePlace(self: *TreeBuilder, node: *TreeNode) void {
-        self.insertNodeAt(self.boundedLocation(true), node);
+    fn insertAtAppropriatePlace(self: *TreeBuilder, node: *TreeNode) !void {
+        try self.insertElementAt(self.boundedLocation(true), node);
     }
 
     /// Blink's kMaximumHTMLParserDOMTreeDepth: past this many open elements,
@@ -5595,10 +5741,30 @@ pub const TreeBuilder = struct {
             const furthest = self.open_elements.get(furthest_index).?;
             const ancestor = self.open_elements.get(stack_index - 1).?;
             var bookmark = initial_index;
+            // Step 17: whether the bookmark moved after the first new node.
+            var bookmark_moved = false;
             var node_index = furthest_index;
-            var last = furthest;
+            // Step 11: lastNode is furthestBlock - or null once the parser
+            // sanitizer configuration keeps it out of the tree (step 13).
+            var last: ?*TreeNode = furthest;
+            // Step 12: the replaced elements whose redirection waits for the
+            // next element that is not itself replaced with its children.
+            var pending_redirects: std.ArrayListUnmanaged(*TreeNode) = .empty;
+            defer pending_redirects.deinit(self.allocator);
+            // Step 13: a furthestBlock the configuration removes or replaces
+            // was never inserted; one it replaces had its children inserted
+            // where it would have been, and they stay there.
+            switch (self.sanitizerAction(furthest)) {
+                .keep => {},
+                .remove => last = null,
+                .replace_with_children => {
+                    last = null;
+                    try pending_redirects.append(self.allocator, furthest);
+                },
+            }
             var inner: usize = 0;
-            // Steps 4.9–4.13.
+            // Step 18 (steps 14-15's validity checks are the live adapter's,
+            // against the live DOM, which script can have changed).
             while (true) {
                 inner += 1;
                 node_index -= 1;
@@ -5616,42 +5782,100 @@ pub const TreeBuilder = struct {
                     _ = self.removeOpenElementAt(node_index);
                     continue;
                 };
+                // Step 18.6.
                 const token = self.active_formatting_elements.get(active_index).?.element.token;
                 const replacement = try self.createElementForToken(token, .html, .{ .parent = ancestor });
                 self.replaceFormattingNode(active_index, replacement);
                 self.replaceOpenElement(node_index, replacement);
-                if (last == furthest) bookmark = active_index + 1;
-                self.insertNode(replacement, last, null);
-                last = replacement;
+                // Step 18.7.
+                if (!bookmark_moved) {
+                    bookmark = active_index + 1;
+                    bookmark_moved = true;
+                }
+                // Steps 18.8-18.9.
+                const node_action = self.sanitizerAction(replacement);
+                // Step 18.10: an element that is not replaced is where the
+                // pending replaced elements' insertions go now.
+                if (node_action != .replace_with_children) {
+                    for (pending_redirects.items) |replaced| try self.sanitizer_redirects.put(self.allocator, replaced, .{ .parent = replacement });
+                    pending_redirects.clearRetainingCapacity();
+                }
+                // Step 18.11.
+                switch (node_action) {
+                    .keep => {
+                        if (last) |child| self.insertNode(replacement, child, null);
+                        last = replacement;
+                    },
+                    .remove => {
+                        if (last) |child| if (child.parent != null) self.removeFromTree(child);
+                        last = null;
+                    },
+                    .replace_with_children => try pending_redirects.append(self.allocator, replacement),
+                }
             }
-            // Steps 4.14–4.16. The adapter repeats the validity checks against
-            // the live DOM, which script can have changed since tokenization.
+            // Steps 19-20: the adjusted insertion location given the
+            // appropriate place for inserting a node given commonAncestor.
             var location = self.appropriateLocation(ancestor);
             location.move = true;
-            self.insertNodeAt(location, last);
-            // Steps 4.17–4.19.
+            // Step 21.
+            for (pending_redirects.items) |replaced| try self.sanitizer_redirects.put(self.allocator, replaced, .{ .parent = location.parent, .before = location.before });
+            // Steps 22-23. The adapter repeats the validity checks against
+            // the live DOM.
+            if (last) |child| self.insertNodeAt(location, child);
+            // Steps 24-30: newElement, for formattingElement's token, with
+            // furthestBlock as its intended parent.
             const current_index = self.formattingIndex(formatting).?;
             const token = self.active_formatting_elements.get(current_index).?.element.token;
             const replacement = try self.createElementForToken(token, .html, .{ .parent = furthest });
-            self.flushPendingText();
-            if (self.dom_adapter_on_children_moved) |callback| {
-                // Step 4.18 acts on ALL live children, including script's.
-                callback(furthest, replacement, self.dom_adapter_context);
-                while (furthest.first_child) |child| replacement.appendChild(child);
-            } else {
-                while (furthest.first_child) |child| self.insertNode(replacement, child, null);
+            // Steps 27-28.
+            const new_action = self.sanitizerAction(replacement);
+            switch (new_action) {
+                // Step 30 "Replace with children": map[newElement] = the
+                // adjusted insertion location given (furthestBlock, null).
+                // furthestBlock's children stay where they are - where
+                // newElement's would go.
+                .replace_with_children => try self.sanitizer_redirects.put(self.allocator, replacement, self.sanitizerRedirected(.{ .parent = furthest })),
+                // "Remove" moves them into newElement, which is never
+                // inserted; "Keep" moves them, then inserts it at the
+                // adjusted insertion location given (furthestBlock, null) -
+                // furthestBlock itself unless it was replaced with its
+                // children (and so has none).
+                .remove, .keep => {
+                    self.flushPendingText();
+                    if (self.dom_adapter_on_children_moved) |callback| {
+                        // Step 30 acts on ALL live children, including script's.
+                        callback(furthest, replacement, self.dom_adapter_context);
+                        while (furthest.first_child) |child| replacement.appendChild(child);
+                    } else {
+                        while (furthest.first_child) |child| self.insertNode(replacement, child, null);
+                    }
+                    if (new_action == .keep) {
+                        var new_location = self.sanitizerRedirected(.{ .parent = furthest });
+                        new_location.move = true;
+                        self.insertNodeAt(new_location, replacement);
+                    }
+                },
             }
-            self.insertNode(furthest, replacement, null);
-            // Step 4.20: transfer token ownership without copying or freeing it.
+            // Step 25: transfer token ownership without copying or freeing it.
             const entry = self.active_formatting_elements.remove(current_index) catch unreachable;
             if (current_index < bookmark) bookmark -= 1;
             // Removal leaves enough capacity for this insertion.
             self.active_formatting_elements.insert(bookmark, .{ .element = .{ .node = replacement, .token = entry.element.token } }) catch unreachable;
             self.holdNode(replacement);
             self.releaseNode(entry.element.node);
-            // Step 4.21.
+            // Step 26.
             _ = self.removeOpenElementAt(self.openIndex(formatting).?);
             self.insertOpenElement(self.openIndex(furthest).? + 1, replacement) catch unreachable;
+            // Steps 31-32: replaced elements below newElement on the stack
+            // now have it between them and furthestBlock.
+            if (self.treeSanitizer() != null) {
+                var below_index = self.openIndex(replacement).? + 1;
+                while (below_index < self.open_elements.len) : (below_index += 1) {
+                    const below = self.open_elements.get(below_index).?;
+                    if (!self.sanitizer_redirects.contains(below)) break;
+                    try self.sanitizer_redirects.put(self.allocator, below, self.sanitizerRedirected(.{ .parent = replacement }));
+                }
+            }
         }
     }
 

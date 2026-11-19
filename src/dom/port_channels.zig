@@ -47,15 +47,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const runtime = @import("runtime");
 const TaskSink = runtime.TaskSink;
+const image_bitmaps = @import("image_bitmaps.zig");
 
 const log = std.log.scoped(.port_channels);
 
 /// A transferred platform object's data holder (HTML 2.7.8
 /// StructuredSerializeWithTransfer step 5.5: what its transfer steps put in
 /// dataHolder, which its transfer-receiving steps take back in the receiving
-/// realm). Every transferable platform object Crane has is carried by channel
-/// ends, so a holder is free of any realm, agent or thread and crosses all
-/// three inside a PortMessage:
+/// realm). Every holder is free of any realm, agent or thread and crosses all
+/// three inside a PortMessage - channel ends, or plain data:
 /// - a MessagePort's own end (its port message queue and its entanglement,
 ///   HTML 9.4.3's transfer steps);
 /// - a ReadableStream's or WritableStream's [[port]] (Streams 4.2.6 and 5.2.5
@@ -63,7 +63,9 @@ const log = std.log.scoped(.port_channels);
 ///   content is port2's own end - the other end of the channel its
 ///   cross-realm transform listens on);
 /// - a TransformStream's [[readable]] and [[writable]] (Streams 6.2.5 steps
-///   5-6), each a stream's holder.
+///   5-6), each a stream's holder;
+/// - an ImageBitmap's bitmap data and an OffscreenCanvas's dimensions
+///   (dom.image_bitmaps), in memory of the sending realm's allocator.
 /// HELD by whoever has it: received (`dom.transferables.receive`), or
 /// discarded - its ends' entangled ports then hear `close`.
 pub const TransferDataHolder = union(enum) {
@@ -71,6 +73,11 @@ pub const TransferDataHolder = union(enum) {
     readable_stream: *End,
     writable_stream: *End,
     transform_stream: struct { readable: *End, writable: *End },
+    /// An ImageBitmap's [[BitmapData]] (HTML 8.11.2): plain pixels.
+    image_bitmap: *image_bitmaps.Bitmap,
+    /// An OffscreenCanvas's [[Width]], [[Height]], [[Language]] and
+    /// [[Direction]] (HTML 4.12.5.3).
+    offscreen_canvas: *image_bitmaps.CanvasHolder,
 
     /// Let the holder go: no realm will receive it.
     pub fn discard(self: TransferDataHolder) void {
@@ -80,6 +87,8 @@ pub const TransferDataHolder = union(enum) {
                 sides.readable.discard();
                 sides.writable.discard();
             },
+            .image_bitmap => |bitmap| bitmap.destroy(),
+            .offscreen_canvas => |holder| holder.destroy(),
         }
     }
 };

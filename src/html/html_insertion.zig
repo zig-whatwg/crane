@@ -8,8 +8,11 @@
 //! The parse is html.dom_parser's HTML fragment parsing algorithm: with a
 //! sanitizer configuration it builds in an inert document whose parser
 //! sanitizes as it builds (dom_parser.FragmentOptions.inert_document,
-//! .parser_sanitizer), and what the parser does not sanitize yet is
-//! filtered after (html.sanitizer.sanitize); with runScripts its scripts are
+//! .parser_sanitizer) - elements, attributes, comments and processing
+//! instructions it keeps out are never inserted - and the result is run
+//! through the sanitizer after, which finds nothing more unless an
+//! allocation failure kept the parser from deciding an attribute
+//! (html.sanitizer.sanitize); with runScripts its scripts are
 //! left to run once inserted (dom_parser.ScriptingMode.fragment).
 //!
 //! Spec: https://html.spec.whatwg.org/#html-parsing-and-insertion-methods
@@ -206,8 +209,9 @@ fn fragmentParsingAlgorithmSteps(target: *runtime.Instance, markup: []const u8, 
         else => return error.NotSupportedError,
     };
     errdefer dom.node_creation.destroyUninserted(fragment);
-    // What the parser does not sanitize yet is filtered after the parse
-    // (the configuration already has Safe's remove-unsafe applied).
+    // What the parser could not decide (an allocation failure in an
+    // attribute's URL check keeps it) is filtered after the parse (the
+    // configuration already has Safe's remove-unsafe applied).
     if (config) |*held| try sanitizer.sanitize(fragment, held, false);
     return fragment;
 }

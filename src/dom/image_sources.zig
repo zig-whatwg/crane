@@ -11,18 +11,22 @@
 //! It also names the node ids Crane's geometry reads pass the platform's
 //! layout operations (`layoutNode`).
 //!
-//! lint-impls: hook for HTMLImageElement, HTMLCanvasElement, CanvasRenderingContext2D
+//! lint-impls: hook for HTMLImageElement, HTMLCanvasElement, CanvasRenderingContext2D, ImageBitmap, OffscreenCanvas, OffscreenCanvasRenderingContext2D
 
 const std = @import("std");
 const runtime = @import("runtime");
 const platform = @import("platform");
 const Hook = @import("hook.zig").Hook;
+const image_bitmaps = @import("image_bitmaps.zig");
+const canvas_2d = @import("canvas_2d.zig");
 
 /// Pixels a context can draw: `width` x `height`, RGBA8, rows top down.
 /// BORROWED for the call that asked: the source's owner keeps them.
 pub const ImageSource = struct {
     width: u32,
     height: u32,
+    /// `width * height * 4` bytes - or none, for a bitmap nothing stores (a
+    /// canvas with no rendering context): transparent black.
     pixels: []const u8,
     /// A decoded image is straight alpha; a canvas bitmap is premultiplied
     /// (4.12.5.7).
@@ -86,10 +90,20 @@ pub const Implementation = struct {
     update_image_data: ?*const fn (image: *runtime.Instance) void = null,
     /// HTMLCanvasElement: its usability as an image source - its bitmap.
     canvas_usability: ?*const fn (canvas: *runtime.Instance) Usability = null,
-    /// CanvasRenderingContext2D: its output bitmap; null for a context whose
-    /// state is gone.
-    output_bitmap: ?*const fn (context: *runtime.Instance) ?*OutputBitmap = null,
-    /// CanvasRenderingContext2D: the 2D context creation algorithm's steps 3
+    /// ImageBitmap: its usability as an image source - its bitmap data.
+    image_bitmap_usability: ?*const fn (image_bitmap: *runtime.Instance) Usability = null,
+    /// OffscreenCanvas: its usability as an image source - its bitmap.
+    offscreen_canvas_usability: ?*const fn (canvas: *runtime.Instance) Usability = null,
+    /// ImageBitmap: its transfer steps (dom.image_bitmaps).
+    image_bitmap_transfer: ?image_bitmaps.ImageBitmapSteps = null,
+    /// OffscreenCanvas: its transfer steps (dom.image_bitmaps).
+    offscreen_canvas_transfer: ?image_bitmaps.OffscreenCanvasSteps = null,
+    /// CanvasRenderingContext2D: its state (dom.canvas_2d).
+    element_context_state: ?canvas_2d.StateOf = null,
+    /// OffscreenCanvasRenderingContext2D: its state and resize (dom.canvas_2d).
+    offscreen_context: ?canvas_2d.OffscreenSteps = null,
+    /// CanvasRenderingContext2D (its output bitmap is its dom.canvas_2d
+    /// state's): the 2D context creation algorithm's steps 3
     /// and 5 for a context just made for `canvas` - its canvas attribute,
     /// and its bitmap dimensions.
     attach_context: ?*const fn (context: *runtime.Instance, canvas: *runtime.Instance, width: u32, height: u32) anyerror!void = null,
@@ -100,6 +114,32 @@ pub const Implementation = struct {
 
 // process-wide: hook table written only by its owners at process start (B0); immutable while Browsers run, comptime in B9
 var implementation: Hook(Implementation) = .init(.{});
+
+/// The installed steps, for dom.image_bitmaps and dom.canvas_2d, whose
+/// owners install them into this one table.
+pub fn installed() *const Implementation {
+    return implementation.read();
+}
+
+/// dom.image_bitmaps.installImageBitmap's slot.
+pub fn installImageBitmapTransfer(steps: image_bitmaps.ImageBitmapSteps) void {
+    implementation.installField("image_bitmap_transfer", steps);
+}
+
+/// dom.image_bitmaps.installOffscreenCanvas's slot.
+pub fn installOffscreenCanvasTransfer(steps: image_bitmaps.OffscreenCanvasSteps) void {
+    implementation.installField("offscreen_canvas_transfer", steps);
+}
+
+/// dom.canvas_2d.installElementContext's slot.
+pub fn installElementContextState(state_of: canvas_2d.StateOf) void {
+    implementation.installField("element_context_state", state_of);
+}
+
+/// dom.canvas_2d.installOffscreenContext's slot.
+pub fn installOffscreenContextSteps(steps: canvas_2d.OffscreenSteps) void {
+    implementation.installField("offscreen_context", steps);
+}
 
 pub fn installImageElement(
     usability: *const fn (*runtime.Instance) Usability,
@@ -129,13 +169,32 @@ pub fn installCanvasElement(usability: *const fn (*runtime.Instance) Usability) 
 }
 
 pub fn installContext2D(
-    output_bitmap: *const fn (*runtime.Instance) ?*OutputBitmap,
     attach_context: *const fn (*runtime.Instance, *runtime.Instance, u32, u32) anyerror!void,
     set_bitmap_dimensions: *const fn (*runtime.Instance, u32, u32) anyerror!void,
 ) void {
-    implementation.installField("output_bitmap", output_bitmap);
     implementation.installField("attach_context", attach_context);
     implementation.installField("set_bitmap_dimensions", set_bitmap_dimensions);
+}
+
+pub fn installImageBitmap(usability: *const fn (*runtime.Instance) Usability) void {
+    implementation.installField("image_bitmap_usability", usability);
+}
+
+pub fn installOffscreenCanvas(usability: *const fn (*runtime.Instance) Usability) void {
+    implementation.installField("offscreen_canvas_usability", usability);
+}
+
+/// An ImageBitmap's usability; an InvalidStateError when no owner installed
+/// one (no ImageBitmap has bitmap data then).
+pub fn imageBitmapUsability(image_bitmap: *runtime.Instance) Usability {
+    const steps = implementation.read().image_bitmap_usability orelse return .invalid_state;
+    return steps(image_bitmap);
+}
+
+/// An OffscreenCanvas's usability; `bad` when no owner installed one.
+pub fn offscreenCanvasUsability(canvas: *runtime.Instance) Usability {
+    const steps = implementation.read().offscreen_canvas_usability orelse return .bad;
+    return steps(canvas);
 }
 
 /// An img element's usability; `bad` when no owner installed one.
@@ -150,10 +209,11 @@ pub fn canvasUsability(canvas: *runtime.Instance) Usability {
     return steps(canvas);
 }
 
-/// `context`'s output bitmap, if it has one.
+/// `context`'s output bitmap, if it has one: a CanvasRenderingContext2D's
+/// or an OffscreenCanvasRenderingContext2D's (dom.canvas_2d).
 pub fn outputBitmap(context: *runtime.Instance) ?*OutputBitmap {
-    const steps = implementation.read().output_bitmap orelse return null;
-    return steps(context);
+    const state = canvas_2d.stateOf(context) orelse return null;
+    return &state.bitmap;
 }
 
 pub fn attachContext(context: *runtime.Instance, canvas: *runtime.Instance, width: u32, height: u32) !void {

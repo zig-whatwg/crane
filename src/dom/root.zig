@@ -381,6 +381,10 @@ pub const indexeddb_keys = @import("indexeddb_keys.zig");
 /// HTML media owner algorithms without an IDL member.
 pub const media_elements = @import("media_elements.zig");
 pub const image_sources = @import("image_sources.zig");
+/// HTML 8.11.2 / 4.12.5.3: ImageBitmap and OffscreenCanvas bitmaps and their transfer steps.
+pub const image_bitmaps = @import("image_bitmaps.zig");
+/// HTML 4.12.5.1 / 4.12.5.3.1: a 2D rendering context's state, shared by its mixins.
+pub const canvas_2d = @import("canvas_2d.zig");
 /// HTML 4.12.5.5: a bitmap serialized as a file, and its data: URL.
 pub const bitmap_serialization = @import("bitmap_serialization.zig");
 
